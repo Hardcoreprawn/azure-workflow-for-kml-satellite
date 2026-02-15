@@ -75,6 +75,18 @@ repos:
         exclude: \.bicepparam$
 
   # ---------------------------------------------------------------------------
+  # GitHub Actions — workflow linting
+  # Uses actionlint (Go binary, auto-installed by pre-commit).
+  # Catches invalid workflow syntax, unknown action inputs, type errors
+  # in expressions, incorrect glob patterns, and more.
+  # https://github.com/rhysd/actionlint
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.11
+    hooks:
+      - id: actionlint
+
+  # ---------------------------------------------------------------------------
   # Markdown
   # ---------------------------------------------------------------------------
   - repo: https://github.com/DavidAnson/markdownlint-cli2
