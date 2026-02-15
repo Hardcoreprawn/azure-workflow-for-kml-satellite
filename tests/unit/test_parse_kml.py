@@ -13,9 +13,12 @@ Covers:
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from kml_satellite.activities.parse_kml import parse_kml
 from kml_satellite.models.feature import (

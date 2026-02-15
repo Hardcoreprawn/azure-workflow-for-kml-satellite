@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from lxml import etree
+from lxml import etree as ET  # type: ignore[import-untyped]
 
 from kml_satellite.models.feature import (
     Feature,
@@ -65,8 +65,8 @@ def _validate_xml_and_namespace(kml_path: Path) -> None:
         MalformedXMLError: If not valid XML or missing KML namespace.
     """
     try:
-        tree = etree.parse(str(kml_path))  # noqa: S320
-    except etree.XMLSyntaxError as e:
+        tree = ET.parse(str(kml_path))
+    except ET.XMLSyntaxError as e:
         raise MalformedXMLError(
             f"File {kml_path.name} is not valid XML: {e}"
         ) from e
@@ -97,7 +97,7 @@ def _parse_with_lxml(kml_path: Path) -> Feature:
         InvalidKMLError: If KML structure is invalid.
         CoordinateValidationError: If coordinates are invalid.
     """
-    tree = etree.parse(str(kml_path))  # noqa: S320
+    tree = ET.parse(str(kml_path))
     root = tree.getroot()
 
     # Find all Placemarks and filter for those with Polygons
@@ -161,7 +161,7 @@ def _parse_with_lxml(kml_path: Path) -> Feature:
     )
 
 
-def _extract_extended_data_lxml(placemark: etree._Element) -> dict[str, str]:
+def _extract_extended_data_lxml(placemark: ET._Element) -> dict[str, str]:
     """Extract ExtendedData from a Placemark element.
 
     Args:

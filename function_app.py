@@ -144,7 +144,27 @@ async def orchestrator_status(
 # ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
-# TODO (Issue #4): parse_kml activity
+
+
+@app.function_name("parse_kml")
+@app.activity_trigger(input_name="kml_path")
+def parse_kml_activity(kml_path: str) -> dict[str, object]:
+    """Parse a KML file containing a single polygon.
+
+    Activity function that extracts geometry and metadata from a KML file.
+
+    Args:
+        kml_path: Path to the KML file to parse.
+
+    Returns:
+        Dict representation of the parsed Feature.
+    """
+    from kml_satellite.activities.parse_kml import parse_kml
+
+    feature = parse_kml(kml_path)
+    return feature.to_dict()
+
+
 # TODO (Issue #5): parse_kml_multi activity
 # TODO (Issue #6): prepare_aoi activity
 # TODO (Issue #7): write_metadata activity
