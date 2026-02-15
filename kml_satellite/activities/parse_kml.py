@@ -85,7 +85,7 @@ def _validate_xml_and_namespace(kml_path: Path) -> None:
 
 
 def _parse_with_lxml(kml_path: Path) -> Feature:
-    """Parse KML using lxml (fallback for edge cases).
+    """Parse KML using lxml.
 
     Args:
         kml_path: Path to the KML file.

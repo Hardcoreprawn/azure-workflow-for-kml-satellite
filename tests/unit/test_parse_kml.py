@@ -276,19 +276,17 @@ class TestMetadataExtraction:
         assert len(feature.properties["description"]) > 0
 
 
-class TestBothParsers:
-    """Test that both fiona and lxml parsers work correctly."""
+class TestParserSuccess:
+    """Test that the lxml parser works correctly."""
 
-    def test_fiona_parser_success(self, single_polygon_kml: Path) -> None:
-        """Verify fiona parser can handle standard KML."""
-        # This should succeed with the primary fiona parser
+    def test_parse_kml_success_with_metadata(self, single_polygon_kml: Path) -> None:
+        """Verify parser can handle standard KML with metadata."""
         feature = parse_kml(single_polygon_kml)
         assert isinstance(feature, Feature)
         assert feature.geometry["type"] == "Polygon"
 
-    def test_lxml_fallback_success(self, data_dir: Path) -> None:
-        """Verify lxml fallback works for standard KML."""
-        # Even though fiona should work, lxml fallback should also work
+    def test_parse_kml_success_without_metadata(self, data_dir: Path) -> None:
+        """Verify parser works for KML without extended data."""
         kml_path = data_dir / "08_no_extended_data.kml"
         feature = parse_kml(kml_path)
         assert isinstance(feature, Feature)
