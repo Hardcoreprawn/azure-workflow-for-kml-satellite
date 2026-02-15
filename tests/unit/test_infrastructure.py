@@ -43,7 +43,7 @@ def _bicep_build(bicep_file: Path) -> dict[str, Any]:
         if result.returncode == 0:
             return json.loads(result.stdout)
 
-    pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{result.stderr}")
+    return pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{result.stderr}")
 
 
 @pytest.fixture(scope="module")
