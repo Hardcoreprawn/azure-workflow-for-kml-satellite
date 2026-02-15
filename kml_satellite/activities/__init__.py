@@ -6,3 +6,7 @@ Each activity performs a single unit of work within the orchestration:
 - acquire_imagery: Search, order, and download satellite imagery
 - post_process: Clip, reproject, store imagery and metadata
 """
+
+from kml_satellite.activities.parse_kml import parse_kml
+
+__all__ = ["parse_kml"]
