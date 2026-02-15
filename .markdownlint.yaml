@@ -1,0 +1,16 @@
+# markdownlint configuration
+# See: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Line length — disabled. PID tables and requirement descriptions are
+# naturally long. Enforcing line length in markdown tables is counterproductive.
+MD013: false
+
+# Allow inline HTML (sometimes needed in markdown tables)
+MD033: false
+
+# Allow emphasis used as heading (used sparingly in PID)
+MD036: false
+
+# Allow duplicate headings in different sections
+MD024:
+  siblings_only: true

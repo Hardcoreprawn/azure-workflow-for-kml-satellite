@@ -33,4 +33,4 @@ app = func.FunctionApp()
 # TODO (Issue #5): parse_kml_multi activity
 # TODO (Issue #6): prepare_aoi activity
 # TODO (Issue #7): write_metadata activity
-# TODO (Issue #8–#12): imagery acquisition activities
+# TODO (Issue #8-#12): imagery acquisition activities

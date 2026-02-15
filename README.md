@@ -73,8 +73,8 @@ See [PID.md](PID.md) for the full Project Initiation Document.
 
 ### Prerequisites
 
-- Python 3.12
-- GDAL system libraries (`gdal-bin`, `libgdal-dev`)
+- [uv](https://docs.astral.sh/uv/) (package manager — installs Python 3.12 automatically)
+- GDAL system libraries (`gdal-bin`, `libgdal-dev`) — Linux only; uv handles Python
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local)
 - Docker (for building the custom container)
 
@@ -85,27 +85,44 @@ See [PID.md](PID.md) for the full Project Initiation Document.
 git clone https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite.git
 cd azure-workflow-for-kml-satellite
 
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-.venv\Scripts\activate      # Windows
+# Install Python 3.12 + all dependencies (creates .venv automatically)
+uv sync --all-extras
 
-# Install dependencies (including dev tools)
-pip install -e ".[dev]"
+# Install pre-commit hooks
+uv run pre-commit install
 
 # Copy local settings template
 cp local.settings.json.template local.settings.json
 
-# Run linting
-ruff check .
-ruff format --check .
+# Run all quality checks manually
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest tests/unit -v
 
-# Run type checking
-pyright
-
-# Run tests
-pytest tests/unit -v
+# Or run everything via pre-commit
+uv run pre-commit run --all-files
 ```
+
+### Pre-commit Hooks
+
+The following hooks run automatically on every `git commit`:
+
+| Hook | What it does |
+| --- | --- |
+| trailing-whitespace | Removes trailing whitespace |
+| end-of-file-fixer | Ensures files end with a newline |
+| check-yaml / json / toml | Validates config file syntax |
+| check-added-large-files | Blocks files > 1 MB |
+| detect-private-key | Prevents committing private keys |
+| no-commit-to-branch | Blocks direct commits to `main` |
+| ruff (lint) | Lints Python, auto-fixes where possible |
+| ruff (format) | Checks Python formatting |
+| pyright | Static type checking |
+| detect-secrets | Scans for leaked credentials |
+| markdownlint | Lints markdown files |
+
+To bypass hooks for exceptional cases: `git commit --no-verify`
 
 ### Running with Azure Functions Core Tools
 
@@ -121,9 +138,9 @@ docker build -t kml-satellite:dev .
 
 ## Contributing
 
-1. Create a feature branch from `main`
+1. Create a feature branch from `main` (`git checkout -b feature/issue-number-description`)
 2. Make changes following the engineering principles in [PID.md §7.4](PID.md)
-3. Ensure `ruff check`, `ruff format --check`, and `pyright` all pass
+3. Pre-commit hooks enforce lint, format, and type checks automatically
 4. Add/update tests — all new code requires unit tests
 5. Open a PR using the provided template
 

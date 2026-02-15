@@ -1,0 +1,68 @@
+# Pre-commit hooks — run automatically on every commit.
+# Install with: uv run pre-commit install
+# Run manually: uv run pre-commit run --all-files
+
+repos:
+  # ---------------------------------------------------------------------------
+  # General file hygiene
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+        # Remove this hook or use --no-verify for initial setup commits.
+        # In normal workflow, all changes go through PRs.
+
+  # ---------------------------------------------------------------------------
+  # Python — Ruff (lint + format)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # ---------------------------------------------------------------------------
+  # Python — Type checking (pyright)
+  # Runs from the local venv so it sees all installed dependencies.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  # ---------------------------------------------------------------------------
+  # Security — check for secrets/credentials
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        exclude: \.lock$|local\.settings\.json\.template$
+
+  # ---------------------------------------------------------------------------
+  # Markdown
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.17.2
+    hooks:
+      - id: markdownlint-cli2
+        args: [--fix]
