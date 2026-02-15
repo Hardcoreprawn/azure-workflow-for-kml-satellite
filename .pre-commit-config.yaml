@@ -59,6 +59,34 @@ repos:
         exclude: \.lock$|local\.settings\.json\.template$
 
   # ---------------------------------------------------------------------------
+  # Bicep — lint infrastructure templates
+  # Uses the standalone Bicep CLI. Catches unused params, hardcoded URLs,
+  # missing descriptions, and other best-practice violations.
+  # Install: winget install Microsoft.Bicep (Windows) or via az bicep install
+  # CI uses: az bicep install (bundled with azure-cli)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: bicep-lint
+        name: bicep lint
+        entry: python -c "import subprocess,sys;r=[subprocess.run(['bicep','lint',f]) for f in sys.argv[1:]];sys.exit(1 if any(p.returncode for p in r) else 0)"
+        language: system
+        files: \.bicep$
+        exclude: \.bicepparam$
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions — workflow linting
+  # Uses actionlint (Go binary, auto-installed by pre-commit).
+  # Catches invalid workflow syntax, unknown action inputs, type errors
+  # in expressions, incorrect glob patterns, and more.
+  # https://github.com/rhysd/actionlint
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.11
+    hooks:
+      - id: actionlint
+
+  # ---------------------------------------------------------------------------
   # Markdown
   # ---------------------------------------------------------------------------
   - repo: https://github.com/DavidAnson/markdownlint-cli2

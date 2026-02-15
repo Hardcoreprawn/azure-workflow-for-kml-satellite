@@ -1,0 +1,81 @@
+---
+# ---------------------------------------------------------------------------
+# Infrastructure Deployment — Bicep
+# ---------------------------------------------------------------------------
+# Validates Bicep templates on PR, deploys on merge to main.
+# Requires:
+#   - Azure subscription with OIDC federation configured
+#   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+#     AZURE_SUBSCRIPTION_ID
+#   - Resource group pre-created (or use subscription-level deployment)
+# ---------------------------------------------------------------------------
+
+name: Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/**"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  BICEP_TEMPLATE: infra/main.bicep
+
+jobs:
+  validate:
+    name: Validate Bicep
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        run: |
+          az bicep install
+          az bicep version
+
+      - name: Bicep Build (syntax validation)
+        run: az bicep build --file ${{ env.BICEP_TEMPLATE }} --stdout > /dev/null
+
+      - name: Bicep Lint
+        run: az bicep lint --file ${{ env.BICEP_TEMPLATE }}
+
+  deploy-dev:
+    name: Deploy (Dev)
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-If (preview changes)
+        run: |
+          az deployment sub what-if \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+            --template-file ${{ env.BICEP_TEMPLATE }} \
+            --parameters infra/parameters/dev.bicepparam
+
+      - name: Deploy
+        run: |
+          az deployment sub create \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+            --template-file ${{ env.BICEP_TEMPLATE }} \
+            --parameters infra/parameters/dev.bicepparam \
+            --name "deploy-$(date +%Y%m%d-%H%M%S)"
