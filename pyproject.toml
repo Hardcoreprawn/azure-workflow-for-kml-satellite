@@ -100,6 +100,7 @@ reportMissingTypeStubs = false
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
 markers = [
     "unit: Unit tests (fast, no external dependencies)",
     "integration: Integration tests (may require Azure resources)",
