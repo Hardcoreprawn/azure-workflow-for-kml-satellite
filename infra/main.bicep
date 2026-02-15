@@ -82,7 +82,6 @@ module resources 'resources.bicep' = {
   params: {
     location: location
     baseName: baseName
-    environment: environment
     logRetentionInDays: logRetentionInDays
     functionAppMaxInstances: functionAppMaxInstances
     functionAppInstanceMemoryMB: functionAppInstanceMemoryMB

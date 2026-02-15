@@ -234,7 +234,6 @@ class TestResourcesModule:
         expected = {
             "location",
             "baseName",
-            "environment",
             "logRetentionInDays",
             "functionAppMaxInstances",
             "functionAppInstanceMemoryMB",

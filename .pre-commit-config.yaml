@@ -59,6 +59,22 @@ repos:
         exclude: \.lock$|local\.settings\.json\.template$
 
   # ---------------------------------------------------------------------------
+  # Bicep — lint infrastructure templates
+  # Uses the standalone Bicep CLI. Catches unused params, hardcoded URLs,
+  # missing descriptions, and other best-practice violations.
+  # Install: winget install Microsoft.Bicep (Windows) or via az bicep install
+  # CI uses: az bicep install (bundled with azure-cli)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: bicep-lint
+        name: bicep lint
+        entry: python -c "import subprocess,sys;r=[subprocess.run(['bicep','lint',f]) for f in sys.argv[1:]];sys.exit(1 if any(p.returncode for p in r) else 0)"
+        language: system
+        files: \.bicep$
+        exclude: \.bicepparam$
+
+  # ---------------------------------------------------------------------------
   # Markdown
   # ---------------------------------------------------------------------------
   - repo: https://github.com/DavidAnson/markdownlint-cli2

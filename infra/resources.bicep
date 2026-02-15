@@ -22,10 +22,6 @@ param location string
 @maxLength(16)
 param baseName string
 
-@description('Environment name (dev, staging, prod).')
-@allowed(['dev', 'staging', 'prod'])
-param environment string
-
 @description('Log Analytics retention in days.')
 @minValue(30)
 @maxValue(730)
