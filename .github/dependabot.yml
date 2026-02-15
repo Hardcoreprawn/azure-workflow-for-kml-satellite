@@ -1,0 +1,63 @@
+# Dependabot configuration
+# Keeps dependencies up to date via automated PRs.
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+
+version: 2
+updates:
+  # Python dependencies (pip / pyproject.toml)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers: []
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+    groups:
+      azure-sdk:
+        patterns:
+          - "azure-*"
+      geospatial:
+        patterns:
+          - "fiona"
+          - "shapely"
+          - "pyproj"
+          - "rasterio"
+          - "lxml"
+          - "pystac-client"
+      dev-tools:
+        patterns:
+          - "ruff"
+          - "pyright"
+          - "pytest*"
+          - "pre-commit"
+          - "respx"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "docker"
