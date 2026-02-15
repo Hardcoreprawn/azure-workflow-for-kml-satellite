@@ -52,12 +52,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Build deployment package
         run: |
           mkdir -p .deploy
           cp function_app.py host.json requirements.txt .deploy/
           cp -r kml_satellite .deploy/
           cd .deploy
+          pip install -r requirements.txt --target=".python_packages/lib/site-packages" --quiet
           zip -r ../deploy.zip .
 
       - name: Deploy to Azure Functions
@@ -65,6 +71,26 @@ jobs:
         with:
           app-name: ${{ env.FUNCTION_APP_NAME }}
           package: deploy.zip
+
+      - name: Wait for functions to be discoverable
+        run: |
+          echo "Waiting for function app to recognise deployed functions..."
+          for i in $(seq 1 30); do
+            count=$(az functionapp function list \
+              --name "${{ env.FUNCTION_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --query "length([])" -o tsv 2>/dev/null || echo 0)
+            if [ "$count" -ge 1 ]; then
+              echo "✔ $count function(s) detected after ~$((i * 10))s"
+              break
+            fi
+            echo "  attempt $i/30 — $count functions, retrying in 10s…"
+            sleep 10
+          done
+          if [ "$count" -lt 1 ]; then
+            echo "::error::No functions detected after 5 minutes"
+            exit 1
+          fi
 
       - name: Enable Event Grid subscription
         run: |
