@@ -7,6 +7,9 @@ dist/
 build/
 *.egg
 .eggs/
+.mypy_cache/
+.pyright/
+.ruff_cache/
 
 # Virtual environments
 .venv/
@@ -15,6 +18,7 @@ ENV/
 
 # IDE
 .vscode/settings.json
+.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -22,10 +26,16 @@ ENV/
 # OS
 Thumbs.db
 .DS_Store
+Desktop.ini
 
 # Azure Functions
 local.settings.json
 .python_packages/
+bin/
+obj/
+
+# Docker
+.dockerignore
 
 # Environment variables
 .env
@@ -33,3 +43,13 @@ local.settings.json
 
 # Test outputs
 tests/output/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Raster / geospatial scratch files
+*.tif
+*.tiff
+!tests/data/**/*.tif

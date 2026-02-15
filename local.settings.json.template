@@ -1,0 +1,25 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+
+    "KML_INPUT_CONTAINER": "kml-input",
+    "KML_OUTPUT_CONTAINER": "kml-output",
+
+    "IMAGERY_PROVIDER": "planetary_computer",
+    "IMAGERY_RESOLUTION_TARGET_M": "0.5",
+    "IMAGERY_MAX_CLOUD_COVER_PCT": "20",
+
+    "AOI_BUFFER_M": "100",
+    "AOI_MAX_AREA_HA": "10000",
+
+    "SKYWATCH_API_KEY": "",
+    "SKYWATCH_API_URL": "https://api.skywatch.co/earthcache/v1",
+
+    "KEYVAULT_URL": "",
+
+    "APPINSIGHTS_INSTRUMENTATIONKEY": ""
+  }
+}

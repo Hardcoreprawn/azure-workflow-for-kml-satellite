@@ -1,0 +1,112 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kml-satellite"
+version = "0.1.0"
+description = "Azure workflow for KML ingestion and satellite imagery acquisition"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+authors = [
+    { name = "James Brewster" },
+]
+
+dependencies = [
+    # Azure Functions
+    "azure-functions>=1.21.0",
+    "azure-functions-durable>=1.2.9",
+
+    # Azure SDK
+    "azure-storage-blob>=12.23.0",
+    "azure-identity>=1.19.0",
+    "azure-keyvault-secrets>=4.9.0",
+
+    # KML Parsing
+    "fiona>=1.10.0",
+    "lxml>=5.3.0",
+
+    # Geometry
+    "shapely>=2.0.6",
+    "pyproj>=3.7.0",
+
+    # Raster Processing
+    "rasterio>=1.4.0",
+
+    # STAC Client (Planetary Computer)
+    "pystac-client>=0.8.0",
+
+    # HTTP
+    "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "pytest-asyncio>=0.25.0",
+    "respx>=0.22.0",
+
+    # Linting & Formatting
+    "ruff>=0.9.0",
+
+    # Type Checking
+    "pyright>=1.1.390",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+
+[tool.ruff.lint]
+select = [
+    "F",      # Pyflakes
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T20",    # flake8-print
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # Line too long — handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kml_satellite"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+include = ["kml_satellite", "function_app.py"]
+exclude = ["tests"]
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests (fast, no external dependencies)",
+    "integration: Integration tests (may require Azure resources)",
+    "e2e: End-to-end tests (full pipeline, requires live environment)",
+]
+addopts = [
+    "--strict-markers",
+    "-ra",
+    "--tb=short",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["kml_satellite"]

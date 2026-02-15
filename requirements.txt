@@ -1,0 +1,18 @@
+# Pinned dependencies for Azure Functions deployment.
+# Regenerate from pyproject.toml with: pip-compile pyproject.toml -o requirements.txt
+#
+# NOTE: GDAL and rasterio are pre-installed in the custom Docker image.
+# Do not add GDAL here — it is built from source in the Dockerfile.
+
+azure-functions>=1.21.0
+azure-functions-durable>=1.2.9
+azure-storage-blob>=12.23.0
+azure-identity>=1.19.0
+azure-keyvault-secrets>=4.9.0
+fiona>=1.10.0
+lxml>=5.3.0
+shapely>=2.0.6
+pyproj>=3.7.0
+rasterio>=1.4.0
+pystac-client>=0.8.0
+httpx>=0.28.0
