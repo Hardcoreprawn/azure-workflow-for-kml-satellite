@@ -21,5 +21,9 @@
     "KEYVAULT_URL": "",
 
     "APPINSIGHTS_INSTRUMENTATIONKEY": ""
+  },
+  "Host": {
+    "CORS": "*",
+    "LocalHttpPort": 7071
   }
 }
