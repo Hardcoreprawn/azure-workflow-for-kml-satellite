@@ -67,15 +67,15 @@ jobs:
 
       - name: What-If (preview changes)
         run: |
-          az deployment group what-if \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          az deployment sub what-if \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
             --template-file ${{ env.BICEP_TEMPLATE }} \
             --parameters infra/parameters/dev.bicepparam
 
       - name: Deploy
         run: |
-          az deployment group create \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+          az deployment sub create \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
             --template-file ${{ env.BICEP_TEMPLATE }} \
             --parameters infra/parameters/dev.bicepparam \
             --name "deploy-$(date +%Y%m%d-%H%M%S)"

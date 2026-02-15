@@ -1,26 +1,28 @@
 // ---------------------------------------------------------------------------
 // main.bicep — KML Satellite Imagery Pipeline Infrastructure
 // ---------------------------------------------------------------------------
-// Orchestrates all Azure resources required for the KML ingestion and
-// satellite imagery acquisition workflow.
+// Subscription-scoped deployment: creates the Resource Group and all
+// resources within it. The RG is the application boundary — everything
+// the pipeline needs lives inside it, and tearing it down removes all
+// resources cleanly.
 //
 // Usage:
-//   az deployment group create \
-//     --resource-group <rg-name> \
+//   az deployment sub create \
+//     --location uksouth \
 //     --template-file infra/main.bicep \
 //     --parameters infra/parameters/dev.bicepparam
 //
 // See: PID §8 (Technology Stack), §11 (Security), §7.5 (Compute Decision)
 // ---------------------------------------------------------------------------
 
-targetScope = 'resourceGroup'
+targetScope = 'subscription'
 
 // ---------------------------------------------------------------------------
 // Parameters
 // ---------------------------------------------------------------------------
 
-@description('Azure region for all resources. Defaults to the resource group location.')
-param location string = resourceGroup().location
+@description('Azure region for the resource group and all resources.')
+param location string
 
 @description('Base name for resource naming. Used as a prefix/suffix across all modules.')
 @minLength(3)
@@ -59,73 +61,33 @@ var defaultTags = union(tags, {
   'managed-by': 'bicep'
 })
 
+var resourceGroupName = 'rg-${baseName}'
+
 // ---------------------------------------------------------------------------
-// Modules
+// Resource Group — the application boundary
 // ---------------------------------------------------------------------------
 
-module storage 'modules/storage.bicep' = {
-  name: 'storage'
+resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
+  name: resourceGroupName
+  location: location
+  tags: defaultTags
+}
+
+// ---------------------------------------------------------------------------
+// All application resources — scoped to the resource group
+// ---------------------------------------------------------------------------
+
+module resources 'resources.bicep' = {
+  scope: rg
   params: {
     location: location
     baseName: baseName
+    environment: environment
+    logRetentionInDays: logRetentionInDays
+    functionAppMaxInstances: functionAppMaxInstances
+    functionAppInstanceMemoryMB: functionAppInstanceMemoryMB
+    enableKeyVaultPurgeProtection: enableKeyVaultPurgeProtection
     tags: defaultTags
-  }
-}
-
-module monitoring 'modules/monitoring.bicep' = {
-  name: 'monitoring'
-  params: {
-    location: location
-    baseName: baseName
-    retentionInDays: logRetentionInDays
-    tags: defaultTags
-  }
-}
-
-module keyVault 'modules/keyvault.bicep' = {
-  name: 'keyvault'
-  params: {
-    location: location
-    baseName: baseName
-    tenantId: subscription().tenantId
-    enablePurgeProtection: enableKeyVaultPurgeProtection
-    softDeleteRetentionInDays: 90
-    tags: defaultTags
-  }
-}
-
-module functionApp 'modules/function-app.bicep' = {
-  name: 'function-app'
-  params: {
-    location: location
-    baseName: baseName
-    storageAccountName: storage.outputs.name
-    storageConnectionString: storage.outputs.connectionString
-    appInsightsConnectionString: monitoring.outputs.connectionString
-    keyVaultUri: keyVault.outputs.uri
-    maximumInstanceCount: functionAppMaxInstances
-    instanceMemoryMB: functionAppInstanceMemoryMB
-    tags: defaultTags
-  }
-}
-
-module eventGrid 'modules/event-grid.bicep' = {
-  name: 'event-grid'
-  params: {
-    location: location
-    baseName: baseName
-    storageAccountId: storage.outputs.id
-    functionAppId: functionApp.outputs.id
-    tags: defaultTags
-  }
-}
-
-module rbac 'modules/rbac.bicep' = {
-  name: 'rbac'
-  params: {
-    principalId: functionApp.outputs.principalId
-    storageAccountId: storage.outputs.id
-    keyVaultId: keyVault.outputs.id
   }
 }
 
@@ -133,17 +95,20 @@ module rbac 'modules/rbac.bicep' = {
 // Outputs
 // ---------------------------------------------------------------------------
 
+@description('Name of the resource group.')
+output resourceGroupName string = rg.name
+
 @description('Name of the deployed storage account.')
-output storageAccountName string = storage.outputs.name
+output storageAccountName string = resources.outputs.storageAccountName
 
 @description('Name of the deployed Function App.')
-output functionAppName string = functionApp.outputs.name
+output functionAppName string = resources.outputs.functionAppName
 
 @description('Default hostname of the Function App.')
-output functionAppHostName string = functionApp.outputs.defaultHostName
+output functionAppHostName string = resources.outputs.functionAppHostName
 
 @description('Name of the deployed Key Vault.')
-output keyVaultName string = keyVault.outputs.name
+output keyVaultName string = resources.outputs.keyVaultName
 
 @description('Application Insights instrumentation key.')
-output appInsightsInstrumentationKey string = monitoring.outputs.instrumentationKey
+output appInsightsInstrumentationKey string = resources.outputs.appInsightsInstrumentationKey

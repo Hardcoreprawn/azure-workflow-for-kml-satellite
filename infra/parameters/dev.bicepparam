@@ -7,6 +7,7 @@
 
 using '../main.bicep'
 
+param location = 'uksouth'
 param baseName = 'kmlsat-dev'
 param environment = 'dev'
 param logRetentionInDays = 30

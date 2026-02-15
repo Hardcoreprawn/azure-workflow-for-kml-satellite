@@ -53,6 +53,12 @@ def main_arm_template() -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
+def resources_arm_template() -> dict[str, Any]:
+    """Compiled ARM template from resources.bicep (RG-scoped module)."""
+    return _bicep_build(INFRA_DIR / "resources.bicep")
+
+
+@pytest.fixture(scope="module")
 def storage_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/storage.bicep."""
     return _bicep_build(INFRA_DIR / "modules" / "storage.bicep")
@@ -88,18 +94,38 @@ def rbac_arm_template() -> dict[str, Any]:
     return _bicep_build(INFRA_DIR / "modules" / "rbac.bicep")
 
 
+def _normalise_resources(template: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the resources in a template as a flat list.
+
+    Bicep can emit resources as either:
+    • An **array** (classic ARM format) — used for RG-scoped templates.
+    • An **object** (symbolic-name format) — used for subscription-scoped
+      templates compiled by Bicep ≥ 0.28.
+
+    This helper normalises both forms into a list so downstream helpers
+    work identically regardless of format.
+    """
+    raw = template.get("resources", [])
+    if isinstance(raw, list):
+        return raw
+    # Symbolic-name object: values are the resource definitions.
+    if isinstance(raw, dict):
+        return list(raw.values())
+    return []
+
+
 def _get_resources_by_type(template: dict[str, Any], resource_type: str) -> list[dict[str, Any]]:
     """Extract resources of a given type from an ARM template."""
     return [
         r
-        for r in template.get("resources", [])
+        for r in _normalise_resources(template)
         if r.get("type", "").lower() == resource_type.lower()
     ]
 
 
 def _get_all_resource_types(template: dict[str, Any]) -> set[str]:
     """Get all resource types defined in a template."""
-    return {r["type"] for r in template.get("resources", []) if "type" in r}
+    return {r["type"] for r in _normalise_resources(template) if "type" in r}
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +140,7 @@ class TestBicepCompilation:
         "bicep_file",
         [
             "main.bicep",
+            "resources.bicep",
             "modules/storage.bicep",
             "modules/monitoring.bicep",
             "modules/keyvault.bicep",
@@ -137,7 +164,12 @@ class TestBicepCompilation:
 
 
 class TestMainTemplate:
-    """Verify the main orchestration template structure."""
+    """Verify the subscription-scoped main orchestration template."""
+
+    def test_is_subscription_scoped(self, main_arm_template: dict[str, Any]) -> None:
+        """Main template must be a subscription-scoped deployment."""
+        schema = main_arm_template.get("$schema", "")
+        assert "subscriptionDeploymentTemplate" in schema
 
     def test_has_parameters(self, main_arm_template: dict[str, Any]) -> None:
         """Main template must define expected parameters."""
@@ -145,16 +177,34 @@ class TestMainTemplate:
         expected = {"baseName", "location", "environment"}
         assert expected.issubset(params), f"Missing params: {expected - params}"
 
+    def test_location_param_has_no_default(self, main_arm_template: dict[str, Any]) -> None:
+        """Location must be a required parameter (no default)."""
+        loc_param = main_arm_template["parameters"]["location"]
+        assert "defaultValue" not in loc_param
+
     def test_environment_allowed_values(self, main_arm_template: dict[str, Any]) -> None:
         """Environment parameter must restrict to dev/staging/prod."""
         env_param = main_arm_template["parameters"]["environment"]
         allowed = env_param.get("allowedValues", [])
         assert set(allowed) == {"dev", "staging", "prod"}
 
+    def test_creates_resource_group(self, main_arm_template: dict[str, Any]) -> None:
+        """Main template must create a resource group."""
+        rg_resources = _get_resources_by_type(
+            main_arm_template, "Microsoft.Resources/resourceGroups"
+        )
+        assert len(rg_resources) == 1
+
+    def test_has_nested_deployment(self, main_arm_template: dict[str, Any]) -> None:
+        """Main template must have a nested deployment into the resource group."""
+        deployments = _get_resources_by_type(main_arm_template, "Microsoft.Resources/deployments")
+        assert len(deployments) == 1
+
     def test_has_outputs(self, main_arm_template: dict[str, Any]) -> None:
-        """Main template must expose key outputs."""
+        """Main template must expose key outputs including resourceGroupName."""
         outputs = set(main_arm_template.get("outputs", {}).keys())
         expected = {
+            "resourceGroupName",
             "storageAccountName",
             "functionAppName",
             "functionAppHostName",
@@ -163,9 +213,39 @@ class TestMainTemplate:
         }
         assert expected.issubset(outputs), f"Missing outputs: {expected - outputs}"
 
-    def test_has_module_deployments(self, main_arm_template: dict[str, Any]) -> None:
-        """Main template must reference all infrastructure modules."""
-        resources = main_arm_template.get("resources", [])
+
+# ---------------------------------------------------------------------------
+# Test: Resources module structure (RG-scoped orchestration)
+# ---------------------------------------------------------------------------
+
+
+class TestResourcesModule:
+    """Verify the RG-scoped resources module that orchestrates all modules."""
+
+    def test_is_resource_group_scoped(self, resources_arm_template: dict[str, Any]) -> None:
+        """Resources template must be a standard (RG-scoped) deployment."""
+        schema = resources_arm_template.get("$schema", "")
+        assert "deploymentTemplate.json" in schema
+        assert "subscriptionDeploymentTemplate" not in schema
+
+    def test_has_parameters(self, resources_arm_template: dict[str, Any]) -> None:
+        """Resources module must accept all forwarded parameters."""
+        params = set(resources_arm_template.get("parameters", {}).keys())
+        expected = {
+            "location",
+            "baseName",
+            "environment",
+            "logRetentionInDays",
+            "functionAppMaxInstances",
+            "functionAppInstanceMemoryMB",
+            "enableKeyVaultPurgeProtection",
+            "tags",
+        }
+        assert expected.issubset(params), f"Missing params: {expected - params}"
+
+    def test_has_module_deployments(self, resources_arm_template: dict[str, Any]) -> None:
+        """Resources module must reference all infrastructure modules."""
+        resources = resources_arm_template.get("resources", [])
         deployment_names = {
             r.get("name") for r in resources if r["type"] == "Microsoft.Resources/deployments"
         }
@@ -174,6 +254,18 @@ class TestMainTemplate:
         assert len(deployment_names) >= 5, (
             f"Expected ≥5 module deployments, got {len(deployment_names)}: {deployment_names}"
         )
+
+    def test_has_outputs(self, resources_arm_template: dict[str, Any]) -> None:
+        """Resources module must surface outputs to main.bicep."""
+        outputs = set(resources_arm_template.get("outputs", {}).keys())
+        expected = {
+            "storageAccountName",
+            "functionAppName",
+            "functionAppHostName",
+            "keyVaultName",
+            "appInsightsInstrumentationKey",
+        }
+        assert expected.issubset(outputs), f"Missing outputs: {expected - outputs}"
 
 
 # ---------------------------------------------------------------------------
