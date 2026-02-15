@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Empty Document</name>
+    <description>Valid KML but contains no Placemarks or geometry</description>
+  </Document>
+</kml>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Epsilon Vineyards - Steep Hillside</name>
+    <description>Highly irregular polygon following natural terrain contours on steep slopes in Douro Valley, Portugal</description>
+
+    <Placemark>
+      <name>Terraced Vineyard - Touriga Nacional</name>
+      <description>Terraced vineyard on steep hillside, many vertices following terrain contours</description>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Epsilon Vineyards</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Touriga Nacional</value>
+        </Data>
+        <Data name="location">
+          <value>Douro Valley, Portugal</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -7.7900,41.1550,0
+              -7.7892,41.1555,0
+              -7.7880,41.1558,0
+              -7.7865,41.1556,0
+              -7.7850,41.1560,0
+              -7.7838,41.1565,0
+              -7.7825,41.1562,0
+              -7.7815,41.1558,0
+              -7.7808,41.1550,0
+              -7.7810,41.1540,0
+              -7.7818,41.1535,0
+              -7.7830,41.1530,0
+              -7.7845,41.1528,0
+              -7.7858,41.1525,0
+              -7.7870,41.1528,0
+              -7.7878,41.1532,0
+              -7.7888,41.1538,0
+              -7.7895,41.1542,0
+              -7.7900,41.1550,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

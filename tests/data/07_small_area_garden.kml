@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Eta Garden - Very Small Plot</name>
+    <description>Very small polygon (~0.1 hectares) to test minimum-area handling and buffer behaviour</description>
+
+    <Placemark>
+      <name>Eta Garden - Backyard Citrus</name>
+      <description>Tiny backyard citrus plot. Tests minimum viable AOI size.</description>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Eta Garden</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Meyer Lemon</value>
+        </Data>
+        <Data name="location">
+          <value>Riverside, CA, USA</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -117.3960,33.9535,0
+              -117.3960,33.9539,0
+              -117.3955,33.9539,0
+              -117.3955,33.9535,0
+              -117.3960,33.9535,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

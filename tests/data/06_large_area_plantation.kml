@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zeta Plantation - Large Area Palm Oil</name>
+    <description>Very large polygon (~500 hectares) to test area computation and imagery tiling for large AOIs</description>
+
+    <Placemark>
+      <name>Zeta Plantation - Main Block</name>
+      <description>Large palm oil plantation, Sabah, Malaysia. Tests large AOI handling.</description>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Zeta Plantation</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Oil Palm (Elaeis guineensis)</value>
+        </Data>
+        <Data name="location">
+          <value>Sabah, Malaysia</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              117.8500,5.3000,0
+              117.8500,5.3450,0
+              117.9000,5.3450,0
+              117.9000,5.3000,0
+              117.8500,5.3000,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

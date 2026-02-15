@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Iota Farms - Schema-Typed Data</name>
+    <description>Uses KML Schema and SchemaData for typed extended data fields</description>
+
+    <Schema name="OrchardInfo" id="OrchardInfoId">
+      <SimpleField type="xsd:string" name="orchard_name">
+        <displayName>Orchard Name</displayName>
+      </SimpleField>
+      <SimpleField type="xsd:string" name="tree_variety">
+        <displayName>Tree Variety</displayName>
+      </SimpleField>
+      <SimpleField type="xsd:int" name="planting_year">
+        <displayName>Planting Year</displayName>
+      </SimpleField>
+      <SimpleField type="xsd:float" name="expected_yield_tonnes">
+        <displayName>Expected Yield (tonnes)</displayName>
+      </SimpleField>
+      <SimpleField type="xsd:string" name="irrigation_type">
+        <displayName>Irrigation Type</displayName>
+      </SimpleField>
+    </Schema>
+
+    <Placemark>
+      <name>I1 - Honeycrisp Block</name>
+      <ExtendedData>
+        <SchemaData schemaUrl="#OrchardInfoId">
+          <SimpleData name="orchard_name">Iota Farms</SimpleData>
+          <SimpleData name="tree_variety">Honeycrisp Apple</SimpleData>
+          <SimpleData name="planting_year">2020</SimpleData>
+          <SimpleData name="expected_yield_tonnes">45.5</SimpleData>
+          <SimpleData name="irrigation_type">drip</SimpleData>
+        </SchemaData>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.4800,46.5800,0
+              -120.4800,46.5870,0
+              -120.4700,46.5870,0
+              -120.4700,46.5800,0
+              -120.4800,46.5800,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <Placemark>
+      <name>I2 - Pink Lady Block</name>
+      <ExtendedData>
+        <SchemaData schemaUrl="#OrchardInfoId">
+          <SimpleData name="orchard_name">Iota Farms</SimpleData>
+          <SimpleData name="tree_variety">Pink Lady Apple</SimpleData>
+          <SimpleData name="planting_year">2019</SimpleData>
+          <SimpleData name="expected_yield_tonnes">52.0</SimpleData>
+          <SimpleData name="irrigation_type">micro-sprinkler</SimpleData>
+        </SchemaData>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.4690,46.5800,0
+              -120.4690,46.5860,0
+              -120.4600,46.5860,0
+              -120.4600,46.5800,0
+              -120.4690,46.5800,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

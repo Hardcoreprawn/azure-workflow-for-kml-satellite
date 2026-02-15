@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Unclosed Ring</name>
+    <description>Polygon ring where first and last coordinates do not match</description>
+
+    <Placemark>
+      <name>Unclosed Outer Ring</name>
+      <description>First coordinate != last coordinate — ring is not closed</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.5210,46.6040,0
+              -120.5210,46.6130,0
+              -120.5080,46.6130,0
+              -120.5080,46.6040,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

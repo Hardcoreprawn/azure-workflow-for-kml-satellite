@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Delta Farm - Orchard with Exclusion Zone</name>
+    <description>Polygon with inner boundary (hole) representing a building/dam exclusion within an orchard</description>
+
+    <Placemark>
+      <name>Block D1 - Macadamia with Dam Exclusion</name>
+      <description>Macadamia nut orchard with an irrigation dam excluded from the polygon</description>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Delta Farm</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Macadamia</value>
+        </Data>
+        <Data name="location">
+          <value>Bundaberg, QLD, Australia</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              152.3480,-24.8700,0
+              152.3480,-24.8610,0
+              152.3600,-24.8610,0
+              152.3600,-24.8700,0
+              152.3480,-24.8700,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+        <innerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              152.3520,-24.8670,0
+              152.3520,-24.8645,0
+              152.3555,-24.8645,0
+              152.3555,-24.8670,0
+              152.3520,-24.8670,0
+            </coordinates>
+          </LinearRing>
+        </innerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

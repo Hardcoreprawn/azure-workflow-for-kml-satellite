@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Broken KML - Unclosed Tags</name>
+    <Placemark>
+      <name>Bad Polygon</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.5210,46.6040,0
+              -120.5210,46.6130,0
+              -120.5080,46.6130,0
+            <!-- Missing closing tags for coordinates, LinearRing, outerBoundaryIs, Polygon, Placemark, Document -->
+</kml>

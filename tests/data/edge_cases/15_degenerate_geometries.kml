@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Degenerate Geometries</name>
+    <description>Polygons with geometry problems that must be detected and handled</description>
+
+    <!-- Self-intersecting polygon (bowtie shape) -->
+    <Placemark>
+      <name>Self-Intersecting Bowtie</name>
+      <description>Edges cross each other forming a bowtie — invalid geometry</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.500,46.600,0
+              -120.490,46.610,0
+              -120.500,46.610,0
+              -120.490,46.600,0
+              -120.500,46.600,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Zero-area polygon (all points collinear) -->
+    <Placemark>
+      <name>Zero Area - Collinear Points</name>
+      <description>All vertices lie on a straight line — zero area</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.500,46.600,0
+              -120.500,46.605,0
+              -120.500,46.610,0
+              -120.500,46.600,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Duplicate consecutive vertices -->
+    <Placemark>
+      <name>Duplicate Vertices</name>
+      <description>Contains consecutive duplicate coordinate pairs</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.500,46.600,0
+              -120.500,46.600,0
+              -120.500,46.610,0
+              -120.490,46.610,0
+              -120.490,46.610,0
+              -120.490,46.600,0
+              -120.500,46.600,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

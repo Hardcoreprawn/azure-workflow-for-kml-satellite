@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Theta Estate - Nested Folders</name>
+    <description>Features organised in nested Folder elements, testing recursive feature extraction</description>
+
+    <Folder>
+      <name>North Block</name>
+      <description>Northern orchard blocks</description>
+
+      <Placemark>
+        <name>N1 - Granny Smith</name>
+        <ExtendedData>
+          <Data name="orchard_name">
+            <value>Theta Estate</value>
+          </Data>
+          <Data name="tree_variety">
+            <value>Granny Smith Apple</value>
+          </Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>
+                -120.6400,46.7200,0
+                -120.6400,46.7270,0
+                -120.6310,46.7270,0
+                -120.6310,46.7200,0
+                -120.6400,46.7200,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>N2 - Gala</name>
+        <ExtendedData>
+          <Data name="orchard_name">
+            <value>Theta Estate</value>
+          </Data>
+          <Data name="tree_variety">
+            <value>Gala Apple</value>
+          </Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>
+                -120.6300,46.7200,0
+                -120.6300,46.7260,0
+                -120.6220,46.7260,0
+                -120.6220,46.7200,0
+                -120.6300,46.7200,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <Folder>
+      <name>South Block</name>
+      <description>Southern orchard blocks</description>
+
+      <Folder>
+        <name>Pear Section</name>
+
+        <Placemark>
+          <name>S1 - Bartlett Pear</name>
+          <ExtendedData>
+            <Data name="orchard_name">
+              <value>Theta Estate</value>
+            </Data>
+            <Data name="tree_variety">
+              <value>Bartlett Pear</value>
+            </Data>
+          </ExtendedData>
+          <Polygon>
+            <outerBoundaryIs>
+              <LinearRing>
+                <coordinates>
+                  -120.6380,46.7120,0
+                  -120.6380,46.7180,0
+                  -120.6290,46.7180,0
+                  -120.6290,46.7120,0
+                  -120.6380,46.7120,0
+                </coordinates>
+              </LinearRing>
+            </outerBoundaryIs>
+          </Polygon>
+        </Placemark>
+      </Folder>
+
+      <Folder>
+        <name>Cherry Section</name>
+
+        <Placemark>
+          <name>S2 - Bing Cherry</name>
+          <ExtendedData>
+            <Data name="orchard_name">
+              <value>Theta Estate</value>
+            </Data>
+            <Data name="tree_variety">
+              <value>Bing Cherry</value>
+            </Data>
+          </ExtendedData>
+          <Polygon>
+            <outerBoundaryIs>
+              <LinearRing>
+                <coordinates>
+                  -120.6280,46.7120,0
+                  -120.6280,46.7170,0
+                  -120.6200,46.7170,0
+                  -120.6200,46.7120,0
+                  -120.6280,46.7120,0
+                </coordinates>
+              </LinearRing>
+            </outerBoundaryIs>
+          </Polygon>
+        </Placemark>
+      </Folder>
+    </Folder>
+  </Document>
+</kml>

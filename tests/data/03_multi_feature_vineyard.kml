@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Gamma Estate - Mixed Vineyard and Orchard</name>
+    <description>Multiple Placemarks representing different crop areas on a single estate in Hawke's Bay, NZ</description>
+
+    <Style id="vineyardStyle">
+      <PolyStyle>
+        <color>77ff00ff</color>
+        <outline>1</outline>
+      </PolyStyle>
+      <LineStyle>
+        <color>ffff00ff</color>
+        <width>2</width>
+      </LineStyle>
+    </Style>
+
+    <Style id="orchardStyle">
+      <PolyStyle>
+        <color>7700ff00</color>
+        <outline>1</outline>
+      </PolyStyle>
+      <LineStyle>
+        <color>ff00ff00</color>
+        <width>2</width>
+      </LineStyle>
+    </Style>
+
+    <!-- Feature 1: Sauvignon Blanc vineyard -->
+    <Placemark>
+      <name>Block SB-1 - Sauvignon Blanc</name>
+      <description>Sauvignon Blanc grapevines, planted 2012</description>
+      <styleUrl>#vineyardStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Gamma Estate</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Sauvignon Blanc</value>
+        </Data>
+        <Data name="crop_type">
+          <value>vineyard</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8650,-39.6390,0
+              176.8650,-39.6340,0
+              176.8740,-39.6340,0
+              176.8740,-39.6390,0
+              176.8650,-39.6390,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Feature 2: Pinot Noir vineyard -->
+    <Placemark>
+      <name>Block PN-2 - Pinot Noir</name>
+      <description>Pinot Noir grapevines, planted 2014</description>
+      <styleUrl>#vineyardStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Gamma Estate</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Pinot Noir</value>
+        </Data>
+        <Data name="crop_type">
+          <value>vineyard</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8750,-39.6390,0
+              176.8750,-39.6350,0
+              176.8830,-39.6350,0
+              176.8830,-39.6390,0
+              176.8750,-39.6390,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Feature 3: Apple orchard -->
+    <Placemark>
+      <name>Block A-3 - Braeburn Apple</name>
+      <description>Braeburn apple trees, planted 2016</description>
+      <styleUrl>#orchardStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Gamma Estate</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Braeburn Apple</value>
+        </Data>
+        <Data name="crop_type">
+          <value>orchard</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8660,-39.6400,0
+              176.8660,-39.6440,0
+              176.8760,-39.6440,0
+              176.8760,-39.6400,0
+              176.8660,-39.6400,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Feature 4: Avocado orchard (irregular polygon) -->
+    <Placemark>
+      <name>Block AV-4 - Hass Avocado</name>
+      <description>Hass avocado trees, planted 2019, irregular hillside block</description>
+      <styleUrl>#orchardStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Gamma Estate</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Hass Avocado</value>
+        </Data>
+        <Data name="crop_type">
+          <value>orchard</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8770,-39.6400,0
+              176.8785,-39.6410,0
+              176.8810,-39.6405,0
+              176.8840,-39.6420,0
+              176.8835,-39.6450,0
+              176.8800,-39.6460,0
+              176.8770,-39.6445,0
+              176.8760,-39.6420,0
+              176.8770,-39.6400,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

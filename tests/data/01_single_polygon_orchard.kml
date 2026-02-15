@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Alpha Orchard - Block A</name>
+    <description>Single polygon representing a Fuji apple orchard block in Yakima Valley, WA</description>
+
+    <Style id="orchardStyle">
+      <PolyStyle>
+        <color>7700ff00</color>
+        <outline>1</outline>
+      </PolyStyle>
+      <LineStyle>
+        <color>ff00ff00</color>
+        <width>2</width>
+      </LineStyle>
+    </Style>
+
+    <Placemark>
+      <name>Block A - Fuji Apple</name>
+      <description>Fuji apple trees, planted 2018, ~12 hectares</description>
+      <styleUrl>#orchardStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Alpha Orchard</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Fuji Apple</value>
+        </Data>
+        <Data name="planting_year">
+          <value>2018</value>
+        </Data>
+        <Data name="owner">
+          <value>Valley Fruit Growers Ltd</value>
+        </Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.5210,46.6040,0
+              -120.5210,46.6130,0
+              -120.5080,46.6130,0
+              -120.5080,46.6040,0
+              -120.5210,46.6040,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

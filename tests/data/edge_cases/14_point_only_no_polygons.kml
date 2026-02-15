@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Point Only - No Polygons</name>
+    <description>Contains only Point geometry, no polygons for AOI extraction</description>
+    <Placemark>
+      <name>Weather Station</name>
+      <Point>
+        <coordinates>-120.5145,46.6085,0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Soil Sensor</name>
+      <Point>
+        <coordinates>-120.5100,46.6060,0</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>

@@ -1,0 +1,3 @@
+This is not valid XML or KML content at all.
+Just a plain text file with a .kml extension.
+The parser should reject this immediately.

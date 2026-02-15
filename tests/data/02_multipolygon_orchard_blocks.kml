@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Beta Ranch - Multi-Block Citrus</name>
+    <description>MultiGeometry containing multiple orchard blocks in Central Valley, CA</description>
+
+    <Style id="citrusStyle">
+      <PolyStyle>
+        <color>7700aaff</color>
+        <outline>1</outline>
+      </PolyStyle>
+      <LineStyle>
+        <color>ff00aaff</color>
+        <width>2</width>
+      </LineStyle>
+    </Style>
+
+    <Placemark>
+      <name>Beta Ranch - Valencia Orange Blocks</name>
+      <description>Three adjacent Valencia orange blocks managed as a single unit</description>
+      <styleUrl>#citrusStyle</styleUrl>
+      <ExtendedData>
+        <Data name="orchard_name">
+          <value>Beta Ranch</value>
+        </Data>
+        <Data name="tree_variety">
+          <value>Valencia Orange</value>
+        </Data>
+        <Data name="planting_year">
+          <value>2015</value>
+        </Data>
+      </ExtendedData>
+      <MultiGeometry>
+        <!-- Block 1: ~8 hectares -->
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>
+                -119.7820,36.3300,0
+                -119.7820,36.3370,0
+                -119.7720,36.3370,0
+                -119.7720,36.3300,0
+                -119.7820,36.3300,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <!-- Block 2: ~6 hectares, slightly offset -->
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>
+                -119.7710,36.3300,0
+                -119.7710,36.3360,0
+                -119.7630,36.3360,0
+                -119.7630,36.3300,0
+                -119.7710,36.3300,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+        <!-- Block 3: ~5 hectares, south of blocks 1 and 2 -->
+        <Polygon>
+          <outerBoundaryIs>
+            <LinearRing>
+              <coordinates>
+                -119.7790,36.3230,0
+                -119.7790,36.3290,0
+                -119.7700,36.3290,0
+                -119.7700,36.3230,0
+                -119.7790,36.3230,0
+              </coordinates>
+            </LinearRing>
+          </outerBoundaryIs>
+        </Polygon>
+      </MultiGeometry>
+    </Placemark>
+  </Document>
+</kml>

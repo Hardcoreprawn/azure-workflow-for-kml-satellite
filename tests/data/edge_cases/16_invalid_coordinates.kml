@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Invalid Coordinates</name>
+    <description>Polygon with coordinates outside valid WGS84 range</description>
+
+    <!-- Longitude out of range -->
+    <Placemark>
+      <name>Longitude Out of Range</name>
+      <description>Longitude exceeds ±180°</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -200.500,46.600,0
+              -200.500,46.610,0
+              -200.490,46.610,0
+              -200.490,46.600,0
+              -200.500,46.600,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <!-- Latitude out of range -->
+    <Placemark>
+      <name>Latitude Out of Range</name>
+      <description>Latitude exceeds ±90°</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -120.500,95.000,0
+              -120.500,95.010,0
+              -120.490,95.010,0
+              -120.490,95.000,0
+              -120.500,95.000,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
