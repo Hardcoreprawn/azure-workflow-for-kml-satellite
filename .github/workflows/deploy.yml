@@ -66,8 +66,7 @@ jobs:
             --name ${{ env.FUNCTION_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --src-path deploy.zip \
-            --type zip \
-            --build-remote true
+            --type zip
 
       - name: Enable Event Grid subscription
         run: |
