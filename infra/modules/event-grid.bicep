@@ -15,6 +15,9 @@ param storageAccountId string
 @description('Resource ID of the target Function App.')
 param functionAppId string
 
+@description('Enable the event subscription (requires function code to be deployed first).')
+param enableSubscription bool = false
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -35,7 +38,7 @@ resource systemTopic 'Microsoft.EventGrid/systemTopics@2024-06-01-preview' = {
 // Event Subscription — filters for .kml files in kml-input container
 // Delivers to the Function App's Event Grid trigger endpoint.
 // ---------------------------------------------------------------------------
-resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2024-06-01-preview' = {
+resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2024-06-01-preview' = if (enableSubscription) {
   parent: systemTopic
   name: 'evgs-kml-upload'
   properties: {

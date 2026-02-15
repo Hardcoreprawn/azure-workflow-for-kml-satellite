@@ -37,6 +37,9 @@ param functionAppInstanceMemoryMB int
 @description('Enable Key Vault purge protection.')
 param enableKeyVaultPurgeProtection bool
 
+@description('Enable Event Grid subscription (requires function code deployed).')
+param enableEventGridSubscription bool = false
+
 @description('Tags to apply to all resources.')
 param tags object
 
@@ -97,6 +100,7 @@ module eventGrid 'modules/event-grid.bicep' = {
     baseName: baseName
     storageAccountId: storage.outputs.id
     functionAppId: functionApp.outputs.id
+    enableSubscription: enableEventGridSubscription
     tags: tags
   }
 }
