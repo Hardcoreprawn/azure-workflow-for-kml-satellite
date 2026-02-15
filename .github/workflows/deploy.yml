@@ -1,0 +1,79 @@
+---
+# ---------------------------------------------------------------------------
+# Function App Deployment
+# ---------------------------------------------------------------------------
+# Deploys function code to Azure Functions (Flex Consumption) after CI passes.
+# Triggers on push to main when application code changes.
+#
+# Safety: main branch protection requires the lint-and-test CI check to pass
+# before any PR can merge, so code on main has already been validated.
+#
+# Requires:
+#   - OIDC federation configured (same as infra.yml)
+#   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+#     AZURE_SUBSCRIPTION_ID
+#   - GitHub environment variable: AZURE_LOCATION
+# ---------------------------------------------------------------------------
+
+name: Deploy Function App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "function_app.py"
+      - "kml_satellite/**"
+      - "host.json"
+      - "requirements.txt"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  FUNCTION_APP_NAME: func-kmlsat-dev
+  RESOURCE_GROUP: rg-kmlsat-dev
+
+jobs:
+  deploy-dev:
+    name: Deploy (Dev)
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build deployment package
+        run: |
+          mkdir -p .deploy
+          cp function_app.py host.json requirements.txt .deploy/
+          cp -r kml_satellite .deploy/
+          cd .deploy
+          zip -r ../deploy.zip .
+
+      - name: Deploy to Azure Functions
+        run: |
+          az functionapp deploy \
+            --name ${{ env.FUNCTION_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --src-path deploy.zip \
+            --type zip \
+            --build-remote true
+
+      - name: Enable Event Grid subscription
+        run: |
+          az deployment sub create \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+            --template-file infra/main.bicep \
+            --parameters infra/parameters/dev.bicepparam \
+            --parameters enableEventGridSubscription=true \
+            --name "enable-evtgrid-$(date +%Y%m%d-%H%M%S)"
