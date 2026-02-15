@@ -63,9 +63,12 @@ class BlobEvent:
         """
         url = str(event_data.get("url", ""))
         content_length_value = event_data.get("contentLength", 0)
-        content_length = (
-            int(content_length_value) if isinstance(content_length_value, int | str | float) else 0
-        )
+        content_length = 0
+        if isinstance(content_length_value, int | str | float):
+            try:
+                content_length = int(content_length_value)
+            except (TypeError, ValueError):
+                content_length = 0
         content_type = str(event_data.get("contentType", ""))
 
         # Extract container and blob name from the URL.

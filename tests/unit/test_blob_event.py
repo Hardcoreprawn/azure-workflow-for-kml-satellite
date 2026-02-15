@@ -116,6 +116,16 @@ class TestBlobEventFromEventGrid:
         assert event.container_name == ""
         assert event.blob_name == ""
 
+    def test_invalid_content_length_returns_zero(self) -> None:
+        """Non-numeric contentLength string defaults to 0."""
+        event = BlobEvent.from_event_grid_event(
+            {
+                "url": "https://stkmlsatdev.blob.core.windows.net/kml-input/test.kml",
+                "contentLength": "not-a-number",
+            },
+        )
+        assert event.content_length == 0
+
 
 # ---------------------------------------------------------------------------
 # BlobEvent Serialisation

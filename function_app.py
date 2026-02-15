@@ -28,8 +28,10 @@ logger = logging.getLogger("kml_satellite.function_app")
 
 @app.function_name("kml_blob_trigger")
 @app.event_grid_trigger(arg_name="event")
-@app.durable_client_input(client_name="starter")
-async def kml_blob_trigger(event: func.EventGridEvent, starter) -> None:
+@app.durable_client_input(client_name="client")
+async def kml_blob_trigger(
+    event: func.EventGridEvent, client: df.DurableOrchestrationClient
+) -> None:
     """Event Grid trigger that starts the Durable Functions orchestrator.
 
     Fires when a ``.kml`` blob is created in the ``kml-input`` container.
@@ -59,6 +61,13 @@ async def kml_blob_trigger(event: func.EventGridEvent, starter) -> None:
 
     # Defence-in-depth: Event Grid subscription filters for .kml in kml-input,
     # but we validate here too in case of misconfiguration.
+    if blob_event.container_name != "kml-input":
+        logger.warning(
+            "Ignoring blob from unexpected container: %s (defence-in-depth filter)",
+            blob_event.container_name,
+        )
+        return
+
     if not blob_event.blob_name.lower().endswith(".kml"):
         logger.warning(
             "Ignoring non-KML file: %s (defence-in-depth filter)",
@@ -67,11 +76,17 @@ async def kml_blob_trigger(event: func.EventGridEvent, starter) -> None:
         return
 
     # Start the Durable Functions orchestrator.
-    client = df.DurableOrchestrationClient(starter)
-    instance_id = await client.start_new(
-        "kml_processing_orchestrator",
-        client_input=blob_event.to_dict(),
-    )
+    try:
+        instance_id = await client.start_new(
+            "kml_processing_orchestrator",
+            client_input=blob_event.to_dict(),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to start orchestrator for blob=%s",
+            blob_event.blob_name,
+        )
+        raise
 
     logger.info(
         "Orchestrator started | instance_id=%s | blob=%s",

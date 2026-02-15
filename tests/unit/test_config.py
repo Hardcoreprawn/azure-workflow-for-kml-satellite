@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
+
 from kml_satellite.core.config import PipelineConfig
 
 
@@ -86,8 +88,5 @@ class TestPipelineConfigFromEnv:
     def test_frozen_immutability(self) -> None:
         """PipelineConfig is frozen (immutable)."""
         cfg = PipelineConfig()
-        try:
+        with pytest.raises(AttributeError):
             cfg.aoi_buffer_m = 200.0  # type: ignore[misc]
-            raise AssertionError("Expected AttributeError")
-        except AttributeError:
-            pass  # Expected

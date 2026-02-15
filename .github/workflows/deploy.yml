@@ -5,6 +5,9 @@
 # Deploys function code to Azure Functions (Flex Consumption) after CI passes.
 # Triggers on push to main when application code changes.
 #
+# Safety: main branch protection requires the lint-and-test CI check to pass
+# before any PR can merge, so code on main has already been validated.
+#
 # Requires:
 #   - OIDC federation configured (same as infra.yml)
 #   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
@@ -64,7 +67,7 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --src-path deploy.zip \
             --type zip \
-            --async false
+            --build-remote true
 
       - name: Enable Event Grid subscription
         run: |

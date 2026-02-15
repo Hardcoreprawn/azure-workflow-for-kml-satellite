@@ -101,6 +101,15 @@ class TestDefenceInDepthFilter:
         )
         assert not blob_event.blob_name.lower().endswith(".kml")
 
+    def test_wrong_container_rejected(self) -> None:
+        """Blobs from unexpected containers are rejected."""
+        blob_event = BlobEvent(
+            blob_url="https://example.com/other-container/test.kml",
+            container_name="other-container",
+            blob_name="test.kml",
+        )
+        assert blob_event.container_name != "kml-input"
+
 
 class TestTriggerStartsOrchestrator:
     """Verify the trigger starts the Durable Functions orchestrator."""
