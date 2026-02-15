@@ -61,12 +61,10 @@ jobs:
           zip -r ../deploy.zip .
 
       - name: Deploy to Azure Functions
-        run: |
-          az functionapp deploy \
-            --name ${{ env.FUNCTION_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --src-path deploy.zip \
-            --type zip
+        uses: azure/functions-action@v2
+        with:
+          app-name: ${{ env.FUNCTION_APP_NAME }}
+          package: deploy.zip
 
       - name: Enable Event Grid subscription
         run: |
