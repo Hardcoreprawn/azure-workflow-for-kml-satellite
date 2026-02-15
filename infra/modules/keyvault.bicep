@@ -35,7 +35,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     }
     enableRbacAuthorization: true
     enableSoftDelete: true
-    enablePurgeProtection: enablePurgeProtection
+    // enablePurgeProtection cannot be set to false — omit when disabled
+    enablePurgeProtection: enablePurgeProtection ? true : null
     softDeleteRetentionInDays: softDeleteRetentionInDays
     networkAcls: {
       defaultAction: 'Allow' // Tighten in production
