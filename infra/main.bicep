@@ -48,6 +48,9 @@ param functionAppInstanceMemoryMB int = 2048
 @description('Enable Key Vault purge protection. Disable only for dev/test teardown.')
 param enableKeyVaultPurgeProtection bool = true
 
+@description('Enable Event Grid subscription. Requires function code to be deployed first.')
+param enableEventGridSubscription bool = false
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -86,6 +89,7 @@ module resources 'resources.bicep' = {
     functionAppMaxInstances: functionAppMaxInstances
     functionAppInstanceMemoryMB: functionAppInstanceMemoryMB
     enableKeyVaultPurgeProtection: enableKeyVaultPurgeProtection
+    enableEventGridSubscription: enableEventGridSubscription
     tags: defaultTags
   }
 }
