@@ -4,7 +4,7 @@
 
 | Field | Detail |
 | --- | --- |
-| **Document Version** | 1.0 |
+| **Document Version** | 1.1 |
 | **Date** | 15 February 2026 |
 | **Status** | Draft |
 | **Classification** | Internal |
@@ -21,6 +21,8 @@
 6. [Non-Functional Requirements](#6-non-functional-requirements)
 7. [Solution Architecture](#7-solution-architecture)
     - [7.4 Engineering Philosophy & Design Principles](#74-engineering-philosophy--design-principles)
+    - [7.5 Compute Model Decision Record](#75-compute-model-decision-record)
+    - [7.6 Imagery Provider Strategy](#76-imagery-provider-strategy)
 8. [Technology Stack](#8-technology-stack)
 9. [Data Flow](#9-data-flow)
 10. [Storage Strategy](#10-storage-strategy)
@@ -133,7 +135,7 @@ The system is designed to support precision-agriculture use cases where up-to-da
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | FR-3.1 | Implement a provider-agnostic abstraction layer (strategy/adapter pattern) for imagery retrieval | Must |
-| FR-3.2 | Implement at least one concrete provider adapter (e.g., Maxar, Airbus, Planet, SkyWatch, UP42) | Must |
+| FR-3.2 | Implement at least two provider adapters: Microsoft Planetary Computer (STAC, dev/test) and SkyWatch EarthCache (production) | Must |
 | FR-3.3 | Target spatial resolution ≤ 50 cm/pixel; make resolution target system-configurable | Must |
 | FR-3.4 | Support archive imagery search and download | Must |
 | FR-3.5 | Support tile mosaic download mode | Should |
@@ -193,7 +195,7 @@ The system is designed to support precision-agriculture use cases where up-to-da
 | NFR-5 | **Security** | All secrets stored in Azure Key Vault; Blob Storage accessed via Managed Identity; no credentials in code or config files |
 | NFR-6 | **Maintainability** | Modular codebase with clear separation: ingestion, AOI processing, imagery retrieval (adapter pattern), storage, orchestration |
 | NFR-7 | **Observability** | Structured logging with correlation IDs; dashboards for processing throughput and error rates |
-| NFR-8 | **Cost Efficiency** | Consumption-based Azure Function plan to minimise idle costs; Blob lifecycle policies for archival of old imagery |
+| NFR-8 | **Cost Efficiency** | Flex Consumption Azure Function plan to minimise idle costs (~$0 at zero scale); free imagery (Planetary Computer) for dev/test; Blob lifecycle policies for archival of old imagery |
 | NFR-9 | **Extensibility** | Architecture must support adding new imagery providers, new input formats (e.g., GeoJSON, Shapefile), and new downstream consumers without significant refactoring |
 
 ---
@@ -205,26 +207,26 @@ The system is designed to support precision-agriculture use cases where up-to-da
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         Upload Sources                               │
-│   OneDrive / SharePoint ──► Power Automate ──► Azure Blob (input)   │
+│   OneDrive / SharePoint ──► Power Automate ──► Azure Blob (input)    │
 │                              or direct upload ──► Azure Blob (input) │
 └──────────────────────┬───────────────────────────────────────────────┘
                        │  Blob Created Event
                        ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    Azure Event Grid                                   │
+│                    Azure Event Grid                                  │
 │   Filters: suffix = .kml, container = kml-input                      │
 └──────────────────────┬───────────────────────────────────────────────┘
                        │  Trigger
                        ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│              Azure Durable Functions (Python)                         │
+│              Azure Durable Functions (Python)                        │
 │                                                                      │
-│  ┌─────────────┐   ┌───────────────┐   ┌──────────────────────────┐ │
-│  │ Orchestrator │──►│ Activity:     │──►│ Activity:                │ │
-│  │              │   │ Parse KML     │   │ Prepare AOI              │ │
-│  │              │   │ Extract Geom  │   │ Buffer BBox              │ │
-│  │              │   │ Validate CRS  │   │ Compute Area/Centroid    │ │
-│  └──────┬───── │   └───────────────┘   └──────────┬───────────────┘ │
+│  ┌─────────────┐   ┌───────────────┐   ┌──────────────────────────┐  │
+│  │ Orchestrator │──►│ Activity:     │──►│ Activity:               │  │
+│  │              │   │ Parse KML     │   │ Prepare AOI             │  │
+│  │              │   │ Extract Geom  │   │ Buffer BBox             │  │
+│  │              │   │ Validate CRS  │   │ Compute Area/Centroid   │  │
+│  └──────┬───── │   └───────────────┘   └──────────┬───────────────┘  │
 │         │      │                                   │                 │
 │         │      │   ┌───────────────────────────┐   │                 │
 │         │      └──►│ Activity:                 │◄──┘                 │
@@ -236,19 +238,19 @@ The system is designed to support precision-agriculture use cases where up-to-da
 │         │                     │                                      │
 │         │          ┌──────────▼────────────────┐                     │
 │         └─────────►│ Activity:                 │                     │
-│                    │ Clip / Reproject           │                     │
-│                    │ Store Imagery              │                     │
-│                    │ Write Metadata JSON        │                     │
+│                    │ Clip / Reproject          │                     │
+│                    │ Store Imagery             │                     │
+│                    │ Write Metadata JSON       │                     │
 │                    └───────────────────────────┘                     │
 └──────────────────────────────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────────────┐
-│                    Azure Blob Storage (output)                        │
+│                    Azure Blob Storage (output)                       │
 │                                                                      │
-│   /kml/               ← original KML files                          │
-│   /imagery/raw/       ← full-extent GeoTIFF                         │
-│   /imagery/clipped/   ← AOI-clipped GeoTIFF                         │
+│   /kml/               ← original KML files                           │
+│   /imagery/raw/       ← full-extent GeoTIFF                          │
+│   /imagery/clipped/   ← AOI-clipped GeoTIFF                          │
 │   /metadata/          ← per-AOI JSON records                         │
 └──────────────────────────────────────────────────────────────────────┘
                        │
@@ -275,23 +277,25 @@ The workflow uses the **Durable Functions Fan-Out / Fan-In** pattern:
 ### 7.3 Provider Adapter Layer
 
 ```text
-                    ┌─────────────────────┐
-                    │  ImageryProvider     │  (Abstract Base Class)
-                    │  ─────────────────── │
-                    │  + search(aoi)       │
-                    │  + order(scene_id)   │
-                    │  + poll(order_id)    │
-                    │  + download(order)   │
-                    └────────┬────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-    ┌─────────▼───┐  ┌──────▼──────┐  ┌───▼──────────┐
-    │ MaxarAdapter │  │ PlanetAdapter│  │ SkyWatchAdapter│
-    └─────────────┘  └─────────────┘  └──────────────┘
+                    ┌──────────────────────────┐
+                    │  ImageryProvider          │  (Abstract Base Class)
+                    │  ──────────────────────── │
+                    │  + search(aoi) -> list    │
+                    │  + order(scene_id) -> id  │
+                    │  + poll(order_id) -> bool │
+                    │  + download(order) -> path│
+                    └────────────┬─────────────┘
+                                 │
+              ┌──────────────────┼───────────────────┐
+              │                                      │
+    ┌─────────▼──────────────┐          ┌────────────▼──────────┐
+    │ PlanetaryComputerAdapter│          │ SkyWatchAdapter       │
+    │ (STAC API — free)      │          │ (EarthCache — paid)   │
+    │ Dev/Test environment   │          │ Production            │
+    └────────────────────────┘          └───────────────────────┘
 ```
 
-The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching.
+The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching. Development and testing use the **Microsoft Planetary Computer** adapter (free STAC API, Sentinel-2 at 10 m / NAIP at ~60 cm), while production uses the **SkyWatch EarthCache** adapter (aggregated commercial imagery at ≤ 50 cm).
 
 ### 7.4 Engineering Philosophy & Design Principles
 
@@ -383,26 +387,120 @@ No code is merged without passing the relevant test tier. Test coverage is a pro
 
 This is not aspirational. These principles are **mandatory engineering standards** for this project. Every pull request, every code review, and every design decision is evaluated against them. We are building software that must work correctly without a human watching — exactly the kind of software Margaret Hamilton's team built to land on the Moon.
 
+### 7.5 Compute Model Decision Record
+
+Three compute approaches were evaluated for this workload. The decision is recorded here for traceability.
+
+#### Options Evaluated
+
+| Option | Compute Layer | Orchestration | GDAL Strategy |
+| --- | --- | --- | --- |
+| **A: Pure Serverless** | Azure Functions Flex Consumption (custom Docker) | Durable Functions (fan-out/fan-in, timers, retry) | Pre-installed in custom container image |
+| **B: Pure Containers** | Azure Container Apps Jobs (KEDA-scaled) | Queue-based state machine (manual fan-out via messages) | Standard Docker image — full control |
+| **C: Hybrid** | Functions for orchestration + Container Apps Jobs for GDAL compute | Durable Functions (lightweight) + ACA Jobs (heavy compute) | Isolated in container layer only |
+
+#### Workload Analysis
+
+The decision hinges on understanding where time and resources are actually spent:
+
+| Task | Nature | Typical Duration | Memory |
+| --- | --- | --- | --- |
+| KML parsing | CPU-light (XML parsing) | Milliseconds | < 50 MB |
+| Geometry validation + AOI prep | CPU-light (Shapely) | Milliseconds | < 100 MB |
+| Imagery API search + order | I/O-bound (HTTP) | Seconds | < 50 MB |
+| Imagery API polling (waiting) | **Idle waiting** | Minutes to hours | **$0 with Durable timers** |
+| GeoTIFF download | I/O-bound (HTTP) | Seconds–minutes | 10–200 MB (stream to blob) |
+| GDAL clipping/reprojection | CPU-burst (C extension) | 2–10 seconds | 200 MB–1 GB |
+
+Key insight: **95%+ of wall-clock time is spent waiting on imagery provider APIs.** Durable Functions timers cost nothing during this wait. The actual compute-heavy work (GDAL clipping) is short-burst and well within the 4 GB / 10-minute activity limits.
+
+#### Typical Raster Sizes for Agricultural AOIs
+
+| AOI Size | Image Dimensions (50 cm/px) | GeoTIFF (4-band, compressed) |
+| --- | --- | --- |
+| 5 ha (small orchard) | ~450 × 450 px | 2–5 MB |
+| 50 ha (large orchard) | ~1,400 × 1,400 px | 10–25 MB |
+| 500 ha (plantation) | ~4,500 × 4,500 px | 80–150 MB |
+| 10,000 ha (PID upper bound) | ~14,000 × 14,000 px | 500 MB–1.2 GB |
+
+The vast majority of real orchard/field polygons produce GeoTIFFs in the **10–150 MB range** — comfortably within Azure Functions resource limits.
+
+#### Decision: Option A — Pure Serverless (Azure Functions Flex Consumption)
+
+**Rationale:**
+
+1. **Durable Functions solves the two hardest architectural problems for free** — fan-out/fan-in and async polling with zero-cost timers. Building equivalent orchestration on Container Apps requires ~200–400 lines of custom plumbing.
+2. **No raster will realistically stress the 4 GB memory limit.** Common case is 10–50 MB; extreme edge case (10,000 ha) peaks at ~1 GB.
+3. **GDAL operations complete in seconds**, well within the 10-minute activity timeout.
+4. **Cheapest at low-to-moderate volume.** Pay per execution. During imagery API wait times (the majority of wall-clock time), cost is $0.
+5. **Least infrastructure to manage.** One Function App, one storage account for orchestration state. No container orchestration, ingress controllers, or service mesh.
+
+**Migration path:** If future requirements exceed Functions limits (very large rasters >2 GB, CV/ML workloads), the GDAL-heavy activity functions can be extracted to Container Apps Jobs without rewriting the Durable Functions orchestration layer — effectively upgrading from Option A to Option C.
+
+#### Python 3.12 Decision
+
+Python 3.12 was selected over 3.13/3.14 for the following reasons:
+
+| Factor | Python 3.12 | Python 3.14 (free-threaded) |
+| --- | --- | --- |
+| Azure Functions Flex Consumption | Full GA support | Unverified — likely preview |
+| GDAL/rasterio/shapely wheels | All stable | Uncertain (C extensions need no-GIL compilation) |
+| Durable Functions SDK | Tested | Untested |
+| Concurrency benefit for this project | Baseline (all parallelism is I/O-bound or multi-process) | **None** — GIL is already released during I/O and C extension calls |
+
+Free threading (PEP 703) removes the GIL for CPU-bound thread parallelism within a single process. This project's concurrency is either I/O-bound (async HTTP, Durable timers) or multi-process (Durable Functions activity fan-out), neither of which benefits from GIL removal.
+
+### 7.6 Imagery Provider Strategy
+
+#### Two-Adapter Approach
+
+The project implements two provider adapters behind the `ImageryProvider` abstract base class:
+
+| Adapter | Provider | Resolution | Cost | Use Case |
+| --- | --- | --- | --- | --- |
+| `PlanetaryComputerAdapter` | Microsoft Planetary Computer | 10 m (Sentinel-2), ~60 cm (NAIP, US-only) | **Free** (public STAC API, no auth required) | Development, testing, CI/CD pipelines |
+| `SkyWatchAdapter` | SkyWatch EarthCache | ≤ 50 cm (aggregated: Maxar, Planet, Airbus) | Per-km², per-order | Production |
+
+#### Why Planetary Computer for Dev/Test?
+
+1. **Zero imagery cost** during Phases 1–3 of development.
+2. **Standard STAC protocol** — well-documented, stable, industry-standard.
+3. **Hosted on Azure** — data egress from Planetary Computer to Azure Blob Storage is fast and free (same network).
+4. **Real satellite data** (Sentinel-2, Landsat, NAIP) — lower resolution than production, but the pipeline code is identical: a GeoTIFF is a GeoTIFF.
+5. **Proves the adapter pattern** by having two real implementations from day one.
+
+#### Why SkyWatch for Production?
+
+1. **Aggregator** — one API covers multiple underlying providers (Maxar, Planet, Airbus), reducing integration effort.
+2. **Simple REST workflow** — search → order → poll → download.
+3. **Meets the ≤ 50 cm resolution target** via aggregated commercial imagery.
+4. **Not a permanent lock-in** — the adapter pattern means adding a direct Maxar or Planet adapter is a config change + new adapter class.
+
 ---
 
 ## 8. Technology Stack
 
 | Layer | Technology | Justification |
 | --- | --- | --- |
-| **Runtime** | Python 3.11+ | Rich geospatial library ecosystem (Fiona, Shapely, Rasterio, GDAL) |
-| **Serverless Compute** | Azure Functions v4 (Python) | Event-driven, consumption-based, native Blob/Event Grid bindings |
-| **Orchestration** | Azure Durable Functions | Built-in support for fan-out/fan-in, async polling, retries, and state management |
+| **Runtime** | Python 3.12 | Rich geospatial library ecosystem; stable GDAL/rasterio/shapely wheels; full Azure Functions support |
+| **Serverless Compute** | Azure Functions v4 (Flex Consumption, custom Docker) | Event-driven, scales to zero, native Blob/Event Grid bindings; custom container for GDAL dependencies |
+| **Orchestration** | Azure Durable Functions (Python v2 model) | Built-in fan-out/fan-in, async polling with timers (zero cost while waiting), retries, state management |
 | **Event Routing** | Azure Event Grid | Reliable, filterable event delivery for blob-created events |
 | **Storage** | Azure Blob Storage (General Purpose v2, Hot tier) | Scalable object storage; lifecycle management for tiering |
 | **Secrets** | Azure Key Vault | Centralised, auditable secret management; Managed Identity access |
 | **Monitoring** | Azure Monitor + Application Insights | Structured logging, live metrics, alerting |
 | **Configuration** | Azure App Configuration (optional) | Centralised, feature-flag-capable configuration |
 | **Identity** | Azure Managed Identity (System-Assigned) | Passwordless access to Blob Storage, Key Vault, App Configuration |
-| **IaC** | Bicep / ARM Templates | Repeatable, version-controlled infrastructure deployment |
-| **CI/CD** | Azure DevOps Pipelines or GitHub Actions | Automated build, test, and deployment |
-| **KML Parsing** | `pykml`, `lxml`, `fiona` | Mature KML/XML parsing with OGR driver support |
-| **Geometry** | `shapely`, `pyproj` | Geometry operations (buffer, centroid, area, CRS transforms) |
+| **IaC** | Bicep | Repeatable, version-controlled infrastructure deployment; type-safe, less verbose than raw ARM |
+| **CI/CD** | GitHub Actions | Automated build, test, deploy; native integration with project repository |
+| **KML Parsing** | `fiona` (primary, OGR driver), `lxml` (fallback) | Fiona returns Shapely-compatible geometries directly; lxml handles edge cases (nested Folders, SchemaData) where OGR's KML driver has gaps |
+| **Geometry** | `shapely`, `pyproj` | Geometry operations (buffer, centroid, area, validation, CRS transforms) |
 | **Raster** | `rasterio`, `GDAL` | GeoTIFF read/write, clipping, reprojection |
+| **STAC Client** | `pystac-client` | Programmatic search of STAC catalogues (Microsoft Planetary Computer) |
+| **Imagery Provider** | Microsoft Planetary Computer (dev/test), SkyWatch EarthCache (production) | Free STAC API for development; aggregated commercial imagery for production |
+| **Linting & Formatting** | `ruff` | Replaces flake8 + black + isort; 100x faster; single tool |
+| **Type Checking** | `pyright` (via Pylance) | Static type analysis; catches bugs before runtime |
+| **Testing** | `pytest` | Standard Python test framework; parametrised tests, fixtures, plugins |
 
 ---
 
@@ -611,7 +709,7 @@ All log entries carry a **correlation ID** (the Durable Functions instance ID) f
 | # | Constraint |
 | --- | --- |
 | C-1 | **Platform**: All services must run on Microsoft Azure. |
-| C-2 | **Language**: Python is the preferred implementation language. |
+| C-2 | **Language**: Python 3.12 is the implementation language (see Section 7.5 for version decision rationale). |
 | C-3 | **Budget**: Azure consumption must stay within an approved monthly spend (to be defined). |
 | C-4 | **Imagery Cost**: Satellite imagery API costs are subject to provider pricing; budget approval required before production activation. |
 | C-5 | **No CV/ML**: This phase must not include any computer vision, machine learning, or tree-detection components. |
@@ -624,11 +722,11 @@ All log entries carry a **correlation ID** (the Durable Functions instance ID) f
 | # | Dependency | Type | Owner |
 | --- | --- | --- | --- |
 | D-1 | Azure subscription with adequate quotas | Infrastructure | Project Sponsor / IT |
-| D-2 | Imagery provider API account and credentials | External Service | Project Manager |
-| D-3 | Sample KML files for testing (various geometries) | Test Data | Domain Expert |
+| D-2 | SkyWatch EarthCache API account and credentials (production) | External Service | Project Manager |
+| D-3 | Sample KML files for testing (various geometries) — **✅ 17 test files created** | Test Data | Domain Expert |
 | D-4 | Network connectivity from Azure to imagery provider endpoints | Infrastructure | IT / Network Team |
-| D-5 | Approval for imagery provider usage costs | Commercial | Project Sponsor |
-| D-6 | Access to Azure DevOps or GitHub for CI/CD | Tooling | DevOps Team |
+| D-5 | Approval for SkyWatch imagery usage costs (production only; dev/test uses free Planetary Computer) | Commercial | Project Sponsor |
+| D-6 | GitHub repository for CI/CD — **✅ created** (`Hardcoreprawn/azure-workflow-for-kml-satellite`) | Tooling | DevOps Team |
 
 ---
 
@@ -724,13 +822,14 @@ The following items are **explicitly excluded** from this phase and are candidat
 
 | Service | Estimate | Notes |
 | --- | --- | --- |
-| Azure Functions (Consumption) | $10–50 | Highly variable by volume |
+| Azure Functions (Flex Consumption) | $15–50 | Highly variable by volume; includes ~$30/mo for 1–2 always-ready instances if cold starts are problematic |
 | Azure Blob Storage (Hot, 500 GB) | $10–20 | Imagery is the primary cost driver |
 | Azure Event Grid | < $1 | Low event volume |
 | Azure Key Vault | < $1 | Low transaction volume |
 | Application Insights | $5–15 | Dependent on log volume |
-| **Subtotal (Azure infra)** | **~$30–90/month** | Excludes imagery API costs |
-| Imagery Provider API | **Variable** | Depends on provider pricing, AOI size, and frequency |
+| **Subtotal (Azure infra)** | **~$35–90/month** | Excludes imagery API costs |
+| Imagery — Dev/Test (Planetary Computer) | **$0** | Free STAC API; Sentinel-2 (10 m) and NAIP (~60 cm, US-only) |
+| Imagery — Production (SkyWatch EarthCache) | **Variable** | Depends on per-km² pricing, AOI size, and order frequency |
 
 > **Note:** Imagery API costs are provider-dependent and may significantly exceed infrastructure costs. A cost estimation step should be built into the pipeline before production ordering.
 
@@ -753,7 +852,7 @@ The project will be considered complete when the following criteria are met:
 | AC-9 | Failed processing (e.g., malformed KML, no imagery) is logged, flagged, and does not crash the pipeline | Inject malformed KML + unavailable AOI; verify graceful handling |
 | AC-10 | ≥ 20 concurrent KML uploads are processed without errors or conflicts | Concurrent upload test |
 | AC-11 | All secrets are retrieved from Key Vault; no credentials in code or environment variables | Code review + Key Vault audit log |
-| AC-12 | Infrastructure is deployed via IaC templates (Bicep/ARM) and is reproducible | Tear down and redeploy from templates |
+| AC-12 | Infrastructure is deployed via Bicep templates and is reproducible | Tear down and redeploy from templates |
 
 ---
 
