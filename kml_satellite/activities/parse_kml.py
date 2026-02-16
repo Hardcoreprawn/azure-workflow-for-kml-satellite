@@ -477,7 +477,7 @@ def _parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
         for poly_idx, polygon in enumerate(polygons):
             display_name = placemark_name or f"Feature {idx}"
             if len(polygons) > 1:
-                display_name = f"{display_name} (polygon {poly_idx})"
+                display_name = f"{display_name} (part {poly_idx})"
 
             try:
                 exterior, interior = _parse_polygon_lxml(polygon, ns)
