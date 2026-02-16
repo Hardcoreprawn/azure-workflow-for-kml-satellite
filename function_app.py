@@ -222,6 +222,49 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
     return [f.to_dict() for f in features]
 
 
-# TODO (Issue #6): prepare_aoi activity
+@app.function_name("prepare_aoi")
+@app.activity_trigger(input_name="activityInput")
+def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: compute AOI geometry metadata for a feature.
+
+    Input:
+        JSON string (or dict when replaying) containing a serialised
+        ``Feature`` dict from the parse_kml activity.
+
+    Returns:
+        AOI dict serialised for the orchestrator.
+
+    Raises:
+        AOIError: If the feature has invalid geometry.
+    """
+    import json
+
+    from kml_satellite.activities.prepare_aoi import prepare_aoi
+    from kml_satellite.models.feature import Feature as FeatureModel
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    feature = FeatureModel.from_dict(payload)
+
+    logger.info(
+        "prepare_aoi activity started | feature=%s | source=%s",
+        feature.name,
+        feature.source_file,
+    )
+
+    aoi = prepare_aoi(feature)
+
+    logger.info(
+        "prepare_aoi activity completed | feature=%s | area=%.2f ha | buffer=%.0f m",
+        feature.name,
+        aoi.area_ha,
+        aoi.buffer_m,
+    )
+
+    return aoi.to_dict()
+
+
 # TODO (Issue #7): write_metadata activity
 # TODO (Issue #8-#12): imagery acquisition activities
