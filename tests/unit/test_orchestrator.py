@@ -6,7 +6,12 @@ behaviour without Azure infrastructure.
 The orchestrator is a **generator** function (it ``yield``s durable-task
 calls), so our helper ``_run_orchestrator`` drives it via the generator
 protocol: ``next()`` to advance to the first yield, then ``send()`` to
-supply the activity result and collect the final ``return`` value.
+supply each activity result.
+
+Current phases:
+1. parse_kml — single activity call
+2. prepare_aoi — fan-out via task_all
+3. write_metadata — fan-out via task_all
 """
 
 from __future__ import annotations
@@ -35,15 +40,15 @@ def _run_orchestrator(
     *,
     features: list[dict[str, object]] | None = None,
     aois: list[dict[str, object]] | None = None,
+    metadata_results: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """Drive the generator orchestrator to completion.
+    """Drive the three-phase generator orchestrator to completion.
 
     Args:
         context: Mock DurableOrchestrationContext.
-        features: Simulated return value of the ``parse_kml`` activity.
-            Defaults to an empty list.
-        aois: Simulated return value of the ``prepare_aoi`` fan-out.
-            Defaults to a list the same length as *features*.
+        features: Simulated return of ``parse_kml`` activity.
+        aois: Simulated return of ``prepare_aoi`` fan-out.
+        metadata_results: Simulated return of ``write_metadata`` fan-out.
 
     Returns:
         The final result dict returned by the orchestrator.
@@ -52,14 +57,20 @@ def _run_orchestrator(
         features = []
     if aois is None:
         aois = [{"feature_name": f"aoi-{i}"} for i in range(len(features))]
+    if metadata_results is None:
+        metadata_results = [
+            {"metadata_path": f"metadata/2026/02/test/aoi-{i}.json"} for i in range(len(aois))
+        ]
+
     gen = orchestrator_function(context)
-    next(gen)  # advance to the first yield (parse_kml call)
-    gen.send(features)  # supply features, advance to second yield (task_all)
+    next(gen)  # advance to first yield (parse_kml)
+    gen.send(features)  # supply features → second yield (prepare_aoi task_all)
+    gen.send(aois)  # supply AOIs → third yield (write_metadata task_all)
     try:
-        gen.send(aois)  # supply AOIs, orchestrator returns
+        gen.send(metadata_results)  # supply metadata → orchestrator returns
     except StopIteration as exc:
         return exc.value  # type: ignore[return-value]
-    msg = "Orchestrator did not return after prepare_aoi fan-out"
+    msg = "Orchestrator did not return after write_metadata fan-out"
     raise RuntimeError(msg)
 
 
@@ -77,13 +88,13 @@ def _sample_blob_event() -> dict[str, str | int]:
 
 
 class TestOrchestratorFunction:
-    """Verify the orchestrator behaviour with the parse_kml activity wired."""
+    """Verify the orchestrator behaviour across all three phases."""
 
-    def test_returns_aois_prepared_status(self) -> None:
-        """Orchestrator returns 'aois_prepared' status after both phases."""
+    def test_returns_metadata_written_status(self) -> None:
+        """Orchestrator returns 'metadata_written' status after all phases."""
         context = _make_context(_sample_blob_event())
         result = _run_orchestrator(context)
-        assert result["status"] == "aois_prepared"
+        assert result["status"] == "metadata_written"
 
     def test_includes_instance_id(self) -> None:
         """Result includes the orchestration instance ID."""
@@ -117,17 +128,13 @@ class TestOrchestratorFunction:
         context = _make_context(event)
         result = _run_orchestrator(context)
         assert result["blob_name"] == "<unknown>"
-        assert result["status"] == "aois_prepared"
+        assert result["status"] == "metadata_written"
 
     def test_replay_does_not_log(self) -> None:
-        """During replay, the orchestrator skips logging (is_replaying=True).
-
-        We can't easily assert no logging without more machinery, but we
-        verify no crash and correct result.
-        """
+        """During replay (is_replaying=True), orchestrator still works."""
         context = _make_context(_sample_blob_event(), is_replaying=True)
         result = _run_orchestrator(context)
-        assert result["status"] == "aois_prepared"
+        assert result["status"] == "metadata_written"
 
     def test_calls_parse_kml_activity(self) -> None:
         """Orchestrator calls parse_kml activity with the blob event."""
@@ -137,10 +144,49 @@ class TestOrchestratorFunction:
         context.call_activity.assert_any_call("parse_kml", event)
 
     def test_feature_count_in_result(self) -> None:
-        """Result includes the count of features returned by parse_kml."""
+        """Result includes counts of features, AOIs, and metadata records."""
         context = _make_context(_sample_blob_event())
         fake_features = [{"name": "f1"}, {"name": "f2"}, {"name": "f3"}]
         fake_aois = [{"feature_name": "a1"}, {"feature_name": "a2"}, {"feature_name": "a3"}]
-        result = _run_orchestrator(context, features=fake_features, aois=fake_aois)
+        fake_meta = [{"metadata_path": "p1"}, {"metadata_path": "p2"}, {"metadata_path": "p3"}]
+        result = _run_orchestrator(
+            context, features=fake_features, aois=fake_aois, metadata_results=fake_meta
+        )
         assert result["feature_count"] == 3
         assert result["aoi_count"] == 3
+        assert result["metadata_count"] == 3
+
+    def test_metadata_count_in_result(self) -> None:
+        """metadata_count reflects the number of metadata records written."""
+        context = _make_context(_sample_blob_event())
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+            metadata_results=[{"metadata_path": "metadata/test.json"}],
+        )
+        assert result["metadata_count"] == 1
+
+    def test_message_includes_metadata_count(self) -> None:
+        """Result message mentions metadata records."""
+        context = _make_context(_sample_blob_event())
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}, {"name": "f2"}],
+            aois=[{"feature_name": "a1"}, {"feature_name": "a2"}],
+            metadata_results=[{"p": 1}, {"p": 2}],
+        )
+        assert "2 metadata record(s)" in result["message"]
+
+    def test_write_metadata_called_with_aois(self) -> None:
+        """Orchestrator calls write_metadata for each AOI."""
+        context = _make_context(_sample_blob_event(), instance_id="inst-99")
+        fake_features = [{"name": "f1"}]
+        fake_aois = [{"feature_name": "a1"}]
+        _run_orchestrator(context, features=fake_features, aois=fake_aois)
+        # Verify write_metadata was called with the AOI and processing_id
+        calls = [c for c in context.call_activity.call_args_list if c[0][0] == "write_metadata"]
+        assert len(calls) == 1
+        payload = calls[0][0][1]
+        assert payload["aoi"] == {"feature_name": "a1"}
+        assert payload["processing_id"] == "inst-99"
