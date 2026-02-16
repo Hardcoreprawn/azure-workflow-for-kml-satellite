@@ -59,6 +59,14 @@ resource kmlOutputContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
   }
 }
 
+resource deploymentsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobServices
+  name: 'deployments'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 // Lifecycle management — archive old imagery, delete old logs
 resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storageAccount

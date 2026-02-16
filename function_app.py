@@ -10,6 +10,7 @@ the wiring layer between Azure Functions bindings and application code.
 from __future__ import annotations
 
 import logging
+import os
 
 import azure.durable_functions as df
 import azure.functions as func
@@ -144,8 +145,84 @@ async def orchestrator_status(
 # ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
-# TODO (Issue #4): parse_kml activity
-# TODO (Issue #5): parse_kml_multi activity
+
+
+@app.function_name("parse_kml")
+@app.activity_trigger(input_name="activityInput")
+def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: N803
+    """Durable Functions activity: parse a KML blob and return features.
+
+    Input:
+        JSON string (or dict when replaying) containing a ``BlobEvent``
+        payload with ``container_name`` and ``blob_name`` identifying the
+        blob to download and parse.
+
+    Returns:
+        List of Feature dicts serialised for the orchestrator.
+
+    Raises:
+        KmlParseError (via Durable Functions retry) on invalid input.
+        ValueError: If required configuration or payload fields are missing.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from azure.storage.blob import BlobServiceClient
+
+    from kml_satellite.activities.parse_kml import parse_kml_file
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    container_name = str(payload.get("container_name", ""))
+    blob_name = str(payload.get("blob_name", ""))
+    correlation_id = str(payload.get("correlation_id", ""))
+
+    # Validate required fields before calling SDK (PID 7.4.1)
+    if not container_name:
+        msg = "parse_kml activity: container_name is missing from payload"
+        raise ValueError(msg)
+    if not blob_name:
+        msg = "parse_kml activity: blob_name is missing from payload"
+        raise ValueError(msg)
+
+    logger.info(
+        "parse_kml activity started | blob=%s | correlation_id=%s",
+        blob_name,
+        correlation_id,
+    )
+
+    # Download blob to a temp file for fiona (which needs a file path)
+    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    if not connection_string:
+        msg = "AzureWebJobsStorage environment variable is not set"
+        raise ValueError(msg)
+    blob_service = BlobServiceClient.from_connection_string(connection_string)
+    blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
+    blob_data = blob_client.download_blob().readall()
+
+    with tempfile.NamedTemporaryFile(suffix=".kml", delete=False) as tmp:
+        tmp.write(blob_data)
+        tmp_path = Path(tmp.name)
+
+    try:
+        features = parse_kml_file(tmp_path, source_filename=blob_name)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    logger.info(
+        "parse_kml activity completed | blob=%s | features=%d | correlation_id=%s",
+        blob_name,
+        len(features),
+        correlation_id,
+    )
+
+    return [f.to_dict() for f in features]
+
+
+# TODO (Issue #5): parse_kml_multi activity (extends parse_kml for multi-feature)
 # TODO (Issue #6): prepare_aoi activity
 # TODO (Issue #7): write_metadata activity
 # TODO (Issue #8-#12): imagery acquisition activities
