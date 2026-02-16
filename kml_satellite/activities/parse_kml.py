@@ -4,10 +4,20 @@ Parses a KML file and extracts polygon features with geometry and metadata.
 Uses fiona (OGR KML driver) as the primary parser, with an lxml fallback
 for edge cases where OGR fails (e.g. SchemaData typed metadata).
 
+Supported KML structures (M-1.3 + M-1.4):
+- Single polygon Placemarks
+- Multiple Placemarks (multi-feature fan-out)
+- MultiGeometry containing multiple Polygons
+- Nested Folder hierarchies (recursive traversal)
+- Inner boundaries (holes / exclusion zones)
+- ExtendedData/Data and Schema/SchemaData typed metadata
+- Degenerate geometries: auto-close, make_valid, partial failure
+
 Engineering standards (PID 7.4):
 - Zero-assumption input handling: validates XML, namespace, CRS, coordinates
 - Fail loudly: every error produces an actionable message with context
 - Defensive geometry: validate with shapely, check coordinate bounds
+- Graceful degradation: one bad feature does not crash remaining (PID 7.4.2)
 - Explicit: type hints, named constants, no magic strings
 """
 
@@ -233,6 +243,8 @@ def _parse_with_fiona(kml_path: Path, source_filename: str) -> list[Feature]:
 
     Fiona returns GeoJSON-like dicts with geometry and properties.
     Only Polygon and MultiPolygon geometry types are extracted.
+    Validation failures on individual features are logged and skipped
+    (PID 7.4.2: graceful degradation).
     """
     import fiona
 
@@ -252,7 +264,13 @@ def _parse_with_fiona(kml_path: Path, source_filename: str) -> list[Feature]:
             geom_type = geom.get("type", "")
 
             if geom_type == "Polygon":
-                feature = _fiona_polygon_to_feature(geom, props, source_filename, idx, crs_str)
+                feature = _try_fiona_polygon(
+                    geom,
+                    props,
+                    source_filename,
+                    idx,
+                    crs_str,
+                )
                 if feature is not None:
                     features.append(feature)
 
@@ -261,7 +279,7 @@ def _parse_with_fiona(kml_path: Path, source_filename: str) -> list[Feature]:
                 coords_list = geom.get("coordinates", [])
                 for sub_idx, poly_coords in enumerate(coords_list):
                     sub_geom = {"type": "Polygon", "coordinates": poly_coords}
-                    feature = _fiona_polygon_to_feature(
+                    feature = _try_fiona_polygon(
                         sub_geom,
                         props,
                         source_filename,
@@ -271,9 +289,69 @@ def _parse_with_fiona(kml_path: Path, source_filename: str) -> list[Feature]:
                     )
                     if feature is not None:
                         features.append(feature)
+
+            elif geom_type == "GeometryCollection":
+                # Fiona can return GeometryCollection for KML MultiGeometry
+                # containing mixed types — extract only Polygons.
+                geometries = geom.get("geometries", [])
+                sub_idx = 0
+                for sub_geom in geometries:
+                    if sub_geom.get("type") == "Polygon":
+                        feature = _try_fiona_polygon(
+                            sub_geom,
+                            props,
+                            source_filename,
+                            idx,
+                            crs_str,
+                            sub_index=sub_idx,
+                        )
+                        if feature is not None:
+                            features.append(feature)
+                        sub_idx += 1
             # Skip non-polygon types (Point, LineString, etc.)
 
     return features
+
+
+def _try_fiona_polygon(
+    geom: dict[str, object],
+    props: dict[str, object],
+    source_filename: str,
+    feature_index: int,
+    crs: str,
+    *,
+    sub_index: int | None = None,
+) -> Feature | None:
+    """Attempt to convert a fiona polygon, returning None on validation failure.
+
+    Wraps ``_fiona_polygon_to_feature`` with per-feature error handling
+    so that one bad geometry does not crash the entire parse
+    (PID 7.4.2: graceful degradation).
+    """
+    placemark_name = str(
+        props.get("Name", "") or props.get("name", "") or f"Feature {feature_index}"
+    )
+    display_name = placemark_name
+    if sub_index is not None:
+        display_name = f"{placemark_name} (part {sub_index})"
+
+    try:
+        return _fiona_polygon_to_feature(
+            geom,
+            props,
+            source_filename,
+            feature_index,
+            crs,
+            sub_index=sub_index,
+        )
+    except (KmlValidationError, InvalidCoordinateError) as exc:
+        logger.warning(
+            "Skipping invalid feature '%s' in %s: %s",
+            display_name,
+            source_filename,
+            exc,
+        )
+        return None
 
 
 def _extract_crs_from_fiona(collection: object) -> str:
@@ -397,29 +475,39 @@ def _parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
         metadata = _extract_extended_data_lxml(pm, ns)
 
         for poly_idx, polygon in enumerate(polygons):
-            exterior, interior = _parse_polygon_lxml(polygon, ns)
-
             display_name = placemark_name or f"Feature {idx}"
             if len(polygons) > 1:
-                display_name = f"{display_name} (polygon {poly_idx})"
+                display_name = f"{display_name} (part {poly_idx})"
 
-            if not exterior:
-                raise KmlValidationError(
-                    f"Placemark '{display_name}' has a <Polygon> with no exterior "
-                    f"coordinates (missing or empty outerBoundaryIs/LinearRing)."
+            try:
+                exterior, interior = _parse_polygon_lxml(polygon, ns)
+
+                if not exterior:
+                    raise KmlValidationError(
+                        f"Placemark '{display_name}' has a <Polygon> with no exterior "
+                        f"coordinates (missing or empty outerBoundaryIs/LinearRing)."
+                    )
+
+                # Validate
+                _validate_coordinates(exterior, display_name)
+                for hole_ring in interior:
+                    _validate_coordinates(hole_ring, f"{display_name} (hole)")
+
+                exterior = _validate_polygon_ring(exterior, display_name)
+                interior = [
+                    _validate_polygon_ring(ring, f"{display_name} (hole)") for ring in interior
+                ]
+
+                _validate_shapely_geometry(exterior, interior, display_name)
+
+            except (KmlValidationError, InvalidCoordinateError) as exc:
+                logger.warning(
+                    "Skipping invalid feature '%s' in %s: %s",
+                    display_name,
+                    source_filename,
+                    exc,
                 )
-
-            # Validate
-            _validate_coordinates(exterior, display_name)
-            for hole_ring in interior:
-                _validate_coordinates(hole_ring, f"{display_name} (hole)")
-
-            exterior = _validate_polygon_ring(exterior, display_name)
-            interior = [
-                _validate_polygon_ring(ring, f"{display_name} (hole)") for ring in interior
-            ]
-
-            _validate_shapely_geometry(exterior, interior, display_name)
+                continue
 
             features.append(
                 Feature(
@@ -479,18 +567,32 @@ def _parse_coordinates_text(text: str) -> list[tuple[float, float]]:
 
 
 def _extract_extended_data_lxml(placemark_elem: Any, ns: dict[str, str]) -> dict[str, str]:
-    """Extract ExtendedData/Data key-value pairs from a Placemark element."""
+    """Extract ExtendedData metadata from a Placemark element.
+
+    Handles both KML metadata patterns:
+    - ``ExtendedData/Data/value`` — untyped key-value pairs.
+    - ``ExtendedData/SchemaData/SimpleData`` — typed fields defined by a
+      ``<Schema>`` element (PID FR-1.10, M-1.4).
+    """
     from lxml import etree  # type: ignore[attr-defined]
 
     metadata: dict[str, str] = {}
     if not isinstance(placemark_elem, etree._Element):
         return metadata
 
+    # Pattern 1: ExtendedData/Data/value (untyped)
     for data_elem in placemark_elem.findall("kml:ExtendedData/kml:Data", ns):
         key = data_elem.get("name", "")
         value_elem = data_elem.find("kml:value", ns)
         if key and value_elem is not None and value_elem.text:
             metadata[key] = value_elem.text.strip()
+
+    # Pattern 2: ExtendedData/SchemaData/SimpleData (typed via Schema)
+    for schema_data in placemark_elem.findall("kml:ExtendedData/kml:SchemaData", ns):
+        for simple_data in schema_data.findall("kml:SimpleData", ns):
+            key = simple_data.get("name", "")
+            if key and simple_data.text:
+                metadata[key] = simple_data.text.strip()
 
     return metadata
 
