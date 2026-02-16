@@ -39,6 +39,9 @@ dependencies = [
 
     # HTTP
     "httpx>=0.28.0",
+
+    # Data Validation & Serialisation
+    "pydantic>=2.10.0",
 ]
 
 [project.optional-dependencies]

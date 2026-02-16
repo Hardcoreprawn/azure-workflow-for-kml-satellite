@@ -81,26 +81,58 @@ def orchestrator_function(
         )
 
     # -----------------------------------------------------------------------
-    # Phase 3: Acquire imagery (M-2.x)
+    # Phase 3: Write metadata per AOI (M-1.6)
+    # -----------------------------------------------------------------------
+    from datetime import UTC, datetime
+
+    timestamp = datetime.now(tz=UTC).isoformat()
+    metadata_tasks = [
+        context.call_activity(
+            "write_metadata",
+            {
+                "aoi": a,
+                "processing_id": instance_id,
+                "timestamp": timestamp,
+            },
+        )
+        for a in aois
+    ]
+    metadata_results = yield context.task_all(metadata_tasks)
+
+    if not context.is_replaying:
+        metadata_count = len(metadata_results) if isinstance(metadata_results, list) else 0
+        logger.info(
+            "Metadata written | instance=%s | records=%d | blob=%s",
+            instance_id,
+            metadata_count,
+            blob_name,
+        )
+
+    # -----------------------------------------------------------------------
+    # Phase 4: Acquire imagery (M-2.x)
     # -----------------------------------------------------------------------
     # imagery_tasks = [context.call_activity("acquire_imagery", a) for a in aois]
     # imagery_results = yield context.task_all(imagery_tasks)
 
     # -----------------------------------------------------------------------
-    # Result summary (features parsed; AOI + imagery phases pending)
+    # Result summary
     # -----------------------------------------------------------------------
     feature_count = len(features) if isinstance(features, list) else 0
     aoi_count = len(aois) if isinstance(aois, list) else 0
+    metadata_count = len(metadata_results) if isinstance(metadata_results, list) else 0
     result = {
-        "status": "aois_prepared",
+        "status": "metadata_written",
         "instance_id": instance_id,
         "blob_name": blob_name,
         "blob_url": blob_event.get("blob_url", ""),
         "feature_count": feature_count,
         "aoi_count": aoi_count,
+        "metadata_count": metadata_count,
         "message": (
             f"Parsed {feature_count} feature(s), "
-            f"prepared {aoi_count} AOI(s) — awaiting imagery activities."
+            f"prepared {aoi_count} AOI(s), "
+            f"wrote {metadata_count} metadata record(s) "
+            f"— awaiting imagery activities."
         ),
     }
 

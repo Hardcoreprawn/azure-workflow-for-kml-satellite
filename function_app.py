@@ -266,5 +266,69 @@ def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
     return aoi.to_dict()
 
 
-# TODO (Issue #7): write_metadata activity
+@app.function_name("write_metadata")
+@app.activity_trigger(input_name="activityInput")
+def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: generate and store per-AOI metadata JSON.
+
+    Input:
+        JSON string (or dict when replaying) containing:
+        - ``aoi``: Serialised AOI dict from the prepare_aoi activity
+        - ``processing_id``: Orchestration instance ID
+        - ``timestamp``: Processing timestamp (ISO 8601)
+
+    Returns:
+        Dict with ``metadata``, ``metadata_path``, and ``kml_archive_path``.
+
+    Raises:
+        MetadataWriteError: If blob upload fails.
+    """
+    import json
+
+    from azure.storage.blob import BlobServiceClient
+
+    from kml_satellite.activities.write_metadata import write_metadata
+    from kml_satellite.models.aoi import AOI as AOIModel  # noqa: N811
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    aoi_data = payload.get("aoi", payload)
+    if not isinstance(aoi_data, dict):
+        msg = "write_metadata activity: aoi data must be a dict"
+        raise TypeError(msg)
+
+    aoi = AOIModel.from_dict(aoi_data)
+    processing_id = str(payload.get("processing_id", ""))
+    timestamp = str(payload.get("timestamp", ""))
+
+    logger.info(
+        "write_metadata activity started | feature=%s | processing_id=%s",
+        aoi.feature_name,
+        processing_id,
+    )
+
+    # Connect to Blob Storage for writing
+    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    blob_service: BlobServiceClient | None = None
+    if connection_string:
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+
+    result = write_metadata(
+        aoi,
+        processing_id=processing_id,
+        timestamp=timestamp,
+        blob_service_client=blob_service,
+    )
+
+    logger.info(
+        "write_metadata activity completed | feature=%s | path=%s",
+        aoi.feature_name,
+        result.get("metadata_path", ""),
+    )
+
+    return result
+
+
 # TODO (Issue #8-#12): imagery acquisition activities
