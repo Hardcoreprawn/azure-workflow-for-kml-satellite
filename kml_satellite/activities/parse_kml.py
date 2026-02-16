@@ -69,7 +69,7 @@ def parse_kml_file(kml_path: Path | str, *, source_filename: str = "") -> list[F
     and coordinate bounds.
 
     Args:
-        kml_path: Path to the KML file on disk (or bytes-like).
+        kml_path: Filesystem path to the KML file on disk (str or pathlib.Path).
         source_filename: Original filename for metadata (defaults to path stem).
 
     Returns:
@@ -94,8 +94,11 @@ def parse_kml_file(kml_path: Path | str, *, source_filename: str = "") -> list[F
     _validate_xml(kml_path)
 
     # Step 2: Try fiona first, fall back to lxml
+    # Re-raise our own validation errors — only fall back on fiona/OGR failures.
     try:
         features = _parse_with_fiona(kml_path, source_filename)
+    except (KmlParseError, KmlValidationError, InvalidCoordinateError):
+        raise
     except Exception as fiona_err:
         logger.warning(
             "Fiona parse failed for %s, trying lxml fallback: %s",
@@ -135,8 +138,9 @@ def _validate_xml(kml_path: Path) -> None:
         msg = "KML file is empty"
         raise KmlParseError(msg)
 
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
     try:
-        root = etree.fromstring(content)
+        root = etree.fromstring(content, parser=parser)
     except etree.XMLSyntaxError as exc:
         msg = f"Not valid XML: {exc}"
         raise KmlParseError(msg) from exc
@@ -305,7 +309,9 @@ def _fiona_polygon_to_feature(
 ) -> Feature | None:
     """Convert a fiona polygon geometry + properties into a Feature.
 
-    Returns None if validation fails (logs a warning).
+    Returns None if the geometry has no usable coordinates.
+    Validation errors (coordinates, ring structure, shapely) propagate
+    as exceptions — they are not caught here.
     """
     coords_list = geom.get("coordinates", [])
     if not isinstance(coords_list, list | tuple) or not coords_list:
@@ -371,7 +377,8 @@ def _parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
     from lxml import etree  # type: ignore[attr-defined]
 
     content = kml_path.read_bytes()
-    root: Any = etree.fromstring(content)
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
+    root: Any = etree.fromstring(content, parser=parser)
     ns = {"kml": KML_NAMESPACE}
 
     features: list[Feature] = []
@@ -391,12 +398,16 @@ def _parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
 
         for poly_idx, polygon in enumerate(polygons):
             exterior, interior = _parse_polygon_lxml(polygon, ns)
-            if not exterior:
-                continue
 
             display_name = placemark_name or f"Feature {idx}"
             if len(polygons) > 1:
                 display_name = f"{display_name} (polygon {poly_idx})"
+
+            if not exterior:
+                raise KmlValidationError(
+                    f"Placemark '{display_name}' has a <Polygon> with no exterior "
+                    f"coordinates (missing or empty outerBoundaryIs/LinearRing)."
+                )
 
             # Validate
             _validate_coordinates(exterior, display_name)
@@ -525,6 +536,8 @@ def _validate_shapely_geometry(
                 f"for Placemark '{placemark_name}'"
             )
             raise KmlValidationError(msg)
+        # Use the repaired geometry for the area check
+        poly = repaired
         logger.info(
             "Geometry repaired for Placemark '%s'",
             placemark_name,
@@ -544,10 +557,35 @@ def _coords_to_tuples(raw_coords: object) -> list[tuple[float, float]]:
     """Convert GeoJSON-style coordinate arrays to (lon, lat) tuples.
 
     Drops altitude (third element) if present.
+
+    Raises:
+        KmlValidationError: If any coordinate element is malformed.
     """
     if not isinstance(raw_coords, list | tuple):
         return []
-    return [(float(c[0]), float(c[1])) for c in raw_coords if len(c) >= 2]  # type: ignore[arg-type]
+    coords: list[tuple[float, float]] = []
+    for idx, c in enumerate(raw_coords):
+        if not isinstance(c, list | tuple):
+            msg = (
+                f"Malformed coordinate at index {idx}: expected list/tuple, got {type(c).__name__}"
+            )
+            raise KmlValidationError(msg)
+        if len(c) < 2:
+            msg = (
+                f"Malformed coordinate at index {idx}: expected at least 2 elements, got {len(c)}"
+            )
+            raise KmlValidationError(msg)
+        try:
+            lon = float(c[0])
+            lat = float(c[1])
+        except (TypeError, ValueError) as exc:
+            msg = (
+                f"Malformed coordinate at index {idx}: cannot convert to float "
+                f"(lon={c[0]!r}, lat={c[1]!r})"
+            )
+            raise KmlValidationError(msg) from exc
+        coords.append((lon, lat))
+    return coords
 
 
 def _extract_metadata_from_props(props: dict[str, object]) -> dict[str, str]:

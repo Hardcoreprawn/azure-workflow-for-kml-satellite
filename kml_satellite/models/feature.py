@@ -52,8 +52,10 @@ class Feature:
     def from_dict(cls, data: dict[str, object]) -> Feature:
         """Deserialise from a Durable Functions dict payload.
 
+        Missing fields are defaulted (for example, an absent ``name``
+        becomes ``""``) rather than raising an error.
+
         Raises:
-            KeyError: If required fields are missing.
             TypeError: If field values have unexpected types.
         """
         exterior_raw = data.get("exterior_coords", [])
