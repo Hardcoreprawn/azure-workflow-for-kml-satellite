@@ -14,15 +14,19 @@ Activity calls will be wired in subsequent milestones.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     import azure.durable_functions as df
 
 logger = logging.getLogger("kml_satellite.orchestrators.kml_pipeline")
 
 
-def orchestrator_function(context: df.DurableOrchestrationContext) -> dict[str, object]:
+def orchestrator_function(
+    context: df.DurableOrchestrationContext,
+) -> Generator[Any, Any, dict[str, object]]:
     """KML processing pipeline orchestrator.
 
     Args:
@@ -49,9 +53,17 @@ def orchestrator_function(context: df.DurableOrchestrationContext) -> dict[str, 
         )
 
     # -----------------------------------------------------------------------
-    # Phase 1: Parse KML (M-1.3 / M-1.4 — not yet implemented)
+    # Phase 1: Parse KML (M-1.3)
     # -----------------------------------------------------------------------
-    # features = yield context.call_activity("parse_kml", blob_event)
+    features = yield context.call_activity("parse_kml", blob_event)
+
+    if not context.is_replaying:
+        logger.info(
+            "KML parsed | instance=%s | features=%d | blob=%s",
+            instance_id,
+            len(features) if isinstance(features, list) else 0,
+            blob_name,
+        )
 
     # -----------------------------------------------------------------------
     # Phase 2: Fan-out per polygon — prepare AOI (M-1.5)
@@ -66,21 +78,24 @@ def orchestrator_function(context: df.DurableOrchestrationContext) -> dict[str, 
     # imagery_results = yield context.task_all(imagery_tasks)
 
     # -----------------------------------------------------------------------
-    # Result summary (stub — returns event acknowledgement)
+    # Result summary (features parsed; AOI + imagery phases pending)
     # -----------------------------------------------------------------------
+    feature_count = len(features) if isinstance(features, list) else 0
     result = {
-        "status": "accepted",
+        "status": "parsed",
         "instance_id": instance_id,
         "blob_name": blob_name,
         "blob_url": blob_event.get("blob_url", ""),
-        "message": "Orchestration started — awaiting activity implementations.",
+        "feature_count": feature_count,
+        "message": f"Parsed {feature_count} feature(s) — awaiting AOI + imagery activities.",
     }
 
     if not context.is_replaying:
         logger.info(
-            "Orchestrator completed (stub) | instance=%s | blob=%s",
+            "Orchestrator completed | instance=%s | blob=%s | features=%d",
             instance_id,
             blob_name,
+            feature_count,
         )
 
     return result
