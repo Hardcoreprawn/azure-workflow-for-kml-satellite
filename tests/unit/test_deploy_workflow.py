@@ -126,6 +126,24 @@ class TestReadinessCheck:
             "verify functions are registered"
         )
 
+    def test_readiness_jmespath_query_not_empty_literal(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """JMESPath query must measure the returned list, not an empty literal.
+
+        ``length([])`` always returns 0 (it is the length of an empty JSON
+        array literal).  The correct query is ``length(@)`` which measures the
+        length of the response returned by ``az functionapp function list``.
+        """
+        steps = _get_steps(deploy_workflow)
+        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
+        assert readiness is not None
+        run_script = readiness.get("run", "")
+        assert "length([])" not in run_script, (
+            "JMESPath 'length([])' always returns 0 — use 'length(@)' to "
+            "measure the actual function list response"
+        )
+
     def test_readiness_has_retry_loop(self, deploy_workflow: dict[str, Any]) -> None:
         """Readiness check must retry (not just check once)."""
         steps = _get_steps(deploy_workflow)

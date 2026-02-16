@@ -79,7 +79,7 @@ jobs:
             count=$(az functionapp function list \
               --name "${{ env.FUNCTION_APP_NAME }}" \
               --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "length([])" -o tsv 2>/dev/null || echo 0)
+              --query "length(@)" -o tsv 2>/dev/null || echo 0)
             if [ "$count" -ge 1 ]; then
               echo "✔ $count function(s) detected after ~$((i * 10))s"
               break
