@@ -462,6 +462,7 @@ class TestFunctionAppModule:
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
             "KEY_VAULT_URI",
             "FUNCTIONS_EXTENSION_VERSION",
+            "FUNCTIONS_WORKER_RUNTIME",
             "KML_INPUT_CONTAINER",
             "KML_OUTPUT_CONTAINER",
             "IMAGERY_PROVIDER",
@@ -469,6 +470,24 @@ class TestFunctionAppModule:
         assert expected.issubset(setting_names), (
             f"Missing app settings: {expected - setting_names}"
         )
+
+    def test_functions_worker_runtime_is_python(
+        self, function_app_arm_template: dict[str, Any]
+    ) -> None:
+        """FUNCTIONS_WORKER_RUNTIME must be set to 'python'.
+
+        Without this setting the GitHub Action and Azure runtime cannot detect
+        the language, causing deployment to fail with 'Detected function app
+        language: None (V1 function app)'.
+        """
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        app_settings = site["properties"]["siteConfig"]["appSettings"]
+        runtime_setting = next(
+            (s for s in app_settings if s["name"] == "FUNCTIONS_WORKER_RUNTIME"),
+            None,
+        )
+        assert runtime_setting is not None, "FUNCTIONS_WORKER_RUNTIME app setting is missing"
+        assert runtime_setting["value"] == "python"
 
     def test_functions_v4(self, function_app_arm_template: dict[str, Any]) -> None:
         """Function App must use Functions runtime v4."""
