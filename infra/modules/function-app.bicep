@@ -102,14 +102,6 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: keyVaultUri
         }
         {
-          name: 'FUNCTIONS_WORKER_RUNTIME'
-          value: 'python'
-        }
-        {
-          name: 'FUNCTIONS_EXTENSION_VERSION'
-          value: '~4'
-        }
-        {
           name: 'KML_INPUT_CONTAINER'
           value: 'kml-input'
         }
