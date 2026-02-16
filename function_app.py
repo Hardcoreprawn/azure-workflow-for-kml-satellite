@@ -222,7 +222,6 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
     return [f.to_dict() for f in features]
 
 
-# TODO (Issue #5): parse_kml_multi activity (extends parse_kml for multi-feature)
 # TODO (Issue #6): prepare_aoi activity
 # TODO (Issue #7): write_metadata activity
 # TODO (Issue #8-#12): imagery acquisition activities
