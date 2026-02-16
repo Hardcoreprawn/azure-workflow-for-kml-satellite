@@ -461,8 +461,6 @@ class TestFunctionAppModule:
             "AzureWebJobsStorage",
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
             "KEY_VAULT_URI",
-            "FUNCTIONS_EXTENSION_VERSION",
-            "FUNCTIONS_WORKER_RUNTIME",
             "KML_INPUT_CONTAINER",
             "KML_OUTPUT_CONTAINER",
             "IMAGERY_PROVIDER",
@@ -471,34 +469,37 @@ class TestFunctionAppModule:
             f"Missing app settings: {expected - setting_names}"
         )
 
-    def test_functions_worker_runtime_is_python(
+    def test_flex_consumption_runtime_config(
         self, function_app_arm_template: dict[str, Any]
     ) -> None:
-        """FUNCTIONS_WORKER_RUNTIME must be set to 'python'.
+        """Flex Consumption must declare runtime via functionAppConfig.
 
-        Without this setting the GitHub Action and Azure runtime cannot detect
-        the language, causing deployment to fail with 'Detected function app
-        language: None (V1 function app)'.
+        Flex Consumption plans manage the worker runtime and extension version
+        internally via ``functionAppConfig.runtime``.  Setting these as app
+        settings (``FUNCTIONS_WORKER_RUNTIME``, ``FUNCTIONS_EXTENSION_VERSION``)
+        causes a BadRequest error on deployment.
+        """
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        runtime = site["properties"].get("functionAppConfig", {}).get("runtime", {})
+        assert runtime.get("name") == "python", "functionAppConfig.runtime.name must be 'python'"
+        assert runtime.get("version") == "3.12", "functionAppConfig.runtime.version must be '3.12'"
+
+    def test_no_reserved_app_settings(self, function_app_arm_template: dict[str, Any]) -> None:
+        """Flex Consumption must NOT set reserved settings as app settings.
+
+        ``FUNCTIONS_WORKER_RUNTIME`` and ``FUNCTIONS_EXTENSION_VERSION`` are
+        managed by the platform for Flex Consumption SKUs.  Including them
+        in ``siteConfig.appSettings`` causes deployment to fail with:
+        'The following app setting … for Flex Consumption sites is invalid.'
         """
         site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
         app_settings = site["properties"]["siteConfig"]["appSettings"]
-        runtime_setting = next(
-            (s for s in app_settings if s["name"] == "FUNCTIONS_WORKER_RUNTIME"),
-            None,
+        setting_names = {s["name"] for s in app_settings}
+        reserved = {"FUNCTIONS_WORKER_RUNTIME", "FUNCTIONS_EXTENSION_VERSION"}
+        overlap = reserved & setting_names
+        assert not overlap, (
+            f"Reserved Flex Consumption settings must not appear in appSettings: {overlap}"
         )
-        assert runtime_setting is not None, "FUNCTIONS_WORKER_RUNTIME app setting is missing"
-        assert runtime_setting["value"] == "python"
-
-    def test_functions_v4(self, function_app_arm_template: dict[str, Any]) -> None:
-        """Function App must use Functions runtime v4."""
-        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
-        app_settings = site["properties"]["siteConfig"]["appSettings"]
-        version_setting = next(
-            (s for s in app_settings if s["name"] == "FUNCTIONS_EXTENSION_VERSION"),
-            None,
-        )
-        assert version_setting is not None
-        assert version_setting["value"] == "~4"
 
     def test_has_outputs(self, function_app_arm_template: dict[str, Any]) -> None:
         """Function App module must output id, name, principalId, hostname."""
