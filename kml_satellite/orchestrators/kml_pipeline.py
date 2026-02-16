@@ -68,8 +68,17 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     # Phase 2: Fan-out per polygon — prepare AOI (M-1.5)
     # -----------------------------------------------------------------------
-    # aoi_tasks = [context.call_activity("prepare_aoi", f) for f in features]
-    # aois = yield context.task_all(aoi_tasks)
+    aoi_tasks = [context.call_activity("prepare_aoi", f) for f in features]
+    aois = yield context.task_all(aoi_tasks)
+
+    if not context.is_replaying:
+        aoi_count = len(aois) if isinstance(aois, list) else 0
+        logger.info(
+            "AOIs prepared | instance=%s | aois=%d | blob=%s",
+            instance_id,
+            aoi_count,
+            blob_name,
+        )
 
     # -----------------------------------------------------------------------
     # Phase 3: Acquire imagery (M-2.x)
@@ -81,13 +90,18 @@ def orchestrator_function(
     # Result summary (features parsed; AOI + imagery phases pending)
     # -----------------------------------------------------------------------
     feature_count = len(features) if isinstance(features, list) else 0
+    aoi_count = len(aois) if isinstance(aois, list) else 0
     result = {
-        "status": "parsed",
+        "status": "aois_prepared",
         "instance_id": instance_id,
         "blob_name": blob_name,
         "blob_url": blob_event.get("blob_url", ""),
         "feature_count": feature_count,
-        "message": f"Parsed {feature_count} feature(s) — awaiting AOI + imagery activities.",
+        "aoi_count": aoi_count,
+        "message": (
+            f"Parsed {feature_count} feature(s), "
+            f"prepared {aoi_count} AOI(s) — awaiting imagery activities."
+        ),
     }
 
     if not context.is_replaying:
