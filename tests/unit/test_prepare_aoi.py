@@ -44,7 +44,7 @@ EDGE_CASES_DIR = DATA_DIR / "edge_cases"
 # Reference polygons (from test KML files)
 # ---------------------------------------------------------------------------
 
-# File 01: Yakima Valley orchard  --  roughly rectangular, ~12 ha per description
+# File 01: Yakima Valley orchard  --  roughly rectangular, ~100 ha (0.013 x 0.009 deg at 46.6N)
 YAKIMA_EXTERIOR = [
     (-120.5210, 46.6040),
     (-120.5210, 46.6130),

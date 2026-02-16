@@ -93,7 +93,7 @@ def prepare_aoi(
     bbox = compute_bbox(exterior)
     buffered_bbox = compute_buffered_bbox(exterior, buffer_m=buffer_m)
     area_ha = compute_geodesic_area_ha(exterior, interior_rings=interior)
-    centroid = compute_centroid(exterior)
+    centroid = compute_centroid(exterior, interior_rings=interior)
 
     # Area reasonableness check (PID 7.4.3)
     area_warning = ""
@@ -106,7 +106,7 @@ def prepare_aoi(
 
     # Structured logging of AOI metadata (FR-2.3)
     logger.info(
-        "AOI prepared | feature=%s | area=%.2f ha | buffer=%d m | "
+        "AOI prepared | feature=%s | area=%.2f ha | buffer=%.0f m | "
         "bbox=[%.4f, %.4f, %.4f, %.4f] | centroid=(%.4f, %.4f) | source=%s",
         feature.name,
         area_ha,
@@ -201,9 +201,20 @@ def compute_buffered_bbox(
     to_utm = Transformer.from_crs("EPSG:4326", utm_crs, always_xy=True)
     to_wgs = Transformer.from_crs(utm_crs, "EPSG:4326", always_xy=True)
 
-    # Project bbox corners to UTM
-    utm_min_x, utm_min_y = to_utm.transform(min_lon, min_lat)
-    utm_max_x, utm_max_y = to_utm.transform(max_lon, max_lat)
+    # Project all four bbox corners to UTM to capture true extrema
+    # in projected space (convergence/distortion can shift extrema)
+    utm_sw_x, utm_sw_y = to_utm.transform(min_lon, min_lat)
+    utm_nw_x, utm_nw_y = to_utm.transform(min_lon, max_lat)
+    utm_se_x, utm_se_y = to_utm.transform(max_lon, min_lat)
+    utm_ne_x, utm_ne_y = to_utm.transform(max_lon, max_lat)
+
+    utm_xs = (utm_sw_x, utm_nw_x, utm_se_x, utm_ne_x)
+    utm_ys = (utm_sw_y, utm_nw_y, utm_se_y, utm_ne_y)
+
+    utm_min_x = min(utm_xs)
+    utm_max_x = max(utm_xs)
+    utm_min_y = min(utm_ys)
+    utm_max_y = max(utm_ys)
 
     # Apply buffer in metres
     utm_min_x -= buffer_m
@@ -276,11 +287,13 @@ def compute_geodesic_area_ha(
 
 def compute_centroid(
     coords: list[tuple[float, float]],
+    interior_rings: list[list[tuple[float, float]]] | None = None,
 ) -> tuple[float, float]:
     """Compute the centroid of a polygon using Shapely.
 
     Args:
         coords: Exterior ring as list of ``(lon, lat)`` tuples.
+        interior_rings: Interior rings (holes) to subtract.
 
     Returns:
         Centroid as ``(lon, lat)`` tuple.
@@ -292,7 +305,8 @@ def compute_centroid(
 
     from shapely.geometry import Polygon
 
-    poly = Polygon(coords)
+    holes = interior_rings if interior_rings else None
+    poly = Polygon(coords, holes=holes)
     if poly.is_empty:
         msg = "Cannot compute centroid of an empty polygon"
         raise AOIError(msg)
