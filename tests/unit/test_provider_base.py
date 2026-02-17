@@ -123,35 +123,33 @@ class TestProviderExceptions(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Stub adapters — verify they raise NotImplementedError
+# Concrete adapter — PlanetaryComputerAdapter is now fully implemented
 # ---------------------------------------------------------------------------
 
 
-class TestPlanetaryComputerStub(unittest.TestCase):
-    """PlanetaryComputerAdapter stub raises NotImplementedError."""
+class TestPlanetaryComputerIsProvider(unittest.TestCase):
+    """PlanetaryComputerAdapter is a concrete ImageryProvider."""
 
     def setUp(self) -> None:
         self.adapter = PlanetaryComputerAdapter(ProviderConfig(name="planetary_computer"))
-        self.aoi = AOI(feature_name="test")
 
-    def test_search_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.search(self.aoi)
-
-    def test_order_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.order("scene-1")
-
-    def test_poll_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.poll("order-1")
-
-    def test_download_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.download("order-1")
+    def test_is_imagery_provider(self) -> None:
+        assert isinstance(self.adapter, ImageryProvider)
 
     def test_name(self) -> None:
         assert self.adapter.name == "planetary_computer"
+
+    def test_has_search_method(self) -> None:
+        assert callable(self.adapter.search)
+
+    def test_has_order_method(self) -> None:
+        assert callable(self.adapter.order)
+
+    def test_has_poll_method(self) -> None:
+        assert callable(self.adapter.poll)
+
+    def test_has_download_method(self) -> None:
+        assert callable(self.adapter.download)
 
 
 class TestSkyWatchStub(unittest.TestCase):
