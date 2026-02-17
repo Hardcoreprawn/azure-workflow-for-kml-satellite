@@ -82,6 +82,13 @@ class PlanetaryComputerAdapter(ImageryProvider):
         super().__init__(config)
         self._stac_url = config.api_base_url or _DEFAULT_STAC_URL
         # order_id → (scene_id, asset_url)
+        # NOTE: This mapping is unbounded and will grow as orders are created.
+        # In the current deployment model, adapter instances are expected to be
+        # short-lived (e.g. instantiated per request in a serverless context),
+        # so the in-memory cache is discarded with each instance.  If this
+        # adapter is ever reused across many requests in a long-running
+        # process, consider adding a size limit, LRU eviction, or time-based
+        # cleanup for this mapping.
         self._orders: dict[str, tuple[str, str]] = {}
 
     # ------------------------------------------------------------------
@@ -330,14 +337,20 @@ class PlanetaryComputerAdapter(ImageryProvider):
     def _download_asset(self, url: str, scene_id: str) -> int:
         """Download an asset from *url* and return its size in bytes.
 
-        In a full deployment this would stream to Azure Blob Storage.
-        For now, we perform the HTTP GET and return the content length
-        (the blob upload is an infrastructure concern for M-2.3+).
+        Uses streaming to avoid loading large satellite imagery files
+        (potentially hundreds of MB) entirely into memory.  In a full
+        deployment the chunks would be forwarded to Azure Blob Storage;
+        for now we just accumulate the byte count (the blob upload is
+        an infrastructure concern for M-2.3+).
         """
-        with httpx.Client(timeout=60.0, follow_redirects=True) as client:
-            response = client.get(url)
+        with (
+            httpx.Client(timeout=60.0, follow_redirects=True) as client,
+            client.stream("GET", url) as response,
+        ):
             response.raise_for_status()
-            size = len(response.content)
+            size = 0
+            for chunk in response.iter_bytes():
+                size += len(chunk)
 
         logger.debug("Downloaded %d bytes for %s from %s", size, scene_id, url)
         return size
@@ -396,7 +409,10 @@ def _resolve_best_asset_url(item: Any) -> str:
 def _build_blob_path(scene_id: str) -> str:
     """Build a deterministic blob path for a downloaded scene.
 
-    Format: ``imagery/raw/{YYYY}/{MM}/{scene_id}.tif``
+    Format: ``imagery/raw/{scene_id}.tif``
+
+    The path is based solely on the scene_id so that re-downloading
+    the same scene overwrites the previous blob rather than creating
+    duplicates — consistent with the idempotency principle (PID 7.4.4).
     """
-    now = datetime.now(UTC)
-    return f"imagery/raw/{now.year}/{now.month:02d}/{scene_id}.tif"
+    return f"imagery/raw/{scene_id}.tif"

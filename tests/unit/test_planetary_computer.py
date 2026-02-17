@@ -64,8 +64,6 @@ _YAKIMA_AOI = AOI(
     centroid=(-120.25, 46.25),
 )
 
-_EMPTY_AOI = AOI(feature_name="empty")
-
 
 def _make_stac_item(
     item_id: str = "S2B_MSIL2A_20260115T183909_R070_T10TEM_20260115T212159",
@@ -230,8 +228,11 @@ class TestBuildBlobPath(unittest.TestCase):
 
     def test_contains_scene_id(self) -> None:
         path = _build_blob_path("MY_SCENE_123")
-        assert "MY_SCENE_123.tif" in path
-        assert path.startswith("imagery/raw/")
+        assert path == "imagery/raw/MY_SCENE_123.tif"
+
+    def test_idempotent(self) -> None:
+        """Same scene_id always produces the same path."""
+        assert _build_blob_path("X") == _build_blob_path("X")
 
 
 # ---------------------------------------------------------------------------
@@ -450,21 +451,24 @@ class TestDownload(unittest.TestCase):
             [_make_stac_item("SCENE_123", asset_url="https://dl.tif")]
         )
 
-        # Mock HTTP download.
-        mock_response = MagicMock()
-        mock_response.content = b"\x00" * 1024
-        mock_response.raise_for_status = MagicMock()
+        # Mock streaming HTTP download.
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 512, b"\x00" * 512]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
         mock_httpx = MagicMock()
         mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
         mock_httpx.__exit__ = MagicMock(return_value=False)
-        mock_httpx.get.return_value = mock_response
+        mock_httpx.stream.return_value = mock_stream_response
         mock_httpx_cls.return_value = mock_httpx
 
         blob = adapter.download(order_id)
 
         assert isinstance(blob, BlobReference)
         assert blob.container == "kml-output"
-        assert "SCENE_123.tif" in blob.blob_path
+        assert blob.blob_path == "imagery/raw/SCENE_123.tif"
         assert blob.size_bytes == 1024
         assert blob.content_type == "image/tiff"
 
@@ -497,7 +501,7 @@ class TestDownload(unittest.TestCase):
         mock_httpx = MagicMock()
         mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
         mock_httpx.__exit__ = MagicMock(return_value=False)
-        mock_httpx.get.side_effect = _httpx.HTTPError("503 Service Unavailable")
+        mock_httpx.stream.side_effect = _httpx.HTTPError("503 Service Unavailable")
         mock_httpx_cls.return_value = mock_httpx
 
         with self.assertRaises(ProviderDownloadError) as ctx:
@@ -521,13 +525,16 @@ class TestDownload(unittest.TestCase):
         mock_stac_open.return_value = _mock_stac_search(
             [_make_stac_item("SCENE_X", asset_url="https://dl.tif")]
         )
-        mock_response = MagicMock()
-        mock_response.content = b"\x00" * 512
-        mock_response.raise_for_status = MagicMock()
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 512]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
         mock_httpx = MagicMock()
         mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
         mock_httpx.__exit__ = MagicMock(return_value=False)
-        mock_httpx.get.return_value = mock_response
+        mock_httpx.stream.return_value = mock_stream_response
         mock_httpx_cls.return_value = mock_httpx
 
         blob = adapter.download(order.order_id)
@@ -588,14 +595,17 @@ class TestPlanetaryComputerContract(ProviderContractTests, unittest.TestCase):
         ]
         mock_stac_open.return_value = _mock_stac_search(items)
 
-        # -- httpx mock: return fake GeoTIFF bytes --
-        mock_response = MagicMock()
-        mock_response.content = b"\x00" * 2048
-        mock_response.raise_for_status = MagicMock()
+        # -- httpx mock: return fake GeoTIFF bytes via streaming --
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 2048]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
         mock_httpx = MagicMock()
         mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
         mock_httpx.__exit__ = MagicMock(return_value=False)
-        mock_httpx.get.return_value = mock_response
+        mock_httpx.stream.return_value = mock_stream_response
         mock_httpx_cls.return_value = mock_httpx
 
     def tearDown(self) -> None:
