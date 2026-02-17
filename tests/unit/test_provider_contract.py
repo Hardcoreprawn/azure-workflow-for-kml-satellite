@@ -160,14 +160,34 @@ class ProviderContractTests(abc.ABC):
         provider = self.create_provider()
         aoi = self.create_test_aoi()
         results = provider.search(aoi)
-        if results:
-            order = provider.order(results[0].scene_id)
+        if not results:
+            return  # No coverage — acceptable in contract test
+
+        order = provider.order(results[0].scene_id)
+
+        # Poll until terminal state or bounded attempts.
+        max_polls = 10
+        status = None
+        for _ in range(max_polls):
             status = provider.poll(order.order_id)
-            if status.state == OrderState.READY:
-                blob = provider.download(order.order_id)
-                self.assertIsInstance(blob, BlobReference)  # type: ignore[attr-defined]
-                self.assertTrue(blob.blob_path, "blob_path must be non-empty")  # type: ignore[attr-defined]
-                self.assertTrue(blob.container, "container must be non-empty")  # type: ignore[attr-defined]
+            self.assertIsInstance(status, OrderStatus)  # type: ignore[attr-defined]
+            self.assertIsInstance(status.state, OrderState)  # type: ignore[attr-defined]
+            if status.state in (OrderState.READY, OrderState.FAILED):
+                break
+        else:
+            self.fail(  # type: ignore[attr-defined]
+                f"poll() did not reach a terminal state within {max_polls} attempts",
+            )
+
+        if status.state != OrderState.READY:  # type: ignore[union-attr]
+            self.fail(  # type: ignore[attr-defined]
+                f"Expected READY state before download(), got {status.state}",
+            )
+
+        blob = provider.download(order.order_id)
+        self.assertIsInstance(blob, BlobReference)  # type: ignore[attr-defined]
+        self.assertTrue(blob.blob_path, "blob_path must be non-empty")  # type: ignore[attr-defined]
+        self.assertTrue(blob.container, "container must be non-empty")  # type: ignore[attr-defined]
 
     # -- lifecycle tests --
 
@@ -176,24 +196,41 @@ class ProviderContractTests(abc.ABC):
         provider = self.create_provider()
         aoi = self.create_test_aoi()
 
-        # 1. Search
+        # 1. Search — create_test_aoi() must yield at least one result
         results = provider.search(aoi)
         self.assertIsInstance(results, list)  # type: ignore[attr-defined]
-        if not results:
-            return  # No coverage — acceptable in contract test
+        self.assertTrue(  # type: ignore[attr-defined]
+            results,
+            "create_test_aoi() must yield at least one SearchResult from search(); "
+            "adapter returned an empty result list.",
+        )
 
         # 2. Order
         order = provider.order(results[0].scene_id)
         self.assertIsInstance(order, OrderId)  # type: ignore[attr-defined]
 
-        # 3. Poll
-        status = provider.poll(order.order_id)
-        self.assertIsInstance(status, OrderStatus)  # type: ignore[attr-defined]
+        # 3. Poll — loop until terminal state
+        max_polls = 10
+        status = None
+        for _ in range(max_polls):
+            status = provider.poll(order.order_id)
+            self.assertIsInstance(status, OrderStatus)  # type: ignore[attr-defined]
+            self.assertIsInstance(status.state, OrderState)  # type: ignore[attr-defined]
+            if status.state in (OrderState.READY, OrderState.FAILED):
+                break
+        else:
+            self.fail(  # type: ignore[attr-defined]
+                f"poll() did not reach a terminal state within {max_polls} attempts",
+            )
 
-        # 4. Download (only if ready)
-        if status.state == OrderState.READY:
-            blob = provider.download(order.order_id)
-            self.assertIsInstance(blob, BlobReference)  # type: ignore[attr-defined]
+        # 4. Download — the test AOI/order is expected to reach READY
+        if status.state != OrderState.READY:  # type: ignore[union-attr]
+            self.fail(  # type: ignore[attr-defined]
+                f"Expected READY state before download(), got {status.state}",
+            )
+
+        blob = provider.download(order.order_id)
+        self.assertIsInstance(blob, BlobReference)  # type: ignore[attr-defined]
 
     # -- provider identity --
 

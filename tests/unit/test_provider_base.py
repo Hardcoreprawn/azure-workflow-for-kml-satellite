@@ -81,6 +81,7 @@ class TestProviderExceptions(unittest.TestCase):
     def test_provider_error_attributes(self) -> None:
         e = ProviderError("test_prov", "Something went wrong")
         assert e.provider == "test_prov"
+        assert e.message == "Something went wrong"
         assert e.retryable is False
         assert "[test_prov]" in str(e)
         assert "Something went wrong" in str(e)

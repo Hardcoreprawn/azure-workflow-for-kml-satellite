@@ -70,6 +70,13 @@ class TestGetProvider(unittest.TestCase):
         provider = get_provider(PLANETARY_COMPUTER)
         assert provider.config.name == PLANETARY_COMPUTER
 
+    def test_config_name_mismatch_raises(self) -> None:
+        """ProviderConfig.name must match the requested provider name."""
+        cfg = ProviderConfig(name=SKYWATCH)
+        with self.assertRaises(ProviderError) as ctx:
+            get_provider(PLANETARY_COMPUTER, config=cfg)
+        assert "does not match" in str(ctx.exception)
+
 
 class TestRegisterProvider(unittest.TestCase):
     """register_provider adds custom adapters."""

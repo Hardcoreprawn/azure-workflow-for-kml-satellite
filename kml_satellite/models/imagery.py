@@ -62,14 +62,16 @@ class OrderState(enum.Enum):
 class ImageryFilters:
     """Criteria for searching a provider's imagery archive.
 
-    All thresholds are *maximum* values — the provider should return only
-    scenes that fall within these limits.
+    Resolution is bounded by a range:
+    ``min_resolution_m <= resolution <= max_resolution_m``.
+    All other numeric thresholds are *maximum* values — the provider
+    should return only scenes that fall at or below these limits.
 
     Attributes:
         max_cloud_cover_pct: Maximum acceptable cloud cover (0-100).
         max_off_nadir_deg: Maximum acceptable off-nadir angle in degrees (0-45).
-        min_resolution_m: Minimum spatial resolution in metres (lower is better).
-        max_resolution_m: Maximum spatial resolution in metres.
+        min_resolution_m: Minimum spatial resolution in metres (inclusive lower bound).
+        max_resolution_m: Maximum spatial resolution in metres (inclusive upper bound).
         date_start: Earliest acceptable acquisition date (inclusive).
         date_end: Latest acceptable acquisition date (inclusive).
         collections: Provider-specific collection identifiers to search.

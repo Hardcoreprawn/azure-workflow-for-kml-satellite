@@ -74,15 +74,10 @@ def _register_builtin_adapters() -> None:
     _ADAPTER_REGISTRY[SKYWATCH] = _skywatch
 
 
-_REGISTRY_INITIALISED = False
-
-
 def _ensure_registry() -> None:
-    """Initialise the adapter registry once."""
-    global _REGISTRY_INITIALISED
-    if not _REGISTRY_INITIALISED:
+    """Initialise the adapter registry once (idempotent)."""
+    if not _ADAPTER_REGISTRY:
         _register_builtin_adapters()
-        _REGISTRY_INITIALISED = True
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +138,9 @@ def get_provider(
 
     if config is None:
         config = ProviderConfig(name=name)
+    elif config.name != name:
+        msg = f"ProviderConfig.name {config.name!r} does not match requested provider {name!r}"
+        raise ProviderError(provider=name, message=msg)
 
     logger.info("Creating imagery provider: %s", name)
     return adapter_cls(config)

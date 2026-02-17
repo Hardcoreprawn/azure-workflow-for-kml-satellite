@@ -8,7 +8,7 @@ Lifecycle:
     1. ``search(aoi, filters)`` — find scenes covering an AOI.
     2. ``order(scene_id)``      — request imagery delivery.
     3. ``poll(order_id)``       — check delivery status (may be instant).
-    4. ``download(order_id)``   — retrieve imagery bytes or a blob reference.
+    4. ``download(order_id)``   — download imagery and return a ``BlobReference``.
 
 Each concrete adapter (``PlanetaryComputerAdapter``, ``SkyWatchAdapter``, etc.)
 implements these four methods per the provider's API specifics.
@@ -166,6 +166,7 @@ class ProviderError(Exception):
         retryable: bool = False,
     ) -> None:
         self.provider = provider
+        self.message = message
         self.retryable = retryable
         super().__init__(f"[{provider}] {message}")
 
