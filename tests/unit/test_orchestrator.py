@@ -14,12 +14,16 @@ Current phases:
 3. write_metadata — fan-out via task_all
 4. acquire_imagery — fan-out via task_all
 5. poll_order — timer-based polling loop per order
-6. download_imagery — fan-out via task_all for ready orders
+6. download_imagery — sequential per ready order
+7. post_process_imagery — sequential per successful download
 
 References:
     PID FR-3.9  (poll until completion with timeout)
     PID FR-3.10 (download imagery upon completion)
+    PID FR-3.11 (reproject if CRS differs)
+    PID FR-3.12 (clip to AOI polygon boundary)
     PID FR-4.2  (store raw imagery under /imagery/raw/)
+    PID FR-4.3  (store clipped imagery under /imagery/clipped/)
     PID FR-5.3  (Durable Functions for long-running workflows)
     PID FR-6.4  (exponential backoff)
     PID Section 7.2 (Fan-Out / Fan-In pattern)
@@ -65,8 +69,9 @@ def _run_orchestrator(
     acquisition_results: list[dict[str, object]] | None = None,
     poll_results: list[dict[str, object]] | None = None,
     download_results: list[dict[str, object]] | None = None,
+    post_process_results: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """Drive the six-phase generator orchestrator to completion.
+    """Drive the seven-phase generator orchestrator to completion.
 
     Args:
         context: Mock DurableOrchestrationContext.
@@ -77,8 +82,10 @@ def _run_orchestrator(
         poll_results: Simulated returns of ``poll_order`` activity calls
             (one per acquisition).  Each should have ``is_terminal: True``
             so the loop exits after one poll.
-        download_results: Simulated return of ``download_imagery`` fan-out.
+        download_results: Simulated return of ``download_imagery`` calls.
             Defaults to one download result per ready poll outcome.
+        post_process_results: Simulated return of ``post_process_imagery``
+            calls.  Defaults to one result per successful download.
 
     Returns:
         The final result dict returned by the orchestrator.
@@ -119,12 +126,29 @@ def _run_orchestrator(
         download_results = [
             {
                 "order_id": f"pc-scene-{i}",
+                "aoi_feature_name": f"aoi-{i}",
                 "blob_path": f"imagery/raw/2026/02/test/aoi-{i}.tif",
                 "size_bytes": 1024,
                 "download_duration_seconds": 0.5,
                 "retry_count": 0,
             }
             for i in range(ready_count)
+        ]
+
+    # Successful downloads (not state="failed") determine post-process count
+    successful_downloads = [d for d in download_results if d.get("state") != "failed"]
+    if post_process_results is None:
+        post_process_results = [
+            {
+                "order_id": d.get("order_id", f"pc-scene-{i}"),
+                "clipped": True,
+                "reprojected": False,
+                "source_crs": "EPSG:4326",
+                "clipped_blob_path": f"imagery/clipped/2026/02/test/aoi-{i}.tif",
+                "output_size_bytes": 512,
+                "clip_error": "",
+            }
+            for i, d in enumerate(successful_downloads)
         ]
 
     gen = orchestrator_function(context)
@@ -148,6 +172,7 @@ def _run_orchestrator(
 
     poll_idx = 0
     dl_idx = 0
+    pp_idx = 0
     while True:
         try:
             if poll_idx < len(poll_results):
@@ -157,6 +182,10 @@ def _run_orchestrator(
                 # Send one download result per sequential call_activity yield
                 gen.send(download_results[dl_idx])
                 dl_idx += 1
+            elif pp_idx < len(post_process_results):
+                # Send one post-process result per sequential call_activity yield
+                gen.send(post_process_results[pp_idx])
+                pp_idx += 1
             else:
                 # No more results to send — orchestrator should finish
                 gen.send(None)
@@ -494,6 +523,78 @@ class TestOrchestratorFunction:
         assert len(dl_calls) == 1
         # blob_name="orchard.kml" → stem="orchard"
         assert dl_calls[0][0][1]["orchard_name"] == "orchard"
+
+    def test_calls_post_process_per_download(self) -> None:
+        """Orchestrator calls post_process_imagery for each successful download."""
+        context = _make_context(_sample_blob_event())
+        _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+        )
+        pp_calls = [
+            c for c in context.call_activity.call_args_list if c[0][0] == "post_process_imagery"
+        ]
+        assert len(pp_calls) == 1
+        payload = pp_calls[0][0][1]
+        assert "download_result" in payload
+        assert "aoi" in payload
+
+    def test_no_post_process_when_no_downloads(self) -> None:
+        """No post_process_imagery calls when all polls fail."""
+        context = _make_context(_sample_blob_event())
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+            poll_results=[
+                {
+                    "state": "failed",
+                    "is_terminal": True,
+                    "order_id": "pc-scene-0",
+                    "message": "Rejected",
+                    "progress_pct": 0.0,
+                }
+            ],
+            download_results=[],
+            post_process_results=[],
+        )
+        pp_calls = [
+            c for c in context.call_activity.call_args_list if c[0][0] == "post_process_imagery"
+        ]
+        assert len(pp_calls) == 0
+        assert result["post_process_completed"] == 0
+
+    def test_post_process_results_in_output(self) -> None:
+        """Result includes post_process_results list."""
+        context = _make_context(_sample_blob_event())
+        pp_results: list[dict[str, object]] = [
+            {
+                "order_id": "pc-scene-0",
+                "clipped": True,
+                "reprojected": False,
+                "clipped_blob_path": "imagery/clipped/2026/02/test/a1.tif",
+            }
+        ]
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+            post_process_results=pp_results,
+        )
+        assert result["post_process_results"] == pp_results
+        assert result["post_process_clipped"] == 1
+
+    def test_message_includes_clip_count(self) -> None:
+        """Result message mentions clipped/reprojected counts."""
+        context = _make_context(_sample_blob_event())
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+        )
+        msg = str(result["message"])
+        assert "clipped=1" in msg
 
 
 # ===========================================================================
