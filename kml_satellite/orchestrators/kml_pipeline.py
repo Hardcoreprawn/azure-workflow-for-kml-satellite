@@ -197,27 +197,57 @@ def orchestrator_function(
     # Phase 6: Download imagery for ready orders (M-2.4, FR-3.10, FR-4.2)
     # -----------------------------------------------------------------------
     ready_outcomes = [o for o in imagery_outcomes if o.get("state") == "ready"]
-    orchard_name = str(blob_event.get("orchard_name", ""))
 
-    download_tasks = [
-        context.call_activity(
-            "download_imagery",
-            {
-                "imagery_outcome": outcome,
-                "provider_name": provider_name,
-                "provider_config": provider_config_raw,
-                "orchard_name": orchard_name,
-                "timestamp": timestamp,
-            },
-        )
-        for outcome in ready_outcomes
-    ]
+    # Derive orchard_name from the source KML filename stem
+    # (same heuristic as metadata — see models.metadata._extract_orchard_name)
+    _blob_name_str = str(blob_name)
+    if "." in _blob_name_str:
+        from pathlib import PurePosixPath
 
+        orchard_name = PurePosixPath(_blob_name_str).stem
+    else:
+        orchard_name = _blob_name_str if _blob_name_str != "<unknown>" else ""
+
+    # Sequential downloads with per-order error handling so a single
+    # failure doesn't abort the entire orchestration (PID 7.4.2).
     download_results: list[dict[str, Any]] = []
-    if download_tasks:
-        download_results = yield context.task_all(download_tasks)
-        if not isinstance(download_results, list):
-            download_results = [download_results]
+    for outcome in ready_outcomes:
+        try:
+            result = yield context.call_activity(
+                "download_imagery",
+                {
+                    "imagery_outcome": outcome,
+                    "provider_name": provider_name,
+                    "provider_config": provider_config_raw,
+                    "orchard_name": orchard_name,
+                    "timestamp": timestamp,
+                },
+            )
+            if isinstance(result, dict):
+                download_results.append(result)
+            else:
+                download_results.append(
+                    {
+                        "state": "unknown",
+                        "imagery_outcome": outcome,
+                        "result": result,
+                    }
+                )
+        except Exception as exc:
+            if not context.is_replaying:
+                logger.exception(
+                    "Download failed for outcome | instance=%s | blob=%s | error=%s",
+                    instance_id,
+                    blob_name,
+                    exc,
+                )
+            download_results.append(
+                {
+                    "state": "failed",
+                    "imagery_outcome": outcome,
+                    "error": str(exc),
+                }
+            )
 
     if not context.is_replaying:
         logger.info(
@@ -237,10 +267,12 @@ def orchestrator_function(
     imagery_ready = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
     imagery_failed = len(imagery_outcomes) - imagery_ready
     downloads_completed = len(download_results)
+    downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
+    downloads_succeeded = downloads_completed - downloads_failed
 
     status_label = (
         "completed"
-        if imagery_failed == 0 and downloads_completed == imagery_ready
+        if imagery_failed == 0 and downloads_failed == 0 and downloads_succeeded == imagery_ready
         else "partial_imagery"
     )
     result: dict[str, object] = {

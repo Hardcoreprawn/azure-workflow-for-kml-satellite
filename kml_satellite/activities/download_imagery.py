@@ -135,9 +135,15 @@ def download_imagery(
     )
 
     # Validate the download (PID 7.4.1)
+    # TODO(M-2.5): Add rasterio-based content validation to verify the
+    # downloaded file is a valid, openable GeoTIFF — not just size > 0.
     _validate_download(blob_ref, order_id)
 
     # Build PID-compliant blob path (PID Section 10.1, FR-4.2)
+    # NOTE: This is the *intended* destination path.  The provider adapter
+    # currently decides its own blob_path/container via BlobReference.
+    # TODO: When real blob upload is wired, pass this destination path to
+    # the adapter or move the blob after download.
     ts = _parse_timestamp(timestamp)
     blob_path = build_imagery_path(
         feature_name or scene_id,
@@ -250,9 +256,10 @@ def _validate_download(blob_ref: BlobReference, order_id: str) -> None:
         msg = f"Downloaded file is empty for order {order_id} (0 bytes)"
         raise DownloadError(msg, retryable=True)
 
-    if blob_ref.content_type not in ("image/tiff", "image/geotiff", "application/geo+json"):
+    # NOTE: application/geo+json is GeoJSON (vector), NOT GeoTIFF.
+    if blob_ref.content_type not in ("image/tiff", "image/geotiff"):
         logger.warning(
-            "Unexpected content type for order %s: %s (expected image/tiff)",
+            "Unexpected content type for order %s: %s (expected image/tiff or image/geotiff)",
             order_id,
             blob_ref.content_type,
         )

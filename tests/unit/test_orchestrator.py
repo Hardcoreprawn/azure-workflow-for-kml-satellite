@@ -139,33 +139,29 @@ def _run_orchestrator(
     #   2. If terminal → moves to next acquisition
     #   3. If not terminal → create_timer → then poll again
     # With default poll_results (all terminal), each result → next acq.
-    # When acquisition_results is empty, no polling happens and the
-    # generator returns immediately (StopIteration) — but only if there
-    # are also no download tasks.
+    # After polling, the orchestrator yields one call_activity per
+    # ready download (sequential, not task_all).
     try:
         gen.send(acquisition_results)  # → first poll_order yield
     except StopIteration as exc:
         return exc.value  # type: ignore[return-value]
 
     poll_idx = 0
+    dl_idx = 0
     while True:
         try:
             if poll_idx < len(poll_results):
                 gen.send(poll_results[poll_idx])
                 poll_idx += 1
+            elif dl_idx < len(download_results):
+                # Send one download result per sequential call_activity yield
+                gen.send(download_results[dl_idx])
+                dl_idx += 1
             else:
-                # After all polls, if there are ready orders, send download results
-                gen.send(download_results)
-                # If send didn't raise StopIteration, continue
-                break
+                # No more results to send — orchestrator should finish
+                gen.send(None)
         except StopIteration as exc:
             return exc.value  # type: ignore[return-value]
-
-    # If we broke out of the loop, the generator should finish
-    try:
-        gen.send(None)
-    except StopIteration as exc:
-        return exc.value  # type: ignore[return-value]
 
     msg = "Expected StopIteration"  # pragma: no cover
     raise RuntimeError(msg)  # pragma: no cover
@@ -190,7 +186,7 @@ def _sample_blob_event() -> dict[str, str | int]:
 
 
 class TestOrchestratorFunction:
-    """Verify the orchestrator across all five phases."""
+    """Verify the orchestrator across all pipeline phases."""
 
     def test_returns_completed_status(self) -> None:
         """Orchestrator returns 'completed' when all polls ready and downloads succeed."""
@@ -432,6 +428,72 @@ class TestOrchestratorFunction:
             download_results=dl_results,
         )
         assert result["download_results"] == dl_results
+
+    def test_download_failure_captured_not_fatal(self) -> None:
+        """If a download_imagery call raises, the error is captured in results."""
+        context = _make_context(_sample_blob_event())
+
+        gen = orchestrator_function(context)
+        next(gen)  # parse_kml
+        features: list[dict[str, object]] = [{"name": "f1"}]
+        aois: list[dict[str, object]] = [{"feature_name": "a1"}]
+        gen.send(features)  # prepare_aoi fan-out
+        gen.send(aois)  # write_metadata fan-out
+        gen.send([{"metadata_path": "p"}])  # acquire_imagery fan-out
+        gen.send(
+            [
+                {
+                    "order_id": "pc-scene-0",
+                    "scene_id": "scene-0",
+                    "provider": "planetary_computer",
+                    "aoi_feature_name": "a1",
+                }
+            ]
+        )  # first poll_order
+        # Send terminal-ready poll result → orchestrator enters download
+        try:
+            gen.send(
+                {
+                    "state": "ready",
+                    "is_terminal": True,
+                    "order_id": "pc-scene-0",
+                    "message": "",
+                    "progress_pct": 100.0,
+                }
+            )
+        except StopIteration:
+            raise AssertionError("Expected download yield")  # noqa: B904
+
+        # Download yield — throw an exception to simulate failure
+        try:
+            gen.throw(RuntimeError("Download exploded"))
+        except StopIteration as exc:
+            result: dict[str, object] = exc.value
+        else:
+            raise AssertionError("Expected StopIteration after download failure")
+
+        assert result["status"] == "partial_imagery"
+        assert result["downloads_completed"] == 1  # captured failure counted
+        dl = result["download_results"]
+        assert isinstance(dl, list)
+        assert len(dl) == 1
+        assert dl[0]["state"] == "failed"
+        assert "Download exploded" in str(dl[0]["error"])
+
+    def test_orchard_name_from_blob_filename(self) -> None:
+        """Orchestrator derives orchard_name from blob_name stem."""
+        context = _make_context(_sample_blob_event())
+        _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+        )
+        dl_calls = [
+            c for c in context.call_activity.call_args_list if c[0][0] == "download_imagery"
+        ]
+        assert len(dl_calls) == 1
+        # blob_name="orchard.kml" → stem="orchard"
+        assert dl_calls[0][0][1]["orchard_name"] == "orchard"
 
 
 # ===========================================================================
