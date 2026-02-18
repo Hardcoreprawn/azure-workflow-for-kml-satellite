@@ -194,6 +194,71 @@ def orchestrator_function(
         )
 
     # -----------------------------------------------------------------------
+    # Phase 6: Download imagery for ready orders (M-2.4, FR-3.10, FR-4.2)
+    # -----------------------------------------------------------------------
+    ready_outcomes = [o for o in imagery_outcomes if o.get("state") == "ready"]
+
+    # Derive orchard_name from the source KML filename stem
+    # (same heuristic as metadata — see models.metadata._extract_orchard_name)
+    _blob_name_str = str(blob_name)
+    if "." in _blob_name_str:
+        from pathlib import PurePosixPath
+
+        orchard_name = PurePosixPath(_blob_name_str).stem
+    else:
+        orchard_name = _blob_name_str if _blob_name_str != "<unknown>" else ""
+
+    # Sequential downloads with per-order error handling so a single
+    # failure doesn't abort the entire orchestration (PID 7.4.2).
+    download_results: list[dict[str, Any]] = []
+    for outcome in ready_outcomes:
+        try:
+            result = yield context.call_activity(
+                "download_imagery",
+                {
+                    "imagery_outcome": outcome,
+                    "provider_name": provider_name,
+                    "provider_config": provider_config_raw,
+                    "orchard_name": orchard_name,
+                    "timestamp": timestamp,
+                },
+            )
+            if isinstance(result, dict):
+                download_results.append(result)
+            else:
+                download_results.append(
+                    {
+                        "state": "unknown",
+                        "imagery_outcome": outcome,
+                        "result": result,
+                    }
+                )
+        except Exception as exc:
+            if not context.is_replaying:
+                logger.exception(
+                    "Download failed for outcome | instance=%s | blob=%s | error=%s",
+                    instance_id,
+                    blob_name,
+                    exc,
+                )
+            download_results.append(
+                {
+                    "state": "failed",
+                    "imagery_outcome": outcome,
+                    "error": str(exc),
+                }
+            )
+
+    if not context.is_replaying:
+        logger.info(
+            "Downloads complete | instance=%s | downloaded=%d/%d | blob=%s",
+            instance_id,
+            len(download_results),
+            len(ready_outcomes),
+            blob_name,
+        )
+
+    # -----------------------------------------------------------------------
     # Result summary
     # -----------------------------------------------------------------------
     feature_count = len(features) if isinstance(features, list) else 0
@@ -201,8 +266,15 @@ def orchestrator_function(
     metadata_count = len(metadata_results) if isinstance(metadata_results, list) else 0
     imagery_ready = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
     imagery_failed = len(imagery_outcomes) - imagery_ready
+    downloads_completed = len(download_results)
+    downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
+    downloads_succeeded = downloads_completed - downloads_failed
 
-    status_label = "imagery_acquired" if imagery_failed == 0 else "partial_imagery"
+    status_label = (
+        "completed"
+        if imagery_failed == 0 and downloads_failed == 0 and downloads_succeeded == imagery_ready
+        else "partial_imagery"
+    )
     result: dict[str, object] = {
         "status": status_label,
         "instance_id": instance_id,
@@ -213,12 +285,15 @@ def orchestrator_function(
         "metadata_count": metadata_count,
         "imagery_ready": imagery_ready,
         "imagery_failed": imagery_failed,
+        "downloads_completed": downloads_completed,
         "imagery_outcomes": imagery_outcomes,
+        "download_results": download_results,
         "message": (
             f"Parsed {feature_count} feature(s), "
             f"prepared {aoi_count} AOI(s), "
             f"wrote {metadata_count} metadata record(s), "
-            f"imagery ready={imagery_ready} failed={imagery_failed}."
+            f"imagery ready={imagery_ready} failed={imagery_failed}, "
+            f"downloaded={downloads_completed}."
         ),
     }
 
