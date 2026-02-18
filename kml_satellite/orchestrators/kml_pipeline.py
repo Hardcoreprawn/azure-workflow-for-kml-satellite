@@ -194,6 +194,41 @@ def orchestrator_function(
         )
 
     # -----------------------------------------------------------------------
+    # Phase 6: Download imagery for ready orders (M-2.4, FR-3.10, FR-4.2)
+    # -----------------------------------------------------------------------
+    ready_outcomes = [o for o in imagery_outcomes if o.get("state") == "ready"]
+    orchard_name = str(blob_event.get("orchard_name", ""))
+
+    download_tasks = [
+        context.call_activity(
+            "download_imagery",
+            {
+                "imagery_outcome": outcome,
+                "provider_name": provider_name,
+                "provider_config": provider_config_raw,
+                "orchard_name": orchard_name,
+                "timestamp": timestamp,
+            },
+        )
+        for outcome in ready_outcomes
+    ]
+
+    download_results: list[dict[str, Any]] = []
+    if download_tasks:
+        download_results = yield context.task_all(download_tasks)
+        if not isinstance(download_results, list):
+            download_results = [download_results]
+
+    if not context.is_replaying:
+        logger.info(
+            "Downloads complete | instance=%s | downloaded=%d/%d | blob=%s",
+            instance_id,
+            len(download_results),
+            len(ready_outcomes),
+            blob_name,
+        )
+
+    # -----------------------------------------------------------------------
     # Result summary
     # -----------------------------------------------------------------------
     feature_count = len(features) if isinstance(features, list) else 0
@@ -201,8 +236,13 @@ def orchestrator_function(
     metadata_count = len(metadata_results) if isinstance(metadata_results, list) else 0
     imagery_ready = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
     imagery_failed = len(imagery_outcomes) - imagery_ready
+    downloads_completed = len(download_results)
 
-    status_label = "imagery_acquired" if imagery_failed == 0 else "partial_imagery"
+    status_label = (
+        "completed"
+        if imagery_failed == 0 and downloads_completed == imagery_ready
+        else "partial_imagery"
+    )
     result: dict[str, object] = {
         "status": status_label,
         "instance_id": instance_id,
@@ -213,12 +253,15 @@ def orchestrator_function(
         "metadata_count": metadata_count,
         "imagery_ready": imagery_ready,
         "imagery_failed": imagery_failed,
+        "downloads_completed": downloads_completed,
         "imagery_outcomes": imagery_outcomes,
+        "download_results": download_results,
         "message": (
             f"Parsed {feature_count} feature(s), "
             f"prepared {aoi_count} AOI(s), "
             f"wrote {metadata_count} metadata record(s), "
-            f"imagery ready={imagery_ready} failed={imagery_failed}."
+            f"imagery ready={imagery_ready} failed={imagery_failed}, "
+            f"downloaded={downloads_completed}."
         ),
     }
 

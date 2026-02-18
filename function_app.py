@@ -331,7 +331,7 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
     return result
 
 
-# TODO (Issue #8-#12): imagery acquisition activities
+# TODO (Issue #13-#19): clipping, compositing, and delivery activities
 
 
 @app.function_name("acquire_imagery")
@@ -426,6 +426,69 @@ def poll_order_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
         "poll_order activity completed | order_id=%s | state=%s",
         result.get("order_id", ""),
         result.get("state", ""),
+    )
+
+    return result
+
+
+@app.function_name("download_imagery")
+@app.activity_trigger(input_name="activityInput")
+def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: download GeoTIFF and store in Blob Storage.
+
+    Input:
+        JSON string (or dict when replaying) containing:
+        - ``imagery_outcome``: Dict from the polling phase with
+          ``order_id``, ``scene_id``, ``provider``, ``aoi_feature_name``.
+        - ``provider_name``: Imagery provider name (default ``"planetary_computer"``).
+        - ``provider_config``: Optional provider configuration overrides.
+        - ``orchard_name``: Orchard/project name for blob path generation.
+        - ``timestamp``: Processing timestamp (ISO 8601).
+
+    Returns:
+        Dict with ``order_id``, ``blob_path``, ``size_bytes``,
+        ``download_duration_seconds``, and ``retry_count``.
+
+    Raises:
+        DownloadError: If download fails after retries or validation fails.
+    """
+    import json
+
+    from kml_satellite.activities.download_imagery import download_imagery
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    imagery_outcome = payload.get("imagery_outcome", payload)
+    if not isinstance(imagery_outcome, dict):
+        msg = "download_imagery activity: imagery_outcome must be a dict"
+        raise TypeError(msg)
+
+    provider_name = str(payload.get("provider_name", "planetary_computer"))
+    provider_config = payload.get("provider_config")
+    orchard_name = str(payload.get("orchard_name", ""))
+    timestamp = str(payload.get("timestamp", ""))
+
+    logger.info(
+        "download_imagery activity started | order_id=%s | feature=%s",
+        imagery_outcome.get("order_id", ""),
+        imagery_outcome.get("aoi_feature_name", ""),
+    )
+
+    result = download_imagery(
+        imagery_outcome,
+        provider_name=provider_name,
+        provider_config=provider_config,  # type: ignore[arg-type]
+        orchard_name=orchard_name,
+        timestamp=timestamp,
+    )
+
+    logger.info(
+        "download_imagery activity completed | order_id=%s | blob_path=%s | size=%s bytes",
+        result.get("order_id", ""),
+        result.get("blob_path", ""),
+        result.get("size_bytes", 0),
     )
 
     return result

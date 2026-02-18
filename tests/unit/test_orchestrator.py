@@ -14,9 +14,12 @@ Current phases:
 3. write_metadata — fan-out via task_all
 4. acquire_imagery — fan-out via task_all
 5. poll_order — timer-based polling loop per order
+6. download_imagery — fan-out via task_all for ready orders
 
 References:
     PID FR-3.9  (poll until completion with timeout)
+    PID FR-3.10 (download imagery upon completion)
+    PID FR-4.2  (store raw imagery under /imagery/raw/)
     PID FR-5.3  (Durable Functions for long-running workflows)
     PID FR-6.4  (exponential backoff)
     PID Section 7.2 (Fan-Out / Fan-In pattern)
@@ -61,8 +64,9 @@ def _run_orchestrator(
     metadata_results: list[dict[str, object]] | None = None,
     acquisition_results: list[dict[str, object]] | None = None,
     poll_results: list[dict[str, object]] | None = None,
+    download_results: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """Drive the five-phase generator orchestrator to completion.
+    """Drive the six-phase generator orchestrator to completion.
 
     Args:
         context: Mock DurableOrchestrationContext.
@@ -73,6 +77,8 @@ def _run_orchestrator(
         poll_results: Simulated returns of ``poll_order`` activity calls
             (one per acquisition).  Each should have ``is_terminal: True``
             so the loop exits after one poll.
+        download_results: Simulated return of ``download_imagery`` fan-out.
+            Defaults to one download result per ready poll outcome.
 
     Returns:
         The final result dict returned by the orchestrator.
@@ -107,6 +113,20 @@ def _run_orchestrator(
             for a in acquisition_results
         ]
 
+    # Count how many polls are "ready" to determine download fan-out size
+    ready_count = sum(1 for p in poll_results if p.get("state") == "ready")
+    if download_results is None:
+        download_results = [
+            {
+                "order_id": f"pc-scene-{i}",
+                "blob_path": f"imagery/raw/2026/02/test/aoi-{i}.tif",
+                "size_bytes": 1024,
+                "download_duration_seconds": 0.5,
+                "retry_count": 0,
+            }
+            for i in range(ready_count)
+        ]
+
     gen = orchestrator_function(context)
     next(gen)  # → yield parse_kml
     gen.send(features)  # → yield task_all(prepare_aoi)
@@ -120,7 +140,8 @@ def _run_orchestrator(
     #   3. If not terminal → create_timer → then poll again
     # With default poll_results (all terminal), each result → next acq.
     # When acquisition_results is empty, no polling happens and the
-    # generator returns immediately (StopIteration).
+    # generator returns immediately (StopIteration) — but only if there
+    # are also no download tasks.
     try:
         gen.send(acquisition_results)  # → first poll_order yield
     except StopIteration as exc:
@@ -133,9 +154,21 @@ def _run_orchestrator(
                 gen.send(poll_results[poll_idx])
                 poll_idx += 1
             else:
-                gen.send(None)
+                # After all polls, if there are ready orders, send download results
+                gen.send(download_results)
+                # If send didn't raise StopIteration, continue
+                break
         except StopIteration as exc:
             return exc.value  # type: ignore[return-value]
+
+    # If we broke out of the loop, the generator should finish
+    try:
+        gen.send(None)
+    except StopIteration as exc:
+        return exc.value  # type: ignore[return-value]
+
+    msg = "Expected StopIteration"  # pragma: no cover
+    raise RuntimeError(msg)  # pragma: no cover
 
 
 def _sample_blob_event() -> dict[str, str | int]:
@@ -159,15 +192,15 @@ def _sample_blob_event() -> dict[str, str | int]:
 class TestOrchestratorFunction:
     """Verify the orchestrator across all five phases."""
 
-    def test_returns_imagery_acquired_status(self) -> None:
-        """Orchestrator returns 'imagery_acquired' when all polls ready."""
+    def test_returns_completed_status(self) -> None:
+        """Orchestrator returns 'completed' when all polls ready and downloads succeed."""
         context = _make_context(_sample_blob_event())
         result = _run_orchestrator(
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
         )
-        assert result["status"] == "imagery_acquired"
+        assert result["status"] == "completed"
 
     def test_includes_instance_id(self) -> None:
         """Result includes the orchestration instance ID."""
@@ -206,7 +239,7 @@ class TestOrchestratorFunction:
         """During replay (is_replaying=True), orchestrator still works."""
         context = _make_context(_sample_blob_event(), is_replaying=True)
         result = _run_orchestrator(context)
-        assert result["status"] == "imagery_acquired"
+        assert result["status"] == "completed"
 
     def test_calls_parse_kml_activity(self) -> None:
         """Orchestrator calls parse_kml activity with the blob event."""
@@ -218,9 +251,17 @@ class TestOrchestratorFunction:
     def test_feature_count_in_result(self) -> None:
         """Result includes counts of features, AOIs, and metadata records."""
         context = _make_context(_sample_blob_event())
-        feats = [{"name": "f1"}, {"name": "f2"}, {"name": "f3"}]
-        aois = [{"feature_name": "a1"}, {"feature_name": "a2"}, {"feature_name": "a3"}]
-        meta = [{"metadata_path": "p1"}, {"metadata_path": "p2"}, {"metadata_path": "p3"}]
+        feats: list[dict[str, object]] = [{"name": "f1"}, {"name": "f2"}, {"name": "f3"}]
+        aois: list[dict[str, object]] = [
+            {"feature_name": "a1"},
+            {"feature_name": "a2"},
+            {"feature_name": "a3"},
+        ]
+        meta: list[dict[str, object]] = [
+            {"metadata_path": "p1"},
+            {"metadata_path": "p2"},
+            {"metadata_path": "p3"},
+        ]
         result = _run_orchestrator(context, features=feats, aois=aois, metadata_results=meta)
         assert result["feature_count"] == 3
         assert result["aoi_count"] == 3
@@ -236,17 +277,20 @@ class TestOrchestratorFunction:
         )
         assert result["imagery_ready"] == 2
         assert result["imagery_failed"] == 0
+        assert result["downloads_completed"] == 2
 
     def test_message_includes_imagery_counts(self) -> None:
-        """Result message mentions imagery ready/failed counts."""
+        """Result message mentions imagery ready/failed/downloaded counts."""
         context = _make_context(_sample_blob_event())
         result = _run_orchestrator(
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
         )
-        assert "imagery ready=1" in result["message"]
-        assert "failed=0" in result["message"]
+        msg = str(result["message"])
+        assert "imagery ready=1" in msg
+        assert "failed=0" in msg
+        assert "downloaded=1" in msg
 
     def test_message_includes_metadata_count(self) -> None:
         """Result message mentions metadata records."""
@@ -257,7 +301,7 @@ class TestOrchestratorFunction:
             aois=[{"feature_name": "a1"}, {"feature_name": "a2"}],
             metadata_results=[{"p": 1}, {"p": 2}],
         )
-        assert "2 metadata record(s)" in result["message"]
+        assert "2 metadata record(s)" in str(result["message"])
 
     def test_calls_acquire_imagery_per_aoi(self) -> None:
         """Orchestrator calls acquire_imagery for each AOI."""
@@ -314,10 +358,12 @@ class TestOrchestratorFunction:
                     "progress_pct": 0.0,
                 }
             ],
+            download_results=[],
         )
         assert result["status"] == "partial_imagery"
         assert result["imagery_failed"] == 1
         assert result["imagery_ready"] == 0
+        assert result["downloads_completed"] == 0
 
     def test_metadata_count_in_result(self) -> None:
         """metadata_count reflects the number of metadata records written."""
@@ -329,6 +375,63 @@ class TestOrchestratorFunction:
             metadata_results=[{"metadata_path": "metadata/test.json"}],
         )
         assert result["metadata_count"] == 1
+
+    def test_calls_download_imagery_per_ready_order(self) -> None:
+        """Orchestrator calls download_imagery for each ready order."""
+        context = _make_context(_sample_blob_event())
+        _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+        )
+        dl_calls = [
+            c for c in context.call_activity.call_args_list if c[0][0] == "download_imagery"
+        ]
+        assert len(dl_calls) == 1
+        payload = dl_calls[0][0][1]
+        assert "imagery_outcome" in payload
+
+    def test_no_download_when_all_failed(self) -> None:
+        """No download_imagery calls when all polls fail."""
+        context = _make_context(_sample_blob_event())
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+            poll_results=[
+                {
+                    "state": "failed",
+                    "is_terminal": True,
+                    "order_id": "pc-scene-0",
+                    "message": "Rejected",
+                    "progress_pct": 0.0,
+                }
+            ],
+            download_results=[],
+        )
+        dl_calls = [
+            c for c in context.call_activity.call_args_list if c[0][0] == "download_imagery"
+        ]
+        assert len(dl_calls) == 0
+        assert result["downloads_completed"] == 0
+
+    def test_download_results_in_output(self) -> None:
+        """Result includes download_results list."""
+        context = _make_context(_sample_blob_event())
+        dl_results = [
+            {
+                "order_id": "pc-scene-0",
+                "blob_path": "imagery/raw/2026/02/test/a1.tif",
+                "size_bytes": 2048,
+            }
+        ]
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}],
+            aois=[{"feature_name": "a1"}],
+            download_results=dl_results,
+        )
+        assert result["download_results"] == dl_results
 
 
 # ===========================================================================
@@ -371,7 +474,7 @@ class TestPollUntilReady:
             except StopIteration as exc:
                 return exc.value  # type: ignore[return-value]
 
-    def _make_acq(self, order_id: str = "pc-SCENE") -> dict[str, str]:
+    def _make_acq(self, order_id: str = "pc-SCENE") -> dict[str, object]:
         return {
             "order_id": order_id,
             "scene_id": "SCENE",
@@ -482,7 +585,7 @@ class TestPollUntilReady:
             retry_base=5,
         )
         assert result["state"] == "failed"
-        assert "retries exhausted" in result["error"]
+        assert "retries exhausted" in str(result["error"])
 
     def test_timeout(self) -> None:
         """Polling past deadline → acquisition_timeout."""
@@ -527,7 +630,7 @@ class TestPollUntilReady:
             poll_timeout=60,
         )
         assert result["state"] == "acquisition_timeout"
-        assert "timed out" in result["error"]
+        assert "timed out" in str(result["error"])
 
     def test_creates_timer_between_polls(self) -> None:
         """Timer is created between non-terminal polls."""
