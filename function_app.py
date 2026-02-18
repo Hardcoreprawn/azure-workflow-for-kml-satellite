@@ -332,3 +332,100 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
 
 
 # TODO (Issue #8-#12): imagery acquisition activities
+
+
+@app.function_name("acquire_imagery")
+@app.activity_trigger(input_name="activityInput")
+def acquire_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: search for imagery and submit an order.
+
+    Input:
+        JSON string (or dict when replaying) containing:
+        - ``aoi``: Serialised AOI dict from the prepare_aoi activity.
+        - ``provider_name``: Imagery provider name (default ``"planetary_computer"``).
+        - ``provider_config``: Optional provider configuration overrides.
+        - ``imagery_filters``: Optional imagery filter overrides.
+
+    Returns:
+        Dict with ``order_id``, ``scene_id``, ``provider``, and scene metadata.
+
+    Raises:
+        ImageryAcquisitionError: If search or order fails.
+    """
+    import json
+
+    from kml_satellite.activities.acquire_imagery import acquire_imagery
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    aoi_data = payload.get("aoi", payload)
+    if not isinstance(aoi_data, dict):
+        msg = "acquire_imagery activity: aoi data must be a dict"
+        raise TypeError(msg)
+
+    provider_name = str(payload.get("provider_name", "planetary_computer"))
+    provider_config = payload.get("provider_config")
+    imagery_filters = payload.get("imagery_filters")
+
+    logger.info(
+        "acquire_imagery activity started | provider=%s",
+        provider_name,
+    )
+
+    result = acquire_imagery(
+        aoi_data,
+        provider_name=provider_name,
+        provider_config=provider_config,  # type: ignore[arg-type]
+        filters_dict=imagery_filters,  # type: ignore[arg-type]
+    )
+
+    logger.info(
+        "acquire_imagery activity completed | order_id=%s | scene=%s",
+        result.get("order_id", ""),
+        result.get("scene_id", ""),
+    )
+
+    return result
+
+
+@app.function_name("poll_order")
+@app.activity_trigger(input_name="activityInput")
+def poll_order_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: poll the status of an imagery order.
+
+    Input:
+        JSON string (or dict when replaying) containing:
+        - ``order_id``: The order identifier to poll.
+        - ``provider``: The imagery provider name.
+
+    Returns:
+        Dict with ``order_id``, ``state``, ``message``, ``progress_pct``,
+        and ``is_terminal``.
+
+    Raises:
+        PollError: If polling fails.
+    """
+    import json
+
+    from kml_satellite.activities.poll_order import poll_order
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    logger.info(
+        "poll_order activity started | order_id=%s",
+        payload.get("order_id", ""),
+    )
+
+    result = poll_order(payload)
+
+    logger.info(
+        "poll_order activity completed | order_id=%s | state=%s",
+        result.get("order_id", ""),
+        result.get("state", ""),
+    )
+
+    return result
