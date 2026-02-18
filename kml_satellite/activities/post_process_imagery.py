@@ -28,9 +28,11 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
@@ -244,6 +246,7 @@ def _process_raster(
     clip_error = ""
     output_path = source_blob_path
     output_size_bytes = 0
+    reprojected_temp_path = ""
 
     try:
         source_crs = _get_raster_crs(source_blob_path, rasterio)
@@ -257,6 +260,7 @@ def _process_raster(
                 rasterio,
                 order_id=order_id,
             )
+            reprojected_temp_path = working_path
             reprojected = True
             logger.info(
                 "Reprojected | order=%s | %s → %s",
@@ -279,18 +283,25 @@ def _process_raster(
                 )
                 clipped = True
             except Exception as exc:
-                # Graceful degradation (PID 7.4.2): clipping failed,
-                # preserve the raw/reprojected image and flag.
+                # Graceful degradation (PID 7.4.2): clipping failed.
+                # Always fall back to the original source blob path so callers
+                # receive a stable, upload-safe location.
                 clip_error = str(exc)
-                output_path = working_path
+                output_path = source_blob_path
                 logger.warning(
-                    "Clip failed (graceful degradation) | order=%s | feature=%s | error=%s",
+                    "Clip failed (graceful degradation) | order=%s | feature=%s "
+                    "| error=%s | returned_path=%s",
                     order_id,
                     feature_name,
                     exc,
+                    output_path,
                 )
         else:
             output_path = working_path
+            # Populate size when reprojection-only (no clipping)
+            if reprojected and working_path != source_blob_path:
+                with contextlib.suppress(OSError):
+                    output_size_bytes = Path(working_path).stat().st_size
 
     except Exception as exc:
         # Fatal raster processing error — graceful degradation
@@ -300,6 +311,18 @@ def _process_raster(
             order_id,
             exc,
         )
+    finally:
+        # Clean up temporary reprojected file if it's not the final output
+        if reprojected_temp_path and reprojected_temp_path != output_path:
+            try:
+                Path(reprojected_temp_path).unlink()
+                logger.debug(
+                    "Removed temporary reprojected file | order=%s | path=%s",
+                    order_id,
+                    reprojected_temp_path,
+                )
+            except OSError:
+                pass  # Best-effort cleanup
 
     return {
         "clipped": clipped,
@@ -374,7 +397,10 @@ def _reproject_raster(
             )
 
             # Write reprojected output alongside source
-            reprojected_path = source_path.replace(".tif", "_reprojected.tif")
+            source = Path(source_path)
+            reprojected_path = str(
+                source.with_stem(source.stem + "_reprojected").with_suffix(".tif")
+            )
             with rasterio.open(reprojected_path, "w", **dst_profile) as dst:
                 for band_idx in range(1, src.count + 1):
                     reproject(
