@@ -39,7 +39,7 @@ def _make_context(
     return ctx
 
 
-def _sample_blob_event() -> dict[str, str | int]:
+def _sample_blob_event() -> dict[str, Any]:
     return {
         "blob_url": "https://stkmlsatdev.blob.core.windows.net/kml-input/orchard.kml",
         "container_name": "kml-input",
@@ -185,7 +185,7 @@ class TestAcquisitionPhase:
         *,
         acquisition_results: list[dict[str, object]] | None = None,
         poll_results: list[dict[str, object]] | None = None,
-        blob_event: dict[str, object] | None = None,
+        blob_event: dict[str, Any] | None = None,
     ) -> AcquisitionResult:
         if blob_event is None:
             blob_event = _sample_blob_event()
@@ -294,6 +294,8 @@ class TestFulfillmentPhase:
         *,
         download_results: list[dict[str, Any]] | None = None,
         post_process_results: list[dict[str, Any]] | None = None,
+        instance_id: str = "",
+        blob_name: str = "orchard.kml",
     ) -> FulfillmentResult:
         if download_results is None:
             download_results = [
@@ -325,8 +327,8 @@ class TestFulfillmentPhase:
             provider_config=None,
             orchard_name="test-orchard",
             timestamp="2026-02-17T12:00:00+00:00",
-            instance_id=context.instance_id,
-            blob_name="orchard.kml",
+            instance_id=instance_id or context.instance_id,
+            blob_name=blob_name,
         )
 
         dl_idx = 0
