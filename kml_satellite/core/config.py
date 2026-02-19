@@ -33,8 +33,10 @@ class ConfigValidationError(PipelineError):
     def __init__(self, key: str, value: object, message: str) -> None:
         self.key = key
         self.value = value
-        self.message = message
-        super().__init__(f"Invalid configuration {key}={value!r}: {message}")
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return f"Invalid configuration {self.key}={self.value!r}: {self.message}"
 
 
 @dataclass(frozen=True, slots=True)

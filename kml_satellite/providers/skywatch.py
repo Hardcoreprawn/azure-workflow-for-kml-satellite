@@ -62,7 +62,8 @@ class SkyWatchAdapter(ImageryProvider):
     failures at runtime (PID 7.4.2 — fail loudly, fail safely).
     """
 
-    def __init__(self, config: ProviderConfig) -> None:  # noqa: ARG002
+    def __init__(self, config: ProviderConfig) -> None:
+        super().__init__(config)
         raise SkyWatchNotImplementedError
 
     def search(

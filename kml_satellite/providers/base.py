@@ -172,13 +172,14 @@ class ProviderError(PipelineError):
     ) -> None:
         self.provider = provider
         super().__init__(
-            f"[{provider}] {message}",
+            message,
             retryable=retryable,
             code=self.default_code,
             stage=self.default_stage,
         )
-        # Preserve the un-prefixed message for attribute access.
-        self.message = message
+
+    def __str__(self) -> str:
+        return f"[{self.provider}] {self.message}"
 
 
 class ProviderAuthError(ProviderError):
