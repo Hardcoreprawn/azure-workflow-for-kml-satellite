@@ -151,6 +151,7 @@ class TestContractErrorAttributes:
         with pytest.raises(ContractError) as exc_info:
             validate_payload({}, PollOrderInput, activity="poll_order")
         d = exc_info.value.to_error_dict()
-        assert "order_id" in d["message"]
-        assert "provider" in d["message"]
+        msg = str(d["message"])
+        assert "order_id" in msg
+        assert "provider" in msg
         assert d["stage"] == "poll_order"
