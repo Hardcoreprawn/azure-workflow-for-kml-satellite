@@ -17,6 +17,15 @@ import azure.functions as func
 
 from kml_satellite.core.constants import INPUT_CONTAINER
 from kml_satellite.models.blob_event import BlobEvent
+from kml_satellite.models.payloads import (
+    AcquireImageryInput,
+    DownloadImageryInput,
+    ParseKmlInput,
+    PollOrderInput,
+    PostProcessImageryInput,
+    WriteMetadataInput,
+    validate_payload,
+)
 
 app = func.FunctionApp()
 
@@ -177,17 +186,11 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
 
+    validate_payload(payload, ParseKmlInput, activity="parse_kml")
+
     container_name = str(payload.get("container_name", ""))
     blob_name = str(payload.get("blob_name", ""))
     correlation_id = str(payload.get("correlation_id", ""))
-
-    # Validate required fields before calling SDK (PID 7.4.1)
-    if not container_name:
-        msg = "parse_kml activity: container_name is missing from payload"
-        raise ValueError(msg)
-    if not blob_name:
-        msg = "parse_kml activity: blob_name is missing from payload"
-        raise ValueError(msg)
 
     logger.info(
         "parse_kml activity started | blob=%s | correlation_id=%s",
@@ -294,6 +297,8 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
 
+    validate_payload(payload, WriteMetadataInput, activity="write_metadata")
+
     aoi_data = payload.get("aoi", payload)
     if not isinstance(aoi_data, dict):
         msg = "write_metadata activity: aoi data must be a dict"
@@ -360,6 +365,8 @@ def acquire_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa: 
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
 
+    validate_payload(payload, AcquireImageryInput, activity="acquire_imagery")
+
     aoi_data = payload.get("aoi", payload)
     if not isinstance(aoi_data, dict):
         msg = "acquire_imagery activity: aoi data must be a dict"
@@ -415,6 +422,8 @@ def poll_order_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
 
+    validate_payload(payload, PollOrderInput, activity="poll_order")
+
     logger.info(
         "poll_order activity started | order_id=%s",
         payload.get("order_id", ""),
@@ -459,6 +468,8 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
     payload: dict[str, object] = (
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
+
+    validate_payload(payload, DownloadImageryInput, activity="download_imagery")
 
     imagery_outcome = payload.get("imagery_outcome", payload)
     if not isinstance(imagery_outcome, dict):
@@ -524,6 +535,8 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
     payload: dict[str, object] = (
         json.loads(activityInput) if isinstance(activityInput, str) else activityInput
     )  # type: ignore[assignment]
+
+    validate_payload(payload, PostProcessImageryInput, activity="post_process_imagery")
 
     download_result = payload.get("download_result", payload)
     if not isinstance(download_result, dict):
