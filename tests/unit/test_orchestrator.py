@@ -192,9 +192,6 @@ def _run_orchestrator(
         except StopIteration as exc:
             return exc.value  # type: ignore[return-value]
 
-    msg = "Expected StopIteration"  # pragma: no cover
-    raise RuntimeError(msg)  # pragma: no cover
-
 
 def _sample_blob_event() -> dict[str, str | int]:
     """Return a sample BlobEvent dict."""
