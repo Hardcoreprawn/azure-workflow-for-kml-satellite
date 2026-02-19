@@ -202,10 +202,9 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
         raise ValueError(msg)
     blob_service = BlobServiceClient.from_connection_string(connection_string)
     blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
-    blob_data = blob_client.download_blob().readall()
 
     with tempfile.NamedTemporaryFile(suffix=".kml", delete=False) as tmp:
-        tmp.write(blob_data)
+        blob_client.download_blob().readinto(tmp)
         tmp_path = Path(tmp.name)
 
     try:
