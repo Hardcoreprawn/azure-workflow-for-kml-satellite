@@ -184,7 +184,7 @@ class TestAcquisitionPhase:
         aois: list[dict[str, Any]],
         *,
         acquisition_results: list[dict[str, object]] | None = None,
-        poll_results: list[dict[str, object]] | None = None,
+        poll_outcomes: list[dict[str, object]] | None = None,
         blob_event: dict[str, Any] | None = None,
     ) -> AcquisitionResult:
         if blob_event is None:
@@ -199,14 +199,17 @@ class TestAcquisitionPhase:
                 }
                 for i in range(len(aois))
             ]
-        if poll_results is None:
-            poll_results = [
+        if poll_outcomes is None:
+            poll_outcomes = [
                 {
                     "state": "ready",
-                    "is_terminal": True,
                     "order_id": a["order_id"],
-                    "message": "",
-                    "progress_pct": 100.0,
+                    "scene_id": str(a.get("scene_id", "")),
+                    "provider": str(a.get("provider", "")),
+                    "aoi_feature_name": str(a.get("aoi_feature_name", "")),
+                    "poll_count": 1,
+                    "elapsed_seconds": 0.0,
+                    "error": "",
                 }
                 for a in acquisition_results
             ]
@@ -219,22 +222,13 @@ class TestAcquisitionPhase:
             blob_name=str(blob_event.get("blob_name", "")),
         )
         next(gen)  # yield task_all(acquire_imagery)
-
+        gen.send(acquisition_results)  # yield task_all(sub-orchestrator polls)
         try:
-            gen.send(acquisition_results)  # first poll_order yield
+            gen.send(poll_outcomes)
         except StopIteration as exc:
             return exc.value  # type: ignore[return-value]
-
-        poll_idx = 0
-        while True:
-            try:
-                if poll_idx < len(poll_results):
-                    gen.send(poll_results[poll_idx])
-                    poll_idx += 1
-                else:
-                    gen.send(None)
-            except StopIteration as exc:
-                return exc.value  # type: ignore[return-value]
+        msg = "Expected StopIteration"
+        raise RuntimeError(msg)
 
     def test_all_ready(self) -> None:
         ctx = _make_context()
@@ -247,13 +241,11 @@ class TestAcquisitionPhase:
         result = self._run_acquisition(
             ctx,
             [{"feature_name": "a1"}],
-            poll_results=[
+            poll_outcomes=[
                 {
                     "state": "failed",
-                    "is_terminal": True,
                     "order_id": "pc-scene-0",
-                    "message": "Rejected",
-                    "progress_pct": 0.0,
+                    "error": "Rejected",
                 }
             ],
         )
@@ -277,6 +269,13 @@ class TestAcquisitionPhase:
         acq_calls = [c for c in ctx.call_activity.call_args_list if c[0][0] == "acquire_imagery"]
         assert len(acq_calls) == 2
 
+    def test_calls_sub_orchestrator_per_acquisition(self) -> None:
+        ctx = _make_context()
+        self._run_acquisition(ctx, [{"feature_name": "a1"}])
+        sub_calls = ctx.call_sub_orchestrator.call_args_list
+        assert len(sub_calls) == 1
+        assert sub_calls[0][0][0] == "poll_order_suborchestrator"
+
 
 # ===================================================================
 # Fulfillment phase tests
@@ -284,7 +283,7 @@ class TestAcquisitionPhase:
 
 
 class TestFulfillmentPhase:
-    """Tests for run_fulfillment_phase generator."""
+    """Tests for run_fulfillment_phase generator (parallel batches)."""
 
     def _run_fulfillment(
         self,
@@ -331,25 +330,35 @@ class TestFulfillmentPhase:
             blob_name=blob_name,
         )
 
-        dl_idx = 0
-        pp_idx = 0
+        # No ready outcomes → no yields at all
+        if not ready_outcomes:
+            try:
+                next(gen)
+            except StopIteration as exc:
+                return exc.value  # type: ignore[return-value]
+
+        # First yield: task_all(download batch)
         try:
-            next(gen)  # first download yield
+            next(gen)
         except StopIteration as exc:
             return exc.value  # type: ignore[return-value]
 
-        while True:
+        # Send download results as a batch list
+        if not successful_downloads:
             try:
-                if dl_idx < len(download_results):
-                    gen.send(download_results[dl_idx])
-                    dl_idx += 1
-                elif pp_idx < len(post_process_results):
-                    gen.send(post_process_results[pp_idx])
-                    pp_idx += 1
-                else:
-                    gen.send(None)
+                gen.send(download_results)
             except StopIteration as exc:
                 return exc.value  # type: ignore[return-value]
+        else:
+            gen.send(download_results)
+            # Send post-process results as a batch list
+            try:
+                gen.send(post_process_results)
+            except StopIteration as exc:
+                return exc.value  # type: ignore[return-value]
+
+        msg = "Expected StopIteration"
+        raise RuntimeError(msg)
 
     def test_all_successful(self) -> None:
         ctx = _make_context()
@@ -378,7 +387,7 @@ class TestFulfillmentPhase:
             orchard_name="test",
             timestamp="2026-02-17T12:00:00+00:00",
         )
-        next(gen)  # download yield
+        next(gen)  # download batch yield
         try:
             gen.throw(RuntimeError("Download failed"))
         except StopIteration as exc:
@@ -417,7 +426,7 @@ class TestFulfillmentPhase:
             {"order_id": "o1", "aoi_feature_name": "a1", "state": "ready"},
         ]
         aois: list[dict[str, Any]] = [{"feature_name": "a1"}]
-        dl_result: list[dict[str, Any]] = [
+        dl_results: list[dict[str, Any]] = [
             {"order_id": "o1", "aoi_feature_name": "a1", "blob_path": "test.tif"},
         ]
 
@@ -430,8 +439,8 @@ class TestFulfillmentPhase:
             orchard_name="test",
             timestamp="2026-02-17T12:00:00+00:00",
         )
-        next(gen)  # download yield
-        gen.send(dl_result[0])  # post-process yield
+        next(gen)  # download batch yield
+        gen.send(dl_results)  # post-process batch yield
         try:
             gen.throw(RuntimeError("Clip failed"))
         except StopIteration as exc:

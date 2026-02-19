@@ -23,9 +23,11 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from kml_satellite.orchestrators.phases import (
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_MAX_RETRIES,
     DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_POLL_TIMEOUT_SECONDS,
+    DEFAULT_POST_PROCESS_BATCH_SIZE,
     DEFAULT_RETRY_BASE_SECONDS,
     _poll_until_ready,
     build_pipeline_summary,
@@ -44,9 +46,11 @@ logger = logging.getLogger("kml_satellite.orchestrators.kml_pipeline")
 # Re-export polling defaults and _poll_until_ready so existing imports
 # (including tests) continue to work.
 __all__ = [
+    "DEFAULT_DOWNLOAD_BATCH_SIZE",
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_POLL_TIMEOUT_SECONDS",
+    "DEFAULT_POST_PROCESS_BATCH_SIZE",
     "DEFAULT_RETRY_BASE_SECONDS",
     "_poll_until_ready",
     "orchestrator_function",
@@ -128,6 +132,12 @@ def orchestrator_function(
         enable_clipping=bool(blob_event.get("enable_clipping", True)),
         enable_reprojection=bool(blob_event.get("enable_reprojection", True)),
         target_crs=str(blob_event.get("target_crs", "EPSG:4326")),
+        download_batch_size=int(
+            blob_event.get("download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)  # type: ignore[arg-type]
+        ),
+        post_process_batch_size=int(
+            blob_event.get("post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE)  # type: ignore[arg-type]
+        ),
         instance_id=instance_id,
         blob_name=blob_name,
     )

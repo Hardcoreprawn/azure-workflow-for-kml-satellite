@@ -7,8 +7,8 @@ and returns a typed result contract.  The top-level orchestrator in
 Phases
 ------
 1. **Ingestion** — parse KML, fan-out prepare AOI, write metadata.
-2. **Acquisition** — fan-out acquire imagery, timer-based polling.
-3. **Fulfillment** — download imagery, clip / reproject.
+2. **Acquisition** — fan-out acquire imagery, concurrent timer-based polling.
+3. **Fulfillment** — parallel download imagery, parallel clip / reproject.
 
 Engineering standards:
     PID 7.4.6   (Observability — per-phase telemetry)
@@ -16,6 +16,8 @@ Engineering standards:
     PID Section 7.2 (Fan-Out / Fan-In orchestration pattern)
 
 References:
+    Issue #54   (Parallelize download and post-process stages)
+    Issue #55   (Make polling stage concurrency-aware)
     Issue #59   (Decompose pipeline orchestration)
 """
 
@@ -74,13 +76,23 @@ class FulfillmentResult(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Polling defaults (PID FR-3.9, FR-6.4)
+# Polling defaults (PID FR-3.9)
 # ---------------------------------------------------------------------------
 
 DEFAULT_POLL_INTERVAL_SECONDS = 30
 DEFAULT_POLL_TIMEOUT_SECONDS = 1800  # 30 minutes
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BASE_SECONDS = 5
+
+# ---------------------------------------------------------------------------
+# Parallelism defaults (Issues #54, #55)
+# ---------------------------------------------------------------------------
+
+#: Max concurrent downloads / post-process calls per batch.
+DEFAULT_DOWNLOAD_BATCH_SIZE = 10
+DEFAULT_POST_PROCESS_BATCH_SIZE = 10
+#: Max concurrent poll sub-orchestrations.
+DEFAULT_POLL_BATCH_SIZE = 10
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +215,12 @@ def run_acquisition_phase(
     instance_id: str = "",
     blob_name: str = "",
 ) -> Generator[Any, Any, AcquisitionResult]:
-    """Fan-out acquire_imagery → timer-based polling loop per order.
+    """Fan-out acquire_imagery → concurrent timer-based polling (Issue #55).
+
+    Polling is performed concurrently in bounded batches using
+    sub-orchestrators.  Each sub-orchestrator runs an independent
+    ``_poll_until_ready`` loop so orders are polled in parallel rather
+    than sequentially.
 
     Args:
         context: Durable orchestration context.
@@ -213,7 +230,7 @@ def run_acquisition_phase(
         blob_name: Source blob name for logging.
 
     Yields:
-        Durable activity, task_all, and timer calls.
+        Durable activity, task_all, and sub-orchestrator calls.
 
     Returns:
         AcquisitionResult with imagery outcomes and ready/failed counts.
@@ -248,7 +265,7 @@ def run_acquisition_phase(
             blob_name,
         )
 
-    # Step 2: Timer-based polling loop (PID FR-3.9)
+    # Step 2: Concurrent polling via sub-orchestrators (Issue #55)
     def _int_cfg(key: str, default: int) -> int:
         raw = blob_event.get(key, default)
         return int(raw) if isinstance(raw, int | float | str) else default
@@ -257,20 +274,38 @@ def run_acquisition_phase(
     poll_timeout = _int_cfg("poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
     max_retries = _int_cfg("max_retries", DEFAULT_MAX_RETRIES)
     retry_base = _int_cfg("retry_base_seconds", DEFAULT_RETRY_BASE_SECONDS)
+    poll_batch_size = _int_cfg("poll_batch_size", DEFAULT_POLL_BATCH_SIZE)
+
+    acq_list: list[dict[str, Any]] = (
+        acquisition_results if isinstance(acquisition_results, list) else []
+    )
 
     imagery_outcomes: list[dict[str, Any]] = []
+    for batch_start in range(0, len(acq_list), poll_batch_size):
+        batch = acq_list[batch_start : batch_start + poll_batch_size]
 
-    for acq in acquisition_results if isinstance(acquisition_results, list) else []:
-        outcome = yield from _poll_until_ready(
-            context,
-            acq,
-            poll_interval=poll_interval,
-            poll_timeout=poll_timeout,
-            max_retries=max_retries,
-            retry_base=retry_base,
-            instance_id=instance_id,
-        )
-        imagery_outcomes.append(outcome)
+        poll_tasks = [
+            context.call_sub_orchestrator(
+                "poll_order_suborchestrator",
+                {
+                    "acquisition": acq,
+                    "poll_interval": poll_interval,
+                    "poll_timeout": poll_timeout,
+                    "max_retries": max_retries,
+                    "retry_base": retry_base,
+                    "instance_id": instance_id,
+                },
+                instance_id=f"{instance_id}:poll:{acq.get('order_id', i)}",
+            )
+            for i, acq in enumerate(batch, start=batch_start)
+        ]
+        batch_results = yield context.task_all(poll_tasks)
+
+        if isinstance(batch_results, list):
+            for r in batch_results:
+                imagery_outcomes.append(r if isinstance(r, dict) else {"state": "unknown"})
+        elif isinstance(batch_results, dict):
+            imagery_outcomes.append(batch_results)
 
     ready_count = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
     failed_count = len(imagery_outcomes) - ready_count
@@ -278,10 +313,12 @@ def run_acquisition_phase(
     duration = (context.current_utc_datetime - phase_start).total_seconds()
     if not context.is_replaying:
         logger.info(
-            "phase=acquisition completed | instance=%s | ready=%d/%d | duration=%.1fs | blob=%s",
+            "phase=acquisition completed | instance=%s | ready=%d/%d | "
+            "batches=%d | duration=%.1fs | blob=%s",
             instance_id,
             ready_count,
             len(imagery_outcomes),
+            (len(acq_list) + poll_batch_size - 1) // poll_batch_size if acq_list else 0,
             duration,
             blob_name,
         )
@@ -310,13 +347,19 @@ def run_fulfillment_phase(
     enable_clipping: bool = True,
     enable_reprojection: bool = True,
     target_crs: str = "EPSG:4326",
+    download_batch_size: int = DEFAULT_DOWNLOAD_BATCH_SIZE,
+    post_process_batch_size: int = DEFAULT_POST_PROCESS_BATCH_SIZE,
     instance_id: str = "",
     blob_name: str = "",
 ) -> Generator[Any, Any, FulfillmentResult]:
-    """Download ready imagery → clip / reproject each download.
+    """Download ready imagery → clip / reproject — in bounded parallel batches.
 
-    Sequential per-item processing with per-item error isolation
-    so a single failure doesn't abort the entire orchestration (PID 7.4.2).
+    Uses ``task_all`` for fan-out parallelism instead of sequential
+    per-item processing (Issue #54).  Batch sizes are configurable so
+    the orchestrator doesn't overwhelm provider APIs.
+
+    Per-item error isolation is maintained: a single failure doesn't
+    abort the entire batch (PID 7.4.2).
 
     Args:
         context: Durable orchestration context.
@@ -329,22 +372,26 @@ def run_fulfillment_phase(
         enable_clipping: Whether to clip to AOI polygon.
         enable_reprojection: Whether to reproject if CRS differs.
         target_crs: Target CRS for reprojection.
+        download_batch_size: Max concurrent downloads per batch (default 10).
+        post_process_batch_size: Max concurrent post-process ops per batch (default 10).
         instance_id: Orchestration instance ID for logging.
         blob_name: Source blob name for logging.
 
     Yields:
-        Durable activity calls (sequential, per-item).
+        Durable activity and task_all calls.
 
     Returns:
         FulfillmentResult with download and post-process outcomes.
     """
     phase_start = context.current_utc_datetime
 
-    # Step 1: Download imagery — sequential with error isolation
+    # Step 1: Download imagery — bounded parallel batches (Issue #54)
     download_results: list[dict[str, Any]] = []
-    for outcome in ready_outcomes:
-        try:
-            result = yield context.call_activity(
+
+    for batch_start in range(0, len(ready_outcomes), download_batch_size):
+        batch = ready_outcomes[batch_start : batch_start + download_batch_size]
+        dl_tasks = [
+            context.call_activity(
                 "download_imagery",
                 {
                     "imagery_outcome": outcome,
@@ -354,62 +401,55 @@ def run_fulfillment_phase(
                     "timestamp": timestamp,
                 },
             )
-            if isinstance(result, dict):
-                download_results.append(result)
-            else:
-                download_results.append(
-                    {
-                        "state": "unknown",
-                        "order_id": str(outcome.get("order_id", "")),
-                        "scene_id": str(outcome.get("scene_id", "")),
-                        "provider": str(outcome.get("provider", "")),
-                        "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
-                        "blob_path": "",
-                        "adapter_blob_path": "",
-                        "container": "",
-                        "size_bytes": 0,
-                        "content_type": "",
-                        "download_duration_seconds": 0.0,
-                        "retry_count": 0,
-                        "error": f"Unexpected non-dict result: {result!r}",
-                    }
-                )
+            for outcome in batch
+        ]
+
+        try:
+            batch_results = yield context.task_all(dl_tasks)
         except Exception as exc:
             if not context.is_replaying:
                 logger.exception(
-                    "phase=fulfillment step=download | instance=%s | blob=%s | error=%s",
+                    "phase=fulfillment step=download | instance=%s | blob=%s | "
+                    "batch_error=%s | batch_size=%d",
                     instance_id,
                     blob_name,
                     exc,
+                    len(batch),
                 )
-            download_results.append(
-                {
-                    "state": "failed",
-                    "order_id": str(outcome.get("order_id", "")),
-                    "scene_id": str(outcome.get("scene_id", "")),
-                    "provider": str(outcome.get("provider", "")),
-                    "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
-                    "blob_path": "",
-                    "adapter_blob_path": "",
-                    "container": "",
-                    "size_bytes": 0,
-                    "content_type": "",
-                    "download_duration_seconds": 0.0,
-                    "retry_count": 0,
-                    "error": str(exc),
-                }
-            )
+            for outcome in batch:
+                download_results.append(_download_error_dict(outcome, str(exc)))
+            continue
+
+        if isinstance(batch_results, list):
+            for i, result in enumerate(batch_results):
+                outcome = batch[i]
+                if isinstance(result, dict):
+                    download_results.append(result)
+                else:
+                    download_results.append(
+                        _download_error_dict(
+                            outcome,
+                            f"Unexpected non-dict result: {result!r}",
+                            state="unknown",
+                        )
+                    )
+        elif isinstance(batch_results, dict):
+            download_results.append(batch_results)
 
     if not context.is_replaying:
         logger.info(
-            "phase=fulfillment step=download | instance=%s | downloaded=%d/%d | blob=%s",
+            "phase=fulfillment step=download | instance=%s | downloaded=%d/%d | "
+            "batches=%d | blob=%s",
             instance_id,
             len(download_results),
             len(ready_outcomes),
+            (len(ready_outcomes) + download_batch_size - 1) // download_batch_size
+            if ready_outcomes
+            else 0,
             blob_name,
         )
 
-    # Step 2: Post-process imagery — clip + reproject
+    # Step 2: Post-process imagery — bounded parallel batches (Issue #54)
     # Build feature_name → AOI lookup for geometry retrieval
     aoi_by_feature: dict[str, dict[str, Any]] = {}
     for a in aois:
@@ -421,16 +461,14 @@ def run_fulfillment_phase(
     successful_downloads = [d for d in download_results if d.get("state") != "failed"]
 
     post_process_results: list[dict[str, Any]] = []
-    for dl_result in successful_downloads:
-        dl_feature = str(dl_result.get("aoi_feature_name", ""))
-        matching_aoi = aoi_by_feature.get(dl_feature, {})
-
-        try:
-            pp_result = yield context.call_activity(
+    for batch_start in range(0, len(successful_downloads), post_process_batch_size):
+        batch = successful_downloads[batch_start : batch_start + post_process_batch_size]
+        pp_tasks = [
+            context.call_activity(
                 "post_process_imagery",
                 {
                     "download_result": dl_result,
-                    "aoi": matching_aoi,
+                    "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
                     "orchard_name": orchard_name,
                     "timestamp": timestamp,
                     "target_crs": target_crs,
@@ -438,53 +476,40 @@ def run_fulfillment_phase(
                     "enable_reprojection": enable_reprojection,
                 },
             )
-            if isinstance(pp_result, dict):
-                post_process_results.append(pp_result)
-            else:
-                post_process_results.append(
-                    {
-                        "state": "unknown",
-                        "order_id": dl_result.get("order_id", ""),
-                        "source_blob_path": dl_result.get("blob_path", ""),
-                        "clipped_blob_path": "",
-                        "container": dl_result.get("container", ""),
-                        "clipped": False,
-                        "reprojected": False,
-                        "source_crs": "",
-                        "target_crs": "",
-                        "source_size_bytes": 0,
-                        "output_size_bytes": 0,
-                        "processing_duration_seconds": 0.0,
-                        "clip_error": f"Unexpected non-dict result: {pp_result!r}",
-                        "error": f"Unexpected non-dict result: {pp_result!r}",
-                    }
-                )
+            for dl_result in batch
+        ]
+
+        try:
+            batch_results = yield context.task_all(pp_tasks)
         except Exception as exc:
             if not context.is_replaying:
                 logger.exception(
-                    "phase=fulfillment step=post_process | instance=%s | order=%s | error=%s",
+                    "phase=fulfillment step=post_process | instance=%s | blob=%s | "
+                    "batch_error=%s | batch_size=%d",
                     instance_id,
-                    dl_result.get("order_id", ""),
+                    blob_name,
                     exc,
+                    len(batch),
                 )
-            post_process_results.append(
-                {
-                    "state": "failed",
-                    "order_id": dl_result.get("order_id", ""),
-                    "source_blob_path": dl_result.get("blob_path", ""),
-                    "clipped_blob_path": "",
-                    "container": dl_result.get("container", ""),
-                    "clipped": False,
-                    "reprojected": False,
-                    "source_crs": "",
-                    "target_crs": "",
-                    "source_size_bytes": 0,
-                    "output_size_bytes": 0,
-                    "processing_duration_seconds": 0.0,
-                    "clip_error": str(exc),
-                    "error": str(exc),
-                }
-            )
+            for dl_result in batch:
+                post_process_results.append(_post_process_error_dict(dl_result, str(exc)))
+            continue
+
+        if isinstance(batch_results, list):
+            for i, pp_result in enumerate(batch_results):
+                dl_result = batch[i]
+                if isinstance(pp_result, dict):
+                    post_process_results.append(pp_result)
+                else:
+                    post_process_results.append(
+                        _post_process_error_dict(
+                            dl_result,
+                            f"Unexpected non-dict result: {pp_result!r}",
+                            state="unknown",
+                        )
+                    )
+        elif isinstance(batch_results, dict):
+            post_process_results.append(batch_results)
 
     downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
     pp_clipped = sum(1 for p in post_process_results if p.get("clipped"))
@@ -495,12 +520,19 @@ def run_fulfillment_phase(
     if not context.is_replaying:
         logger.info(
             "phase=fulfillment completed | instance=%s | downloads=%d | "
-            "clipped=%d | reprojected=%d | failed=%d | duration=%.1fs | blob=%s",
+            "clipped=%d | reprojected=%d | failed=%d | "
+            "dl_batches=%d | pp_batches=%d | duration=%.1fs | blob=%s",
             instance_id,
             len(download_results),
             pp_clipped,
             pp_reprojected,
             pp_failed,
+            (len(ready_outcomes) + download_batch_size - 1) // download_batch_size
+            if ready_outcomes
+            else 0,
+            (len(successful_downloads) + post_process_batch_size - 1) // post_process_batch_size
+            if successful_downloads
+            else 0,
             duration,
             blob_name,
         )
@@ -516,6 +548,55 @@ def run_fulfillment_phase(
         pp_reprojected=pp_reprojected,
         pp_failed=pp_failed,
     )
+
+
+def _download_error_dict(
+    outcome: dict[str, Any],
+    error: str,
+    *,
+    state: str = "failed",
+) -> dict[str, Any]:
+    """Build a contract-shaped error dict for a failed download."""
+    return {
+        "state": state,
+        "order_id": str(outcome.get("order_id", "")),
+        "scene_id": str(outcome.get("scene_id", "")),
+        "provider": str(outcome.get("provider", "")),
+        "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
+        "blob_path": "",
+        "adapter_blob_path": "",
+        "container": "",
+        "size_bytes": 0,
+        "content_type": "",
+        "download_duration_seconds": 0.0,
+        "retry_count": 0,
+        "error": error,
+    }
+
+
+def _post_process_error_dict(
+    dl_result: dict[str, Any],
+    error: str,
+    *,
+    state: str = "failed",
+) -> dict[str, Any]:
+    """Build a contract-shaped error dict for a failed post-process."""
+    return {
+        "state": state,
+        "order_id": dl_result.get("order_id", ""),
+        "source_blob_path": dl_result.get("blob_path", ""),
+        "clipped_blob_path": "",
+        "container": dl_result.get("container", ""),
+        "clipped": False,
+        "reprojected": False,
+        "source_crs": "",
+        "target_crs": "",
+        "source_size_bytes": 0,
+        "output_size_bytes": 0,
+        "processing_duration_seconds": 0.0,
+        "clip_error": error,
+        "error": error,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -128,6 +128,43 @@ def kml_processing_orchestrator(context: df.DurableOrchestrationContext) -> obje
     return orchestrator_function(context)
 
 
+@app.function_name("poll_order_suborchestrator")
+@app.orchestration_trigger(context_name="context")
+def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> object:
+    """Sub-orchestrator: poll a single imagery order until terminal.
+
+    Called concurrently via ``task_all`` from the acquisition phase
+    (Issue #55) to poll multiple orders in parallel.
+
+    Input (via ``context.get_input``):
+        Dict with ``acquisition``, ``poll_interval``, ``poll_timeout``,
+        ``max_retries``, ``retry_base``, ``instance_id``.
+
+    Returns:
+        Dict describing the final outcome from ``_poll_until_ready``.
+    """
+    from kml_satellite.orchestrators.phases import _poll_until_ready
+
+    sub_input: dict[str, object] = context.get_input() or {}
+    acquisition = sub_input.get("acquisition", {})
+    if not isinstance(acquisition, dict):
+        acquisition = {}
+
+    def _int_val(key: str, default: int) -> int:
+        raw = sub_input.get(key, default)
+        return int(raw) if isinstance(raw, int | float | str) else default
+
+    return _poll_until_ready(
+        context,
+        acquisition,
+        poll_interval=_int_val("poll_interval", 30),
+        poll_timeout=_int_val("poll_timeout", 1800),
+        max_retries=_int_val("max_retries", 3),
+        retry_base=_int_val("retry_base", 5),
+        instance_id=str(sub_input.get("instance_id", "")),
+    )
+
+
 # ---------------------------------------------------------------------------
 # HTTP: Orchestrator Status Endpoint (convenience for local debugging)
 # ---------------------------------------------------------------------------
