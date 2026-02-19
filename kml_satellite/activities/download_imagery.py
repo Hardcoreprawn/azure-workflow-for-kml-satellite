@@ -322,12 +322,13 @@ def _validate_raster_content(blob_ref: BlobReference, order_id: str) -> None:
             )
             return
 
-        # Stream minimal header bytes to a temp file for rasterio.
+        # Stream first 64 KB (enough for GeoTIFF header) to a temp file
+        # for lightweight rasterio validation without a full re-download.
         import tempfile
         from pathlib import Path
 
         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-            blob_data = blob_client.download_blob()
+            blob_data = blob_client.download_blob(offset=0, length=64 * 1024)
             blob_data.readinto(tmp)
             tmp_path = Path(tmp.name)
 

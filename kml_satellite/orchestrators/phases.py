@@ -360,8 +360,16 @@ def run_fulfillment_phase(
                 download_results.append(
                     {
                         "state": "unknown",
-                        "imagery_outcome": outcome,
-                        "result": result,
+                        "order_id": str(outcome.get("order_id", "")),
+                        "scene_id": str(outcome.get("scene_id", "")),
+                        "provider": str(outcome.get("provider", "")),
+                        "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
+                        "blob_path": "",
+                        "adapter_blob_path": "",
+                        "container": "",
+                        "size_bytes": 0,
+                        "content_type": "",
+                        "error": f"Unexpected non-dict result: {result!r}",
                     }
                 )
         except Exception as exc:
@@ -375,7 +383,15 @@ def run_fulfillment_phase(
             download_results.append(
                 {
                     "state": "failed",
-                    "imagery_outcome": outcome,
+                    "order_id": str(outcome.get("order_id", "")),
+                    "scene_id": str(outcome.get("scene_id", "")),
+                    "provider": str(outcome.get("provider", "")),
+                    "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
+                    "blob_path": "",
+                    "adapter_blob_path": "",
+                    "container": "",
+                    "size_bytes": 0,
+                    "content_type": "",
                     "error": str(exc),
                 }
             )
@@ -424,8 +440,16 @@ def run_fulfillment_phase(
                 post_process_results.append(
                     {
                         "state": "unknown",
-                        "download_result": dl_result,
-                        "result": pp_result,
+                        "order_id": dl_result.get("order_id", ""),
+                        "source_blob_path": dl_result.get("blob_path", ""),
+                        "container": dl_result.get("container", ""),
+                        "clipped": False,
+                        "reprojected": False,
+                        "source_crs": "",
+                        "target_crs": "",
+                        "source_size_bytes": 0,
+                        "output_size_bytes": 0,
+                        "error": f"Unexpected non-dict result: {pp_result!r}",
                     }
                 )
         except Exception as exc:
@@ -440,9 +464,15 @@ def run_fulfillment_phase(
                 {
                     "state": "failed",
                     "order_id": dl_result.get("order_id", ""),
-                    "error": str(exc),
+                    "source_blob_path": dl_result.get("blob_path", ""),
+                    "container": dl_result.get("container", ""),
                     "clipped": False,
                     "reprojected": False,
+                    "source_crs": "",
+                    "target_crs": "",
+                    "source_size_bytes": 0,
+                    "output_size_bytes": 0,
+                    "error": str(exc),
                 }
             )
 

@@ -98,6 +98,14 @@ class TestParseTimestamp(unittest.TestCase):
     def test_naive_iso_timestamp(self) -> None:
         result = parse_timestamp("2026-01-01T00:00:00")
         assert result.year == 2026
+        assert result.tzinfo is not None
+        assert result.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+
+    def test_non_utc_offset_normalized(self) -> None:
+        """Non-UTC offset should be converted to UTC."""
+        result = parse_timestamp("2026-06-15T10:00:00+05:00")
+        assert result.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+        assert result.hour == 5  # 10:00 +05:00 → 05:00 UTC
 
     def test_fallback_is_utc(self) -> None:
         """Empty input must produce a UTC-aware datetime, not local tz."""

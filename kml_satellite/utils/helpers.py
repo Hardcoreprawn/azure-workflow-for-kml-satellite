@@ -55,6 +55,11 @@ def parse_timestamp(timestamp: str) -> datetime:
     if not timestamp:
         return datetime.now(UTC)
     try:
-        return datetime.fromisoformat(timestamp)
+        dt = datetime.fromisoformat(timestamp)
     except (ValueError, TypeError):
         return datetime.now(UTC)
+
+    # Ensure the returned datetime is timezone-aware and normalized to UTC.
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)

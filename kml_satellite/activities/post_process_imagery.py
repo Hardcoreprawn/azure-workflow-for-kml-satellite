@@ -102,7 +102,10 @@ def post_process_imagery(
     """
     # Validate inputs (PID 7.4.1)
     order_id = str(download_result.get("order_id", ""))
-    source_blob_path = str(download_result.get("blob_path", ""))
+    # Prefer adapter_blob_path (actual persisted location) over canonical blob_path.
+    source_blob_path = str(
+        download_result.get("adapter_blob_path") or download_result.get("blob_path", "")
+    )
     source_size = int(download_result.get("size_bytes", 0))
     feature_name = str(aoi.get("feature_name", ""))
     scene_id = str(download_result.get("scene_id", ""))
