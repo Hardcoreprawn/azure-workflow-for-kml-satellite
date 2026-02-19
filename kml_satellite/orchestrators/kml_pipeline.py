@@ -28,6 +28,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -76,20 +78,42 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     # Phase 1: Parse KML (M-1.3)
     # -----------------------------------------------------------------------
-    features = yield context.call_activity("parse_kml", blob_event)
+    features_or_ref = yield context.call_activity("parse_kml", blob_event)
+
+    # parse_kml may return a direct list or an offloaded reference (Issue #62).
+    offloaded = is_offloaded(features_or_ref)
+    features_ref: dict[str, Any] = {}
+    if offloaded:
+        features_ref = features_or_ref  # type: ignore[assignment]
+        feature_count = int(features_ref.get("count", 0))
+    elif isinstance(features_or_ref, list):
+        feature_count = len(features_or_ref)
+    else:
+        feature_count = 0
 
     if not context.is_replaying:
         logger.info(
-            "KML parsed | instance=%s | features=%d | blob=%s",
+            "KML parsed | instance=%s | features=%d | offloaded=%s | blob=%s",
             instance_id,
-            len(features) if isinstance(features, list) else 0,
+            feature_count,
+            offloaded,
             blob_name,
         )
 
     # -----------------------------------------------------------------------
     # Phase 2: Fan-out per polygon — prepare AOI (M-1.5)
     # -----------------------------------------------------------------------
-    aoi_tasks = [context.call_activity("prepare_aoi", f) for f in features]
+    if offloaded:
+        # Features were offloaded to blob — pass per-item references
+        aoi_tasks = [
+            context.call_activity("prepare_aoi", build_ref_input(features_ref, i))
+            for i in range(feature_count)
+        ]
+    else:
+        aoi_tasks = [
+            context.call_activity("prepare_aoi", f)
+            for f in (features_or_ref if isinstance(features_or_ref, list) else [])
+        ]
     aois = yield context.task_all(aoi_tasks)
 
     if not context.is_replaying:
@@ -339,7 +363,6 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     # Result summary
     # -----------------------------------------------------------------------
-    feature_count = len(features) if isinstance(features, list) else 0
     aoi_count = len(aois) if isinstance(aois, list) else 0
     metadata_count = len(metadata_results) if isinstance(metadata_results, list) else 0
     imagery_ready = sum(1 for o in imagery_outcomes if o.get("state") == "ready")

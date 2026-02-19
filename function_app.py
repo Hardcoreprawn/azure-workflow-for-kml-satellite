@@ -163,7 +163,7 @@ async def orchestrator_status(
 
 @app.function_name("parse_kml")
 @app.activity_trigger(input_name="activityInput")
-def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: N803
+def parse_kml_activity(activityInput: str) -> list[dict[str, object]] | dict[str, object]:  # noqa: N803
     """Durable Functions activity: parse a KML blob and return features.
 
     Input:
@@ -172,7 +172,9 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
         blob to download and parse.
 
     Returns:
-        List of Feature dicts serialised for the orchestrator.
+        List of Feature dicts serialised for the orchestrator, **or** a
+        small offloaded-payload reference dict when the serialised list
+        exceeds the offload threshold (Issue #62).
 
     Raises:
         KmlParseError (via Durable Functions retry) on invalid input.
@@ -216,7 +218,14 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
         correlation_id,
     )
 
-    return [f.to_dict() for f in features]
+    from kml_satellite.core.payload_offload import offload_if_large
+
+    feature_dicts: list[dict[str, object]] = [f.to_dict() for f in features]
+    return offload_if_large(
+        feature_dicts,
+        blob_path=f"payloads/{correlation_id or 'no-id'}/features.json",
+        blob_service_client=blob_service,
+    )
 
 
 @app.function_name("prepare_aoi")
@@ -225,8 +234,10 @@ def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
     """Durable Functions activity: compute AOI geometry metadata for a feature.
 
     Input:
-        JSON string (or dict when replaying) containing a serialised
-        ``Feature`` dict from the parse_kml activity.
+        JSON string (or dict when replaying) containing either:
+        - A serialised ``Feature`` dict from the parse_kml activity, **or**
+        - A payload reference (``__payload_ref__``) + index for offloaded
+          features (Issue #62).
 
     Returns:
         AOI dict serialised for the orchestrator.
@@ -235,9 +246,17 @@ def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
         AOIError: If the feature has invalid geometry.
     """
     from kml_satellite.activities.prepare_aoi import prepare_aoi
+    from kml_satellite.core.payload_offload import resolve_ref_input
     from kml_satellite.models.feature import Feature as FeatureModel
 
     payload = deserialize_activity_input(activityInput)
+
+    # Resolve payload reference if features were offloaded (Issue #62)
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        payload = resolve_ref_input(payload, blob_service_client=get_blob_service_client())
+
     feature = FeatureModel.from_dict(payload)
 
     logger.info(
