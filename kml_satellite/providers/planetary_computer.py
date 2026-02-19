@@ -25,6 +25,7 @@ References:
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -65,6 +66,65 @@ _DEFAULT_COLLECTIONS = ["sentinel-2-l2a"]
 # STAC asset key fallback order for download URL resolution.
 _FALLBACK_ASSET_KEYS = ("visual", "B04", "rendered_preview")
 
+# Default maximum entries in the per-adapter order cache.
+_DEFAULT_ORDER_CACHE_MAXSIZE = 256
+
+
+# ---------------------------------------------------------------------------
+# Bounded order cache (Issue #56)
+# ---------------------------------------------------------------------------
+
+
+class _BoundedOrderCache:
+    """LRU-bounded cache for order_id → (scene_id, asset_url) mappings.
+
+    Lifecycle assumptions:
+        In serverless (Azure Functions Flex Consumption) each invocation
+        creates a fresh adapter, so the cache is inherently short-lived.
+        The size cap guards against reuse in long-running workers or
+        tests where a single adapter instance may outlive one request.
+
+    Eviction policy:
+        Least-recently-used (LRU).  On insert, if the cache exceeds
+        ``maxsize`` the oldest entry that was neither accessed nor
+        updated is evicted.
+    """
+
+    def __init__(self, maxsize: int = _DEFAULT_ORDER_CACHE_MAXSIZE) -> None:
+        self._maxsize = maxsize
+        self._data: OrderedDict[str, tuple[str, str]] = OrderedDict()
+        self._eviction_count = 0
+
+    def __setitem__(self, key: str, value: tuple[str, str]) -> None:
+        if key in self._data:
+            self._data.move_to_end(key)
+        self._data[key] = value
+        while len(self._data) > self._maxsize:
+            evicted_key, _ = self._data.popitem(last=False)
+            self._eviction_count += 1
+            logger.debug(
+                "Order cache eviction | key=%s | size=%d | total_evictions=%d",
+                evicted_key,
+                len(self._data),
+                self._eviction_count,
+            )
+
+    def __getitem__(self, key: str) -> tuple[str, str]:
+        value = self._data[key]
+        self._data.move_to_end(key)
+        return value
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    @property
+    def eviction_count(self) -> int:
+        """Total number of entries evicted since construction."""
+        return self._eviction_count
+
 
 class PlanetaryComputerAdapter(ImageryProvider):
     """Planetary Computer STAC adapter.
@@ -81,14 +141,9 @@ class PlanetaryComputerAdapter(ImageryProvider):
         super().__init__(config)
         self._stac_url = config.api_base_url or _DEFAULT_STAC_URL
         # order_id → (scene_id, asset_url)
-        # NOTE: This mapping is unbounded and will grow as orders are created.
-        # In the current deployment model, adapter instances are expected to be
-        # short-lived (e.g. instantiated per request in a serverless context),
-        # so the in-memory cache is discarded with each instance.  If this
-        # adapter is ever reused across many requests in a long-running
-        # process, consider adding a size limit, LRU eviction, or time-based
-        # cleanup for this mapping.
-        self._orders: dict[str, tuple[str, str]] = {}
+        # Bounded LRU cache (Issue #56) — evicts least-recently-used entries
+        # when the cache exceeds _DEFAULT_ORDER_CACHE_MAXSIZE.
+        self._orders = _BoundedOrderCache()
 
     # ------------------------------------------------------------------
     # search
