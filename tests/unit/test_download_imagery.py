@@ -267,16 +267,17 @@ class TestValidateDownload(unittest.TestCase):
             _validate_download(blob_ref, "order-1")
         assert ctx.exception.retryable is True
 
-    def test_negative_size_raises(self) -> None:
-        """Negative size → DownloadError (retryable)."""
-        blob_ref = BlobReference(
-            container="c",
-            blob_path="p.tif",
-            size_bytes=-1,
-            content_type="image/tiff",
-        )
-        with self.assertRaises(DownloadError):
-            _validate_download(blob_ref, "order-1")
+    def test_negative_size_rejected_at_model_level(self) -> None:
+        """Negative size → ModelValidationError at construction (never reaches download)."""
+        from kml_satellite.models.imagery import ModelValidationError
+
+        with self.assertRaises(ModelValidationError):
+            BlobReference(
+                container="c",
+                blob_path="p.tif",
+                size_bytes=-1,
+                content_type="image/tiff",
+            )
 
     def test_unexpected_content_type_warns(self) -> None:
         """Unexpected content type logs a warning but does not raise."""
