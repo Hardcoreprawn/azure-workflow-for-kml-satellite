@@ -30,7 +30,10 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from azure.storage.blob import BlobServiceClient
 
 logger = logging.getLogger("kml_satellite.core.payload_offload")
 
@@ -73,7 +76,7 @@ def offload_if_large(
     payload: list[dict[str, Any]],
     *,
     blob_path: str,
-    blob_service_client: Any,
+    blob_service_client: BlobServiceClient,
     container: str = PAYLOAD_CONTAINER,
     threshold_bytes: int = OFFLOAD_THRESHOLD_BYTES,
 ) -> list[dict[str, Any]] | dict[str, Any]:
@@ -160,7 +163,7 @@ def build_ref_input(offloaded_ref: dict[str, Any], index: int) -> dict[str, Any]
 def resolve_ref_input(
     payload: dict[str, Any],
     *,
-    blob_service_client: Any,
+    blob_service_client: BlobServiceClient,
 ) -> dict[str, Any]:
     """If *payload* is a blob reference, read the item from blob; otherwise pass through.
 

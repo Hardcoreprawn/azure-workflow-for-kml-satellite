@@ -8,7 +8,7 @@ nested Folder hierarchies.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from kml_satellite.activities.parse_kml._constants import KML_NAMESPACE
 from kml_satellite.activities.parse_kml._normalization import (
@@ -27,6 +27,8 @@ from kml_satellite.models.feature import Feature
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from lxml.etree import _Element
+
 logger = logging.getLogger("kml_satellite.activities.parse_kml")
 
 
@@ -41,11 +43,11 @@ def parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
 
     content = kml_path.read_bytes()
     parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
-    root: Any = etree.fromstring(content, parser=parser)
+    root: _Element = etree.fromstring(content, parser=parser)
     ns = {"kml": KML_NAMESPACE}
 
     features: list[Feature] = []
-    placemarks: list[Any] = root.findall(".//kml:Placemark", ns)
+    placemarks: list[_Element] = root.findall(".//kml:Placemark", ns)
 
     for idx, pm in enumerate(placemarks):
         polygons = pm.findall(".//kml:Polygon", ns)
@@ -114,7 +116,7 @@ def parse_with_lxml(kml_path: Path, source_filename: str) -> list[Feature]:
 
 
 def _parse_polygon_lxml(
-    polygon_elem: Any, ns: dict[str, str]
+    polygon_elem: _Element, ns: dict[str, str]
 ) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
     """Parse a KML Polygon element via lxml, returning exterior + interior coords."""
     from lxml import etree  # type: ignore[attr-defined]

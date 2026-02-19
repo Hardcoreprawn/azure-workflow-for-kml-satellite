@@ -23,9 +23,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from kml_satellite.core.exceptions import ContractError
+
+if TYPE_CHECKING:
+    from azure.storage.blob import BlobServiceClient
 
 logger = logging.getLogger("kml_satellite.core.ingress")
 
@@ -154,7 +157,7 @@ def build_orchestrator_input(
 # ---------------------------------------------------------------------------
 
 
-def get_blob_service_client() -> Any:
+def get_blob_service_client() -> BlobServiceClient:
     """Create a ``BlobServiceClient`` from the ``AzureWebJobsStorage`` env var.
 
     Returns:

@@ -49,6 +49,8 @@ from kml_satellite.providers.base import (
 from kml_satellite.utils.blob_paths import IMAGERY_RAW_PREFIX
 
 if TYPE_CHECKING:
+    import pystac
+
     from kml_satellite.models.aoi import AOI
     from kml_satellite.models.imagery import ProviderConfig
 
@@ -315,7 +317,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _item_to_search_result(self, item: Any) -> SearchResult | None:
+    def _item_to_search_result(self, item: pystac.Item) -> SearchResult | None:
         """Convert a STAC item to a ``SearchResult``, or ``None`` if unusable."""
         try:
             properties = item.properties or {}
@@ -448,7 +450,7 @@ def _build_date_range(filters: ImageryFilters) -> str | None:
     return f"{start}/{end}"
 
 
-def _resolve_best_asset_url(item: Any) -> str:
+def _resolve_best_asset_url(item: pystac.Item) -> str:
     """Pick the best downloadable asset URL from a STAC item."""
     assets = getattr(item, "assets", {}) or {}
     for key in _FALLBACK_ASSET_KEYS:

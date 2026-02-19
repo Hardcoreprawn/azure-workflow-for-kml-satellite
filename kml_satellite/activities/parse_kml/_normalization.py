@@ -9,9 +9,12 @@ Responsibilities:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from kml_satellite.activities.parse_kml._validation import KmlValidationError
+
+if TYPE_CHECKING:
+    from lxml.etree import _Element
 
 # ---------------------------------------------------------------------------
 # Coordinate normalization
@@ -97,7 +100,7 @@ def extract_metadata_from_props(props: dict[str, object]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
-def extract_extended_data_lxml(placemark_elem: Any, ns: dict[str, str]) -> dict[str, str]:
+def extract_extended_data_lxml(placemark_elem: _Element, ns: dict[str, str]) -> dict[str, str]:
     """Extract ExtendedData metadata from a Placemark element.
 
     Handles both KML metadata patterns:
