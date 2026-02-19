@@ -364,7 +364,7 @@ def _validate_raster_content(blob_ref: BlobReference, order_id: str) -> None:
             "rasterio not available, skipping content validation | order=%s",
             order_id,
         )
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning(
             "Raster content validation skipped due to error | order=%s | error=%s",
             order_id,

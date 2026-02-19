@@ -309,8 +309,12 @@ class PlanetaryComputerAdapter(ImageryProvider):
                     "collection": getattr(item, "collection_id", ""),
                 },
             )
-        except Exception:
-            logger.warning("Skipping unparseable STAC item: %s", getattr(item, "id", "?"))
+        except (KeyError, ValueError, TypeError, AttributeError, IndexError):
+            logger.warning(
+                "Skipping unparseable STAC item: %s",
+                getattr(item, "id", "?"),
+                exc_info=True,
+            )
             return None
 
     def _resolve_asset_url(self, scene_id: str) -> str:

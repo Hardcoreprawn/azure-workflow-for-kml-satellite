@@ -347,7 +347,7 @@ def _get_raster_crs(path: str, rasterio: Any) -> str:
         with rasterio.open(path) as src:
             if src.crs:
                 return str(src.crs)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("Could not read CRS from %s: %s", path, exc)
     return ""
 
