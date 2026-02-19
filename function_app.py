@@ -10,13 +10,16 @@ the wiring layer between Azure Functions bindings and application code.
 from __future__ import annotations
 
 import logging
-import os
 
 import azure.durable_functions as df
 import azure.functions as func
 
 from kml_satellite.core.constants import INPUT_CONTAINER
-from kml_satellite.models.blob_event import BlobEvent
+from kml_satellite.core.ingress import (
+    build_orchestrator_input,
+    deserialize_activity_input,
+    get_blob_service_client,
+)
 from kml_satellite.models.payloads import (
     AcquireImageryInput,
     DownloadImageryInput,
@@ -53,36 +56,37 @@ async def kml_blob_trigger(
     2. Validates the blob is a ``.kml`` file in the expected container
     3. Starts the orchestrator with the event data
     """
-    event_data = event.get_json()
-    event_time = event.event_time.isoformat() if event.event_time else ""
-
-    blob_event = BlobEvent.from_event_grid_event(
-        event_data,
-        event_time=event_time,
+    # Build canonical orchestrator input from the Event Grid event.
+    orchestrator_input = build_orchestrator_input(
+        event.get_json(),
+        event_time=event.event_time.isoformat() if event.event_time else "",
         event_id=event.id or "",
     )
 
+    container = str(orchestrator_input["container_name"])
+    blob_name = str(orchestrator_input["blob_name"])
+
     logger.info(
         "Event Grid trigger fired | blob=%s | container=%s | size=%d | event_id=%s",
-        blob_event.blob_name,
-        blob_event.container_name,
-        blob_event.content_length,
-        blob_event.correlation_id,
+        blob_name,
+        container,
+        orchestrator_input["content_length"],
+        orchestrator_input["correlation_id"],
     )
 
     # Defence-in-depth: Event Grid subscription filters for .kml in kml-input,
     # but we validate here too in case of misconfiguration.
-    if blob_event.container_name != INPUT_CONTAINER:
+    if container != INPUT_CONTAINER:
         logger.warning(
             "Ignoring blob from unexpected container: %s (defence-in-depth filter)",
-            blob_event.container_name,
+            container,
         )
         return
 
-    if not blob_event.blob_name.lower().endswith(".kml"):
+    if not blob_name.lower().endswith(".kml"):
         logger.warning(
             "Ignoring non-KML file: %s (defence-in-depth filter)",
-            blob_event.blob_name,
+            blob_name,
         )
         return
 
@@ -90,19 +94,19 @@ async def kml_blob_trigger(
     try:
         instance_id = await client.start_new(
             "kml_processing_orchestrator",
-            client_input=blob_event.to_dict(),
+            client_input=orchestrator_input,
         )
     except Exception:
         logger.exception(
             "Failed to start orchestrator for blob=%s",
-            blob_event.blob_name,
+            blob_name,
         )
         raise
 
     logger.info(
         "Orchestrator started | instance_id=%s | blob=%s",
         instance_id,
-        blob_event.blob_name,
+        blob_name,
     )
 
 
@@ -174,18 +178,12 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
         KmlParseError (via Durable Functions retry) on invalid input.
         ValueError: If required configuration or payload fields are missing.
     """
-    import json
     import tempfile
     from pathlib import Path
 
-    from azure.storage.blob import BlobServiceClient
-
     from kml_satellite.activities.parse_kml import parse_kml_file
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, ParseKmlInput, activity="parse_kml")
 
     container_name = str(payload.get("container_name", ""))
@@ -199,11 +197,7 @@ def parse_kml_activity(activityInput: str) -> list[dict[str, object]]:  # noqa: 
     )
 
     # Download blob to a temp file for fiona (which needs a file path)
-    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
-    if not connection_string:
-        msg = "AzureWebJobsStorage environment variable is not set"
-        raise ValueError(msg)
-    blob_service = BlobServiceClient.from_connection_string(connection_string)
+    blob_service = get_blob_service_client()
     blob_client = blob_service.get_blob_client(container=container_name, blob=blob_name)
 
     with tempfile.NamedTemporaryFile(suffix=".kml", delete=False) as tmp:
@@ -240,15 +234,10 @@ def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
     Raises:
         AOIError: If the feature has invalid geometry.
     """
-    import json
-
     from kml_satellite.activities.prepare_aoi import prepare_aoi
     from kml_satellite.models.feature import Feature as FeatureModel
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     feature = FeatureModel.from_dict(payload)
 
     logger.info(
@@ -286,17 +275,10 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
     Raises:
         MetadataWriteError: If blob upload fails.
     """
-    import json
-
-    from azure.storage.blob import BlobServiceClient
-
     from kml_satellite.activities.write_metadata import write_metadata
     from kml_satellite.models.aoi import AOI as AOIModel  # noqa: N811
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, WriteMetadataInput, activity="write_metadata")
 
     aoi_data = payload.get("aoi", payload)
@@ -314,11 +296,11 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
         processing_id,
     )
 
-    # Connect to Blob Storage for writing
-    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
-    blob_service: BlobServiceClient | None = None
-    if connection_string:
-        blob_service = BlobServiceClient.from_connection_string(connection_string)
+    # Connect to Blob Storage for writing (optional — not all paths require it)
+    try:
+        blob_service = get_blob_service_client()
+    except Exception:
+        blob_service = None
 
     result = write_metadata(
         aoi,
@@ -357,14 +339,9 @@ def acquire_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa: 
     Raises:
         ImageryAcquisitionError: If search or order fails.
     """
-    import json
-
     from kml_satellite.activities.acquire_imagery import acquire_imagery
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, AcquireImageryInput, activity="acquire_imagery")
 
     aoi_data = payload.get("aoi", payload)
@@ -414,14 +391,9 @@ def poll_order_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
     Raises:
         PollError: If polling fails.
     """
-    import json
-
     from kml_satellite.activities.poll_order import poll_order
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, PollOrderInput, activity="poll_order")
 
     logger.info(
@@ -461,14 +433,9 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
     Raises:
         DownloadError: If download fails after retries or validation fails.
     """
-    import json
-
     from kml_satellite.activities.download_imagery import download_imagery
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, DownloadImageryInput, activity="download_imagery")
 
     imagery_outcome = payload.get("imagery_outcome", payload)
@@ -528,14 +495,9 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
     Raises:
         PostProcessError: If a fatal error prevents useful output.
     """
-    import json
-
     from kml_satellite.activities.post_process_imagery import post_process_imagery
 
-    payload: dict[str, object] = (
-        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
-    )  # type: ignore[assignment]
-
+    payload = deserialize_activity_input(activityInput)
     validate_payload(payload, PostProcessImageryInput, activity="post_process_imagery")
 
     download_result = payload.get("download_result", payload)
