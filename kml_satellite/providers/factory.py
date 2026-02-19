@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 from kml_satellite.models.imagery import ProviderConfig
@@ -49,6 +50,16 @@ SKYWATCH = "skywatch"
 # (e.g. pystac-client, httpx) are only loaded when that adapter is selected.
 
 _ADAPTER_REGISTRY: dict[str, Callable[[], type[ImageryProvider]]] = {}
+
+# ---------------------------------------------------------------------------
+# Instance cache — reuse adapters across activity invocations (Issue #63)
+# ---------------------------------------------------------------------------
+
+# Cache key: (name, api_base_url, auth_mechanism, keyvault_secret_name)
+_CacheKey = tuple[str, str, str, str]
+
+_instance_cache: dict[_CacheKey, ImageryProvider] = {}
+_cache_lock = threading.Lock()
 
 
 def _register_builtin_adapters() -> None:
@@ -113,7 +124,13 @@ def get_provider(
     name: str,
     config: ProviderConfig | None = None,
 ) -> ImageryProvider:
-    """Create and return an imagery provider instance.
+    """Return a (possibly cached) imagery provider instance.
+
+    Adapter instances are cached at module level so that HTTP sessions
+    and TLS state are reused across activity invocations within the
+    same Function App worker process (Issue #63).  The cache is keyed
+    by connection-level identity: ``(name, api_base_url,
+    auth_mechanism, keyvault_secret_name)``.
 
     Args:
         name: Provider identifier (e.g. ``"planetary_computer"``, ``"skywatch"``).
@@ -134,19 +151,44 @@ def get_provider(
         msg = f"Unknown imagery provider: {name!r}. Available: {available}"
         raise ProviderError(provider=name, message=msg)
 
-    adapter_cls = loader()
-
     if config is None:
         config = ProviderConfig(name=name)
     elif config.name != name:
         msg = f"ProviderConfig.name {config.name!r} does not match requested provider {name!r}"
         raise ProviderError(provider=name, message=msg)
 
-    logger.info("Creating imagery provider: %s", name)
-    return adapter_cls(config)
+    cache_key: _CacheKey = (
+        config.name,
+        config.api_base_url,
+        config.auth_mechanism,
+        config.keyvault_secret_name,
+    )
+
+    with _cache_lock:
+        cached = _instance_cache.get(cache_key)
+        if cached is not None:
+            logger.debug("Reusing cached provider instance: %s", name)
+            return cached
+
+        adapter_cls = loader()
+        instance = adapter_cls(config)
+        _instance_cache[cache_key] = instance
+        logger.info("Created and cached imagery provider: %s", name)
+        return instance
 
 
 def list_providers() -> list[str]:
     """Return the names of all registered provider adapters."""
     _ensure_registry()
     return sorted(_ADAPTER_REGISTRY)
+
+
+def clear_provider_cache() -> None:
+    """Clear the cached provider instances.
+
+    Intended for testing and for worker recycling scenarios where
+    stale connections need to be discarded.
+    """
+    with _cache_lock:
+        _instance_cache.clear()
+    logger.debug("Provider instance cache cleared")

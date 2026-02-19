@@ -1,7 +1,7 @@
 """Tests for the imagery provider factory.
 
 Covers: get_provider, list_providers, register_provider, error handling,
-lazy import behaviour, and config-driven switching.
+lazy import behaviour, config-driven switching, and instance caching (Issue #63).
 
 References:
     PID FR-3.1  (provider-agnostic abstraction)
@@ -20,6 +20,7 @@ from kml_satellite.providers.factory import (
     PLANETARY_COMPUTER,
     SKYWATCH,
     _ensure_registry,
+    clear_provider_cache,
     get_provider,
     list_providers,
     register_provider,
@@ -42,6 +43,12 @@ class TestListProviders(unittest.TestCase):
 
 class TestGetProvider(unittest.TestCase):
     """get_provider creates the correct adapter instance."""
+
+    def setUp(self) -> None:
+        clear_provider_cache()
+
+    def tearDown(self) -> None:
+        clear_provider_cache()
 
     def test_planetary_computer(self) -> None:
         provider = get_provider(PLANETARY_COMPUTER)
@@ -87,12 +94,14 @@ class TestRegisterProvider(unittest.TestCase):
     def setUp(self) -> None:
         """Ensure registry is initialised and remember state."""
         _ensure_registry()
+        clear_provider_cache()
         # Remove our test adapter if it lingers from a previous run
         _ADAPTER_REGISTRY.pop("test_custom", None)
 
     def tearDown(self) -> None:
         """Clean up custom adapter."""
         _ADAPTER_REGISTRY.pop("test_custom", None)
+        clear_provider_cache()
 
     def test_register_and_get(self) -> None:
         """Registered adapter can be retrieved via get_provider."""
@@ -124,6 +133,12 @@ class TestRegisterProvider(unittest.TestCase):
 class TestProviderSwitching(unittest.TestCase):
     """Provider switching via config (PID 7.6)."""
 
+    def setUp(self) -> None:
+        clear_provider_cache()
+
+    def tearDown(self) -> None:
+        clear_provider_cache()
+
     def test_switch_by_name(self) -> None:
         """Different names are registered for different adapter types."""
         providers = list_providers()
@@ -142,3 +157,65 @@ class TestProviderSwitching(unittest.TestCase):
         assert cfg.imagery_provider == SKYWATCH
         with self.assertRaises(SkyWatchNotImplementedError):
             get_provider(cfg.imagery_provider)
+
+
+class TestProviderInstanceCache(unittest.TestCase):
+    """Instance caching for session pooling (Issue #63)."""
+
+    def setUp(self) -> None:
+        clear_provider_cache()
+
+    def tearDown(self) -> None:
+        clear_provider_cache()
+
+    def test_same_config_returns_cached_instance(self) -> None:
+        """Repeated calls with the same config return the same object."""
+        a = get_provider(PLANETARY_COMPUTER)
+        b = get_provider(PLANETARY_COMPUTER)
+        assert a is b
+
+    def test_different_url_returns_new_instance(self) -> None:
+        """Different api_base_url produces a distinct cached instance."""
+        default = get_provider(PLANETARY_COMPUTER)
+        custom_cfg = ProviderConfig(
+            name=PLANETARY_COMPUTER,
+            api_base_url="https://alt.stac.api/v1",
+        )
+        custom = get_provider(PLANETARY_COMPUTER, config=custom_cfg)
+        assert default is not custom
+        assert default.name == custom.name
+
+    def test_clear_cache_forces_new_instance(self) -> None:
+        """After clearing the cache, a fresh adapter is created."""
+        first = get_provider(PLANETARY_COMPUTER)
+        clear_provider_cache()
+        second = get_provider(PLANETARY_COMPUTER)
+        assert first is not second
+
+    def test_failed_init_is_not_cached(self) -> None:
+        """Adapters that raise in __init__ are not cached."""
+        with self.assertRaises(SkyWatchNotImplementedError):
+            get_provider(SKYWATCH)
+        # Second call should also raise (not return a cached broken instance).
+        with self.assertRaises(SkyWatchNotImplementedError):
+            get_provider(SKYWATCH)
+
+    def test_cache_is_thread_safe(self) -> None:
+        """Concurrent get_provider calls do not produce duplicate instances."""
+        import threading
+
+        results: list[ImageryProvider] = []
+        barrier = threading.Barrier(4)
+
+        def _get() -> None:
+            barrier.wait()
+            results.append(get_provider(PLANETARY_COMPUTER))
+
+        threads = [threading.Thread(target=_get) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(results) == 4
+        assert all(r is results[0] for r in results)

@@ -25,6 +25,7 @@ from kml_satellite.providers.base import (
 from kml_satellite.providers.factory import (
     PLANETARY_COMPUTER,
     SKYWATCH,
+    clear_provider_cache,
     get_provider,
     list_providers,
     register_provider,
@@ -41,6 +42,7 @@ __all__ = [
     "ProviderOrderError",
     "ProviderSearchError",
     "SkyWatchNotImplementedError",
+    "clear_provider_cache",
     "get_provider",
     "list_providers",
     "register_provider",
