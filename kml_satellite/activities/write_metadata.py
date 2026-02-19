@@ -22,7 +22,7 @@ References:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from kml_satellite.core.constants import OUTPUT_CONTAINER
@@ -66,13 +66,13 @@ def write_metadata(
         MetadataWriteError: If blob upload fails.
     """
     if not timestamp:
-        timestamp = datetime.now().astimezone().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
     # Parse timestamp for path generation
     try:
         ts = datetime.fromisoformat(timestamp)
     except (ValueError, TypeError):
-        ts = datetime.now().astimezone()
+        ts = datetime.now(UTC)
         timestamp = ts.isoformat()
 
     # Build the metadata record (PID Section 9.2)

@@ -10,7 +10,7 @@ References:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from kml_satellite.models.imagery import ProviderConfig
@@ -49,12 +49,12 @@ def parse_timestamp(timestamp: str) -> datetime:
         timestamp: ISO 8601 timestamp string, or empty string.
 
     Returns:
-        A timezone-aware ``datetime``. Falls back to ``datetime.now()``
-        with local timezone if the input is empty or unparseable.
+        A timezone-aware ``datetime`` in UTC. Falls back to
+        ``datetime.now(UTC)`` if the input is empty or unparseable.
     """
     if not timestamp:
-        return datetime.now().astimezone()
+        return datetime.now(UTC)
     try:
         return datetime.fromisoformat(timestamp)
     except (ValueError, TypeError):
-        return datetime.now().astimezone()
+        return datetime.now(UTC)

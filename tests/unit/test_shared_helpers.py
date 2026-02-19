@@ -12,7 +12,7 @@ References:
 from __future__ import annotations
 
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 
 from kml_satellite.core.constants import INPUT_CONTAINER, OUTPUT_CONTAINER
 from kml_satellite.utils.helpers import build_provider_config, parse_timestamp
@@ -84,20 +84,32 @@ class TestParseTimestamp(unittest.TestCase):
         assert result.tzinfo is not None
 
     def test_empty_string_returns_now(self) -> None:
-        before = datetime.now().astimezone()
+        before = datetime.now(UTC)
         result = parse_timestamp("")
-        after = datetime.now().astimezone()
+        after = datetime.now(UTC)
         assert before <= result <= after
 
     def test_invalid_string_returns_now(self) -> None:
-        before = datetime.now().astimezone()
+        before = datetime.now(UTC)
         result = parse_timestamp("not-a-timestamp")
-        after = datetime.now().astimezone()
+        after = datetime.now(UTC)
         assert before <= result <= after
 
     def test_naive_iso_timestamp(self) -> None:
         result = parse_timestamp("2026-01-01T00:00:00")
         assert result.year == 2026
+
+    def test_fallback_is_utc(self) -> None:
+        """Empty input must produce a UTC-aware datetime, not local tz."""
+        result = parse_timestamp("")
+        assert result.tzinfo is not None
+        assert result.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+
+    def test_invalid_fallback_is_utc(self) -> None:
+        """Unparseable input must produce a UTC-aware datetime."""
+        result = parse_timestamp("garbage")
+        assert result.tzinfo is not None
+        assert result.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------
