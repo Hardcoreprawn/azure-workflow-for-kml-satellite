@@ -25,6 +25,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.models.metadata import AOIMetadataRecord
 from kml_satellite.utils.blob_paths import build_metadata_path
 
@@ -32,9 +33,6 @@ if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
 
 logger = logging.getLogger("kml_satellite.activities.write_metadata")
-
-# Output container name (PID Section 10.1)
-OUTPUT_CONTAINER = "kml-output"
 
 
 class MetadataWriteError(Exception):

@@ -31,9 +31,10 @@ import logging
 from typing import Any
 
 from kml_satellite.models.aoi import AOI
-from kml_satellite.models.imagery import ImageryFilters, ProviderConfig
+from kml_satellite.models.imagery import ImageryFilters
 from kml_satellite.providers.base import ProviderError
 from kml_satellite.providers.factory import get_provider
+from kml_satellite.utils.helpers import build_provider_config
 
 logger = logging.getLogger("kml_satellite.activities.acquire_imagery")
 
@@ -95,7 +96,7 @@ def acquire_imagery(
     )
 
     # Build provider config
-    config = _build_provider_config(provider_name, provider_config)
+    config = build_provider_config(provider_name, provider_config)
 
     # Build imagery filters
     filters = _build_filters(filters_dict)
@@ -162,21 +163,8 @@ def acquire_imagery(
 # ---------------------------------------------------------------------------
 
 
-def _build_provider_config(
-    provider_name: str,
-    overrides: dict[str, Any] | None,
-) -> ProviderConfig:
-    """Build a ``ProviderConfig`` from the provider name and optional overrides."""
-    if overrides is None:
-        return ProviderConfig(name=provider_name)
-
-    return ProviderConfig(
-        name=provider_name,
-        api_base_url=str(overrides.get("api_base_url", "")),
-        auth_mechanism=str(overrides.get("auth_mechanism", "none")),
-        keyvault_secret_name=str(overrides.get("keyvault_secret_name", "")),
-        extra_params={str(k): str(v) for k, v in overrides.get("extra_params", {}).items()},
-    )
+# Re-export for backwards compatibility and test imports.
+_build_provider_config = build_provider_config
 
 
 def _build_filters(

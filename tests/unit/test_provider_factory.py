@@ -24,6 +24,7 @@ from kml_satellite.providers.factory import (
     list_providers,
     register_provider,
 )
+from kml_satellite.providers.skywatch import SkyWatchNotImplementedError
 
 
 class TestListProviders(unittest.TestCase):
@@ -47,10 +48,12 @@ class TestGetProvider(unittest.TestCase):
         assert isinstance(provider, ImageryProvider)
         assert provider.name == PLANETARY_COMPUTER
 
-    def test_skywatch(self) -> None:
-        provider = get_provider(SKYWATCH)
-        assert isinstance(provider, ImageryProvider)
-        assert provider.name == SKYWATCH
+    def test_skywatch_blocked_until_implemented(self) -> None:
+        """SkyWatch adapter blocks instantiation with an actionable error (Issue #44)."""
+        with self.assertRaises(SkyWatchNotImplementedError) as ctx:
+            get_provider(SKYWATCH)
+        assert "not yet implemented" in str(ctx.exception).lower()
+        assert ctx.exception.retryable is False
 
     def test_unknown_provider_raises(self) -> None:
         with self.assertRaises(ProviderError) as ctx:
@@ -122,16 +125,20 @@ class TestProviderSwitching(unittest.TestCase):
     """Provider switching via config (PID 7.6)."""
 
     def test_switch_by_name(self) -> None:
-        """Different names produce different adapter types."""
+        """Different names are registered for different adapter types."""
+        providers = list_providers()
+        assert PLANETARY_COMPUTER in providers
+        assert SKYWATCH in providers
+        # Planetary Computer instantiates; SkyWatch blocks (Issue #44)
         pc = get_provider(PLANETARY_COMPUTER)
-        sw = get_provider(SKYWATCH)
-        assert type(pc) is not type(sw)
+        assert pc.name == PLANETARY_COMPUTER
 
     @patch.dict("os.environ", {"IMAGERY_PROVIDER": SKYWATCH})
-    def test_env_driven_selection(self) -> None:
-        """PipelineConfig.imagery_provider drives provider selection."""
+    def test_env_driven_selection_skywatch_blocked(self) -> None:
+        """PipelineConfig.imagery_provider=skywatch is rejected until implemented."""
         from kml_satellite.core.config import PipelineConfig
 
         cfg = PipelineConfig.from_env()
-        provider = get_provider(cfg.imagery_provider)
-        assert provider.name == SKYWATCH
+        assert cfg.imagery_provider == SKYWATCH
+        with self.assertRaises(SkyWatchNotImplementedError):
+            get_provider(cfg.imagery_provider)

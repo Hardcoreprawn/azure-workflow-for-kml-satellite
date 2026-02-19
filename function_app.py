@@ -15,6 +15,7 @@ import os
 import azure.durable_functions as df
 import azure.functions as func
 
+from kml_satellite.core.constants import INPUT_CONTAINER
 from kml_satellite.models.blob_event import BlobEvent
 
 app = func.FunctionApp()
@@ -62,7 +63,7 @@ async def kml_blob_trigger(
 
     # Defence-in-depth: Event Grid subscription filters for .kml in kml-input,
     # but we validate here too in case of misconfiguration.
-    if blob_event.container_name != "kml-input":
+    if blob_event.container_name != INPUT_CONTAINER:
         logger.warning(
             "Ignoring blob from unexpected container: %s (defence-in-depth filter)",
             blob_event.container_name,
@@ -331,7 +332,7 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
     return result
 
 
-# TODO (Issue #13-#19): clipping, compositing, and delivery activities
+# TODO (Issue #13-#19): compositing and delivery activities
 
 
 @app.function_name("acquire_imagery")
@@ -489,6 +490,81 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
         result.get("order_id", ""),
         result.get("blob_path", ""),
         result.get("size_bytes", 0),
+    )
+
+    return result
+
+
+@app.function_name("post_process_imagery")
+@app.activity_trigger(input_name="activityInput")
+def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
+    """Durable Functions activity: clip and reproject downloaded imagery.
+
+    Input:
+        JSON string (or dict when replaying) containing:
+        - ``download_result``: Dict from download_imagery with
+          ``order_id``, ``blob_path``, ``size_bytes``, etc.
+        - ``aoi``: Serialised AOI dict with polygon geometry.
+        - ``orchard_name``: Orchard/project name for output path.
+        - ``timestamp``: Processing timestamp (ISO 8601).
+        - ``target_crs``: Target CRS for reprojection (default EPSG:4326).
+        - ``enable_clipping``: Whether to clip (default True).
+        - ``enable_reprojection``: Whether to reproject (default True).
+
+    Returns:
+        Dict with ``order_id``, ``clipped_blob_path``, ``clipped``,
+        ``reprojected``, ``source_crs``, ``target_crs``, and sizes.
+
+    Raises:
+        PostProcessError: If a fatal error prevents useful output.
+    """
+    import json
+
+    from kml_satellite.activities.post_process_imagery import post_process_imagery
+
+    payload: dict[str, object] = (
+        json.loads(activityInput) if isinstance(activityInput, str) else activityInput
+    )  # type: ignore[assignment]
+
+    download_result = payload.get("download_result", payload)
+    if not isinstance(download_result, dict):
+        msg = "post_process_imagery activity: download_result must be a dict"
+        raise TypeError(msg)
+
+    aoi_data = payload.get("aoi", {})
+    if not isinstance(aoi_data, dict):
+        msg = "post_process_imagery activity: aoi must be a dict"
+        raise TypeError(msg)
+
+    orchard_name = str(payload.get("orchard_name", ""))
+    timestamp = str(payload.get("timestamp", ""))
+    target_crs = str(payload.get("target_crs", "EPSG:4326"))
+    enable_clipping = bool(payload.get("enable_clipping", True))
+    enable_reprojection = bool(payload.get("enable_reprojection", True))
+
+    logger.info(
+        "post_process_imagery activity started | order_id=%s | feature=%s",
+        download_result.get("order_id", ""),
+        aoi_data.get("feature_name", ""),
+    )
+
+    result = post_process_imagery(
+        download_result,
+        aoi_data,
+        orchard_name=orchard_name,
+        timestamp=timestamp,
+        target_crs=target_crs,
+        enable_clipping=enable_clipping,
+        enable_reprojection=enable_reprojection,
+    )
+
+    logger.info(
+        "post_process_imagery activity completed | order_id=%s | "
+        "clipped=%s | reprojected=%s | output=%s",
+        result.get("order_id", ""),
+        result.get("clipped", False),
+        result.get("reprojected", False),
+        result.get("clipped_blob_path", ""),
     )
 
     return result

@@ -198,15 +198,14 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     ready_outcomes = [o for o in imagery_outcomes if o.get("state") == "ready"]
 
-    # Derive orchard_name from the source KML filename stem
-    # (same heuristic as metadata — see models.metadata._extract_orchard_name)
+    # Derive orchard_name from the source KML filename stem.
+    # Uses PurePosixPath for consistent stem extraction, with "unknown"
+    # fallback matching models.metadata._extract_orchard_name semantics.
     _blob_name_str = str(blob_name)
-    if "." in _blob_name_str:
-        from pathlib import PurePosixPath
+    from pathlib import PurePosixPath
 
-        orchard_name = PurePosixPath(_blob_name_str).stem
-    else:
-        orchard_name = _blob_name_str if _blob_name_str != "<unknown>" else ""
+    _stem = PurePosixPath(_blob_name_str).stem if _blob_name_str else ""
+    orchard_name = _stem if _stem and _stem != "<unknown>" else "unknown"
 
     # Sequential downloads with per-order error handling so a single
     # failure doesn't abort the entire orchestration (PID 7.4.2).
@@ -259,6 +258,85 @@ def orchestrator_function(
         )
 
     # -----------------------------------------------------------------------
+    # Phase 7: Post-process imagery — clip + reproject (M-2.5, FR-3.11, FR-3.12)
+    # -----------------------------------------------------------------------
+    # Build a mapping from order_id → AOI dict for clipping geometry.
+    # Each acquisition result carries aoi_feature_name; we match it to the
+    # original AOI used for that acquisition.
+    enable_clipping = bool(blob_event.get("enable_clipping", True))
+    enable_reprojection = bool(blob_event.get("enable_reprojection", True))
+    target_crs = str(blob_event.get("target_crs", "EPSG:4326"))
+
+    # Build a lookup from feature_name → AOI dict for geometry retrieval
+    aoi_by_feature: dict[str, dict[str, Any]] = {}
+    if isinstance(aois, list):
+        for a in aois:
+            if isinstance(a, dict):
+                fname = str(a.get("feature_name", ""))
+                if fname:
+                    aoi_by_feature[fname] = a
+
+    # Only post-process successful downloads (not state="failed")
+    successful_downloads = [d for d in download_results if d.get("state") != "failed"]
+
+    post_process_results: list[dict[str, Any]] = []
+    for dl_result in successful_downloads:
+        # Find the matching AOI for this download
+        dl_feature = str(dl_result.get("aoi_feature_name", ""))
+        matching_aoi = aoi_by_feature.get(dl_feature, {})
+
+        try:
+            pp_result = yield context.call_activity(
+                "post_process_imagery",
+                {
+                    "download_result": dl_result,
+                    "aoi": matching_aoi,
+                    "orchard_name": orchard_name,
+                    "timestamp": timestamp,
+                    "target_crs": target_crs,
+                    "enable_clipping": enable_clipping,
+                    "enable_reprojection": enable_reprojection,
+                },
+            )
+            if isinstance(pp_result, dict):
+                post_process_results.append(pp_result)
+            else:
+                post_process_results.append(
+                    {
+                        "state": "unknown",
+                        "download_result": dl_result,
+                        "result": pp_result,
+                    }
+                )
+        except Exception as exc:
+            if not context.is_replaying:
+                logger.exception(
+                    "Post-processing failed | instance=%s | order=%s | error=%s",
+                    instance_id,
+                    dl_result.get("order_id", ""),
+                    exc,
+                )
+            post_process_results.append(
+                {
+                    "state": "failed",
+                    "order_id": dl_result.get("order_id", ""),
+                    "error": str(exc),
+                    "clipped": False,
+                    "reprojected": False,
+                }
+            )
+
+    if not context.is_replaying:
+        clipped_count = sum(1 for p in post_process_results if p.get("clipped"))
+        logger.info(
+            "Post-processing complete | instance=%s | processed=%d | clipped=%d | blob=%s",
+            instance_id,
+            len(post_process_results),
+            clipped_count,
+            blob_name,
+        )
+
+    # -----------------------------------------------------------------------
     # Result summary
     # -----------------------------------------------------------------------
     feature_count = len(features) if isinstance(features, list) else 0
@@ -269,10 +347,17 @@ def orchestrator_function(
     downloads_completed = len(download_results)
     downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
     downloads_succeeded = downloads_completed - downloads_failed
+    pp_completed = len(post_process_results)
+    pp_clipped = sum(1 for p in post_process_results if p.get("clipped"))
+    pp_reprojected = sum(1 for p in post_process_results if p.get("reprojected"))
+    pp_failed = sum(1 for p in post_process_results if p.get("state") == "failed")
 
     status_label = (
         "completed"
-        if imagery_failed == 0 and downloads_failed == 0 and downloads_succeeded == imagery_ready
+        if imagery_failed == 0
+        and downloads_failed == 0
+        and downloads_succeeded == imagery_ready
+        and pp_failed == 0
         else "partial_imagery"
     )
     result: dict[str, object] = {
@@ -286,14 +371,19 @@ def orchestrator_function(
         "imagery_ready": imagery_ready,
         "imagery_failed": imagery_failed,
         "downloads_completed": downloads_completed,
+        "post_process_completed": pp_completed,
+        "post_process_clipped": pp_clipped,
+        "post_process_reprojected": pp_reprojected,
         "imagery_outcomes": imagery_outcomes,
         "download_results": download_results,
+        "post_process_results": post_process_results,
         "message": (
             f"Parsed {feature_count} feature(s), "
             f"prepared {aoi_count} AOI(s), "
             f"wrote {metadata_count} metadata record(s), "
             f"imagery ready={imagery_ready} failed={imagery_failed}, "
-            f"downloaded={downloads_completed}."
+            f"downloaded={downloads_completed}, "
+            f"clipped={pp_clipped} reprojected={pp_reprojected}."
         ),
     }
 

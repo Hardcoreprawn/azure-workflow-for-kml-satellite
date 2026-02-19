@@ -29,6 +29,7 @@ from kml_satellite.providers.factory import (
     list_providers,
     register_provider,
 )
+from kml_satellite.providers.skywatch import SkyWatchNotImplementedError
 
 __all__ = [
     "PLANETARY_COMPUTER",
@@ -39,6 +40,7 @@ __all__ = [
     "ProviderError",
     "ProviderOrderError",
     "ProviderSearchError",
+    "SkyWatchNotImplementedError",
     "get_provider",
     "list_providers",
     "register_provider",

@@ -27,6 +27,7 @@ from datetime import datetime
 KML_PREFIX = "kml"
 METADATA_PREFIX = "metadata"
 IMAGERY_RAW_PREFIX = "imagery/raw"
+IMAGERY_CLIPPED_PREFIX = "imagery/clipped"
 
 # Regex for sanitising path segments (allow only lowercase alphanumeric + hyphen)
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
@@ -133,3 +134,33 @@ def build_imagery_path(
     orchard_slug = sanitise_slug(orchard_name)
     feature_slug = sanitise_slug(feature_name) + ".tif"
     return f"{IMAGERY_RAW_PREFIX}/{year}/{month}/{orchard_slug}/{feature_slug}"
+
+
+def build_clipped_imagery_path(
+    feature_name: str,
+    orchard_name: str,
+    *,
+    timestamp: datetime | None = None,
+) -> str:
+    """Build the blob path for clipped (post-processed) imagery.
+
+    Format: ``imagery/clipped/{YYYY}/{MM}/{orchard-name}/{feature-name}.tif``
+
+    Args:
+        feature_name: Feature/Placemark name (will be sanitised).
+        orchard_name: Orchard/project name (will be sanitised).
+        timestamp: Processing timestamp. Defaults to current UTC time.
+
+    Returns:
+        Deterministic blob path string (PID 7.4.4).
+
+    References:
+        PID FR-4.3 (store clipped imagery under ``/imagery/clipped/``)
+        PID Section 10.1 (Container & Path Layout)
+    """
+    ts = timestamp or datetime.now().astimezone()
+    year = f"{ts.year:04d}"
+    month = f"{ts.month:02d}"
+    orchard_slug = sanitise_slug(orchard_name)
+    feature_slug = sanitise_slug(feature_name) + ".tif"
+    return f"{IMAGERY_CLIPPED_PREFIX}/{year}/{month}/{orchard_slug}/{feature_slug}"

@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pystac_client
 
+from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.models.imagery import (
     BlobReference,
     ImageryFilters,
@@ -44,6 +45,7 @@ from kml_satellite.providers.base import (
     ProviderDownloadError,
     ProviderSearchError,
 )
+from kml_satellite.utils.blob_paths import IMAGERY_RAW_PREFIX
 
 if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
@@ -62,9 +64,6 @@ _DEFAULT_COLLECTIONS = ["sentinel-2-l2a"]
 
 # STAC asset key fallback order for download URL resolution.
 _FALLBACK_ASSET_KEYS = ("visual", "B04", "rendered_preview")
-
-# Default output container for downloaded imagery.
-_DEFAULT_OUTPUT_CONTAINER = "kml-output"
 
 
 class PlanetaryComputerAdapter(ImageryProvider):
@@ -240,7 +239,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
             raise ProviderDownloadError(provider=self.name, message=msg, retryable=True) from exc
 
         blob_path = _build_blob_path(scene_id)
-        container = self.config.extra_params.get("output_container", _DEFAULT_OUTPUT_CONTAINER)
+        container = self.config.extra_params.get("output_container", OUTPUT_CONTAINER)
 
         logger.info(
             "Downloaded %s to %s/%s (%d bytes)",
@@ -415,4 +414,4 @@ def _build_blob_path(scene_id: str) -> str:
     the same scene overwrites the previous blob rather than creating
     duplicates — consistent with the idempotency principle (PID 7.4.4).
     """
-    return f"imagery/raw/{scene_id}.tif"
+    return f"{IMAGERY_RAW_PREFIX}/{scene_id}.tif"
