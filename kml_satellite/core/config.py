@@ -15,8 +15,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from kml_satellite.core.exceptions import PipelineError
 
-class ConfigValidationError(Exception):
+
+class ConfigValidationError(PipelineError):
     """Raised when configuration values are out of valid range.
 
     Attributes:
@@ -24,6 +26,9 @@ class ConfigValidationError(Exception):
         value: The invalid value.
         message: Human-readable description of the valid range.
     """
+
+    default_stage = "config"
+    default_code = "CONFIG_VALIDATION_FAILED"
 
     def __init__(self, key: str, value: object, message: str) -> None:
         self.key = key

@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.aoi import AOI
 from kml_satellite.models.imagery import ImageryFilters
 from kml_satellite.providers.base import ProviderError
@@ -39,7 +40,7 @@ from kml_satellite.utils.helpers import build_provider_config
 logger = logging.getLogger("kml_satellite.activities.acquire_imagery")
 
 
-class ImageryAcquisitionError(Exception):
+class ImageryAcquisitionError(PipelineError):
     """Raised when imagery acquisition fails.
 
     Attributes:
@@ -47,10 +48,11 @@ class ImageryAcquisitionError(Exception):
         retryable: Whether the orchestrator should retry the operation.
     """
 
+    default_stage = "acquire_imagery"
+    default_code = "IMAGERY_ACQUISITION_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def acquire_imagery(

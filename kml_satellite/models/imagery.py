@@ -29,6 +29,8 @@ import enum
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from kml_satellite.core.exceptions import PipelineError
+
 if TYPE_CHECKING:
     from datetime import datetime
 
@@ -38,7 +40,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-class ModelValidationError(ValueError):
+class ModelValidationError(ValueError, PipelineError):
     """Raised when a domain model is constructed with invalid field values.
 
     Attributes:
@@ -47,11 +49,15 @@ class ModelValidationError(ValueError):
         value: The invalid value.
     """
 
+    default_stage = "model_validation"
+    default_code = "MODEL_VALIDATION_FAILED"
+
     def __init__(self, model: str, field_name: str, value: object, message: str) -> None:
         self.model = model
         self.field_name = field_name
         self.value = value
-        super().__init__(f"{model}.{field_name}={value!r}: {message}")
+        formatted = f"{model}.{field_name}={value!r}: {message}"
+        PipelineError.__init__(self, formatted)
 
 
 # ---------------------------------------------------------------------------

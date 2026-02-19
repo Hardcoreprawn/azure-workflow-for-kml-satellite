@@ -25,6 +25,8 @@ from __future__ import annotations
 import abc
 from typing import TYPE_CHECKING
 
+from kml_satellite.core.exceptions import PipelineError
+
 if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
     from kml_satellite.models.imagery import (
@@ -149,7 +151,7 @@ class ImageryProvider(abc.ABC):
 # ---------------------------------------------------------------------------
 
 
-class ProviderError(Exception):
+class ProviderError(PipelineError):
     """Base exception for provider adapter errors.
 
     Attributes:
@@ -157,6 +159,9 @@ class ProviderError(Exception):
         message: Human-readable error description.
         retryable: Whether the caller should retry the operation.
     """
+
+    default_stage = "provider"
+    default_code = "PROVIDER_ERROR"
 
     def __init__(
         self,
@@ -166,13 +171,20 @@ class ProviderError(Exception):
         retryable: bool = False,
     ) -> None:
         self.provider = provider
+        super().__init__(
+            f"[{provider}] {message}",
+            retryable=retryable,
+            code=self.default_code,
+            stage=self.default_stage,
+        )
+        # Preserve the un-prefixed message for attribute access.
         self.message = message
-        self.retryable = retryable
-        super().__init__(f"[{provider}] {message}")
 
 
 class ProviderAuthError(ProviderError):
     """Authentication or authorisation failure with the provider API."""
+
+    default_code = "PROVIDER_AUTH_FAILED"
 
     def __init__(self, provider: str, message: str) -> None:
         super().__init__(provider, message, retryable=False)
@@ -181,10 +193,16 @@ class ProviderAuthError(ProviderError):
 class ProviderSearchError(ProviderError):
     """Error during imagery archive search."""
 
+    default_code = "PROVIDER_SEARCH_FAILED"
+
 
 class ProviderOrderError(ProviderError):
     """Error during order submission or polling."""
 
+    default_code = "PROVIDER_ORDER_FAILED"
+
 
 class ProviderDownloadError(ProviderError):
     """Error during imagery download."""
+
+    default_code = "PROVIDER_DOWNLOAD_FAILED"

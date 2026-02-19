@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.feature import Feature
 
 if TYPE_CHECKING:
@@ -54,16 +55,23 @@ MIN_POLYGON_VERTICES = 4
 # ---------------------------------------------------------------------------
 
 
-class KmlParseError(Exception):
+class KmlParseError(PipelineError):
     """Raised when a KML file cannot be parsed."""
+
+    default_stage = "parse_kml"
+    default_code = "KML_PARSE_FAILED"
 
 
 class KmlValidationError(KmlParseError):
     """Raised when a KML file is structurally valid but contains invalid data."""
 
+    default_code = "KML_VALIDATION_FAILED"
+
 
 class InvalidCoordinateError(KmlValidationError):
     """Raised when coordinates are outside valid WGS 84 bounds."""
+
+    default_code = "KML_COORDINATE_INVALID"
 
 
 # ---------------------------------------------------------------------------

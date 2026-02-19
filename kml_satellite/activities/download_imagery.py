@@ -41,13 +41,15 @@ from kml_satellite.utils.helpers import build_provider_config, parse_timestamp
 if TYPE_CHECKING:
     from kml_satellite.models.imagery import BlobReference
 
+from kml_satellite.core.exceptions import PipelineError
+
 logger = logging.getLogger("kml_satellite.activities.download_imagery")
 
 # Maximum number of download retries (PID FR-6.5)
 DEFAULT_MAX_DOWNLOAD_RETRIES = 3
 
 
-class DownloadError(Exception):
+class DownloadError(PipelineError):
     """Raised when imagery download fails.
 
     Attributes:
@@ -55,10 +57,11 @@ class DownloadError(Exception):
         retryable: Whether the orchestrator should retry the operation.
     """
 
+    default_stage = "download_imagery"
+    default_code = "DOWNLOAD_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def download_imagery(

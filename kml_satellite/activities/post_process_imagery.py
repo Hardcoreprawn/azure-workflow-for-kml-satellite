@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from kml_satellite.core.constants import OUTPUT_CONTAINER
+from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
 
@@ -42,7 +43,7 @@ logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
 DEFAULT_TARGET_CRS = "EPSG:4326"
 
 
-class PostProcessError(Exception):
+class PostProcessError(PipelineError):
     """Raised when post-processing fails fatally.
 
     Attributes:
@@ -50,10 +51,11 @@ class PostProcessError(Exception):
         retryable: Whether the orchestrator should retry.
     """
 
+    default_stage = "post_process_imagery"
+    default_code = "POST_PROCESS_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def post_process_imagery(

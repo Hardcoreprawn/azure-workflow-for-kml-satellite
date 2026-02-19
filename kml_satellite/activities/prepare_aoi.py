@@ -30,6 +30,8 @@ from kml_satellite.models.aoi import AOI
 if TYPE_CHECKING:
     from kml_satellite.models.feature import Feature
 
+from kml_satellite.core.exceptions import PipelineError
+
 logger = logging.getLogger("kml_satellite.activities.prepare_aoi")
 
 # ---------------------------------------------------------------------------
@@ -53,8 +55,11 @@ SQ_METRES_PER_HECTARE = 10_000.0
 # ---------------------------------------------------------------------------
 
 
-class AOIError(Exception):
+class AOIError(PipelineError):
     """Raised when AOI processing encounters an unrecoverable error."""
+
+    default_stage = "prepare_aoi"
+    default_code = "AOI_PROCESSING_FAILED"
 
 
 # ---------------------------------------------------------------------------

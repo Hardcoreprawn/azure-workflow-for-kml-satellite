@@ -32,11 +32,16 @@ from kml_satellite.utils.blob_paths import build_metadata_path
 if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
 
+from kml_satellite.core.exceptions import PipelineError
+
 logger = logging.getLogger("kml_satellite.activities.write_metadata")
 
 
-class MetadataWriteError(Exception):
+class MetadataWriteError(PipelineError):
     """Raised when metadata writing fails."""
+
+    default_stage = "write_metadata"
+    default_code = "METADATA_WRITE_FAILED"
 
 
 def write_metadata(
