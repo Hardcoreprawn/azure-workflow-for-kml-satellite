@@ -182,14 +182,13 @@ def _run_orchestrator(
     except StopIteration as exc:
         return exc.value  # type: ignore[return-value]
 
-    # Post-process results batch (task_all)
+    # Post-process results batch (task_all) — generator finishes here
     try:
         gen.send(post_process_results)
     except StopIteration as exc:
         return exc.value  # type: ignore[return-value]
 
-    msg = "Expected StopIteration"
-    raise RuntimeError(msg)
+    raise RuntimeError("Expected StopIteration")  # pragma: no cover
 
 
 def _sample_blob_event() -> dict[str, str | int]:
