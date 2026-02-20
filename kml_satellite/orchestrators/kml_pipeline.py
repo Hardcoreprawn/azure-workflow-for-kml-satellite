@@ -41,6 +41,8 @@ if TYPE_CHECKING:
 
     import azure.durable_functions as df
 
+    from kml_satellite.orchestrators.phases import FulfillmentResult
+
 logger = logging.getLogger("kml_satellite.orchestrators.kml_pipeline")
 
 # Re-export polling defaults and _poll_until_ready so existing imports
@@ -121,7 +123,11 @@ def orchestrator_function(
 
     provider_name = str(blob_event.get("provider_name", "planetary_computer"))
 
-    fulfillment = yield from run_fulfillment_phase(
+    def _int_cfg(key: str, default: int) -> int:
+        raw = blob_event.get(key, default)
+        return int(raw) if isinstance(raw, int | float | str) else default
+
+    fulfillment: FulfillmentResult = yield from run_fulfillment_phase(
         context,
         ready_outcomes,
         ingestion["aois"],
@@ -132,11 +138,9 @@ def orchestrator_function(
         enable_clipping=bool(blob_event.get("enable_clipping", True)),
         enable_reprojection=bool(blob_event.get("enable_reprojection", True)),
         target_crs=str(blob_event.get("target_crs", "EPSG:4326")),
-        download_batch_size=int(
-            blob_event.get("download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)  # type: ignore[arg-type]
-        ),
-        post_process_batch_size=int(
-            blob_event.get("post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE)  # type: ignore[arg-type]
+        download_batch_size=_int_cfg("download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE),
+        post_process_batch_size=_int_cfg(
+            "post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE
         ),
         instance_id=instance_id,
         blob_name=blob_name,
