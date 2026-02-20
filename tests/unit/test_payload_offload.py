@@ -99,14 +99,12 @@ class TestOffloadIfLarge:
         assert result["count"] == 200
         assert result["container"] == PAYLOAD_CONTAINER
         assert result["blob_path"] == "payloads/test/features.json"
+        assert result["item_blob_stem"] == "payloads/test/features"
         assert result["size_bytes"] > 0
 
-        # Verify blob was uploaded
-        blob_service.get_blob_client.assert_called_once_with(
-            container=PAYLOAD_CONTAINER,
-            blob="payloads/test/features.json",
-        )
-        blob_service.get_blob_client.return_value.upload_blob.assert_called_once()
+        # Verify main blob + per-item blobs were uploaded
+        # 1 call for the main blob + 200 calls for per-item blobs
+        assert blob_service.get_blob_client.call_count == 201
 
     def test_custom_threshold(self) -> None:
         payload = [{"name": "small"}]
@@ -166,6 +164,7 @@ class TestBuildRefInput:
             OFFLOAD_SENTINEL: True,
             "container": "pipeline-payloads",
             "blob_path": "payloads/id/features.json",
+            "item_blob_stem": "payloads/id/features",
             "count": 10,
             "size_bytes": 50000,
         }
@@ -175,10 +174,17 @@ class TestBuildRefInput:
         assert result[INDEX_KEY] == 3
         assert result[REF_KEY]["container"] == "pipeline-payloads"
         assert result[REF_KEY]["blob_path"] == "payloads/id/features.json"
+        assert result[REF_KEY]["item_blob_stem"] == "payloads/id/features"
         assert result[REF_KEY]["count"] == 10
 
     def test_ref_input_index_zero(self) -> None:
-        ref = {OFFLOAD_SENTINEL: True, "container": "c", "blob_path": "p", "count": 1}
+        ref = {
+            OFFLOAD_SENTINEL: True,
+            "container": "c",
+            "blob_path": "p",
+            "item_blob_stem": "p",
+            "count": 1,
+        }
         result = build_ref_input(ref, 0)
         assert result[INDEX_KEY] == 0
 
@@ -274,3 +280,61 @@ class TestResolveRefInput:
             container="my-container",
             blob="my/path.json",
         )
+
+    def test_per_item_blob_resolution(self) -> None:
+        """When item_blob_stem is present, resolve reads single-item blob."""
+        item = {"name": "feature-2"}
+        blob_data = json.dumps(item).encode("utf-8")
+
+        blob_service = _make_blob_service_mock()
+        blob_client = blob_service.get_blob_client.return_value
+        blob_client.download_blob.return_value.readall.return_value = blob_data
+
+        payload = {
+            REF_KEY: {
+                "container": "pipeline-payloads",
+                "blob_path": "payloads/id/features.json",
+                "item_blob_stem": "payloads/id/features",
+                "count": 5,
+            },
+            INDEX_KEY: 2,
+        }
+
+        result = resolve_ref_input(payload, blob_service_client=blob_service)
+        assert result == {"name": "feature-2"}
+        blob_service.get_blob_client.assert_called_once_with(
+            container="pipeline-payloads",
+            blob="payloads/id/features/2.json",
+        )
+
+    def test_blob_download_error_raises_contract_error(self) -> None:
+        """Azure SDK errors are wrapped in ContractError."""
+        from kml_satellite.core.exceptions import ContractError
+
+        blob_service = _make_blob_service_mock()
+        blob_client = blob_service.get_blob_client.return_value
+        blob_client.download_blob.side_effect = RuntimeError("connection lost")
+
+        payload = {
+            REF_KEY: {"container": "c", "blob_path": "p.json", "count": 1},
+            INDEX_KEY: 0,
+        }
+
+        with pytest.raises(ContractError, match="Failed to download"):
+            resolve_ref_input(payload, blob_service_client=blob_service)
+
+    def test_json_decode_error_raises_contract_error(self) -> None:
+        """Invalid JSON in blob raises ContractError."""
+        from kml_satellite.core.exceptions import ContractError
+
+        blob_service = _make_blob_service_mock()
+        blob_client = blob_service.get_blob_client.return_value
+        blob_client.download_blob.return_value.readall.return_value = b"not json"
+
+        payload = {
+            REF_KEY: {"container": "c", "blob_path": "p.json", "count": 1},
+            INDEX_KEY: 0,
+        }
+
+        with pytest.raises(ContractError, match="Failed to decode"):
+            resolve_ref_input(payload, blob_service_client=blob_service)

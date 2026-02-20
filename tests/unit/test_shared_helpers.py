@@ -67,6 +67,14 @@ class TestBuildProviderConfig(unittest.TestCase):
         assert config.api_base_url == ""
         assert config.auth_mechanism == "none"
 
+    def test_extra_params_none_returns_empty_dict(self) -> None:
+        config = build_provider_config("test", {"extra_params": None})
+        assert config.extra_params == {}
+
+    def test_extra_params_non_dict_returns_empty_dict(self) -> None:
+        config = build_provider_config("test", {"extra_params": "not-a-dict"})
+        assert config.extra_params == {}
+
 
 # ---------------------------------------------------------------------------
 # Tests — utils.helpers.parse_timestamp

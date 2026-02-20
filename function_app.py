@@ -252,10 +252,7 @@ def prepare_aoi_activity(activityInput: str) -> dict[str, object]:  # noqa: N803
     payload = deserialize_activity_input(activityInput)
 
     # Resolve payload reference if features were offloaded (Issue #62)
-    import contextlib
-
-    with contextlib.suppress(Exception):
-        payload = resolve_ref_input(payload, blob_service_client=get_blob_service_client())
+    payload = resolve_ref_input(payload, blob_service_client=get_blob_service_client())
 
     feature = FeatureModel.from_dict(payload)
 

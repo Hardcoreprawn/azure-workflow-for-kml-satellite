@@ -25,6 +25,7 @@ References:
 from __future__ import annotations
 
 import logging
+import threading
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -96,28 +97,32 @@ class _BoundedOrderCache:
         self._maxsize = maxsize
         self._data: OrderedDict[str, tuple[str, str]] = OrderedDict()
         self._eviction_count = 0
+        self._lock = threading.Lock()
 
     def __setitem__(self, key: str, value: tuple[str, str]) -> None:
-        if key in self._data:
-            self._data.move_to_end(key)
-        self._data[key] = value
-        while len(self._data) > self._maxsize:
-            evicted_key, _ = self._data.popitem(last=False)
-            self._eviction_count += 1
-            logger.debug(
-                "Order cache eviction | key=%s | size=%d | total_evictions=%d",
-                evicted_key,
-                len(self._data),
-                self._eviction_count,
-            )
+        with self._lock:
+            if key in self._data:
+                self._data.move_to_end(key)
+            self._data[key] = value
+            while len(self._data) > self._maxsize:
+                evicted_key, _ = self._data.popitem(last=False)
+                self._eviction_count += 1
+                logger.debug(
+                    "Order cache eviction | key=%s | size=%d | total_evictions=%d",
+                    evicted_key,
+                    len(self._data),
+                    self._eviction_count,
+                )
 
     def __getitem__(self, key: str) -> tuple[str, str]:
-        value = self._data[key]
-        self._data.move_to_end(key)
-        return value
+        with self._lock:
+            value = self._data[key]
+            self._data.move_to_end(key)
+            return value
 
     def __contains__(self, key: object) -> bool:
-        return key in self._data
+        with self._lock:
+            return key in self._data
 
     def __len__(self) -> int:
         return len(self._data)

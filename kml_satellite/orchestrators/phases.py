@@ -369,6 +369,8 @@ def run_fulfillment_phase(
                         "container": "",
                         "size_bytes": 0,
                         "content_type": "",
+                        "download_duration_seconds": 0.0,
+                        "retry_count": 0,
                         "error": f"Unexpected non-dict result: {result!r}",
                     }
                 )
@@ -392,6 +394,8 @@ def run_fulfillment_phase(
                     "container": "",
                     "size_bytes": 0,
                     "content_type": "",
+                    "download_duration_seconds": 0.0,
+                    "retry_count": 0,
                     "error": str(exc),
                 }
             )
@@ -442,6 +446,7 @@ def run_fulfillment_phase(
                         "state": "unknown",
                         "order_id": dl_result.get("order_id", ""),
                         "source_blob_path": dl_result.get("blob_path", ""),
+                        "clipped_blob_path": "",
                         "container": dl_result.get("container", ""),
                         "clipped": False,
                         "reprojected": False,
@@ -449,6 +454,8 @@ def run_fulfillment_phase(
                         "target_crs": "",
                         "source_size_bytes": 0,
                         "output_size_bytes": 0,
+                        "processing_duration_seconds": 0.0,
+                        "clip_error": f"Unexpected non-dict result: {pp_result!r}",
                         "error": f"Unexpected non-dict result: {pp_result!r}",
                     }
                 )
@@ -465,6 +472,7 @@ def run_fulfillment_phase(
                     "state": "failed",
                     "order_id": dl_result.get("order_id", ""),
                     "source_blob_path": dl_result.get("blob_path", ""),
+                    "clipped_blob_path": "",
                     "container": dl_result.get("container", ""),
                     "clipped": False,
                     "reprojected": False,
@@ -472,6 +480,8 @@ def run_fulfillment_phase(
                     "target_crs": "",
                     "source_size_bytes": 0,
                     "output_size_bytes": 0,
+                    "processing_duration_seconds": 0.0,
+                    "clip_error": str(exc),
                     "error": str(exc),
                 }
             )

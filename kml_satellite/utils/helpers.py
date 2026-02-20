@@ -33,12 +33,15 @@ def build_provider_config(
     if overrides is None:
         return ProviderConfig(name=provider_name)
 
+    raw_extra = overrides.get("extra_params", {})
+    extra = {str(k): str(v) for k, v in raw_extra.items()} if isinstance(raw_extra, dict) else {}
+
     return ProviderConfig(
         name=provider_name,
         api_base_url=str(overrides.get("api_base_url", "")),
         auth_mechanism=str(overrides.get("auth_mechanism", "none")),
         keyvault_secret_name=str(overrides.get("keyvault_secret_name", "")),
-        extra_params={str(k): str(v) for k, v in overrides.get("extra_params", {}).items()},
+        extra_params=extra,
     )
 
 

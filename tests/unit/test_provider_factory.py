@@ -185,6 +185,17 @@ class TestProviderInstanceCache(unittest.TestCase):
         assert default is not custom
         assert default.name == custom.name
 
+    def test_different_extra_params_returns_new_instance(self) -> None:
+        """Different extra_params produces a distinct cached instance."""
+        default = get_provider(PLANETARY_COMPUTER)
+        custom_cfg = ProviderConfig(
+            name=PLANETARY_COMPUTER,
+            extra_params={"output_container": "custom-output"},
+        )
+        custom = get_provider(PLANETARY_COMPUTER, config=custom_cfg)
+        assert default is not custom
+        assert default.name == custom.name
+
     def test_clear_cache_forces_new_instance(self) -> None:
         """After clearing the cache, a fresh adapter is created."""
         first = get_provider(PLANETARY_COMPUTER)

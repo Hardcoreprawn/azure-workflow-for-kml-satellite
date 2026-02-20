@@ -110,6 +110,15 @@ def offload_if_large(
     blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
     blob_client.upload_blob(serialized.encode("utf-8"), overwrite=True)
 
+    # Also write per-item blobs so resolve_ref_input reads only one item (O(1))
+    stem = blob_path.rsplit(".", 1)[0] if "." in blob_path else blob_path
+    for i, item in enumerate(payload):
+        item_path = f"{stem}/{i}.json"
+        item_bytes = json.dumps(item, separators=(",", ":")).encode("utf-8")
+        blob_service_client.get_blob_client(container=container, blob=item_path).upload_blob(
+            item_bytes, overwrite=True
+        )
+
     logger.info(
         "Offloaded payload to blob | container=%s | path=%s | items=%d | size=%d bytes",
         container,
@@ -122,6 +131,7 @@ def offload_if_large(
         OFFLOAD_SENTINEL: True,
         "container": container,
         "blob_path": blob_path,
+        "item_blob_stem": stem,
         "count": len(payload),
         "size_bytes": size_bytes,
     }
@@ -149,6 +159,7 @@ def build_ref_input(offloaded_ref: dict[str, Any], index: int) -> dict[str, Any]
         REF_KEY: {
             "container": offloaded_ref["container"],
             "blob_path": offloaded_ref["blob_path"],
+            "item_blob_stem": offloaded_ref.get("item_blob_stem", ""),
             "count": offloaded_ref["count"],
         },
         INDEX_KEY: index,
@@ -176,8 +187,10 @@ def resolve_ref_input(
 
     Raises:
         IndexError: If the referenced index is out of range.
-        ContractError: If the blob cannot be read.
+        ContractError: If the blob cannot be read or parsed.
     """
+    from kml_satellite.core.exceptions import ContractError
+
     ref = payload.get(REF_KEY)
     if ref is None or not isinstance(ref, dict):
         return payload
@@ -185,10 +198,59 @@ def resolve_ref_input(
     index = int(payload.get(INDEX_KEY, 0))
     container = str(ref["container"])
     blob_path = str(ref["blob_path"])
+    item_blob_stem = str(ref.get("item_blob_stem", ""))
 
-    blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
-    data = blob_client.download_blob().readall()
-    items: list[dict[str, Any]] = json.loads(data)
+    # Prefer per-item blob (O(1) download) when available
+    if item_blob_stem:
+        item_blob_path = f"{item_blob_stem}/{index}.json"
+        try:
+            blob_client = blob_service_client.get_blob_client(
+                container=container, blob=item_blob_path
+            )
+            data = blob_client.download_blob().readall()
+        except Exception as exc:
+            msg = f"Failed to download per-item payload blob {container}/{item_blob_path}: {exc}"
+            raise ContractError(msg) from exc
+
+        try:
+            item: dict[str, Any] = json.loads(data)
+        except (json.JSONDecodeError, TypeError) as exc:
+            msg = (
+                f"Failed to decode per-item payload JSON from {container}/{item_blob_path}: {exc}"
+            )
+            raise ContractError(msg) from exc
+
+        if not isinstance(item, dict):
+            msg = (
+                f"Per-item payload at {container}/{item_blob_path} "
+                f"is not a dict: {type(item).__name__}"
+            )
+            raise ContractError(msg)
+
+        logger.debug(
+            "Resolved per-item payload ref | container=%s | path=%s",
+            container,
+            item_blob_path,
+        )
+        return item
+
+    # Fallback: read the full list blob and index into it
+    try:
+        blob_client = blob_service_client.get_blob_client(container=container, blob=blob_path)
+        data = blob_client.download_blob().readall()
+    except Exception as exc:
+        msg = f"Failed to download offloaded payload blob {container}/{blob_path}: {exc}"
+        raise ContractError(msg) from exc
+
+    try:
+        items: list[dict[str, Any]] = json.loads(data)
+    except (json.JSONDecodeError, TypeError) as exc:
+        msg = f"Failed to decode offloaded payload JSON from {container}/{blob_path}: {exc}"
+        raise ContractError(msg) from exc
+
+    if not isinstance(items, list):
+        msg = f"Offloaded payload at {container}/{blob_path} is not a list: {type(items).__name__}"
+        raise ContractError(msg)
 
     if index < 0 or index >= len(items):
         msg = f"Payload ref index {index} out of range (0..{len(items) - 1})"
