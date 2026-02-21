@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Custom Docker image for Azure Functions Flex Consumption (Python 3.12)
+# Custom Docker image for Azure Functions on Container Apps (Python 3.12)
 # Includes GDAL, rasterio, and Fiona built from source for KML/raster ops.
 # ---------------------------------------------------------------------------
 # Stage 1: Build GDAL and Python geospatial wheels
@@ -42,10 +42,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 
+LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
+      org.opencontainers.image.description="KML Satellite Imagery Pipeline — Azure Functions on Container Apps"
+
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
     GDAL_DATA=/usr/share/gdal \
-    PROJ_DATA=/usr/share/proj
+    PROJ_DATA=/usr/share/proj \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Copy installed Python packages from builder
 COPY --from=builder /home/site/wwwroot/.python_packages /home/site/wwwroot/.python_packages

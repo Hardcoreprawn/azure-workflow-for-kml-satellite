@@ -1,12 +1,22 @@
 ---
 # ---------------------------------------------------------------------------
-# Function App Deployment
+# Function App Deployment — Container
 # ---------------------------------------------------------------------------
-# Deploys function code to Azure Functions (Flex Consumption) after CI passes.
-# Triggers on push to main when application code changes.
+# Builds a Docker image with GDAL and geospatial libraries, pushes it to
+# GitHub Container Registry (ghcr.io), and deploys the container to Azure
+# Functions on Container Apps.
+#
+# Triggers on push to main when application code or Dockerfile changes.
 #
 # Safety: main branch protection requires the lint-and-test CI check to pass
 # before any PR can merge, so code on main has already been validated.
+#
+# Container security:
+#   - Multi-stage build: build tools never reach the final image
+#   - No secrets in the image: all config injected via app settings
+#   - Images tagged with commit SHA for full traceability
+#   - GITHUB_TOKEN for ghcr.io push — no stored credentials
+#   - .dockerignore excludes .git, tests, infra, local settings
 #
 # Requires:
 #   - OIDC federation configured (same as infra.yml)
@@ -25,12 +35,15 @@ on:
       - "kml_satellite/**"
       - "host.json"
       - "requirements.txt"
+      - "Dockerfile"
+      - ".dockerignore"
       - ".github/workflows/deploy.yml"
   workflow_dispatch: {}
 
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 env:
   FUNCTION_APP_NAME: func-kmlsat-dev
@@ -45,6 +58,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set container image name
+        id: image
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -52,23 +90,12 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Build deployment package
+      - name: Deploy container image to Function App
         run: |
-          mkdir -p .deploy
-          cp function_app.py host.json requirements.txt .deploy/
-          cp -r kml_satellite .deploy/
-          pip install -r requirements.txt --target ".deploy/.python_packages/lib/site-packages"
-
-      - name: Deploy to Azure Functions
-        uses: azure/functions-action@v1
-        with:
-          app-name: ${{ env.FUNCTION_APP_NAME }}
-          package: .deploy
+          az functionapp config container set \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --image "${{ steps.image.outputs.name }}"
 
       - name: Wait for functions to be discoverable
         run: |

@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
-// Function App — Flex Consumption plan with system-assigned Managed Identity
-// Runs Python 3.12 on Linux. Custom Docker container for GDAL support.
+// Function App — Azure Functions on Container Apps
+// Runs a custom Docker container with GDAL/rasterio for KML/raster ops.
+// System-assigned Managed Identity for storage and Key Vault access.
 // ---------------------------------------------------------------------------
 
 @description('Azure region for the Function App.')
@@ -9,8 +10,8 @@ param location string
 @description('Base name used for resource naming.')
 param baseName string
 
-@description('Name of the storage account (used to construct deployment blob URL).')
-param storageAccountName string
+@description('Resource ID of the Container Apps managed environment.')
+param containerEnvironmentId string
 
 @description('Connection string for the storage account used by Durable Functions.')
 @secure()
@@ -22,75 +23,31 @@ param appInsightsConnectionString string
 @description('Key Vault URI for secret references.')
 param keyVaultUri string
 
-@description('Maximum instance count for scaling.')
-param maximumInstanceCount int = 40
-
-@description('Instance memory in MB (Flex Consumption).')
-@allowed([512, 2048, 4096])
-param instanceMemoryMB int = 2048
+@description('Container image URI. Updated by the deploy workflow on each release.')
+param containerImage string = 'mcr.microsoft.com/azure-functions/python:4-python3.12'
 
 @description('Tags to apply to all resources.')
 param tags object = {}
 
 // ---------------------------------------------------------------------------
-// App Service Plan — Flex Consumption (FC1)
-// ---------------------------------------------------------------------------
-resource hostingPlan 'Microsoft.Web/serverfarms@2024-04-01' = {
-  name: 'plan-${baseName}'
-  location: location
-  tags: tags
-  kind: 'functionapp'
-  sku: {
-    tier: 'FlexConsumption'
-    name: 'FC1'
-  }
-  properties: {
-    reserved: true // Required for Linux
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Function App
+// Function App — hosted on Container Apps environment
 // ---------------------------------------------------------------------------
 resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
   name: 'func-${baseName}'
   location: location
   tags: tags
-  kind: 'functionapp,linux'
+  kind: 'functionapp,linux,container,azurecontainerapps'
   identity: {
     type: 'SystemAssigned'
   }
   properties: {
-    serverFarmId: hostingPlan.id
+    managedEnvironmentId: containerEnvironmentId
     httpsOnly: true
-    functionAppConfig: {
-      deployment: {
-        storage: {
-          type: 'blobContainer'
-          value: 'https://${storageAccountName}.blob.${environment().suffixes.storage}/deployments'
-          authentication: {
-            type: 'StorageAccountConnectionString'
-            storageAccountConnectionStringName: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
-          }
-        }
-      }
-      scaleAndConcurrency: {
-        maximumInstanceCount: maximumInstanceCount
-        instanceMemoryMB: instanceMemoryMB
-      }
-      runtime: {
-        name: 'python'
-        version: '3.12'
-      }
-    }
     siteConfig: {
+      linuxFxVersion: 'DOCKER|${containerImage}'
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: storageConnectionString
-        }
-        {
-          name: 'DEPLOYMENT_STORAGE_CONNECTION_STRING'
           value: storageConnectionString
         }
         {
@@ -102,12 +59,12 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: keyVaultUri
         }
         {
-          name: 'KML_INPUT_CONTAINER'
-          value: 'kml-input'
+          name: 'DEFAULT_INPUT_CONTAINER'
+          value: 'kml-input' // Fallback for local dev; multi-tenant resolves dynamically
         }
         {
-          name: 'KML_OUTPUT_CONTAINER'
-          value: 'kml-output'
+          name: 'DEFAULT_OUTPUT_CONTAINER'
+          value: 'kml-output' // Fallback for local dev; multi-tenant resolves dynamically
         }
         {
           name: 'IMAGERY_PROVIDER'

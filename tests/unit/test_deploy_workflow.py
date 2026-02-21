@@ -1,14 +1,15 @@
 """Tests for the deploy workflow (deploy.yml).
 
 Validates that the GitHub Actions deploy workflow contains the required
-steps to successfully deploy to Azure Functions Flex Consumption:
+steps to build a Docker container image, push it to GitHub Container
+Registry (ghcr.io), and deploy it to Azure Functions on Container Apps:
 
-1. The deployment pre-installs Python dependencies into the package at
-   ``.python_packages/lib/site-packages`` so the deployed zip is
-   self-contained (matching the official azure/functions-action template
-   for Python Flex Consumption apps).
+1. The workflow builds a Docker image (with GDAL and native geospatial
+   libraries baked in) and pushes it to ghcr.io.
 
-2. A readiness check polls for function registration before enabling the
+2. The function app container image is updated via Azure CLI.
+
+3. A readiness check polls for function registration before enabling the
    Event Grid subscription, preventing "Destination endpoint not found"
    errors when Azure cannot validate the webhook endpoint.
 """
@@ -51,63 +52,93 @@ def _find_step(steps: list[dict[str, Any]], name_fragment: str) -> dict[str, Any
 
 
 # ---------------------------------------------------------------------------
-# Test: Dependency installation in deployment package
+# Test: Container-based deployment
 # ---------------------------------------------------------------------------
 
 
-class TestFlexConsumptionDeployment:
-    """Verify the workflow deploys correctly to Flex Consumption."""
+class TestContainerDeployment:
+    """Verify the workflow builds and deploys a Docker container."""
 
-    def test_deploy_step_uses_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
-        """Deploy step must use azure/functions-action."""
+    def test_ghcr_login_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must log in to GitHub Container Registry."""
         steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy to")
-        assert deploy is not None, "No 'Deploy to Azure Functions' step found"
-        assert "azure/functions-action" in deploy.get("uses", ""), (
-            "Deploy step must use azure/functions-action"
+        login = _find_step(steps, "container registry") or _find_step(steps, "ghcr")
+        assert login is not None, "No ghcr.io login step found"
+        assert "docker/login-action" in login.get("uses", ""), (
+            "GHCR login must use docker/login-action"
         )
 
-    def test_deploy_step_no_remote_build(self, deploy_workflow: dict[str, Any]) -> None:
-        """Deploy step must NOT use remote-build (deps are pre-installed)."""
+    def test_ghcr_login_uses_github_token(self, deploy_workflow: dict[str, Any]) -> None:
+        """GHCR login must use GITHUB_TOKEN (not a stored PAT)."""
         steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy to")
-        assert deploy is not None, "No 'Deploy to Azure Functions' step found"
-        with_block = deploy.get("with", {})
-        assert "remote-build" not in with_block, (
-            "azure/functions-action should not use remote-build; dependencies "
-            "must be pre-installed into .python_packages/lib/site-packages"
+        login = _find_step(steps, "container registry") or _find_step(steps, "ghcr")
+        assert login is not None
+        with_block = login.get("with", {})
+        password = with_block.get("password", "")
+        assert "GITHUB_TOKEN" in password, (
+            "GHCR login must use secrets.GITHUB_TOKEN, not a stored credential"
         )
 
-    def test_build_step_pip_installs_to_python_packages(
-        self, deploy_workflow: dict[str, Any]
-    ) -> None:
-        """Build step must pip-install deps into .python_packages/lib/site-packages."""
+    def test_docker_build_push_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must build and push a Docker image."""
         steps = _get_steps(deploy_workflow)
-        build = _find_step(steps, "build")
-        assert build is not None, "No build step found"
-        run_script = build.get("run", "")
-        assert ".python_packages/lib/site-packages" in run_script, (
-            "Build step must pip install into .python_packages/lib/site-packages "
-            "so the Flex Consumption function host can find dependencies"
+        build = _find_step(steps, "build and push")
+        assert build is not None, "No 'Build and push' step found"
+        assert "docker/build-push-action" in build.get("uses", ""), (
+            "Build step must use docker/build-push-action"
         )
 
-    def test_requirements_txt_in_package(self, deploy_workflow: dict[str, Any]) -> None:
-        """Build step must copy requirements.txt into the deploy package."""
+    def test_docker_push_enabled(self, deploy_workflow: dict[str, Any]) -> None:
+        """Docker build step must push the image."""
         steps = _get_steps(deploy_workflow)
-        build = _find_step(steps, "build")
-        assert build is not None, "No build step found"
-        run_script = build.get("run", "")
-        assert "requirements.txt" in run_script, (
-            "Build step must include requirements.txt in the deployment package"
+        build = _find_step(steps, "build and push")
+        assert build is not None
+        assert build.get("with", {}).get("push") is True, (
+            "docker/build-push-action must have push: true"
         )
 
-    def test_python_setup_step_present(self, deploy_workflow: dict[str, Any]) -> None:
-        """Workflow must set up Python before building the package."""
+    def test_container_deploy_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must deploy the container image to the Function App."""
         steps = _get_steps(deploy_workflow)
-        python_step = _find_step(steps, "python")
-        assert python_step is not None, "No 'Set up Python' step found"
-        assert "setup-python" in python_step.get("uses", ""), (
-            "Python setup step must use actions/setup-python"
+        deploy = _find_step(steps, "deploy container")
+        assert deploy is not None, "No container deploy step found"
+        run_script = deploy.get("run", "")
+        assert "az functionapp config container set" in run_script, (
+            "Deploy step must use 'az functionapp config container set'"
+        )
+
+    def test_image_tagged_with_commit_sha(self, deploy_workflow: dict[str, Any]) -> None:
+        """Container image must be tagged with the commit SHA for traceability."""
+        steps = _get_steps(deploy_workflow)
+        image_step = _find_step(steps, "image name") or _find_step(steps, "image tag")
+        assert image_step is not None, "No image name/tag step found"
+        run_script = image_step.get("run", "")
+        assert "GITHUB_SHA" in run_script, "Image tag must include the commit SHA for traceability"
+
+    def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must NOT use azure/functions-action (code deploy)."""
+        steps = _get_steps(deploy_workflow)
+        for step in steps:
+            uses = step.get("uses", "")
+            assert "azure/functions-action" not in uses or "container" in uses, (
+                "Must not use azure/functions-action — container deployment "
+                "uses docker/build-push-action + az functionapp config container set"
+            )
+
+    def test_packages_write_permission(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must have packages:write permission for ghcr.io push."""
+        permissions = deploy_workflow.get("permissions", {})
+        assert permissions.get("packages") == "write", (
+            "Workflow must have 'packages: write' permission to push to ghcr.io"
+        )
+
+    def test_dockerfile_in_trigger_paths(self, deploy_workflow: dict[str, Any]) -> None:
+        """Dockerfile changes must trigger a deployment."""
+        # PyYAML 1.1 parses bare `on:` as boolean True
+        on_block = deploy_workflow.get("on") or deploy_workflow.get(True, {})
+        paths = on_block.get("push", {}).get("paths", [])
+        assert "Dockerfile" in paths, (
+            "Dockerfile must be in the trigger paths so image changes trigger deploy"
         )
 
 
@@ -142,12 +173,7 @@ class TestReadinessCheck:
     def test_readiness_jmespath_query_not_empty_literal(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """JMESPath query must measure the returned list, not an empty literal.
-
-        ``length([])`` always returns 0 (it is the length of an empty JSON
-        array literal).  The correct query is ``length(@)`` which measures the
-        length of the response returned by ``az functionapp function list``.
-        """
+        """JMESPath query must measure the returned list, not an empty literal."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
@@ -163,7 +189,6 @@ class TestReadinessCheck:
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        # Look for loop constructs: for/while + sleep
         has_loop = "for " in run_script or "while " in run_script
         has_sleep = "sleep" in run_script
         assert has_loop and has_sleep, "Readiness check must include a retry loop with sleep"

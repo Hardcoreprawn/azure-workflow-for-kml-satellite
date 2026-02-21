@@ -11,8 +11,6 @@ param location = 'uksouth'
 param baseName = 'kmlsat-dev'
 param environment = 'dev'
 param logRetentionInDays = 30
-param functionAppMaxInstances = 10
-param functionAppInstanceMemoryMB = 2048
 param enableKeyVaultPurgeProtection = false
 param tags = {
   costCenter: 'dev'
