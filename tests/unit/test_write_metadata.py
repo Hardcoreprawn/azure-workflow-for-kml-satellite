@@ -217,6 +217,7 @@ class TestSchemaConformance:
         required_keys = {
             "$schema",
             "processing_id",
+            "tenant_id",
             "kml_filename",
             "feature_name",
             "project_name",
@@ -263,4 +264,16 @@ class TestSchemaConformance:
         """$schema field has the correct version string."""
         aoi = _make_aoi()
         result = write_metadata(aoi)
-        assert result["metadata"]["$schema"] == "aoi-metadata-v1"
+        assert result["metadata"]["$schema"] == "aoi-metadata-v2"
+
+    def test_tenant_id_passed_through(self) -> None:
+        """tenant_id is passed through to the metadata record."""
+        aoi = _make_aoi()
+        result = write_metadata(aoi, tenant_id="tenant-abc123")
+        assert result["metadata"]["tenant_id"] == "tenant-abc123"
+
+    def test_analysis_none_by_default(self) -> None:
+        """analysis field is None by default in output."""
+        aoi = _make_aoi()
+        result = write_metadata(aoi)
+        assert result["metadata"].get("analysis") is None

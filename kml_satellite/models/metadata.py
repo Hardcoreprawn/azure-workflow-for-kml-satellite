@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 # Schema version for forward compatibility (PID 7.4.5: explicit)
-SCHEMA_VERSION = "aoi-metadata-v1"
+SCHEMA_VERSION = "aoi-metadata-v2"
 
 
 class GeometryMetadata(BaseModel):
@@ -89,6 +89,21 @@ class ImageryMetadata(BaseModel):
     clipped_blob_path: str = ""
 
 
+class AnalysisMetadata(BaseModel):
+    """Analysis section — populated by the analytical pipeline (Phase 5+).
+
+    All fields default to None/0/empty so records are valid before analysis runs.
+    """
+
+    ndvi_blob_path: str = ""
+    ndvi_mean: float | None = None
+    ndvi_min: float | None = None
+    ndvi_max: float | None = None
+    canopy_cover_pct: float | None = None
+    tree_count: int | None = None
+    detections_blob_path: str = ""
+
+
 class ProcessingMetadata(BaseModel):
     """Processing section of the per-AOI metadata.
 
@@ -134,12 +149,14 @@ class AOIMetadataRecord(BaseModel):
 
     schema_version: str = Field(default=SCHEMA_VERSION, alias="$schema")
     processing_id: str = ""
+    tenant_id: str = ""
     kml_filename: str = ""
     feature_name: str = ""
     project_name: str = ""
     tree_variety: str = ""
     geometry: GeometryMetadata = Field(default_factory=GeometryMetadata)
     imagery: ImageryMetadata = Field(default_factory=ImageryMetadata)
+    analysis: AnalysisMetadata | None = None
     processing: ProcessingMetadata = Field(default_factory=ProcessingMetadata)
 
     model_config = {"populate_by_name": True}
@@ -151,6 +168,7 @@ class AOIMetadataRecord(BaseModel):
         *,
         processing_id: str = "",
         timestamp: str = "",
+        tenant_id: str = "",
     ) -> AOIMetadataRecord:
         """Construct a metadata record from an AOI dataclass.
 
@@ -188,6 +206,7 @@ class AOIMetadataRecord(BaseModel):
 
         return cls(
             processing_id=processing_id,
+            tenant_id=tenant_id,
             kml_filename=aoi.source_file,
             feature_name=aoi.feature_name,
             project_name=project_name,

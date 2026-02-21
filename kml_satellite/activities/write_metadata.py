@@ -48,6 +48,7 @@ def write_metadata(
     *,
     processing_id: str = "",
     timestamp: str = "",
+    tenant_id: str = "",
     blob_service_client: object | None = None,
     output_container: str = "kml-output",
 ) -> dict[str, object]:
@@ -81,7 +82,12 @@ def write_metadata(
         timestamp = ts.isoformat()
 
     # Build the metadata record (PID Section 9.2)
-    record = AOIMetadataRecord.from_aoi(aoi, processing_id=processing_id, timestamp=timestamp)
+    record = AOIMetadataRecord.from_aoi(
+        aoi,
+        processing_id=processing_id,
+        timestamp=timestamp,
+        tenant_id=tenant_id,
+    )
 
     # Extract project name for path generation
     project_name = record.project_name
@@ -109,10 +115,11 @@ def write_metadata(
         _upload_metadata(blob_service_client, metadata_path, metadata_json, output_container)
 
     logger.info(
-        "Metadata written | feature=%s | path=%s | processing_id=%s",
+        "Metadata written | feature=%s | path=%s | processing_id=%s | tenant_id=%s",
         aoi.feature_name,
         metadata_path,
         processing_id,
+        tenant_id,
     )
 
     return {

@@ -48,6 +48,7 @@ def _sample_blob_event() -> dict[str, Any]:
         "content_type": "application/vnd.google-earth.kml+xml",
         "event_time": "2026-02-15T12:00:00",
         "correlation_id": "evt-abc-123",
+        "tenant_id": "tenant-test-001",
     }
 
 
@@ -67,6 +68,7 @@ class TestIngestionPhase:
         features: list[dict[str, object]] | None = None,
         aois: list[dict[str, object]] | None = None,
         metadata_results: list[dict[str, object]] | None = None,
+        tenant_id: str = "",
     ) -> IngestionResult:
         if features is None:
             features = [{"name": "f1"}]
@@ -81,6 +83,7 @@ class TestIngestionPhase:
             timestamp="2026-02-17T12:00:00+00:00",
             instance_id=context.instance_id,
             blob_name=str(blob_event.get("blob_name", "")),
+            tenant_id=tenant_id,
         )
         next(gen)  # yield parse_kml
         gen.send(features)  # yield task_all(prepare_aoi)
@@ -168,6 +171,13 @@ class TestIngestionPhase:
         calls = [c for c in ctx.call_activity.call_args_list if c[0][0] == "write_metadata"]
         assert len(calls) == 1
         assert calls[0][0][1]["processing_id"] == "inst-42"
+
+    def test_calls_write_metadata_with_tenant_id(self) -> None:
+        ctx = _make_context()
+        self._run_ingestion(ctx, _sample_blob_event(), tenant_id="tenant-test-001")
+        calls = [c for c in ctx.call_activity.call_args_list if c[0][0] == "write_metadata"]
+        assert len(calls) == 1
+        assert calls[0][0][1]["tenant_id"] == "tenant-test-001"
 
 
 # ===================================================================
