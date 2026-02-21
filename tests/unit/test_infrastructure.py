@@ -83,6 +83,12 @@ def function_app_arm_template() -> dict[str, Any]:
 
 
 @pytest.fixture(scope="module")
+def container_environment_arm_template() -> dict[str, Any]:
+    """Compiled ARM template from modules/container-environment.bicep."""
+    return _bicep_build(INFRA_DIR / "modules" / "container-environment.bicep")
+
+
+@pytest.fixture(scope="module")
 def event_grid_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/event-grid.bicep."""
     return _bicep_build(INFRA_DIR / "modules" / "event-grid.bicep")
@@ -145,6 +151,7 @@ class TestBicepCompilation:
             "modules/monitoring.bicep",
             "modules/keyvault.bicep",
             "modules/function-app.bicep",
+            "modules/container-environment.bicep",
             "modules/event-grid.bicep",
             "modules/rbac.bicep",
         ],
@@ -235,8 +242,6 @@ class TestResourcesModule:
             "location",
             "baseName",
             "logRetentionInDays",
-            "functionAppMaxInstances",
-            "functionAppInstanceMemoryMB",
             "enableKeyVaultPurgeProtection",
             "tags",
         }
@@ -414,23 +419,6 @@ class TestKeyVaultModule:
 class TestFunctionAppModule:
     """Verify Function App configuration."""
 
-    def test_app_service_plan_exists(self, function_app_arm_template: dict[str, Any]) -> None:
-        """Must define an App Service Plan."""
-        plans = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/serverfarms")
-        assert len(plans) == 1
-
-    def test_flex_consumption_sku(self, function_app_arm_template: dict[str, Any]) -> None:
-        """App Service Plan must use Flex Consumption tier."""
-        plan = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/serverfarms")[0]
-        sku = plan.get("sku", {})
-        assert sku.get("name") == "FC1"
-        assert sku.get("tier") == "FlexConsumption"
-
-    def test_linux_reserved(self, function_app_arm_template: dict[str, Any]) -> None:
-        """App Service Plan must be reserved (Linux)."""
-        plan = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/serverfarms")[0]
-        assert plan["properties"]["reserved"] is True
-
     def test_function_app_exists(self, function_app_arm_template: dict[str, Any]) -> None:
         """Must define a Function App site."""
         sites = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")
@@ -440,6 +428,28 @@ class TestFunctionAppModule:
         """Function App must be Linux-based."""
         site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
         assert "linux" in site.get("kind", "").lower()
+
+    def test_function_app_is_container(self, function_app_arm_template: dict[str, Any]) -> None:
+        """Function App kind must include 'container' for Docker deployment."""
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        assert "container" in site.get("kind", "").lower()
+
+    def test_no_app_service_plan(self, function_app_arm_template: dict[str, Any]) -> None:
+        """Container Apps hosted functions must not define an App Service Plan."""
+        plans = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/serverfarms")
+        assert len(plans) == 0, (
+            "Container Apps deployment should not include a serverfarm — "
+            "the Container Apps environment replaces the App Service Plan"
+        )
+
+    def test_has_container_image_config(self, function_app_arm_template: dict[str, Any]) -> None:
+        """Function App siteConfig must specify a Docker image via linuxFxVersion."""
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        site_config = site["properties"].get("siteConfig", {})
+        linux_fx = site_config.get("linuxFxVersion", "")
+        # Compiled ARM JSON uses format() expression, e.g.
+        # [format('DOCKER|{0}', parameters('containerImage'))]
+        assert "DOCKER|" in linux_fx, f"linuxFxVersion must reference 'DOCKER|', got: {linux_fx}"
 
     def test_managed_identity_enabled(self, function_app_arm_template: dict[str, Any]) -> None:
         """Function App must have system-assigned managed identity."""
@@ -461,44 +471,12 @@ class TestFunctionAppModule:
             "AzureWebJobsStorage",
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
             "KEY_VAULT_URI",
-            "KML_INPUT_CONTAINER",
-            "KML_OUTPUT_CONTAINER",
+            "DEFAULT_INPUT_CONTAINER",
+            "DEFAULT_OUTPUT_CONTAINER",
             "IMAGERY_PROVIDER",
         }
         assert expected.issubset(setting_names), (
             f"Missing app settings: {expected - setting_names}"
-        )
-
-    def test_flex_consumption_runtime_config(
-        self, function_app_arm_template: dict[str, Any]
-    ) -> None:
-        """Flex Consumption must declare runtime via functionAppConfig.
-
-        Flex Consumption plans manage the worker runtime and extension version
-        internally via ``functionAppConfig.runtime``.  Setting these as app
-        settings (``FUNCTIONS_WORKER_RUNTIME``, ``FUNCTIONS_EXTENSION_VERSION``)
-        causes a BadRequest error on deployment.
-        """
-        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
-        runtime = site["properties"].get("functionAppConfig", {}).get("runtime", {})
-        assert runtime.get("name") == "python", "functionAppConfig.runtime.name must be 'python'"
-        assert runtime.get("version") == "3.12", "functionAppConfig.runtime.version must be '3.12'"
-
-    def test_no_reserved_app_settings(self, function_app_arm_template: dict[str, Any]) -> None:
-        """Flex Consumption must NOT set reserved settings as app settings.
-
-        ``FUNCTIONS_WORKER_RUNTIME`` and ``FUNCTIONS_EXTENSION_VERSION`` are
-        managed by the platform for Flex Consumption SKUs.  Including them
-        in ``siteConfig.appSettings`` causes deployment to fail with:
-        'The following app setting … for Flex Consumption sites is invalid.'
-        """
-        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
-        app_settings = site["properties"]["siteConfig"]["appSettings"]
-        setting_names = {s["name"] for s in app_settings}
-        reserved = {"FUNCTIONS_WORKER_RUNTIME", "FUNCTIONS_EXTENSION_VERSION"}
-        overlap = reserved & setting_names
-        assert not overlap, (
-            f"Reserved Flex Consumption settings must not appear in appSettings: {overlap}"
         )
 
     def test_has_outputs(self, function_app_arm_template: dict[str, Any]) -> None:
@@ -506,6 +484,39 @@ class TestFunctionAppModule:
         outputs = set(function_app_arm_template.get("outputs", {}).keys())
         expected = {"id", "name", "principalId", "defaultHostName"}
         assert expected.issubset(outputs), f"Missing outputs: {expected - outputs}"
+
+
+# ---------------------------------------------------------------------------
+# Test: Container Apps Environment module
+# ---------------------------------------------------------------------------
+
+
+class TestContainerEnvironmentModule:
+    """Verify Container Apps environment configuration."""
+
+    def test_container_environment_exists(
+        self, container_environment_arm_template: dict[str, Any]
+    ) -> None:
+        """Must define a Container Apps managed environment."""
+        envs = _get_resources_by_type(
+            container_environment_arm_template, "Microsoft.App/managedEnvironments"
+        )
+        assert len(envs) == 1
+
+    def test_log_analytics_configured(
+        self, container_environment_arm_template: dict[str, Any]
+    ) -> None:
+        """Container environment must use Log Analytics for app logs."""
+        env = _get_resources_by_type(
+            container_environment_arm_template, "Microsoft.App/managedEnvironments"
+        )[0]
+        logs_config = env["properties"]["appLogsConfiguration"]
+        assert logs_config["destination"] == "log-analytics"
+
+    def test_has_outputs(self, container_environment_arm_template: dict[str, Any]) -> None:
+        """Container environment module must output id and name."""
+        outputs = set(container_environment_arm_template.get("outputs", {}).keys())
+        assert {"id", "name"}.issubset(outputs)
 
 
 # ---------------------------------------------------------------------------
@@ -539,14 +550,16 @@ class TestEventGridModule:
         assert len(subs) == 1
 
     def test_event_subscription_filters_kml(self, event_grid_arm_template: dict[str, Any]) -> None:
-        """Event subscription must filter for .kml files in kml-input."""
+        """Event subscription must filter for .kml files (any container)."""
         sub = _get_resources_by_type(
             event_grid_arm_template,
             "Microsoft.EventGrid/systemTopics/eventSubscriptions",
         )[0]
         event_filter = sub["properties"]["filter"]
         assert event_filter["subjectEndsWith"] == ".kml"
-        assert "kml-input" in event_filter["subjectBeginsWith"]
+        assert "subjectBeginsWith" not in event_filter, (
+            "subjectBeginsWith should be removed for multi-tenant routing"
+        )
         assert "Microsoft.Storage.BlobCreated" in event_filter["includedEventTypes"]
 
     def test_has_outputs(self, event_grid_arm_template: dict[str, Any]) -> None:

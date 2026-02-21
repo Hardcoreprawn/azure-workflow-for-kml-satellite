@@ -27,13 +27,6 @@ param baseName string
 @maxValue(730)
 param logRetentionInDays int
 
-@description('Function App maximum instance count.')
-param functionAppMaxInstances int
-
-@description('Function App instance memory in MB.')
-@allowed([512, 2048, 4096])
-param functionAppInstanceMemoryMB int
-
 @description('Enable Key Vault purge protection.')
 param enableKeyVaultPurgeProtection bool
 
@@ -78,17 +71,25 @@ module keyVault 'modules/keyvault.bicep' = {
   }
 }
 
+module containerEnvironment 'modules/container-environment.bicep' = {
+  name: 'container-environment'
+  params: {
+    location: location
+    baseName: baseName
+    logAnalyticsWorkspaceName: monitoring.outputs.logAnalyticsWorkspaceName
+    tags: tags
+  }
+}
+
 module functionApp 'modules/function-app.bicep' = {
   name: 'function-app'
   params: {
     location: location
     baseName: baseName
-    storageAccountName: storage.outputs.name
+    containerEnvironmentId: containerEnvironment.outputs.id
     storageConnectionString: storage.outputs.connectionString
     appInsightsConnectionString: monitoring.outputs.connectionString
     keyVaultUri: keyVault.outputs.uri
-    maximumInstanceCount: functionAppMaxInstances
-    instanceMemoryMB: functionAppInstanceMemoryMB
     tags: tags
   }
 }

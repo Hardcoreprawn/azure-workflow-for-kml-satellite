@@ -38,13 +38,6 @@ param environment string = 'dev'
 @maxValue(730)
 param logRetentionInDays int = 90
 
-@description('Function App maximum instance count.')
-param functionAppMaxInstances int = 40
-
-@description('Function App instance memory in MB.')
-@allowed([512, 2048, 4096])
-param functionAppInstanceMemoryMB int = 2048
-
 @description('Enable Key Vault purge protection. Disable only for dev/test teardown.')
 param enableKeyVaultPurgeProtection bool = true
 
@@ -86,8 +79,6 @@ module resources 'resources.bicep' = {
     location: location
     baseName: baseName
     logRetentionInDays: logRetentionInDays
-    functionAppMaxInstances: functionAppMaxInstances
-    functionAppInstanceMemoryMB: functionAppInstanceMemoryMB
     enableKeyVaultPurgeProtection: enableKeyVaultPurgeProtection
     enableEventGridSubscription: enableEventGridSubscription
     tags: defaultTags
