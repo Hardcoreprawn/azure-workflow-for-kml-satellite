@@ -165,10 +165,6 @@ def acquire_imagery(
 # ---------------------------------------------------------------------------
 
 
-# Re-export for backwards compatibility and test imports.
-_build_provider_config = build_provider_config
-
-
 def _build_filters(
     overrides: dict[str, Any] | None,
 ) -> ImageryFilters:

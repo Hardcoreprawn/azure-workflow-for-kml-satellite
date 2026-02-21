@@ -18,7 +18,6 @@ from unittest.mock import MagicMock, patch
 from kml_satellite.activities.acquire_imagery import (
     ImageryAcquisitionError,
     _build_filters,
-    _build_provider_config,
     acquire_imagery,
 )
 from kml_satellite.models.imagery import (
@@ -28,6 +27,7 @@ from kml_satellite.models.imagery import (
     SearchResult,
 )
 from kml_satellite.providers.base import ProviderError, ProviderSearchError
+from kml_satellite.utils.helpers import build_provider_config
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -194,12 +194,12 @@ class TestBuildProviderConfig(unittest.TestCase):
     """_build_provider_config helper."""
 
     def test_default_config(self) -> None:
-        config = _build_provider_config("pc", None)
+        config = build_provider_config("pc", None)
         assert isinstance(config, ProviderConfig)
         assert config.name == "pc"
 
     def test_override_config(self) -> None:
-        config = _build_provider_config(
+        config = build_provider_config(
             "pc",
             {"api_base_url": "https://custom", "extra_params": {"k": "v"}},
         )

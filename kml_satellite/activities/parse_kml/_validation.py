@@ -211,10 +211,3 @@ def validate_shapely_geometry(
     if poly.area == 0:
         msg = f"Zero-area polygon in Placemark '{placemark_name}'"
         raise KmlValidationError(msg)
-
-
-# Kept for backward compatibility: private aliases used by tests.
-_validate_xml = validate_xml
-_validate_coordinates = validate_coordinates
-_validate_polygon_ring = validate_polygon_ring
-_validate_shapely_geometry = validate_shapely_geometry

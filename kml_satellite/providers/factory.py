@@ -55,8 +55,8 @@ _ADAPTER_REGISTRY: dict[str, Callable[[], type[ImageryProvider]]] = {}
 # Instance cache — reuse adapters across activity invocations (Issue #63)
 # ---------------------------------------------------------------------------
 
-# Cache key: (name, api_base_url, auth_mechanism, keyvault_secret_name, extra_params_key)
-_CacheKey = tuple[str, str, str, str, str]
+# Cache key: (name, api_base_url, auth_mechanism, keyvault_secret_name, extra_params)
+_CacheKey = tuple[str, str, str, str, tuple[tuple[str, str], ...]]
 
 _instance_cache: dict[_CacheKey, ImageryProvider] = {}
 _cache_lock = threading.Lock()
@@ -164,7 +164,7 @@ def get_provider(
         config.keyvault_secret_name,
         # Include extra_params in cache key so different output_container
         # configs don't share the same adapter instance.
-        ",".join(f"{k}={v}" for k, v in sorted(config.extra_params.items())),
+        tuple(sorted(config.extra_params.items())),
     )
 
     with _cache_lock:

@@ -149,10 +149,3 @@ def parse_coordinates_text(text: str) -> list[tuple[float, float]]:
             except ValueError:
                 continue
     return coords
-
-
-# Backward-compatible private aliases.
-_coords_to_tuples = coords_to_tuples
-_extract_metadata_from_props = extract_metadata_from_props
-_extract_extended_data_lxml = extract_extended_data_lxml
-_parse_coordinates_text = parse_coordinates_text

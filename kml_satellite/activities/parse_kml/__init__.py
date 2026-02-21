@@ -79,7 +79,17 @@ __all__ = [
     "InvalidCoordinateError",
     "KmlParseError",
     "KmlValidationError",
+    "coords_to_tuples",
+    "extract_extended_data_lxml",
+    "extract_metadata_from_props",
+    "parse_coordinates_text",
     "parse_kml_file",
+    "parse_with_fiona",
+    "parse_with_lxml",
+    "validate_coordinates",
+    "validate_polygon_ring",
+    "validate_shapely_geometry",
+    "validate_xml",
 ]
 
 
@@ -134,19 +144,3 @@ def parse_kml_file(kml_path: Path | str, *, source_filename: str = "") -> list[F
         source_filename,
     )
     return features
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible private aliases (used by tests)
-# ---------------------------------------------------------------------------
-
-_validate_xml = validate_xml
-_validate_coordinates = validate_coordinates
-_validate_polygon_ring = validate_polygon_ring
-_validate_shapely_geometry = validate_shapely_geometry
-_parse_with_fiona = parse_with_fiona
-_parse_with_lxml = parse_with_lxml
-_coords_to_tuples = coords_to_tuples
-_extract_metadata_from_props = extract_metadata_from_props
-_extract_extended_data_lxml = extract_extended_data_lxml
-_parse_coordinates_text = parse_coordinates_text
