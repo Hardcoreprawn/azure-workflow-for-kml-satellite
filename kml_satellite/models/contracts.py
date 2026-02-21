@@ -240,6 +240,7 @@ class WriteMetadataInput(TypedDict):
     aoi: AOIPayload
     processing_id: str
     timestamp: str
+    tenant_id: str
 
 
 class MetadataResult(TypedDict):

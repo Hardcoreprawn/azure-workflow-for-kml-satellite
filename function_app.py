@@ -349,6 +349,7 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
     aoi = AOIModel.from_dict(aoi_data)
     processing_id = str(payload.get("processing_id", ""))
     timestamp = str(payload.get("timestamp", ""))
+    tenant_id = str(payload.get("tenant_id", ""))
 
     logger.info(
         "write_metadata activity started | feature=%s | processing_id=%s",
@@ -366,6 +367,7 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
         aoi,
         processing_id=processing_id,
         timestamp=timestamp,
+        tenant_id=tenant_id,
         blob_service_client=blob_service,
     )
 

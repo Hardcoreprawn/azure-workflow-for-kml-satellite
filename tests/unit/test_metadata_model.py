@@ -17,6 +17,7 @@ import pytest
 from kml_satellite.models.aoi import AOI
 from kml_satellite.models.metadata import (
     SCHEMA_VERSION,
+    AnalysisMetadata,
     AOIMetadataRecord,
     GeometryMetadata,
     ImageryMetadata,
@@ -81,6 +82,7 @@ class TestFromAOI:
         """Schema version matches the constant."""
         record = AOIMetadataRecord.from_aoi(_make_aoi())
         assert record.schema_version == SCHEMA_VERSION
+        assert record.schema_version == "aoi-metadata-v2"
 
     def test_project_name_from_metadata(self) -> None:
         """Project name is extracted from metadata."""
@@ -155,6 +157,36 @@ class TestFromAOI:
         """from_aoi raises TypeError for non-AOI input."""
         with pytest.raises(TypeError, match="Expected AOI instance"):
             AOIMetadataRecord.from_aoi({"not": "an AOI"})  # type: ignore[arg-type]
+
+    def test_tenant_id_default(self) -> None:
+        """tenant_id defaults to empty string."""
+        record = AOIMetadataRecord.from_aoi(_make_aoi())
+        assert record.tenant_id == ""
+
+    def test_tenant_id_from_factory(self) -> None:
+        """from_aoi accepts and sets tenant_id."""
+        record = AOIMetadataRecord.from_aoi(_make_aoi(), tenant_id="tenant-abc123")
+        assert record.tenant_id == "tenant-abc123"
+
+    def test_analysis_defaults_to_none(self) -> None:
+        """analysis field defaults to None."""
+        record = AOIMetadataRecord.from_aoi(_make_aoi())
+        assert record.analysis is None
+
+    def test_analysis_populated(self) -> None:
+        """analysis field can be populated with AnalysisMetadata."""
+        record = AOIMetadataRecord.from_aoi(_make_aoi())
+        record.analysis = AnalysisMetadata(
+            ndvi_blob_path="/ndvi/2026/01/alpha-orchard/block-a.tif",
+            ndvi_mean=0.72,
+            ndvi_min=0.18,
+            ndvi_max=0.89,
+            canopy_cover_pct=68.4,
+            tree_count=342,
+            detections_blob_path="/detections/2026/01/alpha-orchard/block-a.geojson",
+        )
+        assert record.analysis.ndvi_mean == pytest.approx(0.72)
+        assert record.analysis.tree_count == 342
 
     def test_custom_timestamp(self) -> None:
         """Custom timestamp is used when provided."""
@@ -265,8 +297,9 @@ class TestSchemaValidation:
     def test_full_record_from_dict(self) -> None:
         """A full metadata record can be constructed from a raw dict."""
         raw = {
-            "$schema": "aoi-metadata-v1",
+            "$schema": "aoi-metadata-v2",
             "processing_id": "test-456",
+            "tenant_id": "tenant-xyz",
             "kml_filename": "test.kml",
             "feature_name": "Plot 1",
             "project_name": "Test Orchard",
@@ -289,7 +322,50 @@ class TestSchemaValidation:
         }
         record = AOIMetadataRecord.model_validate(raw)
         assert record.processing_id == "test-456"
+        assert record.tenant_id == "tenant-xyz"
         assert record.geometry.area_hectares == 5.5
+
+    def test_v1_backward_compatibility(self) -> None:
+        """v1 metadata (no tenant_id, no analysis) deserialises with defaults."""
+        raw = {
+            "$schema": "aoi-metadata-v1",
+            "processing_id": "old-001",
+            "kml_filename": "legacy.kml",
+            "feature_name": "Block X",
+            "project_name": "Legacy Orchard",
+            "tree_variety": "Fuji",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[-1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [-1.0, 0.0]]],
+                "centroid": [0.0, 0.33],
+                "bounding_box": [-1.0, 0.0, 1.0, 1.0],
+                "buffered_bounding_box": [-1.01, -0.01, 1.01, 1.01],
+                "area_hectares": 3.0,
+                "crs": "EPSG:4326",
+            },
+            "imagery": {"provider": ""},
+            "processing": {
+                "buffer_m": 100.0,
+                "timestamp": "2025-12-01T00:00:00Z",
+                "status": "metadata_written",
+            },
+        }
+        record = AOIMetadataRecord.model_validate(raw)
+        assert record.schema_version == "aoi-metadata-v1"
+        assert record.tenant_id == ""
+        assert record.analysis is None
+        assert record.processing_id == "old-001"
+
+    def test_analysis_metadata_defaults(self) -> None:
+        """AnalysisMetadata fields default to empty/None."""
+        analysis = AnalysisMetadata()
+        assert analysis.ndvi_blob_path == ""
+        assert analysis.ndvi_mean is None
+        assert analysis.ndvi_min is None
+        assert analysis.ndvi_max is None
+        assert analysis.canopy_cover_pct is None
+        assert analysis.tree_count is None
+        assert analysis.detections_blob_path == ""
 
 
 # ===========================================================================

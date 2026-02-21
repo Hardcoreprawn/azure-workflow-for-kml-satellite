@@ -107,6 +107,7 @@ def run_ingestion_phase(
     timestamp: str,
     instance_id: str = "",
     blob_name: str = "",
+    tenant_id: str = "",
 ) -> Generator[Any, Any, IngestionResult]:
     """Parse KML → fan-out prepare_aoi → fan-out write_metadata.
 
@@ -170,6 +171,7 @@ def run_ingestion_phase(
                 "aoi": a,
                 "processing_id": instance_id,
                 "timestamp": timestamp,
+                "tenant_id": tenant_id,
             },
         )
         for a in aois_list

@@ -53,6 +53,7 @@ class WriteMetadataInput(TypedDict):
     aoi: dict[str, Any]
     processing_id: str
     timestamp: str
+    tenant_id: NotRequired[str]
 
 
 class WriteMetadataOutput(TypedDict):

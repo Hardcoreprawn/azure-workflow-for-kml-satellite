@@ -102,6 +102,7 @@ def orchestrator_function(
         timestamp=timestamp,
         instance_id=instance_id,
         blob_name=blob_name,
+        tenant_id=tenant_id,
     )
 
     # -----------------------------------------------------------------------

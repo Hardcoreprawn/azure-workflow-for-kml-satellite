@@ -201,6 +201,7 @@ def _sample_blob_event() -> dict[str, str | int]:
         "content_type": "application/vnd.google-earth.kml+xml",
         "event_time": "2026-02-15T12:00:00",
         "correlation_id": "evt-abc-123",
+        "tenant_id": "tenant-orch-001",
     }
 
 
@@ -362,6 +363,7 @@ class TestOrchestratorFunction:
         payload = calls[0][0][1]
         assert payload["aoi"] == {"feature_name": "a1"}
         assert payload["processing_id"] == "inst-99"
+        assert payload["tenant_id"] == "tenant-orch-001"
 
     def test_partial_imagery_status_on_failure(self) -> None:
         """If any poll returns failed, status is partial_imagery."""
