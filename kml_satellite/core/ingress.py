@@ -53,6 +53,8 @@ class OrchestratorInput(TypedDict):
     content_type: str
     event_time: str
     correlation_id: str
+    tenant_id: str
+    output_container: str
     provider_name: NotRequired[str]
     provider_config: NotRequired[dict[str, Any] | None]
     imagery_filters: NotRequired[dict[str, Any] | None]

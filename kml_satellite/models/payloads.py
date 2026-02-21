@@ -125,6 +125,7 @@ class DownloadImageryInput(TypedDict):
     provider_config: NotRequired[dict[str, Any] | None]
     project_name: NotRequired[str]
     timestamp: NotRequired[str]
+    output_container: NotRequired[str]
 
 
 class DownloadImageryOutput(TypedDict):
@@ -158,6 +159,7 @@ class PostProcessImageryInput(TypedDict):
     target_crs: NotRequired[str]
     enable_clipping: NotRequired[bool]
     enable_reprojection: NotRequired[bool]
+    output_container: NotRequired[str]
 
 
 class PostProcessImageryOutput(TypedDict):

@@ -34,7 +34,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
@@ -67,6 +66,7 @@ def post_process_imagery(
     target_crs: str = DEFAULT_TARGET_CRS,
     enable_clipping: bool = True,
     enable_reprojection: bool = True,
+    output_container: str = "kml-output",
 ) -> dict[str, Any]:
     """Clip and/or reproject a downloaded GeoTIFF to the AOI polygon.
 
@@ -182,7 +182,7 @@ def post_process_imagery(
         "order_id": order_id,
         "source_blob_path": source_blob_path,
         "clipped_blob_path": result["output_path"],
-        "container": OUTPUT_CONTAINER,
+        "container": output_container,
         "clipped": result["clipped"],
         "reprojected": result["reprojected"],
         "source_crs": result["source_crs"],

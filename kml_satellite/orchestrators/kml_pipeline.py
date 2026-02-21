@@ -81,13 +81,16 @@ def orchestrator_function(
     instance_id = context.instance_id
     blob_name = str(blob_event.get("blob_name", "<unknown>"))
     timestamp = context.current_utc_datetime.isoformat()
+    output_container = str(blob_event.get("output_container", "kml-output"))
+    tenant_id = str(blob_event.get("tenant_id", ""))
 
     if not context.is_replaying:
         logger.info(
-            "Orchestrator started | instance=%s | blob=%s | correlation_id=%s",
+            "Orchestrator started | instance=%s | blob=%s | correlation_id=%s | tenant_id=%s",
             instance_id,
             blob_name,
             blob_event.get("correlation_id", ""),
+            tenant_id,
         )
 
     # -----------------------------------------------------------------------
@@ -149,6 +152,7 @@ def orchestrator_function(
         ),
         instance_id=instance_id,
         blob_name=blob_name,
+        output_container=output_container,
     )
 
     # -----------------------------------------------------------------------
@@ -164,10 +168,11 @@ def orchestrator_function(
 
     if not context.is_replaying:
         logger.info(
-            "Orchestrator completed | instance=%s | blob=%s | features=%d",
+            "Orchestrator completed | instance=%s | blob=%s | features=%d | tenant_id=%s",
             instance_id,
             blob_name,
             ingestion["feature_count"],
+            tenant_id,
         )
 
     return result

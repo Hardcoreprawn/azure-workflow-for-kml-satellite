@@ -356,6 +356,7 @@ def run_fulfillment_phase(
     post_process_batch_size: int = DEFAULT_POST_PROCESS_BATCH_SIZE,
     instance_id: str = "",
     blob_name: str = "",
+    output_container: str = "kml-output",
 ) -> Generator[Any, Any, FulfillmentResult]:
     """Download ready imagery → clip / reproject — in bounded parallel batches.
 
@@ -406,6 +407,7 @@ def run_fulfillment_phase(
                     "provider_config": provider_config,
                     "project_name": project_name,
                     "timestamp": timestamp,
+                    "output_container": output_container,
                 },
             )
             for outcome in batch
@@ -481,6 +483,7 @@ def run_fulfillment_phase(
                     "target_crs": target_crs,
                     "enable_clipping": enable_clipping,
                     "enable_reprojection": enable_reprojection,
+                    "output_container": output_container,
                 },
             )
             for dl_result in batch

@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from kml_satellite.core.constants import OUTPUT_CONTAINER
+
 
 @dataclass(frozen=True, slots=True)
 class BlobEvent:
@@ -32,6 +34,23 @@ class BlobEvent:
     event_time: str = ""
     correlation_id: str = field(default="")
 
+    @property
+    def tenant_id(self) -> str:
+        """Extract tenant identifier from the container name.
+
+        Pattern: ``{tenant_id}-input`` → tenant_id.
+        Legacy ``kml-input`` → ``""`` (empty string).
+        """
+        if self.container_name.endswith("-input"):
+            prefix = self.container_name[: -len("-input")]
+            return "" if prefix == "kml" else prefix
+        return ""
+
+    @property
+    def output_container(self) -> str:
+        """Derive the output container name from tenant_id."""
+        return f"{self.tenant_id}-output" if self.tenant_id else OUTPUT_CONTAINER
+
     def to_dict(self) -> dict[str, str | int]:
         """Serialise to a dict for passing to Durable Functions orchestrator."""
         return {
@@ -42,6 +61,8 @@ class BlobEvent:
             "content_type": self.content_type,
             "event_time": self.event_time,
             "correlation_id": self.correlation_id,
+            "tenant_id": self.tenant_id,
+            "output_container": self.output_container,
         }
 
     @classmethod

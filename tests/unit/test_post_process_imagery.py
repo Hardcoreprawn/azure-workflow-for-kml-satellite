@@ -327,6 +327,28 @@ class TestPostProcessImagery(unittest.TestCase):
 
         mock_process.assert_called_once()
 
+    @patch("kml_satellite.activities.post_process_imagery._process_raster")
+    def test_output_container_changes_result_container(self, mock_process: MagicMock) -> None:
+        """output_container parameter changes the container in the result dict."""
+        mock_process.return_value = {
+            "clipped": True,
+            "reprojected": False,
+            "source_crs": "EPSG:4326",
+            "output_path": "imagery/clipped/2026/03/orchard/block-a.tif",
+            "output_size_bytes": 2048,
+            "clip_error": "",
+        }
+
+        result = post_process_imagery(
+            dict(_SAMPLE_DOWNLOAD_RESULT),
+            dict(_SAMPLE_AOI),
+            project_name="Orchard",
+            timestamp="2026-03-15T12:00:00+00:00",
+            output_container="acme-output",
+        )
+
+        assert result["container"] == "acme-output"
+
 
 # ---------------------------------------------------------------------------
 # Tests — _build_geojson_polygon

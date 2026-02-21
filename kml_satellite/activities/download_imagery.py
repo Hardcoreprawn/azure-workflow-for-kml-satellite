@@ -71,6 +71,7 @@ def download_imagery(
     project_name: str = "",
     timestamp: str = "",
     max_retries: int = DEFAULT_MAX_DOWNLOAD_RETRIES,
+    output_container: str = "kml-output",
 ) -> dict[str, Any]:
     """Download GeoTIFF imagery and store it in Blob Storage.
 
@@ -112,11 +113,12 @@ def download_imagery(
         raise DownloadError(msg, retryable=False)
 
     logger.info(
-        "download_imagery started | order=%s | scene=%s | feature=%s | provider=%s",
+        "download_imagery started | order=%s | scene=%s | feature=%s | provider=%s | output_container=%s",
         order_id,
         scene_id,
         feature_name,
         provider,
+        output_container,
     )
 
     # Build provider config

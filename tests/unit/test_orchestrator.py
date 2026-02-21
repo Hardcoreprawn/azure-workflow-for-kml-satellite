@@ -517,6 +517,8 @@ class TestOrchestratorFunction:
         assert len(dl_calls) == 1
         # blob_name="orchard.kml" → stem="orchard"
         assert dl_calls[0][0][1]["project_name"] == "orchard"
+        # output_container should be present in the download payload
+        assert dl_calls[0][0][1]["output_container"] == "kml-output"
 
     def test_calls_post_process_per_download(self) -> None:
         """Orchestrator calls post_process_imagery for each successful download."""
