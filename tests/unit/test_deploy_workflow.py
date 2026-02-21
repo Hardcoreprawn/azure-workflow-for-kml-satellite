@@ -3,9 +3,10 @@
 Validates that the GitHub Actions deploy workflow contains the required
 steps to successfully deploy to Azure Functions Flex Consumption:
 
-1. The deployment uses ``sku: flexconsumption`` and ``remote-build: true``
-   so that Azure's build environment handles native dependencies (GDAL,
-   rasterio, fiona) correctly.
+1. The deployment pre-installs Python dependencies into the package at
+   ``.python_packages/lib/site-packages`` so the deployed zip is
+   self-contained (matching the official azure/functions-action template
+   for Python Flex Consumption apps).
 
 2. A readiness check polls for function registration before enabling the
    Event Grid subscription, preventing "Destination endpoint not found"
@@ -57,27 +58,6 @@ def _find_step(steps: list[dict[str, Any]], name_fragment: str) -> dict[str, Any
 class TestFlexConsumptionDeployment:
     """Verify the workflow deploys correctly to Flex Consumption."""
 
-    def test_deploy_step_uses_flex_consumption_sku(self, deploy_workflow: dict[str, Any]) -> None:
-        """Deploy step must set sku: flexconsumption for Flex Consumption apps."""
-        steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy to")
-        assert deploy is not None, "No 'Deploy to Azure Functions' step found"
-        with_block = deploy.get("with", {})
-        assert with_block.get("sku") == "flexconsumption", (
-            "azure/functions-action must use sku: flexconsumption for Flex Consumption apps"
-        )
-
-    def test_deploy_step_uses_remote_build(self, deploy_workflow: dict[str, Any]) -> None:
-        """Deploy step must enable remote-build for native Python dependencies."""
-        steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy to")
-        assert deploy is not None, "No 'Deploy to Azure Functions' step found"
-        with_block = deploy.get("with", {})
-        assert with_block.get("remote-build") is True, (
-            "azure/functions-action must use remote-build: true so Azure's "
-            "build environment handles native dependencies (GDAL, rasterio, fiona)"
-        )
-
     def test_deploy_step_uses_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Deploy step must use azure/functions-action."""
         steps = _get_steps(deploy_workflow)
@@ -87,6 +67,30 @@ class TestFlexConsumptionDeployment:
             "Deploy step must use azure/functions-action"
         )
 
+    def test_deploy_step_no_remote_build(self, deploy_workflow: dict[str, Any]) -> None:
+        """Deploy step must NOT use remote-build (deps are pre-installed)."""
+        steps = _get_steps(deploy_workflow)
+        deploy = _find_step(steps, "deploy to")
+        assert deploy is not None, "No 'Deploy to Azure Functions' step found"
+        with_block = deploy.get("with", {})
+        assert "remote-build" not in with_block, (
+            "azure/functions-action should not use remote-build; dependencies "
+            "must be pre-installed into .python_packages/lib/site-packages"
+        )
+
+    def test_build_step_pip_installs_to_python_packages(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Build step must pip-install deps into .python_packages/lib/site-packages."""
+        steps = _get_steps(deploy_workflow)
+        build = _find_step(steps, "build")
+        assert build is not None, "No build step found"
+        run_script = build.get("run", "")
+        assert ".python_packages/lib/site-packages" in run_script, (
+            "Build step must pip install into .python_packages/lib/site-packages "
+            "so the Flex Consumption function host can find dependencies"
+        )
+
     def test_requirements_txt_in_package(self, deploy_workflow: dict[str, Any]) -> None:
         """Build step must copy requirements.txt into the deploy package."""
         steps = _get_steps(deploy_workflow)
@@ -94,7 +98,7 @@ class TestFlexConsumptionDeployment:
         assert build is not None, "No build step found"
         run_script = build.get("run", "")
         assert "requirements.txt" in run_script, (
-            "Build step must include requirements.txt for remote-build"
+            "Build step must include requirements.txt in the deployment package"
         )
 
     def test_python_setup_step_present(self, deploy_workflow: dict[str, Any]) -> None:
