@@ -125,7 +125,12 @@ def orchestrator_function(
 
     def _int_cfg(key: str, default: int) -> int:
         raw = blob_event.get(key, default)
-        return int(raw) if isinstance(raw, int | float | str) else default
+        if isinstance(raw, int | float | str):
+            try:
+                return int(raw)
+            except (ValueError, OverflowError):
+                return default
+        return default
 
     fulfillment: FulfillmentResult = yield from run_fulfillment_phase(
         context,

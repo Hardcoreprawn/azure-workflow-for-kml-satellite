@@ -268,7 +268,12 @@ def run_acquisition_phase(
     # Step 2: Concurrent polling via sub-orchestrators (Issue #55)
     def _int_cfg(key: str, default: int) -> int:
         raw = blob_event.get(key, default)
-        return int(raw) if isinstance(raw, int | float | str) else default
+        if isinstance(raw, int | float | str):
+            try:
+                return int(raw)
+            except (ValueError, OverflowError):
+                return default
+        return default
 
     poll_interval = _int_cfg("poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
     poll_timeout = _int_cfg("poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
@@ -295,7 +300,7 @@ def run_acquisition_phase(
                     "retry_base": retry_base,
                     "instance_id": instance_id,
                 },
-                instance_id=f"{instance_id}:poll:{acq.get('order_id', i)}",
+                instance_id=f"{instance_id}:poll:{acq.get('order_id') or i}",
             )
             for i, acq in enumerate(batch, start=batch_start)
         ]
@@ -387,6 +392,8 @@ def run_fulfillment_phase(
 
     # Step 1: Download imagery — bounded parallel batches (Issue #54)
     download_results: list[dict[str, Any]] = []
+    download_batch_size = max(1, download_batch_size)
+    post_process_batch_size = max(1, post_process_batch_size)
 
     for batch_start in range(0, len(ready_outcomes), download_batch_size):
         batch = ready_outcomes[batch_start : batch_start + download_batch_size]

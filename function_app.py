@@ -152,7 +152,12 @@ def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> objec
 
     def _int_val(key: str, default: int) -> int:
         raw = sub_input.get(key, default)
-        return int(raw) if isinstance(raw, int | float | str) else default
+        if isinstance(raw, int | float | str):
+            try:
+                return int(raw)
+            except (ValueError, OverflowError):
+                return default
+        return default
 
     return _poll_until_ready(
         context,
