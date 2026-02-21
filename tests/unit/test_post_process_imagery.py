@@ -119,7 +119,7 @@ class TestPostProcessImagery(unittest.TestCase):
         result = post_process_imagery(
             dict(_SAMPLE_DOWNLOAD_RESULT),
             dict(_SAMPLE_AOI),
-            orchard_name="Orchard",
+            project_name="Orchard",
             timestamp="2026-03-15T12:00:00+00:00",
         )
 
@@ -145,7 +145,7 @@ class TestPostProcessImagery(unittest.TestCase):
         result = post_process_imagery(
             dict(_SAMPLE_DOWNLOAD_RESULT),
             dict(_SAMPLE_AOI),
-            orchard_name="Alpha Orchard",
+            project_name="Alpha Orchard",
             timestamp="2026-03-15T12:00:00+00:00",
         )
 
@@ -283,8 +283,8 @@ class TestPostProcessImagery(unittest.TestCase):
         assert result["target_crs"] == "EPSG:32756"
 
     @patch("kml_satellite.activities.post_process_imagery._process_raster")
-    def test_default_orchard_becomes_unknown(self, mock_process: MagicMock) -> None:
-        """Missing orchard_name defaults to 'unknown' in path."""
+    def test_default_project_becomes_unknown(self, mock_process: MagicMock) -> None:
+        """Missing project_name defaults to 'unknown' in path."""
         mock_process.return_value = {
             "clipped": True,
             "reprojected": False,
@@ -321,7 +321,7 @@ class TestPostProcessImagery(unittest.TestCase):
         post_process_imagery(
             dict(_SAMPLE_DOWNLOAD_RESULT),
             aoi,
-            orchard_name="orchard",
+            project_name="orchard",
             timestamp="2026-06-01T00:00:00+00:00",
         )
 

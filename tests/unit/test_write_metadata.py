@@ -134,13 +134,13 @@ class TestWriteMetadataLocal:
         # Should still have a non-empty timestamp
         assert proc["timestamp"] != ""
 
-    def test_orchard_name_derived_from_metadata(self) -> None:
+    def test_project_name_derived_from_metadata(self) -> None:
         """Orchard name in path is derived from AOI metadata."""
         aoi = _make_aoi(metadata={"orchard_name": "Sunset Valley"})
         result = write_metadata(aoi, timestamp="2026-06-15T00:00:00+00:00")
         assert "sunset-valley" in result["metadata_path"]
 
-    def test_orchard_name_from_filename(self) -> None:
+    def test_project_name_from_filename(self) -> None:
         """Orchard name falls back to filename when metadata is empty."""
         aoi = _make_aoi(source_file="my_farm.kml", metadata={})
         result = write_metadata(aoi, timestamp="2026-06-15T00:00:00+00:00")
@@ -219,7 +219,7 @@ class TestSchemaConformance:
             "processing_id",
             "kml_filename",
             "feature_name",
-            "orchard_name",
+            "project_name",
             "tree_variety",
             "geometry",
             "imagery",

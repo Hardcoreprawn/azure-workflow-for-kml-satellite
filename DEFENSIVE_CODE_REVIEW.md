@@ -105,7 +105,7 @@ Status: **Strong**
 
 ### Functions reviewed
 
-- `AOIMetadataRecord.from_aoi`, `to_json`, `to_dict`, `_extract_orchard_name`
+- `AOIMetadataRecord.from_aoi`, `to_json`, `to_dict`, `_extract_project_name`
 
 ### Findings
 

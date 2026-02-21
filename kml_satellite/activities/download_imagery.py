@@ -68,7 +68,7 @@ def download_imagery(
     *,
     provider_name: str = "planetary_computer",
     provider_config: dict[str, Any] | None = None,
-    orchard_name: str = "",
+    project_name: str = "",
     timestamp: str = "",
     max_retries: int = DEFAULT_MAX_DOWNLOAD_RETRIES,
 ) -> dict[str, Any]:
@@ -79,7 +79,7 @@ def download_imagery(
             ``order_id``, ``scene_id``, ``provider``, ``aoi_feature_name``.
         provider_name: Name of the imagery provider to use.
         provider_config: Optional provider configuration overrides.
-        orchard_name: Orchard/project name for blob path generation.
+        project_name: Project name for blob path generation.
         timestamp: Processing timestamp (ISO 8601) for blob path.
             Defaults to current UTC time.
         max_retries: Maximum download retry attempts (default 3, FR-6.5).
@@ -146,7 +146,7 @@ def download_imagery(
     ts = parse_timestamp(timestamp)
     blob_path = build_imagery_path(
         feature_name or scene_id,
-        orchard_name or "unknown",
+        project_name or "unknown",
         timestamp=ts,
     )
 

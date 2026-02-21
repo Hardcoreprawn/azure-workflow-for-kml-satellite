@@ -83,13 +83,13 @@ def write_metadata(
     # Build the metadata record (PID Section 9.2)
     record = AOIMetadataRecord.from_aoi(aoi, processing_id=processing_id, timestamp=timestamp)
 
-    # Extract orchard name for path generation
-    orchard_name = record.orchard_name
+    # Extract project name for path generation
+    project_name = record.project_name
 
     # Build deterministic blob paths (PID 7.4.4, Section 10.1)
     metadata_path = build_metadata_path(
         aoi.feature_name,
-        orchard_name,
+        project_name,
         timestamp=ts,
     )
 
@@ -97,7 +97,7 @@ def write_metadata(
 
     kml_archive_path = build_kml_archive_path(
         aoi.source_file,
-        orchard_name,
+        project_name,
         timestamp=ts,
     )
 

@@ -69,7 +69,7 @@ class TestDownloadImagery(unittest.TestCase):
 
         result = download_imagery(
             _SAMPLE_OUTCOME,
-            orchard_name="Test Orchard",
+            project_name="Test Orchard",
             timestamp="2026-03-15T12:00:00+00:00",
         )
 
@@ -92,7 +92,7 @@ class TestDownloadImagery(unittest.TestCase):
 
         result = download_imagery(
             _SAMPLE_OUTCOME,
-            orchard_name="Alpha Orchard",
+            project_name="Alpha Orchard",
             timestamp="2026-03-15T12:00:00+00:00",
         )
 
@@ -174,8 +174,8 @@ class TestDownloadImagery(unittest.TestCase):
         assert ctx.exception.retryable is False
 
     @patch("kml_satellite.activities.download_imagery.get_provider")
-    def test_default_orchard_name(self, mock_get_provider: MagicMock) -> None:
-        """Missing orchard_name defaults to 'unknown' in blob path."""
+    def test_default_project_name(self, mock_get_provider: MagicMock) -> None:
+        """Missing project_name defaults to 'unknown' in blob path."""
         mock_provider = MagicMock()
         mock_provider.download.return_value = _make_blob_ref()
         mock_get_provider.return_value = mock_provider
@@ -199,7 +199,7 @@ class TestDownloadImagery(unittest.TestCase):
 
         result = download_imagery(
             outcome,
-            orchard_name="orchard",
+            project_name="orchard",
             timestamp="2026-06-01T00:00:00+00:00",
         )
 
@@ -237,7 +237,7 @@ class TestDownloadImagery(unittest.TestCase):
 
         result = download_imagery(
             _SAMPLE_OUTCOME,
-            orchard_name="Test Orchard",
+            project_name="Test Orchard",
             timestamp="2026-03-15T12:00:00+00:00",
         )
 

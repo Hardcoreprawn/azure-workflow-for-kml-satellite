@@ -2,8 +2,8 @@
 
 Generates output paths conforming to PID Section 10.1:
 
-    kml/{YYYY}/{MM}/{orchard-name}/{filename}.kml
-    metadata/{YYYY}/{MM}/{orchard-name}/{feature-name}.json
+    kml/{YYYY}/{MM}/{project-name}/{filename}.kml
+    metadata/{YYYY}/{MM}/{project-name}/{feature-name}.json
 
 All path components are sanitised to lowercase slug form: only ``a-z``,
 ``0-9``, and ``-`` are allowed.  Spaces become hyphens; other characters
@@ -56,17 +56,17 @@ def sanitise_slug(value: str) -> str:
 
 def build_kml_archive_path(
     source_filename: str,
-    orchard_name: str,
+    project_name: str,
     *,
     timestamp: datetime | None = None,
 ) -> str:
     """Build the blob path for archiving the original KML file.
 
-    Format: ``kml/{YYYY}/{MM}/{orchard-name}/{filename}.kml``
+    Format: ``kml/{YYYY}/{MM}/{project-name}/{filename}.kml``
 
     Args:
         source_filename: Original KML filename (e.g. ``"orchard_alpha.kml"``).
-        orchard_name: Orchard/project name (will be sanitised).
+        project_name: Project name (will be sanitised).
         timestamp: Processing timestamp. Defaults to current UTC time.
 
     Returns:
@@ -75,24 +75,24 @@ def build_kml_archive_path(
     ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
-    orchard_slug = sanitise_slug(orchard_name)
+    project_slug = sanitise_slug(project_name)
     filename_slug = sanitise_slug(source_filename.removesuffix(".kml")) + ".kml"
-    return f"{KML_PREFIX}/{year}/{month}/{orchard_slug}/{filename_slug}"
+    return f"{KML_PREFIX}/{year}/{month}/{project_slug}/{filename_slug}"
 
 
 def build_metadata_path(
     feature_name: str,
-    orchard_name: str,
+    project_name: str,
     *,
     timestamp: datetime | None = None,
 ) -> str:
     """Build the blob path for a metadata JSON document.
 
-    Format: ``metadata/{YYYY}/{MM}/{orchard-name}/{feature-name}.json``
+    Format: ``metadata/{YYYY}/{MM}/{project-name}/{feature-name}.json``
 
     Args:
         feature_name: Feature/Placemark name (will be sanitised).
-        orchard_name: Orchard/project name (will be sanitised).
+        project_name: Project name (will be sanitised).
         timestamp: Processing timestamp. Defaults to current UTC time.
 
     Returns:
@@ -101,24 +101,24 @@ def build_metadata_path(
     ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
-    orchard_slug = sanitise_slug(orchard_name)
+    project_slug = sanitise_slug(project_name)
     feature_slug = sanitise_slug(feature_name) + ".json"
-    return f"{METADATA_PREFIX}/{year}/{month}/{orchard_slug}/{feature_slug}"
+    return f"{METADATA_PREFIX}/{year}/{month}/{project_slug}/{feature_slug}"
 
 
 def build_imagery_path(
     feature_name: str,
-    orchard_name: str,
+    project_name: str,
     *,
     timestamp: datetime | None = None,
 ) -> str:
     """Build the blob path for raw imagery (GeoTIFF).
 
-    Format: ``imagery/raw/{YYYY}/{MM}/{orchard-name}/{feature-name}.tif``
+    Format: ``imagery/raw/{YYYY}/{MM}/{project-name}/{feature-name}.tif``
 
     Args:
         feature_name: Feature/Placemark name (will be sanitised).
-        orchard_name: Orchard/project name (will be sanitised).
+        project_name: Project name (will be sanitised).
         timestamp: Processing timestamp. Defaults to current UTC time.
 
     Returns:
@@ -131,24 +131,24 @@ def build_imagery_path(
     ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
-    orchard_slug = sanitise_slug(orchard_name)
+    project_slug = sanitise_slug(project_name)
     feature_slug = sanitise_slug(feature_name) + ".tif"
-    return f"{IMAGERY_RAW_PREFIX}/{year}/{month}/{orchard_slug}/{feature_slug}"
+    return f"{IMAGERY_RAW_PREFIX}/{year}/{month}/{project_slug}/{feature_slug}"
 
 
 def build_clipped_imagery_path(
     feature_name: str,
-    orchard_name: str,
+    project_name: str,
     *,
     timestamp: datetime | None = None,
 ) -> str:
     """Build the blob path for clipped (post-processed) imagery.
 
-    Format: ``imagery/clipped/{YYYY}/{MM}/{orchard-name}/{feature-name}.tif``
+    Format: ``imagery/clipped/{YYYY}/{MM}/{project-name}/{feature-name}.tif``
 
     Args:
         feature_name: Feature/Placemark name (will be sanitised).
-        orchard_name: Orchard/project name (will be sanitised).
+        project_name: Project name (will be sanitised).
         timestamp: Processing timestamp. Defaults to current UTC time.
 
     Returns:
@@ -161,6 +161,6 @@ def build_clipped_imagery_path(
     ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
-    orchard_slug = sanitise_slug(orchard_name)
+    project_slug = sanitise_slug(project_name)
     feature_slug = sanitise_slug(feature_name) + ".tif"
-    return f"{IMAGERY_CLIPPED_PREFIX}/{year}/{month}/{orchard_slug}/{feature_slug}"
+    return f"{IMAGERY_CLIPPED_PREFIX}/{year}/{month}/{project_slug}/{feature_slug}"

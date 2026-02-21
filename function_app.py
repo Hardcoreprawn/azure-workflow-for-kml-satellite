@@ -481,7 +481,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
           ``order_id``, ``scene_id``, ``provider``, ``aoi_feature_name``.
         - ``provider_name``: Imagery provider name (default ``"planetary_computer"``).
         - ``provider_config``: Optional provider configuration overrides.
-        - ``orchard_name``: Orchard/project name for blob path generation.
+        - ``project_name``: Project name for blob path generation.
         - ``timestamp``: Processing timestamp (ISO 8601).
 
     Returns:
@@ -503,7 +503,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
 
     provider_name = str(payload.get("provider_name", "planetary_computer"))
     provider_config = payload.get("provider_config")
-    orchard_name = str(payload.get("orchard_name", ""))
+    project_name = str(payload.get("project_name", ""))
     timestamp = str(payload.get("timestamp", ""))
 
     logger.info(
@@ -516,7 +516,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
         imagery_outcome,
         provider_name=provider_name,
         provider_config=provider_config,  # type: ignore[arg-type]
-        orchard_name=orchard_name,
+        project_name=project_name,
         timestamp=timestamp,
     )
 
@@ -540,7 +540,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
         - ``download_result``: Dict from download_imagery with
           ``order_id``, ``blob_path``, ``size_bytes``, etc.
         - ``aoi``: Serialised AOI dict with polygon geometry.
-        - ``orchard_name``: Orchard/project name for output path.
+        - ``project_name``: Project name for output path.
         - ``timestamp``: Processing timestamp (ISO 8601).
         - ``target_crs``: Target CRS for reprojection (default EPSG:4326).
         - ``enable_clipping``: Whether to clip (default True).
@@ -568,7 +568,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
         msg = "post_process_imagery activity: aoi must be a dict"
         raise TypeError(msg)
 
-    orchard_name = str(payload.get("orchard_name", ""))
+    project_name = str(payload.get("project_name", ""))
     timestamp = str(payload.get("timestamp", ""))
     target_crs = str(payload.get("target_crs", "EPSG:4326"))
     enable_clipping = bool(payload.get("enable_clipping", True))
@@ -583,7 +583,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
     result = post_process_imagery(
         download_result,
         aoi_data,
-        orchard_name=orchard_name,
+        project_name=project_name,
         timestamp=timestamp,
         target_crs=target_crs,
         enable_clipping=enable_clipping,

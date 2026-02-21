@@ -5,7 +5,7 @@ Covers:
 - build_kml_archive_path: format, determinism
 - build_metadata_path: format, determinism
 - build_clipped_imagery_path: format, determinism, slug sanitisation
-- Path hierarchy: {prefix}/{YYYY}/{MM}/{orchard-slug}/{name}.{ext}
+- Path hierarchy: {prefix}/{YYYY}/{MM}/{project-slug}/{name}.{ext}
 """
 
 from __future__ import annotations
@@ -95,8 +95,8 @@ class TestBuildKmlArchivePath:
         path = build_kml_archive_path("x.kml", "y", timestamp=ts)
         assert "/2026/03/" in path
 
-    def test_orchard_name_sanitised(self) -> None:
-        """Orchard name with special chars is slugified."""
+    def test_project_name_sanitised(self) -> None:
+        """Project name with special chars is slugified."""
         ts = datetime(2026, 6, 15, tzinfo=UTC)
         path = build_kml_archive_path("f.kml", "O'Brien's Farm!", timestamp=ts)
         assert "obriens-farm" in path
@@ -153,8 +153,8 @@ class TestBuildMetadataPath:
         path = build_metadata_path("Block A (polygon 2)", "Orchard", timestamp=ts)
         assert "block-a-polygon-2" in path
 
-    def test_missing_orchard_name(self) -> None:
-        """Empty orchard name falls back to 'unknown'."""
+    def test_missing_project_name(self) -> None:
+        """Empty project name falls back to 'unknown'."""
         ts = datetime(2026, 1, 1, tzinfo=UTC)
         path = build_metadata_path("F1", "", timestamp=ts)
         assert "/unknown/" in path
@@ -209,8 +209,8 @@ class TestBuildClippedImageryPath:
         path = build_clipped_imagery_path("Block A (polygon 2)", "Orchard", timestamp=ts)
         assert "block-a-polygon-2" in path
 
-    def test_missing_orchard_name(self) -> None:
-        """Empty orchard name falls back to 'unknown'."""
+    def test_missing_project_name(self) -> None:
+        """Empty project name falls back to 'unknown'."""
         ts = datetime(2026, 1, 1, tzinfo=UTC)
         path = build_clipped_imagery_path("F1", "", timestamp=ts)
         assert "/unknown/" in path

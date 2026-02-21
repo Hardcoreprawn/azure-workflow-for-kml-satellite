@@ -117,9 +117,9 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     ready_outcomes = [o for o in acquisition["imagery_outcomes"] if o.get("state") == "ready"]
 
-    # Derive orchard_name from the source KML filename stem.
+    # Derive project_name from the source KML filename stem.
     _stem = PurePosixPath(blob_name).stem if blob_name else ""
-    orchard_name = _stem if _stem and _stem != "<unknown>" else "unknown"
+    project_name = _stem if _stem and _stem != "<unknown>" else "unknown"
 
     provider_name = str(blob_event.get("provider_name", "planetary_computer"))
 
@@ -138,7 +138,7 @@ def orchestrator_function(
         ingestion["aois"],
         provider_name=provider_name,
         provider_config=blob_event.get("provider_config"),
-        orchard_name=orchard_name,
+        project_name=project_name,
         timestamp=timestamp,
         enable_clipping=bool(blob_event.get("enable_clipping", True)),
         enable_reprojection=bool(blob_event.get("enable_reprojection", True)),

@@ -171,7 +171,7 @@ class DownloadImageryInput(TypedDict):
     imagery_outcome: ImageryOutcome
     provider_name: str
     provider_config: dict[str, str] | None
-    orchard_name: str
+    project_name: str
     timestamp: str
 
 
@@ -201,7 +201,7 @@ class PostProcessInput(TypedDict):
 
     download_result: DownloadResult
     aoi: AOIPayload
-    orchard_name: str
+    project_name: str
     timestamp: str
     target_crs: str
     enable_clipping: bool

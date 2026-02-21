@@ -503,8 +503,8 @@ class TestOrchestratorFunction:
         assert dl[0]["state"] == "failed"
         assert "Download exploded" in str(dl[0]["error"])
 
-    def test_orchard_name_from_blob_filename(self) -> None:
-        """Orchestrator derives orchard_name from blob_name stem."""
+    def test_project_name_from_blob_filename(self) -> None:
+        """Orchestrator derives project_name from blob_name stem."""
         context = _make_context(_sample_blob_event())
         _run_orchestrator(
             context,
@@ -516,7 +516,7 @@ class TestOrchestratorFunction:
         ]
         assert len(dl_calls) == 1
         # blob_name="orchard.kml" → stem="orchard"
-        assert dl_calls[0][0][1]["orchard_name"] == "orchard"
+        assert dl_calls[0][0][1]["project_name"] == "orchard"
 
     def test_calls_post_process_per_download(self) -> None:
         """Orchestrator calls post_process_imagery for each successful download."""

@@ -21,7 +21,7 @@ from kml_satellite.models.metadata import (
     GeometryMetadata,
     ImageryMetadata,
     ProcessingMetadata,
-    _extract_orchard_name,
+    _extract_project_name,
 )
 
 # ---------------------------------------------------------------------------
@@ -82,11 +82,11 @@ class TestFromAOI:
         record = AOIMetadataRecord.from_aoi(_make_aoi())
         assert record.schema_version == SCHEMA_VERSION
 
-    def test_orchard_name_from_metadata(self) -> None:
-        """Orchard name is extracted from metadata."""
+    def test_project_name_from_metadata(self) -> None:
+        """Project name is extracted from metadata."""
         aoi = _make_aoi(metadata={"orchard_name": "Beta Ranch"})
         record = AOIMetadataRecord.from_aoi(aoi)
-        assert record.orchard_name == "Beta Ranch"
+        assert record.project_name == "Beta Ranch"
 
     def test_tree_variety_from_metadata(self) -> None:
         """Tree variety is extracted from metadata key."""
@@ -269,7 +269,7 @@ class TestSchemaValidation:
             "processing_id": "test-456",
             "kml_filename": "test.kml",
             "feature_name": "Plot 1",
-            "orchard_name": "Test Orchard",
+            "project_name": "Test Orchard",
             "tree_variety": "Cherry",
             "geometry": {
                 "type": "Polygon",
@@ -297,37 +297,37 @@ class TestSchemaValidation:
 # ===========================================================================
 
 
-class TestOrchardNameExtraction:
-    """Test the _extract_orchard_name helper."""
-
-    def test_from_orchard_name_key(self) -> None:
-        """Uses 'orchard_name' metadata key first."""
-        name = _extract_orchard_name({"orchard_name": "Alpha"}, "fallback.kml")
-        assert name == "Alpha"
+class TestProjectNameExtraction:
+    """Test the _extract_project_name helper."""
 
     def test_from_project_name_key(self) -> None:
-        """Falls back to 'project_name' metadata key."""
-        name = _extract_orchard_name({"project_name": "Beta Project"}, "fallback.kml")
-        assert name == "Beta Project"
+        """Uses 'project_name' metadata key first."""
+        name = _extract_project_name({"project_name": "Alpha"}, "fallback.kml")
+        assert name == "Alpha"
+
+    def test_from_orchard_name_key(self) -> None:
+        """Falls back to 'orchard_name' metadata key."""
+        name = _extract_project_name({"orchard_name": "Beta Ranch"}, "fallback.kml")
+        assert name == "Beta Ranch"
 
     def test_from_filename(self) -> None:
         """Falls back to filename stem when metadata is empty."""
-        name = _extract_orchard_name({}, "my_orchard.kml")
+        name = _extract_project_name({}, "my_orchard.kml")
         assert name == "my_orchard"
 
     def test_empty_metadata_and_file(self) -> None:
         """Returns 'unknown' when both metadata and filename are empty."""
-        name = _extract_orchard_name({}, "")
+        name = _extract_project_name({}, "")
         assert name == "unknown"
 
     def test_whitespace_only_value(self) -> None:
         """Whitespace-only metadata values are treated as empty."""
-        name = _extract_orchard_name({"orchard_name": "  "}, "backup.kml")
+        name = _extract_project_name({"orchard_name": "  "}, "backup.kml")
         assert name == "backup"
 
-    def test_orchard_name_takes_priority(self) -> None:
-        """orchard_name is preferred over project_name."""
-        name = _extract_orchard_name(
-            {"orchard_name": "First", "project_name": "Second"}, "file.kml"
+    def test_project_name_takes_priority(self) -> None:
+        """project_name is preferred over orchard_name."""
+        name = _extract_project_name(
+            {"orchard_name": "Second", "project_name": "First"}, "file.kml"
         )
         assert name == "First"
