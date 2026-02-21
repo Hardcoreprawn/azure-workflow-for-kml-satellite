@@ -32,7 +32,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.providers.base import ProviderDownloadError, ProviderError
 from kml_satellite.providers.factory import get_provider
 from kml_satellite.utils.blob_paths import build_imagery_path
@@ -170,7 +169,7 @@ def download_imagery(
         "aoi_feature_name": feature_name,
         "blob_path": blob_path,
         "adapter_blob_path": blob_ref.blob_path,
-        "container": OUTPUT_CONTAINER,
+        "container": blob_ref.container,
         "size_bytes": blob_ref.size_bytes,
         "content_type": blob_ref.content_type,
         "download_duration_seconds": round(duration, 3),

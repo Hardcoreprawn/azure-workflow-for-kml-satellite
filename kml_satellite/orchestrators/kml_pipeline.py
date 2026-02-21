@@ -23,9 +23,11 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from kml_satellite.orchestrators.phases import (
+    DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_MAX_RETRIES,
     DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_POLL_TIMEOUT_SECONDS,
+    DEFAULT_POST_PROCESS_BATCH_SIZE,
     DEFAULT_RETRY_BASE_SECONDS,
     _poll_until_ready,
     build_pipeline_summary,
@@ -39,14 +41,18 @@ if TYPE_CHECKING:
 
     import azure.durable_functions as df
 
+    from kml_satellite.orchestrators.phases import FulfillmentResult
+
 logger = logging.getLogger("kml_satellite.orchestrators.kml_pipeline")
 
 # Re-export polling defaults and _poll_until_ready so existing imports
 # (including tests) continue to work.
 __all__ = [
+    "DEFAULT_DOWNLOAD_BATCH_SIZE",
     "DEFAULT_MAX_RETRIES",
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_POLL_TIMEOUT_SECONDS",
+    "DEFAULT_POST_PROCESS_BATCH_SIZE",
     "DEFAULT_RETRY_BASE_SECONDS",
     "_poll_until_ready",
     "orchestrator_function",
@@ -117,7 +123,16 @@ def orchestrator_function(
 
     provider_name = str(blob_event.get("provider_name", "planetary_computer"))
 
-    fulfillment = yield from run_fulfillment_phase(
+    def _int_cfg(key: str, default: int) -> int:
+        raw = blob_event.get(key, default)
+        if isinstance(raw, int | float | str):
+            try:
+                return int(raw)
+            except (ValueError, OverflowError):
+                return default
+        return default
+
+    fulfillment: FulfillmentResult = yield from run_fulfillment_phase(
         context,
         ready_outcomes,
         ingestion["aois"],
@@ -128,6 +143,10 @@ def orchestrator_function(
         enable_clipping=bool(blob_event.get("enable_clipping", True)),
         enable_reprojection=bool(blob_event.get("enable_reprojection", True)),
         target_crs=str(blob_event.get("target_crs", "EPSG:4326")),
+        download_batch_size=_int_cfg("download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE),
+        post_process_batch_size=_int_cfg(
+            "post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE
+        ),
         instance_id=instance_id,
         blob_name=blob_name,
     )

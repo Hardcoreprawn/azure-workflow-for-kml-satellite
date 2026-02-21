@@ -13,9 +13,9 @@ Current phases:
 2. prepare_aoi — fan-out via task_all
 3. write_metadata — fan-out via task_all
 4. acquire_imagery — fan-out via task_all
-5. poll_order — timer-based polling loop per order
-6. download_imagery — sequential per ready order
-7. post_process_imagery — sequential per successful download
+5. poll_order — concurrent sub-orchestrators via task_all (Issue #55)
+6. download_imagery — parallel batches via task_all (Issue #54)
+7. post_process_imagery — parallel batches via task_all (Issue #54)
 
 References:
     PID FR-3.9  (poll until completion with timeout)
@@ -27,6 +27,8 @@ References:
     PID FR-5.3  (Durable Functions for long-running workflows)
     PID FR-6.4  (exponential backoff)
     PID Section 7.2 (Fan-Out / Fan-In pattern)
+    Issue #54   (Parallelize download and post-process stages)
+    Issue #55   (Make polling stage concurrency-aware)
 """
 
 from __future__ import annotations
@@ -67,11 +69,16 @@ def _run_orchestrator(
     aois: list[dict[str, object]] | None = None,
     metadata_results: list[dict[str, object]] | None = None,
     acquisition_results: list[dict[str, object]] | None = None,
-    poll_results: list[dict[str, object]] | None = None,
+    poll_outcomes: list[dict[str, object]] | None = None,
     download_results: list[dict[str, object]] | None = None,
     post_process_results: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """Drive the seven-phase generator orchestrator to completion.
+    """Drive the orchestrator generator to completion.
+
+    Phases are now parallelised (Issues #54, #55):
+    - Polling uses sub-orchestrators via ``task_all`` (one batch)
+    - Downloads use ``task_all`` (one batch)
+    - Post-processing uses ``task_all`` (one batch)
 
     Args:
         context: Mock DurableOrchestrationContext.
@@ -79,13 +86,10 @@ def _run_orchestrator(
         aois: Simulated return of ``prepare_aoi`` fan-out.
         metadata_results: Simulated return of ``write_metadata`` fan-out.
         acquisition_results: Simulated return of ``acquire_imagery`` fan-out.
-        poll_results: Simulated returns of ``poll_order`` activity calls
-            (one per acquisition).  Each should have ``is_terminal: True``
-            so the loop exits after one poll.
-        download_results: Simulated return of ``download_imagery`` calls.
-            Defaults to one download result per ready poll outcome.
-        post_process_results: Simulated return of ``post_process_imagery``
-            calls.  Defaults to one result per successful download.
+        poll_outcomes: Simulated return of sub-orchestrator poll tasks.
+            Each should have ``state`` (``"ready"`` or ``"failed"``).
+        download_results: Simulated return of ``download_imagery`` batch.
+        post_process_results: Simulated return of ``post_process_imagery`` batch.
 
     Returns:
         The final result dict returned by the orchestrator.
@@ -108,20 +112,23 @@ def _run_orchestrator(
             }
             for i in range(len(aois))
         ]
-    if poll_results is None:
-        poll_results = [
+    if poll_outcomes is None:
+        poll_outcomes = [
             {
                 "state": "ready",
-                "is_terminal": True,
                 "order_id": a["order_id"],
-                "message": "",
-                "progress_pct": 100.0,
+                "scene_id": str(a.get("scene_id", "")),
+                "provider": str(a.get("provider", "")),
+                "aoi_feature_name": str(a.get("aoi_feature_name", "")),
+                "poll_count": 1,
+                "elapsed_seconds": 0.0,
+                "error": "",
             }
             for a in acquisition_results
         ]
 
     # Count how many polls are "ready" to determine download fan-out size
-    ready_count = sum(1 for p in poll_results if p.get("state") == "ready")
+    ready_count = sum(1 for p in poll_outcomes if p.get("state") == "ready")
     if download_results is None:
         download_results = [
             {
@@ -157,40 +164,31 @@ def _run_orchestrator(
     gen.send(aois)  # → yield task_all(write_metadata)
     gen.send(metadata_results)  # → yield task_all(acquire_imagery)
 
-    # Now we enter the polling loop for each acquisition.
-    # For each acquisition the orchestrator yields:
-    #   1. call_activity("poll_order", ...) — send poll result
-    #   2. If terminal → moves to next acquisition
-    #   3. If not terminal → create_timer → then poll again
-    # With default poll_results (all terminal), each result → next acq.
-    # After polling, the orchestrator yields one call_activity per
-    # ready download (sequential, not task_all).
+    # Acquisition results → sub-orchestrator poll batch
     try:
-        gen.send(acquisition_results)  # → first poll_order yield
+        gen.send(acquisition_results)
     except StopIteration as exc:
         return exc.value  # type: ignore[return-value]
 
-    poll_idx = 0
-    dl_idx = 0
-    pp_idx = 0
-    while True:
-        try:
-            if poll_idx < len(poll_results):
-                gen.send(poll_results[poll_idx])
-                poll_idx += 1
-            elif dl_idx < len(download_results):
-                # Send one download result per sequential call_activity yield
-                gen.send(download_results[dl_idx])
-                dl_idx += 1
-            elif pp_idx < len(post_process_results):
-                # Send one post-process result per sequential call_activity yield
-                gen.send(post_process_results[pp_idx])
-                pp_idx += 1
-            else:
-                # No more results to send — orchestrator should finish
-                gen.send(None)
-        except StopIteration as exc:
-            return exc.value  # type: ignore[return-value]
+    # Poll outcomes (list from task_all of sub-orchestrators)
+    try:
+        gen.send(poll_outcomes)
+    except StopIteration as exc:
+        return exc.value  # type: ignore[return-value]
+
+    # Download results batch (task_all)
+    try:
+        gen.send(download_results)
+    except StopIteration as exc:
+        return exc.value  # type: ignore[return-value]
+
+    # Post-process results batch (task_all) — generator finishes here
+    try:
+        gen.send(post_process_results)
+    except StopIteration as exc:
+        return exc.value  # type: ignore[return-value]
+
+    raise RuntimeError("Expected StopIteration")  # pragma: no cover
 
 
 def _sample_blob_event() -> dict[str, str | int]:
@@ -339,16 +337,17 @@ class TestOrchestratorFunction:
         assert len(acq_calls) == 1
         assert acq_calls[0][0][1]["aoi"] == {"feature_name": "a1"}
 
-    def test_calls_poll_order_per_acquisition(self) -> None:
-        """Orchestrator calls poll_order at least once per acquisition."""
+    def test_calls_poll_sub_orchestrator_per_acquisition(self) -> None:
+        """Orchestrator calls poll sub-orchestrator for each acquisition (Issue #55)."""
         context = _make_context(_sample_blob_event())
         _run_orchestrator(
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
         )
-        poll_calls = [c for c in context.call_activity.call_args_list if c[0][0] == "poll_order"]
-        assert len(poll_calls) == 1
+        sub_calls = context.call_sub_orchestrator.call_args_list
+        assert len(sub_calls) == 1
+        assert sub_calls[0][0][0] == "poll_order_suborchestrator"
 
     def test_write_metadata_called_with_aois(self) -> None:
         """Orchestrator calls write_metadata for each AOI."""
@@ -371,13 +370,11 @@ class TestOrchestratorFunction:
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
-            poll_results=[
+            poll_outcomes=[
                 {
                     "state": "failed",
-                    "is_terminal": True,
                     "order_id": "pc-scene-0",
-                    "message": "Rejected",
-                    "progress_pct": 0.0,
+                    "error": "Rejected",
                 }
             ],
             download_results=[],
@@ -420,13 +417,11 @@ class TestOrchestratorFunction:
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
-            poll_results=[
+            poll_outcomes=[
                 {
                     "state": "failed",
-                    "is_terminal": True,
                     "order_id": "pc-scene-0",
-                    "message": "Rejected",
-                    "progress_pct": 0.0,
+                    "error": "Rejected",
                 }
             ],
             download_results=[],
@@ -456,7 +451,7 @@ class TestOrchestratorFunction:
         assert result["download_results"] == dl_results
 
     def test_download_failure_captured_not_fatal(self) -> None:
-        """If a download_imagery call raises, the error is captured in results."""
+        """If a download batch raises, the error is captured in results."""
         context = _make_context(_sample_blob_event())
 
         gen = orchestrator_function(context)
@@ -475,22 +470,24 @@ class TestOrchestratorFunction:
                     "aoi_feature_name": "a1",
                 }
             ]
-        )  # first poll_order
-        # Send terminal-ready poll result → orchestrator enters download
-        try:
-            gen.send(
+        )  # sub-orchestrator poll batch
+        # Send terminal-ready poll outcome → orchestrator enters download
+        gen.send(
+            [
                 {
                     "state": "ready",
-                    "is_terminal": True,
                     "order_id": "pc-scene-0",
-                    "message": "",
-                    "progress_pct": 100.0,
+                    "scene_id": "scene-0",
+                    "provider": "planetary_computer",
+                    "aoi_feature_name": "a1",
+                    "poll_count": 1,
+                    "elapsed_seconds": 0.0,
+                    "error": "",
                 }
-            )
-        except StopIteration:
-            raise AssertionError("Expected download yield")  # noqa: B904
+            ]
+        )  # → download batch yield (task_all)
 
-        # Download yield — throw an exception to simulate failure
+        # Download batch yield — throw an exception to simulate failure
         try:
             gen.throw(RuntimeError("Download exploded"))
         except StopIteration as exc:
@@ -544,13 +541,11 @@ class TestOrchestratorFunction:
             context,
             features=[{"name": "f1"}],
             aois=[{"feature_name": "a1"}],
-            poll_results=[
+            poll_outcomes=[
                 {
                     "state": "failed",
-                    "is_terminal": True,
                     "order_id": "pc-scene-0",
-                    "message": "Rejected",
-                    "progress_pct": 0.0,
+                    "error": "Rejected",
                 }
             ],
             download_results=[],

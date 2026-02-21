@@ -191,7 +191,7 @@ class TestAcquireImagery(unittest.TestCase):
 
 
 class TestBuildProviderConfig(unittest.TestCase):
-    """_build_provider_config helper."""
+    """build_provider_config helper."""
 
     def test_default_config(self) -> None:
         config = build_provider_config("pc", None)

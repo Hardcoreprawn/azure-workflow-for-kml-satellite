@@ -136,13 +136,6 @@ class TestParseTimestamp(unittest.TestCase):
 class TestBackwardCompatibility(unittest.TestCase):
     """Verify activity modules re-export shared helpers."""
 
-    def test_download_imagery_uses_central_output_container(self) -> None:
-        from kml_satellite.activities.download_imagery import (
-            OUTPUT_CONTAINER as DL_CONTAINER,
-        )
-
-        assert DL_CONTAINER == OUTPUT_CONTAINER
-
     def test_write_metadata_uses_central_output_container(self) -> None:
         from kml_satellite.activities.write_metadata import (
             OUTPUT_CONTAINER as WM_CONTAINER,
