@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pystac_client
 
-from kml_satellite.core.constants import OUTPUT_CONTAINER
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.models.imagery import (
     BlobReference,
     ImageryFilters,
@@ -301,7 +301,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
             raise ProviderDownloadError(provider=self.name, message=msg, retryable=True) from exc
 
         blob_path = _build_blob_path(scene_id)
-        container = self.config.extra_params.get("output_container", OUTPUT_CONTAINER)
+        container = self.config.extra_params.get("output_container", DEFAULT_OUTPUT_CONTAINER)
 
         logger.info(
             "Downloaded %s to %s/%s (%d bytes)",

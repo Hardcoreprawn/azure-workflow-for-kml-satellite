@@ -14,7 +14,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from kml_satellite.core.constants import INPUT_CONTAINER, OUTPUT_CONTAINER
+from kml_satellite.core.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.utils.helpers import build_provider_config, parse_timestamp
 
 # ---------------------------------------------------------------------------
@@ -26,10 +26,10 @@ class TestConstants(unittest.TestCase):
     """Verify centralised pipeline constants."""
 
     def test_output_container_value(self) -> None:
-        assert OUTPUT_CONTAINER == "kml-output"
+        assert DEFAULT_OUTPUT_CONTAINER == "kml-output"
 
     def test_input_container_value(self) -> None:
-        assert INPUT_CONTAINER == "kml-input"
+        assert DEFAULT_INPUT_CONTAINER == "kml-input"
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         from kml_satellite.activities.write_metadata import write_metadata
 
         sig = inspect.signature(write_metadata)
-        assert sig.parameters["output_container"].default == OUTPUT_CONTAINER
+        assert sig.parameters["output_container"].default == DEFAULT_OUTPUT_CONTAINER
 
     def test_post_process_default_output_container(self) -> None:
         import inspect
@@ -150,4 +150,32 @@ class TestBackwardCompatibility(unittest.TestCase):
         from kml_satellite.activities.post_process_imagery import post_process_imagery
 
         sig = inspect.signature(post_process_imagery)
-        assert sig.parameters["output_container"].default == OUTPUT_CONTAINER
+        assert sig.parameters["output_container"].default == DEFAULT_OUTPUT_CONTAINER
+
+
+class TestResolveTenantContainers:
+    """Tests for resolve_tenant_containers utility."""
+
+    def test_legacy_kml_input(self) -> None:
+        from kml_satellite.core.constants import resolve_tenant_containers
+
+        tenant_id, input_c, output_c = resolve_tenant_containers("kml-input")
+        assert tenant_id == ""
+        assert input_c == "kml-input"
+        assert output_c == "kml-output"
+
+    def test_tenant_input(self) -> None:
+        from kml_satellite.core.constants import resolve_tenant_containers
+
+        tenant_id, input_c, output_c = resolve_tenant_containers("acme-input")
+        assert tenant_id == "acme"
+        assert input_c == "acme-input"
+        assert output_c == "acme-output"
+
+    def test_unrecognised_container(self) -> None:
+        from kml_satellite.core.constants import resolve_tenant_containers
+
+        tenant_id, input_c, output_c = resolve_tenant_containers("random-container")
+        assert tenant_id == ""
+        assert input_c == "kml-input"
+        assert output_c == "kml-output"

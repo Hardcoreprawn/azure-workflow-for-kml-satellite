@@ -31,6 +31,7 @@ from kml_satellite.utils.blob_paths import build_metadata_path
 if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
 
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.write_metadata")
@@ -50,7 +51,7 @@ def write_metadata(
     timestamp: str = "",
     tenant_id: str = "",
     blob_service_client: object | None = None,
-    output_container: str = "kml-output",
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
 ) -> dict[str, object]:
     """Build and store a metadata JSON document for a processed AOI.
 
@@ -133,7 +134,7 @@ def _upload_metadata(
     blob_service_client: object,
     metadata_path: str,
     metadata_json: str,
-    output_container: str = "kml-output",
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
 ) -> None:
     """Upload metadata JSON to Blob Storage.
 
