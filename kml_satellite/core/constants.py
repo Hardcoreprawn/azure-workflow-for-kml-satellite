@@ -16,8 +16,26 @@ from __future__ import annotations
 # Blob container names (PID Section 10.1)
 # ---------------------------------------------------------------------------
 
-INPUT_CONTAINER: str = "kml-input"
-"""Blob container for incoming KML files."""
+DEFAULT_INPUT_CONTAINER: str = "kml-input"
+"""Default blob container for incoming KML files."""
 
-OUTPUT_CONTAINER: str = "kml-output"
-"""Blob container for all pipeline outputs (imagery, metadata, KML archive)."""
+DEFAULT_OUTPUT_CONTAINER: str = "kml-output"
+"""Default blob container for all pipeline outputs (imagery, metadata, KML archive)."""
+
+
+def resolve_tenant_containers(container_name: str) -> tuple[str, str, str]:
+    """Resolve tenant context from a container name.
+
+    Args:
+        container_name: The input container name (e.g. "acme-input" or "kml-input").
+
+    Returns:
+        Tuple of (tenant_id, input_container, output_container).
+        For legacy "kml-input", returns ("", "kml-input", "kml-output").
+    """
+    if container_name.endswith("-input"):
+        prefix = container_name[: -len("-input")]
+        if prefix == "kml":
+            return ("", DEFAULT_INPUT_CONTAINER, DEFAULT_OUTPUT_CONTAINER)
+        return (prefix, container_name, f"{prefix}-output")
+    return ("", DEFAULT_INPUT_CONTAINER, DEFAULT_OUTPUT_CONTAINER)

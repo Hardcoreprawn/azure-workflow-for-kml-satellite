@@ -40,6 +40,7 @@ from kml_satellite.utils.helpers import build_provider_config, parse_timestamp
 if TYPE_CHECKING:
     from kml_satellite.models.imagery import BlobReference
 
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.download_imagery")
@@ -71,7 +72,7 @@ def download_imagery(
     project_name: str = "",
     timestamp: str = "",
     max_retries: int = DEFAULT_MAX_DOWNLOAD_RETRIES,
-    output_container: str = "kml-output",
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
 ) -> dict[str, Any]:
     """Download GeoTIFF imagery and store it in Blob Storage.
 

@@ -14,7 +14,7 @@ import logging
 import azure.durable_functions as df
 import azure.functions as func
 
-from kml_satellite.core.constants import INPUT_CONTAINER
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.ingress import (
     build_orchestrator_input,
     deserialize_activity_input,
@@ -78,7 +78,7 @@ async def kml_blob_trigger(
 
     # Defence-in-depth: Event Grid subscription filters for .kml in kml-input,
     # but we validate here too in case of misconfiguration.
-    if container != INPUT_CONTAINER:
+    if not container.endswith("-input"):
         logger.warning(
             "Ignoring blob from unexpected container: %s (defence-in-depth filter)",
             container,
@@ -509,7 +509,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
     provider_config = payload.get("provider_config")
     project_name = str(payload.get("project_name", ""))
     timestamp = str(payload.get("timestamp", ""))
-    output_container = str(payload.get("output_container", "kml-output"))
+    output_container = str(payload.get("output_container", DEFAULT_OUTPUT_CONTAINER))
 
     logger.info(
         "download_imagery activity started | order_id=%s | feature=%s",
@@ -579,7 +579,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
     target_crs = str(payload.get("target_crs", "EPSG:4326"))
     enable_clipping = bool(payload.get("enable_clipping", True))
     enable_reprojection = bool(payload.get("enable_reprojection", True))
-    output_container = str(payload.get("output_container", "kml-output"))
+    output_container = str(payload.get("output_container", DEFAULT_OUTPUT_CONTAINER))
 
     logger.info(
         "post_process_imagery activity started | order_id=%s | feature=%s",

@@ -22,6 +22,7 @@ import logging
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any
 
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.orchestrators.phases import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_MAX_RETRIES,
@@ -81,7 +82,7 @@ def orchestrator_function(
     instance_id = context.instance_id
     blob_name = str(blob_event.get("blob_name", "<unknown>"))
     timestamp = context.current_utc_datetime.isoformat()
-    output_container = str(blob_event.get("output_container", "kml-output"))
+    output_container = str(blob_event.get("output_container", DEFAULT_OUTPUT_CONTAINER))
     tenant_id = str(blob_event.get("tenant_id", ""))
 
     if not context.is_replaying:

@@ -27,6 +27,7 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
 
 if TYPE_CHECKING:
@@ -358,7 +359,7 @@ def run_fulfillment_phase(
     post_process_batch_size: int = DEFAULT_POST_PROCESS_BATCH_SIZE,
     instance_id: str = "",
     blob_name: str = "",
-    output_container: str = "kml-output",
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
 ) -> Generator[Any, Any, FulfillmentResult]:
     """Download ready imagery → clip / reproject — in bounded parallel batches.
 
