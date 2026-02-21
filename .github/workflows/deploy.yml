@@ -62,15 +62,14 @@ jobs:
           mkdir -p .deploy
           cp function_app.py host.json requirements.txt .deploy/
           cp -r kml_satellite .deploy/
-          cd .deploy
-          pip install -r requirements.txt --target=".python_packages/lib/site-packages" --quiet
-          zip -r ../deploy.zip .
 
       - name: Deploy to Azure Functions
         uses: azure/functions-action@v1
         with:
           app-name: ${{ env.FUNCTION_APP_NAME }}
-          package: deploy.zip
+          package: .deploy
+          sku: flexconsumption
+          remote-build: true
 
       - name: Wait for functions to be discoverable
         run: |
