@@ -170,6 +170,8 @@ class TestBlobEventSerialization:
             "content_type",
             "event_time",
             "correlation_id",
+            "tenant_id",
+            "output_container",
         }
         assert set(event.to_dict().keys()) == expected_keys
 
@@ -178,3 +180,54 @@ class TestBlobEventSerialization:
         event = BlobEvent(blob_url="u", container_name="c", blob_name="b")
         with pytest.raises(AttributeError):
             event.blob_url = "changed"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Tenant ID Extraction
+# ---------------------------------------------------------------------------
+
+
+class TestTenantIdExtraction:
+    """Verify tenant_id and output_container derivation from container_name."""
+
+    def test_acme_input_extracts_acme(self) -> None:
+        """container_name='acme-input' → tenant_id='acme'."""
+        event = BlobEvent(blob_url="", container_name="acme-input", blob_name="")
+        assert event.tenant_id == "acme"
+
+    def test_kml_input_extracts_empty(self) -> None:
+        """container_name='kml-input' → tenant_id='' (legacy)."""
+        event = BlobEvent(blob_url="", container_name="kml-input", blob_name="")
+        assert event.tenant_id == ""
+
+    def test_multi_part_tenant(self) -> None:
+        """container_name='my-company-input' → tenant_id='my-company'."""
+        event = BlobEvent(blob_url="", container_name="my-company-input", blob_name="")
+        assert event.tenant_id == "my-company"
+
+    def test_no_input_suffix_extracts_empty(self) -> None:
+        """container_name='random' → tenant_id=''."""
+        event = BlobEvent(blob_url="", container_name="random", blob_name="")
+        assert event.tenant_id == ""
+
+    def test_empty_container_extracts_empty(self) -> None:
+        """container_name='' → tenant_id=''."""
+        event = BlobEvent(blob_url="", container_name="", blob_name="")
+        assert event.tenant_id == ""
+
+    def test_output_container_with_tenant(self) -> None:
+        """container_name='acme-input' → output_container='acme-output'."""
+        event = BlobEvent(blob_url="", container_name="acme-input", blob_name="")
+        assert event.output_container == "acme-output"
+
+    def test_output_container_without_tenant(self) -> None:
+        """container_name='kml-input' → output_container='kml-output'."""
+        event = BlobEvent(blob_url="", container_name="kml-input", blob_name="")
+        assert event.output_container == "kml-output"
+
+    def test_to_dict_includes_tenant_fields(self) -> None:
+        """to_dict() includes tenant_id and output_container."""
+        event = BlobEvent(blob_url="", container_name="acme-input", blob_name="")
+        d = event.to_dict()
+        assert d["tenant_id"] == "acme"
+        assert d["output_container"] == "acme-output"

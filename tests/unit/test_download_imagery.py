@@ -246,6 +246,20 @@ class TestDownloadImagery(unittest.TestCase):
         # blob_path should be the canonical PID-compliant path
         assert result["blob_path"] == "imagery/raw/2026/03/test-orchard/block-a.tif"
 
+    @patch("kml_satellite.activities.download_imagery.get_provider")
+    def test_output_container_parameter_accepted(self, mock_get_provider: MagicMock) -> None:
+        """output_container parameter is accepted without error."""
+        mock_provider = MagicMock()
+        mock_provider.download.return_value = _make_blob_ref(size_bytes=1024)
+        mock_get_provider.return_value = mock_provider
+
+        result = download_imagery(
+            _SAMPLE_OUTCOME,
+            output_container="acme-output",
+        )
+
+        assert result["order_id"] == "pc-SCENE_A"
+
 
 # ---------------------------------------------------------------------------
 # Tests — _validate_download

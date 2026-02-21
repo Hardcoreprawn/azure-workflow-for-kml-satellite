@@ -136,16 +136,18 @@ class TestParseTimestamp(unittest.TestCase):
 class TestBackwardCompatibility(unittest.TestCase):
     """Verify activity modules re-export shared helpers."""
 
-    def test_write_metadata_uses_central_output_container(self) -> None:
-        from kml_satellite.activities.write_metadata import (
-            OUTPUT_CONTAINER as WM_CONTAINER,
-        )
+    def test_write_metadata_default_output_container(self) -> None:
+        import inspect
 
-        assert WM_CONTAINER == OUTPUT_CONTAINER
+        from kml_satellite.activities.write_metadata import write_metadata
 
-    def test_post_process_uses_central_output_container(self) -> None:
-        from kml_satellite.activities.post_process_imagery import (
-            OUTPUT_CONTAINER as PP_CONTAINER,
-        )
+        sig = inspect.signature(write_metadata)
+        assert sig.parameters["output_container"].default == OUTPUT_CONTAINER
 
-        assert PP_CONTAINER == OUTPUT_CONTAINER
+    def test_post_process_default_output_container(self) -> None:
+        import inspect
+
+        from kml_satellite.activities.post_process_imagery import post_process_imagery
+
+        sig = inspect.signature(post_process_imagery)
+        assert sig.parameters["output_container"].default == OUTPUT_CONTAINER

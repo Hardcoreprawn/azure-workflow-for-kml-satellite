@@ -35,6 +35,8 @@ class OrchestrationInput(TypedDict):
     content_type: str
     event_time: str
     correlation_id: str
+    tenant_id: str
+    output_container: str
 
 
 class OrchestrationOverrides(TypedDict, total=False):
@@ -173,6 +175,7 @@ class DownloadImageryInput(TypedDict):
     provider_config: dict[str, str] | None
     project_name: str
     timestamp: str
+    output_container: str
 
 
 class DownloadResult(TypedDict):
@@ -206,6 +209,7 @@ class PostProcessInput(TypedDict):
     target_crs: str
     enable_clipping: bool
     enable_reprojection: bool
+    output_container: str
 
 
 class PostProcessResult(TypedDict):

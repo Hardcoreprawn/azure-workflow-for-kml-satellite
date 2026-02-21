@@ -65,13 +65,15 @@ async def kml_blob_trigger(
 
     container = str(orchestrator_input["container_name"])
     blob_name = str(orchestrator_input["blob_name"])
+    tenant_id = str(orchestrator_input.get("tenant_id", ""))
 
     logger.info(
-        "Event Grid trigger fired | blob=%s | container=%s | size=%d | event_id=%s",
+        "Event Grid trigger fired | blob=%s | container=%s | size=%d | event_id=%s | tenant_id=%s",
         blob_name,
         container,
         orchestrator_input["content_length"],
         orchestrator_input["correlation_id"],
+        tenant_id,
     )
 
     # Defence-in-depth: Event Grid subscription filters for .kml in kml-input,
@@ -505,6 +507,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
     provider_config = payload.get("provider_config")
     project_name = str(payload.get("project_name", ""))
     timestamp = str(payload.get("timestamp", ""))
+    output_container = str(payload.get("output_container", "kml-output"))
 
     logger.info(
         "download_imagery activity started | order_id=%s | feature=%s",
@@ -518,6 +521,7 @@ def download_imagery_activity(activityInput: str) -> dict[str, object]:  # noqa:
         provider_config=provider_config,  # type: ignore[arg-type]
         project_name=project_name,
         timestamp=timestamp,
+        output_container=output_container,
     )
 
     logger.info(
@@ -573,6 +577,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
     target_crs = str(payload.get("target_crs", "EPSG:4326"))
     enable_clipping = bool(payload.get("enable_clipping", True))
     enable_reprojection = bool(payload.get("enable_reprojection", True))
+    output_container = str(payload.get("output_container", "kml-output"))
 
     logger.info(
         "post_process_imagery activity started | order_id=%s | feature=%s",
@@ -588,6 +593,7 @@ def post_process_imagery_activity(activityInput: str) -> dict[str, object]:  # n
         target_crs=target_crs,
         enable_clipping=enable_clipping,
         enable_reprojection=enable_reprojection,
+        output_container=output_container,
     )
 
     logger.info(

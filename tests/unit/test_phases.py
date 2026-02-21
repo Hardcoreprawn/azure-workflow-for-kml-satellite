@@ -295,6 +295,7 @@ class TestFulfillmentPhase:
         post_process_results: list[dict[str, Any]] | None = None,
         instance_id: str = "",
         blob_name: str = "orchard.kml",
+        output_container: str = "kml-output",
     ) -> FulfillmentResult:
         if download_results is None:
             download_results = [
@@ -328,6 +329,7 @@ class TestFulfillmentPhase:
             timestamp="2026-02-17T12:00:00+00:00",
             instance_id=instance_id or context.instance_id,
             blob_name=blob_name,
+            output_container=output_container,
         )
 
         # No ready outcomes → no yields at all
@@ -468,6 +470,25 @@ class TestFulfillmentPhase:
         ]
         assert len(pp_calls) == 1
         assert pp_calls[0][0][1]["aoi"]["feature_name"] == "block-a"
+
+    def test_output_container_in_download_and_post_process_payloads(self) -> None:
+        """output_container is included in download and post-process activity payloads."""
+        ctx = _make_context()
+        outcomes: list[dict[str, Any]] = [
+            {"order_id": "o1", "aoi_feature_name": "a1", "state": "ready"},
+        ]
+        aois: list[dict[str, Any]] = [{"feature_name": "a1"}]
+        self._run_fulfillment(ctx, outcomes, aois, output_container="acme-output")
+
+        dl_calls = [c for c in ctx.call_activity.call_args_list if c[0][0] == "download_imagery"]
+        assert len(dl_calls) == 1
+        assert dl_calls[0][0][1]["output_container"] == "acme-output"
+
+        pp_calls = [
+            c for c in ctx.call_activity.call_args_list if c[0][0] == "post_process_imagery"
+        ]
+        assert len(pp_calls) == 1
+        assert pp_calls[0][0][1]["output_container"] == "acme-output"
 
 
 # ===================================================================

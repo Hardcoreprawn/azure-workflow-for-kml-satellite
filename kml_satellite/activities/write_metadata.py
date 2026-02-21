@@ -25,7 +25,6 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.models.metadata import AOIMetadataRecord
 from kml_satellite.utils.blob_paths import build_metadata_path
 
@@ -50,6 +49,7 @@ def write_metadata(
     processing_id: str = "",
     timestamp: str = "",
     blob_service_client: object | None = None,
+    output_container: str = "kml-output",
 ) -> dict[str, object]:
     """Build and store a metadata JSON document for a processed AOI.
 
@@ -106,7 +106,7 @@ def write_metadata(
 
     # Write to Blob Storage if a client is provided
     if blob_service_client is not None:
-        _upload_metadata(blob_service_client, metadata_path, metadata_json)
+        _upload_metadata(blob_service_client, metadata_path, metadata_json, output_container)
 
     logger.info(
         "Metadata written | feature=%s | path=%s | processing_id=%s",
@@ -126,6 +126,7 @@ def _upload_metadata(
     blob_service_client: object,
     metadata_path: str,
     metadata_json: str,
+    output_container: str = "kml-output",
 ) -> None:
     """Upload metadata JSON to Blob Storage.
 
@@ -147,7 +148,7 @@ def _upload_metadata(
             raise MetadataWriteError(msg)
 
         blob_client = blob_service_client.get_blob_client(
-            container=OUTPUT_CONTAINER,
+            container=output_container,
             blob=metadata_path,
         )
         blob_client.upload_blob(
