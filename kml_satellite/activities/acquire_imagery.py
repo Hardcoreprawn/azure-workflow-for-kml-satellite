@@ -30,15 +30,17 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.aoi import AOI
-from kml_satellite.models.imagery import ImageryFilters, ProviderConfig
+from kml_satellite.models.imagery import ImageryFilters
 from kml_satellite.providers.base import ProviderError
 from kml_satellite.providers.factory import get_provider
+from kml_satellite.utils.helpers import build_provider_config
 
 logger = logging.getLogger("kml_satellite.activities.acquire_imagery")
 
 
-class ImageryAcquisitionError(Exception):
+class ImageryAcquisitionError(PipelineError):
     """Raised when imagery acquisition fails.
 
     Attributes:
@@ -46,10 +48,11 @@ class ImageryAcquisitionError(Exception):
         retryable: Whether the orchestrator should retry the operation.
     """
 
+    default_stage = "acquire_imagery"
+    default_code = "IMAGERY_ACQUISITION_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def acquire_imagery(
@@ -95,7 +98,7 @@ def acquire_imagery(
     )
 
     # Build provider config
-    config = _build_provider_config(provider_name, provider_config)
+    config = build_provider_config(provider_name, provider_config)
 
     # Build imagery filters
     filters = _build_filters(filters_dict)
@@ -160,23 +163,6 @@ def acquire_imagery(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-
-def _build_provider_config(
-    provider_name: str,
-    overrides: dict[str, Any] | None,
-) -> ProviderConfig:
-    """Build a ``ProviderConfig`` from the provider name and optional overrides."""
-    if overrides is None:
-        return ProviderConfig(name=provider_name)
-
-    return ProviderConfig(
-        name=provider_name,
-        api_base_url=str(overrides.get("api_base_url", "")),
-        auth_mechanism=str(overrides.get("auth_mechanism", "none")),
-        keyvault_secret_name=str(overrides.get("keyvault_secret_name", "")),
-        extra_params={str(k): str(v) for k, v in overrides.get("extra_params", {}).items()},
-    )
 
 
 def _build_filters(

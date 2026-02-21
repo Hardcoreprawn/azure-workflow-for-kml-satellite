@@ -37,6 +37,7 @@ from kml_satellite.providers.base import (
 from kml_satellite.providers.planetary_computer import (
     PlanetaryComputerAdapter,
     _aoi_to_bbox,
+    _BoundedOrderCache,
     _build_blob_path,
     _build_date_range,
     _resolve_best_asset_url,
@@ -617,3 +618,87 @@ class TestPlanetaryComputerContract(ProviderContractTests, unittest.TestCase):
 
     def create_test_aoi(self) -> AOI:
         return _YAKIMA_AOI
+
+
+# ---------------------------------------------------------------------------
+# Bounded order cache tests (Issue #56)
+# ---------------------------------------------------------------------------
+
+
+class TestBoundedOrderCache(unittest.TestCase):
+    """_BoundedOrderCache eviction and LRU semantics."""
+
+    def test_basic_insert_and_retrieve(self) -> None:
+        cache = _BoundedOrderCache(maxsize=4)
+        cache["a"] = ("scene_a", "")
+        assert "a" in cache
+        assert cache["a"] == ("scene_a", "")
+
+    def test_len_tracks_entries(self) -> None:
+        cache = _BoundedOrderCache(maxsize=4)
+        cache["a"] = ("sa", "")
+        cache["b"] = ("sb", "")
+        assert len(cache) == 2
+
+    def test_eviction_at_capacity(self) -> None:
+        cache = _BoundedOrderCache(maxsize=3)
+        cache["a"] = ("sa", "")
+        cache["b"] = ("sb", "")
+        cache["c"] = ("sc", "")
+        assert len(cache) == 3
+        assert cache.eviction_count == 0
+
+        cache["d"] = ("sd", "")
+        assert len(cache) == 3
+        assert "a" not in cache  # oldest evicted
+        assert "b" in cache
+        assert "d" in cache
+        assert cache.eviction_count == 1
+
+    def test_lru_access_promotes_entry(self) -> None:
+        cache = _BoundedOrderCache(maxsize=3)
+        cache["a"] = ("sa", "")
+        cache["b"] = ("sb", "")
+        cache["c"] = ("sc", "")
+
+        # Access "a" to promote it to most-recently-used
+        _ = cache["a"]
+
+        cache["d"] = ("sd", "")
+        # "b" should be evicted (it's now the least-recently-used)
+        assert "a" in cache
+        assert "b" not in cache
+        assert "c" in cache
+        assert "d" in cache
+
+    def test_overwrite_promotes_entry(self) -> None:
+        cache = _BoundedOrderCache(maxsize=3)
+        cache["a"] = ("sa", "")
+        cache["b"] = ("sb", "")
+        cache["c"] = ("sc", "")
+
+        # Overwrite "a" to promote it
+        cache["a"] = ("sa_new", "")
+
+        cache["d"] = ("sd", "")
+        # "b" should be evicted
+        assert "a" in cache
+        assert cache["a"] == ("sa_new", "")
+        assert "b" not in cache
+
+    def test_eviction_count_cumulative(self) -> None:
+        cache = _BoundedOrderCache(maxsize=2)
+        cache["a"] = ("sa", "")
+        cache["b"] = ("sb", "")
+        cache["c"] = ("sc", "")
+        cache["d"] = ("sd", "")
+        assert cache.eviction_count == 2
+
+    def test_adapter_uses_bounded_cache(self) -> None:
+        """PlanetaryComputerAdapter._orders is a _BoundedOrderCache."""
+        adapter = PlanetaryComputerAdapter(ProviderConfig(name="pc"))
+        assert isinstance(adapter._orders, _BoundedOrderCache)
+
+    def test_not_in_cache_returns_false(self) -> None:
+        cache = _BoundedOrderCache(maxsize=2)
+        assert "missing" not in cache

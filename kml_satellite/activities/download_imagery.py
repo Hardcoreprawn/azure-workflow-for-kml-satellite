@@ -30,24 +30,26 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from kml_satellite.models.imagery import BlobReference, ProviderConfig
+from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.providers.base import ProviderDownloadError, ProviderError
 from kml_satellite.providers.factory import get_provider
 from kml_satellite.utils.blob_paths import build_imagery_path
+from kml_satellite.utils.helpers import build_provider_config, parse_timestamp
+
+if TYPE_CHECKING:
+    from kml_satellite.models.imagery import BlobReference
+
+from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.download_imagery")
-
-# Output container name (PID Section 10.1)
-OUTPUT_CONTAINER = "kml-output"
 
 # Maximum number of download retries (PID FR-6.5)
 DEFAULT_MAX_DOWNLOAD_RETRIES = 3
 
 
-class DownloadError(Exception):
+class DownloadError(PipelineError):
     """Raised when imagery download fails.
 
     Attributes:
@@ -55,10 +57,11 @@ class DownloadError(Exception):
         retryable: Whether the orchestrator should retry the operation.
     """
 
+    default_stage = "download_imagery"
+    default_code = "DOWNLOAD_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def download_imagery(
@@ -118,7 +121,7 @@ def download_imagery(
     )
 
     # Build provider config
-    config = _build_provider_config(provider, provider_config)
+    config = build_provider_config(provider, provider_config)
 
     # Get provider adapter
     try:
@@ -135,16 +138,13 @@ def download_imagery(
     )
 
     # Validate the download (PID 7.4.1)
-    # TODO(M-2.5): Add rasterio-based content validation to verify the
-    # downloaded file is a valid, openable GeoTIFF — not just size > 0.
     _validate_download(blob_ref, order_id)
 
-    # Build PID-compliant blob path (PID Section 10.1, FR-4.2)
-    # NOTE: This is the *intended* destination path.  The provider adapter
-    # currently decides its own blob_path/container via BlobReference.
-    # TODO: When real blob upload is wired, pass this destination path to
-    # the adapter or move the blob after download.
-    ts = _parse_timestamp(timestamp)
+    # Build PID-compliant blob path (PID Section 10.1, FR-4.2).
+    # This is the *canonical* destination path. The provider adapter may
+    # place the file at a staging path (blob_ref.blob_path); the canonical
+    # path is what downstream consumers (metadata, orchestrator) use.
+    ts = parse_timestamp(timestamp)
     blob_path = build_imagery_path(
         feature_name or scene_id,
         orchard_name or "unknown",
@@ -169,6 +169,7 @@ def download_imagery(
         "provider": provider,
         "aoi_feature_name": feature_name,
         "blob_path": blob_path,
+        "adapter_blob_path": blob_ref.blob_path,
         "container": OUTPUT_CONTAINER,
         "size_bytes": blob_ref.size_bytes,
         "content_type": blob_ref.content_type,
@@ -241,22 +242,25 @@ def _download_with_retry(
 def _validate_download(blob_ref: BlobReference, order_id: str) -> None:
     """Validate a downloaded file reference.
 
-    Checks:
-    - File is non-empty (size_bytes > 0)
-    - Content type is consistent with GeoTIFF
+    Checks (in order):
+    1. File is non-empty (``size_bytes > 0``).
+    2. Content type is consistent with GeoTIFF.
+    3. Raster content is valid (readable GeoTIFF with expected
+       characteristics) via ``_validate_raster_content``.
 
     Args:
         blob_ref: The ``BlobReference`` to validate.
         order_id: Order ID for error messages.
 
     Raises:
-        DownloadError: If validation fails.
+        DownloadError: If validation fails (retryable for empty files,
+            non-retryable for corrupt content).
     """
     if blob_ref.size_bytes <= 0:
         msg = f"Downloaded file is empty for order {order_id} (0 bytes)"
         raise DownloadError(msg, retryable=True)
 
-    # NOTE: application/geo+json is GeoJSON (vector), NOT GeoTIFF.
+    # Content-type sanity check — warn but don't reject.
     if blob_ref.content_type not in ("image/tiff", "image/geotiff"):
         logger.warning(
             "Unexpected content type for order %s: %s (expected image/tiff or image/geotiff)",
@@ -264,29 +268,109 @@ def _validate_download(blob_ref: BlobReference, order_id: str) -> None:
             blob_ref.content_type,
         )
 
-
-def _build_provider_config(
-    provider_name: str,
-    overrides: dict[str, Any] | None,
-) -> ProviderConfig:
-    """Build a ``ProviderConfig`` from the provider name and optional overrides."""
-    if overrides is None:
-        return ProviderConfig(name=provider_name)
-
-    return ProviderConfig(
-        name=provider_name,
-        api_base_url=str(overrides.get("api_base_url", "")),
-        auth_mechanism=str(overrides.get("auth_mechanism", "none")),
-        keyvault_secret_name=str(overrides.get("keyvault_secret_name", "")),
-        extra_params={str(k): str(v) for k, v in overrides.get("extra_params", {}).items()},
-    )
+    # Rasterio-based content validation (Issue #46).
+    _validate_raster_content(blob_ref, order_id)
 
 
-def _parse_timestamp(timestamp: str) -> datetime:
-    """Parse an ISO 8601 timestamp string, defaulting to current UTC time."""
-    if not timestamp:
-        return datetime.now().astimezone()
+def _validate_raster_content(blob_ref: BlobReference, order_id: str) -> None:
+    """Validate raster content via rasterio when the blob is accessible.
+
+    Attempts to open the blob with rasterio (over Azure Blob Storage
+    or a local path) and check:
+    - The file is a readable raster (valid GeoTIFF header).
+    - At least one band exists.
+    - Raster dimensions are positive.
+
+    If the blob is not accessible (e.g. adapter hasn't persisted to
+    storage yet), validation is skipped with a debug log — full
+    rasterio validation activates once blob persistence is wired.
+
+    Args:
+        blob_ref: The ``BlobReference`` to validate.
+        order_id: Order ID for error messages.
+
+    Raises:
+        DownloadError: Non-retryable if the raster is corrupt or unreadable.
+    """
+    import os
+
+    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    if not connection_string:
+        logger.debug(
+            "Skipping rasterio content validation (no AzureWebJobsStorage) | order=%s",
+            order_id,
+        )
+        return
+
     try:
-        return datetime.fromisoformat(timestamp)
-    except (ValueError, TypeError):
-        return datetime.now().astimezone()
+        import rasterio
+        from azure.storage.blob import BlobServiceClient
+
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        blob_client = blob_service.get_blob_client(
+            container=blob_ref.container,
+            blob=blob_ref.blob_path,
+        )
+
+        if not blob_client.exists():
+            logger.debug(
+                "Blob not yet persisted, skipping rasterio validation | "
+                "container=%s | path=%s | order=%s",
+                blob_ref.container,
+                blob_ref.blob_path,
+                order_id,
+            )
+            return
+
+        # Stream first 64 KB (enough for GeoTIFF header) to a temp file
+        # for lightweight rasterio validation without a full re-download.
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+            blob_data = blob_client.download_blob(offset=0, length=64 * 1024)
+            blob_data.readinto(tmp)
+            tmp_path = Path(tmp.name)
+
+        try:
+            with rasterio.open(tmp_path) as ds:
+                if ds.count < 1:
+                    msg = f"Downloaded raster has no bands for order {order_id} (count={ds.count})"
+                    raise DownloadError(msg, retryable=False)
+
+                if ds.width <= 0 or ds.height <= 0:
+                    msg = (
+                        f"Downloaded raster has invalid dimensions for order {order_id} "
+                        f"(width={ds.width}, height={ds.height})"
+                    )
+                    raise DownloadError(msg, retryable=False)
+
+                logger.info(
+                    "Raster content validated | order=%s | bands=%d | size=%dx%d | crs=%s",
+                    order_id,
+                    ds.count,
+                    ds.width,
+                    ds.height,
+                    ds.crs,
+                )
+        except DownloadError:
+            raise
+        except Exception as exc:
+            msg = f"Downloaded file is not a valid GeoTIFF for order {order_id}: {exc}"
+            raise DownloadError(msg, retryable=False) from exc
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    except DownloadError:
+        raise
+    except ImportError:
+        logger.debug(
+            "rasterio not available, skipping content validation | order=%s",
+            order_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Raster content validation skipped due to error | order=%s | error=%s",
+            order_id,
+            exc,
+        )

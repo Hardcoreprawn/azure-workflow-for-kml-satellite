@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.imagery import OrderState, ProviderConfig
 from kml_satellite.providers.base import ProviderError
 from kml_satellite.providers.factory import get_provider
@@ -29,7 +30,7 @@ from kml_satellite.providers.factory import get_provider
 logger = logging.getLogger("kml_satellite.activities.poll_order")
 
 
-class PollError(Exception):
+class PollError(PipelineError):
     """Raised when order polling fails.
 
     Attributes:
@@ -37,10 +38,11 @@ class PollError(Exception):
         retryable: Whether the orchestrator should retry.
     """
 
+    default_stage = "poll_order"
+    default_code = "POLL_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def poll_order(

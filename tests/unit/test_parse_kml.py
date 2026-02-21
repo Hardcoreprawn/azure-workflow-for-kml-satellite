@@ -288,27 +288,27 @@ class TestCoordinateValidation:
     """Direct tests for coordinate validation functions."""
 
     def test_valid_coords_pass(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_coordinates
+        from kml_satellite.activities.parse_kml import validate_coordinates
 
-        _validate_coordinates([(-120.5, 46.6), (-120.4, 46.7)], "test")
+        validate_coordinates([(-120.5, 46.6), (-120.4, 46.7)], "test")
 
     def test_longitude_out_of_range(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_coordinates
+        from kml_satellite.activities.parse_kml import validate_coordinates
 
         with pytest.raises(InvalidCoordinateError, match="Longitude"):
-            _validate_coordinates([(-200.0, 46.6)], "test")
+            validate_coordinates([(-200.0, 46.6)], "test")
 
     def test_latitude_out_of_range(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_coordinates
+        from kml_satellite.activities.parse_kml import validate_coordinates
 
         with pytest.raises(InvalidCoordinateError, match="Latitude"):
-            _validate_coordinates([(-120.5, 95.0)], "test")
+            validate_coordinates([(-120.5, 95.0)], "test")
 
     def test_boundary_values_pass(self) -> None:
         """Coordinates exactly at WGS 84 bounds should be valid."""
-        from kml_satellite.activities.parse_kml import _validate_coordinates
+        from kml_satellite.activities.parse_kml import validate_coordinates
 
-        _validate_coordinates([(-180.0, -90.0), (180.0, 90.0)], "test")
+        validate_coordinates([(-180.0, -90.0), (180.0, 90.0)], "test")
 
 
 # ---------------------------------------------------------------------------
@@ -320,31 +320,31 @@ class TestPolygonRingValidation:
     """Test ring closure and minimum vertex requirements."""
 
     def test_auto_closes_unclosed_ring(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_polygon_ring
+        from kml_satellite.activities.parse_kml import validate_polygon_ring
 
         coords = [(-120.5, 46.6), (-120.5, 46.7), (-120.4, 46.7), (-120.4, 46.6)]
-        result = _validate_polygon_ring(coords, "test")
+        result = validate_polygon_ring(coords, "test")
         assert result[0] == result[-1]
         assert len(result) == 5
 
     def test_already_closed_ring_unchanged(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_polygon_ring
+        from kml_satellite.activities.parse_kml import validate_polygon_ring
 
         coords = [(-120.5, 46.6), (-120.5, 46.7), (-120.4, 46.7), (-120.4, 46.6), (-120.5, 46.6)]
-        result = _validate_polygon_ring(coords, "test")
+        result = validate_polygon_ring(coords, "test")
         assert len(result) == 5
 
     def test_too_few_points_raises(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_polygon_ring
+        from kml_satellite.activities.parse_kml import validate_polygon_ring
 
         with pytest.raises(KmlValidationError, match="only 2 point"):
-            _validate_polygon_ring([(-120.5, 46.6), (-120.4, 46.7)], "test")
+            validate_polygon_ring([(-120.5, 46.6), (-120.4, 46.7)], "test")
 
     def test_duplicate_vertices_raises(self) -> None:
-        from kml_satellite.activities.parse_kml import _validate_polygon_ring
+        from kml_satellite.activities.parse_kml import validate_polygon_ring
 
         with pytest.raises(KmlValidationError, match="fewer than 3 distinct"):
-            _validate_polygon_ring(
+            validate_polygon_ring(
                 [(-120.5, 46.6), (-120.5, 46.6), (-120.5, 46.6), (-120.5, 46.6)],
                 "test",
             )

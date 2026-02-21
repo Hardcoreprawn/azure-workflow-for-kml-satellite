@@ -18,7 +18,7 @@ Engineering standards:
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 # ---------------------------------------------------------------------------
 # Path prefixes (PID 7.4.5: no magic strings)
@@ -72,7 +72,7 @@ def build_kml_archive_path(
     Returns:
         Deterministic blob path string (PID 7.4.4).
     """
-    ts = timestamp or datetime.now().astimezone()
+    ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
     orchard_slug = sanitise_slug(orchard_name)
@@ -98,7 +98,7 @@ def build_metadata_path(
     Returns:
         Deterministic blob path string (PID 7.4.4).
     """
-    ts = timestamp or datetime.now().astimezone()
+    ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
     orchard_slug = sanitise_slug(orchard_name)
@@ -128,7 +128,7 @@ def build_imagery_path(
         PID FR-4.2 (store raw imagery under ``/imagery/raw/``)
         PID Section 10.1 (Container & Path Layout)
     """
-    ts = timestamp or datetime.now().astimezone()
+    ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
     orchard_slug = sanitise_slug(orchard_name)
@@ -158,7 +158,7 @@ def build_clipped_imagery_path(
         PID FR-4.3 (store clipped imagery under ``/imagery/clipped/``)
         PID Section 10.1 (Container & Path Layout)
     """
-    ts = timestamp or datetime.now().astimezone()
+    ts = timestamp or datetime.now(UTC)
     year = f"{ts.year:04d}"
     month = f"{ts.month:02d}"
     orchard_slug = sanitise_slug(orchard_name)

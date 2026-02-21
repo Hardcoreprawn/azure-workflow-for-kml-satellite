@@ -22,23 +22,26 @@ References:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from kml_satellite.core.constants import OUTPUT_CONTAINER
 from kml_satellite.models.metadata import AOIMetadataRecord
 from kml_satellite.utils.blob_paths import build_metadata_path
 
 if TYPE_CHECKING:
     from kml_satellite.models.aoi import AOI
 
+from kml_satellite.core.exceptions import PipelineError
+
 logger = logging.getLogger("kml_satellite.activities.write_metadata")
 
-# Output container name (PID Section 10.1)
-OUTPUT_CONTAINER = "kml-output"
 
-
-class MetadataWriteError(Exception):
+class MetadataWriteError(PipelineError):
     """Raised when metadata writing fails."""
+
+    default_stage = "write_metadata"
+    default_code = "METADATA_WRITE_FAILED"
 
 
 def write_metadata(
@@ -68,13 +71,13 @@ def write_metadata(
         MetadataWriteError: If blob upload fails.
     """
     if not timestamp:
-        timestamp = datetime.now().astimezone().isoformat()
+        timestamp = datetime.now(UTC).isoformat()
 
     # Parse timestamp for path generation
     try:
         ts = datetime.fromisoformat(timestamp)
     except (ValueError, TypeError):
-        ts = datetime.now().astimezone()
+        ts = datetime.now(UTC)
         timestamp = ts.isoformat()
 
     # Build the metadata record (PID Section 9.2)

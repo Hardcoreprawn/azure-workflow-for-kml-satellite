@@ -31,20 +31,19 @@ from __future__ import annotations
 import contextlib
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from kml_satellite.core.constants import OUTPUT_CONTAINER
+from kml_satellite.core.exceptions import PipelineError
 
 logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
 
 # Default target CRS (EPSG:4326 = WGS 84, consistent with KML source data)
 DEFAULT_TARGET_CRS = "EPSG:4326"
 
-# Output container name (PID Section 10.1)
-OUTPUT_CONTAINER = "kml-output"
 
-
-class PostProcessError(Exception):
+class PostProcessError(PipelineError):
     """Raised when post-processing fails fatally.
 
     Attributes:
@@ -52,10 +51,11 @@ class PostProcessError(Exception):
         retryable: Whether the orchestrator should retry.
     """
 
+    default_stage = "post_process_imagery"
+    default_code = "POST_PROCESS_FAILED"
+
     def __init__(self, message: str, *, retryable: bool = False) -> None:
-        self.message = message
-        self.retryable = retryable
-        super().__init__(message)
+        super().__init__(message, retryable=retryable)
 
 
 def post_process_imagery(
@@ -102,7 +102,10 @@ def post_process_imagery(
     """
     # Validate inputs (PID 7.4.1)
     order_id = str(download_result.get("order_id", ""))
-    source_blob_path = str(download_result.get("blob_path", ""))
+    # Prefer adapter_blob_path (actual persisted location) over canonical blob_path.
+    source_blob_path = str(
+        download_result.get("adapter_blob_path") or download_result.get("blob_path", "")
+    )
     source_size = int(download_result.get("size_bytes", 0))
     feature_name = str(aoi.get("feature_name", ""))
     scene_id = str(download_result.get("scene_id", ""))
@@ -140,8 +143,9 @@ def post_process_imagery(
 
     # Build the clipped output path (PID FR-4.3, Section 10.1)
     from kml_satellite.utils.blob_paths import build_clipped_imagery_path
+    from kml_satellite.utils.helpers import parse_timestamp
 
-    ts = _parse_timestamp(timestamp)
+    ts = parse_timestamp(timestamp)
     name_for_path = feature_name or scene_id or "unknown"
     clipped_blob_path = build_clipped_imagery_path(
         name_for_path,
@@ -348,7 +352,7 @@ def _get_raster_crs(path: str, rasterio: Any) -> str:
         with rasterio.open(path) as src:
             if src.crs:
                 return str(src.crs)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         logger.warning("Could not read CRS from %s: %s", path, exc)
     return ""
 
@@ -515,13 +519,3 @@ def _build_geojson_polygon(
         "type": "Polygon",
         "coordinates": rings,
     }
-
-
-def _parse_timestamp(timestamp: str) -> datetime:
-    """Parse an ISO 8601 timestamp string, defaulting to current UTC time."""
-    if not timestamp:
-        return datetime.now().astimezone()
-    try:
-        return datetime.fromisoformat(timestamp)
-    except (ValueError, TypeError):
-        return datetime.now().astimezone()

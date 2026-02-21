@@ -21,7 +21,7 @@ References:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -173,7 +173,7 @@ class AOIMetadataRecord(BaseModel):
             raise TypeError(msg)
 
         if not timestamp:
-            timestamp = datetime.now().astimezone().isoformat()
+            timestamp = datetime.now(UTC).isoformat()
 
         # Build GeoJSON-style coordinates: [exterior, *holes]
         coords: list[list[list[float]]] = [

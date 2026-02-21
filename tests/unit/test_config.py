@@ -4,6 +4,7 @@ Covers:
 - Default values match PID and local.settings.json.template
 - Loading from environment variables
 - Type coercion (string env vars → numeric fields)
+- Fail-fast range validation (Issue #48)
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kml_satellite.core.config import PipelineConfig
+from kml_satellite.core.config import ConfigValidationError, PipelineConfig
 
 
 class TestPipelineConfigDefaults:
@@ -90,3 +91,116 @@ class TestPipelineConfigFromEnv:
         cfg = PipelineConfig()
         with pytest.raises(AttributeError):
             cfg.aoi_buffer_m = 200.0  # type: ignore[misc]
+
+
+class TestPipelineConfigValidation:
+    """Fail-fast range validation in from_env (Issue #48)."""
+
+    def test_valid_defaults_pass(self) -> None:
+        """Default configuration passes all validation checks."""
+        with patch.dict(os.environ, {}, clear=True):
+            cfg = PipelineConfig.from_env()
+        assert cfg.aoi_buffer_m == 100.0
+
+    def test_resolution_zero_rejected(self) -> None:
+        """Resolution <= 0 → ConfigValidationError."""
+        with (
+            patch.dict(os.environ, {"IMAGERY_RESOLUTION_TARGET_M": "0"}, clear=True),
+            pytest.raises(ConfigValidationError, match="IMAGERY_RESOLUTION_TARGET_M"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_resolution_negative_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"IMAGERY_RESOLUTION_TARGET_M": "-1"}, clear=True),
+            pytest.raises(ConfigValidationError, match="must be > 0"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_resolution_positive_accepted(self) -> None:
+        with patch.dict(os.environ, {"IMAGERY_RESOLUTION_TARGET_M": "0.3"}, clear=True):
+            cfg = PipelineConfig.from_env()
+        assert cfg.imagery_resolution_target_m == 0.3
+
+    def test_cloud_cover_negative_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "-1"}, clear=True),
+            pytest.raises(ConfigValidationError, match="IMAGERY_MAX_CLOUD_COVER_PCT"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_cloud_cover_over_100_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "101"}, clear=True),
+            pytest.raises(ConfigValidationError, match="0 and 100"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_cloud_cover_boundary_0_accepted(self) -> None:
+        with patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "0"}, clear=True):
+            cfg = PipelineConfig.from_env()
+        assert cfg.imagery_max_cloud_cover_pct == 0.0
+
+    def test_cloud_cover_boundary_100_accepted(self) -> None:
+        with patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "100"}, clear=True):
+            cfg = PipelineConfig.from_env()
+        assert cfg.imagery_max_cloud_cover_pct == 100.0
+
+    def test_buffer_negative_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"AOI_BUFFER_M": "-10"}, clear=True),
+            pytest.raises(ConfigValidationError, match="AOI_BUFFER_M"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_buffer_zero_accepted(self) -> None:
+        """Buffer of 0 metres is valid (no buffer)."""
+        with patch.dict(os.environ, {"AOI_BUFFER_M": "0"}, clear=True):
+            cfg = PipelineConfig.from_env()
+        assert cfg.aoi_buffer_m == 0.0
+
+    def test_max_area_zero_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"AOI_MAX_AREA_HA": "0"}, clear=True),
+            pytest.raises(ConfigValidationError, match="AOI_MAX_AREA_HA"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_max_area_negative_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"AOI_MAX_AREA_HA": "-100"}, clear=True),
+            pytest.raises(ConfigValidationError, match="must be > 0"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_empty_input_container_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"KML_INPUT_CONTAINER": ""}, clear=True),
+            pytest.raises(ConfigValidationError, match="KML_INPUT_CONTAINER"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_empty_output_container_rejected(self) -> None:
+        with (
+            patch.dict(os.environ, {"KML_OUTPUT_CONTAINER": ""}, clear=True),
+            pytest.raises(ConfigValidationError, match="KML_OUTPUT_CONTAINER"),
+        ):
+            PipelineConfig.from_env()
+
+    def test_non_numeric_env_raises_value_error(self) -> None:
+        """Non-numeric string for a float field → ValueError."""
+        with (
+            patch.dict(os.environ, {"AOI_BUFFER_M": "abc"}, clear=True),
+            pytest.raises(ValueError),
+        ):
+            PipelineConfig.from_env()
+
+    def test_error_contains_key_and_value(self) -> None:
+        """ConfigValidationError includes key and value attributes."""
+        with (
+            patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "200"}, clear=True),
+            pytest.raises(ConfigValidationError) as exc_info,
+        ):
+            PipelineConfig.from_env()
+        assert exc_info.value.key == "IMAGERY_MAX_CLOUD_COVER_PCT"
+        assert exc_info.value.value == 200.0

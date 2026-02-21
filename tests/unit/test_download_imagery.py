@@ -21,6 +21,7 @@ from kml_satellite.activities.download_imagery import (
     DEFAULT_MAX_DOWNLOAD_RETRIES,
     DownloadError,
     _validate_download,
+    _validate_raster_content,
     download_imagery,
 )
 from kml_satellite.models.imagery import BlobReference
@@ -227,6 +228,24 @@ class TestDownloadImagery(unittest.TestCase):
         result = download_imagery(_SAMPLE_OUTCOME)
         assert result["provider"] == "planetary_computer"
 
+    @patch("kml_satellite.activities.download_imagery.get_provider")
+    def test_result_includes_adapter_blob_path(self, mock_get_provider: MagicMock) -> None:
+        """Result contains adapter_blob_path for staging path traceability (Issue #46)."""
+        mock_provider = MagicMock()
+        mock_provider.download.return_value = _make_blob_ref(size_bytes=2048)
+        mock_get_provider.return_value = mock_provider
+
+        result = download_imagery(
+            _SAMPLE_OUTCOME,
+            orchard_name="Test Orchard",
+            timestamp="2026-03-15T12:00:00+00:00",
+        )
+
+        # adapter_blob_path should be the path from the BlobReference
+        assert result["adapter_blob_path"] == "imagery/raw/SCENE_A.tif"
+        # blob_path should be the canonical PID-compliant path
+        assert result["blob_path"] == "imagery/raw/2026/03/test-orchard/block-a.tif"
+
 
 # ---------------------------------------------------------------------------
 # Tests — _validate_download
@@ -248,16 +267,17 @@ class TestValidateDownload(unittest.TestCase):
             _validate_download(blob_ref, "order-1")
         assert ctx.exception.retryable is True
 
-    def test_negative_size_raises(self) -> None:
-        """Negative size → DownloadError (retryable)."""
-        blob_ref = BlobReference(
-            container="c",
-            blob_path="p.tif",
-            size_bytes=-1,
-            content_type="image/tiff",
-        )
-        with self.assertRaises(DownloadError):
-            _validate_download(blob_ref, "order-1")
+    def test_negative_size_rejected_at_model_level(self) -> None:
+        """Negative size → ModelValidationError at construction (never reaches download)."""
+        from kml_satellite.models.imagery import ModelValidationError
+
+        with self.assertRaises(ModelValidationError):
+            BlobReference(
+                container="c",
+                blob_path="p.tif",
+                size_bytes=-1,
+                content_type="image/tiff",
+            )
 
     def test_unexpected_content_type_warns(self) -> None:
         """Unexpected content type logs a warning but does not raise."""
@@ -276,3 +296,31 @@ class TestDownloadDefaults(unittest.TestCase):
 
     def test_default_max_retries(self) -> None:
         assert DEFAULT_MAX_DOWNLOAD_RETRIES == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests — _validate_raster_content (Issue #46)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateRasterContent(unittest.TestCase):
+    """_validate_raster_content rasterio-based validation."""
+
+    def test_skips_when_no_connection_string(self) -> None:
+        """No AzureWebJobsStorage → validation is skipped (no error)."""
+        blob_ref = _make_blob_ref(size_bytes=1024)
+        with patch.dict("os.environ", {}, clear=True):
+            _validate_raster_content(blob_ref, "order-1")  # Should not raise
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    def test_skips_when_blob_not_persisted(self, mock_bsc_cls: MagicMock) -> None:
+        """Blob not yet persisted → validation is skipped."""
+        blob_ref = _make_blob_ref(size_bytes=1024)
+        mock_blob_client = MagicMock()
+        mock_blob_client.exists.return_value = False
+        mock_blob_service = MagicMock()
+        mock_blob_service.get_blob_client.return_value = mock_blob_client
+        mock_bsc_cls.from_connection_string.return_value = mock_blob_service
+
+        with patch.dict("os.environ", {"AzureWebJobsStorage": "conn_str"}):
+            _validate_raster_content(blob_ref, "order-1")  # Should not raise

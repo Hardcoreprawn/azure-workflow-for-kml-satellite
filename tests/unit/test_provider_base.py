@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import unittest
 
-from kml_satellite.models.aoi import AOI
 from kml_satellite.models.imagery import ProviderConfig
 from kml_satellite.providers.base import (
     ImageryProvider,
@@ -23,7 +22,7 @@ from kml_satellite.providers.base import (
     ProviderSearchError,
 )
 from kml_satellite.providers.planetary_computer import PlanetaryComputerAdapter
-from kml_satellite.providers.skywatch import SkyWatchAdapter
+from kml_satellite.providers.skywatch import SkyWatchAdapter, SkyWatchNotImplementedError
 
 # ---------------------------------------------------------------------------
 # ABC enforcement
@@ -152,28 +151,17 @@ class TestPlanetaryComputerIsProvider(unittest.TestCase):
         assert callable(self.adapter.download)
 
 
-class TestSkyWatchStub(unittest.TestCase):
-    """SkyWatchAdapter stub raises NotImplementedError."""
+class TestSkyWatchBlockedUntilImplemented(unittest.TestCase):
+    """SkyWatchAdapter blocks instantiation with SkyWatchNotImplementedError (Issue #44)."""
 
-    def setUp(self) -> None:
-        self.adapter = SkyWatchAdapter(ProviderConfig(name="skywatch"))
-        self.aoi = AOI(feature_name="test")
+    def test_instantiation_raises(self) -> None:
+        """Constructing SkyWatchAdapter raises SkyWatchNotImplementedError."""
+        with self.assertRaises(SkyWatchNotImplementedError) as ctx:
+            SkyWatchAdapter(ProviderConfig(name="skywatch"))
+        assert ctx.exception.retryable is False
+        assert "not yet implemented" in str(ctx.exception).lower()
 
-    def test_search_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.search(self.aoi)
-
-    def test_order_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.order("scene-1")
-
-    def test_poll_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.poll("order-1")
-
-    def test_download_not_implemented(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            self.adapter.download("order-1")
-
-    def test_name(self) -> None:
-        assert self.adapter.name == "skywatch"
+    def test_error_is_provider_error(self) -> None:
+        """SkyWatchNotImplementedError is a ProviderError subclass."""
+        with self.assertRaises(ProviderError):
+            SkyWatchAdapter(ProviderConfig(name="skywatch"))
