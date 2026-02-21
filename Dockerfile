@@ -32,12 +32,11 @@ RUN pip install --no-cache-dir --target=/home/site/wwwroot/.python_packages/lib/
 # ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12
 
-# Install only the runtime GDAL libraries (no build tools)
+# Install only the runtime GDAL/GEOS/PROJ libraries (no build tools).
+# gdal-bin transitively pulls the correct versioned libgdal, libgeos, and
+# libproj for whichever Debian release the base image ships.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
-    libgdal34 \
-    libgeos3.12.1 \
-    libproj25 \
     libxml2 \
     libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
