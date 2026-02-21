@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------------
 // Storage Account — GPv2, Hot tier
-// Two containers: kml-input (Event Grid source) and kml-output (processed)
+// Default containers: kml-input / kml-output for single-tenant and local dev.
+// Multi-tenant containers ({tenant_id}-input / {tenant_id}-output) are
+// provisioned dynamically by the tenant provisioning service (#72).
 // ---------------------------------------------------------------------------
 
 @description('Azure region for the storage account.')
@@ -43,6 +45,8 @@ resource blobServices 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01
   name: 'default'
 }
 
+// Default input container — used for single-tenant mode and local development.
+// Tenant-specific containers are provisioned dynamically (#72).
 resource kmlInputContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'kml-input'
@@ -51,6 +55,8 @@ resource kmlInputContainer 'Microsoft.Storage/storageAccounts/blobServices/conta
   }
 }
 
+// Default output container — used for single-tenant mode and local development.
+// Tenant-specific containers are provisioned dynamically (#72).
 resource kmlOutputContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: blobServices
   name: 'kml-output'
@@ -67,7 +73,10 @@ resource deploymentsContainer 'Microsoft.Storage/storageAccounts/blobServices/co
   }
 }
 
-// Lifecycle management — archive old imagery, delete old logs
+// Lifecycle management — archive old imagery, delete old logs.
+// These rules target the default kml-output container. Per-tenant lifecycle
+// policies are created during tenant provisioning (#72) to cover
+// {tenant_id}-output/imagery/raw/ prefixes.
 resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storageAccount
   name: 'default'

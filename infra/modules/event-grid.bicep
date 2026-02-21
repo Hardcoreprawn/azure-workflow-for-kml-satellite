@@ -1,6 +1,8 @@
 // ---------------------------------------------------------------------------
 // Event Grid — System Topic on Storage Account + Subscription for .kml files
-// Triggers the Function App when a blob is created in kml-input container.
+// Triggers the Function App when a .kml blob is created in any container.
+// Container-level routing is handled by the trigger function's code-level
+// validation (endsWith("-input")), not by the Event Grid filter.
 // ---------------------------------------------------------------------------
 
 @description('Azure region for Event Grid resources.')
@@ -35,8 +37,10 @@ resource systemTopic 'Microsoft.EventGrid/systemTopics@2024-06-01-preview' = {
 }
 
 // ---------------------------------------------------------------------------
-// Event Subscription — filters for .kml files in kml-input container
-// Delivers to the Function App's Event Grid trigger endpoint.
+// Event Subscription — filters for .kml files in any container.
+// Container-level routing (e.g. *-input) is enforced by the Function App
+// trigger code, not by Event Grid. This allows multi-tenant container
+// pairs (e.g. acme-input, woodland-trust-input) without IaC changes.
 // ---------------------------------------------------------------------------
 resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2024-06-01-preview' = if (enableSubscription) {
   parent: systemTopic
@@ -54,7 +58,6 @@ resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@
       includedEventTypes: [
         'Microsoft.Storage.BlobCreated'
       ]
-      subjectBeginsWith: '/blobServices/default/containers/kml-input/'
       subjectEndsWith: '.kml'
       isSubjectCaseSensitive: false
     }

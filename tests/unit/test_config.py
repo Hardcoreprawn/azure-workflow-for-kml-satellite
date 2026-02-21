@@ -56,8 +56,8 @@ class TestPipelineConfigFromEnv:
     def test_loads_from_environment(self) -> None:
         """All env vars are read and coerced to correct types."""
         env = {
-            "KML_INPUT_CONTAINER": "custom-input",
-            "KML_OUTPUT_CONTAINER": "custom-output",
+            "DEFAULT_INPUT_CONTAINER": "custom-input",
+            "DEFAULT_OUTPUT_CONTAINER": "custom-output",
             "IMAGERY_PROVIDER": "skywatch",
             "IMAGERY_RESOLUTION_TARGET_M": "2.0",
             "IMAGERY_MAX_CLOUD_COVER_PCT": "30",
@@ -175,15 +175,15 @@ class TestPipelineConfigValidation:
 
     def test_empty_input_container_rejected(self) -> None:
         with (
-            patch.dict(os.environ, {"KML_INPUT_CONTAINER": ""}, clear=True),
-            pytest.raises(ConfigValidationError, match="KML_INPUT_CONTAINER"),
+            patch.dict(os.environ, {"DEFAULT_INPUT_CONTAINER": ""}, clear=True),
+            pytest.raises(ConfigValidationError, match="DEFAULT_INPUT_CONTAINER"),
         ):
             PipelineConfig.from_env()
 
     def test_empty_output_container_rejected(self) -> None:
         with (
-            patch.dict(os.environ, {"KML_OUTPUT_CONTAINER": ""}, clear=True),
-            pytest.raises(ConfigValidationError, match="KML_OUTPUT_CONTAINER"),
+            patch.dict(os.environ, {"DEFAULT_OUTPUT_CONTAINER": ""}, clear=True),
+            pytest.raises(ConfigValidationError, match="DEFAULT_OUTPUT_CONTAINER"),
         ):
             PipelineConfig.from_env()
 
