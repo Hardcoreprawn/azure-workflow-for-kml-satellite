@@ -79,8 +79,12 @@ class PipelineConfig:
                 parsed (e.g. ``AOI_BUFFER_M=abc``).
         """
         config = cls(
-            kml_input_container=os.getenv("KML_INPUT_CONTAINER", "kml-input"),
-            kml_output_container=os.getenv("KML_OUTPUT_CONTAINER", "kml-output"),
+            kml_input_container=os.getenv(
+                "DEFAULT_INPUT_CONTAINER", os.getenv("KML_INPUT_CONTAINER", "kml-input")
+            ),
+            kml_output_container=os.getenv(
+                "DEFAULT_OUTPUT_CONTAINER", os.getenv("KML_OUTPUT_CONTAINER", "kml-output")
+            ),
             imagery_provider=os.getenv("IMAGERY_PROVIDER", "planetary_computer"),
             imagery_resolution_target_m=float(os.getenv("IMAGERY_RESOLUTION_TARGET_M", "0.5")),
             imagery_max_cloud_cover_pct=float(os.getenv("IMAGERY_MAX_CLOUD_COVER_PCT", "20")),
@@ -124,14 +128,14 @@ def _validate(config: PipelineConfig) -> None:
 
     if not config.kml_input_container:
         raise ConfigValidationError(
-            "KML_INPUT_CONTAINER",
+            "DEFAULT_INPUT_CONTAINER",
             config.kml_input_container,
             "must not be empty",
         )
 
     if not config.kml_output_container:
         raise ConfigValidationError(
-            "KML_OUTPUT_CONTAINER",
+            "DEFAULT_OUTPUT_CONTAINER",
             config.kml_output_container,
             "must not be empty",
         )

@@ -5,8 +5,8 @@
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "FUNCTIONS_EXTENSION_VERSION": "~4",
 
-    "KML_INPUT_CONTAINER": "kml-input",
-    "KML_OUTPUT_CONTAINER": "kml-output",
+    "DEFAULT_INPUT_CONTAINER": "kml-input",
+    "DEFAULT_OUTPUT_CONTAINER": "kml-output",
 
     "IMAGERY_PROVIDER": "planetary_computer",
     "IMAGERY_RESOLUTION_TARGET_M": "0.5",
