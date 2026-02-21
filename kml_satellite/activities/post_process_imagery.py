@@ -62,7 +62,7 @@ def post_process_imagery(
     download_result: dict[str, Any],
     aoi: dict[str, Any],
     *,
-    orchard_name: str = "",
+    project_name: str = "",
     timestamp: str = "",
     target_crs: str = DEFAULT_TARGET_CRS,
     enable_clipping: bool = True,
@@ -75,7 +75,7 @@ def post_process_imagery(
             ``order_id``, ``blob_path``, ``size_bytes``, etc.
         aoi: Serialised AOI dict with ``exterior_coords``,
             ``feature_name``, and optionally ``interior_coords``.
-        orchard_name: Orchard/project name for output path generation.
+        project_name: Project name for output path generation.
         timestamp: Processing timestamp (ISO 8601). Defaults to now.
         target_crs: Target CRS for reprojection (default EPSG:4326).
         enable_clipping: Whether to clip to AOI polygon (default True).
@@ -149,7 +149,7 @@ def post_process_imagery(
     name_for_path = feature_name or scene_id or "unknown"
     clipped_blob_path = build_clipped_imagery_path(
         name_for_path,
-        orchard_name or "unknown",
+        project_name or "unknown",
         timestamp=ts,
     )
 

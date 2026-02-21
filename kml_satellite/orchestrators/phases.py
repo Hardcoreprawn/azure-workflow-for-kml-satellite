@@ -347,7 +347,7 @@ def run_fulfillment_phase(
     *,
     provider_name: str,
     provider_config: object | None,
-    orchard_name: str,
+    project_name: str,
     timestamp: str,
     enable_clipping: bool = True,
     enable_reprojection: bool = True,
@@ -372,7 +372,7 @@ def run_fulfillment_phase(
         aois: Full AOI list for geometry lookup.
         provider_name: Imagery provider name.
         provider_config: Optional provider configuration overrides.
-        orchard_name: Orchard/project name for blob path generation.
+        project_name: Project name for blob path generation.
         timestamp: Shared processing timestamp (ISO 8601).
         enable_clipping: Whether to clip to AOI polygon.
         enable_reprojection: Whether to reproject if CRS differs.
@@ -404,7 +404,7 @@ def run_fulfillment_phase(
                     "imagery_outcome": outcome,
                     "provider_name": provider_name,
                     "provider_config": provider_config,
-                    "orchard_name": orchard_name,
+                    "project_name": project_name,
                     "timestamp": timestamp,
                 },
             )
@@ -476,7 +476,7 @@ def run_fulfillment_phase(
                 {
                     "download_result": dl_result,
                     "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
-                    "orchard_name": orchard_name,
+                    "project_name": project_name,
                     "timestamp": timestamp,
                     "target_crs": target_crs,
                     "enable_clipping": enable_clipping,

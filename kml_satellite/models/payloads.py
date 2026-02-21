@@ -123,7 +123,7 @@ class DownloadImageryInput(TypedDict):
     imagery_outcome: dict[str, Any]
     provider_name: NotRequired[str]
     provider_config: NotRequired[dict[str, Any] | None]
-    orchard_name: NotRequired[str]
+    project_name: NotRequired[str]
     timestamp: NotRequired[str]
 
 
@@ -153,7 +153,7 @@ class PostProcessImageryInput(TypedDict):
 
     download_result: dict[str, Any]
     aoi: dict[str, Any]
-    orchard_name: NotRequired[str]
+    project_name: NotRequired[str]
     timestamp: NotRequired[str]
     target_crs: NotRequired[str]
     enable_clipping: NotRequired[bool]

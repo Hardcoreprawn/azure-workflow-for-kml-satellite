@@ -324,7 +324,7 @@ class TestFulfillmentPhase:
             aois,
             provider_name="planetary_computer",
             provider_config=None,
-            orchard_name="test-orchard",
+            project_name="test-orchard",
             timestamp="2026-02-17T12:00:00+00:00",
             instance_id=instance_id or context.instance_id,
             blob_name=blob_name,
@@ -384,7 +384,7 @@ class TestFulfillmentPhase:
             aois,
             provider_name="planetary_computer",
             provider_config=None,
-            orchard_name="test",
+            project_name="test",
             timestamp="2026-02-17T12:00:00+00:00",
         )
         next(gen)  # download batch yield
@@ -407,7 +407,7 @@ class TestFulfillmentPhase:
             [],
             provider_name="pc",
             provider_config=None,
-            orchard_name="test",
+            project_name="test",
             timestamp="2026-02-17T12:00:00+00:00",
         )
         try:
@@ -436,7 +436,7 @@ class TestFulfillmentPhase:
             aois,
             provider_name="pc",
             provider_config=None,
-            orchard_name="test",
+            project_name="test",
             timestamp="2026-02-17T12:00:00+00:00",
         )
         next(gen)  # download batch yield

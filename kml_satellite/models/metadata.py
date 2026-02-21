@@ -125,7 +125,7 @@ class AOIMetadataRecord(BaseModel):
         processing_id: Orchestration instance ID (PID 7.4.4: traceability).
         kml_filename: Name of the source KML file.
         feature_name: Name of the feature / Placemark.
-        orchard_name: Orchard or project name (from metadata or filename).
+        project_name: Project name (from metadata or filename).
         tree_variety: Tree/crop variety (from KML ExtendedData, if present).
         geometry: Polygon geometry and derived measurements.
         imagery: Imagery acquisition details (populated in M-2.x).
@@ -136,7 +136,7 @@ class AOIMetadataRecord(BaseModel):
     processing_id: str = ""
     kml_filename: str = ""
     feature_name: str = ""
-    orchard_name: str = ""
+    project_name: str = ""
     tree_variety: str = ""
     geometry: GeometryMetadata = Field(default_factory=GeometryMetadata)
     imagery: ImageryMetadata = Field(default_factory=ImageryMetadata)
@@ -182,15 +182,15 @@ class AOIMetadataRecord(BaseModel):
         for ring in aoi.interior_coords:
             coords.append([list(c) for c in ring])
 
-        # Extract orchard name from metadata, or derive from source file
-        orchard_name = _extract_orchard_name(aoi.metadata, aoi.source_file)
+        # Extract project name from metadata, or derive from source file
+        project_name = _extract_project_name(aoi.metadata, aoi.source_file)
         tree_variety = aoi.metadata.get("tree_variety", "")
 
         return cls(
             processing_id=processing_id,
             kml_filename=aoi.source_file,
             feature_name=aoi.feature_name,
-            orchard_name=orchard_name,
+            project_name=project_name,
             tree_variety=tree_variety,
             geometry=GeometryMetadata(
                 type="Polygon",
@@ -220,15 +220,15 @@ class AOIMetadataRecord(BaseModel):
         return self.model_dump(by_alias=True)  # type: ignore[return-value]
 
 
-def _extract_orchard_name(
+def _extract_project_name(
     metadata: dict[str, str],
     source_file: str,
 ) -> str:
-    """Derive the orchard/project name from metadata or the filename.
+    """Derive the project name from metadata or the filename.
 
     Tries (in order):
-    1. ``metadata["orchard_name"]``
-    2. ``metadata["project_name"]``
+    1. ``metadata["project_name"]``
+    2. ``metadata["orchard_name"]`` (backward compatibility)
     3. KML filename stem (without extension), sanitised
 
     Args:
@@ -236,9 +236,9 @@ def _extract_orchard_name(
         source_file: Name of the source KML file.
 
     Returns:
-        A non-empty orchard name string.
+        A non-empty project name string.
     """
-    for key in ("orchard_name", "project_name"):
+    for key in ("project_name", "orchard_name"):
         value = metadata.get(key, "").strip()
         if value:
             return value
