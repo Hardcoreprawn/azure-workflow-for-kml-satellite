@@ -33,6 +33,9 @@ param enableKeyVaultPurgeProtection bool
 @description('Enable Event Grid subscription (requires function code deployed).')
 param enableEventGridSubscription bool = false
 
+@description('Container image URI for the Function App.')
+param containerImage string = 'mcr.microsoft.com/azure-functions/python:4-python3.12'
+
 @description('Tags to apply to all resources.')
 param tags object
 
@@ -90,6 +93,7 @@ module functionApp 'modules/function-app.bicep' = {
     storageConnectionString: storage.outputs.connectionString
     appInsightsConnectionString: monitoring.outputs.connectionString
     keyVaultUri: keyVault.outputs.uri
+    containerImage: containerImage
     tags: tags
   }
 }

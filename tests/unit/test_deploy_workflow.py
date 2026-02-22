@@ -7,11 +7,12 @@ Registry (ghcr.io), and deploy it to Azure Functions on Container Apps:
 1. The workflow builds a Docker image (with GDAL and native geospatial
    libraries baked in) and pushes it to ghcr.io.
 
-2. The function app container image is updated via Azure CLI.
+2. The function app container image and Event Grid subscription are
+   deployed via a single Bicep deployment that passes the container
+   image as a parameter, preventing the image from being reset.
 
-3. A readiness check polls for function registration before enabling the
-   Event Grid subscription, preventing "Destination endpoint not found"
-   errors when Azure cannot validate the webhook endpoint.
+3. A readiness check polls for function registration to confirm the
+   deployment succeeded.
 """
 
 from __future__ import annotations
@@ -98,13 +99,16 @@ class TestContainerDeployment:
         )
 
     def test_container_deploy_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
-        """Workflow must deploy the container image to the Function App."""
+        """Workflow must deploy the container image via Bicep with containerImage param."""
         steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy container")
+        deploy = _find_step(steps, "deploy container") or _find_step(steps, "event grid")
         assert deploy is not None, "No container deploy step found"
         run_script = deploy.get("run", "")
-        assert "az functionapp config container set" in run_script, (
-            "Deploy step must use 'az functionapp config container set'"
+        assert "az deployment sub create" in run_script, (
+            "Deploy step must use 'az deployment sub create' with Bicep"
+        )
+        assert "containerImage" in run_script, (
+            "Deploy step must pass containerImage parameter to Bicep"
         )
 
     def test_image_tagged_with_commit_sha(self, deploy_workflow: dict[str, Any]) -> None:
@@ -122,7 +126,7 @@ class TestContainerDeployment:
             uses = step.get("uses", "")
             assert "azure/functions-action" not in uses or "container" in uses, (
                 "Must not use azure/functions-action — container deployment "
-                "uses docker/build-push-action + az functionapp config container set"
+                "uses docker/build-push-action + az deployment sub create"
             )
 
     def test_packages_write_permission(self, deploy_workflow: dict[str, Any]) -> None:
@@ -203,22 +207,12 @@ class TestReadinessCheck:
             "Readiness check must 'exit 1' if functions are never detected"
         )
 
-    def test_readiness_before_event_grid(self, deploy_workflow: dict[str, Any]) -> None:
-        """The readiness check must come BEFORE the Event Grid subscription step."""
+    def test_event_grid_enabled_in_deploy(self, deploy_workflow: dict[str, Any]) -> None:
+        """The Bicep deployment must enable the Event Grid subscription."""
         steps = _get_steps(deploy_workflow)
-        readiness_idx = None
-        event_grid_idx = None
-
-        for i, step in enumerate(steps):
-            name = step.get("name", "").lower()
-            if readiness_idx is None and ("wait" in name or "discoverable" in name):
-                readiness_idx = i
-            if event_grid_idx is None and "event grid" in name:
-                event_grid_idx = i
-
-        assert readiness_idx is not None, "Readiness check step not found"
-        assert event_grid_idx is not None, "Event Grid subscription step not found"
-        assert readiness_idx < event_grid_idx, (
-            f"Readiness check (step {readiness_idx}) must come before "
-            f"Event Grid subscription (step {event_grid_idx})"
+        deploy = _find_step(steps, "deploy container") or _find_step(steps, "event grid")
+        assert deploy is not None, "Deploy step not found"
+        run_script = deploy.get("run", "")
+        assert "enableEventGridSubscription=true" in run_script, (
+            "Bicep deployment must set enableEventGridSubscription=true"
         )

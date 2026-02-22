@@ -90,12 +90,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy container image to Function App
+      - name: Deploy container image and enable Event Grid
         run: |
-          az functionapp config container set \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --image "${{ steps.image.outputs.name }}"
+          az deployment sub create \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+            --template-file infra/main.bicep \
+            --parameters infra/parameters/dev.bicepparam \
+            --parameters enableEventGridSubscription=true \
+            --parameters containerImage='${{ steps.image.outputs.name }}' \
+            --name "deploy-$(date +%Y%m%d-%H%M%S)"
 
       - name: Wait for functions to be discoverable
         run: |
@@ -116,12 +119,3 @@ jobs:
             echo "::error::No functions detected after 5 minutes"
             exit 1
           fi
-
-      - name: Enable Event Grid subscription
-        run: |
-          az deployment sub create \
-            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-            --template-file infra/main.bicep \
-            --parameters infra/parameters/dev.bicepparam \
-            --parameters enableEventGridSubscription=true \
-            --name "enable-evtgrid-$(date +%Y%m%d-%H%M%S)"
