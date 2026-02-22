@@ -44,6 +44,9 @@ param enableKeyVaultPurgeProtection bool = true
 @description('Enable Event Grid subscription. Requires function code to be deployed first.')
 param enableEventGridSubscription bool = false
 
+@description('Container image URI for the Function App. Overridden by the deploy workflow.')
+param containerImage string = 'mcr.microsoft.com/azure-functions/python:4-python3.12'
+
 @description('Tags to apply to all resources.')
 param tags object = {}
 
@@ -81,6 +84,7 @@ module resources 'resources.bicep' = {
     logRetentionInDays: logRetentionInDays
     enableKeyVaultPurgeProtection: enableKeyVaultPurgeProtection
     enableEventGridSubscription: enableEventGridSubscription
+    containerImage: containerImage
     tags: defaultTags
   }
 }
