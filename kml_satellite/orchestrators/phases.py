@@ -30,6 +30,10 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
+from kml_satellite.orchestrators.error_helpers import (
+    download_error_dict,
+    post_process_error_dict,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -423,7 +427,7 @@ def run_fulfillment_phase(
                     len(batch),
                 )
             for outcome in batch:
-                download_results.append(_download_error_dict(outcome, str(exc)))
+                download_results.append(download_error_dict(outcome, str(exc)))
             continue
 
         if isinstance(batch_results, list):
@@ -433,7 +437,7 @@ def run_fulfillment_phase(
                     download_results.append(result)
                 else:
                     download_results.append(
-                        _download_error_dict(
+                        download_error_dict(
                             outcome,
                             f"Unexpected non-dict result: {result!r}",
                             state="unknown",
@@ -499,7 +503,7 @@ def run_fulfillment_phase(
                     len(batch),
                 )
             for dl_result in batch:
-                post_process_results.append(_post_process_error_dict(dl_result, str(exc)))
+                post_process_results.append(post_process_error_dict(dl_result, str(exc)))
             continue
 
         if isinstance(batch_results, list):
@@ -509,7 +513,7 @@ def run_fulfillment_phase(
                     post_process_results.append(pp_result)
                 else:
                     post_process_results.append(
-                        _post_process_error_dict(
+                        post_process_error_dict(
                             dl_result,
                             f"Unexpected non-dict result: {pp_result!r}",
                             state="unknown",
@@ -555,55 +559,6 @@ def run_fulfillment_phase(
         pp_reprojected=pp_reprojected,
         pp_failed=pp_failed,
     )
-
-
-def _download_error_dict(
-    outcome: dict[str, Any],
-    error: str,
-    *,
-    state: str = "failed",
-) -> dict[str, Any]:
-    """Build a contract-shaped error dict for a failed download."""
-    return {
-        "state": state,
-        "order_id": str(outcome.get("order_id", "")),
-        "scene_id": str(outcome.get("scene_id", "")),
-        "provider": str(outcome.get("provider", "")),
-        "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
-        "blob_path": "",
-        "adapter_blob_path": "",
-        "container": "",
-        "size_bytes": 0,
-        "content_type": "",
-        "download_duration_seconds": 0.0,
-        "retry_count": 0,
-        "error": error,
-    }
-
-
-def _post_process_error_dict(
-    dl_result: dict[str, Any],
-    error: str,
-    *,
-    state: str = "failed",
-) -> dict[str, Any]:
-    """Build a contract-shaped error dict for a failed post-process."""
-    return {
-        "state": state,
-        "order_id": dl_result.get("order_id", ""),
-        "source_blob_path": dl_result.get("blob_path", ""),
-        "clipped_blob_path": "",
-        "container": dl_result.get("container", ""),
-        "clipped": False,
-        "reprojected": False,
-        "source_crs": "",
-        "target_crs": "",
-        "source_size_bytes": 0,
-        "output_size_bytes": 0,
-        "processing_duration_seconds": 0.0,
-        "clip_error": error,
-        "error": error,
-    }
 
 
 # ---------------------------------------------------------------------------
