@@ -33,7 +33,7 @@
 | #102 | Consolidate `_int_cfg` / `_int_val` config helpers | Yes | ✅ DONE |
 | #104 | Refactor `phases.py` — extract polling and error helpers | Yes | ✅ DONE |
 | #105 | Add KML input validation (max file size, content checks) | Yes | ✅ DONE |
-| #107 | Add health check endpoint (`/health`, `/readiness`) | Yes | |
+| #107 | Add health check endpoint (`/health`, `/readiness`) | Yes | ✅ DONE |
 | #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes | |
 | #108 | SkyWatch adapter: implement MVP or remove placeholder | Yes | |
 | #106 | Delete stale branches after merge | Yes | |
