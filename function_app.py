@@ -16,8 +16,9 @@ import azure.functions as func
 
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.exceptions import ContractError
 from kml_satellite.core.ingress import (
-    build_orchestrator_input,
+    build_and_validate_orchestrator_input,
     deserialize_activity_input,
     get_blob_service_client,
 )
@@ -57,12 +58,19 @@ async def kml_blob_trigger(
     2. Validates the blob is a ``.kml`` file in the expected container
     3. Starts the orchestrator with the event data
     """
-    # Build canonical orchestrator input from the Event Grid event.
-    orchestrator_input = build_orchestrator_input(
-        event.get_json(),
-        event_time=event.event_time.isoformat() if event.event_time else "",
-        event_id=event.id or "",
-    )
+    # Build and validate orchestrator input from the Event Grid event.
+    try:
+        orchestrator_input = build_and_validate_orchestrator_input(
+            event.get_json(),
+            event_time=event.event_time.isoformat() if event.event_time else "",
+            event_id=event.id or "",
+        )
+    except ContractError as e:
+        logger.warning(
+            "Rejecting malformed Event Grid event: %s",
+            str(e),
+        )
+        return
 
     container = str(orchestrator_input["container_name"])
     blob_name = str(orchestrator_input["blob_name"])
