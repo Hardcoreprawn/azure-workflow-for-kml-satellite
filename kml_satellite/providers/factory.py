@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PLANETARY_COMPUTER = "planetary_computer"
-SKYWATCH = "skywatch"
 
 # ---------------------------------------------------------------------------
 # Lazy-import adapter registry
@@ -76,13 +75,7 @@ def _register_builtin_adapters() -> None:
 
         return PlanetaryComputerAdapter
 
-    def _skywatch() -> type[ImageryProvider]:
-        from kml_satellite.providers.skywatch import SkyWatchAdapter
-
-        return SkyWatchAdapter
-
     _ADAPTER_REGISTRY[PLANETARY_COMPUTER] = _planetary_computer
-    _ADAPTER_REGISTRY[SKYWATCH] = _skywatch
 
 
 def _ensure_registry() -> None:

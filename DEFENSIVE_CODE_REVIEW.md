@@ -342,25 +342,19 @@ Status: **Strong and idiomatic**
 14. `kml_satellite/providers/planetary_computer.py::download` — broad catches (2).
 15. `kml_satellite/providers/planetary_computer.py::_item_to_search_result` — `Any` + broad catch.
 16. `kml_satellite/providers/planetary_computer.py::_resolve_best_asset_url` — `Any` boundary.
-17. `kml_satellite/providers/skywatch.py::search` — `NotImplementedError` placeholder.
-18. `kml_satellite/providers/skywatch.py::order` — `NotImplementedError` placeholder.
-19. `kml_satellite/providers/skywatch.py::poll` — `NotImplementedError` placeholder.
-20. `kml_satellite/providers/skywatch.py::download` — `NotImplementedError` placeholder.
 
 ## Idiomatic / Functional-Style Gaps
 
 - Heavy `dict[str, Any]` payloads across activity boundaries reduce compile-time guarantees.
 - Broad exception catches in orchestration/provider flows trade simplicity for reduced diagnostic precision.
 - Some startup validation is deferred to runtime path usage (rather than fail-fast at config load).
-- Placeholder implementation (`SkyWatchAdapter`) remains in production strategy path.
 
 ## Prioritized Remediation Plan (Updated 2026-02-19)
 
 ### P0 (must fix for "no placeholders" / correctness)
 
 1. **Configuration**: Wire `PipelineConfig.from_env()` into actual usage across activities (e.g., as default args) or consistently rely on it. Currently, it is dead code.
-2. **Provider Implementation**: Either implement `SkyWatchAdapter` contract methods or add explicit logic in `factory.py` / `acquire_imagery` to reject `IMAGERY_PROVIDER=skywatch` until implemented.
-3. **Data Path**: Replace TODO placeholders in `download_imagery` with actual validation logic or remove the TODO if out of scope. Wire the calculated blob path to the adapter or move the blob post-download.
+2. **Data Path**: Replace TODO placeholders in `download_imagery` with actual validation logic or remove the TODO if out of scope. Wire the calculated blob path to the adapter or move the blob post-download.
 
 ### P1 (defensive hardening & scalability)
 

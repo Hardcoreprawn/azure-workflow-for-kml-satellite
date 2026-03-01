@@ -11,21 +11,18 @@ References:
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch
 
 from kml_satellite.models.imagery import ProviderConfig
 from kml_satellite.providers.base import ImageryProvider, ProviderError
 from kml_satellite.providers.factory import (
     _ADAPTER_REGISTRY,
     PLANETARY_COMPUTER,
-    SKYWATCH,
     _ensure_registry,
     clear_provider_cache,
     get_provider,
     list_providers,
     register_provider,
 )
-from kml_satellite.providers.skywatch import SkyWatchNotImplementedError
 
 
 class TestListProviders(unittest.TestCase):
@@ -34,7 +31,6 @@ class TestListProviders(unittest.TestCase):
     def test_includes_builtin_providers(self) -> None:
         providers = list_providers()
         assert PLANETARY_COMPUTER in providers
-        assert SKYWATCH in providers
 
     def test_returns_sorted(self) -> None:
         providers = list_providers()
@@ -54,13 +50,6 @@ class TestGetProvider(unittest.TestCase):
         provider = get_provider(PLANETARY_COMPUTER)
         assert isinstance(provider, ImageryProvider)
         assert provider.name == PLANETARY_COMPUTER
-
-    def test_skywatch_blocked_until_implemented(self) -> None:
-        """SkyWatch adapter blocks instantiation with an actionable error (Issue #44)."""
-        with self.assertRaises(SkyWatchNotImplementedError) as ctx:
-            get_provider(SKYWATCH)
-        assert "not yet implemented" in str(ctx.exception).lower()
-        assert ctx.exception.retryable is False
 
     def test_unknown_provider_raises(self) -> None:
         with self.assertRaises(ProviderError) as ctx:
@@ -82,7 +71,7 @@ class TestGetProvider(unittest.TestCase):
 
     def test_config_name_mismatch_raises(self) -> None:
         """ProviderConfig.name must match the requested provider name."""
-        cfg = ProviderConfig(name=SKYWATCH)
+        cfg = ProviderConfig(name="other_provider")
         with self.assertRaises(ProviderError) as ctx:
             get_provider(PLANETARY_COMPUTER, config=cfg)
         assert "does not match" in str(ctx.exception)
@@ -140,23 +129,11 @@ class TestProviderSwitching(unittest.TestCase):
         clear_provider_cache()
 
     def test_switch_by_name(self) -> None:
-        """Different names are registered for different adapter types."""
+        """Different names can be registered for different adapter types."""
         providers = list_providers()
         assert PLANETARY_COMPUTER in providers
-        assert SKYWATCH in providers
-        # Planetary Computer instantiates; SkyWatch blocks (Issue #44)
         pc = get_provider(PLANETARY_COMPUTER)
         assert pc.name == PLANETARY_COMPUTER
-
-    @patch.dict("os.environ", {"IMAGERY_PROVIDER": SKYWATCH})
-    def test_env_driven_selection_skywatch_blocked(self) -> None:
-        """PipelineConfig.imagery_provider=skywatch is rejected until implemented."""
-        from kml_satellite.core.config import PipelineConfig
-
-        cfg = PipelineConfig.from_env()
-        assert cfg.imagery_provider == SKYWATCH
-        with self.assertRaises(SkyWatchNotImplementedError):
-            get_provider(cfg.imagery_provider)
 
 
 class TestProviderInstanceCache(unittest.TestCase):
@@ -202,14 +179,6 @@ class TestProviderInstanceCache(unittest.TestCase):
         clear_provider_cache()
         second = get_provider(PLANETARY_COMPUTER)
         assert first is not second
-
-    def test_failed_init_is_not_cached(self) -> None:
-        """Adapters that raise in __init__ are not cached."""
-        with self.assertRaises(SkyWatchNotImplementedError):
-            get_provider(SKYWATCH)
-        # Second call should also raise (not return a cached broken instance).
-        with self.assertRaises(SkyWatchNotImplementedError):
-            get_provider(SKYWATCH)
 
     def test_cache_is_thread_safe(self) -> None:
         """Concurrent get_provider calls do not produce duplicate instances."""

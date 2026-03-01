@@ -26,7 +26,7 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
 
 **Compute:** Azure Functions v4 Flex Consumption (custom Docker with GDAL)
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
-**Providers:** Planetary Computer (free, dev/test) · SkyWatch EarthCache (paid, production)
+**Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
 
 See [PID.md](PID.md) for the full Project Initiation Document.
 
