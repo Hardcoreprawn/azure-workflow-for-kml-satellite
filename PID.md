@@ -1066,6 +1066,7 @@ Storage Account: sttreesight
 
 | Rule | Condition | Action |
 | --- | --- | --- |
+| Delete temporary payloads | Blob age > 7 days | Delete |
 | Archive old raw imagery | Blob age > 180 days | Move to Cool tier |
 | Archive old raw imagery | Blob age > 365 days | Move to Archive tier |
 | Delete processing logs | Blob age > 730 days | Delete |
