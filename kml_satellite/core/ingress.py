@@ -240,7 +240,8 @@ def get_blob_service_client() -> BlobServiceClient:
 #: - 10 MiB provides safe margin while respecting Durable Functions history
 #:   constraints (Azure Storage 1 MB entity max, orchestration history overflow)
 #: - Risk mitigation for Issue #62 (payload offload to Blob Storage)
-MAX_KML_FILE_SIZE = 10 * 1024 * 1024  # 10 MiB
+#: - Enforced at ingress by validate_blob_input() per Issue #105 (zero-assumption input handling)
+MAX_KML_FILE_SIZE = 10 * 1024 * 1024  # Maximum allowed KML file size (10 MiB)
 
 
 def validate_blob_input(blob_event: object) -> None:
