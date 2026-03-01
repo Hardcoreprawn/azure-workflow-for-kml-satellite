@@ -28,22 +28,22 @@
 
 **Work these issues (any order within the phase):**
 
-| # | Title | Can start? |
-| - | ----- | ---------- |
-| #102 | Consolidate `_int_cfg` / `_int_val` config helpers | Yes |
-| #104 | Refactor `phases.py` — extract polling and error helpers | Yes |
-| #105 | Add KML input validation (max file size, content checks) | Yes |
-| #107 | Add health check endpoint (`/health`, `/readiness`) | Yes |
-| #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes |
-| #108 | SkyWatch adapter: implement MVP or remove placeholder | Yes |
-| #106 | Delete stale branches after merge | Yes |
-| #13 | E2E pipeline integration test | Yes |
-| #15 | Error handling and retry logic verified | Yes |
-| #16 | Logging and alerting configured and validated | Yes |
-| #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes |
-| #18 | Documentation — architecture, runbook, API reference | Yes |
-| #14 | Concurrent upload stress test (≥ 20 files) | After #13 |
-| #19 | UAT sign-off | Last |
+| # | Title | Can start? | Status |
+| - | ----- | ---------- | ------ |
+| #102 | Consolidate `_int_cfg` / `_int_val` config helpers | Yes | ✅ DONE |
+| #104 | Refactor `phases.py` — extract polling and error helpers | Yes | |
+| #105 | Add KML input validation (max file size, content checks) | Yes | |
+| #107 | Add health check endpoint (`/health`, `/readiness`) | Yes | |
+| #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes | |
+| #108 | SkyWatch adapter: implement MVP or remove placeholder | Yes | |
+| #106 | Delete stale branches after merge | Yes | |
+| #13 | E2E pipeline integration test | Yes | |
+| #15 | Error handling and retry logic verified | Yes | |
+| #16 | Logging and alerting configured and validated | Yes | |
+| #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | |
+| #18 | Documentation — architecture, runbook, API reference | Yes | |
+| #14 | Concurrent upload stress test (≥ 20 files) | After #13 | |
+| #19 | UAT sign-off | Last | |
 
 ### Phase 3 Done When
 
