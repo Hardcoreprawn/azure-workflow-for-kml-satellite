@@ -27,6 +27,7 @@ import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
 
@@ -269,20 +270,13 @@ def run_acquisition_phase(
         )
 
     # Step 2: Concurrent polling via sub-orchestrators (Issue #55)
-    def _int_cfg(key: str, default: int) -> int:
-        raw = blob_event.get(key, default)
-        if isinstance(raw, int | float | str):
-            try:
-                return int(raw)
-            except (ValueError, OverflowError):
-                return default
-        return default
-
-    poll_interval = _int_cfg("poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
-    poll_timeout = _int_cfg("poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
-    max_retries = _int_cfg("max_retries", DEFAULT_MAX_RETRIES)
-    retry_base = _int_cfg("retry_base_seconds", DEFAULT_RETRY_BASE_SECONDS)
-    poll_batch_size = _int_cfg("poll_batch_size", DEFAULT_POLL_BATCH_SIZE)
+    poll_interval = config_get_int(
+        blob_event, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS
+    )
+    poll_timeout = config_get_int(blob_event, "poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
+    max_retries = config_get_int(blob_event, "max_retries", DEFAULT_MAX_RETRIES)
+    retry_base = config_get_int(blob_event, "retry_base_seconds", DEFAULT_RETRY_BASE_SECONDS)
+    poll_batch_size = config_get_int(blob_event, "poll_batch_size", DEFAULT_POLL_BATCH_SIZE)
 
     acq_list: list[dict[str, Any]] = (
         acquisition_results if isinstance(acquisition_results, list) else []

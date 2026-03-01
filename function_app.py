@@ -14,6 +14,7 @@ import logging
 import azure.durable_functions as df
 import azure.functions as func
 
+from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.ingress import (
     build_orchestrator_input,
@@ -152,22 +153,13 @@ def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> objec
     if not isinstance(acquisition, dict):
         acquisition = {}
 
-    def _int_val(key: str, default: int) -> int:
-        raw = sub_input.get(key, default)
-        if isinstance(raw, int | float | str):
-            try:
-                return int(raw)
-            except (ValueError, OverflowError):
-                return default
-        return default
-
     return _poll_until_ready(
         context,
         acquisition,
-        poll_interval=_int_val("poll_interval", 30),
-        poll_timeout=_int_val("poll_timeout", 1800),
-        max_retries=_int_val("max_retries", 3),
-        retry_base=_int_val("retry_base", 5),
+        poll_interval=config_get_int(sub_input, "poll_interval", 30),
+        poll_timeout=config_get_int(sub_input, "poll_timeout", 1800),
+        max_retries=config_get_int(sub_input, "max_retries", 3),
+        retry_base=config_get_int(sub_input, "retry_base", 5),
         instance_id=str(sub_input.get("instance_id", "")),
     )
 

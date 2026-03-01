@@ -109,6 +109,7 @@ markers = [
     "unit: Unit tests (fast, no external dependencies)",
     "integration: Integration tests (may require Azure resources)",
     "e2e: End-to-end tests (full pipeline, requires live environment)",
+    "slow: Slow tests (Bicep compilation, etc.); skipped by default in dev",
 ]
 addopts = [
     "--strict-markers",

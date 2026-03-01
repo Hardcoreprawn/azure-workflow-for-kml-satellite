@@ -6,12 +6,17 @@ without an Azure subscription by compiling Bicep → ARM JSON and inspecting
 the output structure.
 
 Requires: Azure CLI with Bicep extension installed.
+
+Bicep compilation tests are marked @pytest.mark.slow to skip during dev.
+To run them: pytest -m slow
+To skip them: pytest -m "not slow"
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +29,23 @@ import pytest
 INFRA_DIR = Path(__file__).resolve().parent.parent.parent / "infra"
 
 
-def _bicep_build(bicep_file: Path) -> dict[str, Any]:
+@lru_cache(maxsize=16)
+def _bicep_build(bicep_file_path: str) -> dict[str, Any]:
     """Compile a Bicep file to ARM JSON and return the parsed dict.
 
     Supports both standalone ``bicep`` CLI and ``az bicep`` wrapper.
+    Results are cached to avoid recompiling the same template multiple times.
+
+    Args:
+        bicep_file_path: Absolute path to bicep file (as string for hashability).
+
+    Returns:
+        Parsed ARM template dict.
+
+    Raises:
+        Assertion error if compilation fails.
     """
+    bicep_file = Path(bicep_file_path)
     # Try standalone Bicep CLI first, fall back to az bicep
     for cmd in (
         ["bicep", "build", str(bicep_file), "--stdout"],
@@ -43,61 +60,61 @@ def _bicep_build(bicep_file: Path) -> dict[str, Any]:
         if result.returncode == 0:
             return json.loads(result.stdout)
 
-    return pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{result.stderr}")
+    pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{result.stderr}")
 
 
 @pytest.fixture(scope="module")
 def main_arm_template() -> dict[str, Any]:
     """Compiled ARM template from main.bicep."""
-    return _bicep_build(INFRA_DIR / "main.bicep")
+    return _bicep_build(str(INFRA_DIR / "main.bicep"))
 
 
 @pytest.fixture(scope="module")
 def resources_arm_template() -> dict[str, Any]:
     """Compiled ARM template from resources.bicep (RG-scoped module)."""
-    return _bicep_build(INFRA_DIR / "resources.bicep")
+    return _bicep_build(str(INFRA_DIR / "resources.bicep"))
 
 
 @pytest.fixture(scope="module")
 def storage_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/storage.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "storage.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "storage.bicep"))
 
 
 @pytest.fixture(scope="module")
 def monitoring_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/monitoring.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "monitoring.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "monitoring.bicep"))
 
 
 @pytest.fixture(scope="module")
 def keyvault_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/keyvault.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "keyvault.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "keyvault.bicep"))
 
 
 @pytest.fixture(scope="module")
 def function_app_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/function-app.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "function-app.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "function-app.bicep"))
 
 
 @pytest.fixture(scope="module")
 def container_environment_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/container-environment.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "container-environment.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "container-environment.bicep"))
 
 
 @pytest.fixture(scope="module")
 def event_grid_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/event-grid.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "event-grid.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "event-grid.bicep"))
 
 
 @pytest.fixture(scope="module")
 def rbac_arm_template() -> dict[str, Any]:
     """Compiled ARM template from modules/rbac.bicep."""
-    return _bicep_build(INFRA_DIR / "modules" / "rbac.bicep")
+    return _bicep_build(str(INFRA_DIR / "modules" / "rbac.bicep"))
 
 
 def _normalise_resources(template: dict[str, Any]) -> list[dict[str, Any]]:
@@ -142,6 +159,7 @@ def _get_all_resource_types(template: dict[str, Any]) -> set[str]:
 class TestBicepCompilation:
     """Verify all Bicep files compile without errors."""
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "bicep_file",
         [
@@ -160,7 +178,7 @@ class TestBicepCompilation:
         """Each Bicep file must compile to valid ARM JSON."""
         path = INFRA_DIR / bicep_file
         assert path.exists(), f"Bicep file not found: {path}"
-        template = _bicep_build(path)
+        template = _bicep_build(str(path))
         assert "$schema" in template
         assert template["contentVersion"] == "1.0.0.0"
 
@@ -170,6 +188,7 @@ class TestBicepCompilation:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMainTemplate:
     """Verify the subscription-scoped main orchestration template."""
 
@@ -226,6 +245,7 @@ class TestMainTemplate:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestResourcesModule:
     """Verify the RG-scoped resources module that orchestrates all modules."""
 
@@ -277,6 +297,7 @@ class TestResourcesModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestStorageModule:
     """Verify storage account configuration."""
 
@@ -346,6 +367,7 @@ class TestStorageModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestMonitoringModule:
     """Verify monitoring configuration."""
 
@@ -387,6 +409,7 @@ class TestMonitoringModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestKeyVaultModule:
     """Verify Key Vault configuration."""
 
@@ -416,6 +439,7 @@ class TestKeyVaultModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestFunctionAppModule:
     """Verify Function App configuration."""
 
@@ -491,6 +515,7 @@ class TestFunctionAppModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestContainerEnvironmentModule:
     """Verify Container Apps environment configuration."""
 
@@ -524,6 +549,7 @@ class TestContainerEnvironmentModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestEventGridModule:
     """Verify Event Grid configuration."""
 
@@ -573,6 +599,7 @@ class TestEventGridModule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestRbacModule:
     """Verify RBAC role assignments."""
 

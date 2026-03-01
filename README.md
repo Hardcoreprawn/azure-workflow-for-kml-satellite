@@ -4,7 +4,7 @@ Automated Azure pipeline that ingests KML files containing agricultural field
 boundaries, extracts polygon geometry, acquires high-resolution satellite
 imagery, and stores outputs in Azure Blob Storage.
 
-> **Status:** Phase 1 — Foundation & KML Ingestion
+> **Status:** Phase 3 — v1 Hardening (see [ROADMAP.md](ROADMAP.md) for delivery plan)
 
 ## Architecture
 
