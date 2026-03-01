@@ -26,12 +26,7 @@ from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.orchestrators.phases import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
-    DEFAULT_MAX_RETRIES,
-    DEFAULT_POLL_INTERVAL_SECONDS,
-    DEFAULT_POLL_TIMEOUT_SECONDS,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
-    DEFAULT_RETRY_BASE_SECONDS,
-    _poll_until_ready,
     build_pipeline_summary,
     run_acquisition_phase,
     run_fulfillment_phase,
@@ -46,19 +41,6 @@ if TYPE_CHECKING:
     from kml_satellite.orchestrators.phases import FulfillmentResult
 
 logger = logging.getLogger("kml_satellite.orchestrators.kml_pipeline")
-
-# Re-export polling defaults and _poll_until_ready so existing imports
-# (including tests) continue to work.
-__all__ = [
-    "DEFAULT_DOWNLOAD_BATCH_SIZE",
-    "DEFAULT_MAX_RETRIES",
-    "DEFAULT_POLL_INTERVAL_SECONDS",
-    "DEFAULT_POLL_TIMEOUT_SECONDS",
-    "DEFAULT_POST_PROCESS_BATCH_SIZE",
-    "DEFAULT_RETRY_BASE_SECONDS",
-    "_poll_until_ready",
-    "orchestrator_function",
-]
 
 
 def orchestrator_function(

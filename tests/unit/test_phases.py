@@ -17,7 +17,6 @@ from kml_satellite.orchestrators.phases import (
     AcquisitionResult,
     FulfillmentResult,
     IngestionResult,
-    _poll_until_ready,
     build_pipeline_summary,
     run_acquisition_phase,
     run_fulfillment_phase,
@@ -643,43 +642,6 @@ class TestBuildPipelineSummary:
         assert result["post_process_completed"] == 4
         assert result["post_process_clipped"] == 3
         assert result["post_process_reprojected"] == 2
-
-
-# ===================================================================
-# Backward compatibility: _poll_until_ready accessible from phases
-# ===================================================================
-
-
-class TestPollUntilReadyInPhases:
-    """Verify _poll_until_ready is importable from phases module."""
-
-    def test_importable(self) -> None:
-        assert callable(_poll_until_ready)
-
-    def test_immediate_ready(self) -> None:
-        ctx = _make_context()
-        acq: dict[str, object] = {
-            "order_id": "o1",
-            "scene_id": "s1",
-            "provider": "pc",
-            "aoi_feature_name": "f1",
-        }
-        gen = _poll_until_ready(ctx, acq)
-        next(gen)
-        try:
-            gen.send(
-                {
-                    "state": "ready",
-                    "is_terminal": True,
-                    "message": "",
-                    "progress_pct": 100.0,
-                }
-            )
-        except StopIteration as exc:
-            result: dict[str, Any] = exc.value
-        else:
-            raise AssertionError("Expected StopIteration")
-        assert result["state"] == "ready"
 
 
 # ===================================================================

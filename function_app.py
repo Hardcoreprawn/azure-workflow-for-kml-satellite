@@ -144,16 +144,16 @@ def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> objec
         ``max_retries``, ``retry_base``, ``instance_id``.
 
     Returns:
-        Dict describing the final outcome from ``_poll_until_ready``.
+        Dict describing the final outcome from ``poll_until_ready``.
     """
-    from kml_satellite.orchestrators.phases import _poll_until_ready
+    from kml_satellite.orchestrators.polling import poll_until_ready
 
     sub_input: dict[str, object] = context.get_input() or {}
     acquisition = sub_input.get("acquisition", {})
     if not isinstance(acquisition, dict):
         acquisition = {}
 
-    return _poll_until_ready(
+    return poll_until_ready(
         context,
         acquisition,
         poll_interval=config_get_int(sub_input, "poll_interval", 30),

@@ -36,13 +36,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from kml_satellite.orchestrators.kml_pipeline import (
+from kml_satellite.orchestrators.kml_pipeline import orchestrator_function
+from kml_satellite.orchestrators.polling import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_POLL_TIMEOUT_SECONDS,
     DEFAULT_RETRY_BASE_SECONDS,
-    _poll_until_ready,
-    orchestrator_function,
+    poll_until_ready,
 )
 
 
@@ -594,7 +594,7 @@ class TestOrchestratorFunction:
 
 
 # ===========================================================================
-# _poll_until_ready sub-orchestrator tests
+# poll_until_ready sub-orchestrator tests
 # ===========================================================================
 
 
@@ -608,14 +608,14 @@ class TestPollUntilReady:
         poll_responses: list[dict[str, object] | Exception | None],
         **kwargs: int,
     ) -> dict[str, object]:
-        """Drive ``_poll_until_ready`` with a sequence of poll responses.
+        """Drive ``poll_until_ready`` with a sequence of poll responses.
 
         Entries in *poll_responses*:
         - ``dict`` → sent as the result of ``poll_order`` activity
         - ``Exception`` → thrown into the generator (simulated activity failure)
         - ``None`` → sent as ``None`` (timer acknowledgement)
         """
-        gen = _poll_until_ready(context, acquisition, **kwargs)  # type: ignore[arg-type]
+        gen = poll_until_ready(context, acquisition, **kwargs)  # type: ignore[arg-type]
         next(gen)
 
         resp_idx = 0
@@ -752,7 +752,7 @@ class TestPollUntilReady:
         context = _make_context({}, current_utc=base_time)
 
         # After the first pending poll + timer, advance time past deadline.
-        # _poll_until_ready computes deadline = current + timeout.
+        # poll_until_ready computes deadline = current + timeout.
         # We yield pending, then timer, then on the next loop iteration
         # current_utc_datetime > deadline → timeout.
         def _run_poll_with_time_advance(
@@ -760,7 +760,7 @@ class TestPollUntilReady:
             acq: dict[str, object],
             **kw: int,
         ) -> dict[str, object]:
-            gen = _poll_until_ready(ctx, acq, **kw)  # type: ignore[arg-type]
+            gen = poll_until_ready(ctx, acq, **kw)  # type: ignore[arg-type]
             next(gen)  # first poll_order yield
 
             # Send pending result → timer yield
