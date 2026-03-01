@@ -31,7 +31,7 @@
 | # | Title | Can start? | Status |
 | - | ----- | ---------- | ------ |
 | #102 | Consolidate `_int_cfg` / `_int_val` config helpers | Yes | ✅ DONE |
-| #104 | Refactor `phases.py` — extract polling and error helpers | Yes | |
+| #104 | Refactor `phases.py` — extract polling and error helpers | Yes | ✅ DONE |
 | #105 | Add KML input validation (max file size, content checks) | Yes | |
 | #107 | Add health check endpoint (`/health`, `/readiness`) | Yes | |
 | #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes | |
