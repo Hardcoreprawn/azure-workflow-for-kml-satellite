@@ -39,7 +39,7 @@
 | #106 | Delete stale branches after merge | Yes | ✅ DONE |
 | #13 | E2E pipeline integration test | Yes | |
 | #15 | Error handling and retry logic verified | Yes | ✅ DONE |
-| #16 | Logging and alerting configured and validated | Yes | |
+| #16 | Logging and alerting configured and validated | Yes | ✅ DONE |
 | #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | |
 | #18 | Documentation — architecture, runbook, API reference | Yes | |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | |
