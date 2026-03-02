@@ -257,6 +257,191 @@ func start
 docker build -t kml-satellite:dev .
 ```
 
+## Troubleshooting
+
+### Common Container Build Issues
+
+#### APT repository conflict error
+
+**Symptom:**
+
+```text
+E: Conflicting values set for option Signed-By regarding source  
+https://packages.microsoft.com/debian/12/prod/ bookworm:
+/usr/share/keyrings/microsoft-archive-keyring.gpg !=
+/usr/share/keyrings/microsoft-prod.gpg
+```
+
+**Cause:** The Azure Functions Python base image (`mcr.microsoft.com/azure-functions/python:4-python3.12`) already has Microsoft's APT repository configured with a signing key at `/usr/share/keyrings/microsoft-prod.gpg`. Attempting to add the same repository with a different keyring path creates a duplicate entry that APT rejects.
+
+**Solution:** Use the existing Microsoft repository without re-adding it:
+
+```dockerfile
+# ✅ Correct: Use existing repo in base image
+RUN apt-get update && \
+    apt-get install -y azure-functions-core-tools-4
+
+# ❌ Wrong: Adding duplicate repo with different signing key
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | \
+    gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] ..." \
+    > /etc/apt/sources.list.d/microsoft-prod.list && \
+    apt-get update && apt-get install azure-functions-core-tools-4
+```
+
+**Test coverage:** [`tests/unit/test_dockerfile.py::TestCoreFunctionsTools::test_uses_existing_microsoft_repo`](tests/unit/test_dockerfile.py)
+
+### Common Deployment Issues
+
+#### Functions not discovered (0 functions found)
+
+**Symptom:** Deployment succeeds, but Functions host logs show:
+
+```text
+Reading functions metadata (Custom)
+0 functions found (Custom)
+Generating 0 job function(s)
+Host started (no HTTP routes)
+```
+
+HTTP requests to function endpoints return 404.
+
+**Cause:** Python v2 programming model requires a `.azurefunctions/` directory containing function metadata. This directory must be generated at **container build time** by running `func build --python`, not at runtime.
+
+**Solution:**
+
+1. Install Azure Functions Core Tools in the builder stage
+2. Copy application code (function_app.py, host.json, kml_satellite/) to builder
+3. Run `func build --python` to generate metadata
+4. Copy `.azurefunctions/` directory to runtime image
+
+```dockerfile
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
+
+# Install Core Tools
+RUN apt-get update && \
+    apt-get install -y azure-functions-core-tools-4
+
+# Copy application code
+WORKDIR /build
+COPY host.json function_app.py ./
+COPY kml_satellite/ ./kml_satellite/
+
+# Generate Python v2 function metadata
+RUN func build --python && \
+    ls -la /build/.azurefunctions/
+
+# Runtime stage
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12
+
+# Copy metadata from builder
+COPY --from=builder /build/.azurefunctions/ \
+     /home/site/wwwroot/.azurefunctions/
+```
+
+**Verification:**
+
+```bash
+# Build locally and verify metadata exists
+docker build -t test:latest .
+docker run --rm test:latest ls -la /home/site/wwwroot/.azurefunctions/
+# Should show: function.json, host.json, etc.
+```
+
+**Test coverage:** [`tests/unit/test_dockerfile.py::TestFunctionMetadataGeneration`](tests/unit/test_dockerfile.py)
+
+#### Readiness check failures on Container Apps
+
+**Symptom:** Deployment workflow times out or fails with "Functions not discoverable after 30 attempts"
+
+**Cause:** Management plane APIs (`az functionapp function list`) don't work reliably for Container Apps. The Functions host may be running but not yet loaded all functions, or the API may return stale/empty results.
+
+**Solution:** Use data plane HTTP checks instead:
+
+```bash
+# ❌ Wrong: Management plane API (unreliable for Container Apps)
+az functionapp function list \
+  --name func-app-name \
+  --resource-group rg-name
+
+# ✅ Correct: Data plane HTTP endpoint
+fqdn=$(az functionapp show \
+  --name func-app-name \
+  --resource-group rg-name \
+  --query defaultHostName -o tsv)
+
+http_response=$(curl -sS -o /dev/null -w "%{http_code}" \
+  "https://${fqdn}/api/health")
+
+# Interpret response codes:
+# 200 = Functions loaded and ready
+# 404 = Host running but functions still loading
+# 503 = Host not ready yet
+```
+
+**Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_readiness_uses_function_list`](tests/unit/test_deploy_workflow.py)
+
+#### Event Grid validation failures
+
+**Symptom:**
+
+```text
+Webhook validation handshake failed for 'https://func-app.azurewebsites.net/...'
+Destination endpoint not found or did not respond within expected timeout.
+```
+
+**Cause:** Event Grid subscription creation attempts to validate the endpoint before functions are loaded and ready to respond to validation requests.
+
+**Solution:** Use two-pass deployment with Function App readiness polling:
+
+1. **First pass:** Deploy infrastructure + Function App with `enableEventGridSubscription=false`
+2. **Poll readiness:** Wait for `/api/health` to return 200 (functions loaded)
+3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff)
+
+This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+
+**Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_event_grid_uses_two_pass_toggle`](tests/unit/test_deploy_workflow.py)
+
+### Container Apps Platform Differences
+
+These behaviors differ from Azure Functions Consumption Plan:
+
+| Aspect | Consumption Plan | Container Apps |
+| --- | --- | --- |
+| Function discovery API | `az functionapp function list` works | Unreliable; use HTTP `/api/health` |
+| Python v2 metadata | Runtime generation supported | Must generate at build time (`func build`) |
+| TLS termination | Port 443 internal | Port 80 internal, Azure ingress handles TLS |
+| Cold start | <1s (pre-warmed) | 5-15s (container startup) |
+| Scale-to-zero | Yes (Consumption) | Yes (Container Apps) |
+| Custom system deps | No (restricted runtime) | Yes (custom Docker) |
+
+**Documentation:** See "Container Apps vs Consumption Plan differences" in [Operations Runbook](#operations-runbook) section above.
+
+### Debugging Container Locally
+
+```bash
+# Pull deployed image
+docker pull ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:<commit-sha>
+
+# Run locally with storage emulator
+docker run --rm -d -p 8080:80 \
+  -e "AzureWebJobsStorage=UseDevelopmentStorage=true" \
+  ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:<commit-sha>
+
+# Check logs (wait 30s for host to start)
+docker logs <container-id>
+
+# Look for "Host started" and "Found the following functions:"  
+# If you see "0 functions found", metadata is missing
+
+# Inspect filesystem
+docker exec <container-id> ls -la /home/site/wwwroot/.azurefunctions/
+# Should contain: function.json, host.json
+
+# Test health endpoint
+curl http://localhost:8080/api/health
+```
+
 ## Contributing
 
 1. Create a feature branch from `main` (`git checkout -b feature/issue-number-description`)
