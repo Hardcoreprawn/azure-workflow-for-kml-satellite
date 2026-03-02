@@ -403,6 +403,29 @@ class TestMonitoringModule:
         expected = {"appInsightsId", "instrumentationKey", "connectionString"}
         assert expected.issubset(outputs)
 
+    def test_metric_alerts_exist(self, monitoring_arm_template: dict[str, Any]) -> None:
+        """Monitoring module must define baseline metric alerts."""
+        alerts = _get_resources_by_type(monitoring_arm_template, "Microsoft.Insights/metricAlerts")
+        assert len(alerts) >= 2
+
+    def test_metric_alerts_enabled(self, monitoring_arm_template: dict[str, Any]) -> None:
+        """All monitoring metric alerts must be enabled."""
+        alerts = _get_resources_by_type(monitoring_arm_template, "Microsoft.Insights/metricAlerts")
+        assert alerts, "Expected at least one metric alert"
+        assert all(a.get("properties", {}).get("enabled") is True for a in alerts)
+
+    def test_metric_alerts_scope_app_insights(
+        self, monitoring_arm_template: dict[str, Any]
+    ) -> None:
+        """Metric alerts must scope to the Application Insights component."""
+        alerts = _get_resources_by_type(monitoring_arm_template, "Microsoft.Insights/metricAlerts")
+        assert alerts, "Expected at least one metric alert"
+        for alert in alerts:
+            scopes = alert.get("properties", {}).get("scopes", [])
+            assert scopes, "Metric alert must include at least one scope"
+            scope_text = " ".join(str(s) for s in scopes)
+            assert "Microsoft.Insights/components" in scope_text
+
 
 # ---------------------------------------------------------------------------
 # Test: Key Vault module

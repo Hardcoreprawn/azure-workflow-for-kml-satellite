@@ -43,6 +43,70 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
+resource failedRequestsAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-${baseName}-failed-requests'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Alert when failed request volume exceeds threshold.'
+    severity: 2
+    enabled: true
+    scopes: [
+      appInsights.id
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'failed-requests-threshold'
+          metricNamespace: 'microsoft.insights/components'
+          metricName: 'requests/failed'
+          operator: 'GreaterThan'
+          threshold: 5
+          timeAggregation: 'Total'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: []
+  }
+}
+
+resource highLatencyAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-${baseName}-high-latency'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'Alert when average request latency is elevated.'
+    severity: 3
+    enabled: true
+    scopes: [
+      appInsights.id
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          name: 'high-latency-threshold'
+          metricNamespace: 'microsoft.insights/components'
+          metricName: 'requests/duration'
+          operator: 'GreaterThan'
+          threshold: 5000
+          timeAggregation: 'Average'
+          criterionType: 'StaticThresholdCriterion'
+        }
+      ]
+    }
+    autoMitigate: true
+    actions: []
+  }
+}
+
 @description('Resource ID of the Application Insights instance.')
 output appInsightsId string = appInsights.id
 
@@ -57,3 +121,9 @@ output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id
 
 @description('Name of the Log Analytics workspace.')
 output logAnalyticsWorkspaceName string = logAnalyticsWorkspace.name
+
+@description('Resource ID of the failed requests metric alert.')
+output failedRequestsAlertId string = failedRequestsAlert.id
+
+@description('Resource ID of the high latency metric alert.')
+output highLatencyAlertId string = highLatencyAlert.id
