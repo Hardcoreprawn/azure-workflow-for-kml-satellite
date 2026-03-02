@@ -41,7 +41,7 @@
 | #15 | Error handling and retry logic verified | Yes | ✅ DONE |
 | #16 | Logging and alerting configured and validated | Yes | ✅ DONE |
 | #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | ✅ DONE |
-| #18 | Documentation — architecture, runbook, API reference | Yes | |
+| #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | |
 | #19 | UAT sign-off | Last | |
 
