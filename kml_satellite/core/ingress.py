@@ -154,6 +154,56 @@ def build_orchestrator_input(
     return payload
 
 
+def build_and_validate_orchestrator_input(
+    event_data: dict[str, Any],
+    *,
+    event_time: str = "",
+    event_id: str = "",
+) -> OrchestratorInput:
+    """Build orchestrator input from Event Grid data and validate the blob (Issue #105).
+
+    Combines ``build_orchestrator_input`` with zero-assumption blob validation:
+    - File size within limits
+    - File extension is .kml
+    - Container name ends with -input
+    - Empty blob check
+    - Negative content_length check
+
+    This is the recommended entrypoint for the blob trigger function.
+
+    Args:
+        event_data: The ``event.get_json()`` body from an Event Grid event.
+        event_time: ISO-8601 timestamp from ``event.event_time``.
+        event_id: Event Grid event ID used as correlation identifier.
+
+    Returns:
+        Validated ``OrchestratorInput`` dict (passed all validation checks).
+
+    Raises:
+        ContractError: If blob fails any validation check or input is malformed.
+    """
+    from kml_satellite.models.blob_event import BlobEvent
+
+    # First, construct the BlobEvent for validation
+    blob_event = BlobEvent.from_event_grid_event(
+        event_data,
+        event_time=event_time or None,
+        event_id=event_id,
+    )
+
+    # Run ingress-boundary validation
+    validate_blob_input(blob_event)
+
+    # Then build the orchestrator input (which also performs its own validation)
+    payload = build_orchestrator_input(
+        event_data,
+        event_time=event_time,
+        event_id=event_id,
+    )
+
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # Blob service client factory
 # ---------------------------------------------------------------------------
@@ -176,3 +226,106 @@ def get_blob_service_client() -> BlobServiceClient:
         raise ContractError(msg, stage="ingress", code="MISSING_CONNECTION_STRING")
 
     return BlobServiceClient.from_connection_string(connection_string)
+
+
+# ---------------------------------------------------------------------------
+# Input validation (Issue #105 — zero-assumption handling per PID 7.4.1)
+# ---------------------------------------------------------------------------
+
+#: Maximum allowed KML file size in bytes (10 MiB).
+#:
+#: Rationale:
+#: - PID Assumption A-6: AOIs do not exceed 10,000 hectares (100 km²)
+#: - Real-world complex boundaries with extreme detail: ~100-500 KB
+#: - 10 MiB provides safe margin while respecting Durable Functions history
+#:   constraints (Azure Storage 1 MB entity max, orchestration history overflow)
+#: - Risk mitigation for Issue #62 (payload offload to Blob Storage)
+#: - Enforced at ingress by validate_blob_input() per Issue #105 (zero-assumption input handling)
+MAX_KML_FILE_SIZE = 10 * 1024 * 1024  # Maximum allowed KML file size (10 MiB)
+
+
+def validate_blob_input(blob_event: object) -> None:
+    """Validate that a blob meets ingress requirements (Issue #105).
+
+    Enforces zero-assumption input handling per PID 7.4.1:
+    - File size is within limits (0 < size ≤ MAX_KML_FILE_SIZE)
+    - Blob name has .kml extension
+    - Container name ends with -input
+    - Blob name and container name are non-empty
+
+    Args:
+        blob_event: Object to validate as a BlobEvent.
+
+    Raises:
+        ContractError: If the blob does not pass validation.
+    """
+    from kml_satellite.models.blob_event import BlobEvent
+
+    if not isinstance(blob_event, BlobEvent):
+        msg = f"Expected BlobEvent, got {type(blob_event).__name__}"
+        raise ContractError(msg, stage="ingress", code="INVALID_BLOB_TYPE")
+
+    # Validate blob name is non-empty and has .kml extension
+    blob_name = str(blob_event.blob_name).strip()
+    if not blob_name:
+        msg = "Blob name is empty"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="EMPTY_BLOB_NAME",
+        )
+
+    if not blob_name.lower().endswith(".kml"):
+        msg = f"Blob must have .kml extension: {blob_name}"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="INVALID_FILE_TYPE",
+        )
+
+    # Validate container name is non-empty and ends with -input
+    container_name = str(blob_event.container_name).strip()
+    if not container_name:
+        msg = "Container name is empty"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="EMPTY_CONTAINER_NAME",
+        )
+
+    if not container_name.endswith("-input"):
+        msg = f"Blob must be in a container ending with -input, got: {container_name}"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="INVALID_CONTAINER",
+        )
+
+    # Validate content_length is valid
+    content_length = blob_event.content_length
+    if content_length < 0:
+        msg = f"Content length cannot be negative: {content_length}"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="INVALID_CONTENT_LENGTH",
+        )
+
+    if content_length == 0:
+        msg = f"Blob is empty: {blob_name}"
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="EMPTY_BLOB",
+        )
+
+    if content_length > MAX_KML_FILE_SIZE:
+        msg = (
+            f"Blob exceeds maximum size ({blob_name}): "
+            f"{content_length} bytes > {MAX_KML_FILE_SIZE} bytes"
+        )
+        raise ContractError(
+            msg,
+            stage="ingress",
+            code="FILE_TOO_LARGE",
+        )

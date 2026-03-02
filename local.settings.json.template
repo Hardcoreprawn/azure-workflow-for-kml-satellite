@@ -15,9 +15,6 @@
     "AOI_BUFFER_M": "100",
     "AOI_MAX_AREA_HA": "10000",
 
-    "SKYWATCH_API_KEY": "",
-    "SKYWATCH_API_URL": "https://api.skywatch.co/earthcache/v1",
-
     "KEYVAULT_URL": "",
 
     "APPINSIGHTS_INSTRUMENTATIONKEY": ""

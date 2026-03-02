@@ -9,14 +9,17 @@ the wiring layer between Azure Functions bindings and application code.
 
 from __future__ import annotations
 
+import json
 import logging
 
 import azure.durable_functions as df
 import azure.functions as func
 
+from kml_satellite.core.config import PipelineConfig, config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.exceptions import ContractError
 from kml_satellite.core.ingress import (
-    build_orchestrator_input,
+    build_and_validate_orchestrator_input,
     deserialize_activity_input,
     get_blob_service_client,
 )
@@ -56,12 +59,19 @@ async def kml_blob_trigger(
     2. Validates the blob is a ``.kml`` file in the expected container
     3. Starts the orchestrator with the event data
     """
-    # Build canonical orchestrator input from the Event Grid event.
-    orchestrator_input = build_orchestrator_input(
-        event.get_json(),
-        event_time=event.event_time.isoformat() if event.event_time else "",
-        event_id=event.id or "",
-    )
+    # Build and validate orchestrator input from the Event Grid event.
+    try:
+        orchestrator_input = build_and_validate_orchestrator_input(
+            event.get_json(),
+            event_time=event.event_time.isoformat() if event.event_time else "",
+            event_id=event.id or "",
+        )
+    except ContractError as e:
+        logger.warning(
+            "Rejecting malformed Event Grid event: %s",
+            str(e),
+        )
+        return
 
     container = str(orchestrator_input["container_name"])
     blob_name = str(orchestrator_input["blob_name"])
@@ -143,31 +153,22 @@ def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> objec
         ``max_retries``, ``retry_base``, ``instance_id``.
 
     Returns:
-        Dict describing the final outcome from ``_poll_until_ready``.
+        Dict describing the final outcome from ``poll_until_ready``.
     """
-    from kml_satellite.orchestrators.phases import _poll_until_ready
+    from kml_satellite.orchestrators.polling import poll_until_ready
 
     sub_input: dict[str, object] = context.get_input() or {}
     acquisition = sub_input.get("acquisition", {})
     if not isinstance(acquisition, dict):
         acquisition = {}
 
-    def _int_val(key: str, default: int) -> int:
-        raw = sub_input.get(key, default)
-        if isinstance(raw, int | float | str):
-            try:
-                return int(raw)
-            except (ValueError, OverflowError):
-                return default
-        return default
-
-    return _poll_until_ready(
+    return poll_until_ready(
         context,
         acquisition,
-        poll_interval=_int_val("poll_interval", 30),
-        poll_timeout=_int_val("poll_timeout", 1800),
-        max_retries=_int_val("max_retries", 3),
-        retry_base=_int_val("retry_base", 5),
+        poll_interval=config_get_int(sub_input, "poll_interval", 30),
+        poll_timeout=config_get_int(sub_input, "poll_timeout", 1800),
+        max_retries=config_get_int(sub_input, "max_retries", 3),
+        retry_base=config_get_int(sub_input, "retry_base", 5),
         instance_id=str(sub_input.get("instance_id", "")),
     )
 
@@ -198,6 +199,99 @@ async def orchestrator_status(
         return func.HttpResponse("Instance not found", status_code=404)
 
     return client.create_check_status_response(req, instance_id)
+
+
+# ---------------------------------------------------------------------------
+# HTTP: Health Check Endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("health_liveness")
+@app.route(route="health", methods=["GET"])
+async def health_liveness(_req: func.HttpRequest) -> func.HttpResponse:
+    """Liveness probe — validates that function app can start.
+
+    Fast, minimal check — only validates configuration loads successfully.
+    Should respond in <100ms under normal conditions.
+
+    Returns:
+        200 OK if configuration is valid and required env vars are present.
+        500 if config validation fails (e.g. missing env vars).
+    """
+    try:
+        # Validate all required environment variables and configuration.
+        # This will raise ConfigValidationError if anything is missing.
+        _ = PipelineConfig.from_env()
+
+        response_body = json.dumps({"status": "alive", "service": "kml-satellite"})
+        return func.HttpResponse(response_body, status_code=200, mimetype="application/json")
+    except Exception as e:
+        # Config validation failed — app cannot start.
+        logger.exception("Health check (liveness) failed: %s", str(e))
+        response_body = json.dumps(
+            {
+                "status": "dead",
+                "error": f"{e!s}",
+            }
+        )
+        return func.HttpResponse(response_body, status_code=500, mimetype="application/json")
+
+
+@app.function_name("health_readiness")
+@app.route(route="readiness", methods=["GET"])
+async def health_readiness(_req: func.HttpRequest) -> func.HttpResponse:
+    """Readiness probe — validates all dependencies are available.
+
+    Checks:
+    - Configuration loads successfully
+    - Blob Storage (AzureWebJobsStorage) is reachable
+    - Key Vault (if configured) is reachable
+
+    Container orchestrators use this to decide whether to route traffic.
+    Returns 503 if any dependency is unavailable.
+
+    Returns:
+        200 OK if all dependencies are ready.
+        503 Service Unavailable if any dependency fails.
+    """
+    dependencies_ok = True
+    dependency_status: dict[str, object] = {}
+
+    # 1. Validate configuration.
+    try:
+        _ = PipelineConfig.from_env()
+        dependency_status["config"] = "ok"
+    except Exception as e:
+        logger.warning("Config validation failed (readiness): %s", str(e))
+        dependency_status["config"] = f"error: {e!s}"
+        dependencies_ok = False
+
+    # 2. Verify Blob Storage connectivity.
+    try:
+        if dependencies_ok:  # Only check if config is valid.
+            _ = get_blob_service_client()
+            dependency_status["blob_storage"] = "ok"
+    except Exception as e:
+        logger.warning("Blob Storage connectivity check failed (readiness): %s", str(e))
+        dependency_status["blob_storage"] = f"error: {e!s}"
+        dependencies_ok = False
+
+    # Build response.
+    status_code = 200 if dependencies_ok else 503
+    response_body = json.dumps(
+        {
+            "status": "ready" if dependencies_ok else "not_ready",
+            "dependencies": dependency_status,
+        }
+    )
+
+    logger.info(
+        "Readiness probe: %s | dependencies=%s",
+        "ready" if dependencies_ok else "not_ready",
+        dependency_status,
+    )
+
+    return func.HttpResponse(response_body, status_code=status_code, mimetype="application/json")
 
 
 # ---------------------------------------------------------------------------

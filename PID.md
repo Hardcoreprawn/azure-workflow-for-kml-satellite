@@ -210,7 +210,7 @@ The system is designed to serve diverse land-management use cases: precision agr
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | FR-3.1 | Implement a provider-agnostic abstraction layer (strategy/adapter pattern) for imagery retrieval | Must |
-| FR-3.2 | Implement at least two provider adapters: Microsoft Planetary Computer (STAC, dev/test) and SkyWatch EarthCache (production) | Must |
+| FR-3.2 | Implement provider-agnostic abstraction layer with Microsoft Planetary Computer adapter (STAC, dev/test). Commercial imagery adapters (e.g., SkyWatch EarthCache) deferred to Phase 5+ pending API access and budget approval. | Must |
 | FR-3.3 | Target spatial resolution ≤ 50 cm/pixel; make resolution target system-configurable | Must |
 | FR-3.4 | Support archive imagery search and download | Must |
 | FR-3.5 | Support tile mosaic download mode | Should |
@@ -495,13 +495,13 @@ The workflow uses the **Durable Functions Fan-Out / Fan-In** pattern:
               ┌──────────────────┼───────────────────┐
               │                                      │
     ┌─────────▼──────────────┐          ┌────────────▼──────────┐
-    │ PlanetaryComputerAdapter│          │ SkyWatchAdapter       │
-    │ (STAC API — free)      │          │ (EarthCache — paid)   │
-    │ Dev/Test environment   │          │ Production            │
+    │ PlanetaryComputerAdapter│          │ Future: Commercial    │
+    │ (STAC API — free)      │          │ Imagery Adapters      │
+    │ Dev/Test/Production    │          │ (Phase 5+)            │
     └────────────────────────┘          └───────────────────────┘
 ```
 
-The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching. Development and testing use the **Microsoft Planetary Computer** adapter (free STAC API, Sentinel-2 at 10 m / NAIP at ~60 cm), while production uses the **SkyWatch EarthCache** adapter (aggregated commercial imagery at ≤ 50 cm).
+The active provider is selected via configuration (environment variable / App Configuration), enabling zero-code-change provider switching. Phase 3 uses the **Microsoft Planetary Computer** adapter (free STAC API, Sentinel-2 at 10 m / NAIP at ~60 cm) for all environments. Commercial imagery adapters (e.g., SkyWatch EarthCache with ≤ 50 cm resolution) are deferred to Phase 5+ pending API account provisioning and budget approval (PID D-2, D-5).
 
 ### 7.4 Engineering Philosophy & Design Principles
 
@@ -664,23 +664,17 @@ The project implements two provider adapters behind the `ImageryProvider` abstra
 
 | Adapter | Provider | Resolution | Cost | Use Case |
 | --- | --- | --- | --- | --- |
-| `PlanetaryComputerAdapter` | Microsoft Planetary Computer | 10 m (Sentinel-2), ~60 cm (NAIP, US-only) | **Free** (public STAC API, no auth required) | Development, testing, CI/CD pipelines |
-| `SkyWatchAdapter` | SkyWatch EarthCache | ≤ 50 cm (aggregated: Maxar, Planet, Airbus) | Per-km², per-order | Production |
+| `PlanetaryComputerAdapter` | Microsoft Planetary Computer | 10 m (Sentinel-2), ~60 cm (NAIP, US-only) | **Free** (public STAC API, no auth required) | Development, testing, production (Phases 1–4) |
 
-#### Why Planetary Computer for Dev/Test?
+**Note:** Commercial imagery adapters (e.g., SkyWatch EarthCache, Maxar, Planet) are deferred to Phase 5+ pending API access and budget approval. The adapter pattern supports zero-code-change provider switching when commercial imagery is required.
 
-1. **Zero imagery cost** during Phases 1–3 of development.
+#### Why Planetary Computer for Phase 3?
+
+1. **Zero imagery cost** during Phases 1–4 of development and hardening.
 2. **Standard STAC protocol** — well-documented, stable, industry-standard.
 3. **Hosted on Azure** — data egress from Planetary Computer to Azure Blob Storage is fast and free (same network).
-4. **Real satellite data** (Sentinel-2, Landsat, NAIP) — lower resolution than production, but the pipeline code is identical: a GeoTIFF is a GeoTIFF.
-5. **Proves the adapter pattern** by having two real implementations from day one.
-
-#### Why SkyWatch for Production?
-
-1. **Aggregator** — one API covers multiple underlying providers (Maxar, Planet, Airbus), reducing integration effort.
-2. **Simple REST workflow** — search → order → poll → download.
-3. **Meets the ≤ 50 cm resolution target** via aggregated commercial imagery.
-4. **Not a permanent lock-in** — the adapter pattern means adding a direct Maxar or Planet adapter is a config change + new adapter class.
+4. **Real satellite data** (Sentinel-2, Landsat, NAIP) — lower resolution than commercial imagery, but the pipeline code is identical: a GeoTIFF is a GeoTIFF.
+5. **Extensible architecture** — the adapter pattern means adding commercial providers is a config change + new adapter class (Phase 5+).
 
 ### 7.7 Multi-Tenant Data Architecture
 
@@ -824,7 +818,7 @@ AOI (polygon)
 | Feature | **Free** | **Pro** | **Enterprise** |
 | --- | --- | --- | --- |
 | AOIs | 3 | 50 | Unlimited |
-| Imagery provider | Sentinel-2 (free, 10 m) | Sentinel-2 + commercial (≤ 50 cm) | All providers + priority |
+| Imagery provider | Sentinel-2 (free, 10 m) | Sentinel-2 (Phase 3); commercial (Phase 5+) | All providers + priority (Phase 5+) |
 | Acquisitions / month | 5 | 100 | Unlimited |
 | NDVI / canopy cover | ✅ | ✅ | ✅ |
 | Tree detection | — | ✅ | ✅ |
@@ -864,7 +858,7 @@ AOI (polygon)
 | **Geometry** | `shapely`, `pyproj` | Geometry operations (buffer, centroid, area, validation, CRS transforms) |
 | **Raster** | `rasterio`, `GDAL`, `numpy` | GeoTIFF read/write, clipping, reprojection, NDVI computation |
 | **STAC Client** | `pystac-client` | Programmatic search of STAC catalogues (Microsoft Planetary Computer) |
-| **Imagery Provider** | Microsoft Planetary Computer (dev/test/free tier), SkyWatch EarthCache (production/paid tiers) | Free STAC API for development and free-tier tenants; aggregated commercial imagery for paid tiers |
+| **Imagery Provider** | Microsoft Planetary Computer (all tiers, Phase 3). Commercial adapters (Phase 5+). | Free STAC API for all environments; zero imagery cost in Phases 1–4 |
 | **Linting & Formatting** | `ruff` | Replaces flake8 + black + isort; 100x faster; single tool |
 | **Type Checking** | `pyright` (via Pylance) | Static type analysis; catches bugs before runtime |
 | **Testing** | `pytest` | Standard Python test framework; parametrised tests, fixtures, plugins |
@@ -1066,6 +1060,7 @@ Storage Account: sttreesight
 
 | Rule | Condition | Action |
 | --- | --- | --- |
+| Delete temporary payloads | Blob age > 7 days | Delete |
 | Archive old raw imagery | Blob age > 180 days | Move to Cool tier |
 | Archive old raw imagery | Blob age > 365 days | Move to Archive tier |
 | Delete processing logs | Blob age > 730 days | Delete |
@@ -1154,10 +1149,10 @@ All log entries carry a **correlation ID** (the Durable Functions instance ID) f
 | # | Dependency | Type | Owner |
 | --- | --- | --- | --- |
 | D-1 | Azure subscription with adequate quotas | Infrastructure | Project Sponsor / IT |
-| D-2 | SkyWatch EarthCache API account and credentials (production) | External Service | Project Manager |
+| D-2 | (Deferred Phase 5+) Commercial imagery API account and credentials | External Service | Project Manager |
 | D-3 | Sample KML files for testing (various geometries) — **✅ 17 test files created** | Test Data | Domain Expert |
 | D-4 | Network connectivity from Azure to imagery provider endpoints | Infrastructure | IT / Network Team |
-| D-5 | Approval for SkyWatch imagery usage costs (production only; dev/test uses free Planetary Computer) | Commercial | Project Sponsor |
+| D-5 | (Deferred Phase 5+) Approval for commercial imagery usage costs | Commercial | Project Sponsor |
 | D-6 | GitHub repository for CI/CD — **✅ created** (`Hardcoreprawn/azure-workflow-for-kml-satellite`) | Tooling | DevOps Team |
 
 ---
@@ -1208,7 +1203,7 @@ The following items are **explicitly excluded** from this version and may be rev
 | Milestone | Deliverable | Status |
 | --- | --- | --- |
 | M-2.1 | Provider adapter interface (strategy pattern) | ✅ |
-| M-2.2 | Planetary Computer + SkyWatch adapters | ✅ |
+| M-2.2 | Planetary Computer adapter (commercial adapters deferred to Phase 5+) | ✅ |
 | M-2.3 | Async polling with Durable Functions timers | ✅ |
 | M-2.4 | GeoTIFF download and storage | ✅ |
 | M-2.5 | Clipping and reprojection pipeline | ✅ |
@@ -1308,8 +1303,8 @@ The following items are **explicitly excluded** from this version and may be rev
 | Azure Key Vault | < $1 | Low transaction volume |
 | Application Insights | $5–15 | Dependent on log volume |
 | **Subtotal (Azure infra)** | **~$80–390/month** | Scales with tenant count; excludes imagery API costs |
-| Imagery — Free tier (Planetary Computer) | **$0** | Sentinel-2 (10 m) and NAIP (~60 cm, US-only) |
-| Imagery — Paid tiers (SkyWatch EarthCache) | **Variable** | Pass-through cost; per-km² pricing from provider |
+| Imagery — All tiers (Phase 3) | **$0** | Planetary Computer (Sentinel-2 10 m, NAIP ~60 cm US-only) |
+| Imagery — Commercial (Phase 5+) | **Variable** | Pass-through cost; per-km² pricing from provider |
 | Stripe fees | 2.9 % + $0.30/txn | Standard SaaS billing |
 
 > **Note:** Infrastructure costs scale roughly linearly with tenant count. At ~100 active tenants with moderate usage, expect $200–400/month Azure infra. Revenue from Pro/Enterprise subscriptions should exceed this well before that point.

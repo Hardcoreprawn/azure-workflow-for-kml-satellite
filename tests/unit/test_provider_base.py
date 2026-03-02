@@ -22,7 +22,6 @@ from kml_satellite.providers.base import (
     ProviderSearchError,
 )
 from kml_satellite.providers.planetary_computer import PlanetaryComputerAdapter
-from kml_satellite.providers.skywatch import SkyWatchAdapter, SkyWatchNotImplementedError
 
 # ---------------------------------------------------------------------------
 # ABC enforcement
@@ -151,17 +150,6 @@ class TestPlanetaryComputerIsProvider(unittest.TestCase):
         assert callable(self.adapter.download)
 
 
-class TestSkyWatchBlockedUntilImplemented(unittest.TestCase):
-    """SkyWatchAdapter blocks instantiation with SkyWatchNotImplementedError (Issue #44)."""
-
-    def test_instantiation_raises(self) -> None:
-        """Constructing SkyWatchAdapter raises SkyWatchNotImplementedError."""
-        with self.assertRaises(SkyWatchNotImplementedError) as ctx:
-            SkyWatchAdapter(ProviderConfig(name="skywatch"))
-        assert ctx.exception.retryable is False
-        assert "not yet implemented" in str(ctx.exception).lower()
-
-    def test_error_is_provider_error(self) -> None:
-        """SkyWatchNotImplementedError is a ProviderError subclass."""
-        with self.assertRaises(ProviderError):
-            SkyWatchAdapter(ProviderConfig(name="skywatch"))
+# ---------------------------------------------------------------------------
+# Exception hierarchy
+# ---------------------------------------------------------------------------

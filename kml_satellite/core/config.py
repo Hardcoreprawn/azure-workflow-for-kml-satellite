@@ -139,3 +139,57 @@ def _validate(config: PipelineConfig) -> None:
             config.kml_output_container,
             "must not be empty",
         )
+
+
+def config_get_int(data: dict[str, object], key: str, default: int) -> int:
+    """Extract an integer from a dict with defensive type coercion (Issue #102).
+
+    Consolidates the previously duplicated ``_int_cfg`` and ``_int_val`` helpers
+    used in multiple orchestrator locations. Handles graceful fallback for:
+    - Missing keys
+    - Non-numeric types
+    - Parsing errors (non-numeric strings, overflow)
+
+    Args:
+        data: Source dictionary (activity input, event dict, etc.).
+        key: Configuration key to extract.
+        default: Value to return if key is missing, type unsupported, or parsing fails.
+
+    Returns:
+        Extracted integer, or default if extraction fails.
+
+    Examples:
+        >>> config_get_int({"batch_size": "10"}, "batch_size", 1)
+        10
+        >>> config_get_int({"timeout": 30.5}, "timeout", 1)
+        30
+        >>> config_get_int({}, "missing_key", 42)
+        42
+        >>> config_get_int({"value": "not_numeric"}, "value", 42)
+        42
+    """
+    raw = data.get(key, default)
+
+    if not isinstance(raw, int | float | str):
+        # Unsupported type: bool, list, dict, etc. → return default
+        return default
+
+    if isinstance(raw, int):
+        # Already an integer
+        return raw
+
+    if isinstance(raw, float):
+        # Coerce float to int (truncation)
+        return int(raw)
+
+    # raw is str: attempt to parse (handles both "10" and "15.5")
+    try:
+        # First try to parse as int directly
+        return int(raw)
+    except ValueError:
+        # If that fails, try parsing as float first, then convert to int
+        try:
+            return int(float(raw))
+        except (ValueError, OverflowError):
+            # Non-numeric string or overflow → return default
+            return default

@@ -4,7 +4,7 @@ Automated Azure pipeline that ingests KML files containing agricultural field
 boundaries, extracts polygon geometry, acquires high-resolution satellite
 imagery, and stores outputs in Azure Blob Storage.
 
-> **Status:** Phase 1 — Foundation & KML Ingestion
+> **Status:** Phase 3 — v1 Hardening (see [ROADMAP.md](ROADMAP.md) for delivery plan)
 
 ## Architecture
 
@@ -26,9 +26,86 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
 
 **Compute:** Azure Functions v4 Flex Consumption (custom Docker with GDAL)
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
-**Providers:** Planetary Computer (free, dev/test) · SkyWatch EarthCache (paid, production)
+**Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
 
-See [PID.md](PID.md) for the full Project Initiation Document.
+See [PID.md](PID.md) for the full Project Initiation Document and [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) for implementation-level architecture notes.
+
+## Architecture Reference
+
+- **System architecture:** [PID.md §7](PID.md)
+- **Codebase architecture review:** [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)
+- **Execution plan and phase gates:** [ROADMAP.md](ROADMAP.md)
+
+## Operations Runbook
+
+### Health and readiness checks
+
+- `GET /api/health` — liveness probe (configuration loads successfully)
+- `GET /api/readiness` — readiness probe (configuration + storage dependency checks)
+
+Local checks:
+
+```bash
+curl -sS http://localhost:7071/api/health
+curl -sS http://localhost:7071/api/readiness
+```
+
+### Orchestration status inspection
+
+- `GET /api/orchestrator/{instance_id}` — returns Durable Functions check-status response
+
+Local check:
+
+```bash
+curl -sS http://localhost:7071/api/orchestrator/<instance-id>
+```
+
+### Log and alert triage
+
+1. Check Function App logs for `instance_id`, `order_id`, `blob`, and `feature` fields.
+2. Check Application Insights traces and exceptions for failed stage names (`parse_kml`, `acquire_imagery`, `poll_order`, `download_imagery`, `post_process_imagery`, `write_metadata`).
+3. Check Azure Monitor metric alerts:
+   - `alert-<baseName>-failed-requests`
+   - `alert-<baseName>-high-latency`
+4. For persistent failures, query orchestration status endpoint and correlate with App Insights traces.
+
+### Recovery actions
+
+- **Malformed input event:** validate blob container naming and `.kml` extension; re-upload corrected input.
+- **Provider transient failure:** allow orchestrator retries/backoff to complete before manual intervention.
+- **Provider permanent failure:** review provider response in logs, fix configuration/credentials, then re-trigger with a new upload.
+- **Storage connectivity failure:** verify Function App app settings (`AzureWebJobsStorage`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, `KEY_VAULT_URI`) and managed identity RBAC.
+
+## API Reference
+
+### Public HTTP endpoints
+
+| Method | Path | Purpose | Success | Failure |
+| --- | --- | --- | --- | --- |
+| GET | `/api/health` | Liveness probe | 200 | 500 |
+| GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
+| GET | `/api/orchestrator/{instance_id}` | Durable instance status lookup | 200 | 400 / 404 |
+
+### Event-driven entrypoint
+
+- Event Grid trigger function: `kml_blob_trigger`
+- Expected event source: blob-created events for input containers ending in `-input`
+- Expected payload contract: canonical blob event fields (`blob_url`, `container_name`, `blob_name`, `content_length`, `content_type`, `event_time`, `correlation_id`)
+
+### Durable orchestrations
+
+- `kml_processing_orchestrator` — main 3-phase workflow
+- `poll_order_suborchestrator` — bounded concurrent polling loop for imagery orders
+
+### Durable activities
+
+- `parse_kml`
+- `prepare_aoi`
+- `acquire_imagery`
+- `poll_order`
+- `download_imagery`
+- `post_process_imagery`
+- `write_metadata`
 
 ## Project Structure
 

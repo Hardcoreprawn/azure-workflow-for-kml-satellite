@@ -24,11 +24,22 @@ References:
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
+from kml_satellite.orchestrators.error_helpers import (
+    download_error_dict,
+    post_process_error_dict,
+)
+from kml_satellite.orchestrators.polling import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_POLL_BATCH_SIZE,
+    DEFAULT_POLL_INTERVAL_SECONDS,
+    DEFAULT_POLL_TIMEOUT_SECONDS,
+    DEFAULT_RETRY_BASE_SECONDS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -77,23 +88,11 @@ class FulfillmentResult(TypedDict):
 
 
 # ---------------------------------------------------------------------------
-# Polling defaults (PID FR-3.9)
-# ---------------------------------------------------------------------------
 
-DEFAULT_POLL_INTERVAL_SECONDS = 30
-DEFAULT_POLL_TIMEOUT_SECONDS = 1800  # 30 minutes
-DEFAULT_MAX_RETRIES = 3
-DEFAULT_RETRY_BASE_SECONDS = 5
-
-# ---------------------------------------------------------------------------
-# Parallelism defaults (Issues #54, #55)
-# ---------------------------------------------------------------------------
-
-#: Max concurrent downloads / post-process calls per batch.
 DEFAULT_DOWNLOAD_BATCH_SIZE = 10
 DEFAULT_POST_PROCESS_BATCH_SIZE = 10
 #: Max concurrent poll sub-orchestrations.
-DEFAULT_POLL_BATCH_SIZE = 10
+#: (DEFAULT_POLL_BATCH_SIZE is now imported from polling.py)
 
 
 # ---------------------------------------------------------------------------
@@ -269,20 +268,13 @@ def run_acquisition_phase(
         )
 
     # Step 2: Concurrent polling via sub-orchestrators (Issue #55)
-    def _int_cfg(key: str, default: int) -> int:
-        raw = blob_event.get(key, default)
-        if isinstance(raw, int | float | str):
-            try:
-                return int(raw)
-            except (ValueError, OverflowError):
-                return default
-        return default
-
-    poll_interval = _int_cfg("poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
-    poll_timeout = _int_cfg("poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
-    max_retries = _int_cfg("max_retries", DEFAULT_MAX_RETRIES)
-    retry_base = _int_cfg("retry_base_seconds", DEFAULT_RETRY_BASE_SECONDS)
-    poll_batch_size = _int_cfg("poll_batch_size", DEFAULT_POLL_BATCH_SIZE)
+    poll_interval = config_get_int(
+        blob_event, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS
+    )
+    poll_timeout = config_get_int(blob_event, "poll_timeout_seconds", DEFAULT_POLL_TIMEOUT_SECONDS)
+    max_retries = config_get_int(blob_event, "max_retries", DEFAULT_MAX_RETRIES)
+    retry_base = config_get_int(blob_event, "retry_base_seconds", DEFAULT_RETRY_BASE_SECONDS)
+    poll_batch_size = config_get_int(blob_event, "poll_batch_size", DEFAULT_POLL_BATCH_SIZE)
 
     acq_list: list[dict[str, Any]] = (
         acquisition_results if isinstance(acquisition_results, list) else []
@@ -429,7 +421,7 @@ def run_fulfillment_phase(
                     len(batch),
                 )
             for outcome in batch:
-                download_results.append(_download_error_dict(outcome, str(exc)))
+                download_results.append(download_error_dict(outcome, str(exc)))
             continue
 
         if isinstance(batch_results, list):
@@ -439,7 +431,7 @@ def run_fulfillment_phase(
                     download_results.append(result)
                 else:
                     download_results.append(
-                        _download_error_dict(
+                        download_error_dict(
                             outcome,
                             f"Unexpected non-dict result: {result!r}",
                             state="unknown",
@@ -505,7 +497,7 @@ def run_fulfillment_phase(
                     len(batch),
                 )
             for dl_result in batch:
-                post_process_results.append(_post_process_error_dict(dl_result, str(exc)))
+                post_process_results.append(post_process_error_dict(dl_result, str(exc)))
             continue
 
         if isinstance(batch_results, list):
@@ -515,7 +507,7 @@ def run_fulfillment_phase(
                     post_process_results.append(pp_result)
                 else:
                     post_process_results.append(
-                        _post_process_error_dict(
+                        post_process_error_dict(
                             dl_result,
                             f"Unexpected non-dict result: {pp_result!r}",
                             state="unknown",
@@ -561,55 +553,6 @@ def run_fulfillment_phase(
         pp_reprojected=pp_reprojected,
         pp_failed=pp_failed,
     )
-
-
-def _download_error_dict(
-    outcome: dict[str, Any],
-    error: str,
-    *,
-    state: str = "failed",
-) -> dict[str, Any]:
-    """Build a contract-shaped error dict for a failed download."""
-    return {
-        "state": state,
-        "order_id": str(outcome.get("order_id", "")),
-        "scene_id": str(outcome.get("scene_id", "")),
-        "provider": str(outcome.get("provider", "")),
-        "aoi_feature_name": str(outcome.get("aoi_feature_name", "")),
-        "blob_path": "",
-        "adapter_blob_path": "",
-        "container": "",
-        "size_bytes": 0,
-        "content_type": "",
-        "download_duration_seconds": 0.0,
-        "retry_count": 0,
-        "error": error,
-    }
-
-
-def _post_process_error_dict(
-    dl_result: dict[str, Any],
-    error: str,
-    *,
-    state: str = "failed",
-) -> dict[str, Any]:
-    """Build a contract-shaped error dict for a failed post-process."""
-    return {
-        "state": state,
-        "order_id": dl_result.get("order_id", ""),
-        "source_blob_path": dl_result.get("blob_path", ""),
-        "clipped_blob_path": "",
-        "container": dl_result.get("container", ""),
-        "clipped": False,
-        "reprojected": False,
-        "source_crs": "",
-        "target_crs": "",
-        "source_size_bytes": 0,
-        "output_size_bytes": 0,
-        "processing_duration_seconds": 0.0,
-        "clip_error": error,
-        "error": error,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -675,159 +618,4 @@ def build_pipeline_summary(
             f"clipped={fulfillment['pp_clipped']} "
             f"reprojected={fulfillment['pp_reprojected']}."
         ),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Polling sub-orchestration (moved from kml_pipeline.py)
-# ---------------------------------------------------------------------------
-
-
-def _poll_until_ready(
-    context: df.DurableOrchestrationContext,
-    acquisition: dict[str, Any],
-    *,
-    poll_interval: int = DEFAULT_POLL_INTERVAL_SECONDS,
-    poll_timeout: int = DEFAULT_POLL_TIMEOUT_SECONDS,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-    retry_base: int = DEFAULT_RETRY_BASE_SECONDS,
-    instance_id: str = "",
-) -> Generator[Any, Any, dict[str, Any]]:
-    """Poll an imagery order until it reaches a terminal state.
-
-    Uses ``context.create_timer()`` for zero-compute-cost waits between
-    polls.  Implements exponential backoff on transient errors.
-
-    Args:
-        context: Durable Functions orchestration context.
-        acquisition: Dict from ``acquire_imagery`` activity with
-            ``order_id``, ``provider``, ``scene_id``, etc.
-        poll_interval: Seconds between polls (default 30).
-        poll_timeout: Maximum total wait in seconds (default 1800).
-        max_retries: Max retries on transient poll errors (default 3).
-        retry_base: Exponential backoff base in seconds (default 5).
-        instance_id: Orchestration instance ID for logging.
-
-    Returns:
-        A dict describing the final outcome:
-        - ``state``: ``"ready"`` | ``"failed"`` | ``"cancelled"`` |
-          ``"acquisition_timeout"``
-        - ``order_id``, ``scene_id``, ``provider``
-        - ``poll_count``, ``elapsed_seconds``
-        - ``error``: Error message (if any)
-
-    Yields:
-        Durable Functions tasks (activities and timers).
-    """
-    order_id = str(acquisition.get("order_id", ""))
-    scene_id = str(acquisition.get("scene_id", ""))
-    provider = str(acquisition.get("provider", ""))
-    feature_name = str(acquisition.get("aoi_feature_name", ""))
-
-    deadline = context.current_utc_datetime + timedelta(seconds=poll_timeout)
-    poll_count = 0
-    retry_count = 0
-
-    while context.current_utc_datetime < deadline:
-        poll_count += 1
-
-        try:
-            poll_result = yield context.call_activity(
-                "poll_order",
-                {"order_id": order_id, "provider": provider},
-            )
-            retry_count = 0
-        except Exception as exc:
-            retry_count += 1
-            if retry_count > max_retries:
-                if not context.is_replaying:
-                    logger.error(
-                        "Poll retries exhausted | instance=%s | order=%s | "
-                        "feature=%s | retries=%d | error=%s",
-                        instance_id,
-                        order_id,
-                        feature_name,
-                        retry_count,
-                        exc,
-                    )
-                elapsed = (
-                    context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
-                ).total_seconds()
-                return {
-                    "state": "failed",
-                    "order_id": order_id,
-                    "scene_id": scene_id,
-                    "provider": provider,
-                    "aoi_feature_name": feature_name,
-                    "poll_count": poll_count,
-                    "elapsed_seconds": elapsed,
-                    "error": f"Poll retries exhausted ({max_retries}): {exc}",
-                }
-
-            backoff = retry_base * (2 ** (retry_count - 1))
-            if not context.is_replaying:
-                logger.warning(
-                    "Poll error (retry %d/%d) | instance=%s | order=%s | backoff=%ds | error=%s",
-                    retry_count,
-                    max_retries,
-                    instance_id,
-                    order_id,
-                    backoff,
-                    exc,
-                )
-            fire_at = context.current_utc_datetime + timedelta(seconds=backoff)
-            yield context.create_timer(fire_at)
-            continue
-
-        state = str(poll_result.get("state", ""))
-        is_terminal = bool(poll_result.get("is_terminal", False))
-
-        if not context.is_replaying:
-            logger.info(
-                "Poll result | instance=%s | order=%s | feature=%s | state=%s | poll_count=%d",
-                instance_id,
-                order_id,
-                feature_name,
-                state,
-                poll_count,
-            )
-
-        if is_terminal:
-            elapsed = (
-                context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
-            ).total_seconds()
-            return {
-                "state": state,
-                "order_id": order_id,
-                "scene_id": scene_id,
-                "provider": provider,
-                "aoi_feature_name": feature_name,
-                "poll_count": poll_count,
-                "elapsed_seconds": elapsed,
-                "error": poll_result.get("message", "") if state != "ready" else "",
-            }
-
-        fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
-        yield context.create_timer(fire_at)
-
-    elapsed = float(poll_timeout)
-    if not context.is_replaying:
-        logger.warning(
-            "Poll timeout | instance=%s | order=%s | feature=%s | timeout=%ds | poll_count=%d",
-            instance_id,
-            order_id,
-            feature_name,
-            poll_timeout,
-            poll_count,
-        )
-
-    return {
-        "state": "acquisition_timeout",
-        "order_id": order_id,
-        "scene_id": scene_id,
-        "provider": provider,
-        "aoi_feature_name": feature_name,
-        "poll_count": poll_count,
-        "elapsed_seconds": elapsed,
-        "error": f"Polling timed out after {poll_timeout}s ({poll_count} polls)",
     }

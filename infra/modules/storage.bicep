@@ -73,6 +73,18 @@ resource deploymentsContainer 'Microsoft.Storage/storageAccounts/blobServices/co
   }
 }
 
+// Temporary working storage for offloaded payloads (Issue #62, #103).
+// Durable Functions offloads large activity outputs (>48KB) to prevent
+// orchestration history overflow. Payloads are only needed during
+// orchestration lifetime — lifecycle rule deletes them after 7 days.
+resource pipelinePayloadsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobServices
+  name: 'pipeline-payloads'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 // Lifecycle management — archive old imagery, delete old logs.
 // These rules target the default kml-output container. Per-tenant lifecycle
 // policies are created during tenant provisioning (#72) to cover
@@ -83,6 +95,24 @@ resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2
   properties: {
     policy: {
       rules: [
+        {
+          name: 'delete-offloaded-payloads-7d'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            actions: {
+              baseBlob: {
+                delete: {
+                  daysAfterModificationGreaterThan: 7
+                }
+              }
+            }
+            filters: {
+              blobTypes: ['blockBlob']
+              prefixMatch: ['pipeline-payloads/payloads/']
+            }
+          }
+        }
         {
           name: 'archive-raw-imagery-180d'
           enabled: true
