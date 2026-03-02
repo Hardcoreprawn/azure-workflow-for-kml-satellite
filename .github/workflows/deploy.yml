@@ -112,11 +112,24 @@ jobs:
       - name: Wait for kml_blob_trigger to be discoverable
         run: |
           echo "Waiting for function app to recognise deployed functions..."
+          last_error=""
           for i in $(seq 1 30); do
+            set +e
             function_names=$(az functionapp function list \
               --name "${{ env.FUNCTION_APP_NAME }}" \
               --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "[].name" -o tsv 2>/dev/null || true)
+              --query "[].name" -o tsv 2>&1)
+            az_status=$?
+            set -e
+
+            if [ "$az_status" -ne 0 ]; then
+              last_error="$function_names"
+              echo "  attempt $i/30 — az functionapp function list failed, retrying in 10s…"
+              echo "    error: $last_error"
+              sleep 10
+              continue
+            fi
+
             if echo "$function_names" | grep -q '/kml_blob_trigger$'; then
               total=$(echo "$function_names" | grep -c . || true)
               echo "✔ kml_blob_trigger detected after ~$((i * 10))s ($total function(s) discovered)"
@@ -128,6 +141,9 @@ jobs:
           done
           if ! echo "$function_names" | grep -q '/kml_blob_trigger$'; then
             echo "::error::kml_blob_trigger not discoverable after 5 minutes"
+            if [ -n "$last_error" ]; then
+              echo "::error::Last az CLI error: $last_error"
+            fi
             exit 1
           fi
 

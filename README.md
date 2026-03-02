@@ -24,7 +24,7 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
                                     Blob Storage (GeoTIFF + Metadata JSON)
 ```
 
-**Compute:** Azure Functions v4 Flex Consumption (custom Docker with GDAL)
+**Compute:** Azure Functions on Azure Container Apps (custom Docker with GDAL)
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
 **Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
 
@@ -147,7 +147,7 @@ This sequencing is enforced in [.github/workflows/deploy.yml](.github/workflows/
 | Layer | Technology |
 | --- | --- |
 | Runtime | Python 3.12 |
-| Compute | Azure Functions v4 Flex Consumption (custom Docker) |
+| Compute | Azure Functions on Azure Container Apps (custom Docker) |
 | Orchestration | Azure Durable Functions (Python v2 model) |
 | KML Parsing | Fiona (OGR) + lxml (fallback) |
 | Geometry | Shapely, pyproj |
