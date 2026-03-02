@@ -6,6 +6,15 @@
 # GitHub Container Registry (ghcr.io), and deploys the container to Azure
 # Functions on Container Apps.
 #
+# IMPORTANT sequencing guardrail:
+#   Event Grid subscription must be created only after the target function
+#   (kml_blob_trigger) is discoverable by the Functions host. ARM/Bicep
+#   dependencies cannot model runtime function indexing state, so deployment
+#   is intentionally split into two passes:
+#     1) Deploy infra + function app (Event Grid subscription disabled)
+#     2) Wait for function discovery and verify kml_blob_trigger exists
+#     3) Re-apply infra with Event Grid subscription enabled
+#
 # Triggers on push to main when application code or Dockerfile changes.
 #
 # Safety: main branch protection requires the lint-and-test CI check to pass
@@ -90,7 +99,39 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy container image and enable Event Grid
+      - name: Deploy container image (Event Grid subscription disabled)
+        run: |
+          az deployment sub create \
+            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+            --template-file infra/main.bicep \
+            --parameters infra/parameters/dev.bicepparam \
+            --parameters enableEventGridSubscription=false \
+            --parameters containerImage='${{ steps.image.outputs.name }}' \
+            --name "deploy-$(date +%Y%m%d-%H%M%S)"
+
+      - name: Wait for kml_blob_trigger to be discoverable
+        run: |
+          echo "Waiting for function app to recognise deployed functions..."
+          for i in $(seq 1 30); do
+            function_names=$(az functionapp function list \
+              --name "${{ env.FUNCTION_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --query "[].name" -o tsv 2>/dev/null || true)
+            if echo "$function_names" | grep -q '/kml_blob_trigger$'; then
+              total=$(echo "$function_names" | grep -c . || true)
+              echo "✔ kml_blob_trigger detected after ~$((i * 10))s ($total function(s) discovered)"
+              break
+            fi
+            total=$(echo "$function_names" | grep -c . || true)
+            echo "  attempt $i/30 — kml_blob_trigger not yet indexed ($total function(s) discovered), retrying in 10s…"
+            sleep 10
+          done
+          if ! echo "$function_names" | grep -q '/kml_blob_trigger$'; then
+            echo "::error::kml_blob_trigger not discoverable after 5 minutes"
+            exit 1
+          fi
+
+      - name: Enable Event Grid subscription (post-function-discovery)
         run: |
           az deployment sub create \
             --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
@@ -98,24 +139,16 @@ jobs:
             --parameters infra/parameters/dev.bicepparam \
             --parameters enableEventGridSubscription=true \
             --parameters containerImage='${{ steps.image.outputs.name }}' \
-            --name "deploy-$(date +%Y%m%d-%H%M%S)"
+            --name "deploy-eg-$(date +%Y%m%d-%H%M%S)"
 
-      - name: Wait for functions to be discoverable
+      - name: Verify Event Grid subscription exists
         run: |
-          echo "Waiting for function app to recognise deployed functions..."
-          for i in $(seq 1 30); do
-            count=$(az functionapp function list \
-              --name "${{ env.FUNCTION_APP_NAME }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "length(@)" -o tsv 2>/dev/null || echo 0)
-            if [ "$count" -ge 1 ]; then
-              echo "✔ $count function(s) detected after ~$((i * 10))s"
-              break
-            fi
-            echo "  attempt $i/30 — $count functions, retrying in 10s…"
-            sleep 10
-          done
-          if [ "$count" -lt 1 ]; then
-            echo "::error::No functions detected after 5 minutes"
+          sub_id=$(az eventgrid system-topic event-subscription list \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --system-topic-name "evgt-kmlsat-dev" \
+            --query "[?name=='evgs-kml-upload'].id | [0]" -o tsv)
+          if [ -z "$sub_id" ]; then
+            echo "::error::Expected event subscription evgs-kml-upload was not found"
             exit 1
           fi
+          echo "✔ Event subscription verified: $sub_id"
