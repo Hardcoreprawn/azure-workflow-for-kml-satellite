@@ -526,6 +526,31 @@ class TestFunctionAppModule:
             f"Missing app settings: {expected - setting_names}"
         )
 
+    def test_no_provider_secrets_in_app_settings(
+        self, function_app_arm_template: dict[str, Any]
+    ) -> None:
+        """Provider secrets must not be passed as plain app settings."""
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        app_settings = site["properties"].get("siteConfig", {}).get("appSettings", [])
+        setting_names = {s["name"] for s in app_settings}
+        forbidden = {
+            "SKYWATCH_API_KEY",
+            "PLANETARY_COMPUTER_API_KEY",
+            "API_KEY",
+            "API_SECRET",
+        }
+        assert setting_names.isdisjoint(forbidden), (
+            f"Found forbidden secret app settings: {setting_names.intersection(forbidden)}"
+        )
+
+    def test_storage_connection_string_parameter_is_secure(
+        self, function_app_arm_template: dict[str, Any]
+    ) -> None:
+        """Function app storage connection string parameter must be secureString."""
+        parameters = function_app_arm_template.get("parameters", {})
+        storage_param = parameters.get("storageConnectionString", {})
+        assert str(storage_param.get("type", "")).lower() == "securestring"
+
     def test_has_outputs(self, function_app_arm_template: dict[str, Any]) -> None:
         """Function App module must output id, name, principalId, hostname."""
         outputs = set(function_app_arm_template.get("outputs", {}).keys())
@@ -627,11 +652,35 @@ class TestRbacModule:
     """Verify RBAC role assignments."""
 
     def test_role_assignments_defined(self, rbac_arm_template: dict[str, Any]) -> None:
-        """Must define role assignments for storage and Key Vault."""
+        """Must define exactly two role assignments (storage + Key Vault)."""
         assignments = _get_resources_by_type(
             rbac_arm_template, "Microsoft.Authorization/roleAssignments"
         )
-        assert len(assignments) >= 2, f"Expected ≥2 role assignments, got {len(assignments)}"
+        assert len(assignments) == 2, f"Expected 2 role assignments, got {len(assignments)}"
+
+    def test_role_assignments_use_service_principal(
+        self, rbac_arm_template: dict[str, Any]
+    ) -> None:
+        """Role assignments must target managed identity principal type."""
+        assignments = _get_resources_by_type(
+            rbac_arm_template, "Microsoft.Authorization/roleAssignments"
+        )
+        assert assignments, "Expected role assignments"
+        for assignment in assignments:
+            props = assignment.get("properties", {})
+            assert props.get("principalType") == "ServicePrincipal"
+
+    def test_only_least_privilege_role_ids_declared(
+        self, rbac_arm_template: dict[str, Any]
+    ) -> None:
+        """RBAC module must only declare approved built-in role IDs."""
+        vars_obj = rbac_arm_template.get("variables", {})
+        expected = {
+            "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+            "keyVaultSecretsUserRoleId": "4633458b-17de-408a-b874-0445c86b69e6",
+        }
+        for key, value in expected.items():
+            assert vars_obj.get(key) == value
 
 
 # ---------------------------------------------------------------------------
