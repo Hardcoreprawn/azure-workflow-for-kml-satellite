@@ -65,7 +65,7 @@ resource failedRequestsAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
           metricName: 'requests/failed'
           operator: 'GreaterThan'
           threshold: 5
-          timeAggregation: 'Total'
+          timeAggregation: 'Count'
           criterionType: 'StaticThresholdCriterion'
         }
       ]

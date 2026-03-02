@@ -428,6 +428,20 @@ class TestMonitoringModule:
             scope_text = " ".join(str(s) for s in scopes)
             assert "Microsoft.Insights/components" in scope_text
 
+    def test_failed_requests_alert_uses_count_aggregation(
+        self, monitoring_arm_template: dict[str, Any]
+    ) -> None:
+        """Failed requests alert must use Count aggregation for requests/failed metric."""
+        alerts = _get_resources_by_type(monitoring_arm_template, "Microsoft.Insights/metricAlerts")
+        assert alerts, "Expected at least one metric alert"
+        failed_alerts = [a for a in alerts if "failed-requests" in str(a.get("name", "")).lower()]
+        assert failed_alerts, "Expected failed requests metric alert"
+        criteria = failed_alerts[0].get("properties", {}).get("criteria", {}).get("allOf", [])
+        assert criteria, "Failed requests alert must define criteria"
+        criterion = criteria[0]
+        assert criterion.get("metricName") == "requests/failed"
+        assert criterion.get("timeAggregation") == "Count"
+
 
 # ---------------------------------------------------------------------------
 # Test: Key Vault module
