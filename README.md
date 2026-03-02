@@ -83,8 +83,8 @@ For Azure Functions on Container Apps, infrastructure dependencies alone are not
 Required deployment order:
 
 1. Deploy infra + Function App container image with `enableEventGridSubscription=false`.
-2. Poll function discovery until `kml_blob_trigger` appears in `az functionapp function list`.
-3. Re-apply infra with `enableEventGridSubscription=true`.
+2. Poll function discovery (`az functionapp function list`) as telemetry.
+3. Re-apply infra with `enableEventGridSubscription=true` using retry-on-validation-failure.
 4. Verify `evgs-kml-upload` subscription exists on `evgt-<baseName>`.
 
 This sequencing is enforced in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) to prevent race conditions where Event Grid fails with "validation request did not receive expected response."

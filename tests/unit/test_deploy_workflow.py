@@ -197,14 +197,14 @@ class TestReadinessCheck:
         has_sleep = "sleep" in run_script
         assert has_loop and has_sleep, "Readiness check must include a retry loop with sleep"
 
-    def test_readiness_has_failure_exit(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must fail the workflow if functions never appear."""
+    def test_readiness_does_not_hard_fail(self, deploy_workflow: dict[str, Any]) -> None:
+        """Readiness check should be advisory; Event Grid enable step handles hard failure."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "exit 1" in run_script, (
-            "Readiness check must 'exit 1' if functions are never detected"
+        assert "::warning::kml_blob_trigger not discoverable" in run_script, (
+            "Readiness check should emit warning if trigger is not yet discoverable"
         )
 
     def test_event_grid_uses_two_pass_toggle(self, deploy_workflow: dict[str, Any]) -> None:
@@ -226,3 +226,15 @@ class TestReadinessCheck:
         assert "enableEventGridSubscription=true" in second_run, (
             "Second pass must set enableEventGridSubscription=true"
         )
+
+    def test_event_grid_enable_has_retry_and_failure_exit(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Event Grid enable step must retry and fail if endpoint never validates."""
+        steps = _get_steps(deploy_workflow)
+        second_pass = _find_step(steps, "enable event grid subscription")
+        assert second_pass is not None, "Second-pass Event Grid enable step not found"
+        run_script = second_pass.get("run", "")
+        assert "for i in $(seq" in run_script, "Enable step must include retry loop"
+        assert "sleep 15" in run_script, "Enable step must back off between retries"
+        assert "exit 1" in run_script, "Enable step must fail after exhausting retries"

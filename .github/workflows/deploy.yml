@@ -140,22 +140,48 @@ jobs:
             sleep 10
           done
           if ! echo "$function_names" | grep -q '/kml_blob_trigger$'; then
-            echo "::error::kml_blob_trigger not discoverable after 5 minutes"
+            echo "::warning::kml_blob_trigger not discoverable after 5 minutes; continuing to Event Grid enable retries"
             if [ -n "$last_error" ]; then
-              echo "::error::Last az CLI error: $last_error"
+              echo "::warning::Last az CLI error during discovery: $last_error"
+            fi
+          fi
+
+      - name: Enable Event Grid subscription (retry until endpoint validates)
+        run: |
+          success=0
+          last_error=""
+          for i in $(seq 1 20); do
+            set +e
+            deploy_output=$(az deployment sub create \
+              --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
+              --template-file infra/main.bicep \
+              --parameters infra/parameters/dev.bicepparam \
+              --parameters enableEventGridSubscription=true \
+              --parameters containerImage='${{ steps.image.outputs.name }}' \
+              --name "deploy-eg-$(date +%Y%m%d-%H%M%S)-$i" 2>&1)
+            deploy_status=$?
+            set -e
+
+            if [ "$deploy_status" -eq 0 ]; then
+              echo "✔ Event Grid subscription enabled after attempt $i/20"
+              success=1
+              break
+            fi
+
+            last_error="$deploy_output"
+            echo "  attempt $i/20 — Event Grid enablement not ready, retrying in 15s…"
+            echo "$deploy_output" | tail -n 8
+            sleep 15
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "::error::Failed to enable Event Grid subscription after 20 attempts"
+            if [ -n "$last_error" ]; then
+              echo "::error::Last deployment error:"
+              echo "$last_error"
             fi
             exit 1
           fi
-
-      - name: Enable Event Grid subscription (post-function-discovery)
-        run: |
-          az deployment sub create \
-            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-            --template-file infra/main.bicep \
-            --parameters infra/parameters/dev.bicepparam \
-            --parameters enableEventGridSubscription=true \
-            --parameters containerImage='${{ steps.image.outputs.name }}' \
-            --name "deploy-eg-$(date +%Y%m%d-%H%M%S)"
 
       - name: Verify Event Grid subscription exists
         run: |
