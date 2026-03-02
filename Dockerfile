@@ -5,17 +5,8 @@
 # Stage 1: Build GDAL and Python geospatial wheels
 # ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
-# Install Azure Functions Core Tools for func build
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gnupg \
-    lsb-release \
-    && curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg \
-    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/$(lsb_release -rs | cut -d'.' -f 1)/prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/microsoft-prod.list' \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends azure-functions-core-tools-4 \
-    && rm -rf /var/lib/apt/lists/*
-
+# Install Azure Functions Core Tools for func build (uses existing Microsoft repo)
+RUN apt-get update && apt-get install -y --no-install-recommends azure-functions-core-tools-4 && rm -rf /var/lib/apt/lists/*
 
 # Install system dependencies for building GDAL, Fiona, rasterio
 RUN apt-get update && apt-get install -y --no-install-recommends \
