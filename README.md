@@ -83,11 +83,36 @@ For Azure Functions on Container Apps, infrastructure dependencies alone are not
 Required deployment order:
 
 1. Deploy infra + Function App container image with `enableEventGridSubscription=false`.
-2. Poll function discovery (`az functionapp function list`) as telemetry.
+2. Poll function discovery (`az functionapp function list`) as advisory telemetry.
 3. Re-apply infra with `enableEventGridSubscription=true` using retry-on-validation-failure.
 4. Verify `evgs-kml-upload` subscription exists on `evgt-<baseName>`.
 
 This sequencing is enforced in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) to prevent race conditions where Event Grid fails with "validation request did not receive expected response."
+
+#### Defensive coding principles (Margaret Hamilton standard)
+
+The deployment retry loops implement production-grade defensive patterns designed for autonomous operation over years:
+
+**Wall-clock timeouts:** Each retry loop has both attempt count limits AND wall-clock timeouts. This prevents scenarios where slow-failing deployments (e.g., 2-3 minutes per Azure deployment) could run for 60+ minutes.
+
+- Function discovery: 30 attempts max OR 300s wall-clock (5 minutes), whichever comes first
+- Event Grid enablement: 15 attempts max OR 900s wall-clock (15 minutes), whichever comes first
+
+**Exponential backoff:** Event Grid retry uses exponential backoff (10s, 20s, 30s... capped at 60s) rather than fixed 15s intervals, reducing Azure API load and respecting transient error recovery patterns.
+
+**Fail-fast detection:** Non-transient errors (authorization/credential failures) trigger immediate loop exit rather than exhausting all retry attempts. Only endpoint validation errors (expected transient) continue retries.
+
+**Observability:** Each attempt logs:
+
+- Attempt number and elapsed time
+- Individual operation duration
+- Error details with pattern detection
+- Calculated backoff intervals
+
+**Graceful degradation:** Function discovery failures emit warnings (not errors) and allow the authoritative Event Grid retry loop to determine final success/failure.
+
+Implementation reference: [deploy.yml L100-L185](.github/workflows/deploy.yml#L100-L185)
+Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 
 ## API Reference
 

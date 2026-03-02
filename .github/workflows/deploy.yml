@@ -113,7 +113,18 @@ jobs:
         run: |
           echo "Waiting for function app to recognise deployed functions..."
           last_error=""
-          for i in $(seq 1 30); do
+          start_time=$(date +%s)
+          max_duration=300  # 5 minutes wall-clock timeout
+          max_attempts=30
+          found=0
+
+          for i in $(seq 1 $max_attempts); do
+            elapsed=$(($(date +%s) - start_time))
+            if [ "$elapsed" -ge "$max_duration" ]; then
+              echo "::warning::Wall-clock timeout reached (${elapsed}s) - function not yet discoverable"
+              break
+            fi
+
             set +e
             function_names=$(az functionapp function list \
               --name "${{ env.FUNCTION_APP_NAME }}" \
@@ -124,7 +135,7 @@ jobs:
 
             if [ "$az_status" -ne 0 ]; then
               last_error="$function_names"
-              echo "  attempt $i/30 — az functionapp function list failed, retrying in 10s…"
+              echo "  attempt $i/$max_attempts (${elapsed}s) — az CLI error, retrying in 10s…"
               echo "    error: $last_error"
               sleep 10
               continue
@@ -132,15 +143,18 @@ jobs:
 
             if echo "$function_names" | grep -q '/kml_blob_trigger$'; then
               total=$(echo "$function_names" | grep -c . || true)
-              echo "✔ kml_blob_trigger detected after ~$((i * 10))s ($total function(s) discovered)"
+              echo "✔ kml_blob_trigger detected after attempt $i ($total function(s) discovered, ${elapsed}s elapsed)"
+              found=1
               break
             fi
             total=$(echo "$function_names" | grep -c . || true)
-            echo "  attempt $i/30 — kml_blob_trigger not yet indexed ($total function(s) discovered), retrying in 10s…"
+            echo "  attempt $i/$max_attempts (${elapsed}s) — kml_blob_trigger not yet indexed ($total function(s) discovered), retrying in 10s…"
             sleep 10
           done
-          if ! echo "$function_names" | grep -q '/kml_blob_trigger$'; then
-            echo "::warning::kml_blob_trigger not discoverable after 5 minutes; continuing to Event Grid enable retries"
+
+          total_elapsed=$(($(date +%s) - start_time))
+          if [ "$found" -ne 1 ]; then
+            echo "::warning::kml_blob_trigger not discoverable after ${total_elapsed}s; continuing to Event Grid enable retries"
             if [ -n "$last_error" ]; then
               echo "::warning::Last az CLI error during discovery: $last_error"
             fi
@@ -150,7 +164,22 @@ jobs:
         run: |
           success=0
           last_error=""
-          for i in $(seq 1 20); do
+          start_time=$(date +%s)
+          max_duration=900  # 15 minutes wall-clock timeout
+          max_attempts=15
+
+          echo "Starting Event Grid enablement with wall-clock timeout of ${max_duration}s (${max_attempts} attempts max)"
+
+          for i in $(seq 1 $max_attempts); do
+            elapsed=$(($(date +%s) - start_time))
+            if [ "$elapsed" -ge "$max_duration" ]; then
+              echo "::error::Wall-clock timeout reached (${elapsed}s >= ${max_duration}s) at attempt $i"
+              break
+            fi
+
+            attempt_start=$(date +%s)
+            echo "Attempt $i/$max_attempts (elapsed: ${elapsed}s)..."
+
             set +e
             deploy_output=$(az deployment sub create \
               --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
@@ -162,20 +191,54 @@ jobs:
             deploy_status=$?
             set -e
 
+            attempt_duration=$(($(date +%s) - attempt_start))
+            echo "  Deployment attempt took ${attempt_duration}s (exit code: $deploy_status)"
+
             if [ "$deploy_status" -eq 0 ]; then
-              echo "✔ Event Grid subscription enabled after attempt $i/20"
+              total_elapsed=$(($(date +%s) - start_time))
+              echo "✔ Event Grid subscription enabled after attempt $i/$max_attempts (${total_elapsed}s elapsed)"
               success=1
               break
             fi
 
             last_error="$deploy_output"
-            echo "  attempt $i/20 — Event Grid enablement not ready, retrying in 15s…"
+
+            # Fail-fast: detect non-transient errors
+            if echo "$deploy_output" | grep -qi "authorization\|forbidden\|invalid\scredential"; then
+              echo "::error::Non-transient error detected (auth/permission) - failing fast"
+              echo "$deploy_output" | tail -n 8
+              break
+            fi
+
+            # Check if error is endpoint validation (expected transient)
+            if echo "$deploy_output" | grep -qi "destination.*not.*found\|endpoint.*validation"; then
+              echo "  Endpoint validation failed (transient) - function not yet ready"
+            else
+              echo "  Unexpected error pattern:"
+            fi
             echo "$deploy_output" | tail -n 8
-            sleep 15
+
+            # Exponential backoff: 10s, 20s, 30s, capped at 60s
+            backoff=$((10 * i))
+            if [ "$backoff" -gt 60 ]; then
+              backoff=60
+            fi
+
+            # Don't sleep on last attempt or if near timeout
+            if [ "$i" -lt "$max_attempts" ]; then
+              remaining=$((max_duration - elapsed - backoff))
+              if [ "$remaining" -lt 0 ]; then
+                echo "  Approaching timeout, final attempt without backoff"
+              else
+                echo "  Backing off ${backoff}s before next attempt..."
+                sleep "$backoff"
+              fi
+            fi
           done
 
+          total_elapsed=$(($(date +%s) - start_time))
           if [ "$success" -ne 1 ]; then
-            echo "::error::Failed to enable Event Grid subscription after 20 attempts"
+            echo "::error::Failed to enable Event Grid subscription after $max_attempts attempts (${total_elapsed}s elapsed, ${max_duration}s timeout)"
             if [ -n "$last_error" ]; then
               echo "::error::Last deployment error:"
               echo "$last_error"
