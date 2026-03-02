@@ -62,7 +62,7 @@ def _bicep_build(bicep_file_path: str) -> dict[str, Any]:
             return json.loads(result.stdout)
 
     error_msg = result.stderr if result is not None else "Unknown error"
-    pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{error_msg}")
+    raise AssertionError(f"Bicep build failed for {bicep_file.name}:\n{error_msg}")
 
 
 @pytest.fixture(scope="module")
