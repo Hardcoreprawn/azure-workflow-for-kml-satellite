@@ -37,7 +37,7 @@
 | #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes | ✅ DONE |
 | #108 | SkyWatch adapter: implement MVP or remove placeholder | Yes | ✅ DONE |
 | #106 | Delete stale branches after merge | Yes | ✅ DONE |
-| #13 | E2E pipeline integration test | Yes | |
+| #13 | E2E pipeline integration test | Yes | ✅ DONE |
 | #15 | Error handling and retry logic verified | Yes | ✅ DONE |
 | #16 | Logging and alerting configured and validated | Yes | ✅ DONE |
 | #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | ✅ DONE |
