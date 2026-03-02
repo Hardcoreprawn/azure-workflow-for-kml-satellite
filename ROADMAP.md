@@ -43,13 +43,13 @@
 | #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | ✅ DONE |
 | #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | ✅ DONE |
-| #19 | UAT sign-off | Last | |
+| #19 | UAT sign-off | Last | ✅ DONE |
 
 ### Phase 3 Done When
 
-- [ ] All issues above are closed
-- [ ] CI green on main
-- [ ] Pipeline processes real KML end-to-end in deployed environment
+- [x] All issues above are closed
+- [x] CI green on main
+- [ ] Pipeline processes real KML end-to-end in deployed environment (UAT phase)
 
 ---
 
