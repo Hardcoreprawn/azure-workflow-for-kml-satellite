@@ -57,7 +57,8 @@ def poll_until_ready(
     """Poll an imagery order until it reaches a terminal state.
 
     Uses ``context.create_timer()`` for zero-compute-cost waits between
-    polls.  Implements exponential backoff on transient errors.
+    polls.  Implements exponential backoff on transient errors and
+    fails fast on non-retryable errors.
 
     Args:
         context: Durable Functions orchestration context.
@@ -99,6 +100,31 @@ def poll_until_ready(
             )
             retry_count = 0
         except Exception as exc:
+            retryable = bool(getattr(exc, "retryable", True))
+            if not retryable:
+                if not context.is_replaying:
+                    logger.error(
+                        "Non-retryable poll error | instance=%s | order=%s | "
+                        "feature=%s | error=%s",
+                        instance_id,
+                        order_id,
+                        feature_name,
+                        exc,
+                    )
+                elapsed = (
+                    context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
+                ).total_seconds()
+                return {
+                    "state": "failed",
+                    "order_id": order_id,
+                    "scene_id": scene_id,
+                    "provider": provider,
+                    "aoi_feature_name": feature_name,
+                    "poll_count": poll_count,
+                    "elapsed_seconds": elapsed,
+                    "error": f"Non-retryable poll error: {exc}",
+                }
+
             retry_count += 1
             if retry_count > max_retries:
                 if not context.is_replaying:
