@@ -78,12 +78,18 @@ curl -sS http://localhost:7071/api/orchestrator/<instance-id>
 
 ### Deployment sequencing (critical)
 
-For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. The `kml_blob_trigger` function must be indexed by the host before Event Grid subscription creation.
+For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. Python v2 functions require build-time metadata generation, and the Functions host must fully load before Event Grid subscription creation.
+
+**Container Apps vs Consumption Plan differences:**
+
+- **Function discovery:** `az functionapp function list` does not work reliably for Container Apps. Use HTTP endpoint checks (`/api/health`) instead.
+- **Python v2 metadata:** The `.azurefunctions/` directory with function metadata must be generated via `func build` during container image build, not at runtime.
+- **TLS termination:** Azure handles HTTPS at ingress; containers listen on port 80 internally.
 
 Required deployment order:
 
 1. Deploy infra + Function App container image with `enableEventGridSubscription=false`.
-2. Poll function discovery (`az functionapp function list`) as advisory telemetry.
+2. Poll function host readiness (HTTP `/api/health` endpoint) as advisory telemetry.
 3. Re-apply infra with `enableEventGridSubscription=true` using retry-on-validation-failure.
 4. Verify `evgs-kml-upload` subscription exists on `evgt-<baseName>`.
 

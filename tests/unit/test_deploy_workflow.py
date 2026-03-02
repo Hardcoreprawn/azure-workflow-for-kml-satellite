@@ -164,27 +164,23 @@ class TestReadinessCheck:
         )
 
     def test_readiness_uses_function_list(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must poll 'az functionapp function list'."""
+        """Readiness check must poll function host HTTP endpoint (Container Apps)."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "az functionapp function list" in run_script, (
-            "Readiness check must use 'az functionapp function list' to "
-            "verify functions are registered"
+        assert "curl" in run_script and "/api/health" in run_script, (
+            "Readiness check must use HTTP endpoint (curl) for Container Apps functions"
         )
 
-    def test_readiness_jmespath_query_not_empty_literal(
-        self, deploy_workflow: dict[str, Any]
-    ) -> None:
-        """JMESPath query must measure the returned list, not an empty literal."""
+    def test_readiness_checks_http_status_codes(self, deploy_workflow: dict[str, Any]) -> None:
+        """Readiness check must handle HTTP status codes (200, 404, 503)."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "length([])" not in run_script, (
-            "JMESPath 'length([])' always returns 0 — use 'length(@)' to "
-            "measure the actual function list response"
+        assert "http_response" in run_script and "200" in run_script, (
+            "Readiness check must evaluate HTTP response codes (200 = ready)"
         )
 
     def test_readiness_has_retry_loop(self, deploy_workflow: dict[str, Any]) -> None:
@@ -203,8 +199,8 @@ class TestReadinessCheck:
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "::warning::kml_blob_trigger not discoverable" in run_script, (
-            "Readiness check should emit warning if trigger is not yet discoverable"
+        assert "::warning::Functions host not ready" in run_script, (
+            "Readiness check should emit warning if functions host is not yet ready"
         )
 
     def test_event_grid_uses_two_pass_toggle(self, deploy_workflow: dict[str, Any]) -> None:

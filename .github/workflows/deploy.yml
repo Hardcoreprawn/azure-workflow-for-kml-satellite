@@ -111,52 +111,61 @@ jobs:
 
       - name: Wait for kml_blob_trigger to be discoverable
         run: |
-          echo "Waiting for function app to recognise deployed functions..."
+          echo "Waiting for Container Apps function host to load functions..."
           last_error=""
           start_time=$(date +%s)
           max_duration=300  # 5 minutes wall-clock timeout
           max_attempts=30
           found=0
 
+          # Get function app hostname
+          fqdn=$(az functionapp show \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "defaultHostName" -o tsv)
+
           for i in $(seq 1 $max_attempts); do
             elapsed=$(($(date +%s) - start_time))
             if [ "$elapsed" -ge "$max_duration" ]; then
-              echo "::warning::Wall-clock timeout reached (${elapsed}s) - function not yet discoverable"
+              echo "::warning::Wall-clock timeout reached (${elapsed}s) - functions host not ready"
               break
             fi
 
             set +e
-            function_names=$(az functionapp function list \
-              --name "${{ env.FUNCTION_APP_NAME }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "[].name" -o tsv 2>&1)
-            az_status=$?
+            # For Container Apps, check if functions host is running via HTTP
+            # Note: az functionapp function list doesn't work reliably for Container Apps
+            http_response=$(curl -sS -o /dev/null -w "%{http_code}" "https://${fqdn}/api/health" 2>&1)
+            curl_status=$?
             set -e
 
-            if [ "$az_status" -ne 0 ]; then
-              last_error="$function_names"
-              echo "  attempt $i/$max_attempts (${elapsed}s) — az CLI error, retrying in 10s…"
+            if [ "$curl_status" -ne 0 ]; then
+              last_error="curl failed with exit code $curl_status"
+              echo "  attempt $i/$max_attempts (${elapsed}s) — connection failed, retrying in 10s…"
               echo "    error: $last_error"
               sleep 10
               continue
             fi
 
-            if echo "$function_names" | grep -q '/kml_blob_trigger$'; then
-              total=$(echo "$function_names" | grep -c . || true)
-              echo "✔ kml_blob_trigger detected after attempt $i ($total function(s) discovered, ${elapsed}s elapsed)"
+            # HTTP 200 = health endpoint responding = functions loaded
+            # HTTP 404 = host alive but no functions yet
+            # HTTP 503 = host not ready
+            if [ "$http_response" = "200" ]; then
+              echo "✔ Functions host ready after attempt $i (${elapsed}s elapsed, HTTP $http_response)"
               found=1
               break
+            elif [ "$http_response" = "404" ]; then
+              echo "  attempt $i/$max_attempts (${elapsed}s) — host running but functions not loaded yet (HTTP $http_response), retrying in 10s…"
+            else
+              echo "  attempt $i/$max_attempts (${elapsed}s) — host not ready (HTTP $http_response), retrying in 10s…"
             fi
-            total=$(echo "$function_names" | grep -c . || true)
-            echo "  attempt $i/$max_attempts (${elapsed}s) — kml_blob_trigger not yet indexed ($total function(s) discovered), retrying in 10s…"
             sleep 10
           done
 
           total_elapsed=$(($(date +%s) - start_time))
           if [ "$found" -ne 1 ]; then
-            echo "::warning::kml_blob_trigger not discoverable after ${total_elapsed}s; continuing to Event Grid enable retries"
+            echo "::warning::Functions host not ready after ${total_elapsed}s; continuing to Event Grid enable retries"
             if [ -n "$last_error" ]; then
-              echo "::warning::Last az CLI error during discovery: $last_error"
+              echo "::warning::Last error: $last_error"
             fi
           fi
 

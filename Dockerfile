@@ -5,6 +5,17 @@
 # Stage 1: Build GDAL and Python geospatial wheels
 # ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
+# Install Azure Functions Core Tools for func build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    lsb-release \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg \
+    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] https://packages.microsoft.com/debian/$(lsb_release -rs | cut -d'.' -f 1)/prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/microsoft-prod.list' \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends azure-functions-core-tools-4 \
+    && rm -rf /var/lib/apt/lists/*
+
 
 # Install system dependencies for building GDAL, Fiona, rasterio
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,6 +37,16 @@ ENV GDAL_CONFIG=/usr/bin/gdal-config
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --target=/home/site/wwwroot/.python_packages/lib/site-packages \
     -r /tmp/requirements.txt
+# Copy application code for func build
+WORKDIR /build
+COPY host.json /build/
+COPY function_app.py /build/
+COPY kml_satellite/ /build/kml_satellite/
+
+# Generate function metadata for Python v2 programming model
+RUN func build --python && \
+    ls -la /build/.azurefunctions/
+
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
@@ -53,7 +74,8 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 # Copy installed Python packages from builder
 COPY --from=builder /home/site/wwwroot/.python_packages /home/site/wwwroot/.python_packages
 
-# Copy application code
-COPY host.json /home/site/wwwroot/
-COPY function_app.py /home/site/wwwroot/
-COPY kml_satellite/ /home/site/wwwroot/kml_satellite/
+# Copy application code and generated function metadata from builder
+COPY --from=builder /build/host.json /home/site/wwwroot/
+COPY --from=builder /build/function_app.py /home/site/wwwroot/
+COPY --from=builder /build/kml_satellite/ /home/site/wwwroot/kml_satellite/
+COPY --from=builder /build/.azurefunctions/ /home/site/wwwroot/.azurefunctions/
