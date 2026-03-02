@@ -47,6 +47,7 @@ def _bicep_build(bicep_file_path: str) -> dict[str, Any]:
     """
     bicep_file = Path(bicep_file_path)
     # Try standalone Bicep CLI first, fall back to az bicep
+    result = None
     for cmd in (
         ["bicep", "build", str(bicep_file), "--stdout"],
         ["az", "bicep", "build", "--file", str(bicep_file), "--stdout"],
@@ -60,7 +61,8 @@ def _bicep_build(bicep_file_path: str) -> dict[str, Any]:
         if result.returncode == 0:
             return json.loads(result.stdout)
 
-    pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{result.stderr}")
+    error_msg = result.stderr if result is not None else "Unknown error"
+    pytest.fail(f"Bicep build failed for {bicep_file.name}:\n{error_msg}")
 
 
 @pytest.fixture(scope="module")
