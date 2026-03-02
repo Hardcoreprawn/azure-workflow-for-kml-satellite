@@ -24,7 +24,7 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
                                     Blob Storage (GeoTIFF + Metadata JSON)
 ```
 
-**Compute:** Azure Functions v4 Flex Consumption (custom Docker with GDAL)
+**Compute:** Azure Functions on Azure Container Apps (custom Docker with GDAL)
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
 **Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
 
@@ -75,6 +75,19 @@ curl -sS http://localhost:7071/api/orchestrator/<instance-id>
 - **Provider transient failure:** allow orchestrator retries/backoff to complete before manual intervention.
 - **Provider permanent failure:** review provider response in logs, fix configuration/credentials, then re-trigger with a new upload.
 - **Storage connectivity failure:** verify Function App app settings (`AzureWebJobsStorage`, `APPLICATIONINSIGHTS_CONNECTION_STRING`, `KEY_VAULT_URI`) and managed identity RBAC.
+
+### Deployment sequencing (critical)
+
+For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. The `kml_blob_trigger` function must be indexed by the host before Event Grid subscription creation.
+
+Required deployment order:
+
+1. Deploy infra + Function App container image with `enableEventGridSubscription=false`.
+2. Poll function discovery until `kml_blob_trigger` appears in `az functionapp function list`.
+3. Re-apply infra with `enableEventGridSubscription=true`.
+4. Verify `evgs-kml-upload` subscription exists on `evgt-<baseName>`.
+
+This sequencing is enforced in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) to prevent race conditions where Event Grid fails with "validation request did not receive expected response."
 
 ## API Reference
 
@@ -134,7 +147,7 @@ curl -sS http://localhost:7071/api/orchestrator/<instance-id>
 | Layer | Technology |
 | --- | --- |
 | Runtime | Python 3.12 |
-| Compute | Azure Functions v4 Flex Consumption (custom Docker) |
+| Compute | Azure Functions on Azure Container Apps (custom Docker) |
 | Orchestration | Azure Durable Functions (Python v2 model) |
 | KML Parsing | Fiona (OGR) + lxml (fallback) |
 | Geometry | Shapely, pyproj |
