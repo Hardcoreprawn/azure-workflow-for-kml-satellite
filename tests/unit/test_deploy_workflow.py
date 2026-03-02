@@ -207,12 +207,22 @@ class TestReadinessCheck:
             "Readiness check must 'exit 1' if functions are never detected"
         )
 
-    def test_event_grid_enabled_in_deploy(self, deploy_workflow: dict[str, Any]) -> None:
-        """The Bicep deployment must enable the Event Grid subscription."""
+    def test_event_grid_uses_two_pass_toggle(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must disable then enable Event Grid subscription in two passes."""
         steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy container") or _find_step(steps, "event grid")
-        assert deploy is not None, "Deploy step not found"
-        run_script = deploy.get("run", "")
-        assert "enableEventGridSubscription=true" in run_script, (
-            "Bicep deployment must set enableEventGridSubscription=true"
+
+        first_pass = _find_step(steps, "subscription disabled") or _find_step(
+            steps, "deploy container image"
+        )
+        assert first_pass is not None, "First-pass deploy step not found"
+        first_run = first_pass.get("run", "")
+        assert "enableEventGridSubscription=false" in first_run, (
+            "First pass must set enableEventGridSubscription=false"
+        )
+
+        second_pass = _find_step(steps, "enable event grid subscription")
+        assert second_pass is not None, "Second-pass Event Grid enable step not found"
+        second_run = second_pass.get("run", "")
+        assert "enableEventGridSubscription=true" in second_run, (
+            "Second pass must set enableEventGridSubscription=true"
         )
