@@ -78,12 +78,12 @@ curl -sS http://localhost:7071/api/orchestrator/<instance-id>
 
 ### Deployment sequencing (critical)
 
-For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. Python v2 functions require build-time metadata generation, and the Functions host must fully load before Event Grid subscription creation.
+For Azure Functions on Container Apps, infrastructure dependencies alone are not sufficient to guarantee Event Grid readiness. Python v2 functions are discovered by the Functions host at runtime, and the host must fully load before Event Grid subscription creation.
 
 **Container Apps vs Consumption Plan differences:**
 
 - **Function discovery:** `az functionapp function list` does not work reliably for Container Apps. Use HTTP endpoint checks (`/api/health`) instead.
-- **Python v2 metadata:** The `.azurefunctions/` directory with function metadata must be generated via `func build` during container image build, not at runtime.
+- **Python v2 discovery:** Function routes are indexed when the host starts; no `func build` step is required in the container image build.
 - **TLS termination:** Azure handles HTTPS at ingress; containers listen on port 80 internally.
 
 Required deployment order:
@@ -274,22 +274,18 @@ https://packages.microsoft.com/debian/12/prod/ bookworm:
 
 **Cause:** The Azure Functions Python base image (`mcr.microsoft.com/azure-functions/python:4-python3.12`) already has Microsoft's APT repository configured with a signing key at `/usr/share/keyrings/microsoft-prod.gpg`. Attempting to add the same repository with a different keyring path creates a duplicate entry that APT rejects.
 
-**Solution:** Use the existing Microsoft repository without re-adding it:
+**Solution:** Do not re-add Microsoft package repositories in this image:
 
 ```dockerfile
-# ✅ Correct: Use existing repo in base image
-RUN apt-get update && \
-    apt-get install -y azure-functions-core-tools-4
-
 # ❌ Wrong: Adding duplicate repo with different signing key
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | \
     gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/microsoft-archive-keyring.gpg] ..." \
     > /etc/apt/sources.list.d/microsoft-prod.list && \
-    apt-get update && apt-get install azure-functions-core-tools-4
+  apt-get update
 ```
 
-**Test coverage:** [`tests/unit/test_dockerfile.py::TestCoreFunctionsTools::test_uses_existing_microsoft_repo`](tests/unit/test_dockerfile.py)
+**Test coverage:** [`tests/unit/test_dockerfile.py::TestAptRepositorySafety::test_no_manual_microsoft_repo_setup`](tests/unit/test_dockerfile.py)
 
 ### Common Deployment Issues
 
@@ -306,46 +302,33 @@ Host started (no HTTP routes)
 
 HTTP requests to function endpoints return 404.
 
-**Cause:** Python v2 programming model requires a `.azurefunctions/` directory containing function metadata. This directory must be generated at **container build time** by running `func build --python`, not at runtime.
+**Cause:** In Container Apps, discovery can fail while the host is still starting, dependencies are not loaded, or app configuration is invalid. Unlike older assumptions, Python v2 does not require a build-time `func build` step.
 
 **Solution:**
 
-1. Install Azure Functions Core Tools in the builder stage
-2. Copy application code (function_app.py, host.json, kml_satellite/) to builder
-3. Run `func build --python` to generate metadata
-4. Copy `.azurefunctions/` directory to runtime image
+1. Keep a clean multi-stage image with required runtime dependencies
+2. Copy application code (`function_app.py`, `host.json`, `kml_satellite/`) into `/home/site/wwwroot`
+3. Verify startup via `/api/health` and container logs
 
 ```dockerfile
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
-
-# Install Core Tools
-RUN apt-get update && \
-    apt-get install -y azure-functions-core-tools-4
-
-# Copy application code
 WORKDIR /build
 COPY host.json function_app.py ./
 COPY kml_satellite/ ./kml_satellite/
 
-# Generate Python v2 function metadata
-RUN func build --python && \
-    ls -la /build/.azurefunctions/
-
-# Runtime stage
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12
-
-# Copy metadata from builder
-COPY --from=builder /build/.azurefunctions/ \
-     /home/site/wwwroot/.azurefunctions/
+COPY --from=builder /build/host.json /home/site/wwwroot/
+COPY --from=builder /build/function_app.py /home/site/wwwroot/
+COPY --from=builder /build/kml_satellite/ /home/site/wwwroot/kml_satellite/
 ```
 
 **Verification:**
 
 ```bash
-# Build locally and verify metadata exists
+# Build locally and verify host startup
 docker build -t test:latest .
-docker run --rm test:latest ls -la /home/site/wwwroot/.azurefunctions/
-# Should show: function.json, host.json, etc.
+docker run --rm -p 8080:80 test:latest
+# Then call: curl http://localhost:8080/api/health
 ```
 
 **Test coverage:** [`tests/unit/test_dockerfile.py::TestFunctionMetadataGeneration`](tests/unit/test_dockerfile.py)
@@ -409,7 +392,7 @@ These behaviors differ from Azure Functions Consumption Plan:
 | Aspect | Consumption Plan | Container Apps |
 | --- | --- | --- |
 | Function discovery API | `az functionapp function list` works | Unreliable; use HTTP `/api/health` |
-| Python v2 metadata | Runtime generation supported | Must generate at build time (`func build`) |
+| Python v2 metadata | Runtime generation supported | Runtime generation supported (no `func build`) |
 | TLS termination | Port 443 internal | Port 80 internal, Azure ingress handles TLS |
 | Cold start | <1s (pre-warmed) | 5-15s (container startup) |
 | Scale-to-zero | Yes (Consumption) | Yes (Container Apps) |
@@ -431,12 +414,7 @@ docker run --rm -d -p 8080:80 \
 # Check logs (wait 30s for host to start)
 docker logs <container-id>
 
-# Look for "Host started" and "Found the following functions:"  
-# If you see "0 functions found", metadata is missing
-
-# Inspect filesystem
-docker exec <container-id> ls -la /home/site/wwwroot/.azurefunctions/
-# Should contain: function.json, host.json
+# Look for "Host started" and function indexing output
 
 # Test health endpoint
 curl http://localhost:8080/api/health
