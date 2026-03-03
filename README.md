@@ -373,13 +373,14 @@ Webhook validation handshake failed for 'https://func-app.azurewebsites.net/...'
 Destination endpoint not found or did not respond within expected timeout.
 ```
 
-**Cause:** Event Grid subscription creation attempts to validate the endpoint before functions are loaded and ready to respond to validation requests.
+**Cause:** For Azure Functions hosted on Azure Container Apps, using `endpointType: AzureFunction` with ARM resource ID (`.../functions/kml_blob_trigger`) can fail because the function child resource is not reliably discoverable by Event Grid during subscription creation.
 
-**Solution:** Use two-pass deployment with Function App readiness polling:
+**Solution:** Use webhook destination wiring to the Functions runtime endpoint and keep two-pass deployment:
 
 1. **First pass:** Deploy infrastructure + Function App with `enableEventGridSubscription=false`
 2. **Poll readiness:** Wait for `/api/health` to return 200 (functions loaded)
-3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff)
+3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff), where Event Grid points to:
+  `https://<function-host>/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=<eventgrid-system-key>`
 
 This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
