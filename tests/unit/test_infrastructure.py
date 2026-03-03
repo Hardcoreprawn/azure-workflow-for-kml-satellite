@@ -652,6 +652,21 @@ class TestEventGridModule:
         )
         assert "Microsoft.Storage.BlobCreated" in event_filter["includedEventTypes"]
 
+    def test_event_subscription_uses_webhook_destination(
+        self, event_grid_arm_template: dict[str, Any]
+    ) -> None:
+        """Container Apps-hosted Functions must use webhook destination wiring."""
+        sub = _get_resources_by_type(
+            event_grid_arm_template,
+            "Microsoft.EventGrid/systemTopics/eventSubscriptions",
+        )[0]
+        destination = sub["properties"]["destination"]
+        assert destination["endpointType"] == "WebHook"
+        endpoint_url = destination["properties"]["endpointUrl"]
+        assert "/runtime/webhooks/eventgrid" in endpoint_url
+        assert "functionName=kml_blob_trigger" in endpoint_url
+        assert "code=" in endpoint_url
+
     def test_has_outputs(self, event_grid_arm_template: dict[str, Any]) -> None:
         """Event Grid module must output topic ID and name."""
         outputs = set(event_grid_arm_template.get("outputs", {}).keys())

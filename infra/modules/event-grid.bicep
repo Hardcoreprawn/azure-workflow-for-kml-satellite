@@ -14,14 +14,25 @@ param baseName string
 @description('Resource ID of the source storage account.')
 param storageAccountId string
 
-@description('Resource ID of the target Function App.')
-param functionAppId string
+@description('Name of the target Function App.')
+param functionAppName string
+
+@description('Default hostname of the target Function App.')
+param functionAppHostName string
 
 @description('Enable the event subscription (requires function code to be deployed first).')
 param enableSubscription bool = false
 
 @description('Tags to apply to all resources.')
 param tags object = {}
+
+resource functionApp 'Microsoft.Web/sites@2024-04-01' existing = {
+  name: functionAppName
+}
+
+var hostKeys = listKeys('${functionApp.id}/host/default', '2024-04-01')
+var systemKeys = hostKeys.?systemKeys ?? {}
+var eventGridSystemKey = systemKeys.?eventgrid_extension ?? systemKeys.?eventgridextensionconfig_extension ?? hostKeys.?masterKey ?? ''
 
 // ---------------------------------------------------------------------------
 // System Topic — watches the storage account for blob events
@@ -47,9 +58,9 @@ resource eventSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@
   name: 'evgs-kml-upload'
   properties: {
     destination: {
-      endpointType: 'AzureFunction'
+      endpointType: 'WebHook'
       properties: {
-        resourceId: '${functionAppId}/functions/kml_blob_trigger'
+        endpointUrl: 'https://${functionAppHostName}/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=${eventGridSystemKey}'
         maxEventsPerBatch: 1
         preferredBatchSizeInKilobytes: 64
       }

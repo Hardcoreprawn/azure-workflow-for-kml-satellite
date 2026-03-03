@@ -104,7 +104,8 @@ module eventGrid 'modules/event-grid.bicep' = {
     location: location
     baseName: baseName
     storageAccountId: storage.outputs.id
-    functionAppId: functionApp.outputs.id
+    functionAppName: functionApp.outputs.name
+    functionAppHostName: functionApp.outputs.defaultHostName
     enableSubscription: enableEventGridSubscription
     tags: tags
   }

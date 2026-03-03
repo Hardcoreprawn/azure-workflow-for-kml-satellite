@@ -49,6 +49,7 @@
 
 - [x] All issues above are closed
 - [x] CI green on main
+- [x] Event Grid webhook destination fix completed (Container Apps compatibility)
 - [ ] Pipeline processes real KML end-to-end in deployed environment (UAT phase)
 
 ---
