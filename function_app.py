@@ -208,7 +208,7 @@ async def orchestrator_status(
 
 @app.function_name("health_liveness")
 @app.route(route="health", methods=["GET"])
-async def health_liveness(_req: func.HttpRequest) -> func.HttpResponse:
+async def health_liveness(req: func.HttpRequest) -> func.HttpResponse:
     """Liveness probe — validates that function app can start.
 
     Fast, minimal check — only validates configuration loads successfully.
@@ -218,6 +218,7 @@ async def health_liveness(_req: func.HttpRequest) -> func.HttpResponse:
         200 OK if configuration is valid and required env vars are present.
         500 if config validation fails (e.g. missing env vars).
     """
+    _ = req
     try:
         # Validate all required environment variables and configuration.
         # This will raise ConfigValidationError if anything is missing.
@@ -239,7 +240,7 @@ async def health_liveness(_req: func.HttpRequest) -> func.HttpResponse:
 
 @app.function_name("health_readiness")
 @app.route(route="readiness", methods=["GET"])
-async def health_readiness(_req: func.HttpRequest) -> func.HttpResponse:
+async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
     """Readiness probe — validates all dependencies are available.
 
     Checks:
@@ -254,6 +255,7 @@ async def health_readiness(_req: func.HttpRequest) -> func.HttpResponse:
         200 OK if all dependencies are ready.
         503 Service Unavailable if any dependency fails.
     """
+    _ = req
     dependencies_ok = True
     dependency_status: dict[str, object] = {}
 
