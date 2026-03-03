@@ -18,6 +18,8 @@ Container Apps Requirements (Python v2):
 
 from __future__ import annotations
 
+import ast
+
 import pytest
 
 
@@ -79,36 +81,23 @@ class TestContainerAppsArchitectureSpec:
         This verifies the bug fix for issue where health endpoints had `_req`.
         """
         source = self._read_function_app_source()
+        tree = ast.parse(source)
 
-        # Check that health_liveness has `req`, not `_req`
-        # Note: function signature may span multiple lines
-        health_liveness_idx = source.find("async def health_liveness(")
-        assert health_liveness_idx >= 0, "health_liveness not found"
-        health_liveness_section = source[health_liveness_idx : health_liveness_idx + 200]
-        assert "req:" in health_liveness_section or "req " in health_liveness_section, (
-            "health_liveness should use 'req' parameter"
-        )
+        # Find HTTP handler functions and verify their first parameter is exactly 'req'
+        http_handlers = ["health_liveness", "health_readiness", "orchestrator_status"]
 
-        health_readiness_idx = source.find("async def health_readiness(")
-        assert health_readiness_idx >= 0, "health_readiness not found"
-        health_readiness_section = source[health_readiness_idx : health_readiness_idx + 200]
-        assert "req:" in health_readiness_section or "req " in health_readiness_section, (
-            "health_readiness should use 'req' parameter"
-        )
-
-        orchestrator_status_idx = source.find("async def orchestrator_status(")
-        assert orchestrator_status_idx >= 0, "orchestrator_status not found"
-        orchestrator_status_section = source[
-            orchestrator_status_idx : orchestrator_status_idx + 300
-        ]
-        assert "req:" in orchestrator_status_section or "req " in orchestrator_status_section, (
-            "orchestrator_status should use 'req' parameter"
-        )
-
-        # Verify NO use of _req in HTTP handlers
-        assert "def health_liveness(_req:" not in source, (
-            "health_liveness should NOT use '_req' (causes FunctionLoadError)"
-        )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name in http_handlers:
+                # Verify first parameter name is exactly 'req'
+                assert len(node.args.args) > 0, f"{node.name} has no parameters"
+                first_param = node.args.args[0].arg
+                assert first_param == "req", (
+                    f"{node.name} first parameter is '{first_param}', expected 'req'"
+                )
+                # Explicitly check it's NOT '_req'
+                assert first_param != "_req", (
+                    f"{node.name} uses '_req' which causes FunctionLoadError"
+                )
 
     def test_event_grid_trigger_is_registered(self) -> None:
         """Verify Event Grid trigger function exists for blob-created events."""
