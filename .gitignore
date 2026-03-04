@@ -13,6 +13,7 @@ build/
 
 # Virtual environments
 .venv/
+.venv-backup-*/
 venv/
 ENV/
 
@@ -27,6 +28,11 @@ ENV/
 Thumbs.db
 .DS_Store
 Desktop.ini
+
+# Logs
+*-log.txt
+ci_status.txt
+
 
 # Azure Functions
 local.settings.json
