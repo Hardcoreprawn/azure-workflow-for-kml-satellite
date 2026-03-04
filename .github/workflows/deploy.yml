@@ -16,6 +16,8 @@
 #     3) Re-apply infra with Event Grid subscription enabled
 #
 # Triggers on push to main when application code or Dockerfile changes.
+# Also triggers on infra changes so infra+app apply always uses this single
+# two-pass deployment path.
 #
 # Safety: main branch protection requires the lint-and-test CI check to pass
 # before any PR can merge, so code on main has already been validated.
@@ -28,7 +30,7 @@
 #   - .dockerignore excludes .git, tests, infra, local settings
 #
 # Requires:
-#   - OIDC federation configured (same as infra.yml)
+#   - OIDC federation configured for this workflow
 #   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
 #     AZURE_SUBSCRIPTION_ID
 #   - GitHub environment variable: AZURE_LOCATION
@@ -40,6 +42,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "infra/**"
       - "function_app.py"
       - "kml_satellite/**"
       - "host.json"
