@@ -98,7 +98,7 @@ module functionApp 'modules/function-app.bicep' = {
   }
 }
 
-module eventGrid 'modules/event-grid.bicep' = {
+module eventGrid 'modules/event-grid.bicep' = if (enableEventGridSubscription) {
   name: 'event-grid'
   params: {
     location: location

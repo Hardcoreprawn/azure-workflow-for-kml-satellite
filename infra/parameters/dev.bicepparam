@@ -12,6 +12,7 @@ param baseName = 'kmlsat-dev'
 param environment = 'dev'
 param logRetentionInDays = 30
 param enableKeyVaultPurgeProtection = false
+param enableEventGridSubscription = true
 param tags = {
   costCenter: 'dev'
 }

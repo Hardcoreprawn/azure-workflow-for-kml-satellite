@@ -163,24 +163,26 @@ class TestReadinessCheck:
             "functions to be registered before enabling Event Grid"
         )
 
-    def test_readiness_uses_function_list(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must poll function host HTTP endpoint (Container Apps)."""
+    def test_readiness_uses_host_status_endpoint(self, deploy_workflow: dict[str, Any]) -> None:
+        """Readiness check must poll authenticated host-status endpoint."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "curl" in run_script and "/api/health" in run_script, (
-            "Readiness check must use HTTP endpoint (curl) for Container Apps functions"
+        assert "curl" in run_script and "/admin/host/status" in run_script, (
+            "Readiness check must call /admin/host/status for authoritative host state"
         )
+        assert "x-functions-key" in run_script, "Readiness check must authenticate with host key"
+        assert "listKeys" in run_script, "Readiness check must fetch host key via listKeys"
 
-    def test_readiness_checks_http_status_codes(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must handle HTTP status codes (200, 404, 503)."""
+    def test_readiness_checks_running_state(self, deploy_workflow: dict[str, Any]) -> None:
+        """Readiness check must gate on host state=Running."""
         steps = _get_steps(deploy_workflow)
         readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
         assert readiness is not None
         run_script = readiness.get("run", "")
-        assert "http_response" in run_script and "200" in run_script, (
-            "Readiness check must evaluate HTTP response codes (200 = ready)"
+        assert "state" in run_script and "Running" in run_script, (
+            "Readiness check must evaluate host state and require Running"
         )
 
     def test_readiness_has_retry_loop(self, deploy_workflow: dict[str, Any]) -> None:
@@ -222,6 +224,25 @@ class TestReadinessCheck:
         assert "enableEventGridSubscription=true" in second_run, (
             "Second pass must set enableEventGridSubscription=true"
         )
+
+    def test_event_grid_enable_runs_after_readiness(self, deploy_workflow: dict[str, Any]) -> None:
+        """Readiness must execute before Event Grid enablement."""
+        steps = _get_steps(deploy_workflow)
+        readiness_idx = next(
+            (i for i, s in enumerate(steps) if "wait" in s.get("name", "").lower()),
+            -1,
+        )
+        enable_idx = next(
+            (
+                i
+                for i, s in enumerate(steps)
+                if "enable event grid subscription" in s.get("name", "").lower()
+            ),
+            -1,
+        )
+        assert readiness_idx >= 0, "Readiness step not found"
+        assert enable_idx >= 0, "Event Grid enable step not found"
+        assert readiness_idx < enable_idx, "Readiness step must run before Event Grid enablement"
 
     def test_event_grid_enable_has_retry_and_failure_exit(
         self, deploy_workflow: dict[str, Any]

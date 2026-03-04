@@ -110,159 +110,260 @@ jobs:
             --name "deploy-$(date +%Y%m%d-%H%M%S)"
 
       - name: Wait for kml_blob_trigger to be discoverable
+        shell: bash
         run: |
-          echo "Waiting for Container Apps function host to load functions..."
-          last_error=""
-          start_time=$(date +%s)
-          max_duration=300  # 5 minutes wall-clock timeout
-          max_attempts=30
-          found=0
+          set -euo pipefail
+          echo "::group::Initializing Readiness Checks"
 
-          # Get function app hostname
-          fqdn=$(az functionapp show \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "defaultHostName" -o tsv)
+          # Configuration
+          MAX_DURATION_SECONDS=300
+          START_TIME=$(date +%s)
+          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
+          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
-          for i in $(seq 1 $max_attempts); do
-            elapsed=$(($(date +%s) - start_time))
-            if [ "$elapsed" -ge "$max_duration" ]; then
-              echo "::warning::Wall-clock timeout reached (${elapsed}s) - functions host not ready"
+          log() { echo "$(date +'%H:%M:%S') | $*"; }
+          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
+          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
+
+          # ---------------------------------------------------------------------
+          # 1. Retrieve FQDN (Retryable)
+          # ---------------------------------------------------------------------
+          log "Retrieving Function App hostname..."
+          FQDN=""
+          for i in {1..5}; do
+            FQDN=$(az functionapp show \
+              --name "$FUNCTION_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "defaultHostName" -o tsv 2>/dev/null || true)
+
+            if [[ -n "$FQDN" ]]; then
+              log "✔ Target FQDN: $FQDN"
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ -z "$FQDN" ]]; then
+            err "Failed to resolve FQDN for $FUNCTION_APP after 5 attempts."
+            exit 1
+          fi
+
+          # ---------------------------------------------------------------------
+          # 2. Retrieve Host Master Key (Retryable)
+          # ---------------------------------------------------------------------
+          log "Retrieving Host Master Key (required for admin API)..."
+          RESOURCE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
+          HOST_KEY=""
+
+          for i in {1..10}; do
+            # Using az rest to bypass potential CLI extension issues
+            HOST_KEY=$(az rest \
+              --method post \
+              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
+              --query "masterKey" -o tsv 2>/dev/null || true)
+
+            if [[ -n "$HOST_KEY" ]]; then
+              log "✔ Host master key retrieved."
               break
             fi
 
+            log "  Attempt $i/10: Key not available yet. Retrying in 5s..."
+            sleep 5
+          done
+
+          if [[ -z "$HOST_KEY" ]]; then
+            err "Failed to acquire host master key. Cannot perform health checks."
+            exit 1
+          fi
+          echo "::endgroup::"
+
+          # ---------------------------------------------------------------------
+          # 3. Poll for Host Health & Function Indexing
+          # ---------------------------------------------------------------------
+          echo "::group::Polling Function Host Status"
+          FOUND=0
+
+          while true; do
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - START_TIME))
+
+            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
+              warn "Timeout reached (${MAX_DURATION_SECONDS}s). Host did not become healthy."
+              break
+            fi
+
+            # Check 1: General Host Status
+            # We use curl with max-time to avoid hangs
             set +e
-            # For Container Apps, check if functions host is running via HTTP
-            # Note: az functionapp function list doesn't work reliably for Container Apps
-            http_response=$(curl -sS -o /dev/null -w "%{http_code}" "https://${fqdn}/api/health" 2>&1)
-            curl_status=$?
+            HOST_STATUS_JSON=$(curl -sS --max-time 10 \
+              -H "x-functions-key: ${HOST_KEY}" \
+              "https://${FQDN}/admin/host/status" 2>/dev/null)
+            CURL_EXIT=$?
             set -e
 
-            if [ "$curl_status" -ne 0 ]; then
-              last_error="curl failed with exit code $curl_status"
-              echo "  attempt $i/$max_attempts (${elapsed}s) — connection failed, retrying in 10s…"
-              echo "    error: $last_error"
+            if [[ $CURL_EXIT -ne 0 ]]; then
+              log "  [${ELAPSED}s] Connection failed (curl=$CURL_EXIT). Host might be cold starting..."
               sleep 10
               continue
             fi
 
-            # HTTP 200 = health endpoint responding = functions loaded
-            # HTTP 404 = host alive but no functions yet
-            # HTTP 503 = host not ready
-            if [ "$http_response" = "200" ]; then
-              echo "✔ Functions host ready after attempt $i (${elapsed}s elapsed, HTTP $http_response)"
-              found=1
-              break
-            elif [ "$http_response" = "404" ]; then
-              echo "  attempt $i/$max_attempts (${elapsed}s) — host running but functions not loaded yet (HTTP $http_response), retrying in 10s…"
-            else
-              echo "  attempt $i/$max_attempts (${elapsed}s) — host not ready (HTTP $http_response), retrying in 10s…"
-            fi
-            sleep 10
-          done
+            # Safe JSON parsing
+            STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
 
-          total_elapsed=$(($(date +%s) - start_time))
-          if [ "$found" -ne 1 ]; then
-            echo "::warning::Functions host not ready after ${total_elapsed}s; continuing to Event Grid enable retries"
-            if [ -n "$last_error" ]; then
-              echo "::warning::Last error: $last_error"
+            if [[ "$STATE" != "Running" ]]; then
+              log "  [${ELAPSED}s] Host state is '$STATE'. Waiting for 'Running'..."
+              # If we got HTML (InvalidJSON), print a snippet for debugging
+              if [[ "$STATE" == "InvalidJSON" ]]; then
+                 PREVIEW=$(echo "$HOST_STATUS_JSON" | grep -o '<title>.*</title>' || echo "${HOST_STATUS_JSON:0:50}...")
+                 log "        Response preview: $PREVIEW"
+              fi
+              sleep 10
+              continue
             fi
+
+            log "✔ Host is Running. Verifying function 'kml_blob_trigger' index..."
+
+            # Check 2: Specific Function Indexing
+            # Even if host is running, the specific Python function might not be indexed yet.
+            # We query the admin API for the specific function.
+            set +e
+            FUNC_STATUS_JSON=$(curl -sS --max-time 10 \
+              -H "x-functions-key: ${HOST_KEY}" \
+              "https://${FQDN}/admin/functions/kml_blob_trigger/status" 2>/dev/null)
+            CURL_EXIT=$?
+            set -e
+
+            # 404 means function doesn't exist yet. 200 means it exists.
+            # We check if the response contains the name.
+            FUNC_NAME=$(echo "$FUNC_STATUS_JSON" | jq -r '.name // empty' 2>/dev/null || echo "")
+
+            if [[ "$FUNC_NAME" == "kml_blob_trigger" ]]; then
+              log "✔ Function 'kml_blob_trigger' is indexed and ready."
+              FOUND=1
+              break
+            else
+              log "  [${ELAPSED}s] Function 'kml_blob_trigger' not found in registry yet. Retrying..."
+              sleep 5
+            fi
+          done
+          echo "::endgroup::"
+
+          if [[ $FOUND -ne 1 ]]; then
+            warn "Function was not fully discoverable within the timeout period."
+            # We do NOT exit 1 here, we let the Event Grid deployment attempt to handle it,
+            # as it has its own robust retry logic. This step is an optimization to clear the
+            # way for the next step.
+          else
+            echo "✅ Function App is fully hot and ready for Event Grid."
           fi
 
-      - name: Enable Event Grid subscription (retry until endpoint validates)
+      - name: Enable Event Grid subscription (Robust Retry)
+        shell: bash
         run: |
-          success=0
-          last_error=""
-          start_time=$(date +%s)
-          max_duration=900  # 15 minutes wall-clock timeout
-          max_attempts=15
+          set -euo pipefail
+          echo "::group::Enabling Event Grid Subscription"
 
-          echo "Starting Event Grid enablement with wall-clock timeout of ${max_duration}s (${max_attempts} attempts max)"
+          # Configuration
+          MAX_DURATION_SECONDS=900  # 15 minutes
+          MAX_ATTEMPTS=20
+          START_TIME=$(date +%s)
+          SUCCESS=0
 
-          for i in $(seq 1 $max_attempts); do
-            elapsed=$(($(date +%s) - start_time))
-            if [ "$elapsed" -ge "$max_duration" ]; then
-              echo "::error::Wall-clock timeout reached (${elapsed}s >= ${max_duration}s) at attempt $i"
+          log() { echo "$(date +'%H:%M:%S') | $*"; }
+          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
+          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
+
+          log "Target: Template=infra/main.bicep, Param=enableEventGridSubscription=true"
+
+          for ((i=1; i<=MAX_ATTEMPTS; i++)); do
+            NOW=$(date +%s)
+            ELAPSED=$((NOW - START_TIME))
+
+            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
+              err "Timeout reached (${MAX_DURATION_SECONDS}s). Aborting."
               break
             fi
 
-            attempt_start=$(date +%s)
-            echo "Attempt $i/$max_attempts (elapsed: ${elapsed}s)..."
+            log "Attempt $i/$MAX_ATTEMPTS (Elapsed: ${ELAPSED}s)..."
 
+            # Execute Deployment
             set +e
-            deploy_output=$(az deployment sub create \
+            OUTPUT=$(az deployment sub create \
               --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
               --template-file infra/main.bicep \
               --parameters infra/parameters/dev.bicepparam \
               --parameters enableEventGridSubscription=true \
               --parameters containerImage='${{ steps.image.outputs.name }}' \
-              --name "deploy-eg-$(date +%Y%m%d-%H%M%S)-$i" 2>&1)
-            deploy_status=$?
+              --name "deploy-eg-$(date +%Y%m%d)-${GITHUB_RUN_ID}-$i" 2>&1)
+            EXIT_CODE=$?
             set -e
 
-            attempt_duration=$(($(date +%s) - attempt_start))
-            echo "  Deployment attempt took ${attempt_duration}s (exit code: $deploy_status)"
-
-            if [ "$deploy_status" -eq 0 ]; then
-              total_elapsed=$(($(date +%s) - start_time))
-              echo "✔ Event Grid subscription enabled after attempt $i/$max_attempts (${total_elapsed}s elapsed)"
-              success=1
+            if [[ $EXIT_CODE -eq 0 ]]; then
+              log "✔ Deployment successful."
+              SUCCESS=1
               break
             fi
 
-            last_error="$deploy_output"
-
-            # Fail-fast: detect non-transient errors
-            if echo "$deploy_output" | grep -qi "authorization\|forbidden\|invalid\scredential"; then
-              echo "::error::Non-transient error detected (auth/permission) - failing fast"
-              echo "$deploy_output" | tail -n 8
-              break
+            # Error Analysis
+            # 1. Check for fatal errors (Permissions/Auth)
+            if echo "$OUTPUT" | grep -qiE "AuthorizationFailed|LinkedAuthorizationFailed|InvalidAuthenticationToken"; then
+               err "Fatal authorization error detected. Failsafe abort."
+               echo "$OUTPUT"
+               exit 1
             fi
 
-            # Check if error is endpoint validation (expected transient)
-            if echo "$deploy_output" | grep -qi "destination.*not.*found\|endpoint.*validation"; then
-              echo "  Endpoint validation failed (transient) - function not yet ready"
+            # 2. Check for validation errors (Template issues)
+            # If the template is invalid, retrying won't help.
+            if echo "$OUTPUT" | grep -qiE "InvalidTemplate|DeploymentTemplateValidationFailed"; then
+               err "Fatal template validation error detected. Failsafe abort."
+               echo "$OUTPUT"
+               exit 1
+            fi
+
+            # 3. Check for Endpoint Validation (Transient)
+            if echo "$OUTPUT" | grep -qiE "Url validation|destination endpoint"; then
+               log "  ⚠ Event Grid validation failed (Function not ready yet)."
             else
-              echo "  Unexpected error pattern:"
-            fi
-            echo "$deploy_output" | tail -n 8
-
-            # Exponential backoff: 10s, 20s, 30s, capped at 60s
-            backoff=$((10 * i))
-            if [ "$backoff" -gt 60 ]; then
-              backoff=60
+               log "  ⚠ Unknown deployment error (assuming transient)."
             fi
 
-            # Don't sleep on last attempt or if near timeout
-            if [ "$i" -lt "$max_attempts" ]; then
-              remaining=$((max_duration - elapsed - backoff))
-              if [ "$remaining" -lt 0 ]; then
-                echo "  Approaching timeout, final attempt without backoff"
-              else
-                echo "  Backing off ${backoff}s before next attempt..."
-                sleep "$backoff"
-              fi
-            fi
+            # Print last few lines of error for context
+            echo "$OUTPUT" | tail -n 5
+
+            # Exponential Backoff with Jitter
+            # Base=10s, Cap=60s
+            BASE_WAIT=$(( 10 * i ))
+            [ $BASE_WAIT -gt 60 ] && BASE_WAIT=60
+            sleep $BASE_WAIT
           done
+          echo "::endgroup::"
 
-          total_elapsed=$(($(date +%s) - start_time))
-          if [ "$success" -ne 1 ]; then
-            echo "::error::Failed to enable Event Grid subscription after $max_attempts attempts (${total_elapsed}s elapsed, ${max_duration}s timeout)"
-            if [ -n "$last_error" ]; then
-              echo "::error::Last deployment error:"
-              echo "$last_error"
-            fi
+          if [[ $SUCCESS -ne 1 ]]; then
+            err "Failed to enable Event Grid subscription after $MAX_ATTEMPTS attempts."
             exit 1
           fi
 
       - name: Verify Event Grid subscription exists
+        shell: bash
         run: |
-          sub_id=$(az eventgrid system-topic event-subscription list \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --system-topic-name "evgt-kmlsat-dev" \
-            --query "[?name=='evgs-kml-upload'].id | [0]" -o tsv)
-          if [ -z "$sub_id" ]; then
-            echo "::error::Expected event subscription evgs-kml-upload was not found"
-            exit 1
+          set -euo pipefail
+          echo "::group::Final Verification"
+
+          EXPECTED_SUB="evgs-kml-upload"
+          TOPIC_NAME="evgt-kmlsat-dev"
+          RG="${{ env.RESOURCE_GROUP }}"
+
+          SUB_ID=$(az eventgrid system-topic event-subscription list \
+            --resource-group "$RG" \
+            --system-topic-name "$TOPIC_NAME" \
+            --query "[?name=='$EXPECTED_SUB'].id | [0]" -o tsv)
+
+          if [[ -z "$SUB_ID" ]]; then
+             echo "::error::CRITICAL: Subscription '$EXPECTED_SUB' not found after 'successful' deployment."
+             exit 1
           fi
-          echo "✔ Event subscription verified: $sub_id"
+
+          echo "✅ Verified: Subscription '$EXPECTED_SUB' exists."
+          echo "   Resource ID: $SUB_ID"
+          echo "::endgroup::"

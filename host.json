@@ -14,11 +14,15 @@
       "Host.Aggregator": "Trace"
     }
   },
+  "extensionBundle": {
+    "id": "Microsoft.Azure.Functions.ExtensionBundle",
+    "version": "[4.*, 5.0.0)"
+  },
   "extensions": {
     "durableTask": {
       "hubName": "KmlSatelliteHub",
       "storageProvider": {
-        "type": "azure-storage"
+        "type": "AzureStorage"
       },
       "tracing": {
         "traceInputsAndOutputs": false,
@@ -28,9 +32,5 @@
       "maxConcurrentOrchestratorFunctions": 5
     }
   },
-  "functionTimeout": "00:10:00",
-  "extensionBundle": {
-    "id": "Microsoft.Azure.Functions.ExtensionBundle",
-    "version": "[4.*, 5.0.0)"
-  }
+  "functionTimeout": "00:10:00"
 }

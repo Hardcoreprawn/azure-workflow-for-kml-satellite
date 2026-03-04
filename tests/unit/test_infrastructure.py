@@ -533,13 +533,29 @@ class TestFunctionAppModule:
         expected = {
             "AzureWebJobsStorage",
             "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "FUNCTIONS_WORKER_RUNTIME",
+            "FUNCTIONS_EXTENSION_VERSION",
+            "AzureFunctionsJobHost__extensions__durableTask__storageProvider__type",
             "KEY_VAULT_URI",
+            "KEYVAULT_URL",
             "DEFAULT_INPUT_CONTAINER",
             "DEFAULT_OUTPUT_CONTAINER",
             "IMAGERY_PROVIDER",
         }
         assert expected.issubset(setting_names), (
             f"Missing app settings: {expected - setting_names}"
+        )
+
+    def test_durable_provider_override_uses_azurestorage(
+        self, function_app_arm_template: dict[str, Any]
+    ) -> None:
+        """Function app must override Durable provider type to runtime-supported AzureStorage."""
+        site = _get_resources_by_type(function_app_arm_template, "Microsoft.Web/sites")[0]
+        app_settings = site["properties"].get("siteConfig", {}).get("appSettings", [])
+        settings = {s["name"]: s.get("value") for s in app_settings}
+        assert (
+            settings.get("AzureFunctionsJobHost__extensions__durableTask__storageProvider__type")
+            == "AzureStorage"
         )
 
     def test_no_provider_secrets_in_app_settings(

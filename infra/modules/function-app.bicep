@@ -48,6 +48,8 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
+
+
           value: storageConnectionString
         }
         {
@@ -55,7 +57,23 @@ resource functionApp 'Microsoft.Web/sites@2024-04-01' = {
           value: appInsightsConnectionString
         }
         {
+          name: 'FUNCTIONS_WORKER_RUNTIME'
+          value: 'python'
+        }
+        {
+          name: 'FUNCTIONS_EXTENSION_VERSION'
+          value: '~4'
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__durableTask__storageProvider__type'
+          value: 'AzureStorage'
+        }
+        {
           name: 'KEY_VAULT_URI'
+          value: keyVaultUri
+        }
+        {
+          name: 'KEYVAULT_URL'
           value: keyVaultUri
         }
         {
