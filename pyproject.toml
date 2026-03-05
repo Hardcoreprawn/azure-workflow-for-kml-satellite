@@ -36,6 +36,7 @@ dependencies = [
 
     # STAC Client (Planetary Computer)
     "pystac-client>=0.8.0",
+    "planetary-computer>=1.0.0",
 
     # HTTP
     "httpx>=0.28.0",

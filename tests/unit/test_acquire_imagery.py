@@ -184,6 +184,51 @@ class TestAcquireImagery(unittest.TestCase):
             acquire_imagery(_SAMPLE_AOI_DICT, provider_name="bad")
         assert ctx.exception.retryable is False
 
+    @patch("kml_satellite.activities.acquire_imagery.get_provider")
+    def test_result_contract_has_expected_keys_and_formats(
+        self, mock_get_provider: MagicMock
+    ) -> None:
+        """Output contract keys and date format stay stable for orchestrator consumers."""
+        mock_provider = MagicMock()
+        mock_provider.search.return_value = [_make_search_result("SCENE_FMT")]
+        mock_provider.order.return_value = _make_order_id("SCENE_FMT")
+        mock_get_provider.return_value = mock_provider
+
+        result = acquire_imagery(_SAMPLE_AOI_DICT)
+
+        assert set(result.keys()) == {
+            "order_id",
+            "scene_id",
+            "provider",
+            "cloud_cover_pct",
+            "acquisition_date",
+            "spatial_resolution_m",
+            "asset_url",
+            "aoi_feature_name",
+        }
+        assert isinstance(result["cloud_cover_pct"], float)
+        assert isinstance(result["spatial_resolution_m"], float)
+        # Must remain ISO 8601 parseable.
+        _ = datetime.fromisoformat(str(result["acquisition_date"]))
+
+    @patch("kml_satellite.activities.acquire_imagery.get_provider")
+    def test_invalid_filters_payload_raises_non_retryable(
+        self, mock_get_provider: MagicMock
+    ) -> None:
+        """Bad filter schema should fail fast before any provider calls."""
+        mock_provider = MagicMock()
+        mock_get_provider.return_value = mock_provider
+
+        with self.assertRaises(ImageryAcquisitionError) as ctx:
+            acquire_imagery(
+                _SAMPLE_AOI_DICT,
+                filters_dict={"collections": "sentinel-2-l2a"},
+            )
+
+        assert "Invalid imagery filters payload" in ctx.exception.message
+        assert ctx.exception.retryable is False
+        mock_provider.search.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # Helper tests
@@ -226,3 +271,18 @@ class TestBuildFilters(unittest.TestCase):
         assert filters.max_cloud_cover_pct == 5.0
         assert filters.date_start is not None
         assert filters.collections == ["naip"]
+
+    def test_invalid_collections_type_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            _build_filters({"collections": "naip"})
+        assert "filters.collections must be a list of strings" in str(ctx.exception)
+
+    def test_invalid_collections_item_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            _build_filters({"collections": ["naip", "", 123]})
+        assert "filters.collections must contain non-empty strings" in str(ctx.exception)
+
+    def test_invalid_date_format_raises(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            _build_filters({"date_start": "06/01/2025"})
+        assert "filters.date_start must be ISO 8601" in str(ctx.exception)

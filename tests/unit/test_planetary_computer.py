@@ -35,12 +35,14 @@ from kml_satellite.providers.base import (
     ProviderSearchError,
 )
 from kml_satellite.providers.planetary_computer import (
+    _DEFAULT_COLLECTIONS,
     PlanetaryComputerAdapter,
     _aoi_to_bbox,
     _BoundedOrderCache,
     _build_blob_path,
     _build_date_range,
     _resolve_best_asset_url,
+    _sign_asset_url,
 )
 from tests.unit.test_provider_contract import ProviderContractTests
 
@@ -222,6 +224,31 @@ class TestResolveBestAssetUrl(unittest.TestCase):
     def test_none_assets_returns_empty(self) -> None:
         item = SimpleNamespace(assets=None)
         assert _resolve_best_asset_url(item) == ""
+
+
+class TestSignAssetUrl(unittest.TestCase):
+    """_sign_asset_url should sign Planetary Computer URLs when possible."""
+
+    def test_empty_url_returns_empty(self) -> None:
+        assert _sign_asset_url("") == ""
+
+    @patch("kml_satellite.providers.planetary_computer._planetary_computer", None)
+    def test_missing_signer_returns_original_url(self) -> None:
+        url = "https://example.test/raw.tif"
+        assert _sign_asset_url(url) == url
+
+    @patch("kml_satellite.providers.planetary_computer._planetary_computer")
+    def test_signer_used_when_available(self, mock_pc: MagicMock) -> None:
+        mock_pc.sign.return_value = "https://example.test/raw.tif?sig=abc"
+        url = _sign_asset_url("https://example.test/raw.tif")
+        assert url == "https://example.test/raw.tif?sig=abc"
+        mock_pc.sign.assert_called_once_with("https://example.test/raw.tif")
+
+    @patch("kml_satellite.providers.planetary_computer._planetary_computer")
+    def test_signing_failure_falls_back_to_raw_url(self, mock_pc: MagicMock) -> None:
+        mock_pc.sign.side_effect = RuntimeError("token service unavailable")
+        raw = "https://example.test/raw.tif"
+        assert _sign_asset_url(raw) == raw
 
 
 class TestBuildBlobPath(unittest.TestCase):
@@ -472,6 +499,71 @@ class TestDownload(unittest.TestCase):
         assert blob.blob_path == "imagery/raw/SCENE_123.tif"
         assert blob.size_bytes == 1024
         assert blob.content_type == "image/tiff"
+
+    @patch("kml_satellite.providers.planetary_computer.pystac_client.Client.open")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_download_resolve_asset_url_includes_collections(
+        self, mock_httpx_cls: MagicMock, mock_stac_open: MagicMock
+    ) -> None:
+        """Regression for #126: ID-based STAC lookup must include collections."""
+        adapter, order_id = self._make_adapter_with_order()
+
+        mock_stac_open.return_value = _mock_stac_search(
+            [_make_stac_item("SCENE_123", asset_url="https://dl.tif")]
+        )
+
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 128]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        _ = adapter.download(order_id)
+
+        call_kwargs = mock_stac_open.return_value.search.call_args.kwargs
+        assert call_kwargs["ids"] == ["SCENE_123"]
+        assert call_kwargs["collections"] == list(_DEFAULT_COLLECTIONS)
+        assert call_kwargs["max_items"] == 1
+
+    @patch("kml_satellite.providers.planetary_computer._planetary_computer")
+    @patch("kml_satellite.providers.planetary_computer.pystac_client.Client.open")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_download_uses_signed_asset_url(
+        self,
+        mock_httpx_cls: MagicMock,
+        mock_stac_open: MagicMock,
+        mock_pc: MagicMock,
+    ) -> None:
+        """Download path should sign Planetary Computer blob URLs before GET."""
+        adapter, order_id = self._make_adapter_with_order()
+        mock_pc.sign.return_value = "https://dl.tif?sig=token"
+
+        mock_stac_open.return_value = _mock_stac_search(
+            [_make_stac_item("SCENE_123", asset_url="https://dl.tif")]
+        )
+
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 64]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        _ = adapter.download(order_id)
+
+        mock_pc.sign.assert_called_with("https://dl.tif")
+        mock_httpx.stream.assert_called_once_with("GET", "https://dl.tif?sig=token")
 
     def test_download_unknown_order_raises(self) -> None:
         adapter = PlanetaryComputerAdapter(ProviderConfig(name="planetary_computer"))
