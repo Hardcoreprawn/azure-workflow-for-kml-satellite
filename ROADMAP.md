@@ -1,7 +1,7 @@
 # TreeSight — Development Roadmap
 
-**Last updated:** 1 March 2026
-**Status:** Active — Phase 3 in progress
+**Last updated:** 5 March 2026
+**Status:** Active — Phase 3 final blocker (#126)
 
 > Sequenced delivery plan for TreeSight. The [PID](PID.md) defines the
 > end-state; this document governs **execution order**. Each phase is
@@ -44,13 +44,16 @@
 | #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | ✅ DONE |
 | #19 | UAT sign-off | Last | ✅ DONE |
+| #126 | Planetary Computer STAC API requires collection parameter | Yes | 🔴 BLOCKING |
 
 ### Phase 3 Done When
 
 - [x] All issues above are closed
 - [x] CI green on main
 - [x] Event Grid webhook destination fix completed (Container Apps compatibility)
-- [ ] Pipeline processes real KML end-to-end in deployed environment (UAT phase)
+- [x] Infrastructure deployed to Azure (dev environment)
+- [x] Event Grid → Function trigger validated end-to-end
+- [ ] Pipeline processes real KML end-to-end in deployed environment (blocked by #126)
 
 ---
 

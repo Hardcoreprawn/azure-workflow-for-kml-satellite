@@ -383,8 +383,12 @@ class PlanetaryComputerAdapter(ImageryProvider):
         """Fetch a STAC item by ID and return the best asset URL."""
         catalogue = pystac_client.Client.open(self._stac_url)
 
+        # TODO(#126): Derive collection from scene_id or store it in order cache
+        # for multi-collection support. For now, hardcode sentinel-2-l2a since
+        # that's the only collection we currently use.
         search = catalogue.search(
             ids=[scene_id],
+            collections=list(_DEFAULT_COLLECTIONS),
             max_items=1,
         )
         items = list(search.items())
