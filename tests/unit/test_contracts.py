@@ -16,7 +16,9 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 from typing import get_type_hints
+from unittest.mock import MagicMock, patch
 
+from kml_satellite.activities.acquire_imagery import acquire_imagery
 from kml_satellite.models.aoi import AOI
 from kml_satellite.models.blob_event import BlobEvent
 from kml_satellite.models.contracts import (
@@ -36,6 +38,7 @@ from kml_satellite.models.contracts import (
     WriteMetadataInput,
 )
 from kml_satellite.models.feature import Feature
+from kml_satellite.models.imagery import OrderId, SearchResult
 
 
 def _contract_keys(td: type) -> set[str]:
@@ -180,3 +183,44 @@ class TestContractCompleteness(unittest.TestCase):
             "target_crs",
         }
         assert required.issubset(keys), f"Missing: {required - keys}"
+
+
+class TestAcquireImageryRuntimeContract(unittest.TestCase):
+    """Runtime payload from acquire_imagery must match AcquisitionResult TypedDict."""
+
+    @patch("kml_satellite.activities.acquire_imagery.get_provider")
+    def test_keys_match_acquisition_result_contract(self, mock_get_provider: MagicMock) -> None:
+        sample_aoi: dict[str, object] = {
+            "feature_name": "Contract AOI",
+            "source_file": "contract.kml",
+            "feature_index": 0,
+            "exterior_coords": [[-120.5, 46.5], [-120.0, 46.5], [-120.0, 46.0], [-120.5, 46.5]],
+            "bbox": [-120.5, 46.0, -120.0, 46.5],
+            "buffered_bbox": [-120.51, 45.99, -119.99, 46.51],
+            "area_ha": 25.0,
+            "centroid": [-120.25, 46.25],
+        }
+
+        mock_provider = MagicMock()
+        mock_provider.search.return_value = [
+            SearchResult(
+                scene_id="SCENE_CONTRACT_1",
+                provider="planetary_computer",
+                acquisition_date=datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC),
+                cloud_cover_pct=3.2,
+                spatial_resolution_m=10.0,
+                asset_url="https://example.test/scene.tif",
+            )
+        ]
+        mock_provider.order.return_value = OrderId(
+            provider="planetary_computer",
+            order_id="pc-SCENE_CONTRACT_1",
+            scene_id="SCENE_CONTRACT_1",
+        )
+        mock_get_provider.return_value = mock_provider
+
+        actual = acquire_imagery(sample_aoi)
+        expected = _contract_keys(AcquisitionResult)
+        assert set(actual.keys()) == expected, (
+            f"Drift detected: {set(actual.keys()).symmetric_difference(expected)}"
+        )

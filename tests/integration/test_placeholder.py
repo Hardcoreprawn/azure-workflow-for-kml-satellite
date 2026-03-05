@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import concurrent.futures
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import patch
 
 import pytest
 
-from kml_satellite.activities.acquire_imagery import acquire_imagery
+from kml_satellite.activities.acquire_imagery import ImageryAcquisitionError, acquire_imagery
 from kml_satellite.activities.download_imagery import download_imagery
 from kml_satellite.activities.parse_kml import parse_kml_file
 from kml_satellite.activities.poll_order import poll_order
@@ -73,6 +73,15 @@ class _FakeProvider:
         )
 
 
+class _NoResultProvider:
+    """Fake provider that returns no search results."""
+
+    def search(self, aoi, filters=None):
+        _ = aoi
+        _ = filters
+        return []
+
+
 @pytest.mark.integration
 def test_pipeline_e2e_happy_path(single_polygon_kml: Path) -> None:
     """Runs parse → AOI → acquire → poll → download → metadata flow."""
@@ -116,19 +125,20 @@ def test_pipeline_e2e_happy_path(single_polygon_kml: Path) -> None:
             max_retries=1,
         )
 
-    metadata = write_metadata(
+    metadata_result = write_metadata(
         aoi,
         processing_id="integration-001",
         timestamp="2026-03-02T12:00:00+00:00",
         tenant_id="tenant-int",
     )
+    metadata = cast("dict[str, Any]", metadata_result["metadata"])
 
     assert acquisition["provider"] == "planetary_computer"
     assert acquisition["scene_id"] == "pc-scene-integration-1"
     assert download["size_bytes"] == 2048
     assert download["content_type"] == "image/tiff"
-    assert metadata["metadata"]["processing_id"] == "integration-001"
-    assert metadata["metadata"]["tenant_id"] == "tenant-int"
+    assert metadata["processing_id"] == "integration-001"
+    assert metadata["tenant_id"] == "tenant-int"
 
 
 @pytest.mark.integration
@@ -245,3 +255,49 @@ def test_concurrent_upload_stress(single_polygon_kml: Path, concurrent_count: in
         "Processing IDs not unique — possible race condition"
     )
     assert len(tenant_ids) == concurrent_count, "Tenant IDs not unique — possible race condition"
+
+
+@pytest.mark.integration
+def test_pipeline_integration_no_imagery_still_writes_metadata(single_polygon_kml: Path) -> None:
+    """No search results should fail acquisition, while metadata remains schema-valid."""
+    features = parse_kml_file(single_polygon_kml, source_filename=single_polygon_kml.name)
+    assert len(features) >= 1
+
+    aoi = prepare_aoi(features[0])
+
+    with (
+        patch(
+            "kml_satellite.activities.acquire_imagery.get_provider",
+            return_value=_NoResultProvider(),
+        ),
+        pytest.raises(ImageryAcquisitionError) as exc,
+    ):
+        acquire_imagery(aoi.to_dict(), provider_name="planetary_computer")
+
+    assert "No imagery found" in str(exc.value)
+    metadata_result = write_metadata(aoi, processing_id="integration-no-imagery")
+    metadata = cast("dict[str, Any]", metadata_result["metadata"])
+    assert metadata["processing"]["status"] == "metadata_written"
+    assert metadata["imagery"]["scene_id"] == ""
+    assert metadata["imagery"]["provider"] == ""
+
+
+@pytest.mark.integration
+def test_exported_kml_metadata_contract_shape() -> None:
+    """Exported UK KML should parse and produce metadata with stable schema keys."""
+    from pathlib import Path
+
+    sample = Path("tests/data/uk-newton-linford-bradgate-country-park.kml")
+    features = parse_kml_file(sample, source_filename=sample.name)
+    assert len(features) >= 1
+
+    aoi = prepare_aoi(features[0])
+    result = write_metadata(aoi, processing_id="integration-uk-kml")
+    metadata = cast("dict[str, Any]", result["metadata"])
+
+    assert metadata["$schema"] == "aoi-metadata-v2"
+    assert metadata["kml_filename"] == sample.name
+    assert "geometry" in metadata and "imagery" in metadata and "processing" in metadata
+    assert len(metadata["geometry"]["coordinates"]) >= 1
+    assert len(metadata["geometry"]["bounding_box"]) == 4
+    assert metadata["processing"]["status"] == "metadata_written"

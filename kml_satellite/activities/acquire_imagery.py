@@ -100,8 +100,12 @@ def acquire_imagery(
     # Build provider config
     config = build_provider_config(provider_name, provider_config)
 
-    # Build imagery filters
-    filters = _build_filters(filters_dict)
+    # Build imagery filters.
+    try:
+        filters = _build_filters(filters_dict)
+    except (TypeError, ValueError) as exc:
+        msg = f"Invalid imagery filters payload: {exc}"
+        raise ImageryAcquisitionError(msg, retryable=False) from exc
 
     # Get provider adapter
     try:
@@ -181,9 +185,29 @@ def _build_filters(
     date_end = overrides.get("date_end")
 
     if isinstance(date_start, str):
-        date_start = datetime.fromisoformat(date_start)
+        try:
+            date_start = datetime.fromisoformat(date_start)
+        except ValueError as exc:
+            msg = "filters.date_start must be ISO 8601"
+            raise ValueError(msg) from exc
     if isinstance(date_end, str):
-        date_end = datetime.fromisoformat(date_end)
+        try:
+            date_end = datetime.fromisoformat(date_end)
+        except ValueError as exc:
+            msg = "filters.date_end must be ISO 8601"
+            raise ValueError(msg) from exc
+
+    raw_collections = overrides.get("collections", [])
+    if raw_collections is None:
+        collections: list[str] = []
+    else:
+        if not isinstance(raw_collections, list):
+            msg = "filters.collections must be a list of strings"
+            raise ValueError(msg)
+        if not all(isinstance(c, str) and c.strip() for c in raw_collections):
+            msg = "filters.collections must contain non-empty strings"
+            raise ValueError(msg)
+        collections = list(raw_collections)
 
     return ImageryFilters(
         max_cloud_cover_pct=float(overrides.get("max_cloud_cover_pct", 20.0)),
@@ -192,5 +216,5 @@ def _build_filters(
         max_resolution_m=float(overrides.get("max_resolution_m", 50.0)),
         date_start=date_start,
         date_end=date_end,
-        collections=list(overrides.get("collections", [])),
+        collections=collections,
     )

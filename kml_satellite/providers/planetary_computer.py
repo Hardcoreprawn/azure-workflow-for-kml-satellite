@@ -57,7 +57,59 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
+# Lazy import with type-safe validation wrapper
+try:
+    import planetary_computer as _pc_module
+except ImportError:
+    _pc_module = None
+
+
+class _PlanetaryComputerSigner:
+    """Typed wrapper for planetary_computer.sign() API.
+
+    Provides runtime safety by validating the API contract at initialization.
+    If the module doesn't expose the expected sign(url: str) -> str function,
+    an exception is raised immediately rather than silently failing later.
+    """
+
+    def __init__(self, module: Any | None) -> None:
+        """Initialize wrapper with optional planetary_computer module.
+
+        Args:
+            module: The imported planetary_computer module, or None if unavailable.
+
+        Raises:
+            TypeError: If module is provided but doesn't have sign(url) callable.
+        """
+        if module is None:
+            self._signer: Any = None
+        elif not hasattr(module, "sign") or not callable(module.sign):
+            raise TypeError(
+                "planetary_computer module missing sign() function. "
+                "Ensure planetary-computer>=1.0.0 is installed correctly."
+            )
+        else:
+            self._signer = module.sign
+
+    def sign(self, url: str) -> str:
+        """Sign a URL using planetary_computer.sign().
+
+        Args:
+            url: URL to sign (typically a Sentinel-2 STAC asset URL).
+
+        Returns:
+            Signed URL with SAS token.
+
+        Raises:
+            RuntimeError: If signer not available at initialization.
+        """
+        if self._signer is None:
+            raise RuntimeError("Signer not available; planetary_computer module not installed.")
+        return str(self._signer(url))
+
+
+# Initialize global signer instance with full type safety
+_planetary_computer: _PlanetaryComputerSigner = _PlanetaryComputerSigner(_pc_module)
 # Constants
 # ---------------------------------------------------------------------------
 
@@ -353,8 +405,8 @@ class PlanetaryComputerAdapter(ImageryProvider):
                 float(bbox_raw[3]),
             )
 
-            # Best asset URL.
-            asset_url = _resolve_best_asset_url(item)
+            # Best asset URL (Planetary Computer assets require signed URLs).
+            asset_url = _sign_asset_url(_resolve_best_asset_url(item))
 
             return SearchResult(
                 scene_id=scene_id,
@@ -396,7 +448,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
             msg = f"STAC item not found: {scene_id}"
             raise ProviderDownloadError(provider=self.name, message=msg)
 
-        url = _resolve_best_asset_url(items[0])
+        url = _sign_asset_url(_resolve_best_asset_url(items[0]))
         if not url:
             msg = f"No downloadable asset found for STAC item: {scene_id}"
             raise ProviderDownloadError(provider=self.name, message=msg)
@@ -457,6 +509,33 @@ def _build_date_range(filters: ImageryFilters) -> str | None:
     start = filters.date_start.isoformat() if filters.date_start else ".."
     end = filters.date_end.isoformat() if filters.date_end else ".."
     return f"{start}/{end}"
+
+
+def _sign_asset_url(url: str) -> str:
+    """Sign Planetary Computer asset URLs.
+
+    Uses the typed wrapper around planetary_computer.sign(url: str) -> str
+    to generate signed SAS tokens for Sentinel-2 imagery stored on
+    Azure Blob Storage.
+
+    Args:
+        url: Asset URL to sign (typically from STAC item).
+
+    Returns:
+        Signed URL with SAS token if signer available, original URL otherwise.
+    """
+    if not url:
+        return ""
+
+    try:
+        return _planetary_computer.sign(url)
+    except RuntimeError:
+        # Signer not available (module not installed)
+        logger.debug("planetary_computer not available; using raw URL")
+        return url
+    except Exception:
+        logger.warning("Failed to sign Planetary Computer asset URL; using raw URL", exc_info=True)
+        return url
 
 
 def _resolve_best_asset_url(item: pystac.Item) -> str:
