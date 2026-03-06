@@ -1,7 +1,7 @@
 # TreeSight — Development Roadmap
 
 **Last updated:** 5 March 2026
-**Status:** Active — Phase 3 final blocker (#126)
+**Status:** Active — Phase 4 Operational Maturity
 
 > Sequenced delivery plan for TreeSight. The [PID](PID.md) defines the
 > end-state; this document governs **execution order**. Each phase is
@@ -22,7 +22,7 @@
 
 ---
 
-## Current Phase: 3 — v1 Hardening
+## Current Phase: 4 — Operational Maturity
 
 **Gate:** Engine passes PID acceptance criteria AC-1 through AC-12, deployed and observable.
 
@@ -44,7 +44,7 @@
 | #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | ✅ DONE |
 | #19 | UAT sign-off | Last | ✅ DONE |
-| #126 | Planetary Computer STAC API requires collection parameter | Yes | 🔴 BLOCKING |
+| #126 | Planetary Computer STAC API requires collection parameter | Yes | ✅ DONE |
 
 ### Phase 3 Done When
 
@@ -53,21 +53,24 @@
 - [x] Event Grid webhook destination fix completed (Container Apps compatibility)
 - [x] Infrastructure deployed to Azure (dev environment)
 - [x] Event Grid → Function trigger validated end-to-end
-- [ ] Pipeline processes real KML end-to-end in deployed environment (blocked by #126)
+- [x] Pipeline processes real KML end-to-end in deployed environment (#126 fixed and merged PR #127)
 
 ---
 
 ## Phase 4 — Operational Maturity
 
-**Gate:** Production-grade reliability before adding tenants.
+**Gate:** Production-grade reliability, observability, and error-handling before adding tenants.
 
-| # | Title |
-| - | ----- |
-| #47 | Narrow `Any` usage at third-party boundaries |
-| — | Semantic versioning for container images |
-| — | Orchestration history purge strategy |
-| — | Circuit breaker for imagery provider API failures |
-| — | Integration test environment (staging) |
+**Work these issues (any order within the phase):**
+
+| # | Title | Status |
+| - | ----- | ------ |
+| #47 | Narrow `Any` usage at third-party boundaries | Not started |
+| #127 | Semantic versioning for container images | Not started |
+| #128 | Circuit breaker for imagery provider API failures | Not started |
+| #129 | Integration test environment (staging) | Not started |
+| #130 | Orchestration history purge / bloom filter strategy | Not started |
+| #131 | Multi-deployment test matrix (concurrent KML + error handling) | Not started |
 
 ---
 
@@ -138,9 +141,9 @@
 ## Phase Sequence
 
 ```text
-Phase 3: Hardening ← YOU ARE HERE
+Phase 3: Hardening ✅ COMPLETE
     │
-Phase 4: Operational Maturity
+Phase 4: Operational Maturity ← YOU ARE HERE
     │
 Phase 5: Multi-Tenant Foundation
     │
