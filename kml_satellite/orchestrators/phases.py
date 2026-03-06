@@ -440,6 +440,58 @@ def _execute_activity_batch(
     return _validate_batch_results(batch_results, batch, error_builder)
 
 
+def _process_all_batches(
+    context: df.DurableOrchestrationContext,
+    items: list[dict[str, Any]],
+    batch_size: int,
+    activity_name: str,
+    task_input_builder: Any,
+    error_builder: Any,
+    instance_id: str,
+    blob_name: str,
+    step_name: str,
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """Process all items in batches, accumulating results.
+
+    Handles the batching loop for both download and post-process phases,
+    eliminating code duplication.
+
+    Args:
+        context: Durable orchestration context.
+        items: Items to process in batches.
+        batch_size: Maximum items per batch.
+        activity_name: Name of the activity to call.
+        task_input_builder: Function to build activity input from item.
+        error_builder: Function to build error dicts on failure.
+        instance_id: Orchestration instance ID for logging.
+        blob_name: Source blob name for logging.
+        step_name: Step name for logging (e.g., "download", "post_process").
+
+    Yields:
+        task_all calls for each batch.
+
+    Returns:
+        Accumulated list of all batch results.
+    """
+    all_results: list[dict[str, Any]] = []
+
+    for batch_start in range(0, len(items), batch_size):
+        batch = items[batch_start : batch_start + batch_size]
+        batch_results = yield from _execute_activity_batch(
+            context=context,
+            activity_name=activity_name,
+            batch=batch,
+            task_input_builder=task_input_builder,
+            error_builder=error_builder,
+            instance_id=instance_id,
+            blob_name=blob_name,
+            step_name=step_name,
+        )
+        all_results.extend(batch_results)
+
+    return all_results
+
+
 def run_fulfillment_phase(
     context: df.DurableOrchestrationContext,
     ready_outcomes: list[dict[str, Any]],
@@ -506,20 +558,17 @@ def run_fulfillment_phase(
             "output_container": output_container,
         }
 
-    download_results: list[dict[str, Any]] = []
-    for batch_start in range(0, len(ready_outcomes), download_batch_size):
-        batch = ready_outcomes[batch_start : batch_start + download_batch_size]
-        batch_results = yield from _execute_activity_batch(
-            context=context,
-            activity_name="download_imagery",
-            batch=batch,
-            task_input_builder=build_download_input,
-            error_builder=download_error_dict,
-            instance_id=instance_id,
-            blob_name=blob_name,
-            step_name="download",
-        )
-        download_results.extend(batch_results)
+    download_results = yield from _process_all_batches(
+        context=context,
+        items=ready_outcomes,
+        batch_size=download_batch_size,
+        activity_name="download_imagery",
+        task_input_builder=build_download_input,
+        error_builder=download_error_dict,
+        instance_id=instance_id,
+        blob_name=blob_name,
+        step_name="download",
+    )
 
     if not context.is_replaying:
         logger.info(
@@ -555,20 +604,17 @@ def run_fulfillment_phase(
             "output_container": output_container,
         }
 
-    post_process_results: list[dict[str, Any]] = []
-    for batch_start in range(0, len(successful_downloads), post_process_batch_size):
-        batch = successful_downloads[batch_start : batch_start + post_process_batch_size]
-        batch_results = yield from _execute_activity_batch(
-            context=context,
-            activity_name="post_process_imagery",
-            batch=batch,
-            task_input_builder=build_post_process_input,
-            error_builder=post_process_error_dict,
-            instance_id=instance_id,
-            blob_name=blob_name,
-            step_name="post_process",
-        )
-        post_process_results.extend(batch_results)
+    post_process_results = yield from _process_all_batches(
+        context=context,
+        items=successful_downloads,
+        batch_size=post_process_batch_size,
+        activity_name="post_process_imagery",
+        task_input_builder=build_post_process_input,
+        error_builder=post_process_error_dict,
+        instance_id=instance_id,
+        blob_name=blob_name,
+        step_name="post_process",
+    )
 
     downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
     pp_clipped = sum(1 for p in post_process_results if p.get("clipped"))
