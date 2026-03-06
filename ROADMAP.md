@@ -65,7 +65,7 @@
 
 | # | Title | Status |
 | - | ----- | ------ |
-| #47 | Narrow `Any` usage at third-party boundaries | Not started |
+| #47 | Narrow `Any` usage at third-party boundaries | ✅ DONE |
 | #127 | Semantic versioning for container images | Not started |
 | #128 | Circuit breaker for imagery provider API failures | Not started |
 | #129 | Integration test environment (staging) | Not started |
