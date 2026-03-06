@@ -24,10 +24,11 @@ References:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from functools import partial
 from itertools import batched
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
@@ -101,6 +102,28 @@ DEFAULT_POST_PROCESS_BATCH_SIZE = 10
 
 # ---------------------------------------------------------------------------
 # Fulfillment stage configuration
+
+# Type aliases for batch processing callables
+TaskInputBuilder = Callable[[dict[str, Any]], dict[str, Any]]
+"""Builds activity input dict from a batch item dict."""
+
+
+class ErrorBuilder(Protocol):
+    """Protocol for error dict builders.
+
+    Functions matching this protocol build error result dicts from
+    a batch item and error message, with optional state override.
+    """
+
+    def __call__(
+        self,
+        __item: dict[str, Any],
+        __error: str,
+        *,
+        state: str = WorkflowState.FAILED,
+    ) -> dict[str, Any]: ...
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -110,8 +133,8 @@ class _BatchStageConfig(TypedDict):
     items: list[dict[str, Any]]
     batch_size: int
     activity_name: str
-    task_input_builder: Any
-    error_builder: Any
+    task_input_builder: TaskInputBuilder
+    error_builder: ErrorBuilder
     step_name: str
 
 
@@ -408,7 +431,7 @@ def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, 
 def _validate_batch_results(
     batch_results: Any,
     batch: list[dict[str, Any]],
-    error_builder: Any,
+    error_builder: ErrorBuilder,
 ) -> list[dict[str, Any]]:
     """Validate and normalize batch results from task_all.
 
@@ -448,8 +471,8 @@ def _execute_activity_batch(
     context: df.DurableOrchestrationContext,
     activity_name: str,
     batch: list[dict[str, Any]],
-    task_input_builder: Any,
-    error_builder: Any,
+    task_input_builder: TaskInputBuilder,
+    error_builder: ErrorBuilder,
     instance_id: str,
     blob_name: str,
     step_name: str,
@@ -500,8 +523,8 @@ def _process_all_batches(
     items: list[dict[str, Any]],
     batch_size: int,
     activity_name: str,
-    task_input_builder: Any,
-    error_builder: Any,
+    task_input_builder: TaskInputBuilder,
+    error_builder: ErrorBuilder,
     instance_id: str,
     blob_name: str,
     step_name: str,
@@ -601,7 +624,9 @@ def _build_aoi_lookup(aois: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     }
 
 
-def _count_results_by_state(results: list[dict[str, Any]], field: str, value: Any) -> int:
+def _count_results_by_state(
+    results: list[dict[str, Any]], field: str, value: str | int | float | bool | None
+) -> int:
     """Count results where field equals value.
 
     Uses operator.itemgetter for cleaner field access.

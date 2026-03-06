@@ -55,6 +55,8 @@ from kml_satellite.providers.base import (
 from kml_satellite.utils.blob_paths import IMAGERY_RAW_PREFIX
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pystac
 
     from kml_satellite.core.protocols import PlanetaryComputerModule
@@ -88,7 +90,7 @@ class _PlanetaryComputerSigner:
             TypeError: If module is provided but doesn't have sign(url) callable.
         """
         if module is None:
-            self._signer: Any = None
+            self._signer: Callable[[str], str] | None = None
         elif not hasattr(module, "sign") or not callable(module.sign):
             raise TypeError(
                 "planetary_computer module missing sign() function. "
