@@ -9,8 +9,11 @@ the wiring layer between Azure Functions bindings and application code.
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
+import os
+from datetime import UTC, datetime
 
 import azure.durable_functions as df
 import azure.functions as func
@@ -36,6 +39,78 @@ from kml_satellite.models.payloads import (
 app = func.FunctionApp()
 
 logger = logging.getLogger("kml_satellite.function_app")
+
+
+# ---------------------------------------------------------------------------
+# Maintenance: Purge Durable Orchestration History
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("purge_orchestration_history")
+@app.timer_trigger(
+    arg_name="timer",
+    schedule="0 0 3 * * *",  # Daily at 03:00 UTC
+    run_on_startup=False,
+    use_monitor=True,
+)
+@app.durable_client_input(client_name="client")
+async def purge_orchestration_history(
+    timer: func.TimerRequest,
+    client: df.DurableOrchestrationClient,
+) -> None:
+    """Purge old Durable instance history on a daily schedule.
+
+    Policy defaults:
+    - Retention: 14 days
+    - Statuses: Completed, Failed, Terminated
+
+    Optional overrides via app settings:
+    - ORCHESTRATION_PURGE_RETENTION_DAYS
+    - ORCHESTRATION_PURGE_STATUSES (comma-separated)
+    """
+    _ = timer
+
+    from kml_satellite.orchestrators.history_purge import build_purge_plan
+
+    plan = build_purge_plan(
+        now_utc=datetime.now(UTC),
+        retention_days_raw=os.getenv("ORCHESTRATION_PURGE_RETENTION_DAYS"),
+        statuses_raw=os.getenv("ORCHESTRATION_PURGE_STATUSES"),
+    )
+
+    logger.info(
+        "Starting orchestration history purge | retention_days=%d | statuses=%s | cutoff=%s",
+        plan.retention_days,
+        ",".join(plan.runtime_statuses),
+        plan.created_time_to.isoformat(),
+    )
+
+    purge_by = getattr(client, "purge_instance_history_by", None)
+    if not callable(purge_by):
+        logger.warning(
+            "Durable client does not expose purge_instance_history_by; skipping purge run"
+        )
+        return
+
+    try:
+        purge_result = purge_by(
+            plan.created_time_from,
+            plan.created_time_to,
+            plan.runtime_statuses,
+        )
+        if inspect.isawaitable(purge_result):
+            result = await purge_result
+        else:
+            result = purge_result
+    except Exception:
+        logger.exception("Durable history purge failed")
+        raise
+
+    purged_count = int(getattr(result, "instances_deleted", 0))
+    logger.info(
+        "Orchestration history purge completed | purged_instances=%d",
+        purged_count,
+    )
 
 
 # ---------------------------------------------------------------------------

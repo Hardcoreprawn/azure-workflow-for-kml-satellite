@@ -293,6 +293,7 @@ class TestContainerAppsSpecCompliance:
             '@app.function_name("health_readiness")',
             '@app.function_name("orchestrator_status")',
             '@app.function_name("kml_blob_trigger")',
+            '@app.function_name("purge_orchestration_history")',
         }
 
         for registration in required_registrations:
@@ -407,3 +408,18 @@ class TestContainerAppsFunctionSignatures:
 
         assert "event" in trigger_sig, "Event Grid trigger should have 'event' parameter"
         assert "client" in trigger_sig, "Event Grid trigger should have 'client' parameter"
+
+    def test_purge_timer_has_durable_client_binding(self) -> None:
+        """Verify purge timer uses durable client binding for history maintenance."""
+        source = self._read_function_app_source()
+
+        purge_start = source.find("def purge_orchestration_history(")
+        assert purge_start >= 0, "purge_orchestration_history not found"
+
+        decorator_section = source[max(0, purge_start - 600) : purge_start]
+        assert "@app.timer_trigger" in decorator_section, (
+            "purge_orchestration_history should have @app.timer_trigger decorator"
+        )
+        assert "@app.durable_client_input" in decorator_section, (
+            "purge_orchestration_history should have durable client binding"
+        )
