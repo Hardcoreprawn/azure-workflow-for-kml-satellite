@@ -508,6 +508,80 @@ def _process_all_batches(
     return all_results
 
 
+def _execute_stage(
+    context: df.DurableOrchestrationContext,
+    stage: _BatchStageConfig,
+    instance_id: str,
+    blob_name: str,
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """Execute a configured pipeline stage.
+
+    Unpacks stage configuration and dispatches to batch processor.
+
+    Args:
+        context: Durable orchestration context.
+        stage: Stage configuration with items, batch_size, etc.
+        instance_id: Orchestration instance ID for logging.
+        blob_name: Source blob name for logging.
+
+    Yields:
+        task_all calls for each batch.
+
+    Returns:
+        List of all stage results.
+    """
+    return (
+        yield from _process_all_batches(
+            context=context,
+            items=stage["items"],
+            batch_size=stage["batch_size"],
+            activity_name=stage["activity_name"],
+            task_input_builder=stage["task_input_builder"],
+            error_builder=stage["error_builder"],
+            instance_id=instance_id,
+            blob_name=blob_name,
+            step_name=stage["step_name"],
+        )
+    )
+
+
+def _build_aoi_lookup(aois: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Build feature_name → AOI dict for fast geometry lookup.
+
+    Args:
+        aois: List of AOI dicts with feature_name keys.
+
+    Returns:
+        Dict mapping feature_name to full AOI dict.
+    """
+    return {
+        str(a.get("feature_name", "")): a
+        for a in aois
+        if isinstance(a, dict) and a.get("feature_name")
+    }
+
+
+def _calculate_result_metrics(
+    download_results: list[dict[str, Any]],
+    post_process_results: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Calculate summary metrics from stage results.
+
+    Args:
+        download_results: Results from download stage.
+        post_process_results: Results from post-process stage.
+
+    Returns:
+        Dict with failed/succeeded/clipped/reprojected counts.
+    """
+    return {
+        "downloads_failed": sum(1 for d in download_results if d.get("state") == "failed"),
+        "pp_clipped": sum(1 for p in post_process_results if p.get("clipped")),
+        "pp_reprojected": sum(1 for p in post_process_results if p.get("reprojected")),
+        "pp_failed": sum(1 for p in post_process_results if p.get("state") == "failed"),
+    }
+
+
 def run_fulfillment_phase(
     context: df.DurableOrchestrationContext,
     ready_outcomes: list[dict[str, Any]],
@@ -564,12 +638,7 @@ def run_fulfillment_phase(
     post_process_batch_size = max(1, post_process_batch_size)
 
     # Build feature_name → AOI lookup for geometry retrieval
-    aoi_by_feature: dict[str, dict[str, Any]] = {}
-    for a in aois:
-        if isinstance(a, dict):
-            fname = str(a.get("feature_name", ""))
-            if fname:
-                aoi_by_feature[fname] = a
+    aoi_by_feature = _build_aoi_lookup(aois)
 
     # Configure pipeline stages declaratively
     stages: dict[str, _BatchStageConfig] = {
@@ -608,17 +677,11 @@ def run_fulfillment_phase(
     }
 
     # Execute download stage
-    download_stage = stages["download"]
-    download_results = yield from _process_all_batches(
+    download_results = yield from _execute_stage(
         context=context,
-        items=download_stage["items"],
-        batch_size=download_stage["batch_size"],
-        activity_name=download_stage["activity_name"],
-        task_input_builder=download_stage["task_input_builder"],
-        error_builder=download_stage["error_builder"],
+        stage=stages["download"],
         instance_id=instance_id,
         blob_name=blob_name,
-        step_name=download_stage["step_name"],
     )
 
     if not context.is_replaying:
@@ -634,25 +697,17 @@ def run_fulfillment_phase(
 
     # Execute post-process stage (only on successful downloads)
     successful_downloads = [d for d in download_results if d.get("state") != "failed"]
-    post_process_stage = stages["post_process"]
-    post_process_stage["items"] = successful_downloads
+    stages["post_process"]["items"] = successful_downloads
 
-    post_process_results = yield from _process_all_batches(
+    post_process_results = yield from _execute_stage(
         context=context,
-        items=post_process_stage["items"],
-        batch_size=post_process_stage["batch_size"],
-        activity_name=post_process_stage["activity_name"],
-        task_input_builder=post_process_stage["task_input_builder"],
-        error_builder=post_process_stage["error_builder"],
+        stage=stages["post_process"],
         instance_id=instance_id,
         blob_name=blob_name,
-        step_name=post_process_stage["step_name"],
     )
 
-    downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
-    pp_clipped = sum(1 for p in post_process_results if p.get("clipped"))
-    pp_reprojected = sum(1 for p in post_process_results if p.get("reprojected"))
-    pp_failed = sum(1 for p in post_process_results if p.get("state") == "failed")
+    # Calculate result metrics
+    metrics = _calculate_result_metrics(download_results, post_process_results)
 
     duration = (context.current_utc_datetime - phase_start).total_seconds()
     if not context.is_replaying:
@@ -662,9 +717,9 @@ def run_fulfillment_phase(
             "dl_batches=%d | pp_batches=%d | duration=%.1fs | blob=%s",
             instance_id,
             len(download_results),
-            pp_clipped,
-            pp_reprojected,
-            pp_failed,
+            metrics["pp_clipped"],
+            metrics["pp_reprojected"],
+            metrics["pp_failed"],
             _calculate_batch_count(len(ready_outcomes), download_batch_size),
             _calculate_batch_count(len(successful_downloads), post_process_batch_size),
             duration,
@@ -674,13 +729,13 @@ def run_fulfillment_phase(
     return FulfillmentResult(
         download_results=download_results,
         downloads_completed=len(download_results),
-        downloads_succeeded=len(download_results) - downloads_failed,
-        downloads_failed=downloads_failed,
+        downloads_succeeded=len(download_results) - metrics["downloads_failed"],
+        downloads_failed=metrics["downloads_failed"],
         post_process_results=post_process_results,
         pp_completed=len(post_process_results),
-        pp_clipped=pp_clipped,
-        pp_reprojected=pp_reprojected,
-        pp_failed=pp_failed,
+        pp_clipped=metrics["pp_clipped"],
+        pp_reprojected=metrics["pp_reprojected"],
+        pp_failed=metrics["pp_failed"],
     )
 
 
