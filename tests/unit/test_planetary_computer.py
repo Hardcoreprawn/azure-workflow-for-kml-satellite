@@ -635,6 +635,145 @@ class TestDownload(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Blob upload tests (Margaret Hamilton defensive coding)
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadAssetBlobUpload(unittest.TestCase):
+    """Test _download_asset blob persistence with defensive error handling."""
+
+    def _make_adapter(self) -> PlanetaryComputerAdapter:
+        return PlanetaryComputerAdapter(ProviderConfig(name="planetary_computer"))
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_uploads_chunks_to_blob_storage(
+        self, mock_httpx_cls: MagicMock, mock_blob_service_cls: MagicMock
+    ) -> None:
+        """Happy path: streaming chunks are uploaded to blob storage."""
+        # Mock HTTP response with chunked data
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"chunk1", b"chunk2", b"chunk3"]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        # Mock blob client
+        mock_blob_client = MagicMock()
+        mock_blob_service = MagicMock()
+        mock_blob_service.get_blob_client.return_value = mock_blob_client
+        mock_blob_service_cls.from_connection_string.return_value = mock_blob_service
+
+        adapter = self._make_adapter()
+
+        # Call _download_asset with connection string in env
+        import os
+
+        os.environ["AzureWebJobsStorage"] = "DefaultEndpointsProtocol=https;AccountName=test"
+        try:
+            size = adapter._download_asset(
+                "https://test.tif",
+                "TEST_SCENE",
+                output_container="kml-output",
+                blob_path="imagery/raw/TEST_SCENE.tif",
+            )
+        finally:
+            del os.environ["AzureWebJobsStorage"]
+
+        # Verify chunks were uploaded
+        assert size == 18  # len("chunk1chunk2chunk3")
+        mock_blob_client.upload_blob.assert_called_once()
+        call_kwargs = mock_blob_client.upload_blob.call_args.kwargs
+        assert call_kwargs["overwrite"] is True
+        assert call_kwargs["content_type"] == "image/tiff"
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_no_connection_string_skips_upload_with_warning(
+        self, mock_httpx_cls: MagicMock, mock_blob_service_cls: MagicMock
+    ) -> None:
+        """Defensive: missing connection string logs warning but doesn't crash."""
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"data"]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        adapter = self._make_adapter()
+
+        import os
+
+        # Ensure no connection string
+        os.environ.pop("AzureWebJobsStorage", None)
+
+        size = adapter._download_asset(
+            "https://test.tif",
+            "SCENE_NO_CONN",
+            output_container="kml-output",
+            blob_path="test.tif",
+        )
+
+        # Should return size but not attempt upload
+        assert size == 4
+        mock_blob_service_cls.from_connection_string.assert_not_called()
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_blob_upload_failure_raises_download_error(
+        self, mock_httpx_cls: MagicMock, mock_blob_service_cls: MagicMock
+    ) -> None:
+        """Upload failures propagate as ProviderDownloadError with retryable=True."""
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"data"]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        # Blob upload fails
+        mock_blob_client = MagicMock()
+        mock_blob_client.upload_blob.side_effect = Exception("Network timeout")
+        mock_blob_service = MagicMock()
+        mock_blob_service.get_blob_client.return_value = mock_blob_client
+        mock_blob_service_cls.from_connection_string.return_value = mock_blob_service
+
+        adapter = self._make_adapter()
+
+        import os
+
+        os.environ["AzureWebJobsStorage"] = "DefaultEndpointsProtocol=https;AccountName=test"
+        try:
+            with self.assertRaises(ProviderDownloadError) as ctx:
+                adapter._download_asset(
+                    "https://test.tif",
+                    "SCENE_FAIL",
+                    output_container="kml-output",
+                    blob_path="imagery/raw/SCENE_FAIL.tif",
+                )
+            assert ctx.exception.retryable is True
+            assert "blob upload failed" in ctx.exception.message.lower()
+        finally:
+            del os.environ["AzureWebJobsStorage"]
+
+
+# ---------------------------------------------------------------------------
 # Adapter configuration tests
 # ---------------------------------------------------------------------------
 
