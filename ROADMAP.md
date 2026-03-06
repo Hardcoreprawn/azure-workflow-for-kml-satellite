@@ -1,7 +1,7 @@
 # TreeSight — Development Roadmap
 
-**Last updated:** 5 March 2026
-**Status:** Active — Phase 3 final blocker (#126)
+**Last updated:** 6 March 2026
+**Status:** Active — Phase 4 in progress
 
 > Sequenced delivery plan for TreeSight. The [PID](PID.md) defines the
 > end-state; this document governs **execution order**. Each phase is
@@ -22,7 +22,7 @@
 
 ---
 
-## Current Phase: 3 — v1 Hardening
+## Current Phase: 4 — Operational Maturity
 
 **Gate:** Engine passes PID acceptance criteria AC-1 through AC-12, deployed and observable.
 
@@ -53,7 +53,7 @@
 - [x] Event Grid webhook destination fix completed (Container Apps compatibility)
 - [x] Infrastructure deployed to Azure (dev environment)
 - [x] Event Grid → Function trigger validated end-to-end
-- [ ] Pipeline processes real KML end-to-end in deployed environment (blocked by #126)
+- [x] Pipeline processes real KML end-to-end in deployed environment
 
 ---
 
@@ -63,11 +63,11 @@
 
 | # | Title |
 | - | ----- |
-| #47 | Narrow `Any` usage at third-party boundaries |
-| — | Semantic versioning for container images |
-| — | Orchestration history purge strategy |
-| — | Circuit breaker for imagery provider API failures |
-| — | Integration test environment (staging) |
+| #47 | Narrow `Any` usage at third-party boundaries (✅ DONE) |
+| — | Semantic versioning for container images (✅ DONE) |
+| — | Orchestration history purge strategy (✅ DONE) |
+| — | Circuit breaker for imagery provider API failures (✅ DONE) |
+| — | Integration test environment (staging) (✅ DONE) |
 
 ---
 

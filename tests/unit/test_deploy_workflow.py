@@ -18,7 +18,7 @@ Registry (ghcr.io), and deploy it to Azure Functions on Container Apps:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -50,6 +50,11 @@ def _find_step(steps: list[dict[str, Any]], name_fragment: str) -> dict[str, Any
         (s for s in steps if fragment_lower in s.get("name", "").lower()),
         None,
     )
+
+
+def _get_job(workflow: dict[str, Any], job_name: str) -> dict[str, Any]:
+    """Return a workflow job definition by name."""
+    return workflow.get("jobs", {}).get(job_name, {})
 
 
 # ---------------------------------------------------------------------------
@@ -112,12 +117,37 @@ class TestContainerDeployment:
         )
 
     def test_image_tagged_with_commit_sha(self, deploy_workflow: dict[str, Any]) -> None:
-        """Container image must be tagged with the commit SHA for traceability."""
+        """Container image metadata must include commit SHA for traceability."""
         steps = _get_steps(deploy_workflow)
-        image_step = _find_step(steps, "image name") or _find_step(steps, "image tag")
+        image_step = _find_step(steps, "resolve container image tags") or _find_step(
+            steps, "image tag"
+        )
         assert image_step is not None, "No image name/tag step found"
         run_script = image_step.get("run", "")
         assert "GITHUB_SHA" in run_script, "Image tag must include the commit SHA for traceability"
+
+    def test_image_tagged_with_semver(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must emit a semantic version tag from pyproject version."""
+        steps = _get_steps(deploy_workflow)
+        image_step = _find_step(steps, "resolve container image tags")
+        assert image_step is not None, "No semantic image tag step found"
+        run_script = image_step.get("run", "")
+        assert "pyproject.toml" in run_script, "Semantic tag must be derived from project version"
+        assert "semver_tag" in run_script, "Workflow must output a semantic version tag"
+        assert "v${VERSION}" in run_script, "Semantic tag format must be v<semver>"
+
+    def test_deploy_uses_sha_tag_not_semver(self, deploy_workflow: dict[str, Any]) -> None:
+        """Deployment must pin to immutable SHA tag even when semver tags exist."""
+        steps = _get_steps(deploy_workflow)
+        first_pass = _find_step(steps, "subscription disabled") or _find_step(
+            steps, "deploy container image"
+        )
+        second_pass = _find_step(steps, "enable event grid subscription")
+        assert first_pass is not None and second_pass is not None
+        first_run = first_pass.get("run", "")
+        second_run = second_pass.get("run", "")
+        assert "steps.image.outputs.sha_tag" in first_run
+        assert "steps.image.outputs.sha_tag" in second_run
 
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
@@ -138,12 +168,58 @@ class TestContainerDeployment:
 
     def test_dockerfile_in_trigger_paths(self, deploy_workflow: dict[str, Any]) -> None:
         """Dockerfile changes must trigger a deployment."""
-        # PyYAML 1.1 parses bare `on:` as boolean True
-        on_block = deploy_workflow.get("on") or deploy_workflow.get(True, {})
+        # PyYAML 1.1 can parse bare `on:` as boolean True.
+        on_block = deploy_workflow.get("on")
+        if not isinstance(on_block, dict):
+            fallback = cast(Any, deploy_workflow).get(True, {})
+            on_block = fallback if isinstance(fallback, dict) else {}
         paths = on_block.get("push", {}).get("paths", [])
         assert "Dockerfile" in paths, (
             "Dockerfile must be in the trigger paths so image changes trigger deploy"
         )
+
+    def test_workflow_dispatch_exposes_staging_target(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Manual dispatch must support selecting the staging deployment target."""
+        on_block = deploy_workflow.get("on")
+        if not isinstance(on_block, dict):
+            fallback = cast(Any, deploy_workflow).get(True, {})
+            on_block = fallback if isinstance(fallback, dict) else {}
+        dispatch = on_block.get("workflow_dispatch", {})
+        options = dispatch.get("inputs", {}).get("target_environment", {}).get("options", [])
+        assert "staging" in options, "workflow_dispatch target_environment must include staging"
+
+
+class TestStagingDeployment:
+    """Verify staging deployment job wiring for integration environment rollout."""
+
+    def test_staging_job_exists(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must define a dedicated staging deployment job."""
+        staging = _get_job(deploy_workflow, "deploy-staging")
+        assert staging, "deploy-staging job is missing"
+        environment = str(staging.get("environment", ""))
+        assert "target_environment" in environment
+
+    def test_staging_job_uses_staging_parameters(self, deploy_workflow: dict[str, Any]) -> None:
+        """Staging deployment must target staging bicep parameter file and resources."""
+        staging = _get_job(deploy_workflow, "deploy-staging")
+        assert staging, "deploy-staging job is missing"
+        env_block = staging.get("env", {})
+        assert env_block.get("PARAM_FILE") == "infra/parameters/staging.bicepparam"
+        assert env_block.get("FUNCTION_APP_NAME") == "func-kmlsat-staging"
+        assert env_block.get("RESOURCE_GROUP") == "rg-kmlsat-staging"
+        assert env_block.get("EVENT_GRID_TOPIC") == "evgt-kmlsat-staging"
+
+    def test_staging_job_runs_only_for_staging_dispatch(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Staging deploy job must be gated behind workflow_dispatch staging target."""
+        staging = _get_job(deploy_workflow, "deploy-staging")
+        assert staging, "deploy-staging job is missing"
+        condition = staging.get("if", "")
+        assert "workflow_dispatch" in condition
+        assert "target_environment == 'staging'" in condition
 
 
 # ---------------------------------------------------------------------------
