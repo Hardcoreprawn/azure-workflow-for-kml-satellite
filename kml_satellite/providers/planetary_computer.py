@@ -33,7 +33,12 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pystac_client
 
-from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.constants import (
+    DEFAULT_OUTPUT_CONTAINER,
+    HTTP_DOWNLOAD_TIMEOUT_SECONDS,
+    STAC_ITEM_FETCH_MAX_ITEMS,
+    STAC_SEARCH_MAX_ITEMS,
+)
 from kml_satellite.models.imagery import (
     BlobReference,
     ImageryFilters,
@@ -243,7 +248,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
                 collections=collections,
                 datetime=date_range,
                 query=query_params if query_params else None,
-                max_items=50,
+                max_items=STAC_SEARCH_MAX_ITEMS,
             )
             items = list(stac_search.items())
         except Exception as exc:
@@ -441,7 +446,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
         search = catalogue.search(
             ids=[scene_id],
             collections=list(_DEFAULT_COLLECTIONS),
-            max_items=1,
+            max_items=STAC_ITEM_FETCH_MAX_ITEMS,
         )
         items = list(search.items())
         if not items:
@@ -465,7 +470,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
         an infrastructure concern for M-2.3+).
         """
         with (
-            httpx.Client(timeout=60.0, follow_redirects=True) as client,
+            httpx.Client(timeout=HTTP_DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True) as client,
             client.stream("GET", url) as response,
         ):
             response.raise_for_status()

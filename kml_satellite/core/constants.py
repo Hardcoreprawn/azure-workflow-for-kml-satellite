@@ -51,6 +51,20 @@ MIN_RESOLUTION_M: float = 0.0
 DEFAULT_MAX_RESOLUTION_M: float = 50.0
 
 
+# ---------------------------------------------------------------------------
+# Provider adapter constants
+# ---------------------------------------------------------------------------
+
+STAC_SEARCH_MAX_ITEMS: int = 50
+"""Maximum items to retrieve from STAC search (Planetary Computer)."""
+
+STAC_ITEM_FETCH_MAX_ITEMS: int = 1
+"""Maximum items for single item fetch by ID (should always be 1)."""
+
+HTTP_DOWNLOAD_TIMEOUT_SECONDS: float = 60.0
+"""Timeout for HTTP imagery downloads from provider APIs."""
+
+
 def resolve_tenant_containers(container_name: str) -> tuple[str, str, str]:
     """Resolve tenant context from a container name.
 
