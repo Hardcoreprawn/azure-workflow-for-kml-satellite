@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
+from kml_satellite.core.states import WorkflowState
 from kml_satellite.orchestrators.error_helpers import (
     download_error_dict,
     post_process_error_dict,
@@ -326,7 +327,7 @@ def run_acquisition_phase(
         elif isinstance(batch_results, dict):
             imagery_outcomes.append(batch_results)
 
-    ready_count = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
+    ready_count = sum(1 for o in imagery_outcomes if o.get("state") == WorkflowState.READY)
     failed_count = len(imagery_outcomes) - ready_count
 
     duration = (context.current_utc_datetime - phase_start).total_seconds()
@@ -372,7 +373,7 @@ def _calculate_batch_count(total_items: int, batch_size: int) -> int:
 def _classify_result_by_state(result: dict[str, Any]) -> str:
     """Classify result using pattern matching on state field.
 
-    Uses Python 3.10+ match/case for cleaner state handling.
+    Uses Python 3.10+ match/case with StrEnum for type-safe state handling.
 
     Args:
         result: Result dict with optional 'state' field.
@@ -380,10 +381,11 @@ def _classify_result_by_state(result: dict[str, Any]) -> str:
     Returns:
         Classification: 'success', 'failed', or 'unknown'.
     """
-    match result.get("state"):
-        case "ready" | "completed" | "success":
+    state = result.get("state")
+    match state:
+        case WorkflowState.READY | WorkflowState.COMPLETED | WorkflowState.SUCCESS:
             return "success"
-        case "failed" | "error":
+        case WorkflowState.FAILED | WorkflowState.ERROR:
             return "failed"
         case _:
             return "unknown"
@@ -392,15 +394,15 @@ def _classify_result_by_state(result: dict[str, Any]) -> str:
 def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Filter results to only successful ones.
 
-    Uses functional approach with filter and operator.methodcaller.
+    Uses WorkflowState enum for type-safe filtering.
 
     Args:
         results: List of result dicts.
 
     Returns:
-        List of results where state is not 'failed'.
+        List of results where state is not failed.
     """
-    return [r for r in results if r.get("state") != "failed"]
+    return [r for r in results if not WorkflowState.is_failure(r.get("state", ""))]
 
 
 def _validate_batch_results(
@@ -632,7 +634,7 @@ def _calculate_result_metrics(
         Dict with failed/succeeded/clipped/reprojected counts.
     """
     # Create specialized counters using partial application
-    count_failed = partial(_count_results_by_state, field="state", value="failed")
+    count_failed = partial(_count_results_by_state, field="state", value=WorkflowState.FAILED)
     count_true = partial(_count_results_by_state, value=True)
 
     return {

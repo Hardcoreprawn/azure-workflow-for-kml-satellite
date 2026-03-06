@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import logging
+from functools import cache
 from typing import TYPE_CHECKING
 
 from kml_satellite.models.aoi import AOI
@@ -342,8 +343,11 @@ def _validate_coords(coords: list[tuple[float, float]], context: str) -> None:
         raise AOIError(msg)
 
 
+@cache
 def _get_utm_crs(lon: float, lat: float) -> str:
     """Determine the UTM CRS for a given WGS 84 coordinate.
+
+    Cached to avoid repeated calculations for coordinates in the same UTM zone.
 
     Returns an EPSG code like ``"EPSG:32610"`` (UTM zone 10N) or
     ``"EPSG:32710"`` (UTM zone 10S).
