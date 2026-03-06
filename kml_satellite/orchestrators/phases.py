@@ -96,6 +96,22 @@ DEFAULT_POST_PROCESS_BATCH_SIZE = 10
 
 
 # ---------------------------------------------------------------------------
+# Fulfillment stage configuration
+# ---------------------------------------------------------------------------
+
+
+class _BatchStageConfig(TypedDict):
+    """Configuration for a fulfillment batch processing stage."""
+
+    items: list[dict[str, Any]]
+    batch_size: int
+    activity_name: str
+    task_input_builder: Any
+    error_builder: Any
+    step_name: str
+
+
+# ---------------------------------------------------------------------------
 # Phase 1: Ingestion — parse KML, prepare AOIs, write metadata
 # ---------------------------------------------------------------------------
 
@@ -547,27 +563,62 @@ def run_fulfillment_phase(
     download_batch_size = max(1, download_batch_size)
     post_process_batch_size = max(1, post_process_batch_size)
 
-    # Step 1: Download imagery — bounded parallel batches (Issue #54)
-    def build_download_input(outcome: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "imagery_outcome": outcome,
-            "provider_name": provider_name,
-            "provider_config": provider_config,
-            "project_name": project_name,
-            "timestamp": timestamp,
-            "output_container": output_container,
-        }
+    # Build feature_name → AOI lookup for geometry retrieval
+    aoi_by_feature: dict[str, dict[str, Any]] = {}
+    for a in aois:
+        if isinstance(a, dict):
+            fname = str(a.get("feature_name", ""))
+            if fname:
+                aoi_by_feature[fname] = a
 
+    # Configure pipeline stages declaratively
+    stages: dict[str, _BatchStageConfig] = {
+        "download": {
+            "items": ready_outcomes,
+            "batch_size": download_batch_size,
+            "activity_name": "download_imagery",
+            "task_input_builder": lambda outcome: {
+                "imagery_outcome": outcome,
+                "provider_name": provider_name,
+                "provider_config": provider_config,
+                "project_name": project_name,
+                "timestamp": timestamp,
+                "output_container": output_container,
+            },
+            "error_builder": download_error_dict,
+            "step_name": "download",
+        },
+        "post_process": {
+            "items": [],  # Will be filled after download
+            "batch_size": post_process_batch_size,
+            "activity_name": "post_process_imagery",
+            "task_input_builder": lambda dl_result: {
+                "download_result": dl_result,
+                "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
+                "project_name": project_name,
+                "timestamp": timestamp,
+                "target_crs": target_crs,
+                "enable_clipping": enable_clipping,
+                "enable_reprojection": enable_reprojection,
+                "output_container": output_container,
+            },
+            "error_builder": post_process_error_dict,
+            "step_name": "post_process",
+        },
+    }
+
+    # Execute download stage
+    download_stage = stages["download"]
     download_results = yield from _process_all_batches(
         context=context,
-        items=ready_outcomes,
-        batch_size=download_batch_size,
-        activity_name="download_imagery",
-        task_input_builder=build_download_input,
-        error_builder=download_error_dict,
+        items=download_stage["items"],
+        batch_size=download_stage["batch_size"],
+        activity_name=download_stage["activity_name"],
+        task_input_builder=download_stage["task_input_builder"],
+        error_builder=download_stage["error_builder"],
         instance_id=instance_id,
         blob_name=blob_name,
-        step_name="download",
+        step_name=download_stage["step_name"],
     )
 
     if not context.is_replaying:
@@ -581,39 +632,21 @@ def run_fulfillment_phase(
             blob_name,
         )
 
-    # Step 2: Post-process imagery — bounded parallel batches (Issue #54)
-    # Build feature_name → AOI lookup for geometry retrieval
-    aoi_by_feature: dict[str, dict[str, Any]] = {}
-    for a in aois:
-        if isinstance(a, dict):
-            fname = str(a.get("feature_name", ""))
-            if fname:
-                aoi_by_feature[fname] = a
-
+    # Execute post-process stage (only on successful downloads)
     successful_downloads = [d for d in download_results if d.get("state") != "failed"]
-
-    def build_post_process_input(dl_result: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "download_result": dl_result,
-            "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
-            "project_name": project_name,
-            "timestamp": timestamp,
-            "target_crs": target_crs,
-            "enable_clipping": enable_clipping,
-            "enable_reprojection": enable_reprojection,
-            "output_container": output_container,
-        }
+    post_process_stage = stages["post_process"]
+    post_process_stage["items"] = successful_downloads
 
     post_process_results = yield from _process_all_batches(
         context=context,
-        items=successful_downloads,
-        batch_size=post_process_batch_size,
-        activity_name="post_process_imagery",
-        task_input_builder=build_post_process_input,
-        error_builder=post_process_error_dict,
+        items=post_process_stage["items"],
+        batch_size=post_process_stage["batch_size"],
+        activity_name=post_process_stage["activity_name"],
+        task_input_builder=post_process_stage["task_input_builder"],
+        error_builder=post_process_stage["error_builder"],
         instance_id=instance_id,
         blob_name=blob_name,
-        step_name="post_process",
+        step_name=post_process_stage["step_name"],
     )
 
     downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
