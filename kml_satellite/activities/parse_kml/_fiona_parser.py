@@ -50,44 +50,107 @@ def parse_with_fiona(kml_path: Path, source_filename: str) -> list[Feature]:
             if geom is None:
                 continue
 
-            geom_type = geom.get("type", "")
+            extracted = _extract_features_from_geometry(geom, props, source_filename, idx, crs_str)
+            features.extend(extracted)
 
-            if geom_type == "Polygon":
-                feature = _try_fiona_polygon(geom, props, source_filename, idx, crs_str)
-                if feature is not None:
-                    features.append(feature)
+    return features
 
-            elif geom_type == "MultiPolygon":
-                coords_list = geom.get("coordinates", [])
-                for sub_idx, poly_coords in enumerate(coords_list):
-                    sub_geom = {"type": "Polygon", "coordinates": poly_coords}
-                    feature = _try_fiona_polygon(
-                        sub_geom,
-                        props,
-                        source_filename,
-                        idx,
-                        crs_str,
-                        sub_index=sub_idx,
-                    )
-                    if feature is not None:
-                        features.append(feature)
 
-            elif geom_type == "GeometryCollection":
-                geometries = geom.get("geometries", [])
-                sub_idx = 0
-                for sub_geom in geometries:
-                    if sub_geom.get("type") == "Polygon":
-                        feature = _try_fiona_polygon(
-                            sub_geom,
-                            props,
-                            source_filename,
-                            idx,
-                            crs_str,
-                            sub_index=sub_idx,
-                        )
-                        if feature is not None:
-                            features.append(feature)
-                        sub_idx += 1
+def _extract_features_from_geometry(
+    geom: dict[str, object],
+    props: dict[str, object],
+    source_filename: str,
+    feature_index: int,
+    crs_str: str,
+) -> list[Feature]:
+    """Extract features from a fiona geometry dict.
+
+    Handles Polygon, MultiPolygon, and GeometryCollection types.
+    """
+    geom_type = geom.get("type", "")
+    features: list[Feature] = []
+
+    if geom_type == "Polygon":
+        feature = _try_fiona_polygon(geom, props, source_filename, feature_index, crs_str)
+        if feature is not None:
+            features.append(feature)
+
+    elif geom_type == "MultiPolygon":
+        features.extend(
+            _extract_multipolygon_features(geom, props, source_filename, feature_index, crs_str)
+        )
+
+    elif geom_type == "GeometryCollection":
+        features.extend(
+            _extract_geometry_collection_features(
+                geom, props, source_filename, feature_index, crs_str
+            )
+        )
+
+    return features
+
+
+def _extract_multipolygon_features(
+    geom: dict[str, object],
+    props: dict[str, object],
+    source_filename: str,
+    feature_index: int,
+    crs_str: str,
+) -> list[Feature]:
+    """Extract features from a MultiPolygon geometry."""
+    features: list[Feature] = []
+    coords_list = geom.get("coordinates", [])
+
+    if not isinstance(coords_list, list):
+        return features
+
+    for sub_idx, poly_coords in enumerate(coords_list):
+        sub_geom = {"type": "Polygon", "coordinates": poly_coords}
+        feature = _try_fiona_polygon(
+            sub_geom,
+            props,
+            source_filename,
+            feature_index,
+            crs_str,
+            sub_index=sub_idx,
+        )
+        if feature is not None:
+            features.append(feature)
+
+    return features
+
+
+def _extract_geometry_collection_features(
+    geom: dict[str, object],
+    props: dict[str, object],
+    source_filename: str,
+    feature_index: int,
+    crs_str: str,
+) -> list[Feature]:
+    """Extract Polygon features from a GeometryCollection."""
+    features: list[Feature] = []
+    geometries = geom.get("geometries", [])
+
+    if not isinstance(geometries, list):
+        return features
+
+    sub_idx = 0
+
+    for sub_geom in geometries:
+        if not isinstance(sub_geom, dict):
+            continue
+        if sub_geom.get("type") == "Polygon":
+            feature = _try_fiona_polygon(
+                sub_geom,
+                props,
+                source_filename,
+                feature_index,
+                crs_str,
+                sub_index=sub_idx,
+            )
+            if feature is not None:
+                features.append(feature)
+            sub_idx += 1
 
     return features
 

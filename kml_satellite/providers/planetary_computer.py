@@ -57,6 +57,7 @@ from kml_satellite.utils.blob_paths import IMAGERY_RAW_PREFIX
 if TYPE_CHECKING:
     import pystac
 
+    from kml_satellite.core.protocols import PlanetaryComputerModule
     from kml_satellite.models.aoi import AOI
     from kml_satellite.models.imagery import ProviderConfig
 
@@ -77,7 +78,7 @@ class _PlanetaryComputerSigner:
     an exception is raised immediately rather than silently failing later.
     """
 
-    def __init__(self, module: Any | None) -> None:
+    def __init__(self, module: PlanetaryComputerModule | None) -> None:
         """Initialize wrapper with optional planetary_computer module.
 
         Args:
