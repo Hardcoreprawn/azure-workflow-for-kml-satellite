@@ -30,6 +30,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.circuit_breaker import (
+    CircuitBreakerOpenError,
+    call_with_circuit_breaker,
+)
 from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.aoi import AOI
 from kml_satellite.models.imagery import ImageryFilters
@@ -116,7 +120,13 @@ def acquire_imagery(
 
     # Search
     try:
-        results = provider.search(aoi, filters)
+        results = call_with_circuit_breaker(
+            f"{provider_name}.search",
+            lambda: provider.search(aoi, filters),
+        )
+    except CircuitBreakerOpenError as exc:
+        msg = f"Imagery search circuit open for {aoi.feature_name!r}: {exc}"
+        raise ImageryAcquisitionError(msg, retryable=True) from exc
     except ProviderError as exc:
         msg = f"Imagery search failed for {aoi.feature_name!r}: {exc}"
         raise ImageryAcquisitionError(msg, retryable=exc.retryable) from exc
@@ -139,7 +149,13 @@ def acquire_imagery(
 
     # Order
     try:
-        order = provider.order(best.scene_id)
+        order = call_with_circuit_breaker(
+            f"{provider_name}.order",
+            lambda: provider.order(best.scene_id),
+        )
+    except CircuitBreakerOpenError as exc:
+        msg = f"Order circuit open for scene {best.scene_id!r}: {exc}"
+        raise ImageryAcquisitionError(msg, retryable=True) from exc
     except ProviderError as exc:
         msg = f"Order failed for scene {best.scene_id!r}: {exc}"
         raise ImageryAcquisitionError(msg, retryable=exc.retryable) from exc

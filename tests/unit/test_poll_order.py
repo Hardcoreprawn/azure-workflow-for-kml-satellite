@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from kml_satellite.activities.poll_order import PollError, poll_order
+from kml_satellite.core.circuit_breaker import CircuitBreakerOpenError
 from kml_satellite.models.imagery import OrderState, OrderStatus
 from kml_satellite.providers.base import ProviderError
 
@@ -140,3 +141,21 @@ class TestPollOrder(unittest.TestCase):
 
         result = poll_order({"order_id": "pc-123", "provider": "pc"})
         assert result["order_id"] == "pc-123"
+
+    @patch("kml_satellite.activities.poll_order.call_with_circuit_breaker")
+    @patch("kml_satellite.activities.poll_order.get_provider")
+    def test_poll_circuit_open_is_retryable(
+        self,
+        mock_get_provider: MagicMock,
+        mock_circuit_call: MagicMock,
+    ) -> None:
+        """Open poll circuit should fail fast with retryable PollError."""
+        mock_provider = MagicMock()
+        mock_get_provider.return_value = mock_provider
+        mock_circuit_call.side_effect = CircuitBreakerOpenError("pc.poll", 20)
+
+        with self.assertRaises(PollError) as ctx:
+            poll_order({"order_id": "pc-123", "provider": "pc"})
+
+        assert ctx.exception.retryable is True
+        mock_provider.poll.assert_not_called()

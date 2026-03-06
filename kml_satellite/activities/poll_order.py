@@ -22,6 +22,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.circuit_breaker import (
+    CircuitBreakerOpenError,
+    call_with_circuit_breaker,
+)
 from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.imagery import OrderState, ProviderConfig
 from kml_satellite.providers.base import ProviderError
@@ -107,7 +111,13 @@ def poll_order(
         raise PollError(msg, retryable=False) from exc
 
     try:
-        status = provider.poll(order_id)
+        status = call_with_circuit_breaker(
+            f"{prov_name}.poll",
+            lambda: provider.poll(order_id),
+        )
+    except CircuitBreakerOpenError as exc:
+        msg = f"Poll circuit open for order {order_id!r}: {exc}"
+        raise PollError(msg, retryable=True) from exc
     except ProviderError as exc:
         msg = f"Poll failed for order {order_id!r}: {exc}"
         raise PollError(msg, retryable=exc.retryable) from exc

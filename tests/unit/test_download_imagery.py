@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 from kml_satellite.activities.download_imagery import (
     DEFAULT_MAX_DOWNLOAD_RETRIES,
     DownloadError,
+    _promote_blob_to_canonical_path,
     _validate_download,
     _validate_raster_content,
     download_imagery,
@@ -259,6 +260,92 @@ class TestDownloadImagery(unittest.TestCase):
         )
 
         assert result["order_id"] == "pc-SCENE_A"
+
+
+class TestCanonicalPromotion(unittest.TestCase):
+    """Canonical blob promotion for downstream contract stability."""
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    def test_promotes_when_source_and_canonical_differ(self, mock_bsc_cls: MagicMock) -> None:
+        """Copies staging blob to canonical path when paths differ."""
+        source_client = MagicMock()
+        source_client.exists.return_value = True
+        source_client.download_blob.return_value.chunks.return_value = [b"a", b"b"]
+
+        source_props = MagicMock()
+        source_props.content_settings.content_type = "image/tiff"
+        source_client.get_blob_properties.return_value = source_props
+
+        canonical_client = MagicMock()
+        canonical_client.exists.return_value = True
+
+        blob_service = MagicMock()
+
+        def _get_blob_client(*, blob: str, **_: object) -> MagicMock:
+            if blob == "imagery/raw/SCENE_A.tif":
+                return source_client
+            if blob == "imagery/raw/2026/03/orchard/block-a.tif":
+                return canonical_client
+            raise AssertionError(f"Unexpected blob requested: {blob}")
+
+        blob_service.get_blob_client.side_effect = _get_blob_client
+        mock_bsc_cls.from_connection_string.return_value = blob_service
+
+        with patch.dict("os.environ", {"AzureWebJobsStorage": "conn"}, clear=False):
+            _promote_blob_to_canonical_path(
+                container="kml-output",
+                source_blob_path="imagery/raw/SCENE_A.tif",
+                canonical_blob_path="imagery/raw/2026/03/orchard/block-a.tif",
+                order_id="order-1",
+            )
+
+        canonical_client.upload_blob.assert_called_once()
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    def test_noop_when_paths_match(self, mock_bsc_cls: MagicMock) -> None:
+        """No Azure I/O is performed when source is already canonical."""
+        _promote_blob_to_canonical_path(
+            container="kml-output",
+            source_blob_path="imagery/raw/same.tif",
+            canonical_blob_path="imagery/raw/same.tif",
+            order_id="order-1",
+        )
+        mock_bsc_cls.from_connection_string.assert_not_called()
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    def test_missing_connection_string_skips(self, mock_bsc_cls: MagicMock) -> None:
+        """When storage config is missing, promotion is skipped defensively."""
+        with patch.dict("os.environ", {}, clear=True):
+            _promote_blob_to_canonical_path(
+                container="kml-output",
+                source_blob_path="imagery/raw/SCENE_A.tif",
+                canonical_blob_path="imagery/raw/2026/03/orchard/block-a.tif",
+                order_id="order-1",
+            )
+        mock_bsc_cls.from_connection_string.assert_not_called()
+
+    @patch("azure.storage.blob.BlobServiceClient")
+    def test_missing_source_blob_raises_retryable(self, mock_bsc_cls: MagicMock) -> None:
+        """If source blob is missing, treat as retryable transient fault."""
+        source_client = MagicMock()
+        source_client.exists.return_value = False
+        canonical_client = MagicMock()
+
+        blob_service = MagicMock()
+        blob_service.get_blob_client.side_effect = [source_client, canonical_client]
+        mock_bsc_cls.from_connection_string.return_value = blob_service
+
+        with (
+            patch.dict("os.environ", {"AzureWebJobsStorage": "conn"}, clear=False),
+            self.assertRaises(DownloadError) as ctx,
+        ):
+            _promote_blob_to_canonical_path(
+                container="kml-output",
+                source_blob_path="imagery/raw/SCENE_A.tif",
+                canonical_blob_path="imagery/raw/2026/03/orchard/block-a.tif",
+                order_id="order-1",
+            )
+        assert ctx.exception.retryable is True
 
 
 # ---------------------------------------------------------------------------

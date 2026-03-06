@@ -20,6 +20,7 @@ from kml_satellite.activities.acquire_imagery import (
     _build_filters,
     acquire_imagery,
 )
+from kml_satellite.core.circuit_breaker import CircuitBreakerOpenError
 from kml_satellite.models.imagery import (
     ImageryFilters,
     OrderId,
@@ -227,6 +228,24 @@ class TestAcquireImagery(unittest.TestCase):
 
         assert "Invalid imagery filters payload" in ctx.exception.message
         assert ctx.exception.retryable is False
+        mock_provider.search.assert_not_called()
+
+    @patch("kml_satellite.activities.acquire_imagery.call_with_circuit_breaker")
+    @patch("kml_satellite.activities.acquire_imagery.get_provider")
+    def test_search_circuit_open_is_retryable(
+        self,
+        mock_get_provider: MagicMock,
+        mock_circuit_call: MagicMock,
+    ) -> None:
+        """Open circuit should fail fast with retryable acquisition error."""
+        mock_provider = MagicMock()
+        mock_get_provider.return_value = mock_provider
+        mock_circuit_call.side_effect = CircuitBreakerOpenError("pc.search", 30)
+
+        with self.assertRaises(ImageryAcquisitionError) as ctx:
+            acquire_imagery(_SAMPLE_AOI_DICT)
+
+        assert ctx.exception.retryable is True
         mock_provider.search.assert_not_called()
 
 
