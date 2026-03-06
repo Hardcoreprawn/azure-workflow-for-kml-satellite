@@ -30,6 +30,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from kml_satellite.core.constants import (
+    DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT,
+    DEFAULT_MAX_OFF_NADIR_DEG,
+    DEFAULT_MAX_RESOLUTION_M,
+    MIN_RESOLUTION_M,
+)
 from kml_satellite.core.exceptions import PipelineError
 from kml_satellite.models.aoi import AOI
 from kml_satellite.models.imagery import ImageryFilters
@@ -210,10 +216,12 @@ def _build_filters(
         collections = list(raw_collections)
 
     return ImageryFilters(
-        max_cloud_cover_pct=float(overrides.get("max_cloud_cover_pct", 20.0)),
-        max_off_nadir_deg=float(overrides.get("max_off_nadir_deg", 30.0)),
-        min_resolution_m=float(overrides.get("min_resolution_m", 0.0)),
-        max_resolution_m=float(overrides.get("max_resolution_m", 50.0)),
+        max_cloud_cover_pct=float(
+            overrides.get("max_cloud_cover_pct", DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT)
+        ),
+        max_off_nadir_deg=float(overrides.get("max_off_nadir_deg", DEFAULT_MAX_OFF_NADIR_DEG)),
+        min_resolution_m=float(overrides.get("min_resolution_m", MIN_RESOLUTION_M)),
+        max_resolution_m=float(overrides.get("max_resolution_m", DEFAULT_MAX_RESOLUTION_M)),
         date_start=date_start,
         date_end=date_end,
         collections=collections,

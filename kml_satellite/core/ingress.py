@@ -25,6 +25,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
+from kml_satellite.core.constants import MAX_KML_FILE_SIZE_BYTES
 from kml_satellite.core.exceptions import ContractError
 
 if TYPE_CHECKING:
@@ -241,7 +242,7 @@ def get_blob_service_client() -> BlobServiceClient:
 #:   constraints (Azure Storage 1 MB entity max, orchestration history overflow)
 #: - Risk mitigation for Issue #62 (payload offload to Blob Storage)
 #: - Enforced at ingress by validate_blob_input() per Issue #105 (zero-assumption input handling)
-MAX_KML_FILE_SIZE = 10 * 1024 * 1024  # Maximum allowed KML file size (10 MiB)
+MAX_KML_FILE_SIZE = MAX_KML_FILE_SIZE_BYTES
 
 
 def validate_blob_input(blob_event: object) -> None:

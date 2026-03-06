@@ -23,6 +23,34 @@ DEFAULT_OUTPUT_CONTAINER: str = "kml-output"
 """Default blob container for all pipeline outputs (imagery, metadata, KML archive)."""
 
 
+# ---------------------------------------------------------------------------
+# Numeric defaults and bounds
+# ---------------------------------------------------------------------------
+
+KIBIBYTE: int = 1024
+MEBIBYTE: int = 1024 * KIBIBYTE
+
+MAX_KML_FILE_SIZE_BYTES: int = 10 * MEBIBYTE
+"""Maximum allowed KML payload size at ingress (10 MiB)."""
+
+PAYLOAD_OFFLOAD_THRESHOLD_BYTES: int = 48 * KIBIBYTE
+"""Durable history offload threshold for compact JSON payloads."""
+
+DEFAULT_IMAGERY_RESOLUTION_TARGET_M: float = 0.5
+DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT: float = 20.0
+DEFAULT_AOI_BUFFER_M: float = 100.0
+DEFAULT_AOI_MAX_AREA_HA: float = 10_000.0
+
+MIN_PERCENTAGE: float = 0.0
+MAX_PERCENTAGE: float = 100.0
+
+DEFAULT_MAX_OFF_NADIR_DEG: float = 30.0
+MAX_OFF_NADIR_DEG_LIMIT: float = 90.0
+
+MIN_RESOLUTION_M: float = 0.0
+DEFAULT_MAX_RESOLUTION_M: float = 50.0
+
+
 def resolve_tenant_containers(container_name: str) -> tuple[str, str, str]:
     """Resolve tenant context from a container name.
 

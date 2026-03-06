@@ -63,3 +63,12 @@ coverage.xml
 # Bicep compiled ARM JSON (build artifacts)
 infra/**/*.json
 !infra/**/bicepconfig.json
+
+# Local operational artifacts
+artifacts/
+deployment_logs.txt
+manual-hotfix-deploy.zip
+e2e-*.kml
+*-metadata.json
+metadata-output.json
+temp_manual_e2e_metadata.json
