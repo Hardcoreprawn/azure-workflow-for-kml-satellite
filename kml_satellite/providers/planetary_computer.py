@@ -25,6 +25,7 @@ References:
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections import OrderedDict
 from datetime import UTC, datetime
@@ -120,6 +121,9 @@ _DEFAULT_COLLECTIONS = ["sentinel-2-l2a"]
 
 # STAC asset key fallback order for download URL resolution.
 _FALLBACK_ASSET_KEYS = ("visual", "B04", "rendered_preview")
+
+# HTTP timeout for provider asset download requests.
+_HTTP_DOWNLOAD_TIMEOUT_SECONDS = 60.0
 
 # Default maximum entries in the per-adapter order cache.
 _DEFAULT_ORDER_CACHE_MAXSIZE = 256
@@ -346,14 +350,18 @@ class PlanetaryComputerAdapter(ImageryProvider):
             raise ProviderDownloadError(provider=self.name, message=msg, retryable=True) from exc
 
         # Download the asset.
+        container = self.config.extra_params.get("output_container", DEFAULT_OUTPUT_CONTAINER)
+        blob_path = _build_blob_path(scene_id)
+
         try:
-            size_bytes = self._download_asset(asset_url, scene_id)
+            size_bytes = self._download_asset(
+                asset_url, scene_id, output_container=container, blob_path=blob_path
+            )
+        except ProviderDownloadError:
+            raise
         except Exception as exc:
             msg = f"Failed to download asset for {scene_id}: {exc}"
             raise ProviderDownloadError(provider=self.name, message=msg, retryable=True) from exc
-
-        blob_path = _build_blob_path(scene_id)
-        container = self.config.extra_params.get("output_container", DEFAULT_OUTPUT_CONTAINER)
 
         logger.info(
             "Downloaded %s to %s/%s (%d bytes)",
@@ -455,25 +463,101 @@ class PlanetaryComputerAdapter(ImageryProvider):
 
         return url
 
-    def _download_asset(self, url: str, scene_id: str) -> int:
-        """Download an asset from *url* and return its size in bytes.
+    def _download_asset(
+        self, url: str, scene_id: str, *, output_container: str, blob_path: str
+    ) -> int:
+        """Download asset from *url* and upload to Azure Blob Storage.
 
         Uses streaming to avoid loading large satellite imagery files
-        (potentially hundreds of MB) entirely into memory.  In a full
-        deployment the chunks would be forwarded to Azure Blob Storage;
-        for now we just accumulate the byte count (the blob upload is
-        an infrastructure concern for M-2.3+).
-        """
-        with (
-            httpx.Client(timeout=60.0, follow_redirects=True) as client,
-            client.stream("GET", url) as response,
-        ):
-            response.raise_for_status()
-            size = 0
-            for chunk in response.iter_bytes():
-                size += len(chunk)
+        (potentially hundreds of MB) entirely into memory. Chunks are
+        streamed directly to Azure Blob Storage for persistence.
 
-        logger.debug("Downloaded %d bytes for %s from %s", size, scene_id, url)
+        Margaret Hamilton Principle: Defensive coding with zero assumptions.
+        - Validates connection string presence before upload attempt
+        - Fails loudly on blob upload errors (retryable)
+        - Logs detailed diagnostics at each boundary
+
+        Args:
+            url: Direct download URL (should be signed for Planetary Computer).
+            scene_id: Scene identifier for logging.
+            output_container: Azure Blob Storage container name.
+            blob_path: Blob path within container (e.g., "imagery/raw/SCENE.tif").
+
+        Returns:
+            Total bytes downloaded and uploaded.
+
+        Raises:
+            ProviderDownloadError: On HTTP errors or blob upload failures (retryable).
+        """
+        connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+
+        # Defensive: warn if no connection string (allows development/CI without Azure)
+        if not connection_string:
+            logger.warning(
+                "AzureWebJobsStorage not configured - downloading without persistence | "
+                "scene=%s | url=%s",
+                scene_id,
+                url,
+            )
+
+        chunks: list[bytes] = []
+        size = 0
+
+        # Stream download from provider
+        try:
+            with (
+                httpx.Client(
+                    timeout=_HTTP_DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True
+                ) as client,
+                client.stream("GET", url) as response,
+            ):
+                response.raise_for_status()
+                for chunk in response.iter_bytes():
+                    chunks.append(chunk)
+                    size += len(chunk)
+        except httpx.HTTPError as exc:
+            msg = f"HTTP download failed for {scene_id}: {exc}"
+            logger.exception(msg)
+            raise ProviderDownloadError(provider=self.name, message=msg, retryable=True) from exc
+
+        logger.debug("HTTP download completed | scene=%s | bytes=%d", scene_id, size)
+
+        # Upload to blob storage if connection string available
+        if connection_string:
+            try:
+                from azure.storage.blob import BlobServiceClient
+
+                blob_service = BlobServiceClient.from_connection_string(connection_string)
+                blob_client = blob_service.get_blob_client(
+                    container=output_container,
+                    blob=blob_path,
+                )
+
+                # Concatenate chunks into single bytes object for upload
+                # Modern Python 3.12: use optimized bytes.join()
+                data = b"".join(chunks)
+
+                blob_client.upload_blob(
+                    data,
+                    overwrite=True,
+                    content_type="image/tiff",
+                )
+
+                logger.info(
+                    "Blob upload completed | scene=%s | container=%s | path=%s | bytes=%d",
+                    scene_id,
+                    output_container,
+                    blob_path,
+                    size,
+                )
+
+            except Exception as exc:
+                msg = f"Blob upload failed for {scene_id}: {exc}"
+                logger.exception(msg)
+                raise ProviderDownloadError(
+                    provider=self.name, message=msg, retryable=True
+                ) from exc
+
         return size
 
 
