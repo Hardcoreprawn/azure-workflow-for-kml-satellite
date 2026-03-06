@@ -24,6 +24,9 @@ References:
 from __future__ import annotations
 
 import logging
+from functools import partial
+from itertools import batched
+from operator import itemgetter
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from kml_satellite.core.config import config_get_int
@@ -366,6 +369,40 @@ def _calculate_batch_count(total_items: int, batch_size: int) -> int:
     return (total_items + batch_size - 1) // batch_size
 
 
+def _classify_result_by_state(result: dict[str, Any]) -> str:
+    """Classify result using pattern matching on state field.
+
+    Uses Python 3.10+ match/case for cleaner state handling.
+
+    Args:
+        result: Result dict with optional 'state' field.
+
+    Returns:
+        Classification: 'success', 'failed', or 'unknown'.
+    """
+    match result.get("state"):
+        case "ready" | "completed" | "success":
+            return "success"
+        case "failed" | "error":
+            return "failed"
+        case _:
+            return "unknown"
+
+
+def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter results to only successful ones.
+
+    Uses functional approach with filter and operator.methodcaller.
+
+    Args:
+        results: List of result dicts.
+
+    Returns:
+        List of results where state is not 'failed'.
+    """
+    return [r for r in results if r.get("state") != "failed"]
+
+
 def _validate_batch_results(
     batch_results: Any,
     batch: list[dict[str, Any]],
@@ -469,8 +506,7 @@ def _process_all_batches(
 ) -> Generator[Any, Any, list[dict[str, Any]]]:
     """Process all items in batches, accumulating results.
 
-    Handles the batching loop for both download and post-process phases,
-    eliminating code duplication.
+    Uses itertools.batched() (Python 3.12+) for cleaner batch iteration.
 
     Args:
         context: Durable orchestration context.
@@ -491,12 +527,13 @@ def _process_all_batches(
     """
     all_results: list[dict[str, Any]] = []
 
-    for batch_start in range(0, len(items), batch_size):
-        batch = items[batch_start : batch_start + batch_size]
+    # Use itertools.batched() instead of manual range slicing
+    for batch in batched(items, batch_size):
+        batch_list = list(batch)  # Convert tuple to list for compatibility
         batch_results = yield from _execute_activity_batch(
             context=context,
             activity_name=activity_name,
-            batch=batch,
+            batch=batch_list,
             task_input_builder=task_input_builder,
             error_builder=error_builder,
             instance_id=instance_id,
@@ -548,17 +585,35 @@ def _execute_stage(
 def _build_aoi_lookup(aois: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Build feature_name → AOI dict for fast geometry lookup.
 
+    Uses operator.itemgetter for cleaner dict access.
+
     Args:
         aois: List of AOI dicts with feature_name keys.
 
     Returns:
         Dict mapping feature_name to full AOI dict.
     """
+    get_feature_name = itemgetter("feature_name")
     return {
-        str(a.get("feature_name", "")): a
-        for a in aois
-        if isinstance(a, dict) and a.get("feature_name")
+        str(get_feature_name(a)): a for a in aois if isinstance(a, dict) and a.get("feature_name")
     }
+
+
+def _count_results_by_state(results: list[dict[str, Any]], field: str, value: Any) -> int:
+    """Count results where field equals value.
+
+    Uses operator.itemgetter for cleaner field access.
+
+    Args:
+        results: List of result dicts.
+        field: Field name to check.
+        value: Value to match.
+
+    Returns:
+        Count of matching results.
+    """
+    # Note: dict.get() still needed for safety with missing keys
+    return sum(1 for r in results if r.get(field) == value)
 
 
 def _calculate_result_metrics(
@@ -567,6 +622,8 @@ def _calculate_result_metrics(
 ) -> dict[str, int]:
     """Calculate summary metrics from stage results.
 
+    Uses functional composition for cleaner metric calculation.
+
     Args:
         download_results: Results from download stage.
         post_process_results: Results from post-process stage.
@@ -574,11 +631,15 @@ def _calculate_result_metrics(
     Returns:
         Dict with failed/succeeded/clipped/reprojected counts.
     """
+    # Create specialized counters using partial application
+    count_failed = partial(_count_results_by_state, field="state", value="failed")
+    count_true = partial(_count_results_by_state, value=True)
+
     return {
-        "downloads_failed": sum(1 for d in download_results if d.get("state") == "failed"),
-        "pp_clipped": sum(1 for p in post_process_results if p.get("clipped")),
-        "pp_reprojected": sum(1 for p in post_process_results if p.get("reprojected")),
-        "pp_failed": sum(1 for p in post_process_results if p.get("state") == "failed"),
+        "downloads_failed": count_failed(download_results),
+        "pp_clipped": count_true(post_process_results, field="clipped"),
+        "pp_reprojected": count_true(post_process_results, field="reprojected"),
+        "pp_failed": count_failed(post_process_results),
     }
 
 
@@ -696,7 +757,7 @@ def run_fulfillment_phase(
         )
 
     # Execute post-process stage (only on successful downloads)
-    successful_downloads = [d for d in download_results if d.get("state") != "failed"]
+    successful_downloads = _filter_successful_results(download_results)
     stages["post_process"]["items"] = successful_downloads
 
     post_process_results = yield from _execute_stage(
