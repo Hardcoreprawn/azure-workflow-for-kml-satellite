@@ -75,11 +75,11 @@
 
 **Gate:** Pipeline processes KML from any `{tenant}-input` container with isolated outputs.
 
-| # | Title |
-| - | ----- |
-| #71 | Cosmos DB data layer setup (tenants + jobs containers only) |
-| #72 | Tenant provisioning service (operator-triggered) |
-| — | E2E test: two tenants process KML simultaneously, outputs isolated |
+| # | Title | Status |
+| - | ----- | ------ |
+| #71 | Cosmos DB data layer setup (tenants + jobs containers only) | ✅ DONE (Blob JSON MVP) |
+| #72 | Tenant provisioning service (operator-triggered) | - |
+| — | E2E test: two tenants process KML simultaneously, outputs isolated | - |
 
 ---
 
