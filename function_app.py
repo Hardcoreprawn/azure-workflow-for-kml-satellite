@@ -372,6 +372,95 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
+# HTTP: Tenant Provisioning (Operator-triggered)
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("provision_tenant")
+@app.route(route="admin/tenants/provision", methods=["POST"])
+async def provision_tenant(req: func.HttpRequest) -> func.HttpResponse:
+    """Provision a new tenant with isolated blob containers and metadata.
+
+    **Operator-only endpoint** — not exposed to tenant users in Phase 5.
+    Phase 6 will add authentication and move to self-service registration.
+
+    Request body (JSON):
+        {
+            "tenant_id": "acme-corp",
+            "name": "Acme Corporation",
+            "email": "admin@acme.com",
+            "tier": "free" | "pro" | "enterprise"
+        }
+
+    Returns:
+        201 Created: Tenant provisioned successfully
+        400 Bad Request: Invalid request body or validation error
+        409 Conflict: Tenant already exists
+        500 Internal Server Error: Provisioning failed
+
+    Margaret Hamilton: Operator must have secure access to this endpoint.
+    Do not expose publicly without authentication in production.
+    """
+    try:
+        # Parse request body
+        req_body = req.get_json()
+        if not req_body:
+            return func.HttpResponse("Request body required", status_code=400)
+
+        # Import provisioning dependencies
+
+        from kml_satellite.data.tenant_repository import TenantRepository
+        from kml_satellite.services import ProvisioningRequest, TenantProvisioningService
+
+        # Initialize dependencies
+        blob_service_client = get_blob_service_client()
+        # Use data container for tenant metadata storage
+        data_container_name = os.environ.get("DATA_CONTAINER_NAME", "data")
+        tenant_repo = TenantRepository(
+            container=blob_service_client.get_container_client(data_container_name)
+        )
+
+        # Create provisioning service with blob service for container creation
+        provisioning_service = TenantProvisioningService(
+            tenant_repo=tenant_repo,
+            blob_service_client=blob_service_client,
+        )
+
+        # Validate and execute provisioning request
+        request = ProvisioningRequest(**req_body)
+        tenant = provisioning_service.provision_tenant(request)
+
+        # Return created tenant
+        response_body = json.dumps(
+            {
+                "status": "provisioned",
+                "tenant": tenant.model_dump(mode="json"),
+            }
+        )
+        return func.HttpResponse(response_body, status_code=201, mimetype="application/json")
+
+    except ValueError as e:
+        # Pydantic validation error
+        logger.warning("Tenant provisioning validation error: %s", str(e))
+        response_body = json.dumps({"error": "validation_error", "detail": str(e)})
+        return func.HttpResponse(response_body, status_code=400, mimetype="application/json")
+
+    except Exception as e:
+        # Import here to avoid circular dependency issues
+        from kml_satellite.services import TenantAlreadyExistsError
+
+        if isinstance(e, TenantAlreadyExistsError):
+            logger.warning("Tenant provisioning conflict: %s", str(e))
+            response_body = json.dumps({"error": "tenant_exists", "detail": str(e)})
+            return func.HttpResponse(response_body, status_code=409, mimetype="application/json")
+
+        # Unexpected error
+        logger.exception("Tenant provisioning failed: %s", str(e))
+        response_body = json.dumps({"error": "provisioning_failed", "detail": str(e)})
+        return func.HttpResponse(response_body, status_code=500, mimetype="application/json")
+
+
+# ---------------------------------------------------------------------------
 # Activities
 # ---------------------------------------------------------------------------
 
