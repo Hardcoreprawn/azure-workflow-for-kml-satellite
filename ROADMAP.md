@@ -78,7 +78,7 @@
 | # | Title | Status |
 | - | ----- | ------ |
 | #71 | Cosmos DB data layer setup (tenants + jobs containers only) | ✅ DONE (Blob JSON MVP) |
-| #72 | Tenant provisioning service (operator-triggered) | - |
+| #72 | Tenant provisioning service (operator-triggered) | ✅ DONE |
 | — | E2E test: two tenants process KML simultaneously, outputs isolated | - |
 
 ---
