@@ -263,6 +263,54 @@ class TestBuildBlobPath(unittest.TestCase):
         assert _build_blob_path("X") == _build_blob_path("X")
 
 
+class TestInferCollectionFromSceneId(unittest.TestCase):
+    """_infer_collection_from_scene_id pattern matching for Issue #126."""
+
+    def test_sentinel2a_prefix(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        scene_id = "S2A_MSIL2A_20260115T183909_R070_T10TEM_20260115T212159"
+        assert _infer_collection_from_scene_id(scene_id) == "sentinel-2-l2a"
+
+    def test_sentinel2b_prefix(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        scene_id = "S2B_MSIL2A_20260115T183909_R070_T10TEM_20260115T212159"
+        assert _infer_collection_from_scene_id(scene_id) == "sentinel-2-l2a"
+
+    def test_l2a_prefix(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        scene_id = "L2A_T10TEM_A027854_20240615T183909"
+        assert _infer_collection_from_scene_id(scene_id) == "sentinel-2-l2a"
+
+    def test_naip_prefix(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        scene_id = "m_3912345_ne_10_060_20240615"
+        assert _infer_collection_from_scene_id(scene_id) == "naip"
+
+    def test_naip_different_tile(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        scene_id = "m_4012127_sw_15_h_20190701"
+        assert _infer_collection_from_scene_id(scene_id) == "naip"
+
+    def test_unknown_falls_back_to_sentinel2(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        # Unknown pattern should fall back to sentinel-2-l2a
+        scene_id = "UNKNOWN_PATTERN_12345"
+        assert _infer_collection_from_scene_id(scene_id) == "sentinel-2-l2a"
+
+    def test_m_prefix_not_naip_falls_back(self) -> None:
+        from kml_satellite.providers.planetary_computer import _infer_collection_from_scene_id
+
+        # "m_" prefix but not followed by digit should fall back
+        scene_id = "m_not_a_naip_tile"
+        assert _infer_collection_from_scene_id(scene_id) == "sentinel-2-l2a"
+
+
 # ---------------------------------------------------------------------------
 # Adapter search tests
 # ---------------------------------------------------------------------------
@@ -530,6 +578,55 @@ class TestDownload(unittest.TestCase):
         assert call_kwargs["ids"] == ["SCENE_123"]
         assert call_kwargs["collections"] == list(_DEFAULT_COLLECTIONS)
         assert call_kwargs["max_items"] == 1
+
+    @patch("kml_satellite.providers.planetary_computer.pystac_client.Client.open")
+    @patch("kml_satellite.providers.planetary_computer.httpx.Client")
+    def test_download_naip_uses_correct_collection(
+        self, mock_httpx_cls: MagicMock, mock_stac_open: MagicMock
+    ) -> None:
+        """Issue #126: Download must use the collection from search, not hardcoded default.
+
+        When searching for NAIP imagery, the download should query the NAIP
+        collection, not fall back to sentinel-2-l2a.
+        """
+        adapter = PlanetaryComputerAdapter(ProviderConfig(name="planetary_computer"))
+
+        # Simulate search for NAIP imagery
+        naip_item = _make_stac_item(
+            item_id="m_3912345_ne_10_060_20240615",
+            collection_id="naip",
+            asset_url="https://naip.tif",
+        )
+        mock_stac_open.return_value = _mock_stac_search([naip_item])
+
+        # Search, order
+        filters = ImageryFilters(collections=["naip"])
+        results = adapter.search(_YAKIMA_AOI, filters)
+        assert len(results) == 1
+        order = adapter.order(results[0].scene_id)
+
+        # Mock download response
+        mock_stream_response = MagicMock()
+        mock_stream_response.raise_for_status = MagicMock()
+        mock_stream_response.iter_bytes.return_value = [b"\x00" * 64]
+        mock_stream_response.__enter__ = MagicMock(return_value=mock_stream_response)
+        mock_stream_response.__exit__ = MagicMock(return_value=False)
+
+        mock_httpx = MagicMock()
+        mock_httpx.__enter__ = MagicMock(return_value=mock_httpx)
+        mock_httpx.__exit__ = MagicMock(return_value=False)
+        mock_httpx.stream.return_value = mock_stream_response
+        mock_httpx_cls.return_value = mock_httpx
+
+        # Download - should re-query using "naip" collection, not sentinel-2-l2a
+        _ = adapter.download(order.order_id)
+
+        # Verify the download's STAC search used the correct collection
+        calls = mock_stac_open.return_value.search.call_args_list
+        download_call_kwargs = calls[-1].kwargs  # Last call is from download
+        assert download_call_kwargs["ids"] == ["m_3912345_ne_10_060_20240615"]
+        assert download_call_kwargs["collections"] == ["naip"]
+        assert download_call_kwargs["max_items"] == 1
 
     @patch("kml_satellite.providers.planetary_computer._planetary_computer")
     @patch("kml_satellite.providers.planetary_computer.pystac_client.Client.open")

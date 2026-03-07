@@ -130,12 +130,55 @@ _DEFAULT_ORDER_CACHE_MAXSIZE = 256
 
 
 # ---------------------------------------------------------------------------
+# Collection inference from scene ID
+# ---------------------------------------------------------------------------
+
+
+def _infer_collection_from_scene_id(scene_id: str) -> str:
+    """Infer STAC collection name from scene ID pattern.
+
+    Issue #126: The adapter must track which collection each order belongs to
+    so that download() can re-query the correct collection. This function
+    implements pattern-based inference as a defensive fallback when the
+    collection isn't explicitly stored.
+
+    Patterns:
+        - Sentinel-2 L2A: starts with "S2A_" or "S2B_" or "L2A_"
+        - NAIP: starts with "m_" followed by digits (tile naming scheme)
+
+    Args:
+        scene_id: STAC item ID from search result.
+
+    Returns:
+        Inferred collection name, or "sentinel-2-l2a" as fallback.
+
+    Examples:
+        >>> _infer_collection_from_scene_id("S2B_MSIL2A_20260115T183909_R070_T10TEM_20260115T212159")
+        'sentinel-2-l2a'
+        >>> _infer_collection_from_scene_id("m_3912345_ne_10_060_20240615")
+        'naip'
+    """
+    if scene_id.startswith(("S2A_", "S2B_", "L2A_")):
+        return "sentinel-2-l2a"
+    if scene_id.startswith("m_") and len(scene_id) > 2 and scene_id[2].isdigit():
+        return "naip"
+
+    # Defensive fallback to default collection
+    logger.warning(
+        "Could not infer collection from scene_id=%s, falling back to %s",
+        scene_id,
+        _DEFAULT_COLLECTIONS[0],
+    )
+    return _DEFAULT_COLLECTIONS[0]
+
+
+# ---------------------------------------------------------------------------
 # Bounded order cache (Issue #56)
 # ---------------------------------------------------------------------------
 
 
 class _BoundedOrderCache:
-    """LRU-bounded cache for order_id → (scene_id, asset_url) mappings.
+    """LRU-bounded cache for order_id → (scene_id, collection_id) mappings.
 
     Lifecycle assumptions:
         In serverless (Azure Functions Flex Consumption) each invocation
@@ -197,13 +240,14 @@ class PlanetaryComputerAdapter(ImageryProvider):
     ``poll()`` are thin wrappers.
 
     The adapter maintains an in-memory mapping of order IDs to their
-    resolved asset URLs so that ``download()`` can retrieve the file.
+    scene IDs and collection IDs so that ``download()`` can re-query
+    the correct STAC collection.
     """
 
     def __init__(self, config: ProviderConfig) -> None:
         super().__init__(config)
         self._stac_url = config.api_base_url or _DEFAULT_STAC_URL
-        # order_id → (scene_id, asset_url)
+        # order_id → (scene_id, collection_id)
         # Bounded LRU cache (Issue #56) — evicts least-recently-used entries
         # when the cache exceeds _DEFAULT_ORDER_CACHE_MAXSIZE.
         self._orders = _BoundedOrderCache()
@@ -281,6 +325,9 @@ class PlanetaryComputerAdapter(ImageryProvider):
         For Planetary Computer, ordering is a no-op — we just resolve
         the asset URL and store it for ``download()``.
 
+        Issue #126: Infers the STAC collection from the scene_id pattern
+        and stores it so that download() can re-query the correct collection.
+
         Args:
             scene_id: The STAC item ID from a ``SearchResult``.
 
@@ -288,9 +335,15 @@ class PlanetaryComputerAdapter(ImageryProvider):
             An ``OrderId`` with the asset URL encoded as the order_id.
         """
         order_id = f"pc-{scene_id}"
-        self._orders[order_id] = (scene_id, "")
+        collection_id = _infer_collection_from_scene_id(scene_id)
+        self._orders[order_id] = (scene_id, collection_id)
 
-        logger.info("Planetary Computer order created: %s → %s", order_id, scene_id)
+        logger.info(
+            "Planetary Computer order created: %s → %s (collection=%s)",
+            order_id,
+            scene_id,
+            collection_id,
+        )
         return OrderId(provider=self.name, order_id=order_id, scene_id=scene_id)
 
     # ------------------------------------------------------------------
@@ -338,11 +391,11 @@ class PlanetaryComputerAdapter(ImageryProvider):
             msg = f"Unknown order: {order_id}"
             raise ProviderDownloadError(provider=self.name, message=msg)
 
-        scene_id, _ = self._orders[order_id]
+        scene_id, collection_id = self._orders[order_id]
 
         # Re-fetch STAC item to get the current asset URL.
         try:
-            asset_url = self._resolve_asset_url(scene_id)
+            asset_url = self._resolve_asset_url(scene_id, collection_id)
         except ProviderDownloadError:
             raise
         except Exception as exc:
@@ -439,21 +492,31 @@ class PlanetaryComputerAdapter(ImageryProvider):
             )
             return None
 
-    def _resolve_asset_url(self, scene_id: str) -> str:
-        """Fetch a STAC item by ID and return the best asset URL."""
+    def _resolve_asset_url(self, scene_id: str, collection_id: str) -> str:
+        """Fetch a STAC item by ID and return the best asset URL.
+
+        Args:
+            scene_id: STAC item ID to fetch.
+            collection_id: STAC collection name (e.g., "sentinel-2-l2a", "naip").
+
+        Returns:
+            Signed asset URL for download.
+
+        Raises:
+            ProviderDownloadError: If item not found or no asset available.
+        """
         catalogue = pystac_client.Client.open(self._stac_url)
 
-        # TODO(#126): Derive collection from scene_id or store it in order cache
-        # for multi-collection support. For now, hardcode sentinel-2-l2a since
-        # that's the only collection we currently use.
+        # Issue #126: Use the collection_id from the order cache (inferred
+        # during order() from scene_id pattern) to query the correct collection.
         search = catalogue.search(
             ids=[scene_id],
-            collections=list(_DEFAULT_COLLECTIONS),
+            collections=[collection_id],
             max_items=1,
         )
         items = list(search.items())
         if not items:
-            msg = f"STAC item not found: {scene_id}"
+            msg = f"STAC item not found: {scene_id} in collection {collection_id}"
             raise ProviderDownloadError(provider=self.name, message=msg)
 
         url = _sign_asset_url(_resolve_best_asset_url(items[0]))

@@ -44,7 +44,7 @@
 | #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
 | #14 | Concurrent upload stress test (≥ 20 files) | After #13 | ✅ DONE |
 | #19 | UAT sign-off | Last | ✅ DONE |
-| #126 | Planetary Computer STAC API requires collection parameter | Yes | 🔴 BLOCKING |
+| #126 | Planetary Computer STAC API requires collection parameter | Yes | ✅ DONE |
 
 ### Phase 3 Done When
 
