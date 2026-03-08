@@ -63,3 +63,14 @@ coverage.xml
 # Bicep compiled ARM JSON (build artifacts)
 infra/**/*.json
 !infra/**/bicepconfig.json
+
+# Terraform / OpenTofu
+.terraform/
+*.tfplan
+.tfstate
+.tfstate.*
+.terraform.lock.hcl
+crash.log
+
+# Static site build artifacts
+/site/
