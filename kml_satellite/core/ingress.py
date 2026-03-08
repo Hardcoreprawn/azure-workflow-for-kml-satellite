@@ -220,7 +220,7 @@ def get_blob_service_client() -> BlobServiceClient:
     """
     from azure.storage.blob import BlobServiceClient
 
-    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    connection_string = os.environ.get("AzureWebJobsStorage", "")
     if not connection_string:
         msg = "AzureWebJobsStorage environment variable is not set"
         raise ContractError(msg, stage="ingress", code="MISSING_CONNECTION_STRING")

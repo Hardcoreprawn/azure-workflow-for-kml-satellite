@@ -26,14 +26,19 @@ repos:
 
   # ---------------------------------------------------------------------------
   # Python — Ruff (lint + format)
+  # Use the same uv-managed Ruff binary as CI to avoid local/remote drift.
   # ---------------------------------------------------------------------------
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
         types_or: [python, pyi]
       - id: ruff-format
+        name: ruff-format
+        entry: uv run ruff format
+        language: system
         types_or: [python, pyi]
 
   # ---------------------------------------------------------------------------
