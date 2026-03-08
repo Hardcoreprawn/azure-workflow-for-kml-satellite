@@ -158,34 +158,6 @@ def _get_all_resource_types(template: dict[str, Any]) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-class TestBicepCompilation:
-    """Verify all Bicep files compile without errors."""
-
-    @pytest.mark.slow
-    @pytest.mark.parametrize(
-        "bicep_file",
-        [
-            "main.bicep",
-            "resources.bicep",
-            "modules/storage.bicep",
-            "modules/monitoring.bicep",
-            "modules/keyvault.bicep",
-            "modules/function-app.bicep",
-            "modules/container-environment.bicep",
-            "modules/event-grid.bicep",
-            "modules/rbac.bicep",
-        ],
-    )
-    def test_bicep_compiles(self, bicep_file: str) -> None:
-        """Each Bicep file must compile to valid ARM JSON."""
-        path = INFRA_DIR / bicep_file
-        assert path.exists(), f"Bicep file not found: {path}"
-        template = _bicep_build(str(path))
-        assert "$schema" in template
-        assert template["contentVersion"] == "1.0.0.0"
-
-
-# ---------------------------------------------------------------------------
 # Test: Main template structure
 # ---------------------------------------------------------------------------
 

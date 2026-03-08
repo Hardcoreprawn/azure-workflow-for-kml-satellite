@@ -281,7 +281,7 @@ class TestCanonicalPromotion(unittest.TestCase):
 
         blob_service = MagicMock()
 
-        def _get_blob_client(*, blob: str) -> MagicMock:
+        def _get_blob_client(*, container: str, blob: str) -> MagicMock:  # noqa: ARG001
             if blob == "imagery/raw/SCENE_A.tif":
                 return source_client
             if blob == "imagery/raw/2026/03/orchard/block-a.tif":

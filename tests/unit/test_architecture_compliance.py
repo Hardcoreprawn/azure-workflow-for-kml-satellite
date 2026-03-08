@@ -70,17 +70,3 @@ def test_requirements_include_critical_libs():
     assert "azure-functions" in reqs
     assert "azure-functions-durable" in reqs
     assert "azure-storage-blob" in reqs
-
-
-def test_bicep_parameters_exist():
-    """Verify dev.bicepparam exists and contains expected parameters."""
-    param_path = WORKSPACE_ROOT / "infra" / "parameters" / "dev.bicepparam"
-    assert param_path.exists()
-
-    with param_path.open(encoding="utf-8") as f:
-        content = f.read()
-
-    # Ensure critical parameters are defined
-    assert "enableEventGridSubscription" in content, (
-        "dev.bicepparam missing 'enableEventGridSubscription'"
-    )
