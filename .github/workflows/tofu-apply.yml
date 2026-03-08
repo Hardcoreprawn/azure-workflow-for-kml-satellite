@@ -1,0 +1,229 @@
+name: OpenTofu Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/tofu/**"
+      - ".github/workflows/tofu-apply.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment to apply
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - prd
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply-dev:
+    name: Apply (dev)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment == 'dev')
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: OpenTofu Init
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}"
+
+      - name: OpenTofu Plan
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu plan \
+            -input=false \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var-file="environments/dev.tfvars" \
+            -out="dev.tfplan"
+
+      - name: OpenTofu Apply
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu apply -input=false -auto-approve "dev.tfplan"
+
+  smoke-test-dev:
+    name: Smoke Test (dev)
+    runs-on: ubuntu-latest
+    needs: apply-dev
+    environment: dev
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Function App URL
+        id: get-url
+        run: |
+          FUNCTION_URL=$(az functionapp show \
+            --resource-group rg-kmlsat-dev \
+            --name func-kmlsat-dev \
+            --query "defaultHostName" -o tsv)
+          echo "function_url=https://${FUNCTION_URL}" >> $GITHUB_OUTPUT
+
+      - name: Test Health Endpoint
+        run: |
+          echo "Testing health endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ steps.get-url.outputs.function_url }}/api/health")
+          if [ "$response" != "200" ]; then
+            echo "❌ Health check failed with status $response"
+            exit 1
+          fi
+          echo "✅ Health check passed"
+
+      - name: Test Readiness Endpoint
+        run: |
+          echo "Testing readiness endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ steps.get-url.outputs.function_url }}/api/readiness")
+          if [ "$response" != "200" ]; then
+            echo "❌ Readiness check failed with status $response"
+            exit 1
+          fi
+          echo "✅ Readiness check passed"
+
+      - name: Verify Event Grid Subscription
+        run: |
+          echo "Verifying Event Grid subscription exists..."
+          az eventgrid system-topic event-subscription show \
+            --name evgs-kml-upload \
+            --system-topic-name evgt-kmlsat-dev \
+            --resource-group rg-kmlsat-dev \
+            --query "provisioningState" -o tsv | grep -q "Succeeded"
+          echo "✅ Event Grid subscription verified"
+
+  apply-prd:
+    name: Apply (prd)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment == 'prd'
+    environment: prd
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: OpenTofu Init
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}"
+
+      - name: OpenTofu Plan
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu plan \
+            -input=false \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var-file="environments/prd.tfvars" \
+            -out="prd.tfplan"
+
+      - name: OpenTofu Apply
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu apply -input=false -auto-approve "prd.tfplan"
+
+  smoke-test-prd:
+    name: Smoke Test (prd)
+    runs-on: ubuntu-latest
+    needs: apply-prd
+    environment: prd
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Function App URL
+        id: get-url
+        run: |
+          FUNCTION_URL=$(az functionapp show \
+            --resource-group rg-kmlsat-prd \
+            --name func-kmlsat-prd \
+            --query "defaultHostName" -o tsv)
+          echo "function_url=https://${FUNCTION_URL}" >> $GITHUB_OUTPUT
+
+      - name: Test Health Endpoint
+        run: |
+          echo "Testing health endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ steps.get-url.outputs.function_url }}/api/health")
+          if [ "$response" != "200" ]; then
+            echo "❌ Health check failed with status $response"
+            exit 1
+          fi
+          echo "✅ Health check passed"
+
+      - name: Test Readiness Endpoint
+        run: |
+          echo "Testing readiness endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ steps.get-url.outputs.function_url }}/api/readiness")
+          if [ "$response" != "200" ]; then
+            echo "❌ Readiness check failed with status $response"
+            exit 1
+          fi
+          echo "✅ Readiness check passed"
+
+      - name: Verify Event Grid Subscription
+        run: |
+          echo "Verifying Event Grid subscription exists..."
+          az eventgrid system-topic event-subscription show \
+            --name evgs-kml-upload \
+            --system-topic-name evgt-kmlsat-prd \
+            --resource-group rg-kmlsat-prd \
+            --query "provisioningState" -o tsv | grep -q "Succeeded"
+          echo "✅ Event Grid subscription verified"

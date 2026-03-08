@@ -1,0 +1,145 @@
+name: OpenTofu Plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/tofu/**"
+      - ".github/workflows/tofu-plan.yml"
+      - ".github/workflows/tofu-apply.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment to plan
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - prd
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan-dev:
+    name: Plan (dev)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment == 'dev')
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: OpenTofu Init
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}"
+
+      - name: OpenTofu Format Check
+        working-directory: infra/tofu
+        run: tofu fmt -check -recursive
+
+      - name: OpenTofu Validate
+        working-directory: infra/tofu
+        run: tofu validate
+
+      - name: OpenTofu Plan
+        id: plan
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu plan \
+            -input=false \
+            -no-color \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var-file="environments/dev.tfvars" \
+            -out="dev.tfplan" | tee "dev-plan.txt"
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tofu-plan-dev
+          path: |
+            infra/tofu/dev.tfplan
+            infra/tofu/dev-plan.txt
+
+  plan-prd:
+    name: Plan (prd)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target_environment == 'prd'
+    environment: prd
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.8.8
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: OpenTofu Init
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY }}"
+
+      - name: OpenTofu Format Check
+        working-directory: infra/tofu
+        run: tofu fmt -check -recursive
+
+      - name: OpenTofu Validate
+        working-directory: infra/tofu
+        run: tofu validate
+
+      - name: OpenTofu Plan
+        id: plan
+        working-directory: infra/tofu
+        run: |
+          set -euo pipefail
+          tofu plan \
+            -input=false \
+            -no-color \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var-file="environments/prd.tfvars" \
+            -out="prd.tfplan" | tee "prd-plan.txt"
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tofu-plan-prd
+          path: |
+            infra/tofu/prd.tfplan
+            infra/tofu/prd-plan.txt

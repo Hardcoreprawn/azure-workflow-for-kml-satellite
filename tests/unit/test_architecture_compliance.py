@@ -70,21 +70,3 @@ def test_requirements_include_critical_libs():
     assert "azure-functions" in reqs
     assert "azure-functions-durable" in reqs
     assert "azure-storage-blob" in reqs
-
-
-def test_bicep_parameters_exist():
-    """Verify dev/staging parameter files exist and contain critical toggles."""
-    params_dir = WORKSPACE_ROOT / "infra" / "parameters"
-    for env in ("dev", "staging"):
-        param_path = params_dir / f"{env}.bicepparam"
-        assert param_path.exists(), f"Missing parameter file: {param_path.name}"
-
-        with param_path.open(encoding="utf-8") as f:
-            content = f.read()
-
-        assert "enableEventGridSubscription" in content, (
-            f"{param_path.name} missing 'enableEventGridSubscription'"
-        )
-        assert f"param environment = '{env}'" in content, (
-            f"{param_path.name} must set environment='{env}'"
-        )

@@ -44,7 +44,8 @@ from kml_satellite.providers.planetary_computer import (
     _resolve_best_asset_url,
     _sign_asset_url,
 )
-from tests.unit.test_provider_contract import ProviderContractTests
+
+from .test_provider_contract import ProviderContractTests
 
 # ---------------------------------------------------------------------------
 # Test fixtures
