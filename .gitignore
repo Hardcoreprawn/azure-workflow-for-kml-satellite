@@ -64,12 +64,13 @@ coverage.xml
 infra/**/*.json
 !infra/**/bicepconfig.json
 
-# OpenTofu / Terraform local artifacts
-**/.terraform/
-**/.terraform.lock.hcl
-!infra/tofu/.terraform.lock.hcl
-*.tfstate
-*.tfstate.*
+# Terraform / OpenTofu
+.terraform/
 *.tfplan
+.tfstate
+.tfstate.*
+.terraform.lock.hcl
 crash.log
-crash.*.log
+
+# Static site build artifacts
+/site/
