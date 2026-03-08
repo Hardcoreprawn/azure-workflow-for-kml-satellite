@@ -675,7 +675,7 @@ class TestDownloadAssetBlobUpload(unittest.TestCase):
         # Call _download_asset with connection string in env
         import os
 
-        os.environ["AzureWebJobsStorage"] = "DefaultEndpointsProtocol=https;AccountName=test"
+        os.environ["AZUREWEBJOBSSTORAGE"] = "DefaultEndpointsProtocol=https;AccountName=test"
         try:
             size = adapter._download_asset(
                 "https://test.tif",
@@ -684,7 +684,7 @@ class TestDownloadAssetBlobUpload(unittest.TestCase):
                 blob_path="imagery/raw/TEST_SCENE.tif",
             )
         finally:
-            del os.environ["AzureWebJobsStorage"]
+            del os.environ["AZUREWEBJOBSSTORAGE"]
 
         # Verify chunks were uploaded
         assert size == 18  # len("chunk1chunk2chunk3")
@@ -716,7 +716,7 @@ class TestDownloadAssetBlobUpload(unittest.TestCase):
         import os
 
         # Ensure no connection string
-        os.environ.pop("AzureWebJobsStorage", None)
+        os.environ.pop("AZUREWEBJOBSSTORAGE", None)
 
         size = adapter._download_asset(
             "https://test.tif",
@@ -758,7 +758,7 @@ class TestDownloadAssetBlobUpload(unittest.TestCase):
 
         import os
 
-        os.environ["AzureWebJobsStorage"] = "DefaultEndpointsProtocol=https;AccountName=test"
+        os.environ["AZUREWEBJOBSSTORAGE"] = "DefaultEndpointsProtocol=https;AccountName=test"
         try:
             with self.assertRaises(ProviderDownloadError) as ctx:
                 adapter._download_asset(
@@ -770,7 +770,7 @@ class TestDownloadAssetBlobUpload(unittest.TestCase):
             assert ctx.exception.retryable is True
             assert "blob upload failed" in ctx.exception.message.lower()
         finally:
-            del os.environ["AzureWebJobsStorage"]
+            del os.environ["AZUREWEBJOBSSTORAGE"]
 
 
 # ---------------------------------------------------------------------------

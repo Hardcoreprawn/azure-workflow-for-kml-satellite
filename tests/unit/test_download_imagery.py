@@ -281,7 +281,7 @@ class TestCanonicalPromotion(unittest.TestCase):
 
         blob_service = MagicMock()
 
-        def _get_blob_client(*, container: str, blob: str) -> MagicMock:
+        def _get_blob_client(*, blob: str) -> MagicMock:
             if blob == "imagery/raw/SCENE_A.tif":
                 return source_client
             if blob == "imagery/raw/2026/03/orchard/block-a.tif":
@@ -335,14 +335,16 @@ class TestCanonicalPromotion(unittest.TestCase):
         blob_service.get_blob_client.side_effect = [source_client, canonical_client]
         mock_bsc_cls.from_connection_string.return_value = blob_service
 
-        with patch.dict("os.environ", {"AzureWebJobsStorage": "conn"}, clear=False):
-            with self.assertRaises(DownloadError) as ctx:
-                _promote_blob_to_canonical_path(
-                    container="kml-output",
-                    source_blob_path="imagery/raw/SCENE_A.tif",
-                    canonical_blob_path="imagery/raw/2026/03/orchard/block-a.tif",
-                    order_id="order-1",
-                )
+        with (
+            patch.dict("os.environ", {"AzureWebJobsStorage": "conn"}, clear=False),
+            self.assertRaises(DownloadError) as ctx,
+        ):
+            _promote_blob_to_canonical_path(
+                container="kml-output",
+                source_blob_path="imagery/raw/SCENE_A.tif",
+                canonical_blob_path="imagery/raw/2026/03/orchard/block-a.tif",
+                order_id="order-1",
+            )
         assert ctx.exception.retryable is True
 
 
