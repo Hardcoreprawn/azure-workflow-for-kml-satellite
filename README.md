@@ -35,6 +35,8 @@ See [PID.md](PID.md) for the full Project Initiation Document and [ARCHITECTURE_
 - **System architecture:** [PID.md §7](PID.md)
 - **Codebase architecture review:** [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)
 - **Execution plan and phase gates:** [ROADMAP.md](ROADMAP.md)
+- **Infrastructure naming standard:** [docs/INFRA_NAMING_STANDARD.md](docs/INFRA_NAMING_STANDARD.md)
+- **OpenTofu infrastructure stack:** [infra/tofu/README.md](infra/tofu/README.md)
 
 ## Operations Runbook
 
@@ -129,6 +131,26 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET | `/api/health` | Liveness probe | 200 | 500 |
 | GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
 | GET | `/api/orchestrator/{instance_id}` | Durable instance status lookup | 200 | 400 / 404 |
+| POST | `/api/marketing/interest` | Waitlist / pilot / feature request capture | 201 | 400 / 415 / 500 |
+
+### Marketing lead capture storage
+
+- Interest submissions are written as JSON blobs.
+- Content types accepted by `POST /api/marketing/interest`:
+  - `application/json`
+  - `application/x-www-form-urlencoded`
+- Container resolution order:
+  1. `MARKETING_CONTAINER_NAME` (if set)
+  2. `DATA_CONTAINER_NAME` (fallback)
+  3. `data` (default)
+- Blob path pattern:
+  - `marketing/interest/YYYY/MM/DD/<timestamp>-<uuid>.json`
+
+### JAMStack landing site
+
+- A static marketing site scaffold is available in [site/README.md](site/README.md).
+- It uses Zola (Rust) + Markdown and posts lead forms to `/api/marketing/interest`.
+- Telemetry should come from static-host built-in analytics (platform-native), not custom client event ingestion.
 
 ### Event-driven entrypoint
 
@@ -155,7 +177,9 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 
 ```text
 ├── .github/workflows/ci.yml    CI pipeline (lint, type check, test)
-├── infra/                       Bicep IaC templates
+├── infra/                       Infrastructure-as-code
+│   ├── modules/                 Bicep modules (legacy/decommission path)
+│   └── tofu/                    OpenTofu stack (active migration target)
 ├── kml_satellite/               Application package
 │   ├── activities/              Durable Functions activity functions
 │   ├── orchestrators/           Durable Functions orchestrators
@@ -187,7 +211,7 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | Linting | ruff |
 | Type Checking | pyright |
 | Testing | pytest |
-| IaC | Bicep |
+| IaC | OpenTofu (target) + Bicep (legacy) |
 | CI/CD | GitHub Actions |
 
 ## Getting Started

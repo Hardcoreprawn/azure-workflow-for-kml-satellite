@@ -1,0 +1,209 @@
+---
+# ---------------------------------------------------------------------------
+# Static Site Deployment — Marketing Landing Page
+# ---------------------------------------------------------------------------
+# Builds the Zola-based JAMStack landing page and deploys to Azure Static
+# Web Apps. Triggered on push to main when site/ content changes.
+#
+# Stack: Zola (Rust static site generator), Markdown, HTML forms
+# Deployment: Azure Static Web Apps (Free tier)
+# Backend: Forms POST to Function App /api/marketing/interest endpoint
+#
+# Requires:
+#   - OIDC federation configured for this workflow
+#   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+#     AZURE_SUBSCRIPTION_ID
+#   - Static Web App deployment token (retrieved from Bicep outputs)
+#
+# IMPORTANT: Static Web App resource must exist in Azure before this workflow
+# runs. Deploy infrastructure first via deploy.yml.
+# ---------------------------------------------------------------------------
+
+name: Deploy Static Site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/deploy-static-site.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Deployment target for manual runs
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-dev:
+    name: Deploy Static Site (Dev)
+    runs-on: ubuntu-latest
+    environment: dev
+    if: github.event_name == 'push' || github.event.inputs.target_environment == 'dev'
+    env:
+      RESOURCE_GROUP: rg-kmlsat-dev
+      STATIC_WEB_APP_NAME: stapp-kmlsat-dev-site
+      FUNCTION_APP_NAME: func-kmlsat-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------------
+      # Azure Authentication (OIDC)
+      # ---------------------------------------------------------------------
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ---------------------------------------------------------------------
+      # Retrieve Function App FQDN for API integration
+      # ---------------------------------------------------------------------
+      - name: Get Function App hostname
+        id: function-app
+        run: |
+          set -euo pipefail
+          FQDN=$(az functionapp show \
+            --name "$FUNCTION_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "defaultHostName" -o tsv)
+          echo "hostname=${FQDN}" >> "$GITHUB_OUTPUT"
+          echo "API endpoint: https://${FQDN}/api/marketing/interest"
+
+      # ---------------------------------------------------------------------
+      # Retrieve Static Web App deployment token
+      # ---------------------------------------------------------------------
+      - name: Get deployment token
+        id: token
+        run: |
+          set -euo pipefail
+          TOKEN=$(az staticwebapp secrets list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "properties.apiKey" -o tsv)
+          echo "::add-mask::${TOKEN}"
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------------
+      # Install Zola (Rust static site generator)
+      # ---------------------------------------------------------------------
+      - name: Install Zola
+        run: |
+          set -euo pipefail
+          ZOLA_VERSION="0.19.2"
+          wget -q "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf "zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          sudo mv zola /usr/local/bin/
+          zola --version
+
+      # ---------------------------------------------------------------------
+      # Update site config with Function App endpoint
+      # ---------------------------------------------------------------------
+      - name: Configure API endpoint
+        run: |
+          set -euo pipefail
+          cd site
+          FUNCTION_APP_URL="https://${{ steps.function-app.outputs.hostname }}/api/marketing/interest"
+          
+          # Update config.toml with the real Function App endpoint
+          # Using awk for precise TOML editing to avoid breaking file structure
+          awk -v url="$FUNCTION_APP_URL" '
+            /^api_endpoint = / { 
+              print "api_endpoint = \"" url "\""
+              next
+            }
+            { print }
+          ' config.toml > config.toml.tmp
+          
+          mv config.toml.tmp config.toml
+          
+          echo "✓ Configured API endpoint: $FUNCTION_APP_URL"
+          grep "api_endpoint" config.toml
+
+      # ---------------------------------------------------------------------
+      # Build the static site
+      # ---------------------------------------------------------------------
+      - name: Build site
+        run: |
+          set -euo pipefail
+          cd site
+          zola build
+          echo "Static site built successfully in site/public"
+
+      # ---------------------------------------------------------------------
+      # Deploy to Azure Static Web Apps
+      # ---------------------------------------------------------------------
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "site/public"
+          skip_app_build: true
+
+      # ---------------------------------------------------------------------
+      # Verify deployment
+      # ---------------------------------------------------------------------
+      - name: Verify Static Web App deployment
+        run: |
+          set -euo pipefail
+          
+          echo "::group::Polling Static Web App readiness"
+          HOSTNAME=$(az staticwebapp show \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "defaultHostname" -o tsv)
+          
+          if [[ -z "$HOSTNAME" ]]; then
+            echo "❌ Failed to retrieve Static Web App hostname"
+            exit 1
+          fi
+          
+          echo "Static Web App hostname: ${HOSTNAME}"
+          
+          # Poll for site availability with timeout
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          SITE_URL="https://${HOSTNAME}"
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            
+            set +e
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$SITE_URL" 2>/dev/null)
+            CURL_EXIT=$?
+            set -e
+            
+            if [[ $CURL_EXIT -eq 0 ]] && [[ "$HTTP_STATUS" == "200" ]]; then
+              echo "✅ Site is live and responding (HTTP $HTTP_STATUS)"
+              echo "::endgroup::"
+              echo ""
+              echo "========================================="
+              echo "✅ DEPLOYMENT SUCCESSFUL"
+              echo "========================================="
+              echo "Marketing site: ${SITE_URL}"
+              echo "API backend: https://${{ steps.function-app.outputs.hostname }}/api/marketing/interest"
+              echo "========================================="
+              exit 0
+            fi
+            
+            echo "  Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: HTTP ${HTTP_STATUS} (curl exit: ${CURL_EXIT}). Retrying in 10s..."
+            sleep 10
+          done
+          
+          echo "::endgroup::"
+          echo "⚠️  Site deployed but not yet responding after ${MAX_ATTEMPTS} attempts"
+          echo "Site URL: ${SITE_URL}"
+          echo "This may indicate CDN propagation delay. Check the site manually."
+          exit 0

@@ -1,7 +1,7 @@
 # TreeSight — Development Roadmap
 
-**Last updated:** 6 March 2026
-**Status:** Active — Phase 4 in progress
+**Last updated:** 8 March 2026
+**Status:** Active — Phase 4 in progress (Operational Maturity)
 
 > Sequenced delivery plan for TreeSight. The [PID](PID.md) defines the
 > end-state; this document governs **execution order**. Each phase is
@@ -24,50 +24,99 @@
 
 ## Current Phase: 4 — Operational Maturity
 
-**Gate:** Engine passes PID acceptance criteria AC-1 through AC-12, deployed and observable.
+**Gate:** Production-grade monitoring, alerting, and incident response before multi-tenant deployment.
 
-**Work these issues (any order within the phase):**
+**Context:** [Operational Readiness Assessment](docs/OPERATIONAL_READINESS_ASSESSMENT.md) identified gaps from "infrastructure works" to "production-ready."
 
-| # | Title | Can start? | Status |
-| - | ----- | ---------- | ------ |
-| #102 | Consolidate `_int_cfg` / `_int_val` config helpers | Yes | ✅ DONE |
-| #104 | Refactor `phases.py` — extract polling and error helpers | Yes | ✅ DONE |
-| #105 | Add KML input validation (max file size, content checks) | Yes | ✅ DONE |
-| #107 | Add health check endpoint (`/health`, `/readiness`) | Yes | ✅ DONE |
-| #103 | Payload offload cleanup (blob lifecycle / TTL) | Yes | ✅ DONE |
-| #108 | SkyWatch adapter: implement MVP or remove placeholder | Yes | ✅ DONE |
-| #106 | Delete stale branches after merge | Yes | ✅ DONE |
-| #13 | E2E pipeline integration test | Yes | ✅ DONE |
-| #15 | Error handling and retry logic verified | Yes | ✅ DONE |
-| #16 | Logging and alerting configured and validated | Yes | ✅ DONE |
-| #17 | Security review (Key Vault, Managed Identity, RBAC) | Yes | ✅ DONE |
-| #18 | Documentation — architecture, runbook, API reference | Yes | ✅ DONE |
-| #14 | Concurrent upload stress test (≥ 20 files) | After #13 | ✅ DONE |
-| #19 | UAT sign-off | Last | ✅ DONE |
-| #126 | Planetary Computer STAC API requires collection parameter | Yes | ✅ DONE |
+**Work these issues (priority order):**
 
-### Phase 3 Done When
+### Priority 0 — Block Production
 
-- [x] All issues above are closed
-- [x] CI green on main
-- [x] Event Grid webhook destination fix completed (Container Apps compatibility)
-- [x] Infrastructure deployed to Azure (dev environment)
-- [x] Event Grid → Function trigger validated end-to-end
-- [x] Pipeline processes real KML end-to-end in deployed environment
+| # | Title | Status |
+| - | ----- | ------ |
+| #127 | Configure Azure Monitor Action Group with notification channels | 🔴 TODO |
+| #128 | Wire existing metric alerts to Action Group | 🔴 TODO |
+| #129 | Configure Event Grid dead letter queue | 🔴 TODO |
+| #130 | Add Event Grid delivery failure alerts | 🔴 TODO |
+| #131 | Create operational runbook | 🔴 TODO |
+
+### Priority 1 — High
+
+| # | Title | Status |
+| - | ----- | ------ |
+| #132 | Configure availability test for `/api/readiness` | 🟡 TODO |
+| #133 | Add availability failure alert | 🟡 TODO |
+| #134 | Add post-deployment smoke tests to CI/CD | 🟡 TODO |
+| #135 | Add orchestration failure rate alert | 🟡 TODO |
+| #136 | Add Activity timeout alert | 🟡 TODO |
+
+### Priority 2 — Medium
+
+| # | Title | Status |
+| - | ----- | ------ |
+| #137 | Configure consumption budget alerts | 🟢 TODO |
+| #138 | Add storage growth monitoring | 🟢 TODO |
+
+### Phase 4 Done When
+
+- [ ] All P0 issues closed (alerts notify ops team)
+- [ ] All P1 issues closed (automated monitoring)
+- [ ] Runbook complete with triage procedures
+- [ ] Post-deployment validation in CI/CD
 
 ---
 
 ## Phase 4 — Operational Maturity
 
-**Gate:** Production-grade reliability before adding tenants.
+**Gate:** Production-grade reliability, monitoring, and incident response capability before adding tenants.
 
-| # | Title |
-| - | ----- |
-| #47 | Narrow `Any` usage at third-party boundaries (✅ DONE) |
-| — | Semantic versioning for container images (✅ DONE) |
-| — | Orchestration history purge strategy (✅ DONE) |
-| — | Circuit breaker for imagery provider API failures (✅ DONE) |
-| — | Integration test environment (staging) (✅ DONE) |
+### Completed
+
+| # | Title | Status |
+| - | ----- | ------ |
+| #47 | Narrow `Any` usage at third-party boundaries | ✅ DONE |
+| — | Semantic versioning for container images | ✅ DONE |
+| — | Orchestration history purge strategy | ✅ DONE |
+| — | Circuit breaker for imagery provider API failures | ✅ DONE |
+| — | Integration test environment (staging) | ✅ DONE |
+
+### P0 — Critical (Block Production)
+
+**Context:** [Operational Readiness Assessment](docs/OPERATIONAL_READINESS_ASSESSMENT.md)
+
+| # | Title | Effort | Impact |
+| - | ----- | ------ | ------- |
+| #127 | Configure Azure Monitor Action Group with notification channels (email, Teams webhook) | 15 min | Alerts fire but nobody is notified |
+| #128 | Wire existing metric alerts to Action Group | 10 min | Alert notifications delivered to ops team |
+| #129 | Configure Event Grid dead letter queue for failed webhook deliveries | 30 min | Silent event loss without dead lettering |
+| #130 | Add Event Grid delivery failure metric alerts | 20 min | Detect webhook failures early |
+| #131 | Create operational runbook (health checks, triage, recovery procedures) | 2-4 hrs | No incident response playbook exists |
+
+### P1 — High (Should Fix Before Production)
+
+| # | Title | Effort | Impact |
+| - | ----- | ------ | ------- |
+| #132 | Configure Application Insights availability test for `/api/readiness` endpoint | 30 min | Manual health verification currently |
+| #133 | Add availability failure metric alert | 15 min | Automated outage detection |
+| #134 | Add post-deployment smoke tests to Terraform apply workflow | 1 hr | Broken deploys not detected until manual testing |
+| #135 | Add Durable Functions orchestration failure rate alert (log query) | 30 min | Pipeline failures not surfaced to ops |
+| #136 | Add Activity timeout alert (log query) | 30 min | Stuck orchestrations not visible |
+
+### P2 — Medium (Cost Management)
+
+| # | Title | Effort | Impact |
+| - | ----- | ------ | ------- |
+| #137 | Configure Azure Consumption Budget with 80%/100% threshold alerts | 15 min | Uncontrolled spend risk |
+| #138 | Add storage growth monitoring and retention policy | 30 min | Unbounded blob storage growth |
+
+### Phase 4 Done When
+
+- [ ] All P0 issues closed — alerts notify ops team, Event Grid has dead letter
+- [ ] All P1 issues closed — automated health checks, CI validates deployments
+- [ ] Runbook contains: health check procedures, incident triage, recovery steps, escalation matrix
+- [ ] OpenTofu infrastructure includes: action group, availability tests, Event Grid dead letter, budget alerts
+- [ ] Post-deployment CI job validates: health endpoint 200 OK, readiness checks pass
+- [ ] On-call rotation established (or designated responder identified)
 
 ---
 
@@ -138,9 +187,9 @@
 ## Phase Sequence
 
 ```text
-Phase 3: Hardening ← YOU ARE HERE
+Phase 3: Hardening ✅ COMPLETE
     │
-Phase 4: Operational Maturity
+Phase 4: Operational Maturity ← YOU ARE HERE
     │
 Phase 5: Multi-Tenant Foundation
     │
