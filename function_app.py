@@ -13,7 +13,10 @@ import inspect
 import json
 import logging
 import os
+from contextlib import suppress
 from datetime import UTC, datetime
+from urllib.parse import parse_qs
+from uuid import uuid4
 
 import azure.durable_functions as df
 import azure.functions as func
@@ -39,6 +42,60 @@ from kml_satellite.models.payloads import (
 app = func.FunctionApp()
 
 logger = logging.getLogger("kml_satellite.function_app")
+
+_INTEREST_TYPES = {"waitlist", "pilot_request", "feature_request"}
+
+
+def _json_response(payload: dict[str, object], status_code: int) -> func.HttpResponse:
+    """Build a JSON HTTP response with explicit content type."""
+    return func.HttpResponse(
+        json.dumps(payload),
+        status_code=status_code,
+        mimetype="application/json",
+    )
+
+
+def _marketing_container_name() -> str:
+    """Resolve container used for marketing analytics and lead capture."""
+    name = os.environ.get("MARKETING_CONTAINER_NAME", "").strip()
+    if name:
+        return name
+    return os.environ.get("DATA_CONTAINER_NAME", "data").strip() or "data"
+
+
+def _client_ip(req: func.HttpRequest) -> str:
+    """Extract a best-effort client IP from forwarding headers."""
+    forwarded = req.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",", maxsplit=1)[0].strip()
+    return req.headers.get("x-client-ip", "").strip()
+
+
+def _store_marketing_record(record_type: str, payload: dict[str, object]) -> str:
+    """Persist one marketing record as a single blob for simple analytics ETL."""
+    blob_service = get_blob_service_client()
+    container_name = _marketing_container_name()
+
+    now = datetime.now(UTC)
+    blob_name = (
+        f"marketing/{record_type}/{now:%Y/%m/%d}/"
+        f"{now:%H%M%S.%fZ}-{uuid4().hex}.json"
+    )
+
+    client = blob_service.get_blob_client(container=container_name, blob=blob_name)
+    data = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+    from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+
+    try:
+        client.upload_blob(data.encode("utf-8"), overwrite=False)
+    except ResourceNotFoundError:
+        # First-run convenience: if container does not exist yet, create and retry.
+        with suppress(ResourceExistsError):
+            blob_service.create_container(container_name)
+        client.upload_blob(data.encode("utf-8"), overwrite=False)
+
+    return blob_name
 
 
 # ---------------------------------------------------------------------------
@@ -372,8 +429,95 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
-# HTTP: Tenant Provisioning (Operator-triggered)
+# HTTP: Marketing Lead Capture
 # ---------------------------------------------------------------------------
+
+
+@app.function_name("marketing_interest")
+@app.route(route="marketing/interest", methods=["POST"])
+async def marketing_interest(req: func.HttpRequest) -> func.HttpResponse:
+    """Capture waitlist, pilot, and feature-interest submissions.
+
+    Supports both JSON payloads and form-encoded posts from static JAMStack pages.
+    """
+    content_type = req.headers.get("content-type", "").lower()
+    payload_wrapper: dict[str, object]
+
+    if content_type.startswith("application/json"):
+        try:
+            req_body = req.get_json()
+        except ValueError:
+            return _json_response({"error": "invalid_json"}, 400)
+
+        if not isinstance(req_body, dict):
+            return _json_response({"error": "invalid_request"}, 400)
+        payload_wrapper = req_body
+    elif content_type.startswith("application/x-www-form-urlencoded"):
+        raw = req.get_body().decode("utf-8", errors="replace")
+        parsed = {k: v[-1] for k, v in parse_qs(raw, keep_blank_values=True).items()}
+
+        interest_type = str(parsed.get("type", "")).strip().lower()
+        if not interest_type:
+            interest_type = "waitlist"
+
+        payload_wrapper = {
+            "type": interest_type,
+            "payload": {
+                "email": parsed.get("email", ""),
+                "segment": parsed.get("segment", ""),
+                "area_ha": parsed.get("area_ha", ""),
+                "message": parsed.get("message", ""),
+            },
+        }
+    else:
+        return _json_response({"error": "unsupported_content_type"}, 415)
+
+    interest_type = str(payload_wrapper.get("type", "")).strip().lower()
+    if interest_type not in _INTEREST_TYPES:
+        return _json_response({"error": "invalid_interest_type"}, 400)
+
+    payload = payload_wrapper.get("payload", {})
+    if not isinstance(payload, dict):
+        return _json_response({"error": "invalid_payload"}, 400)
+
+    email = str(payload.get("email", "")).strip().lower()
+    requires_email = interest_type in {"waitlist", "pilot_request"}
+    if requires_email and ("@" not in email or len(email) > 254):
+        return _json_response({"error": "invalid_email"}, 400)
+
+    if not requires_email and email and ("@" not in email or len(email) > 254):
+        return _json_response({"error": "invalid_email"}, 400)
+
+    message = str(payload.get("message", "")).strip()
+    if len(message) > 4000:
+        return _json_response({"error": "message_too_long"}, 400)
+
+    segment = str(payload.get("segment", "")).strip()[:120]
+    area_ha = str(payload.get("area_ha", "")).strip()[:80]
+
+    record = {
+        "record_type": "interest",
+        "type": interest_type,
+        "timestamp_utc": datetime.now(UTC).isoformat(),
+        "email": email,
+        "message": message,
+        "segment": segment,
+        "area_ha": area_ha,
+        "path": req.url,
+        "referrer": req.headers.get("referer", ""),
+        "user_agent": req.headers.get("user-agent", ""),
+        "client_ip": _client_ip(req),
+    }
+
+    try:
+        blob_path = _store_marketing_record("interest", record)
+    except Exception as e:
+        logger.exception("Failed to store marketing interest: %s", str(e))
+        return _json_response({"error": "storage_failed"}, 500)
+
+    return _json_response({"status": "received", "blob_path": blob_path}, 201)
+
+
 
 
 @app.function_name("provision_tenant")

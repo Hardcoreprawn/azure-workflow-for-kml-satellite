@@ -171,7 +171,7 @@ class TestContainerDeployment:
         # PyYAML 1.1 can parse bare `on:` as boolean True.
         on_block = deploy_workflow.get("on")
         if not isinstance(on_block, dict):
-            fallback = cast(Any, deploy_workflow).get(True, {})
+            fallback = cast("Any", deploy_workflow).get(True, {})
             on_block = fallback if isinstance(fallback, dict) else {}
         paths = on_block.get("push", {}).get("paths", [])
         assert "Dockerfile" in paths, (
@@ -184,7 +184,7 @@ class TestContainerDeployment:
         """Manual dispatch must support selecting the staging deployment target."""
         on_block = deploy_workflow.get("on")
         if not isinstance(on_block, dict):
-            fallback = cast(Any, deploy_workflow).get(True, {})
+            fallback = cast("Any", deploy_workflow).get(True, {})
             on_block = fallback if isinstance(fallback, dict) else {}
         dispatch = on_block.get("workflow_dispatch", {})
         options = dispatch.get("inputs", {}).get("target_environment", {}).get("options", [])

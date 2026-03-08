@@ -271,14 +271,28 @@ class TestResourcesModule:
 
     def test_has_module_deployments(self, resources_arm_template: dict[str, Any]) -> None:
         """Resources module must reference all infrastructure modules."""
-        resources = resources_arm_template.get("resources", [])
-        deployment_names = {
-            r.get("name") for r in resources if r["type"] == "Microsoft.Resources/deployments"
-        }
-        # Bicep modules compile to nested deployments — names may be
-        # string expressions, so we check for presence of deployments.
-        assert len(deployment_names) >= 5, (
-            f"Expected ≥5 module deployments, got {len(deployment_names)}: {deployment_names}"
+        resources = resources_arm_template.get("resources", {})
+
+        # Bicep 2.0 uses symbolic names (dict), older versions use arrays
+        if isinstance(resources, dict):
+            # Bicep languageVersion 2.0+ format: resources is a dict with symbolic names
+            deployment_names = {
+                name
+                for name, r in resources.items()
+                if isinstance(r, dict) and r.get("type") == "Microsoft.Resources/deployments"
+            }
+        else:
+            # Legacy format: resources is an array
+            deployment_names = {
+                r.get("name")
+                for r in resources
+                if isinstance(r, dict) and r.get("type") == "Microsoft.Resources/deployments"
+            }
+
+        # Expected: storage, monitoring, keyVault, containerEnvironment,
+        # staticWebApp, functionApp, eventGrid (conditional), rbac
+        assert len(deployment_names) >= 7, (
+            f"Expected ≥7 module deployments, got {len(deployment_names)}: {deployment_names}"
         )
 
     def test_has_outputs(self, resources_arm_template: dict[str, Any]) -> None:
