@@ -29,6 +29,7 @@ References:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -153,6 +154,14 @@ def download_imagery(
         timestamp=ts,
     )
 
+    # Ensure the canonical blob path exists for downstream consumers.
+    _promote_blob_to_canonical_path(
+        container=blob_ref.container,
+        source_blob_path=blob_ref.blob_path,
+        canonical_blob_path=blob_path,
+        order_id=order_id,
+    )
+
     logger.info(
         "download_imagery completed | order=%s | scene=%s | feature=%s | "
         "blob_path=%s | size=%d bytes | duration=%.2fs | retries=%d",
@@ -239,6 +248,81 @@ def _download_with_retry(
 
     msg = f"Download failed after {max_retries + 1} attempts: {last_error}"
     raise DownloadError(msg, retryable=False) from last_error
+
+
+def _promote_blob_to_canonical_path(
+    *,
+    container: str,
+    source_blob_path: str,
+    canonical_blob_path: str,
+    order_id: str,
+) -> None:
+    """Promote provider blob to canonical path when needed.
+
+    Provider adapters may persist to a staging path (e.g. scene-based).
+    This helper copies the blob to the canonical project/date/feature path
+    so downstream steps read a stable, contract-compliant location.
+
+    Raises:
+        DownloadError: If canonicalization cannot be completed.
+    """
+    if source_blob_path == canonical_blob_path:
+        return
+
+    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    if not connection_string:
+        logger.warning(
+            "Skipping canonical blob promotion (no AzureWebJobsStorage) | "
+            "order=%s | source=%s | canonical=%s",
+            order_id,
+            source_blob_path,
+            canonical_blob_path,
+        )
+        return
+
+    try:
+        from azure.storage.blob import BlobServiceClient
+
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        source_client = blob_service.get_blob_client(container=container, blob=source_blob_path)
+        canonical_client = blob_service.get_blob_client(container=container, blob=canonical_blob_path)
+
+        if not source_client.exists():
+            msg = (
+                "Source blob missing during canonical promotion "
+                f"| order={order_id} | container={container} | blob={source_blob_path}"
+            )
+            raise DownloadError(msg, retryable=True)
+
+        source_props = source_client.get_blob_properties()
+        source_content_type = source_props.content_settings.content_type or "image/tiff"
+        stream = source_client.download_blob()
+
+        canonical_client.upload_blob(
+            stream.chunks(),
+            overwrite=True,
+            content_type=source_content_type,
+        )
+
+        if not canonical_client.exists():
+            msg = (
+                "Canonical blob write verification failed "
+                f"| order={order_id} | container={container} | blob={canonical_blob_path}"
+            )
+            raise DownloadError(msg, retryable=True)
+
+        logger.info(
+            "Canonical blob path materialized | order=%s | container=%s | source=%s | canonical=%s",
+            order_id,
+            container,
+            source_blob_path,
+            canonical_blob_path,
+        )
+    except DownloadError:
+        raise
+    except Exception as exc:
+        msg = f"Failed canonical blob promotion for order {order_id}: {exc}"
+        raise DownloadError(msg, retryable=True) from exc
 
 
 def _validate_download(blob_ref: BlobReference, order_id: str) -> None:
