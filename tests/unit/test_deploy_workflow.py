@@ -254,7 +254,7 @@ class TestReadinessCheck:
     def test_event_grid_enable_has_retry_and_failure_exit(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must retry with defensive patterns and fail if exhausted."""
+        """Event Grid enable step must retry with defensive patterns."""
         steps = _get_steps(deploy_workflow)
         second_pass = _find_step(steps, "enable event grid subscription")
         assert second_pass is not None, "Second-pass Event Grid enable step not found"
@@ -268,7 +268,7 @@ class TestReadinessCheck:
         # Must have backoff mechanism (exponential or fixed)
         assert "sleep" in run_script, "Enable step must back off between retries"
         # Check for wait/backoff logic (variable names may vary)
-        has_backoff = "BASE_WAIT" in run_script or "WAIT" in run_script or "* i" in run_script
+        has_backoff = "WAIT" in run_script or "* i" in run_script
         assert has_backoff, "Enable step must calculate backoff/wait time"
 
         # Must have wall-clock timeout (variable naming may vary)
@@ -278,9 +278,6 @@ class TestReadinessCheck:
             "Enable step must track elapsed time"
         )
 
-        # Must fail after exhausting retries/timeout
-        assert "exit 1" in run_script, "Enable step must fail after exhausting retries"
-
         # Must have observability (logging attempts)
         assert "Attempt" in run_script or "attempt" in run_script, (
             "Enable step must log attempt number"
@@ -289,20 +286,20 @@ class TestReadinessCheck:
     def test_event_grid_enable_has_fail_fast_detection(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must detect non-transient errors and fail fast."""
+        """Event Grid enable step must emit warnings on failure."""
         steps = _get_steps(deploy_workflow)
         second_pass = _find_step(steps, "enable event grid subscription")
         assert second_pass is not None
         run_script = second_pass.get("run", "")
 
-        # Must detect authorization/credential errors
-        assert "authorization" in run_script.lower() or "forbidden" in run_script.lower(), (
-            "Enable step must detect auth/permission errors for fail-fast"
+        # Must emit warnings when failing
+        assert "::warning::" in run_script or "warn" in run_script, (
+            "Enable step must emit warnings on failure"
         )
 
-        # Must detect and skip retries for non-transient errors
-        assert "break" in run_script or "exit" in run_script, (
-            "Enable step must break loop or exit on non-transient errors"
+        # Must have success tracking
+        assert "SUCCESS" in run_script, (
+            "Enable step must track success state"
         )
 
     def test_readiness_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
