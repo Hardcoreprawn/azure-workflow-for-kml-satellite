@@ -96,6 +96,8 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.image.outputs.name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -327,7 +329,19 @@ jobs:
           WEBHOOK_URL="https://${FQDN}/runtime/webhooks/EventGrid?functionName=kml_blob_trigger"
           log "Event Grid webhook endpoint: $WEBHOOK_URL"
 
-          for ((i=1; i<=MAX_ATTEMPTS; i++)); do
+          # Fast path: subscription already exists from a previous successful deploy.
+          EXISTING_SUB_ID=$(az eventgrid system-topic event-subscription show \
+            --name evgs-kml-upload \
+            --system-topic-name evgt-kmlsat-dev \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query id -o tsv 2>/dev/null || true)
+
+          if [[ -n "$EXISTING_SUB_ID" ]]; then
+            log "✔ Event Grid subscription already exists. Skipping create/retry loop."
+            SUCCESS=1
+          fi
+
+          for ((i=1; i<=MAX_ATTEMPTS && SUCCESS!=1; i++)); do
             NOW=$(date +%s)
             ELAPSED=$((NOW - START_TIME))
 
@@ -355,9 +369,16 @@ jobs:
               break
             fi
 
-            # Check if subscription already exists (which is fine)
-            if echo "$OUTPUT" | grep -qiE "(already exists|ResourceNotFound|BadRequest)"; then
-              log "  Event Grid subscription already exists or validation pending. Retrying..."
+            # already exists is a successful terminal condition.
+            if echo "$OUTPUT" | grep -qiE "already exists"; then
+              log "✔ Event Grid subscription already exists. Treating as success."
+              SUCCESS=1
+              break
+            fi
+
+            # Retryable conditions: endpoint validation race or temporary dependency lag.
+            if echo "$OUTPUT" | grep -qiE "(ResourceNotFound|BadRequest|Url validation|destination endpoint)"; then
+              log "  Event Grid endpoint/dependency not ready yet. Retrying..."
             else
               log "  ⚠ Failed to create subscription: $(echo "$OUTPUT" | tail -n 1)"
             fi
@@ -383,8 +404,8 @@ jobs:
           TOPIC_NAME="evgt-kmlsat-dev"
           RG="${{ env.RESOURCE_GROUP }}"
 
-          VERIFY_TIMEOUT_SECONDS=300
-          VERIFY_INTERVAL_SECONDS=15
+          VERIFY_TIMEOUT_SECONDS=120
+          VERIFY_INTERVAL_SECONDS=10
           VERIFY_MAX_ATTEMPTS=$((VERIFY_TIMEOUT_SECONDS / VERIFY_INTERVAL_SECONDS))
           VERIFY_ATTEMPT=0
           SUB_ID=""
