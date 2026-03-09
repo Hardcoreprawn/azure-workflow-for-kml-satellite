@@ -198,8 +198,8 @@ class TestGeospatialDependencies:
             "Builder stage must install libgdal-dev for building geospatial wheels"
         )
 
-    def test_installs_gdal_bin_in_runtime(self, dockerfile_content: str) -> None:
-        """Runtime stage must install gdal-bin for runtime GDAL libraries."""
+    def test_runtime_avoids_gdal_bin(self, dockerfile_content: str) -> None:
+        """Runtime stage should avoid heavyweight gdal-bin package."""
         lines = dockerfile_content.split("\n")
         runtime_section = []
         in_runtime = False
@@ -210,9 +210,16 @@ class TestGeospatialDependencies:
             elif line.strip().startswith("FROM ") and " AS builder" not in line:
                 in_runtime = True
 
-        runtime_text = "\n".join(runtime_section)
-        assert "gdal-bin" in runtime_text, (
-            "Runtime stage must install gdal-bin for runtime libraries"
+        runtime_pkg_lines = [line.strip() for line in runtime_section if line.strip()]
+        installs_gdal_bin = any(line.startswith("gdal-bin") for line in runtime_pkg_lines)
+        assert not installs_gdal_bin, (
+            "Runtime stage should not install gdal-bin; geospatial wheels include native libs"
+        )
+
+    def test_runtime_has_import_smoke_check(self, dockerfile_content: str) -> None:
+        """Dockerfile should fail build early if native deps are unresolved."""
+        assert 'RUN python -c "import rasterio, fiona, pyproj, shapely"' in dockerfile_content, (
+            "Dockerfile must include geospatial import smoke check"
         )
 
     def test_sets_gdal_config_env(self, dockerfile_content: str) -> None:

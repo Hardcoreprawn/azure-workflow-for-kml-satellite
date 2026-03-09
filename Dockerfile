@@ -47,10 +47,10 @@ COPY --chown=app:app kml_satellite/ /build/kml_satellite/
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12
 
 # Install only the runtime GDAL/GEOS/PROJ libraries (no build tools).
-# gdal-bin transitively pulls the correct versioned libgdal, libgeos, and
-# libproj for whichever Debian release the base image ships.
+# Python wheels for rasterio/fiona/pyproj/shapely include their native
+# dependencies under *.libs, so avoid installing heavyweight gdal-bin here.
+# Keep only minimal XML libs required by lxml/Fiona runtime behavior.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdal-bin \
     libxml2 \
     libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
@@ -73,3 +73,6 @@ COPY --from=builder --chown=app:app /build/function_app.py /home/site/wwwroot/
 COPY --from=builder --chown=app:app /build/kml_satellite/ /home/site/wwwroot/kml_satellite/
 
 USER app
+
+# Fail build early if runtime native deps are unresolved.
+RUN python -c "import rasterio, fiona, pyproj, shapely" 
