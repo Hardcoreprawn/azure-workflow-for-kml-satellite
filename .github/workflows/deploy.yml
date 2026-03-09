@@ -359,7 +359,7 @@ jobs:
               --system-topic-name evgt-kmlsat-dev \
               --resource-group "${{ env.RESOURCE_GROUP }}" \
               --endpoint "${WEBHOOK_URL}" \
-              --endpoint-type azurefunction 2>&1)
+              --endpoint-type webhook 2>&1)
             EXIT_CODE=$?
             set -e
 
