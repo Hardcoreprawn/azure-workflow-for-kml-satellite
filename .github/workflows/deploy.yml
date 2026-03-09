@@ -103,15 +103,22 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Configure registry credentials
+        run: |
+          az functionapp config appsettings set \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --settings \
+              DOCKER_REGISTRY_SERVER_URL=https://ghcr.io \
+              DOCKER_REGISTRY_SERVER_USERNAME="${{ github.actor }}" \
+              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
+
       - name: Update Function App container image
         run: |
           az functionapp config container set \
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --docker-custom-image-name "${{ steps.image.outputs.name }}" \
-            --docker-registry-server-url https://ghcr.io \
-            --docker-registry-server-username "${{ github.actor }}" \
-            --docker-registry-server-password "${{ secrets.GITHUB_TOKEN }}"
+            --docker-custom-image-name "${{ steps.image.outputs.name }}"
 
       - name: Wait for kml_blob_trigger to be discoverable
         shell: bash
