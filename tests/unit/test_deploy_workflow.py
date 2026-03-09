@@ -115,7 +115,7 @@ class TestContainerDeployment:
         assert "FUNCTION_APP_NAME" in run_script or "func-kmlsat" in run_script, (
             "Deploy step must reference the Function App name"
         )
-        assert "docker-custom-image-name" in run_script, (
+        assert "--image" in run_script or "docker-custom-image-name" in run_script, (
             "Deploy step must pass the custom container image name"
         )
 
@@ -179,6 +179,9 @@ class TestReadinessCheck:
         run_script = readiness.get("run", "")
         assert "curl" in run_script and "/admin/host/status" in run_script, (
             "Readiness check must call /admin/host/status for authoritative host state"
+        )
+        assert "/admin/functions" in run_script, (
+            "Readiness check must call /admin/functions to verify trigger registration"
         )
         assert "x-functions-key" in run_script, "Readiness check must authenticate with host key"
         assert "listKeys" in run_script, "Readiness check must fetch host key via listKeys"

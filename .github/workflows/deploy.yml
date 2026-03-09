@@ -118,7 +118,7 @@ jobs:
           az functionapp config container set \
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --docker-custom-image-name "${{ steps.image.outputs.name }}"
+            --image "${{ steps.image.outputs.name }}"
 
       - name: Wait for kml_blob_trigger to be discoverable
         shell: bash
@@ -255,28 +255,33 @@ jobs:
               continue
             fi
 
-            log "✔ Host is Running. Verifying function 'kml_blob_trigger' index..."
+            log "✔ Host is Running. Verifying function registry contains 'kml_blob_trigger'..."
 
-            # Check 2: Specific Function Indexing
-            # Even if host is running, the specific Python function might not be indexed yet.
-            # We query the admin API for the specific function.
+            # Check 2: Function Registry Contains Trigger
+            # Event Grid webhook validation depends on the trigger being present in the
+            # host's registered function list, so poll /admin/functions directly.
             set +e
-            FUNC_STATUS_JSON=$(curl -sS --max-time 10 \
+            FUNCTIONS_JSON=$(curl -sS --max-time 10 \
               -H "x-functions-key: ${HOST_KEY}" \
-              "https://${FQDN}/admin/functions/kml_blob_trigger/status" 2>/dev/null)
+              "https://${FQDN}/admin/functions" 2>/dev/null)
             CURL_EXIT=$?
             set -e
 
-            # 404 means function doesn't exist yet. 200 means it exists.
-            # We check if the response contains the name.
-            FUNC_NAME=$(echo "$FUNC_STATUS_JSON" | jq -r '.name // empty' 2>/dev/null || echo "")
+            if [[ $CURL_EXIT -ne 0 ]]; then
+              log "  [${ELAPSED}s] Failed to read function registry (curl=$CURL_EXIT). Retrying..."
+              sleep "$POLL_INTERVAL_SECONDS"
+              continue
+            fi
+
+            FUNC_NAME=$(echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -x 'kml_blob_trigger' || true)
 
             if [[ "$FUNC_NAME" == "kml_blob_trigger" ]]; then
               log "✔ Function 'kml_blob_trigger' is indexed and ready."
               FOUND=1
               break
             else
-              log "  [${ELAPSED}s] Function 'kml_blob_trigger' not found in registry yet. Retrying..."
+              FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
+              log "  [${ELAPSED}s] Trigger not in function registry yet (functions seen: ${FUNCTION_COUNT}). Retrying..."
               sleep "$POLL_INTERVAL_SECONDS"
             fi
           done
