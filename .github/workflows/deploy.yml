@@ -109,7 +109,7 @@ jobs:
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --settings \
-              DOCKER_REGISTRY_SERVER_URL=https://ghcr.io \
+              DOCKER_REGISTRY_SERVER_URL=ghcr.io \
               DOCKER_REGISTRY_SERVER_USERNAME="${{ github.actor }}" \
               DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
 
