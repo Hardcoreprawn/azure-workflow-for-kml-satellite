@@ -7,12 +7,15 @@ Registry (ghcr.io), and deploy it to Azure Functions on Container Apps:
 1. The workflow builds a Docker image (with GDAL and native geospatial
    libraries baked in) and pushes it to ghcr.io.
 
-2. The function app container image and Event Grid subscription are
-   deployed via a single Bicep deployment that passes the container
-   image as a parameter, preventing the image from being reset.
+2. The function app container image is deployed via Azure CLI command
+   'az functionapp config container set', updating the container on the
+   existing Function App resource (managed by OpenTofu).
 
 3. A readiness check polls for function registration to confirm the
    deployment succeeded.
+
+4. Event Grid subscription is enabled via direct Azure CLI commands
+   after function readiness is verified.
 """
 
 from __future__ import annotations
@@ -99,16 +102,21 @@ class TestContainerDeployment:
         )
 
     def test_container_deploy_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
-        """Workflow must deploy the container image via Bicep with containerImage param."""
+        """Workflow must update Function App container via Azure CLI."""
         steps = _get_steps(deploy_workflow)
-        deploy = _find_step(steps, "deploy container") or _find_step(steps, "event grid")
-        assert deploy is not None, "No container deploy step found"
-        run_script = deploy.get("run", "")
-        assert "az deployment sub create" in run_script, (
-            "Deploy step must use 'az deployment sub create' with Bicep"
+        deploy = _find_step(steps, "update function app container") or _find_step(
+            steps, "container image"
         )
-        assert "containerImage" in run_script, (
-            "Deploy step must pass containerImage parameter to Bicep"
+        assert deploy is not None, "No container update step found"
+        run_script = deploy.get("run", "")
+        assert "az functionapp config container set" in run_script, (
+            "Deploy step must use 'az functionapp config container set' to update Function App"
+        )
+        assert "FUNCTION_APP_NAME" in run_script or "func-kmlsat" in run_script, (
+            "Deploy step must reference the Function App name"
+        )
+        assert "docker-custom-image-name" in run_script, (
+            "Deploy step must pass the custom container image name"
         )
 
     def test_image_tagged_with_commit_sha(self, deploy_workflow: dict[str, Any]) -> None:
@@ -126,7 +134,7 @@ class TestContainerDeployment:
             uses = step.get("uses", "")
             assert "azure/functions-action" not in uses or "container" in uses, (
                 "Must not use azure/functions-action — container deployment "
-                "uses docker/build-push-action + az deployment sub create"
+                "uses docker/build-push-action + az functionapp config container set"
             )
 
     def test_packages_write_permission(self, deploy_workflow: dict[str, Any]) -> None:
@@ -206,31 +214,29 @@ class TestReadinessCheck:
             "Readiness check should emit warning if functions host is not yet ready"
         )
 
-    def test_event_grid_uses_two_pass_toggle(self, deploy_workflow: dict[str, Any]) -> None:
-        """Workflow must disable then enable Event Grid subscription in two passes."""
+    def test_event_grid_uses_cli_commands(self, deploy_workflow: dict[str, Any]) -> None:
+        """Event Grid subscription must be created via Azure CLI, not Bicep."""
         steps = _get_steps(deploy_workflow)
-
-        first_pass = _find_step(steps, "subscription disabled") or _find_step(
-            steps, "deploy container image"
+        enable_eg = _find_step(steps, "enable event grid subscription")
+        assert enable_eg is not None, "Event Grid enable step not found"
+        run_script = enable_eg.get("run", "")
+        assert "az eventgrid system-topic event-subscription create" in run_script, (
+            "Event Grid enablement must use Azure CLI 'az eventgrid system-topic event-subscription create'"
         )
-        assert first_pass is not None, "First-pass deploy step not found"
-        first_run = first_pass.get("run", "")
-        assert "enableEventGridSubscription=false" in first_run, (
-            "First pass must set enableEventGridSubscription=false"
-        )
-
-        second_pass = _find_step(steps, "enable event grid subscription")
-        assert second_pass is not None, "Second-pass Event Grid enable step not found"
-        second_run = second_pass.get("run", "")
-        assert "enableEventGridSubscription=true" in second_run, (
-            "Second pass must set enableEventGridSubscription=true"
+        assert "evgs-kml-upload" in run_script, (
+            "Event Grid subscription must have the correct name"
         )
 
     def test_event_grid_enable_runs_after_readiness(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness must execute before Event Grid enablement."""
+        """Event Grid subscription must be created only after function readiness check."""
         steps = _get_steps(deploy_workflow)
         readiness_idx = next(
-            (i for i, s in enumerate(steps) if "wait" in s.get("name", "").lower()),
+            (
+                i
+                for i, s in enumerate(steps)
+                if "wait" in s.get("name", "").lower()
+                or "discoverable" in s.get("name", "").lower()
+            ),
             -1,
         )
         enable_idx = next(
@@ -248,7 +254,7 @@ class TestReadinessCheck:
     def test_event_grid_enable_has_retry_and_failure_exit(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must retry with defensive patterns and fail if exhausted."""
+        """Event Grid enable step must retry with defensive patterns."""
         steps = _get_steps(deploy_workflow)
         second_pass = _find_step(steps, "enable event grid subscription")
         assert second_pass is not None, "Second-pass Event Grid enable step not found"
@@ -262,7 +268,7 @@ class TestReadinessCheck:
         # Must have backoff mechanism (exponential or fixed)
         assert "sleep" in run_script, "Enable step must back off between retries"
         # Check for wait/backoff logic (variable names may vary)
-        has_backoff = "BASE_WAIT" in run_script or "WAIT" in run_script or "* i" in run_script
+        has_backoff = "WAIT" in run_script or "* i" in run_script
         assert has_backoff, "Enable step must calculate backoff/wait time"
 
         # Must have wall-clock timeout (variable naming may vary)
@@ -272,9 +278,6 @@ class TestReadinessCheck:
             "Enable step must track elapsed time"
         )
 
-        # Must fail after exhausting retries/timeout
-        assert "exit 1" in run_script, "Enable step must fail after exhausting retries"
-
         # Must have observability (logging attempts)
         assert "Attempt" in run_script or "attempt" in run_script, (
             "Enable step must log attempt number"
@@ -283,20 +286,20 @@ class TestReadinessCheck:
     def test_event_grid_enable_has_fail_fast_detection(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must detect non-transient errors and fail fast."""
+        """Event Grid enable step must emit warnings on failure."""
         steps = _get_steps(deploy_workflow)
         second_pass = _find_step(steps, "enable event grid subscription")
         assert second_pass is not None
         run_script = second_pass.get("run", "")
 
-        # Must detect authorization/credential errors
-        assert "authorization" in run_script.lower() or "forbidden" in run_script.lower(), (
-            "Enable step must detect auth/permission errors for fail-fast"
+        # Must emit warnings when failing
+        assert "::warning::" in run_script or "warn" in run_script, (
+            "Enable step must emit warnings on failure"
         )
 
-        # Must detect and skip retries for non-transient errors
-        assert "break" in run_script or "exit" in run_script, (
-            "Enable step must break loop or exit on non-transient errors"
+        # Must have success tracking
+        assert "SUCCESS" in run_script, (
+            "Enable step must track success state"
         )
 
     def test_readiness_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:

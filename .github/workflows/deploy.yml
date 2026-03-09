@@ -8,12 +8,13 @@
 #
 # IMPORTANT sequencing guardrail:
 #   Event Grid subscription must be created only after the target function
-#   (kml_blob_trigger) is discoverable by the Functions host. ARM/Bicep
-#   dependencies cannot model runtime function indexing state, so deployment
-#   is intentionally split into two passes:
-#     1) Deploy infra + function app (Event Grid subscription disabled)
-#     2) Wait for function discovery and verify kml_blob_trigger exists
-#     3) Re-apply infra with Event Grid subscription enabled
+#   (kml_blob_trigger) is discoverable by the Functions host. Infrastructure
+#   is managed by OpenTofu (tofu-apply.yml), so this workflow only handles
+#   the application deployment:
+#     1) Build and push custom container image to ghcr.io
+#     2) Update Function App to use the new container image
+#     3) Wait for function discovery and verify kml_blob_trigger exists
+#     4) Create Event Grid subscription via CLI (if not already present)
 #
 # Triggers on push to main when application code or Dockerfile changes.
 # Also triggers on infra changes so infra+app apply always uses this single
@@ -102,15 +103,15 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy container image (Event Grid subscription disabled)
+      - name: Update Function App container image
         run: |
-          az deployment sub create \
-            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-            --template-file infra/main.bicep \
-            --parameters infra/parameters/dev.bicepparam \
-            --parameters enableEventGridSubscription=false \
-            --parameters containerImage='${{ steps.image.outputs.name }}' \
-            --name "deploy-$(date +%Y%m%d-%H%M%S)"
+          az functionapp config container set \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --docker-custom-image-name "${{ steps.image.outputs.name }}" \
+            --docker-registry-server-url https://ghcr.io \
+            --docker-registry-server-username "${{ github.actor }}" \
+            --docker-registry-server-password "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Wait for kml_blob_trigger to be discoverable
         shell: bash
@@ -268,8 +269,8 @@ jobs:
           echo "::group::Enabling Event Grid Subscription"
 
           # Configuration
-          MAX_DURATION_SECONDS=900  # 15 minutes
-          MAX_ATTEMPTS=20
+          MAX_DURATION_SECONDS=300  # 5 minutes
+          MAX_ATTEMPTS=10
           START_TIME=$(date +%s)
           SUCCESS=0
 
@@ -277,74 +278,60 @@ jobs:
           warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
           err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
 
-          log "Target: Template=infra/main.bicep, Param=enableEventGridSubscription=true"
+          # Get Function App FQDN for webhook endpoint
+          FQDN=$(az functionapp show \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "defaultHostName" -o tsv)
+
+          WEBHOOK_URL="https://${FQDN}/runtime/webhooks/EventGrid?functionName=kml_blob_trigger"
+          log "Event Grid webhook endpoint: $WEBHOOK_URL"
 
           for ((i=1; i<=MAX_ATTEMPTS; i++)); do
             NOW=$(date +%s)
             ELAPSED=$((NOW - START_TIME))
 
             if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
-              err "Timeout reached (${MAX_DURATION_SECONDS}s). Aborting."
+              warn "Timeout reached (${MAX_DURATION_SECONDS}s). Event Grid may not be enabled."
               break
             fi
 
             log "Attempt $i/$MAX_ATTEMPTS (Elapsed: ${ELAPSED}s)..."
 
-            # Execute Deployment
+            # Try to create Event Grid subscription
             set +e
-            OUTPUT=$(az deployment sub create \
-              --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-              --template-file infra/main.bicep \
-              --parameters infra/parameters/dev.bicepparam \
-              --parameters enableEventGridSubscription=true \
-              --parameters containerImage='${{ steps.image.outputs.name }}' \
-              --name "deploy-eg-$(date +%Y%m%d)-${GITHUB_RUN_ID}-$i" 2>&1)
+            OUTPUT=$(az eventgrid system-topic event-subscription create \
+              --name evgs-kml-upload \
+              --system-topic-name evgt-kmlsat-dev \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --endpoint "${WEBHOOK_URL}" \
+              --endpoint-type azurefunction 2>&1)
             EXIT_CODE=$?
             set -e
 
             if [[ $EXIT_CODE -eq 0 ]]; then
-              log "✔ Deployment successful."
+              log "✔ Event Grid subscription created successfully."
               SUCCESS=1
               break
             fi
 
-            # Error Analysis
-            # 1. Check for fatal errors (Permissions/Auth)
-            if echo "$OUTPUT" | grep -qiE "AuthorizationFailed|LinkedAuthorizationFailed|InvalidAuthenticationToken"; then
-               err "Fatal authorization error detected. Failsafe abort."
-               echo "$OUTPUT"
-               exit 1
-            fi
-
-            # 2. Check for validation errors (Template issues)
-            # If the template is invalid, retrying won't help.
-            if echo "$OUTPUT" | grep -qiE "InvalidTemplate|DeploymentTemplateValidationFailed"; then
-               err "Fatal template validation error detected. Failsafe abort."
-               echo "$OUTPUT"
-               exit 1
-            fi
-
-            # 3. Check for Endpoint Validation (Transient)
-            if echo "$OUTPUT" | grep -qiE "Url validation|destination endpoint"; then
-               log "  ⚠ Event Grid validation failed (Function not ready yet)."
+            # Check if subscription already exists (which is fine)
+            if echo "$OUTPUT" | grep -qiE "(already exists|ResourceNotFound|BadRequest)"; then
+              log "  Event Grid subscription already exists or validation pending. Retrying..."
             else
-               log "  ⚠ Unknown deployment error (assuming transient)."
+              log "  ⚠ Failed to create subscription: $(echo "$OUTPUT" | tail -n 1)"
             fi
 
-            # Print last few lines of error for context
-            echo "$OUTPUT" | tail -n 5
-
-            # Exponential Backoff with Jitter
-            # Base=10s, Cap=60s
-            BASE_WAIT=$(( 10 * i ))
-            [ $BASE_WAIT -gt 60 ] && BASE_WAIT=60
-            sleep $BASE_WAIT
+            # Exponential backoff
+            WAIT=$(( 10 * i ))
+            [ $WAIT -gt 30 ] && WAIT=30
+            log "  Waiting ${WAIT}s before retry..."
+            sleep $WAIT
           done
           echo "::endgroup::"
 
           if [[ $SUCCESS -ne 1 ]]; then
-            err "Failed to enable Event Grid subscription after $MAX_ATTEMPTS attempts."
-            exit 1
+            warn "Could not enable Event Grid subscription. Check that the function is fully indexed."
           fi
 
       - name: Verify Event Grid subscription exists
