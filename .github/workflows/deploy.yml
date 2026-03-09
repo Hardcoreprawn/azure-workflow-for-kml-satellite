@@ -58,6 +58,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: deploy-function-app-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FUNCTION_APP_NAME: func-kmlsat-dev
   RESOURCE_GROUP: rg-kmlsat-dev
