@@ -1,39 +1,22 @@
 ---
 # ---------------------------------------------------------------------------
-# Function App Deployment — Container
+# Function App Container Image Build & Deployment
 # ---------------------------------------------------------------------------
 # Builds a Docker image with GDAL and geospatial libraries, pushes it to
-# GitHub Container Registry (ghcr.io), and deploys the container to Azure
-# Functions on Container Apps.
+# GitHub Container Registry (ghcr.io), and updates the Function App container.
 #
-# IMPORTANT sequencing guardrail:
-#   Event Grid subscription must be created only after the target function
-#   (kml_blob_trigger) is discoverable by the Functions host. ARM/Bicep
-#   dependencies cannot model runtime function indexing state, so deployment
-#   is intentionally split into two passes:
-#     1) Deploy infra + function app (Event Grid subscription disabled)
-#     2) Wait for function discovery and verify kml_blob_trigger exists
-#     3) Re-apply infra with Event Grid subscription enabled
-#
-# Triggers on push to main when application code or Dockerfile changes.
-# Also triggers on infra changes so infra+app apply always uses this single
-# two-pass deployment path.
-#
-# Safety: main branch protection requires the lint-and-test CI check to pass
-# before any PR can merge, so code on main has already been validated.
+# Infrastructure (Function App, Event Grid, etc.) is managed via OpenTofu
+# in the tofu-apply.yml workflow.
 #
 # Container security:
-#   - Multi-stage build: build tools never reach the final image
-#   - No secrets in the image: all config injected via app settings
+#   - Multi-stage build: build tools never reach final image
+#   - No secrets in image: all config injected via app settings
 #   - Images tagged with commit SHA for full traceability
-#   - GITHUB_TOKEN for ghcr.io push — no stored credentials
-#   - .dockerignore excludes .git, tests, infra, local settings
 #
 # Requires:
 #   - OIDC federation configured for this workflow
 #   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
 #     AZURE_SUBSCRIPTION_ID
-#   - GitHub environment variable: AZURE_LOCATION
 # ---------------------------------------------------------------------------
 
 name: Deploy Function App
@@ -42,7 +25,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "infra/**"
       - "function_app.py"
       - "kml_satellite/**"
       - "host.json"
@@ -66,6 +48,7 @@ jobs:
     name: Deploy (Dev)
     runs-on: ubuntu-latest
     environment: dev
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,271 +85,45 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy container image (Event Grid subscription disabled)
+      - name: Update Function App container image
         run: |
-          az deployment sub create \
-            --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-            --template-file infra/main.bicep \
-            --parameters infra/parameters/dev.bicepparam \
-            --parameters enableEventGridSubscription=false \
-            --parameters containerImage='${{ steps.image.outputs.name }}' \
-            --name "deploy-$(date +%Y%m%d-%H%M%S)"
+          az functionapp config container set \
+            --name ${{ env.FUNCTION_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --docker-custom-image-name '${{ steps.image.outputs.name }}' \
+            --docker-registry-server-url 'https://ghcr.io' \
+            --docker-registry-server-user ${{ github.actor }} \
+            --docker-registry-server-password '${{ secrets.GITHUB_TOKEN }}'
 
-      - name: Wait for kml_blob_trigger to be discoverable
+      - name: Wait for Function App to be healthy
         shell: bash
         run: |
           set -euo pipefail
-          echo "::group::Initializing Readiness Checks"
-
-          # Configuration
-          MAX_DURATION_SECONDS=300
-          START_TIME=$(date +%s)
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
-          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          MAX_ATTEMPTS=60
+          ATTEMPT=0
 
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
-          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
+          FQDN=$(az functionapp show \
+            --name "$FUNCTION_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "defaultHostName" -o tsv)
 
-          # ---------------------------------------------------------------------
-          # 1. Retrieve FQDN (Retryable)
-          # ---------------------------------------------------------------------
-          log "Retrieving Function App hostname..."
-          FQDN=""
-          for i in {1..5}; do
-            FQDN=$(az functionapp show \
-              --name "$FUNCTION_APP" \
-              --resource-group "$RESOURCE_GROUP" \
-              --query "defaultHostName" -o tsv 2>/dev/null || true)
+          echo "Waiting for Function App to be healthy at https://${FQDN}/api/health..."
 
-            if [[ -n "$FQDN" ]]; then
-              log "✔ Target FQDN: $FQDN"
-              break
-            fi
-            sleep 2
-          done
+          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${FQDN}/api/health" || echo "000")
+            echo "  Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS: HTTP $HTTP_CODE"
 
-          if [[ -z "$FQDN" ]]; then
-            err "Failed to resolve FQDN for $FUNCTION_APP after 5 attempts."
-            exit 1
-          fi
-
-          # ---------------------------------------------------------------------
-          # 2. Retrieve Host Master Key (Retryable)
-          # ---------------------------------------------------------------------
-          log "Retrieving Host Master Key (required for admin API)..."
-          RESOURCE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
-          HOST_KEY=""
-
-          for i in {1..10}; do
-            # Using az rest to bypass potential CLI extension issues
-            HOST_KEY=$(az rest \
-              --method post \
-              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-              --query "masterKey" -o tsv 2>/dev/null || true)
-
-            if [[ -n "$HOST_KEY" ]]; then
-              log "✔ Host master key retrieved."
-              break
+            if [[ "$HTTP_CODE" == "200" ]]; then
+              echo "✅ Function App is healthy!"
+              curl -s "https://${FQDN}/api/health" | jq . || true
+              exit 0
             fi
 
-            log "  Attempt $i/10: Key not available yet. Retrying in 5s..."
+            ATTEMPT=$((ATTEMPT+1))
             sleep 5
           done
 
-          if [[ -z "$HOST_KEY" ]]; then
-            err "Failed to acquire host master key. Cannot perform health checks."
-            exit 1
-          fi
-          echo "::endgroup::"
-
-          # ---------------------------------------------------------------------
-          # 3. Poll for Host Health & Function Indexing
-          # ---------------------------------------------------------------------
-          echo "::group::Polling Function Host Status"
-          FOUND=0
-
-          while true; do
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START_TIME))
-
-            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
-              warn "Timeout reached (${MAX_DURATION_SECONDS}s). Host did not become healthy."
-              break
-            fi
-
-            # Check 1: General Host Status
-            # We use curl with max-time to avoid hangs
-            set +e
-            HOST_STATUS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${HOST_KEY}" \
-              "https://${FQDN}/admin/host/status" 2>/dev/null)
-            CURL_EXIT=$?
-            set -e
-
-            if [[ $CURL_EXIT -ne 0 ]]; then
-              log "  [${ELAPSED}s] Connection failed (curl=$CURL_EXIT). Host might be cold starting..."
-              sleep 10
-              continue
-            fi
-
-            # Safe JSON parsing
-            STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
-
-            if [[ "$STATE" != "Running" ]]; then
-              log "  [${ELAPSED}s] Host state is '$STATE'. Waiting for 'Running'..."
-              # If we got HTML (InvalidJSON), print a snippet for debugging
-              if [[ "$STATE" == "InvalidJSON" ]]; then
-                 PREVIEW=$(echo "$HOST_STATUS_JSON" | grep -o '<title>.*</title>' || echo "${HOST_STATUS_JSON:0:50}...")
-                 log "        Response preview: $PREVIEW"
-              fi
-              sleep 10
-              continue
-            fi
-
-            log "✔ Host is Running. Verifying function 'kml_blob_trigger' index..."
-
-            # Check 2: Specific Function Indexing
-            # Even if host is running, the specific Python function might not be indexed yet.
-            # We query the admin API for the specific function.
-            set +e
-            FUNC_STATUS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${HOST_KEY}" \
-              "https://${FQDN}/admin/functions/kml_blob_trigger/status" 2>/dev/null)
-            CURL_EXIT=$?
-            set -e
-
-            # 404 means function doesn't exist yet. 200 means it exists.
-            # We check if the response contains the name.
-            FUNC_NAME=$(echo "$FUNC_STATUS_JSON" | jq -r '.name // empty' 2>/dev/null || echo "")
-
-            if [[ "$FUNC_NAME" == "kml_blob_trigger" ]]; then
-              log "✔ Function 'kml_blob_trigger' is indexed and ready."
-              FOUND=1
-              break
-            else
-              log "  [${ELAPSED}s] Function 'kml_blob_trigger' not found in registry yet. Retrying..."
-              sleep 5
-            fi
-          done
-          echo "::endgroup::"
-
-          if [[ $FOUND -ne 1 ]]; then
-            warn "Function was not fully discoverable within the timeout period."
-            # We do NOT exit 1 here, we let the Event Grid deployment attempt to handle it,
-            # as it has its own robust retry logic. This step is an optimization to clear the
-            # way for the next step.
-          else
-            echo "✅ Function App is fully hot and ready for Event Grid."
-          fi
-
-      - name: Enable Event Grid subscription (Robust Retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::group::Enabling Event Grid Subscription"
-
-          # Configuration
-          MAX_DURATION_SECONDS=900  # 15 minutes
-          MAX_ATTEMPTS=20
-          START_TIME=$(date +%s)
-          SUCCESS=0
-
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
-          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
-
-          log "Target: Template=infra/main.bicep, Param=enableEventGridSubscription=true"
-
-          for ((i=1; i<=MAX_ATTEMPTS; i++)); do
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START_TIME))
-
-            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
-              err "Timeout reached (${MAX_DURATION_SECONDS}s). Aborting."
-              break
-            fi
-
-            log "Attempt $i/$MAX_ATTEMPTS (Elapsed: ${ELAPSED}s)..."
-
-            # Execute Deployment
-            set +e
-            OUTPUT=$(az deployment sub create \
-              --location ${{ vars.AZURE_LOCATION || 'uksouth' }} \
-              --template-file infra/main.bicep \
-              --parameters infra/parameters/dev.bicepparam \
-              --parameters enableEventGridSubscription=true \
-              --parameters containerImage='${{ steps.image.outputs.name }}' \
-              --name "deploy-eg-$(date +%Y%m%d)-${GITHUB_RUN_ID}-$i" 2>&1)
-            EXIT_CODE=$?
-            set -e
-
-            if [[ $EXIT_CODE -eq 0 ]]; then
-              log "✔ Deployment successful."
-              SUCCESS=1
-              break
-            fi
-
-            # Error Analysis
-            # 1. Check for fatal errors (Permissions/Auth)
-            if echo "$OUTPUT" | grep -qiE "AuthorizationFailed|LinkedAuthorizationFailed|InvalidAuthenticationToken"; then
-               err "Fatal authorization error detected. Failsafe abort."
-               echo "$OUTPUT"
-               exit 1
-            fi
-
-            # 2. Check for validation errors (Template issues)
-            # If the template is invalid, retrying won't help.
-            if echo "$OUTPUT" | grep -qiE "InvalidTemplate|DeploymentTemplateValidationFailed"; then
-               err "Fatal template validation error detected. Failsafe abort."
-               echo "$OUTPUT"
-               exit 1
-            fi
-
-            # 3. Check for Endpoint Validation (Transient)
-            if echo "$OUTPUT" | grep -qiE "Url validation|destination endpoint"; then
-               log "  ⚠ Event Grid validation failed (Function not ready yet)."
-            else
-               log "  ⚠ Unknown deployment error (assuming transient)."
-            fi
-
-            # Print last few lines of error for context
-            echo "$OUTPUT" | tail -n 5
-
-            # Exponential Backoff with Jitter
-            # Base=10s, Cap=60s
-            BASE_WAIT=$(( 10 * i ))
-            [ $BASE_WAIT -gt 60 ] && BASE_WAIT=60
-            sleep $BASE_WAIT
-          done
-          echo "::endgroup::"
-
-          if [[ $SUCCESS -ne 1 ]]; then
-            err "Failed to enable Event Grid subscription after $MAX_ATTEMPTS attempts."
-            exit 1
-          fi
-
-      - name: Verify Event Grid subscription exists
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::group::Final Verification"
-
-          EXPECTED_SUB="evgs-kml-upload"
-          TOPIC_NAME="evgt-kmlsat-dev"
-          RG="${{ env.RESOURCE_GROUP }}"
-
-          SUB_ID=$(az eventgrid system-topic event-subscription list \
-            --resource-group "$RG" \
-            --system-topic-name "$TOPIC_NAME" \
-            --query "[?name=='$EXPECTED_SUB'].id | [0]" -o tsv)
-
-          if [[ -z "$SUB_ID" ]]; then
-             echo "::error::CRITICAL: Subscription '$EXPECTED_SUB' not found after 'successful' deployment."
-             exit 1
-          fi
-
-          echo "✅ Verified: Subscription '$EXPECTED_SUB' exists."
-          echo "   Resource ID: $SUB_ID"
-          echo "::endgroup::"
+          echo "❌ Function App did not become healthy within timeout"
+          exit 1
