@@ -298,9 +298,7 @@ class TestReadinessCheck:
         )
 
         # Must have success tracking
-        assert "SUCCESS" in run_script, (
-            "Enable step must track success state"
-        )
+        assert "SUCCESS" in run_script, "Enable step must track success state"
 
     def test_readiness_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
         """Readiness check must have wall-clock timeout, not just attempt count."""

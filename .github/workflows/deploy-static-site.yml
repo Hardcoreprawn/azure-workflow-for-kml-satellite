@@ -56,10 +56,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check for site directory
+        id: site-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d site ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Site directory found; continuing deployment."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No site/ directory found in repository. Skipping static site deployment."
+          fi
+
       # ---------------------------------------------------------------------
       # Azure Authentication (OIDC)
       # ---------------------------------------------------------------------
       - name: Azure Login (OIDC)
+        if: steps.site-check.outputs.exists == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -71,6 +85,7 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Get Function App hostname
         id: function-app
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
           FQDN=$(az functionapp show \
@@ -85,6 +100,7 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Get deployment token
         id: token
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
           TOKEN=$(az staticwebapp secrets list \
@@ -98,6 +114,7 @@ jobs:
       # Install Zola (Rust static site generator)
       # ---------------------------------------------------------------------
       - name: Install Zola
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
           ZOLA_VERSION="0.19.2"
@@ -110,6 +127,7 @@ jobs:
       # Update site config with Function App endpoint
       # ---------------------------------------------------------------------
       - name: Configure API endpoint
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd site
@@ -134,6 +152,7 @@ jobs:
       # Build the static site
       # ---------------------------------------------------------------------
       - name: Build site
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
           cd site
@@ -144,6 +163,7 @@ jobs:
       # Deploy to Azure Static Web Apps
       # ---------------------------------------------------------------------
       - name: Deploy to Azure Static Web Apps
+        if: steps.site-check.outputs.exists == 'true'
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
@@ -156,6 +176,7 @@ jobs:
       # Verify deployment
       # ---------------------------------------------------------------------
       - name: Verify Static Web App deployment
+        if: steps.site-check.outputs.exists == 'true'
         run: |
           set -euo pipefail
 
@@ -207,3 +228,8 @@ jobs:
           echo "Site URL: ${SITE_URL}"
           echo "This may indicate CDN propagation delay. Check the site manually."
           exit 0
+
+      - name: Static site skipped
+        if: steps.site-check.outputs.exists != 'true'
+        run: |
+          echo "Static site deployment skipped because site/ directory is not present."

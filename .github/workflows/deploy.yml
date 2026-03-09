@@ -128,6 +128,7 @@ jobs:
 
           # Configuration
           MAX_DURATION_SECONDS=300
+          MAX_POLL_ATTEMPTS=45
           START_TIME=$(date +%s)
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
@@ -194,15 +195,24 @@ jobs:
           # ---------------------------------------------------------------------
           echo "::group::Polling Function Host Status"
           FOUND=0
+          ATTEMPT=0
 
           while true; do
+            ATTEMPT=$((ATTEMPT + 1))
             NOW=$(date +%s)
             ELAPSED=$((NOW - START_TIME))
+
+            if [[ $ATTEMPT -gt $MAX_POLL_ATTEMPTS ]]; then
+              warn "Max polling attempts reached (${MAX_POLL_ATTEMPTS}). Stopping readiness checks."
+              break
+            fi
 
             if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
               warn "Timeout reached (${MAX_DURATION_SECONDS}s). Host did not become healthy."
               break
             fi
+
+            log "Readiness attempt ${ATTEMPT}/${MAX_POLL_ATTEMPTS} (elapsed ${ELAPSED}s)..."
 
             # Check 1: General Host Status
             # We use curl with max-time to avoid hangs
