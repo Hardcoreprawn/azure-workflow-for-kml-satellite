@@ -126,9 +126,13 @@ jobs:
           set -euo pipefail
           echo "::group::Initializing Readiness Checks"
 
-          # Configuration
-          MAX_DURATION_SECONDS=300
-          MAX_POLL_ATTEMPTS=45
+          # Configuration tuned from observed cold-start/indexing behavior.
+          # Expected: 2-6 minutes, but can exceed 8 minutes on cold infra.
+          MAX_DURATION_SECONDS=720
+          POLL_INTERVAL_SECONDS=10
+          COLD_START_GRACE_SECONDS=180
+          SLOW_START_WARNING_SECONDS=420
+          MAX_POLL_ATTEMPTS=$((MAX_DURATION_SECONDS / POLL_INTERVAL_SECONDS))
           START_TIME=$(date +%s)
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
@@ -212,7 +216,15 @@ jobs:
               break
             fi
 
-            log "Readiness attempt ${ATTEMPT}/${MAX_POLL_ATTEMPTS} (elapsed ${ELAPSED}s)..."
+            if [[ $ELAPSED -lt $COLD_START_GRACE_SECONDS ]]; then
+              PHASE="expected-cold-start"
+            elif [[ $ELAPSED -lt $SLOW_START_WARNING_SECONDS ]]; then
+              PHASE="normal-indexing-window"
+            else
+              PHASE="slow-start-unexpected"
+            fi
+
+            log "Readiness attempt ${ATTEMPT}/${MAX_POLL_ATTEMPTS} (elapsed ${ELAPSED}s, phase=${PHASE})..."
 
             # Check 1: General Host Status
             # We use curl with max-time to avoid hangs
@@ -225,7 +237,7 @@ jobs:
 
             if [[ $CURL_EXIT -ne 0 ]]; then
               log "  [${ELAPSED}s] Connection failed (curl=$CURL_EXIT). Host might be cold starting..."
-              sleep 10
+              sleep "$POLL_INTERVAL_SECONDS"
               continue
             fi
 
@@ -239,7 +251,7 @@ jobs:
                  PREVIEW=$(echo "$HOST_STATUS_JSON" | grep -o '<title>.*</title>' || echo "${HOST_STATUS_JSON:0:50}...")
                  log "        Response preview: $PREVIEW"
               fi
-              sleep 10
+              sleep "$POLL_INTERVAL_SECONDS"
               continue
             fi
 
@@ -265,7 +277,7 @@ jobs:
               break
             else
               log "  [${ELAPSED}s] Function 'kml_blob_trigger' not found in registry yet. Retrying..."
-              sleep 5
+              sleep "$POLL_INTERVAL_SECONDS"
             fi
           done
           echo "::endgroup::"
@@ -285,9 +297,11 @@ jobs:
           set -euo pipefail
           echo "::group::Enabling Event Grid Subscription"
 
-          # Configuration
-          MAX_DURATION_SECONDS=300  # 5 minutes
-          MAX_ATTEMPTS=10
+          # Event Grid endpoint validation may lag behind function indexing.
+          # We keep this time-based to avoid failing during known eventual consistency windows.
+          MAX_DURATION_SECONDS=600  # 10 minutes
+          ATTEMPT_INTERVAL_SECONDS=20
+          MAX_ATTEMPTS=$((MAX_DURATION_SECONDS / ATTEMPT_INTERVAL_SECONDS))
           START_TIME=$(date +%s)
           SUCCESS=0
 
@@ -339,9 +353,8 @@ jobs:
               log "  ⚠ Failed to create subscription: $(echo "$OUTPUT" | tail -n 1)"
             fi
 
-            # Exponential backoff
-            WAIT=$(( 10 * i ))
-            [ $WAIT -gt 30 ] && WAIT=30
+            # Time-based retry cadence to keep the full window predictable.
+            WAIT="$ATTEMPT_INTERVAL_SECONDS"
             log "  Waiting ${WAIT}s before retry..."
             sleep $WAIT
           done
@@ -361,14 +374,31 @@ jobs:
           TOPIC_NAME="evgt-kmlsat-dev"
           RG="${{ env.RESOURCE_GROUP }}"
 
-          SUB_ID=$(az eventgrid system-topic event-subscription list \
-            --resource-group "$RG" \
-            --system-topic-name "$TOPIC_NAME" \
-            --query "[?name=='$EXPECTED_SUB'].id | [0]" -o tsv)
+          VERIFY_TIMEOUT_SECONDS=300
+          VERIFY_INTERVAL_SECONDS=15
+          VERIFY_MAX_ATTEMPTS=$((VERIFY_TIMEOUT_SECONDS / VERIFY_INTERVAL_SECONDS))
+          VERIFY_ATTEMPT=0
+          SUB_ID=""
+
+          while [[ $VERIFY_ATTEMPT -lt $VERIFY_MAX_ATTEMPTS ]]; do
+            VERIFY_ATTEMPT=$((VERIFY_ATTEMPT + 1))
+
+            SUB_ID=$(az eventgrid system-topic event-subscription list \
+              --resource-group "$RG" \
+              --system-topic-name "$TOPIC_NAME" \
+              --query "[?name=='$EXPECTED_SUB'].id | [0]" -o tsv)
+
+            if [[ -n "$SUB_ID" ]]; then
+              break
+            fi
+
+            echo "Attempt ${VERIFY_ATTEMPT}/${VERIFY_MAX_ATTEMPTS}: subscription not visible yet; waiting ${VERIFY_INTERVAL_SECONDS}s..."
+            sleep "$VERIFY_INTERVAL_SECONDS"
+          done
 
           if [[ -z "$SUB_ID" ]]; then
-             echo "::error::CRITICAL: Subscription '$EXPECTED_SUB' not found after 'successful' deployment."
-             exit 1
+            echo "::error::CRITICAL: Subscription '$EXPECTED_SUB' not found after ${VERIFY_TIMEOUT_SECONDS}s verification window."
+            exit 1
           fi
 
           echo "✅ Verified: Subscription '$EXPECTED_SUB' exists."
