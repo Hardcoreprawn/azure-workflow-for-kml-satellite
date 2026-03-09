@@ -90,29 +90,11 @@ jobs:
           fi
           echo "✅ Logged in to correct subscription: $CURRENT_SUBSCRIPTION"
 
-          # Test 2: Verify resource group for Terraform state exists
-          echo "Checking Terraform state resource group..."
-          STATE_RG="${{ secrets.TF_STATE_RESOURCE_GROUP }}"
-          if ! az group exists --name "$STATE_RG" --query value -o tsv | grep -q true; then
-            echo "::error::Terraform state resource group '$STATE_RG' does not exist or is inaccessible"
-            exit 1
-          fi
-          echo "✅ Terraform state resource group exists: $STATE_RG"
-
-          # Test 3: Verify storage account for Terraform state is accessible
-          echo "Checking Terraform state storage account..."
+          # Test 2: Verify state backend container with OIDC (data-plane auth)
           STATE_STORAGE="${{ secrets.TF_STATE_STORAGE_ACCOUNT }}"
           STATE_CONTAINER="${{ secrets.TF_STATE_CONTAINER_DEV }}"
-          if ! az storage account show \
-            --name "$STATE_STORAGE" \
-            --resource-group "$STATE_RG" \
-            --query id -o tsv &>/dev/null; then
-            echo "::error::Terraform state storage account '$STATE_STORAGE' not found or inaccessible"
-            exit 1
-          fi
-          echo "✅ Terraform state storage account is accessible: $STATE_STORAGE"
 
-          # Test 4: Verify container exists in storage account
+          # Test 3: Verify container exists in storage account
           echo "Checking Terraform state container..."
           if ! az storage container exists \
             --account-name "$STATE_STORAGE" \
@@ -291,29 +273,11 @@ jobs:
           fi
           echo "✅ Logged in to correct subscription: $CURRENT_SUBSCRIPTION"
 
-          # Test 2: Verify resource group for Terraform state exists
-          echo "Checking Terraform state resource group..."
-          STATE_RG="${{ secrets.TF_STATE_RESOURCE_GROUP }}"
-          if ! az group exists --name "$STATE_RG" --query value -o tsv | grep -q true; then
-            echo "::error::Terraform state resource group '$STATE_RG' does not exist or is inaccessible"
-            exit 1
-          fi
-          echo "✅ Terraform state resource group exists: $STATE_RG"
-
-          # Test 3: Verify storage account for Terraform state is accessible
-          echo "Checking Terraform state storage account..."
+          # Test 2: Verify state backend container with OIDC (data-plane auth)
           STATE_STORAGE="${{ secrets.TF_STATE_STORAGE_ACCOUNT }}"
           STATE_CONTAINER="${{ secrets.TF_STATE_CONTAINER_PRD }}"
-          if ! az storage account show \
-            --name "$STATE_STORAGE" \
-            --resource-group "$STATE_RG" \
-            --query id -o tsv &>/dev/null; then
-            echo "::error::Terraform state storage account '$STATE_STORAGE' not found or inaccessible"
-            exit 1
-          fi
-          echo "✅ Terraform state storage account is accessible: $STATE_STORAGE"
 
-          # Test 4: Verify container exists in storage account
+          # Test 3: Verify container exists in storage account
           echo "Checking Terraform state container..."
           if ! az storage container exists \
             --account-name "$STATE_STORAGE" \
