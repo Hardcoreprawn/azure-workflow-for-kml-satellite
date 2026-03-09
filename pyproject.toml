@@ -89,6 +89,7 @@ select = [
 ]
 ignore = [
     "E501",   # Line too long — handled by formatter
+    "SIM112", # Azure app-setting keys are often mixed-case (e.g., AzureWebJobsStorage)
 ]
 
 [tool.ruff.lint.isort]

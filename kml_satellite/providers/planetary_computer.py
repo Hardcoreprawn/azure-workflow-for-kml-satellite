@@ -489,7 +489,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
         Raises:
             ProviderDownloadError: On HTTP errors or blob upload failures (retryable).
         """
-        connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+        connection_string = os.environ.get("AzureWebJobsStorage", "")
 
         # Defensive: warn if no connection string (allows development/CI without Azure)
         if not connection_string:

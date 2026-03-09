@@ -269,7 +269,7 @@ def _promote_blob_to_canonical_path(
     if source_blob_path == canonical_blob_path:
         return
 
-    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    connection_string = os.environ.get("AzureWebJobsStorage", "")
     if not connection_string:
         logger.warning(
             "Skipping canonical blob promotion (no AzureWebJobsStorage) | "
@@ -285,7 +285,9 @@ def _promote_blob_to_canonical_path(
 
         blob_service = BlobServiceClient.from_connection_string(connection_string)
         source_client = blob_service.get_blob_client(container=container, blob=source_blob_path)
-        canonical_client = blob_service.get_blob_client(container=container, blob=canonical_blob_path)
+        canonical_client = blob_service.get_blob_client(
+            container=container, blob=canonical_blob_path
+        )
 
         if not source_client.exists():
             msg = (
@@ -380,7 +382,7 @@ def _validate_raster_content(blob_ref: BlobReference, order_id: str) -> None:
     """
     import os
 
-    connection_string = os.environ.get("AzureWebJobsStorage", "")  # noqa: SIM112
+    connection_string = os.environ.get("AzureWebJobsStorage", "")
     if not connection_string:
         logger.debug(
             "Skipping rasterio content validation (no AzureWebJobsStorage) | order=%s",
