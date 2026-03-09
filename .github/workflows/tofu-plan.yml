@@ -46,6 +46,88 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Pre-flight Check (ARM API Access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Pre-flight Validation"
+
+          # List all required secrets and fail if any are missing
+          if [[ -z "${{ secrets.AZURE_CLIENT_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_CLIENT_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AZURE_TENANT_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_TENANT_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_SUBSCRIPTION_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_RESOURCE_GROUP }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_RESOURCE_GROUP"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_STORAGE_ACCOUNT"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_CONTAINER }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_CONTAINER"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_KEY }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_KEY"
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
+          # Test 1: Verify subscription access
+          echo "Testing subscription access..."
+          CURRENT_SUBSCRIPTION=$(az account show --query id -o tsv)
+          if [[ "$CURRENT_SUBSCRIPTION" != "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]]; then
+            echo "::error::Logged in to wrong subscription. Expected ${{ secrets.AZURE_SUBSCRIPTION_ID }}, got $CURRENT_SUBSCRIPTION"
+            exit 1
+          fi
+          echo "✅ Logged in to correct subscription: $CURRENT_SUBSCRIPTION"
+
+          # Test 2: Verify resource group for Terraform state exists
+          echo "Checking Terraform state resource group..."
+          STATE_RG="${{ secrets.TF_STATE_RESOURCE_GROUP }}"
+          if ! az group exists --name "$STATE_RG" --query value -o tsv | grep -q true; then
+            echo "::error::Terraform state resource group '$STATE_RG' does not exist or is inaccessible"
+            exit 1
+          fi
+          echo "✅ Terraform state resource group exists: $STATE_RG"
+
+          # Test 3: Verify storage account for Terraform state is accessible
+          echo "Checking Terraform state storage account..."
+          STATE_STORAGE="${{ secrets.TF_STATE_STORAGE_ACCOUNT }}"
+          STATE_CONTAINER="${{ secrets.TF_STATE_CONTAINER }}"
+          if ! az storage account show \
+            --name "$STATE_STORAGE" \
+            --resource-group "$STATE_RG" \
+            --query id -o tsv &>/dev/null; then
+            echo "::error::Terraform state storage account '$STATE_STORAGE' not found or inaccessible"
+            exit 1
+          fi
+          echo "✅ Terraform state storage account is accessible: $STATE_STORAGE"
+
+          # Test 4: Verify container exists in storage account
+          echo "Checking Terraform state container..."
+          if ! az storage container exists \
+            --account-name "$STATE_STORAGE" \
+            --name "$STATE_CONTAINER" \
+            --query exists -o tsv | grep -q true; then
+            echo "::error::Container '$STATE_CONTAINER' not found in storage account '$STATE_STORAGE'"
+            exit 1
+          fi
+          echo "✅ Terraform state container exists: $STATE_CONTAINER"
+
+          echo "::endgroup::"
+          echo "✅ All pre-flight checks passed. Ready to proceed with OpenTofu."
+
       - name: OpenTofu Init
         working-directory: infra/tofu
         env:
@@ -125,6 +207,88 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Pre-flight Check (ARM API Access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Pre-flight Validation"
+
+          # List all required secrets and fail if any are missing
+          if [[ -z "${{ secrets.AZURE_CLIENT_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_CLIENT_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AZURE_TENANT_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_TENANT_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]]; then
+            echo "::error::Missing secret: AZURE_SUBSCRIPTION_ID"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_RESOURCE_GROUP }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_RESOURCE_GROUP"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_STORAGE_ACCOUNT"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_CONTAINER }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_CONTAINER"
+            exit 1
+          fi
+          if [[ -z "${{ secrets.TF_STATE_KEY }}" ]]; then
+            echo "::error::Missing secret: TF_STATE_KEY"
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
+          # Test 1: Verify subscription access
+          echo "Testing subscription access..."
+          CURRENT_SUBSCRIPTION=$(az account show --query id -o tsv)
+          if [[ "$CURRENT_SUBSCRIPTION" != "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ]]; then
+            echo "::error::Logged in to wrong subscription. Expected ${{ secrets.AZURE_SUBSCRIPTION_ID }}, got $CURRENT_SUBSCRIPTION"
+            exit 1
+          fi
+          echo "✅ Logged in to correct subscription: $CURRENT_SUBSCRIPTION"
+
+          # Test 2: Verify resource group for Terraform state exists
+          echo "Checking Terraform state resource group..."
+          STATE_RG="${{ secrets.TF_STATE_RESOURCE_GROUP }}"
+          if ! az group exists --name "$STATE_RG" --query value -o tsv | grep -q true; then
+            echo "::error::Terraform state resource group '$STATE_RG' does not exist or is inaccessible"
+            exit 1
+          fi
+          echo "✅ Terraform state resource group exists: $STATE_RG"
+
+          # Test 3: Verify storage account for Terraform state is accessible
+          echo "Checking Terraform state storage account..."
+          STATE_STORAGE="${{ secrets.TF_STATE_STORAGE_ACCOUNT }}"
+          STATE_CONTAINER="${{ secrets.TF_STATE_CONTAINER }}"
+          if ! az storage account show \
+            --name "$STATE_STORAGE" \
+            --resource-group "$STATE_RG" \
+            --query id -o tsv &>/dev/null; then
+            echo "::error::Terraform state storage account '$STATE_STORAGE' not found or inaccessible"
+            exit 1
+          fi
+          echo "✅ Terraform state storage account is accessible: $STATE_STORAGE"
+
+          # Test 4: Verify container exists in storage account
+          echo "Checking Terraform state container..."
+          if ! az storage container exists \
+            --account-name "$STATE_STORAGE" \
+            --name "$STATE_CONTAINER" \
+            --query exists -o tsv | grep -q true; then
+            echo "::error::Container '$STATE_CONTAINER' not found in storage account '$STATE_STORAGE'"
+            exit 1
+          fi
+          echo "✅ Terraform state container exists: $STATE_CONTAINER"
+
+          echo "::endgroup::"
+          echo "✅ All pre-flight checks passed. Ready to proceed with OpenTofu."
 
       - name: OpenTofu Init
         working-directory: infra/tofu
