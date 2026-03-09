@@ -62,6 +62,21 @@ class TestMultiStageBuild:
             "Dockerfile must use mcr.microsoft.com/azure-functions/python:4-python3.12 base image"
         )
 
+    def test_runtime_stage_runs_as_non_root(self, dockerfile_content: str) -> None:
+        """Runtime stage should run as non-root app user."""
+        lines = dockerfile_content.split("\n")
+        runtime_section = []
+        in_runtime = False
+
+        for line in lines:
+            if in_runtime:
+                runtime_section.append(line)
+            elif line.strip().startswith("FROM ") and " AS builder" not in line:
+                in_runtime = True
+
+        runtime_text = "\n".join(runtime_section)
+        assert "USER app" in runtime_text, "Runtime stage must switch to non-root user 'app'"
+
 
 # ---------------------------------------------------------------------------
 # Test: APT repository safety
