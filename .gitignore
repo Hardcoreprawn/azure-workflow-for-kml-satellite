@@ -74,3 +74,4 @@ crash.log
 
 # Static site build artifacts
 /site/
+tofu-run.log

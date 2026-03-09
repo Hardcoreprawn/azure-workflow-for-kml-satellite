@@ -3,17 +3,31 @@
 # ---------------------------------------------------------------------------
 # deploy_local.ps1 — Manual "Margaret Hamilton" Deployment Script
 # ---------------------------------------------------------------------------
-# REPLICATES THE GITHUB ACTIONS LOGIC EXACTLY ON YOUR LOCAL MACHINE.
-# Use this to validate infrastructure and clear the "Chicken and Egg" hurdle
-# before trusting the CI pipeline.
+# DEPRECATED: This script uses legacy Bicep templates. Infrastructure is now
+# managed by OpenTofu (infra/tofu/). To deploy locally:
 #
-# Prereqs:
-#   - az login
-#   - jq (used for JSON parsing, strictly required)
-#   - curl (used for health checks)
+# Option 1: Use GitHub Actions workflows (recommended)
+#   - Merge to main to trigger tofu-apply.yml and deploy.yml
+#   - This is the source of truth for deployment logic
 #
-# Usage:
-#   ./scripts/deploy_local.ps1 -Location uksouth -Environment dev
+# Option 2: Manual local OpenTofu deployment
+#   cd infra/tofu
+#   tofu init (use -backend-config flags for state backend)
+#   tofu plan -var-file="environments/dev.tfvars"
+#   tofu apply
+#
+# Then build and push the container:
+#   docker build -t ghcr.io/yourname/image:latest .
+#   docker push ghcr.io/yourname/image:latest
+#   az functionapp config container set \
+#     --name func-kmlsat-dev \
+#     --resource-group rg-kmlsat-dev \
+#     --docker-custom-image-name ghcr.io/yourname/image:latest \
+#     --docker-registry-server-url https://ghcr.io \
+#     --docker-registry-server-username $GITHUB_ACTOR \
+#     --docker-registry-server-password $GITHUB_TOKEN
+#
+# Archived Bicep-based logic is kept below for reference, but should not be used.
 # ---------------------------------------------------------------------------
 
 param(

@@ -13,10 +13,10 @@
 #   - OIDC federation configured for this workflow
 #   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
 #     AZURE_SUBSCRIPTION_ID
-#   - Static Web App deployment token (retrieved from Bicep outputs)
+#   - Static Web App deployment token (retrieved from OpenTofu/Azure resources)
 #
 # IMPORTANT: Static Web App resource must exist in Azure before this workflow
-# runs. Deploy infrastructure first via deploy.yml.
+# runs. Deploy infrastructure first via tofu-apply.yml.
 # ---------------------------------------------------------------------------
 
 name: Deploy Static Site
