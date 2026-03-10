@@ -49,6 +49,9 @@
 | #134 | Add post-deployment smoke tests to CI/CD | 🟡 TODO |
 | #135 | Add orchestration failure rate alert | 🟡 TODO |
 | #136 | Add Activity timeout alert | 🟡 TODO |
+| #150 | Split CI into fast checks and native geospatial checks to reduce PR latency | 🟡 TODO |
+| #151 | Evaluate and adopt native geospatial base image strategy for CI and deploy builds | 🟡 TODO |
+| #152 | Automate geospatial base image refresh, validation, and vulnerability checks | 🟡 TODO |
 
 ### Priority 2 — Medium
 
@@ -101,6 +104,9 @@
 | #134 | Add post-deployment smoke tests to Terraform apply workflow | 1 hr | Broken deploys not detected until manual testing |
 | #135 | Add Durable Functions orchestration failure rate alert (log query) | 30 min | Pipeline failures not surfaced to ops |
 | #136 | Add Activity timeout alert (log query) | 30 min | Stuck orchestrations not visible |
+| #150 | Split CI into fast checks and native geospatial checks to reduce PR latency | 1-2 hrs | Faster PR feedback without losing native validation coverage |
+| #151 | Evaluate and adopt native geospatial base image strategy for CI and deploy builds | 2-4 hrs | Reduced CI/deploy build duration and improved determinism |
+| #152 | Automate geospatial base image refresh, validation, and vulnerability checks | 2-3 hrs | Safer image lifecycle with predictable security and update posture |
 
 ### P2 — Medium (Cost Management)
 
