@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TreeSight — AI-Powered Tree Analysis from Satellite Imagery</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">🌳 TreeSight</div>
+            <ul class="nav-links">
+                <li><a href="#demo">Live Demo</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#faq">FAQ</a></li>
+                <li><a href="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" target="_blank">GitHub</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>Understand Your Trees. From Space.</h1>
+                <p>AI-powered analysis of tree health, density, and change detection. Upload a KML file. Get actionable insights in minutes.</p>
+                <div class="hero-cta">
+                    <a href="#demo" class="btn btn-primary">Try Live Demo</a>
+                    <a href="#early-access" class="btn btn-secondary">Request Early Access</a>
+                </div>
+            </div>
+            <div class="hero-status">
+                <div class="status-badge" id="status-badge">
+                    <div class="status-spinner"></div>
+                    <span class="status-text">Loading...</span>
+                </div>
+                <p class="status-label">Live Pipeline Status</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Problem / Solution -->
+    <section class="problem-solution">
+        <div class="container">
+            <div class="section-header">
+                <h2>The Challenge</h2>
+                <p>Satellite imagery has arrived. Most of it is wasted.</p>
+            </div>
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3>Manual Analysis is Expensive</h3>
+                    <p>Human interpreters spend hours analyzing satellite imagery per site. Cost scales linearly with area surveyed.</p>
+                </div>
+                <div class="card">
+                    <h3>Desktop Tools Can't Scale</h3>
+                    <p>GIS software works for 1–2 sites. Doesn't work when you have 100 orchards, 50 plantations, or 1000 conservation areas.</p>
+                </div>
+                <div class="card">
+                    <h3>Change Detection Requires Memory</h3>
+                    <p>Did tree density change this season? Last year? You need a temporal database and the time to query it manually.</p>
+                </div>
+                <div class="card">
+                    <h3>Data Silos Prevent Insights</h3>
+                    <p>KML files live in email. Imagery lives in cloud storage. Spreadsheets live in drives. No single source of truth.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Solution -->
+    <section class="solution">
+        <div class="container">
+            <div class="section-header">
+                <h2>The Solution</h2>
+                <p>TreeSight: serverless, scalable, intelligent tree analysis.</p>
+            </div>
+            <div class="grid grid-3">
+                <div class="feature">
+                    <div class="feature-icon">📤</div>
+                    <h3>Upload KML</h3>
+                    <p>Define your area of interest. One file. Any size.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🛰️</div>
+                    <h3>Automatic Acquisition</h3>
+                    <p>We source cloud-free satellite imagery from Planet. You focus on your AOI, not logistics.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🧠</div>
+                    <h3>AI Analysis</h3>
+                    <p>Tree detection, health classification, and temporal change detection. All automated.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📊</div>
+                    <h3>Temporal Insights</h3>
+                    <p>Track tree density, health, and loss across seasons. See what changed, when, and why.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">📥</div>
+                    <h3>Export Results</h3>
+                    <p>GeoJSON, CSV, or PDF reports. Ready for ArcGIS, QGIS, or your own analysis tools.</p>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔄</div>
+                    <h3>Scheduled Monitoring</h3>
+                    <p>Set it and forget it. Automatic re-acquisition on your schedule. Anomalies trigger alerts.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Demo Section -->
+    <section class="demo" id="demo">
+        <div class="container">
+            <div class="section-header">
+                <h2>Live Demo</h2>
+                <p>The pipeline is running now. See it in action.</p>
+            </div>
+            <div class="demo-content">
+                <div class="demo-status">
+                    <h3>Pipeline Status</h3>
+                    <div class="status-detail" id="status-detail">
+                        <div class="status-spinner"></div>
+                        <p>Checking...</p>
+                    </div>
+                </div>
+                <div class="demo-form">
+                    <h3>Try the Pipeline</h3>
+                    <form id="demo-form" class="form">
+                        <fieldset>
+                            <label for="demo-kml">Upload Sample KML (or provide URL):</label>
+                            <textarea
+                                id="demo-kml"
+                                name="kml"
+                                placeholder="Paste KML here or select a test file..."
+                                rows="6"
+                            ></textarea>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary" id="submit-demo">Submit for Processing</button>
+                                <button type="button" class="btn btn-secondary" id="load-sample">Load Sample</button>
+                            </div>
+                        </fieldset>
+                    </form>
+                    <p class="form-note">
+                        💡 <strong>Note:</strong> Demo processing is limited to small AOIs.
+                        For production use, <a href="#early-access">request early access</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works" id="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <h2>How It Works</h2>
+                <p>From KML to actionable insights in minutes.</p>
+            </div>
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-marker">1</div>
+                    <div class="timeline-content">
+                        <h3>Upload AOI</h3>
+                        <p>Define your area of interest as a KML file. Polygon, multipolygon, any shape.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-marker">2</div>
+                    <div class="timeline-content">
+                        <h3>Source Imagery</h3>
+                        <p>We query Planet Labs and USGS for cloud-free satellite imagery matching your AOI and date range.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-marker">3</div>
+                    <div class="timeline-content">
+                        <h3>Preprocess & Normalize</h3>
+                        <p>Geometric registration, atmospheric correction, NDVI calculation. All handled automatically.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-marker">4</div>
+                    <div class="timeline-content">
+                        <h3>Tree Detection & Classification</h3>
+                        <p>AI inference identifies trees, estimates health status, and flags anomalies.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-marker">5</div>
+                    <div class="timeline-content">
+                        <h3>Temporal Analysis</h3>
+                        <p>Compare across dates. Detect loss, regeneration, health trends, and seasonal patterns.</p>
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-marker">6</div>
+                    <div class="timeline-content">
+                        <h3>Export & Alert</h3>
+                        <p>GeoJSON, CSV, PDF, or JSON. Automatic alerts for significant changes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="faq" id="faq">
+        <div class="container">
+            <div class="section-header">
+                <h2>Frequently Asked Questions</h2>
+            </div>
+            <div class="faq-list">
+                <div class="faq-item">
+                    <h3>How do I get started?</h3>
+                    <p>Request early access using the form below. We'll send you a demo account within 24 hours. You can then upload KML files and see results immediately.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What imagery sources do you use?</h3>
+                    <p>Planet Labs (primary), USGS Landsat, and Sentinel-2. We prioritize cloud-free, high-resolution imagery for your AOI.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>How long does analysis take?</h3>
+                    <p>Depends on AOI size and data availability. Typical: 5–30 minutes from upload to results. Large areas or multi-date requests may take longer.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What file formats do you support?</h3>
+                    <p><strong>Input:</strong> KML, GeoJSON, Shapefile. <strong>Output:</strong> GeoJSON, CSV (tabular), PDF (reports), TIF (raster analysis).</p>
+                </div>
+                <div class="faq-item">
+                    <h3>Can I export results to ArcGIS or QGIS?</h3>
+                    <p>Yes. GeoJSON and Shapefile exports are compatible with any GIS platform. We can also integrate directly via REST API (in development).</p>
+                </div>
+                <div class="faq-item">
+                    <h3>What about privacy and data retention?</h3>
+                    <p>Your data is yours. We don't sell or share analysis results. By default, we retain processing data for 30 days, then delete. You can request immediate deletion.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>Is there a free tier?</h3>
+                    <p>Yes. Beta users get free unlimited access. Pricing tiers (Free, Pro, Enterprise) launch when we exit beta.</p>
+                </div>
+                <div class="faq-item">
+                    <h3>Do you have an API?</h3>
+                    <p>In development. For now, we support web upload and direct file handling. REST API coming in Phase 5.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Early Access -->
+    <section class="early-access" id="early-access">
+        <div class="container">
+            <div class="section-header">
+                <h2>Request Early Access</h2>
+                <p>Join TreeSight beta. Free tier while we're building.</p>
+            </div>
+            <div class="form-wrapper">
+                <form id="interest-form" class="form">
+                    <fieldset>
+                        <div class="form-group">
+                            <label for="email">Email Address *</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="organization">Organization *</label>
+                            <input type="text" id="organization" name="organization" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="use-case">What's your use case? *</label>
+                            <textarea id="use-case" name="use_case" rows="4" required placeholder="e.g., Monitor plantation health, detect deforestation, track carbon projects, etc."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="aoi-size">Approximate AOI size (hectares)</label>
+                            <input type="number" id="aoi-size" name="aoi_size" placeholder="e.g., 500">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Get Early Access</button>
+                        <p class="form-note" id="form-message"></p>
+                    </fieldset>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 TreeSight. Built on Azure, powered by AI.</p>
+            <ul class="footer-links">
+                <li><a href="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" target="_blank">GitHub</a></li>
+                <li><a href="/docs" target="_blank">Documentation</a></li>
+                <li><a href="#" target="_blank">Privacy Policy</a></li>
+                <li><a href="#" target="_blank">Terms of Service</a></li>
+            </ul>
+        </div>
+    </footer>
+
+    <script src="static/app.js"></script>
+</body>
+</html>
