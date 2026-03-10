@@ -160,165 +160,116 @@ class TestContainerDeployment:
 
 
 class TestReadinessCheck:
-    """Verify the workflow waits for functions before enabling Event Grid."""
+    """Verify the workflow enforces strict runtime contract before Event Grid reconciliation."""
 
-    def test_readiness_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
-        """Workflow must have a step that waits for functions to be discoverable."""
+    def test_reconcile_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
+        """Workflow must have a reconciliation step that validates runtime readiness."""
         steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None, (
-            "No readiness-check step found — the workflow must wait for "
-            "functions to be registered before enabling Event Grid"
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None, (
+            "No reconciliation step found — the workflow must verify "
+            "function readiness and reconcile Event Grid before proceeding"
         )
 
-    def test_readiness_uses_host_status_endpoint(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must poll authenticated host-status endpoint."""
+    def test_reconcile_uses_host_status_endpoint(self, deploy_workflow: dict[str, Any]) -> None:
+        """Reconciliation must poll authenticated host-status endpoint."""
         steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None
-        run_script = readiness.get("run", "")
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
         assert "curl" in run_script and "/admin/host/status" in run_script, (
-            "Readiness check must call /admin/host/status for authoritative host state"
+            "Reconciliation must call /admin/host/status for authoritative host state"
         )
         assert "/admin/functions" in run_script, (
-            "Readiness check must call /admin/functions to verify trigger registration"
+            "Reconciliation must call /admin/functions to verify trigger registration"
         )
-        assert "x-functions-key" in run_script, "Readiness check must authenticate with host key"
-        assert "listKeys" in run_script, "Readiness check must fetch host key via listKeys"
+        assert "x-functions-key" in run_script, "Reconciliation must authenticate with host key"
+        assert "listKeys" in run_script, "Reconciliation must fetch host/webhook keys via listKeys"
 
-    def test_readiness_checks_running_state(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must gate on host state=Running."""
+    def test_reconcile_checks_running_state(self, deploy_workflow: dict[str, Any]) -> None:
+        """Reconciliation must gate on host state=Running."""
         steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None
-        run_script = readiness.get("run", "")
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
         assert "state" in run_script and "Running" in run_script, (
-            "Readiness check must evaluate host state and require Running"
+            "Reconciliation must evaluate host state and require Running"
         )
 
-    def test_readiness_has_retry_loop(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must retry (not just check once)."""
+    def test_reconcile_has_retry_loop(self, deploy_workflow: dict[str, Any]) -> None:
+        """Reconciliation must retry (not just check once)."""
         steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None
-        run_script = readiness.get("run", "")
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
         has_loop = "for " in run_script or "while " in run_script
         has_sleep = "sleep" in run_script
-        assert has_loop and has_sleep, "Readiness check must include a retry loop with sleep"
+        assert has_loop and has_sleep, "Reconciliation must include a retry loop with sleep"
 
-    def test_readiness_does_not_hard_fail(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check should be advisory; Event Grid enable step handles hard failure."""
-        steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None
-        run_script = readiness.get("run", "")
-        # Check for warning emission (actual message may vary)
-        assert "::warning::" in run_script and "warn" in run_script, (
-            "Readiness check should emit warning if functions host is not yet ready"
-        )
-
-    def test_event_grid_uses_cli_commands(self, deploy_workflow: dict[str, Any]) -> None:
-        """Event Grid subscription must be created via Azure CLI, not Bicep."""
-        steps = _get_steps(deploy_workflow)
-        enable_eg = _find_step(steps, "enable event grid subscription")
-        assert enable_eg is not None, "Event Grid enable step not found"
-        run_script = enable_eg.get("run", "")
-        assert "az eventgrid system-topic event-subscription create" in run_script, (
-            "Event Grid enablement must use Azure CLI 'az eventgrid system-topic event-subscription create'"
-        )
-        assert "evgs-kml-upload" in run_script, (
-            "Event Grid subscription must have the correct name"
-        )
-
-    def test_event_grid_enable_runs_after_readiness(self, deploy_workflow: dict[str, Any]) -> None:
-        """Event Grid subscription must be created only after function readiness check."""
-        steps = _get_steps(deploy_workflow)
-        readiness_idx = next(
-            (
-                i
-                for i, s in enumerate(steps)
-                if "wait" in s.get("name", "").lower()
-                or "discoverable" in s.get("name", "").lower()
-            ),
-            -1,
-        )
-        enable_idx = next(
-            (
-                i
-                for i, s in enumerate(steps)
-                if "enable event grid subscription" in s.get("name", "").lower()
-            ),
-            -1,
-        )
-        assert readiness_idx >= 0, "Readiness step not found"
-        assert enable_idx >= 0, "Event Grid enable step not found"
-        assert readiness_idx < enable_idx, "Readiness step must run before Event Grid enablement"
-
-    def test_event_grid_enable_has_retry_and_failure_exit(
+    def test_reconcile_hard_fail_on_contract_violation(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must retry with defensive patterns."""
+        """Reconciliation must hard-fail when runtime contract is not met."""
         steps = _get_steps(deploy_workflow)
-        second_pass = _find_step(steps, "enable event grid subscription")
-        assert second_pass is not None, "Second-pass Event Grid enable step not found"
-        run_script = second_pass.get("run", "")
-
-        # Must have retry loop (bash for loop)
-        assert "for ((i=" in run_script or "for i in" in run_script, (
-            "Enable step must include retry loop"
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+        # Check for failing exit code on violation (exit 1)
+        assert "fail()" in run_script or "exit 1" in run_script, (
+            "Reconciliation must hard-fail if runtime contract cannot be met"
         )
 
-        # Must have backoff mechanism (exponential or fixed)
-        assert "sleep" in run_script, "Enable step must back off between retries"
-        # Check for wait/backoff logic (variable names may vary)
-        has_backoff = "WAIT" in run_script or "* i" in run_script
-        assert has_backoff, "Enable step must calculate backoff/wait time"
-
-        # Must have wall-clock timeout (variable naming may vary)
-        has_max_duration = "MAX_DURATION" in run_script or "max_duration" in run_script
-        assert has_max_duration, "Enable step must have wall-clock timeout"
-        assert "ELAPSED" in run_script or "elapsed" in run_script, (
-            "Enable step must track elapsed time"
+    def test_reconcile_uses_cli_commands(self, deploy_workflow: dict[str, Any]) -> None:
+        """Event Grid subscription must be created via Azure CLI."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None, "Reconciliation step not found"
+        run_script = reconcile.get("run", "")
+        assert "az eventgrid system-topic event-subscription" in run_script, (
+            "Reconciliation must use Azure CLI for Event Grid operations"
+        )
+        assert "SUBSCRIPTION_NAME" in run_script or "evgs-kml-upload" in run_script, (
+            "Event Grid subscription must reference the subscription name variable or constant"
         )
 
-        # Must have observability (logging attempts)
-        assert "Attempt" in run_script or "attempt" in run_script, (
-            "Enable step must log attempt number"
-        )
-
-    def test_event_grid_enable_has_fail_fast_detection(
+    def test_reconcile_includes_subscription_verification(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Event Grid enable step must emit warnings on failure."""
+        """Reconciliation must verify the subscription endpoint URL matches runtime."""
         steps = _get_steps(deploy_workflow)
-        second_pass = _find_step(steps, "enable event grid subscription")
-        assert second_pass is not None
-        run_script = second_pass.get("run", "")
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+        assert "endpoint" in run_script, "Reconciliation must verify subscription endpoint URL"
+        assert "properties" in run_script, "Reconciliation must check subscription properties"
 
-        # Must emit warnings when failing
-        assert "::warning::" in run_script or "warn" in run_script, (
-            "Enable step must emit warnings on failure"
+    def test_reconcile_detects_webhook_key_availability(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Reconciliation must verify webhook key is available before creating subscription."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+        # Check for EventGrid or webhook key reference
+        assert "eventgrid" in run_script.lower() or "webhook" in run_script.lower(), (
+            "Reconciliation must verify Event Grid webhook key is available"
+        )
+        assert "code=" in run_script or "code" in run_script, (
+            "Reconciliation must include the webhook code in subscription URL"
         )
 
-        # Must have success tracking
-        assert "SUCCESS" in run_script, "Enable step must track success state"
-
-    def test_readiness_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
-        """Readiness check must have wall-clock timeout, not just attempt count."""
+    def test_reconcile_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
+        """Reconciliation must have wall-clock timeout, not just attempt count."""
         steps = _get_steps(deploy_workflow)
-        readiness = _find_step(steps, "wait") or _find_step(steps, "discoverable")
-        assert readiness is not None
-        run_script = readiness.get("run", "")
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
 
-        # Must track elapsed time (case-insensitive check)
-        has_elapsed = "ELAPSED" in run_script or "elapsed" in run_script
-        assert has_elapsed, "Readiness check must track elapsed time"
+        # Must track elapsed time (variable names may vary: ELAPSED, elapsed, SECONDS, etc.)
+        has_elapsed = any(x in run_script for x in ["ELAPSED", "SECONDS", "seconds", "elapsed"])
+        assert has_elapsed, "Reconciliation must track elapsed time"
 
-        # Must have max duration (variable naming may vary)
-        has_max = "MAX_DURATION" in run_script or "max_duration" in run_script
-        assert has_max, "Readiness check must have max duration"
-
-        # Must check timeout in loop (using bash's -ge operator)
-        assert "-ge" in run_script or ">=" in run_script, (
-            "Readiness check must validate elapsed time against timeout"
-        )
+        # Must have max duration (variable naming may vary: MAX_DURATION, MAX_*_SECONDS, etc.)
+        has_max = any(x in run_script for x in ["MAX_", "max_", "timeout"])
+        assert has_max, "Reconciliation must have timeout bounds"

@@ -49,9 +49,9 @@ variable "log_retention_days" {
 }
 
 variable "enable_event_grid_subscription" {
-  description = "Enable Event Grid subscription creation."
+  description = "Enable Event Grid subscription creation in OpenTofu. Keep disabled when the deploy workflow owns webhook reconciliation."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "enable_key_vault_purge_protection" {

@@ -1,4 +1,3 @@
----
 # ---------------------------------------------------------------------------
 # Function App Deployment — Container
 # ---------------------------------------------------------------------------
@@ -7,18 +6,18 @@
 # Functions on Container Apps.
 #
 # IMPORTANT sequencing guardrail:
-#   Event Grid subscription must be created only after the target function
-#   (kml_blob_trigger) is discoverable by the Functions host. Infrastructure
-#   is managed by OpenTofu (tofu-apply.yml), so this workflow only handles
-#   the application deployment:
+#   Infrastructure provisions the Function App platform and Event Grid system
+#   topic. This workflow owns the webhook subscription reconciliation because
+#   the subscription depends on runtime-only facts that cannot be assumed at
+#   infra apply time:
 #     1) Build and push custom container image to ghcr.io
 #     2) Update Function App to use the new container image
-#     3) Wait for function discovery and verify kml_blob_trigger exists
-#     4) Create Event Grid subscription via CLI (if not already present)
+#     3) Prove host readiness: host running, trigger indexed, webhook key ready
+#     4) Reconcile and verify the Event Grid subscription against that runtime
 #
 # Triggers on push to main when application code or Dockerfile changes.
-# Also triggers on infra changes so infra+app apply always uses this single
-# two-pass deployment path.
+# Also triggers after a successful OpenTofu apply on main so infrastructure
+# changes get a follow-up application deployment and subscription reconcile.
 #
 # Safety: main branch protection requires the lint-and-test CI check to pass
 # before any PR can merge, so code on main has already been validated.
@@ -43,7 +42,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "infra/**"
       - "function_app.py"
       - "kml_satellite/**"
       - "host.json"
@@ -51,6 +49,9 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - ".github/workflows/deploy.yml"
+  workflow_run:
+    workflows: ["OpenTofu Apply"]
+    types: [completed]
   workflow_dispatch: {}
 
 permissions:
@@ -65,15 +66,28 @@ concurrency:
 env:
   FUNCTION_APP_NAME: func-kmlsat-dev
   RESOURCE_GROUP: rg-kmlsat-dev
+  EVENT_GRID_SYSTEM_TOPIC_NAME: evgt-kmlsat-dev
+  EVENT_GRID_SUBSCRIPTION_NAME: evgs-kml-upload
+  EVENT_GRID_TRIGGER_FUNCTION: kml_blob_trigger
 
 jobs:
   deploy-dev:
     name: Deploy (Dev)
     runs-on: ubuntu-latest
     environment: dev
+    timeout-minutes: 45
+    if: |
+      github.event_name != 'workflow_run' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set container image name
         id: image
@@ -109,6 +123,45 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Pre-flight deployment contract
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          log() { echo "$(date +'%H:%M:%S') | $*"; }
+          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
+          require_command() {
+            local cmd="$1"
+            command -v "$cmd" >/dev/null 2>&1 || fail "Required command '$cmd' is not available on the runner."
+          }
+          require_value() {
+            local value="$1"
+            local label="$2"
+            [[ -n "$value" ]] || fail "$label is empty."
+          }
+
+          require_command az
+          require_command jq
+          require_command curl
+
+          require_value "${{ env.FUNCTION_APP_NAME }}" "FUNCTION_APP_NAME"
+          require_value "${{ env.RESOURCE_GROUP }}" "RESOURCE_GROUP"
+          require_value "${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}" "EVENT_GRID_SYSTEM_TOPIC_NAME"
+          require_value "${{ env.EVENT_GRID_SUBSCRIPTION_NAME }}" "EVENT_GRID_SUBSCRIPTION_NAME"
+          require_value "${{ env.EVENT_GRID_TRIGGER_FUNCTION }}" "EVENT_GRID_TRIGGER_FUNCTION"
+
+          az functionapp show \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query id -o tsv >/dev/null
+
+          az eventgrid system-topic show \
+            --name "${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query id -o tsv >/dev/null
+
+          log "Deployment contract verified: Function App and Event Grid system topic both exist."
+
       - name: Configure registry credentials
         run: |
           az functionapp config appsettings set \
@@ -126,311 +179,257 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --image "${{ steps.image.outputs.name }}"
 
-      - name: Wait for kml_blob_trigger to be discoverable
+      - name: Reconcile function readiness and Event Grid subscription
         shell: bash
         run: |
           set -euo pipefail
-          echo "::group::Initializing Readiness Checks"
+          MAX_HOST_READY_SECONDS=900
+          HOST_POLL_INTERVAL_SECONDS=15
+          MAX_SUBSCRIPTION_SECONDS=600
+          SUBSCRIPTION_POLL_INTERVAL_SECONDS=20
 
-          # Configuration tuned from observed cold-start/indexing behavior.
-          # Expected: 2-6 minutes, but can exceed 8 minutes on cold infra.
-          MAX_DURATION_SECONDS=720
-          POLL_INTERVAL_SECONDS=10
-          COLD_START_GRACE_SECONDS=180
-          SLOW_START_WARNING_SECONDS=420
-          MAX_POLL_ATTEMPTS=$((MAX_DURATION_SECONDS / POLL_INTERVAL_SECONDS))
-          START_TIME=$(date +%s)
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
-          SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          SYSTEM_TOPIC_NAME="${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}"
+          SUBSCRIPTION_NAME="${{ env.EVENT_GRID_SUBSCRIPTION_NAME }}"
+          TRIGGER_NAME="${{ env.EVENT_GRID_TRIGGER_FUNCTION }}"
+          AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
 
           log() { echo "$(date +'%H:%M:%S') | $*"; }
-          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
-          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
+          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
+          require_nonempty() {
+            local value="$1"
+            local label="$2"
+            [[ -n "$value" ]] || fail "$label is empty."
+          }
 
-          # ---------------------------------------------------------------------
-          # 1. Retrieve FQDN (Retryable)
-          # ---------------------------------------------------------------------
-          log "Retrieving Function App hostname..."
+          echo "::group::Resolve Function App hostname"
           FQDN=""
-          for i in {1..5}; do
+          for attempt in {1..10}; do
             FQDN=$(az functionapp show \
               --name "$FUNCTION_APP" \
               --resource-group "$RESOURCE_GROUP" \
-              --query "defaultHostName" -o tsv 2>/dev/null || true)
+              --query defaultHostName -o tsv 2>/dev/null || true)
 
             if [[ -n "$FQDN" ]]; then
-              log "✔ Target FQDN: $FQDN"
               break
             fi
-            sleep 2
+
+            log "Hostname not available yet (attempt ${attempt}/10). Retrying in 3s..."
+            sleep 3
           done
+          require_nonempty "$FQDN" "Function App default hostname"
+          log "Resolved Function App hostname: $FQDN"
+          echo "::endgroup::"
 
-          if [[ -z "$FQDN" ]]; then
-            err "Failed to resolve FQDN for $FUNCTION_APP after 5 attempts."
-            exit 1
-          fi
+          echo "::group::Verify runtime readiness contract"
+          READINESS_DEADLINE=$(( $(date +%s) + MAX_HOST_READY_SECONDS ))
+          MASTER_KEY=""
+          EVENTGRID_KEY=""
+          LAST_STATE="Unknown"
+          LAST_FUNCTION_COUNT="unknown"
+          LAST_KEY_STATUS="unavailable"
+          TRIGGER_INDEXED=0
 
-          # ---------------------------------------------------------------------
-          # 2. Retrieve Host Master Key (Retryable)
-          # ---------------------------------------------------------------------
-          log "Retrieving Host Master Key (required for admin API)..."
-          RESOURCE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
-          HOST_KEY=""
-
-          for i in {1..10}; do
-            # Using az rest to bypass potential CLI extension issues
-            HOST_KEY=$(az rest \
+          while (( $(date +%s) < READINESS_DEADLINE )); do
+            KEY_PAYLOAD=$(az rest \
               --method post \
               --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-              --query "masterKey" -o tsv 2>/dev/null || true)
+              -o json 2>/dev/null || true)
 
-            if [[ -n "$HOST_KEY" ]]; then
-              log "✔ Host master key retrieved."
-              break
+            MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
+            EVENTGRID_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.systemKeys.eventgrid_extension // .systemKeys.eventgridextensionconfig_extension // .masterKey // empty' 2>/dev/null || true)
+
+            if [[ -z "$MASTER_KEY" ]]; then
+              LAST_KEY_STATUS="unavailable"
+              log "Host keys are not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
+              continue
             fi
 
-            log "  Attempt $i/10: Key not available yet. Retrying in 5s..."
-            sleep 5
-          done
+            LAST_KEY_STATUS="available"
+            echo "::add-mask::${MASTER_KEY}"
+            echo "::add-mask::${EVENTGRID_KEY}"
 
-          if [[ -z "$HOST_KEY" ]]; then
-            err "Failed to acquire host master key. Cannot perform health checks."
-            exit 1
-          fi
-          echo "::endgroup::"
-
-          # ---------------------------------------------------------------------
-          # 3. Poll for Host Health & Function Indexing
-          # ---------------------------------------------------------------------
-          echo "::group::Polling Function Host Status"
-          FOUND=0
-          ATTEMPT=0
-
-          while true; do
-            ATTEMPT=$((ATTEMPT + 1))
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START_TIME))
-
-            if [[ $ATTEMPT -gt $MAX_POLL_ATTEMPTS ]]; then
-              warn "Max polling attempts reached (${MAX_POLL_ATTEMPTS}). Stopping readiness checks."
-              break
-            fi
-
-            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
-              warn "Timeout reached (${MAX_DURATION_SECONDS}s). Host did not become healthy."
-              break
-            fi
-
-            if [[ $ELAPSED -lt $COLD_START_GRACE_SECONDS ]]; then
-              PHASE="expected-cold-start"
-            elif [[ $ELAPSED -lt $SLOW_START_WARNING_SECONDS ]]; then
-              PHASE="normal-indexing-window"
-            else
-              PHASE="slow-start-unexpected"
-            fi
-
-            log "Readiness attempt ${ATTEMPT}/${MAX_POLL_ATTEMPTS} (elapsed ${ELAPSED}s, phase=${PHASE})..."
-
-            # Check 1: General Host Status
-            # We use curl with max-time to avoid hangs
             set +e
             HOST_STATUS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${HOST_KEY}" \
+              -H "x-functions-key: ${MASTER_KEY}" \
               "https://${FQDN}/admin/host/status" 2>/dev/null)
-            CURL_EXIT=$?
+            HOST_STATUS_EXIT=$?
             set -e
 
-            if [[ $CURL_EXIT -ne 0 ]]; then
-              log "  [${ELAPSED}s] Connection failed (curl=$CURL_EXIT). Host might be cold starting..."
-              sleep "$POLL_INTERVAL_SECONDS"
+            if [[ $HOST_STATUS_EXIT -ne 0 ]]; then
+              log "Host status endpoint unavailable (curl=${HOST_STATUS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
               continue
             fi
 
-            # Safe JSON parsing
-            STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
-
-            if [[ "$STATE" != "Running" ]]; then
-              log "  [${ELAPSED}s] Host state is '$STATE'. Waiting for 'Running'..."
-              # If we got HTML (InvalidJSON), print a snippet for debugging
-              if [[ "$STATE" == "InvalidJSON" ]]; then
-                 PREVIEW=$(echo "$HOST_STATUS_JSON" | grep -o '<title>.*</title>' || echo "${HOST_STATUS_JSON:0:50}...")
-                 log "        Response preview: $PREVIEW"
-              fi
-              sleep "$POLL_INTERVAL_SECONDS"
+            LAST_STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
+            if [[ "$LAST_STATE" != "Running" ]]; then
+              log "Host state is '$LAST_STATE'. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
               continue
             fi
 
-            log "✔ Host is Running. Verifying function registry contains 'kml_blob_trigger'..."
-
-            # Check 2: Function Registry Contains Trigger
-            # Event Grid webhook validation depends on the trigger being present in the
-            # host's registered function list, so poll /admin/functions directly.
             set +e
             FUNCTIONS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${HOST_KEY}" \
+              -H "x-functions-key: ${MASTER_KEY}" \
               "https://${FQDN}/admin/functions" 2>/dev/null)
-            CURL_EXIT=$?
+            FUNCTIONS_EXIT=$?
             set -e
 
-            if [[ $CURL_EXIT -ne 0 ]]; then
-              log "  [${ELAPSED}s] Failed to read function registry (curl=$CURL_EXIT). Retrying..."
-              sleep "$POLL_INTERVAL_SECONDS"
+            if [[ $FUNCTIONS_EXIT -ne 0 ]]; then
+              log "Function registry endpoint unavailable (curl=${FUNCTIONS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
               continue
             fi
 
-            FUNC_NAME=$(echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -x 'kml_blob_trigger' || true)
-
-            if [[ "$FUNC_NAME" == "kml_blob_trigger" ]]; then
-              log "✔ Function 'kml_blob_trigger' is indexed and ready."
-              FOUND=1
-              break
+            LAST_FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
+            if echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
+              TRIGGER_INDEXED=1
             else
-              FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
-              log "  [${ELAPSED}s] Trigger not in function registry yet (functions seen: ${FUNCTION_COUNT}). Retrying..."
-              sleep "$POLL_INTERVAL_SECONDS"
+              TRIGGER_INDEXED=0
             fi
+
+            if [[ $TRIGGER_INDEXED -ne 1 ]]; then
+              log "Trigger '$TRIGGER_NAME' not indexed yet (functions seen: ${LAST_FUNCTION_COUNT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
+              continue
+            fi
+
+            if [[ -z "$EVENTGRID_KEY" ]]; then
+              log "Event Grid webhook key is not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+              sleep "$HOST_POLL_INTERVAL_SECONDS"
+              continue
+            fi
+
+            log "Runtime readiness contract satisfied: host running, trigger indexed, webhook key available."
+            break
           done
+
+          if [[ "$LAST_STATE" != "Running" || $TRIGGER_INDEXED -ne 1 || "$LAST_KEY_STATUS" != "available" || -z "$EVENTGRID_KEY" ]]; then
+            fail "Runtime readiness contract not satisfied within ${MAX_HOST_READY_SECONDS}s (state=${LAST_STATE}, trigger_indexed=${TRIGGER_INDEXED}, functions_seen=${LAST_FUNCTION_COUNT}, keys=${LAST_KEY_STATUS})."
+          fi
           echo "::endgroup::"
 
-          if [[ $FOUND -ne 1 ]]; then
-            warn "Function was not fully discoverable within the timeout period."
-            # We do NOT exit 1 here, we let the Event Grid deployment attempt to handle it,
-            # as it has its own robust retry logic. This step is an optimization to clear the
-            # way for the next step.
-          else
-            echo "✅ Function App is fully hot and ready for Event Grid."
+          echo "::group::Reconcile Event Grid subscription"
+          WEBHOOK_URL="https://${FQDN}/runtime/webhooks/eventgrid?functionName=${TRIGGER_NAME}&code=${EVENTGRID_KEY}"
+
+          read_existing_subscription() {
+            az eventgrid system-topic event-subscription show \
+              --name "$SUBSCRIPTION_NAME" \
+              --system-topic-name "$SYSTEM_TOPIC_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --include-full-endpoint-url \
+              -o json 2>/dev/null || true
+          }
+
+          extract_subscription_state() {
+            echo "$1" | jq -r '.provisioningState // .properties.provisioningState // empty' 2>/dev/null || true
+          }
+
+          extract_subscription_endpoint() {
+            echo "$1" | jq -r '.destination.properties.endpointUrl // .properties.destination.properties.endpointUrl // empty' 2>/dev/null || true
+          }
+
+          EXISTING_JSON=$(read_existing_subscription)
+          if [[ -n "$EXISTING_JSON" ]]; then
+            EXISTING_STATE=$(extract_subscription_state "$EXISTING_JSON")
+            EXISTING_ENDPOINT=$(extract_subscription_endpoint "$EXISTING_JSON")
+
+            if [[ "$EXISTING_STATE" == "Succeeded" && "$EXISTING_ENDPOINT" == "$WEBHOOK_URL" ]]; then
+              log "Event Grid subscription already matches the verified runtime endpoint."
+            else
+              log "Event Grid subscription drift detected (state='${EXISTING_STATE:-unknown}'). Deleting before recreate."
+              az eventgrid system-topic event-subscription delete \
+                --name "$SUBSCRIPTION_NAME" \
+                --system-topic-name "$SYSTEM_TOPIC_NAME" \
+                --resource-group "$RESOURCE_GROUP"
+            fi
           fi
 
-      - name: Enable Event Grid subscription (Robust Retry)
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::group::Enabling Event Grid Subscription"
+          SUBSCRIPTION_CREATED=0
+          LAST_CREATE_ERROR=""
+          RECONCILE_DEADLINE=$(( $(date +%s) + MAX_SUBSCRIPTION_SECONDS ))
+          ATTEMPT=0
 
-          # Event Grid endpoint validation may lag behind function indexing.
-          # We keep this time-based to avoid failing during known eventual consistency windows.
-          MAX_DURATION_SECONDS=600  # 10 minutes
-          ATTEMPT_INTERVAL_SECONDS=20
-          MAX_ATTEMPTS=$((MAX_DURATION_SECONDS / ATTEMPT_INTERVAL_SECONDS))
-          START_TIME=$(date +%s)
-          SUCCESS=0
-
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          warn() { echo "::warning::$(date +'%H:%M:%S') | $*"; }
-          err() { echo "::error::$(date +'%H:%M:%S') | $*"; }
-
-          # Get Function App FQDN for webhook endpoint
-          FQDN=$(az functionapp show \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "defaultHostName" -o tsv)
-
-          WEBHOOK_URL="https://${FQDN}/runtime/webhooks/EventGrid?functionName=kml_blob_trigger"
-          log "Event Grid webhook endpoint: $WEBHOOK_URL"
-
-          # Fast path: subscription already exists from a previous successful deploy.
-          EXISTING_SUB_ID=$(az eventgrid system-topic event-subscription show \
-            --name evgs-kml-upload \
-            --system-topic-name evgt-kmlsat-dev \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query id -o tsv 2>/dev/null || true)
-
-          if [[ -n "$EXISTING_SUB_ID" ]]; then
-            log "✔ Event Grid subscription already exists. Skipping create/retry loop."
-            SUCCESS=1
-          fi
-
-          for ((i=1; i<=MAX_ATTEMPTS && SUCCESS!=1; i++)); do
-            NOW=$(date +%s)
-            ELAPSED=$((NOW - START_TIME))
-
-            if [[ $ELAPSED -ge $MAX_DURATION_SECONDS ]]; then
-              warn "Timeout reached (${MAX_DURATION_SECONDS}s). Event Grid may not be enabled."
-              break
+          while (( $(date +%s) < RECONCILE_DEADLINE )); do
+            CURRENT_JSON=$(read_existing_subscription)
+            if [[ -n "$CURRENT_JSON" ]]; then
+              CURRENT_STATE=$(extract_subscription_state "$CURRENT_JSON")
+              CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
+              if [[ "$CURRENT_STATE" == "Succeeded" && "$CURRENT_ENDPOINT" == "$WEBHOOK_URL" ]]; then
+                SUBSCRIPTION_CREATED=1
+                break
+              fi
             fi
 
-            log "Attempt $i/$MAX_ATTEMPTS (Elapsed: ${ELAPSED}s)..."
+            ATTEMPT=$((ATTEMPT + 1))
+            log "Subscription reconcile attempt ${ATTEMPT}..."
 
-            # Try to create Event Grid subscription
             set +e
-            OUTPUT=$(az eventgrid system-topic event-subscription create \
-              --name evgs-kml-upload \
-              --system-topic-name evgt-kmlsat-dev \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --endpoint "${WEBHOOK_URL}" \
+            CREATE_OUTPUT=$(az eventgrid system-topic event-subscription create \
+              --name "$SUBSCRIPTION_NAME" \
+              --system-topic-name "$SYSTEM_TOPIC_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --endpoint "$WEBHOOK_URL" \
               --endpoint-type webhook 2>&1)
-            EXIT_CODE=$?
+            CREATE_EXIT=$?
             set -e
 
-            if [[ $EXIT_CODE -eq 0 ]]; then
-              log "✔ Event Grid subscription created successfully."
-              SUCCESS=1
-              break
-            fi
-
-            # already exists is a successful terminal condition.
-            if echo "$OUTPUT" | grep -qiE "already exists"; then
-              log "✔ Event Grid subscription already exists. Treating as success."
-              SUCCESS=1
-              break
-            fi
-
-            # Retryable conditions: endpoint validation race or temporary dependency lag.
-            if echo "$OUTPUT" | grep -qiE "(ResourceNotFound|BadRequest|Url validation|destination endpoint)"; then
-              log "  Event Grid endpoint/dependency not ready yet. Retrying..."
+            if [[ $CREATE_EXIT -eq 0 ]]; then
+              log "Subscription create call accepted by Azure."
+            elif echo "$CREATE_OUTPUT" | grep -qiE "already exists"; then
+              log "Subscription already exists during reconcile; proceeding to verification."
+            elif echo "$CREATE_OUTPUT" | grep -qiE "(Url validation|destination endpoint|ResourceNotFound|webhook|timed out|temporarily unavailable)"; then
+              LAST_CREATE_ERROR=$(echo "$CREATE_OUTPUT" | tail -n 20)
+              log "Subscription prerequisites are not ready yet. Retrying in ${SUBSCRIPTION_POLL_INTERVAL_SECONDS}s..."
+              sleep "$SUBSCRIPTION_POLL_INTERVAL_SECONDS"
+              continue
             else
-              log "  ⚠ Failed to create subscription: $(echo "$OUTPUT" | tail -n 1)"
+              fail "Non-retryable Event Grid subscription create failure: $(echo "$CREATE_OUTPUT" | tail -n 20)"
             fi
 
-            # Time-based retry cadence to keep the full window predictable.
-            WAIT="$ATTEMPT_INTERVAL_SECONDS"
-            log "  Waiting ${WAIT}s before retry..."
-            sleep $WAIT
-          done
-          echo "::endgroup::"
+            VERIFY_UNTIL=$(( $(date +%s) + SUBSCRIPTION_POLL_INTERVAL_SECONDS ))
+            while (( $(date +%s) < VERIFY_UNTIL )); do
+              CURRENT_JSON=$(read_existing_subscription)
+              if [[ -z "$CURRENT_JSON" ]]; then
+                sleep 5
+                continue
+              fi
 
-          if [[ $SUCCESS -ne 1 ]]; then
-            warn "Could not enable Event Grid subscription. Check that the function is fully indexed."
-          fi
+              CURRENT_STATE=$(extract_subscription_state "$CURRENT_JSON")
+              CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
 
-      - name: Verify Event Grid subscription exists
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "::group::Final Verification"
+              if [[ "$CURRENT_ENDPOINT" != "$WEBHOOK_URL" ]]; then
+                fail "Event Grid subscription exists but points at an unexpected endpoint."
+              fi
 
-          EXPECTED_SUB="evgs-kml-upload"
-          TOPIC_NAME="evgt-kmlsat-dev"
-          RG="${{ env.RESOURCE_GROUP }}"
+              if [[ "$CURRENT_STATE" == "Succeeded" ]]; then
+                SUBSCRIPTION_CREATED=1
+                break 2
+              fi
 
-          VERIFY_TIMEOUT_SECONDS=120
-          VERIFY_INTERVAL_SECONDS=10
-          VERIFY_MAX_ATTEMPTS=$((VERIFY_TIMEOUT_SECONDS / VERIFY_INTERVAL_SECONDS))
-          VERIFY_ATTEMPT=0
-          SUB_ID=""
+              if [[ "$CURRENT_STATE" == "Failed" ]]; then
+                fail "Event Grid subscription provisioning entered the Failed state."
+              fi
 
-          while [[ $VERIFY_ATTEMPT -lt $VERIFY_MAX_ATTEMPTS ]]; do
-            VERIFY_ATTEMPT=$((VERIFY_ATTEMPT + 1))
-
-            SUB_ID=$(az eventgrid system-topic event-subscription list \
-              --resource-group "$RG" \
-              --system-topic-name "$TOPIC_NAME" \
-              --query "[?name=='$EXPECTED_SUB'].id | [0]" -o tsv)
-
-            if [[ -n "$SUB_ID" ]]; then
-              break
-            fi
-
-            echo "Attempt ${VERIFY_ATTEMPT}/${VERIFY_MAX_ATTEMPTS}: subscription not visible yet; waiting ${VERIFY_INTERVAL_SECONDS}s..."
-            sleep "$VERIFY_INTERVAL_SECONDS"
+              sleep 5
+            done
           done
 
-          if [[ -z "$SUB_ID" ]]; then
-            echo "::error::CRITICAL: Subscription '$EXPECTED_SUB' not found after ${VERIFY_TIMEOUT_SECONDS}s verification window."
-            exit 1
+          if [[ $SUBSCRIPTION_CREATED -ne 1 ]]; then
+            fail "Event Grid subscription did not converge within ${MAX_SUBSCRIPTION_SECONDS}s. Last create error: ${LAST_CREATE_ERROR:-none captured}."
           fi
 
-          echo "✅ Verified: Subscription '$EXPECTED_SUB' exists."
-          echo "   Resource ID: $SUB_ID"
+          VERIFIED_JSON=$(read_existing_subscription)
+          VERIFIED_STATE=$(extract_subscription_state "$VERIFIED_JSON")
+          VERIFIED_ENDPOINT=$(extract_subscription_endpoint "$VERIFIED_JSON")
+
+          if [[ -z "$VERIFIED_JSON" || "$VERIFIED_STATE" != "Succeeded" || "$VERIFIED_ENDPOINT" != "$WEBHOOK_URL" ]]; then
+            fail "Final Event Grid subscription verification failed after reconcile."
+          fi
+
+          log "Event Grid subscription verified: exists, provisioned, and matched to the current runtime key."
           echo "::endgroup::"
