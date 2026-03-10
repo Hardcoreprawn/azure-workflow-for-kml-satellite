@@ -58,8 +58,8 @@ class TestStrEnumEquality:
 
     def test_string_equals_enum(self) -> None:
         """Symmetry: plain string == enum (not just enum == string)."""
-        assert WorkflowState.READY == "ready"
-        assert WorkflowState.FAILED == "failed"
+        assert "ready" == WorkflowState.READY  # noqa: SIM300
+        assert "failed" == WorkflowState.FAILED  # noqa: SIM300
 
     def test_dict_get_comparison(self) -> None:
         """Simulates checking a Durable Functions result dict."""

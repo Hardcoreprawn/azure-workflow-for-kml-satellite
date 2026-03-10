@@ -203,7 +203,7 @@ class SearchResult:
             self.spatial_resolution_m,
             MIN_RESOLUTION_M,
         )
-        _check_min("SearchResult", "off_nadir_deg", self.off_nadir_deg, MIN_RESOLUTION_M)
+        _check_min("SearchResult", "off_nadir_deg", self.off_nadir_deg, MIN_PERCENTAGE)
 
 
 # ---------------------------------------------------------------------------

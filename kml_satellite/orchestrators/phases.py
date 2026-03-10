@@ -456,7 +456,7 @@ def _validate_batch_results(
                     error_builder(
                         item,
                         f"Unexpected non-dict result: {result!r}",
-                        state="unknown",
+                        state=WorkflowState.UNKNOWN,
                     )
                 )
     elif isinstance(batch_results, dict):

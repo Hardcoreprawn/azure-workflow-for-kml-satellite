@@ -21,8 +21,8 @@ _ORCHESTRATION_SOURCES = [
 
 # State strings that must not appear as bare literals in orchestration modules
 _BARE_STATE_LITERALS = re.compile(
-    r"""== *['"](?:ready|failed|error|completed|success|pending|processing)['"]"""
-    r"""|['"](?:ready|failed|error|completed|success|pending|processing)['"] *==""",
+    r"""[=!]= *['"](?:ready|failed|error|completed|success|pending|processing|cancelled|unknown)['"]"""
+    r"""|['"](?:ready|failed|error|completed|success|pending|processing|cancelled|unknown)['"] *[=!]=""",
     re.IGNORECASE,
 )
 
