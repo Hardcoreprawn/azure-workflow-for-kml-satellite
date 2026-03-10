@@ -394,9 +394,9 @@ def _calculate_batch_count(total_items: int, batch_size: int) -> int:
 
 
 def _classify_result_by_state(result: dict[str, Any]) -> str:
-    """Classify result using pattern matching on state field.
+    """Classify result using state field comparison.
 
-    Uses Python 3.10+ match/case with StrEnum for type-safe state handling.
+    Uses WorkflowState enum for type-safe state handling.
 
     Args:
         result: Result dict with optional 'state' field.
@@ -405,13 +405,11 @@ def _classify_result_by_state(result: dict[str, Any]) -> str:
         Classification: 'success', 'failed', or 'unknown'.
     """
     state = result.get("state")
-    match state:
-        case WorkflowState.READY | WorkflowState.COMPLETED | WorkflowState.SUCCESS:
-            return "success"
-        case WorkflowState.FAILED | WorkflowState.ERROR:
-            return "failed"
-        case _:
-            return "unknown"
+    if state in (WorkflowState.READY, WorkflowState.COMPLETED, WorkflowState.SUCCESS):
+        return "success"
+    if state in (WorkflowState.FAILED, WorkflowState.ERROR):
+        return "failed"
+    return "unknown"
 
 
 def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:

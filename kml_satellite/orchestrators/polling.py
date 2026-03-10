@@ -16,6 +16,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from kml_satellite.core.states import WorkflowState
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -157,7 +159,9 @@ def poll_until_ready(
                 feature_name=feature_name,
                 poll_count=poll_count,
                 elapsed_seconds=elapsed,
-                error_message=poll_result.get("message", "") if state != "ready" else "",
+                error_message=poll_result.get("message", "")
+                if state != WorkflowState.READY
+                else "",
             )
 
         fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
