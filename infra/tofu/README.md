@@ -67,7 +67,7 @@ tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.
 1. Delete existing `dev` resource group.
 2. Run `tofu apply` using `environments/dev.tfvars`.
 3. Deploy application image/workloads.
-4. Validate function readiness and Event Grid wiring.
+4. Run the deploy workflow to prove runtime readiness and reconcile the Event Grid webhook subscription.
 5. Validate static site and lead form ingestion.
 
 Optional helper script:
@@ -76,5 +76,6 @@ Optional helper script:
 
 ## Notes
 
-- Function App on Container Apps and Event Grid webhook subscription are created via `azapi` resources for parity with current ARM/Bicep behavior.
-- Keep `enable_event_grid_subscription=true` only after function runtime is healthy in target environment.
+- Function App on Container Apps and the Event Grid system topic are created via `azapi` resources for parity with current ARM/Bicep behavior.
+- The deploy workflow owns Event Grid webhook subscription reconciliation because it can verify host readiness, trigger indexing, and current webhook keys before making the subscription live.
+- `enable_event_grid_subscription` defaults to `false` to avoid OpenTofu racing runtime indexing or publishing a stale webhook key.
