@@ -13,8 +13,10 @@ References:
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
+
+from kml_satellite.core.states import WorkflowState
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -87,6 +89,7 @@ def poll_until_ready(
     feature_name = str(acquisition.get("aoi_feature_name", ""))
 
     deadline = context.current_utc_datetime + timedelta(seconds=poll_timeout)
+    poll_start = context.current_utc_datetime
     poll_count = 0
     retry_count = 0
 
@@ -100,57 +103,24 @@ def poll_until_ready(
             )
             retry_count = 0
         except Exception as exc:
-            retryable = bool(getattr(exc, "retryable", True))
-            if not retryable:
-                if not context.is_replaying:
-                    logger.error(
-                        "Non-retryable poll error | instance=%s | order=%s | "
-                        "feature=%s | error=%s",
-                        instance_id,
-                        order_id,
-                        feature_name,
-                        exc,
-                    )
-                elapsed = (
-                    context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
-                ).total_seconds()
-                return {
-                    "state": "failed",
-                    "order_id": order_id,
-                    "scene_id": scene_id,
-                    "provider": provider,
-                    "aoi_feature_name": feature_name,
-                    "poll_count": poll_count,
-                    "elapsed_seconds": elapsed,
-                    "error": f"Non-retryable poll error: {exc}",
-                }
+            error_result = _handle_poll_error(
+                exc=exc,
+                retry_count=retry_count,
+                max_retries=max_retries,
+                context=context,
+                poll_start=poll_start,
+                instance_id=instance_id,
+                order_id=order_id,
+                scene_id=scene_id,
+                provider=provider,
+                feature_name=feature_name,
+                poll_count=poll_count,
+            )
+            if error_result is not None:
+                return error_result
 
+            # Retry with backoff
             retry_count += 1
-            if retry_count > max_retries:
-                if not context.is_replaying:
-                    logger.error(
-                        "Poll retries exhausted | instance=%s | order=%s | "
-                        "feature=%s | retries=%d | error=%s",
-                        instance_id,
-                        order_id,
-                        feature_name,
-                        retry_count,
-                        exc,
-                    )
-                elapsed = (
-                    context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
-                ).total_seconds()
-                return {
-                    "state": "failed",
-                    "order_id": order_id,
-                    "scene_id": scene_id,
-                    "provider": provider,
-                    "aoi_feature_name": feature_name,
-                    "poll_count": poll_count,
-                    "elapsed_seconds": elapsed,
-                    "error": f"Poll retries exhausted ({max_retries}): {exc}",
-                }
-
             backoff = retry_base * (2 ** (retry_count - 1))
             if not context.is_replaying:
                 logger.warning(
@@ -180,19 +150,19 @@ def poll_until_ready(
             )
 
         if is_terminal:
-            elapsed = (
-                context.current_utc_datetime - (deadline - timedelta(seconds=poll_timeout))
-            ).total_seconds()
-            return {
-                "state": state,
-                "order_id": order_id,
-                "scene_id": scene_id,
-                "provider": provider,
-                "aoi_feature_name": feature_name,
-                "poll_count": poll_count,
-                "elapsed_seconds": elapsed,
-                "error": poll_result.get("message", "") if state != "ready" else "",
-            }
+            elapsed = (context.current_utc_datetime - poll_start).total_seconds()
+            return _build_terminal_outcome(
+                state=state,
+                order_id=order_id,
+                scene_id=scene_id,
+                provider=provider,
+                feature_name=feature_name,
+                poll_count=poll_count,
+                elapsed_seconds=elapsed,
+                error_message=poll_result.get("message", "")
+                if state != WorkflowState.READY
+                else "",
+            )
 
         fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
         yield context.create_timer(fire_at)
@@ -217,4 +187,99 @@ def poll_until_ready(
         "poll_count": poll_count,
         "elapsed_seconds": elapsed,
         "error": f"Polling timed out after {poll_timeout}s ({poll_count} polls)",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+
+def _handle_poll_error(
+    exc: Exception,
+    retry_count: int,
+    max_retries: int,
+    context: df.DurableOrchestrationContext,
+    poll_start: datetime,
+    instance_id: str,
+    order_id: str,
+    scene_id: str,
+    provider: str,
+    feature_name: str,
+    poll_count: int,
+) -> dict[str, Any] | None:
+    """Handle poll error with retry logic.
+
+    Returns a terminal error outcome if error is non-retryable or retries exhausted.
+    Returns None if error is retryable and retries remain.
+    """
+    retryable = bool(getattr(exc, "retryable", True))
+
+    if not retryable:
+        if not context.is_replaying:
+            logger.error(
+                "Non-retryable poll error | instance=%s | order=%s | feature=%s | error=%s",
+                instance_id,
+                order_id,
+                feature_name,
+                exc,
+            )
+        elapsed = (context.current_utc_datetime - poll_start).total_seconds()
+        return _build_terminal_outcome(
+            state="failed",
+            order_id=order_id,
+            scene_id=scene_id,
+            provider=provider,
+            feature_name=feature_name,
+            poll_count=poll_count,
+            elapsed_seconds=elapsed,
+            error_message=f"Non-retryable poll error: {exc}",
+        )
+
+    if retry_count >= max_retries:
+        if not context.is_replaying:
+            logger.error(
+                "Poll retries exhausted | instance=%s | order=%s | "
+                "feature=%s | retries=%d | error=%s",
+                instance_id,
+                order_id,
+                feature_name,
+                retry_count + 1,
+                exc,
+            )
+        elapsed = (context.current_utc_datetime - poll_start).total_seconds()
+        return _build_terminal_outcome(
+            state="failed",
+            order_id=order_id,
+            scene_id=scene_id,
+            provider=provider,
+            feature_name=feature_name,
+            poll_count=poll_count,
+            elapsed_seconds=elapsed,
+            error_message=f"Poll retries exhausted ({max_retries}): {exc}",
+        )
+
+    return None
+
+
+def _build_terminal_outcome(
+    state: str,
+    order_id: str,
+    scene_id: str,
+    provider: str,
+    feature_name: str,
+    poll_count: int,
+    elapsed_seconds: float,
+    error_message: str = "",
+) -> dict[str, Any]:
+    """Build terminal poll outcome dict."""
+    return {
+        "state": state,
+        "order_id": order_id,
+        "scene_id": scene_id,
+        "provider": provider,
+        "aoi_feature_name": feature_name,
+        "poll_count": poll_count,
+        "elapsed_seconds": elapsed_seconds,
+        "error": error_message,
     }

@@ -15,6 +15,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from kml_satellite.core.constants import (
+    DEFAULT_AOI_BUFFER_M,
+    DEFAULT_AOI_MAX_AREA_HA,
+    DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT,
+    DEFAULT_IMAGERY_RESOLUTION_TARGET_M,
+    DEFAULT_INPUT_CONTAINER,
+    DEFAULT_OUTPUT_CONTAINER,
+    MAX_PERCENTAGE,
+    MIN_PERCENTAGE,
+)
 from kml_satellite.core.exceptions import PipelineError
 
 
@@ -56,13 +66,13 @@ class PipelineConfig:
         keyvault_url: Azure Key Vault URI (empty when running locally).
     """
 
-    kml_input_container: str = "kml-input"
-    kml_output_container: str = "kml-output"
+    kml_input_container: str = DEFAULT_INPUT_CONTAINER
+    kml_output_container: str = DEFAULT_OUTPUT_CONTAINER
     imagery_provider: str = "planetary_computer"
-    imagery_resolution_target_m: float = 0.5
-    imagery_max_cloud_cover_pct: float = 20.0
-    aoi_buffer_m: float = 100.0
-    aoi_max_area_ha: float = 10_000.0
+    imagery_resolution_target_m: float = DEFAULT_IMAGERY_RESOLUTION_TARGET_M
+    imagery_max_cloud_cover_pct: float = DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT
+    aoi_buffer_m: float = DEFAULT_AOI_BUFFER_M
+    aoi_max_area_ha: float = DEFAULT_AOI_MAX_AREA_HA
     keyvault_url: str = ""
 
     @classmethod
@@ -80,16 +90,28 @@ class PipelineConfig:
         """
         config = cls(
             kml_input_container=os.getenv(
-                "DEFAULT_INPUT_CONTAINER", os.getenv("KML_INPUT_CONTAINER", "kml-input")
+                "DEFAULT_INPUT_CONTAINER",
+                os.getenv("KML_INPUT_CONTAINER", DEFAULT_INPUT_CONTAINER),
             ),
             kml_output_container=os.getenv(
-                "DEFAULT_OUTPUT_CONTAINER", os.getenv("KML_OUTPUT_CONTAINER", "kml-output")
+                "DEFAULT_OUTPUT_CONTAINER",
+                os.getenv("KML_OUTPUT_CONTAINER", DEFAULT_OUTPUT_CONTAINER),
             ),
             imagery_provider=os.getenv("IMAGERY_PROVIDER", "planetary_computer"),
-            imagery_resolution_target_m=float(os.getenv("IMAGERY_RESOLUTION_TARGET_M", "0.5")),
-            imagery_max_cloud_cover_pct=float(os.getenv("IMAGERY_MAX_CLOUD_COVER_PCT", "20")),
-            aoi_buffer_m=float(os.getenv("AOI_BUFFER_M", "100")),
-            aoi_max_area_ha=float(os.getenv("AOI_MAX_AREA_HA", "10000")),
+            imagery_resolution_target_m=float(
+                os.getenv(
+                    "IMAGERY_RESOLUTION_TARGET_M",
+                    str(DEFAULT_IMAGERY_RESOLUTION_TARGET_M),
+                )
+            ),
+            imagery_max_cloud_cover_pct=float(
+                os.getenv(
+                    "IMAGERY_MAX_CLOUD_COVER_PCT",
+                    str(DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT),
+                )
+            ),
+            aoi_buffer_m=float(os.getenv("AOI_BUFFER_M", str(DEFAULT_AOI_BUFFER_M))),
+            aoi_max_area_ha=float(os.getenv("AOI_MAX_AREA_HA", str(DEFAULT_AOI_MAX_AREA_HA))),
             keyvault_url=os.getenv("KEYVAULT_URL", ""),
         )
         _validate(config)
@@ -105,11 +127,11 @@ def _validate(config: PipelineConfig) -> None:
             "must be > 0 (metres)",
         )
 
-    if not 0.0 <= config.imagery_max_cloud_cover_pct <= 100.0:
+    if not MIN_PERCENTAGE <= config.imagery_max_cloud_cover_pct <= MAX_PERCENTAGE:
         raise ConfigValidationError(
             "IMAGERY_MAX_CLOUD_COVER_PCT",
             config.imagery_max_cloud_cover_pct,
-            "must be between 0 and 100 (percentage)",
+            f"must be between {MIN_PERCENTAGE:g} and {MAX_PERCENTAGE:g} (percentage)",
         )
 
     if config.aoi_buffer_m < 0:

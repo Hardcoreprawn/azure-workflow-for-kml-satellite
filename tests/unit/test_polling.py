@@ -199,3 +199,54 @@ class TestPollUntilReady:
 
         assert result["state"] == "failed"
         assert "retries exhausted" in str(result["error"]).lower()
+
+    def test_max_retries_exact_boundary(self) -> None:
+        """Regression: with max_retries=2, exactly 2 retries must be allowed.
+
+            Prior to fixing the polling off-by-one bug, the check was
+            ``retry_count > max_retries`` (i.e. ``>``) which allowed one *extra* retry
+            beyond the configured limit. The corrected check is
+            ``retry_count >= max_retries``.
+
+        With max_retries=2 the generator must:
+          - throw 1: retry allowed → backoff timer yielded
+          - throw 2: retry allowed → backoff timer yielded
+          - throw 3: exhausted (retry_count == 2 == max_retries) → StopIteration with failed
+        """
+        from kml_satellite.orchestrators.polling import poll_until_ready
+
+        ctx = _DummyContext()
+        acquisition = {
+            "order_id": "pc-4",
+            "scene_id": "scene-4",
+            "provider": "planetary_computer",
+            "aoi_feature_name": "Block D",
+        }
+
+        gen = poll_until_ready(ctx, acquisition, max_retries=2, retry_base=1)
+        next(gen)  # first call_activity
+
+        # Retry 1: should be allowed (retry_count becomes 1, which is < 2)
+        timer1 = gen.throw(PollError("timeout", retryable=True))
+        assert timer1[0] == "timer", "Expected backoff timer after retry 1"
+        next(gen)  # call_activity for retry 1
+
+        # Retry 2: should be allowed (retry_count becomes 2, which is == max_retries but not > yet)
+        # NOTE: old code allowed this extra retry; new code should also allow it (count 1→2)
+        timer2 = gen.throw(PollError("timeout", retryable=True))
+        assert timer2[0] == "timer", "Expected backoff timer after retry 2"
+        next(gen)  # call_activity for retry 2
+
+        # Retry 3: MUST be refused (retry_count == 2 == max_retries, so >= is True → exhausted)
+        try:
+            gen.throw(PollError("timeout", retryable=True))
+        except StopIteration as exc:
+            result = exc.value
+        else:
+            raise AssertionError(
+                "Expected StopIteration after exhausting max_retries=2, "
+                "but generator allowed a 3rd retry (off-by-one regression)"
+            )
+
+        assert result["state"] == "failed"
+        assert "retries exhausted" in str(result["error"]).lower()

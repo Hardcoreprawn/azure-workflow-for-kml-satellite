@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from kml_satellite.models.aoi import AOI
@@ -342,8 +343,13 @@ def _validate_coords(coords: list[tuple[float, float]], context: str) -> None:
         raise AOIError(msg)
 
 
+@lru_cache(maxsize=256)
 def _get_utm_crs(lon: float, lat: float) -> str:
     """Determine the UTM CRS for a given WGS 84 coordinate.
+
+    Bounded LRU cache (256 entries) to avoid repeated calculations.
+    UTM has 60 zones; 256 entries handles typical multi-tenant workloads
+    without unbounded memory growth in long-running workers.
 
     Returns an EPSG code like ``"EPSG:32610"`` (UTM zone 10N) or
     ``"EPSG:32710"`` (UTM zone 10S).

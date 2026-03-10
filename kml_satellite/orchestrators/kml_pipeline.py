@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.states import WorkflowState
 from kml_satellite.orchestrators.phases import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
@@ -103,11 +104,14 @@ def orchestrator_function(
     # -----------------------------------------------------------------------
     # Phase 3: Fulfillment — download imagery, clip / reproject
     # -----------------------------------------------------------------------
-    ready_outcomes = [o for o in acquisition["imagery_outcomes"] if o.get("state") == "ready"]
+    ready_outcomes = [
+        o for o in acquisition["imagery_outcomes"] if o.get("state") == WorkflowState.READY
+    ]
 
-    # Derive project_name from the source KML filename stem.
-    _stem = PurePosixPath(blob_name).stem if blob_name else ""
-    project_name = _stem if _stem and _stem != "<unknown>" else "unknown"
+    # Derive project_name from the source KML filename stem (walrus operator)
+    project_name = (
+        _stem if (_stem := PurePosixPath(blob_name).stem) and _stem != "<unknown>" else "unknown"
+    )
 
     provider_name = str(blob_event.get("provider_name", "planetary_computer"))
 

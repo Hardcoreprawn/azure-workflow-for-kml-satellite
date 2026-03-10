@@ -32,6 +32,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from kml_satellite.core.constants import PAYLOAD_OFFLOAD_THRESHOLD_BYTES
+
 if TYPE_CHECKING:
     from azure.storage.blob import BlobServiceClient
 
@@ -41,7 +43,7 @@ logger = logging.getLogger("kml_satellite.core.payload_offload")
 # Constants
 # ---------------------------------------------------------------------------
 
-OFFLOAD_THRESHOLD_BYTES: int = 48 * 1024
+OFFLOAD_THRESHOLD_BYTES: int = PAYLOAD_OFFLOAD_THRESHOLD_BYTES
 """Payloads larger than this (in bytes of compact JSON) are offloaded."""
 
 PAYLOAD_CONTAINER: str = "pipeline-payloads"

@@ -6,9 +6,25 @@ These act as a safety net against regression of deployment-critical settings.
 """
 
 import json
+import re
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).parent.parent.parent
+
+# Source files that must use WorkflowState instead of bare string literals
+_ORCHESTRATION_SOURCES = [
+    WORKSPACE_ROOT / "kml_satellite" / "orchestrators" / "phases.py",
+    WORKSPACE_ROOT / "kml_satellite" / "orchestrators" / "polling.py",
+    WORKSPACE_ROOT / "kml_satellite" / "orchestrators" / "kml_pipeline.py",
+    WORKSPACE_ROOT / "kml_satellite" / "orchestrators" / "error_helpers.py",
+]
+
+# State strings that must not appear as bare literals in orchestration modules
+_BARE_STATE_LITERALS = re.compile(
+    r"""[=!]= *['"](?:ready|failed|error|completed|success|pending|processing|cancelled|unknown)['"]"""
+    r"""|['"](?:ready|failed|error|completed|success|pending|processing|cancelled|unknown)['"] *[=!]=""",
+    re.IGNORECASE,
+)
 
 
 def test_host_json_has_extension_bundle():
@@ -70,3 +86,46 @@ def test_requirements_include_critical_libs():
     assert "azure-functions" in reqs
     assert "azure-functions-durable" in reqs
     assert "azure-storage-blob" in reqs
+
+
+def test_orchestration_uses_workflow_state_not_bare_literals():
+    """Guard: orchestration modules must compare states via WorkflowState, not bare strings.
+
+    Bare literal comparisons like ``== "ready"`` or ``!= "failed"`` are fragile
+    and led to the bug where 'error'-state downloads were passed to post-processing.
+    All orchestration state comparisons must use WorkflowState enum values.
+    """
+    violations: list[str] = []
+    for source_path in _ORCHESTRATION_SOURCES:
+        assert source_path.exists(), f"Expected orchestration source missing: {source_path}"
+        lines = source_path.read_text(encoding="utf-8").splitlines()
+        for lineno, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            # Skip comment lines and docstrings
+            if (
+                stripped.startswith("#")
+                or stripped.startswith('"""')
+                or stripped.startswith("'''")
+            ):
+                continue
+            if _BARE_STATE_LITERALS.search(line):
+                violations.append(f"{source_path.name}:{lineno}: {stripped}")
+
+    assert not violations, (
+        "Bare state string comparisons found in orchestration modules — "
+        "use WorkflowState enum instead:\n" + "\n".join(violations)
+    )
+
+
+def test_workflow_state_module_importable():
+    """WorkflowState must be importable from its canonical location."""
+    from kml_satellite.core.states import WorkflowState  # noqa: F401
+
+
+def test_protocols_module_importable():
+    """Protocol definitions must be importable from their canonical location."""
+    from kml_satellite.core.protocols import (  # noqa: F401
+        PlanetaryComputerModule,
+        RasterDataset,
+        RasterioModule,
+    )
