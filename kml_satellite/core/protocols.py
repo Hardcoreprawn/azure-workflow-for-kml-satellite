@@ -25,88 +25,42 @@ if TYPE_CHECKING:
 class RasterDataset(Protocol):
     """Protocol for rasterio.DatasetReader/Writer.
 
-    Defines the minimum API surface we use from rasterio datasets.
+    Defines the minimum API surface used from rasterio datasets.
+    Read-only members are declared as class-level annotations so Protocol
+    recognises them as abstract instance attributes without method stubs.
     """
 
-    @property
-    def crs(self) -> Any:
-        """Coordinate reference system of the dataset."""
-        ...
+    # Instance attributes (read-only in rasterio, declared as protocol members)
+    crs: Any
+    bounds: tuple[float, float, float, float]
+    transform: Any
+    meta: dict[str, Any]
+    profile: dict[str, Any]
+    width: int
+    height: int
+    count: int
 
-    @property
-    def bounds(self) -> tuple[float, float, float, float]:
-        """Bounding box of the dataset (minx, miny, maxx, maxy)."""
-        ...
-
-    @property
-    def transform(self) -> Any:
-        """Affine transform for the dataset."""
-        ...
-
-    @property
-    def meta(self) -> dict[str, Any]:
-        """Dataset metadata dictionary."""
-        ...
-
-    @property
-    def profile(self) -> dict[str, Any]:
-        """Dataset profile dictionary (includes metadata)."""
-        ...
-
-    @property
-    def width(self) -> int:
-        """Width of the dataset in pixels."""
-        ...
-
-    @property
-    def height(self) -> int:
-        """Height of the dataset in pixels."""
-        ...
-
-    @property
-    def count(self) -> int:
-        """Number of bands in the dataset."""
-        ...
-
-    def read(self, *args: Any, **kwargs: Any) -> Any:
-        """Read raster data."""
-        ...
-
-    def write(self, *args: Any, **kwargs: Any) -> None:
-        """Write raster data."""
-        ...
+    def read(self, *args: Any, **kwargs: Any) -> Any: ...
+    def write(self, *args: Any, **kwargs: Any) -> None: ...
 
 
 class RasterioModule(Protocol):
     """Protocol for the rasterio module.
 
     Specifies the rasterio API surface used in post-processing activities.
+    Submodule attributes (mask, warp, crs) are declared as class-level
+    annotations; callable methods use standard Protocol stub form.
     """
+
+    # Submodule attributes
+    mask: Any
+    warp: Any
+    crs: Any
 
     def open(
         self, fp: str, mode: str = "r", **kwargs: Any
-    ) -> AbstractContextManager[RasterDataset]:
-        """Open a raster dataset."""
-        ...
-
-    def band(self, ds: RasterDataset, bidx: int) -> Any:
-        """Get a band from a dataset."""
-        ...
-
-    @property
-    def mask(self) -> Any:
-        """rasterio.mask submodule for clipping operations."""
-        ...
-
-    @property
-    def warp(self) -> Any:
-        """rasterio.warp submodule for reprojection operations."""
-        ...
-
-    @property
-    def crs(self) -> Any:
-        """rasterio.crs submodule for CRS operations."""
-        ...
+    ) -> AbstractContextManager[RasterDataset]: ...
+    def band(self, ds: RasterDataset, bidx: int) -> Any: ...
 
 
 # ---------------------------------------------------------------------------
@@ -117,19 +71,10 @@ class RasterioModule(Protocol):
 class PlanetaryComputerModule(Protocol):
     """Protocol for the planetary_computer module.
 
-    Specifies the API for signing STAC asset URLs with SAS tokens.
+    Specifies the API surface for signing STAC asset URLs with SAS tokens.
     """
 
-    def sign(self, url: str) -> str:
-        """Sign a URL with a Planetary Computer SAS token.
-
-        Args:
-            url: URL to sign (typically a STAC asset href).
-
-        Returns:
-            Signed URL with SAS token appended.
-        """
-        ...
+    def sign(self, url: str) -> str: ...
 
 
 # ---------------------------------------------------------------------------
@@ -140,17 +85,8 @@ class PlanetaryComputerModule(Protocol):
 class SignerProtocol(Protocol):
     """Protocol for URL signing functions.
 
-    Generic abstraction for functions that add authentication tokens
-    to URLs (e.g., SAS tokens, signed URLs).
+    Generic abstraction for callables that add authentication tokens to URLs
+    (e.g., SAS tokens, signed URLs).
     """
 
-    def __call__(self, url: str) -> str:
-        """Sign a URL.
-
-        Args:
-            url: URL to sign.
-
-        Returns:
-            Signed URL with authentication token.
-        """
-        ...
+    def __call__(self, url: str) -> str: ...
