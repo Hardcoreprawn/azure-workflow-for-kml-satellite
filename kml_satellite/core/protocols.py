@@ -41,6 +41,7 @@ class RasterDataset(Protocol):
     count: int
 
     def read(self, *args: Any, **kwargs: Any) -> Any: ...
+
     def write(self, *args: Any, **kwargs: Any) -> None: ...
 
 
@@ -60,6 +61,7 @@ class RasterioModule(Protocol):
     def open(
         self, fp: str, mode: str = "r", **kwargs: Any
     ) -> AbstractContextManager[RasterDataset]: ...
+
     def band(self, ds: RasterDataset, bidx: int) -> Any: ...
 
 

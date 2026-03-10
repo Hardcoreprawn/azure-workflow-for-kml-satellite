@@ -203,9 +203,10 @@ class TestPollUntilReady:
     def test_max_retries_exact_boundary(self) -> None:
         """Regression: with max_retries=2, exactly 2 retries must be allowed.
 
-        Prior to the WorkflowState fix, the check was ``retry_count > max_retries``
-        (i.e. ``>``) which allowed one *extra* retry beyond the configured limit.
-        The corrected check is ``retry_count >= max_retries``.
+            Prior to fixing the polling off-by-one bug, the check was
+            ``retry_count > max_retries`` (i.e. ``>``) which allowed one *extra* retry
+            beyond the configured limit. The corrected check is
+            ``retry_count >= max_retries``.
 
         With max_retries=2 the generator must:
           - throw 1: retry allowed → backoff timer yielded

@@ -393,25 +393,6 @@ def _calculate_batch_count(total_items: int, batch_size: int) -> int:
     return (total_items + batch_size - 1) // batch_size
 
 
-def _classify_result_by_state(result: dict[str, Any]) -> str:
-    """Classify result using state field comparison.
-
-    Uses WorkflowState enum for type-safe state handling.
-
-    Args:
-        result: Result dict with optional 'state' field.
-
-    Returns:
-        Classification: 'success', 'failed', or 'unknown'.
-    """
-    state = result.get("state")
-    if state in (WorkflowState.READY, WorkflowState.COMPLETED, WorkflowState.SUCCESS):
-        return "success"
-    if state in (WorkflowState.FAILED, WorkflowState.ERROR):
-        return "failed"
-    return "unknown"
-
-
 def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Filter results to only successful ones.
 
@@ -657,14 +638,17 @@ def _calculate_result_metrics(
         Dict with failed/succeeded/clipped/reprojected counts.
     """
     # Create specialized counters using partial application
-    count_failed = partial(_count_results_by_state, field="state", value=WorkflowState.FAILED)
     count_true = partial(_count_results_by_state, value=True)
 
     return {
-        "downloads_failed": count_failed(download_results),
+        "downloads_failed": sum(
+            1 for r in download_results if WorkflowState.is_failure(r.get("state", ""))
+        ),
         "pp_clipped": count_true(post_process_results, field="clipped"),
         "pp_reprojected": count_true(post_process_results, field="reprojected"),
-        "pp_failed": count_failed(post_process_results),
+        "pp_failed": sum(
+            1 for r in post_process_results if WorkflowState.is_failure(r.get("state", ""))
+        ),
     }
 
 

@@ -59,7 +59,7 @@ class WorkflowState(StrEnum):
             state: State string or enum value.
 
         Returns:
-            True if state is ready/failed/cancelled.
+            True if state is ready, completed, success, failed, error, or cancelled.
         """
         return state in {
             cls.READY,
