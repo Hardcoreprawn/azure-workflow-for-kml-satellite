@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from kml_satellite.core.states import WorkflowState
+
 
 def download_error_dict(
     outcome: dict[str, Any],
     error: str,
     *,
-    state: str = "failed",
+    state: str = WorkflowState.FAILED,
 ) -> dict[str, Any]:
     """Build a contract-shaped error dict for a failed download.
 
@@ -27,7 +29,7 @@ def download_error_dict(
         outcome: Dict from ``acquire_imagery`` activity with order_id,
             scene_id, provider, aoi_feature_name, etc.
         error: Human-readable error message.
-        state: Outcome state (default "failed")).
+        state: Outcome state (default WorkflowState.FAILED).
 
     Returns:
         Dict matching the download result contract (18 fields).
@@ -53,7 +55,7 @@ def post_process_error_dict(
     dl_result: dict[str, Any],
     error: str,
     *,
-    state: str = "failed",
+    state: str = WorkflowState.FAILED,
 ) -> dict[str, Any]:
     """Build a contract-shaped error dict for a failed post-process.
 
@@ -65,7 +67,7 @@ def post_process_error_dict(
         dl_result: Dict from ``download_imagery`` activity with order_id,
             blob_path, container, etc.
         error: Human-readable error message describing the post-process failure.
-        state: Outcome state (default "failed").
+        state: Outcome state (default WorkflowState.FAILED).
 
     Returns:
         Dict matching the post-process result contract (17 fields).

@@ -9,6 +9,7 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -409,6 +410,48 @@ class TestFulfillmentPhase:
         assert result["downloads_completed"] == 1
         assert result["downloads_failed"] == 1
         assert result["pp_completed"] == 0
+
+    def test_error_state_download_excluded_from_post_processing(self) -> None:
+        """Downloads with state='error' must NOT be forwarded to post-processing.
+
+        Regression test: prior to WorkflowState migration, the filter was
+        ``d.get("state") != "failed"``, which passed 'error' state results
+        through to post-processing, causing downstream failures.
+        """
+        ctx = _make_context()
+        outcomes: list[dict[str, Any]] = [
+            {"order_id": "o1", "aoi_feature_name": "a1", "state": "ready"},
+            {"order_id": "o2", "aoi_feature_name": "a2", "state": "ready"},
+        ]
+        aois: list[dict[str, Any]] = [
+            {"feature_name": "a1"},
+            {"feature_name": "a2"},
+        ]
+        # o1 succeeds; o2 comes back with 'error' (provider-side error, not exception)
+        dl_results: list[dict[str, Any]] = [
+            {"order_id": "o1", "aoi_feature_name": "a1", "blob_path": "ok.tif", "state": "ready"},
+            {"order_id": "o2", "aoi_feature_name": "a2", "blob_path": "", "state": "error"},
+        ]
+
+        gen = run_fulfillment_phase(
+            ctx,
+            outcomes,
+            aois,
+            provider_name="planetary_computer",
+            provider_config=None,
+            project_name="test",
+            timestamp="2026-02-17T12:00:00+00:00",
+        )
+        next(gen)  # download batch yield
+        with contextlib.suppress(StopIteration):
+            gen.send(dl_results)  # post-process batch yield — only 1 item expected
+
+        pp_calls = [
+            c for c in ctx.call_activity.call_args_list if c[0][0] == "post_process_imagery"
+        ]
+        # Only the 'ready' download should reach post-processing; 'error' must be excluded
+        assert len(pp_calls) == 1
+        assert pp_calls[0][0][1]["download_result"]["order_id"] == "o1"
 
     def test_no_downloads_for_empty_outcomes(self) -> None:
         ctx = _make_context()

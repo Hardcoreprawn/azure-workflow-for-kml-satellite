@@ -24,11 +24,16 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, TypedDict
+from collections.abc import Callable
+from functools import partial
+from itertools import batched
+from operator import itemgetter
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from kml_satellite.core.config import config_get_int
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.payload_offload import build_ref_input, is_offloaded
+from kml_satellite.core.states import WorkflowState
 from kml_satellite.orchestrators.error_helpers import (
     download_error_dict,
     post_process_error_dict,
@@ -93,6 +98,44 @@ DEFAULT_DOWNLOAD_BATCH_SIZE = 10
 DEFAULT_POST_PROCESS_BATCH_SIZE = 10
 #: Max concurrent poll sub-orchestrations.
 #: (DEFAULT_POLL_BATCH_SIZE is now imported from polling.py)
+
+
+# ---------------------------------------------------------------------------
+# Fulfillment stage configuration
+
+# Type aliases for batch processing callables
+TaskInputBuilder = Callable[[dict[str, Any]], dict[str, Any]]
+"""Builds activity input dict from a batch item dict."""
+
+
+class ErrorBuilder(Protocol):
+    """Protocol for error dict builders.
+
+    Functions matching this protocol build error result dicts from
+    a batch item and error message, with optional state override.
+    """
+
+    def __call__(
+        self,
+        __item: dict[str, Any],
+        __error: str,
+        *,
+        state: str = WorkflowState.FAILED,
+    ) -> dict[str, Any]: ...
+
+
+# ---------------------------------------------------------------------------
+
+
+class _BatchStageConfig(TypedDict):
+    """Configuration for a fulfillment batch processing stage."""
+
+    items: list[dict[str, Any]]
+    batch_size: int
+    activity_name: str
+    task_input_builder: TaskInputBuilder
+    error_builder: ErrorBuilder
+    step_name: str
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +350,7 @@ def run_acquisition_phase(
         elif isinstance(batch_results, dict):
             imagery_outcomes.append(batch_results)
 
-    ready_count = sum(1 for o in imagery_outcomes if o.get("state") == "ready")
+    ready_count = sum(1 for o in imagery_outcomes if o.get("state") == WorkflowState.READY)
     failed_count = len(imagery_outcomes) - ready_count
 
     duration = (context.current_utc_datetime - phase_start).total_seconds()
@@ -333,6 +376,298 @@ def run_acquisition_phase(
 # ---------------------------------------------------------------------------
 # Phase 3: Fulfillment — download imagery, clip / reproject
 # ---------------------------------------------------------------------------
+
+
+def _calculate_batch_count(total_items: int, batch_size: int) -> int:
+    """Calculate number of batches needed for given items and batch size.
+
+    Args:
+        total_items: Total number of items to process.
+        batch_size: Maximum items per batch.
+
+    Returns:
+        Number of batches required (0 if no items).
+    """
+    if total_items == 0:
+        return 0
+    return (total_items + batch_size - 1) // batch_size
+
+
+def _classify_result_by_state(result: dict[str, Any]) -> str:
+    """Classify result using pattern matching on state field.
+
+    Uses Python 3.10+ match/case with StrEnum for type-safe state handling.
+
+    Args:
+        result: Result dict with optional 'state' field.
+
+    Returns:
+        Classification: 'success', 'failed', or 'unknown'.
+    """
+    state = result.get("state")
+    match state:
+        case WorkflowState.READY | WorkflowState.COMPLETED | WorkflowState.SUCCESS:
+            return "success"
+        case WorkflowState.FAILED | WorkflowState.ERROR:
+            return "failed"
+        case _:
+            return "unknown"
+
+
+def _filter_successful_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter results to only successful ones.
+
+    Uses WorkflowState enum for type-safe filtering.
+
+    Args:
+        results: List of result dicts.
+
+    Returns:
+        List of results where state is not failed.
+    """
+    return [r for r in results if not WorkflowState.is_failure(r.get("state", ""))]
+
+
+def _validate_batch_results(
+    batch_results: Any,
+    batch: list[dict[str, Any]],
+    error_builder: ErrorBuilder,
+) -> list[dict[str, Any]]:
+    """Validate and normalize batch results from task_all.
+
+    Handles both list and dict results from task_all, ensuring all results
+    are valid dicts. Invalid results are converted to error dicts.
+
+    Args:
+        batch_results: Raw results from context.task_all().
+        batch: Original batch items (for error context).
+        error_builder: Function to build error dicts (download_error_dict or post_process_error_dict).
+
+    Returns:
+        List of validated result dicts.
+    """
+    validated: list[dict[str, Any]] = []
+
+    if isinstance(batch_results, list):
+        for i, result in enumerate(batch_results):
+            item = batch[i]
+            if isinstance(result, dict):
+                validated.append(result)
+            else:
+                validated.append(
+                    error_builder(
+                        item,
+                        f"Unexpected non-dict result: {result!r}",
+                        state="unknown",
+                    )
+                )
+    elif isinstance(batch_results, dict):
+        validated.append(batch_results)
+
+    return validated
+
+
+def _execute_activity_batch(
+    context: df.DurableOrchestrationContext,
+    activity_name: str,
+    batch: list[dict[str, Any]],
+    task_input_builder: TaskInputBuilder,
+    error_builder: ErrorBuilder,
+    instance_id: str,
+    blob_name: str,
+    step_name: str,
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """Execute a batch of activity tasks with error handling.
+
+    Generic batch executor that creates tasks, executes them with task_all,
+    handles errors, and validates results.
+
+    Args:
+        context: Durable orchestration context.
+        activity_name: Name of the activity to call.
+        batch: Batch items to process.
+        task_input_builder: Function to build activity input from batch item.
+        error_builder: Function to build error dicts on failure.
+        instance_id: Orchestration instance ID for logging.
+        blob_name: Source blob name for logging.
+        step_name: Step name for logging (e.g., "download", "post_process").
+
+    Yields:
+        task_all call.
+
+    Returns:
+        List of validated result dicts.
+    """
+    tasks = [context.call_activity(activity_name, task_input_builder(item)) for item in batch]
+
+    try:
+        batch_results = yield context.task_all(tasks)
+    except Exception as exc:
+        if not context.is_replaying:
+            logger.exception(
+                "phase=fulfillment step=%s | instance=%s | blob=%s | "
+                "batch_error=%s | batch_size=%d",
+                step_name,
+                instance_id,
+                blob_name,
+                exc,
+                len(batch),
+            )
+        return [error_builder(item, str(exc)) for item in batch]
+
+    return _validate_batch_results(batch_results, batch, error_builder)
+
+
+def _process_all_batches(
+    context: df.DurableOrchestrationContext,
+    items: list[dict[str, Any]],
+    batch_size: int,
+    activity_name: str,
+    task_input_builder: TaskInputBuilder,
+    error_builder: ErrorBuilder,
+    instance_id: str,
+    blob_name: str,
+    step_name: str,
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """Process all items in batches, accumulating results.
+
+    Uses itertools.batched() (Python 3.12+) for cleaner batch iteration.
+
+    Args:
+        context: Durable orchestration context.
+        items: Items to process in batches.
+        batch_size: Maximum items per batch.
+        activity_name: Name of the activity to call.
+        task_input_builder: Function to build activity input from item.
+        error_builder: Function to build error dicts on failure.
+        instance_id: Orchestration instance ID for logging.
+        blob_name: Source blob name for logging.
+        step_name: Step name for logging (e.g., "download", "post_process").
+
+    Yields:
+        task_all calls for each batch.
+
+    Returns:
+        Accumulated list of all batch results.
+    """
+    all_results: list[dict[str, Any]] = []
+
+    # Use itertools.batched() instead of manual range slicing
+    for batch in batched(items, batch_size):
+        batch_list = list(batch)  # Convert tuple to list for compatibility
+        batch_results = yield from _execute_activity_batch(
+            context=context,
+            activity_name=activity_name,
+            batch=batch_list,
+            task_input_builder=task_input_builder,
+            error_builder=error_builder,
+            instance_id=instance_id,
+            blob_name=blob_name,
+            step_name=step_name,
+        )
+        all_results.extend(batch_results)
+
+    return all_results
+
+
+def _execute_stage(
+    context: df.DurableOrchestrationContext,
+    stage: _BatchStageConfig,
+    instance_id: str,
+    blob_name: str,
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """Execute a configured pipeline stage.
+
+    Unpacks stage configuration and dispatches to batch processor.
+
+    Args:
+        context: Durable orchestration context.
+        stage: Stage configuration with items, batch_size, etc.
+        instance_id: Orchestration instance ID for logging.
+        blob_name: Source blob name for logging.
+
+    Yields:
+        task_all calls for each batch.
+
+    Returns:
+        List of all stage results.
+    """
+    return (
+        yield from _process_all_batches(
+            context=context,
+            items=stage["items"],
+            batch_size=stage["batch_size"],
+            activity_name=stage["activity_name"],
+            task_input_builder=stage["task_input_builder"],
+            error_builder=stage["error_builder"],
+            instance_id=instance_id,
+            blob_name=blob_name,
+            step_name=stage["step_name"],
+        )
+    )
+
+
+def _build_aoi_lookup(aois: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Build feature_name → AOI dict for fast geometry lookup.
+
+    Uses operator.itemgetter for cleaner dict access.
+
+    Args:
+        aois: List of AOI dicts with feature_name keys.
+
+    Returns:
+        Dict mapping feature_name to full AOI dict.
+    """
+    get_feature_name = itemgetter("feature_name")
+    return {
+        str(get_feature_name(a)): a for a in aois if isinstance(a, dict) and a.get("feature_name")
+    }
+
+
+def _count_results_by_state(
+    results: list[dict[str, Any]], field: str, value: str | int | float | bool | None
+) -> int:
+    """Count results where field equals value.
+
+    Uses operator.itemgetter for cleaner field access.
+
+    Args:
+        results: List of result dicts.
+        field: Field name to check.
+        value: Value to match.
+
+    Returns:
+        Count of matching results.
+    """
+    # Note: dict.get() still needed for safety with missing keys
+    return sum(1 for r in results if r.get(field) == value)
+
+
+def _calculate_result_metrics(
+    download_results: list[dict[str, Any]],
+    post_process_results: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Calculate summary metrics from stage results.
+
+    Uses functional composition for cleaner metric calculation.
+
+    Args:
+        download_results: Results from download stage.
+        post_process_results: Results from post-process stage.
+
+    Returns:
+        Dict with failed/succeeded/clipped/reprojected counts.
+    """
+    # Create specialized counters using partial application
+    count_failed = partial(_count_results_by_state, field="state", value=WorkflowState.FAILED)
+    count_true = partial(_count_results_by_state, value=True)
+
+    return {
+        "downloads_failed": count_failed(download_results),
+        "pp_clipped": count_true(post_process_results, field="clipped"),
+        "pp_reprojected": count_true(post_process_results, field="reprojected"),
+        "pp_failed": count_failed(post_process_results),
+    }
 
 
 def run_fulfillment_phase(
@@ -364,7 +699,7 @@ def run_fulfillment_phase(
 
     Args:
         context: Durable orchestration context.
-        ready_outcomes: Imagery outcomes with ``state == "ready"``.
+        ready_outcomes: Imagery outcomes with state ``WorkflowState.READY``.
         aois: Full AOI list for geometry lookup.
         provider_name: Imagery provider name.
         provider_config: Optional provider configuration overrides.
@@ -386,59 +721,56 @@ def run_fulfillment_phase(
     """
     phase_start = context.current_utc_datetime
 
-    # Step 1: Download imagery — bounded parallel batches (Issue #54)
-    download_results: list[dict[str, Any]] = []
+    # Normalize batch sizes
     download_batch_size = max(1, download_batch_size)
     post_process_batch_size = max(1, post_process_batch_size)
 
-    for batch_start in range(0, len(ready_outcomes), download_batch_size):
-        batch = ready_outcomes[batch_start : batch_start + download_batch_size]
-        dl_tasks = [
-            context.call_activity(
-                "download_imagery",
-                {
-                    "imagery_outcome": outcome,
-                    "provider_name": provider_name,
-                    "provider_config": provider_config,
-                    "project_name": project_name,
-                    "timestamp": timestamp,
-                    "output_container": output_container,
-                },
-            )
-            for outcome in batch
-        ]
+    # Build feature_name → AOI lookup for geometry retrieval
+    aoi_by_feature = _build_aoi_lookup(aois)
 
-        try:
-            batch_results = yield context.task_all(dl_tasks)
-        except Exception as exc:
-            if not context.is_replaying:
-                logger.exception(
-                    "phase=fulfillment step=download | instance=%s | blob=%s | "
-                    "batch_error=%s | batch_size=%d",
-                    instance_id,
-                    blob_name,
-                    exc,
-                    len(batch),
-                )
-            for outcome in batch:
-                download_results.append(download_error_dict(outcome, str(exc)))
-            continue
+    # Configure pipeline stages declaratively
+    stages: dict[str, _BatchStageConfig] = {
+        "download": {
+            "items": ready_outcomes,
+            "batch_size": download_batch_size,
+            "activity_name": "download_imagery",
+            "task_input_builder": lambda outcome: {
+                "imagery_outcome": outcome,
+                "provider_name": provider_name,
+                "provider_config": provider_config,
+                "project_name": project_name,
+                "timestamp": timestamp,
+                "output_container": output_container,
+            },
+            "error_builder": download_error_dict,
+            "step_name": "download",
+        },
+        "post_process": {
+            "items": [],  # Will be filled after download
+            "batch_size": post_process_batch_size,
+            "activity_name": "post_process_imagery",
+            "task_input_builder": lambda dl_result: {
+                "download_result": dl_result,
+                "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
+                "project_name": project_name,
+                "timestamp": timestamp,
+                "target_crs": target_crs,
+                "enable_clipping": enable_clipping,
+                "enable_reprojection": enable_reprojection,
+                "output_container": output_container,
+            },
+            "error_builder": post_process_error_dict,
+            "step_name": "post_process",
+        },
+    }
 
-        if isinstance(batch_results, list):
-            for i, result in enumerate(batch_results):
-                outcome = batch[i]
-                if isinstance(result, dict):
-                    download_results.append(result)
-                else:
-                    download_results.append(
-                        download_error_dict(
-                            outcome,
-                            f"Unexpected non-dict result: {result!r}",
-                            state="unknown",
-                        )
-                    )
-        elif isinstance(batch_results, dict):
-            download_results.append(batch_results)
+    # Execute download stage
+    download_results = yield from _execute_stage(
+        context=context,
+        stage=stages["download"],
+        instance_id=instance_id,
+        blob_name=blob_name,
+    )
 
     if not context.is_replaying:
         logger.info(
@@ -447,79 +779,23 @@ def run_fulfillment_phase(
             instance_id,
             len(download_results),
             len(ready_outcomes),
-            (len(ready_outcomes) + download_batch_size - 1) // download_batch_size
-            if ready_outcomes
-            else 0,
+            _calculate_batch_count(len(ready_outcomes), download_batch_size),
             blob_name,
         )
 
-    # Step 2: Post-process imagery — bounded parallel batches (Issue #54)
-    # Build feature_name → AOI lookup for geometry retrieval
-    aoi_by_feature: dict[str, dict[str, Any]] = {}
-    for a in aois:
-        if isinstance(a, dict):
-            fname = str(a.get("feature_name", ""))
-            if fname:
-                aoi_by_feature[fname] = a
+    # Execute post-process stage (only on successful downloads)
+    successful_downloads = _filter_successful_results(download_results)
+    stages["post_process"]["items"] = successful_downloads
 
-    successful_downloads = [d for d in download_results if d.get("state") != "failed"]
+    post_process_results = yield from _execute_stage(
+        context=context,
+        stage=stages["post_process"],
+        instance_id=instance_id,
+        blob_name=blob_name,
+    )
 
-    post_process_results: list[dict[str, Any]] = []
-    for batch_start in range(0, len(successful_downloads), post_process_batch_size):
-        batch = successful_downloads[batch_start : batch_start + post_process_batch_size]
-        pp_tasks = [
-            context.call_activity(
-                "post_process_imagery",
-                {
-                    "download_result": dl_result,
-                    "aoi": aoi_by_feature.get(str(dl_result.get("aoi_feature_name", "")), {}),
-                    "project_name": project_name,
-                    "timestamp": timestamp,
-                    "target_crs": target_crs,
-                    "enable_clipping": enable_clipping,
-                    "enable_reprojection": enable_reprojection,
-                    "output_container": output_container,
-                },
-            )
-            for dl_result in batch
-        ]
-
-        try:
-            batch_results = yield context.task_all(pp_tasks)
-        except Exception as exc:
-            if not context.is_replaying:
-                logger.exception(
-                    "phase=fulfillment step=post_process | instance=%s | blob=%s | "
-                    "batch_error=%s | batch_size=%d",
-                    instance_id,
-                    blob_name,
-                    exc,
-                    len(batch),
-                )
-            for dl_result in batch:
-                post_process_results.append(post_process_error_dict(dl_result, str(exc)))
-            continue
-
-        if isinstance(batch_results, list):
-            for i, pp_result in enumerate(batch_results):
-                dl_result = batch[i]
-                if isinstance(pp_result, dict):
-                    post_process_results.append(pp_result)
-                else:
-                    post_process_results.append(
-                        post_process_error_dict(
-                            dl_result,
-                            f"Unexpected non-dict result: {pp_result!r}",
-                            state="unknown",
-                        )
-                    )
-        elif isinstance(batch_results, dict):
-            post_process_results.append(batch_results)
-
-    downloads_failed = sum(1 for d in download_results if d.get("state") == "failed")
-    pp_clipped = sum(1 for p in post_process_results if p.get("clipped"))
-    pp_reprojected = sum(1 for p in post_process_results if p.get("reprojected"))
-    pp_failed = sum(1 for p in post_process_results if p.get("state") == "failed")
+    # Calculate result metrics
+    metrics = _calculate_result_metrics(download_results, post_process_results)
 
     duration = (context.current_utc_datetime - phase_start).total_seconds()
     if not context.is_replaying:
@@ -529,15 +805,11 @@ def run_fulfillment_phase(
             "dl_batches=%d | pp_batches=%d | duration=%.1fs | blob=%s",
             instance_id,
             len(download_results),
-            pp_clipped,
-            pp_reprojected,
-            pp_failed,
-            (len(ready_outcomes) + download_batch_size - 1) // download_batch_size
-            if ready_outcomes
-            else 0,
-            (len(successful_downloads) + post_process_batch_size - 1) // post_process_batch_size
-            if successful_downloads
-            else 0,
+            metrics["pp_clipped"],
+            metrics["pp_reprojected"],
+            metrics["pp_failed"],
+            _calculate_batch_count(len(ready_outcomes), download_batch_size),
+            _calculate_batch_count(len(successful_downloads), post_process_batch_size),
             duration,
             blob_name,
         )
@@ -545,13 +817,13 @@ def run_fulfillment_phase(
     return FulfillmentResult(
         download_results=download_results,
         downloads_completed=len(download_results),
-        downloads_succeeded=len(download_results) - downloads_failed,
-        downloads_failed=downloads_failed,
+        downloads_succeeded=len(download_results) - metrics["downloads_failed"],
+        downloads_failed=metrics["downloads_failed"],
         post_process_results=post_process_results,
         pp_completed=len(post_process_results),
-        pp_clipped=pp_clipped,
-        pp_reprojected=pp_reprojected,
-        pp_failed=pp_failed,
+        pp_clipped=metrics["pp_clipped"],
+        pp_reprojected=metrics["pp_reprojected"],
+        pp_failed=metrics["pp_failed"],
     )
 
 

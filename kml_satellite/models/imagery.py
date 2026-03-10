@@ -29,6 +29,15 @@ import enum
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from kml_satellite.core.constants import (
+    DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT,
+    DEFAULT_MAX_OFF_NADIR_DEG,
+    DEFAULT_MAX_RESOLUTION_M,
+    MAX_OFF_NADIR_DEG_LIMIT,
+    MAX_PERCENTAGE,
+    MIN_PERCENTAGE,
+    MIN_RESOLUTION_M,
+)
 from kml_satellite.core.exceptions import PipelineError
 
 if TYPE_CHECKING:
@@ -105,19 +114,31 @@ class ImageryFilters:
         collections: Provider-specific collection identifiers to search.
     """
 
-    max_cloud_cover_pct: float = 20.0
-    max_off_nadir_deg: float = 30.0
-    min_resolution_m: float = 0.0
-    max_resolution_m: float = 50.0
+    max_cloud_cover_pct: float = DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT
+    max_off_nadir_deg: float = DEFAULT_MAX_OFF_NADIR_DEG
+    min_resolution_m: float = MIN_RESOLUTION_M
+    max_resolution_m: float = DEFAULT_MAX_RESOLUTION_M
     date_start: datetime | None = None
     date_end: datetime | None = None
     collections: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        _check_range("ImageryFilters", "max_cloud_cover_pct", self.max_cloud_cover_pct, 0, 100)
-        _check_range("ImageryFilters", "max_off_nadir_deg", self.max_off_nadir_deg, 0, 90)
-        _check_min("ImageryFilters", "min_resolution_m", self.min_resolution_m, 0)
-        _check_min("ImageryFilters", "max_resolution_m", self.max_resolution_m, 0)
+        _check_range(
+            "ImageryFilters",
+            "max_cloud_cover_pct",
+            self.max_cloud_cover_pct,
+            MIN_PERCENTAGE,
+            MAX_PERCENTAGE,
+        )
+        _check_range(
+            "ImageryFilters",
+            "max_off_nadir_deg",
+            self.max_off_nadir_deg,
+            MIN_PERCENTAGE,
+            MAX_OFF_NADIR_DEG_LIMIT,
+        )
+        _check_min("ImageryFilters", "min_resolution_m", self.min_resolution_m, MIN_RESOLUTION_M)
+        _check_min("ImageryFilters", "max_resolution_m", self.max_resolution_m, MIN_RESOLUTION_M)
         if self.min_resolution_m > self.max_resolution_m:
             raise ModelValidationError(
                 "ImageryFilters",
@@ -169,9 +190,20 @@ class SearchResult:
     def __post_init__(self) -> None:
         _check_non_empty("SearchResult", "scene_id", self.scene_id)
         _check_non_empty("SearchResult", "provider", self.provider)
-        _check_range("SearchResult", "cloud_cover_pct", self.cloud_cover_pct, 0, 100)
-        _check_min("SearchResult", "spatial_resolution_m", self.spatial_resolution_m, 0)
-        _check_min("SearchResult", "off_nadir_deg", self.off_nadir_deg, 0)
+        _check_range(
+            "SearchResult",
+            "cloud_cover_pct",
+            self.cloud_cover_pct,
+            MIN_PERCENTAGE,
+            MAX_PERCENTAGE,
+        )
+        _check_min(
+            "SearchResult",
+            "spatial_resolution_m",
+            self.spatial_resolution_m,
+            MIN_RESOLUTION_M,
+        )
+        _check_min("SearchResult", "off_nadir_deg", self.off_nadir_deg, MIN_RESOLUTION_M)
 
 
 # ---------------------------------------------------------------------------

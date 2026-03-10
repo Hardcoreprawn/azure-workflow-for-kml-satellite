@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import pystac_client
 
-from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER, HTTP_DOWNLOAD_TIMEOUT_SECONDS
 from kml_satellite.models.imagery import (
     BlobReference,
     ImageryFilters,
@@ -51,8 +51,11 @@ from kml_satellite.providers.base import (
 from kml_satellite.utils.blob_paths import IMAGERY_RAW_PREFIX
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pystac
 
+    from kml_satellite.core.protocols import PlanetaryComputerModule
     from kml_satellite.models.aoi import AOI
     from kml_satellite.models.imagery import ProviderConfig
 
@@ -73,7 +76,7 @@ class _PlanetaryComputerSigner:
     an exception is raised immediately rather than silently failing later.
     """
 
-    def __init__(self, module: Any | None) -> None:
+    def __init__(self, module: PlanetaryComputerModule | None) -> None:
         """Initialize wrapper with optional planetary_computer module.
 
         Args:
@@ -83,7 +86,7 @@ class _PlanetaryComputerSigner:
             TypeError: If module is provided but doesn't have sign(url) callable.
         """
         if module is None:
-            self._signer: Any = None
+            self._signer: Callable[[str], str] | None = None
         elif not hasattr(module, "sign") or not callable(module.sign):
             raise TypeError(
                 "planetary_computer module missing sign() function. "
@@ -121,9 +124,6 @@ _DEFAULT_COLLECTIONS = ["sentinel-2-l2a"]
 
 # STAC asset key fallback order for download URL resolution.
 _FALLBACK_ASSET_KEYS = ("visual", "B04", "rendered_preview")
-
-# HTTP timeout for provider asset download requests.
-_HTTP_DOWNLOAD_TIMEOUT_SECONDS = 60.0
 
 # Default maximum entries in the per-adapter order cache.
 _DEFAULT_ORDER_CACHE_MAXSIZE = 256
@@ -507,7 +507,7 @@ class PlanetaryComputerAdapter(ImageryProvider):
         try:
             with (
                 httpx.Client(
-                    timeout=_HTTP_DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True
+                    timeout=HTTP_DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=True
                 ) as client,
                 client.stream("GET", url) as response,
             ):

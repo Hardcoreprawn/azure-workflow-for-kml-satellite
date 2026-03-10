@@ -32,10 +32,13 @@ import contextlib
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
 from kml_satellite.core.exceptions import PipelineError
+
+if TYPE_CHECKING:
+    from kml_satellite.core.protocols import RasterioModule
 
 logger = logging.getLogger("kml_satellite.activities.post_process_imagery")
 
@@ -254,7 +257,7 @@ def _process_raster(
     reprojected_temp_path = ""
 
     try:
-        source_crs = _get_raster_crs(source_blob_path, rasterio)
+        source_crs = _get_raster_crs(source_blob_path, cast("RasterioModule", rasterio))
 
         # Step 1: Reproject if needed (FR-3.11)
         working_path = source_blob_path
@@ -262,7 +265,7 @@ def _process_raster(
             working_path = _reproject_raster(
                 source_blob_path,
                 target_crs,
-                rasterio,
+                cast("RasterioModule", rasterio),
                 order_id=order_id,
             )
             reprojected_temp_path = working_path
@@ -282,7 +285,7 @@ def _process_raster(
                     clipped_blob_path,
                     exterior_coords,
                     interior_coords,
-                    rasterio,
+                    cast("RasterioModule", rasterio),
                     order_id=order_id,
                     feature_name=feature_name,
                 )
@@ -339,7 +342,7 @@ def _process_raster(
     }
 
 
-def _get_raster_crs(path: str, rasterio: Any) -> str:
+def _get_raster_crs(path: str, rasterio: RasterioModule) -> str:
     """Read the CRS from a raster file.
 
     Args:
@@ -361,7 +364,7 @@ def _get_raster_crs(path: str, rasterio: Any) -> str:
 def _reproject_raster(
     source_path: str,
     target_crs: str,
-    rasterio: Any,
+    rasterio: RasterioModule,
     *,
     order_id: str = "",
 ) -> str:
@@ -430,7 +433,7 @@ def _clip_raster(
     output_path: str,
     exterior_coords: list[list[float]],
     interior_coords: list[list[list[float]]],
-    rasterio: Any,
+    rasterio: RasterioModule,
     *,
     order_id: str = "",
     feature_name: str = "",
