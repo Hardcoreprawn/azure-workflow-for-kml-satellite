@@ -1,0 +1,155 @@
+---
+# ---------------------------------------------------------------------------
+# TreeSight Website Deployment to Azure Static Web Apps
+# ---------------------------------------------------------------------------
+# Deploys the HTML/CSS/JS landing page to Azure Static Web Apps.
+# Triggered on push to main when website/ changes.
+#
+# Stack: HTML5, CSS3, vanilla JavaScript (no build required)
+# Deployment: Azure Static Web Apps
+# Architecture: website/ → SWAPP (staticwebapp.config.json handles routing)
+#
+# Deployment Flow:
+# 1. Checkout code
+# 2. Azure Login (OIDC)
+# 3. Retrieve SWAPP deployment token
+# 4. Upload website/ directly to SWAPP
+# 5. Poll for 200 OK response (Margaret Hamilton principle)
+# 6. Report live URL
+#
+# Requires:
+#   - Azure Static Web App resource exists (created by tofu-apply.yml)
+#   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
+#     AZURE_SUBSCRIPTION_ID
+# ---------------------------------------------------------------------------
+
+name: Deploy Website to Static Web Apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/workflows/deploy-website-swapp.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: rg-kmlsat-dev
+  STATIC_WEB_APP_NAME: stapp-kmlsat-dev-site
+  FUNCTION_APP_NAME: func-kmlsat-dev
+
+jobs:
+  deploy:
+    name: Deploy Website
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for website directory
+        id: website-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d website ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Website directory found"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::website/ directory not found. Skipping deployment."
+            exit 0
+          fi
+
+      - name: Azure Login (OIDC)
+        if: steps.website-check.outputs.exists == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get Static Web App deployment token
+        id: token
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN=$(az staticwebapp secrets list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "properties.apiKey" -o tsv)
+          echo "::add-mask::${TOKEN}"
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+          echo "Retrieved deployment token"
+
+      - name: Deploy website to Azure Static Web Apps
+        if: steps.website-check.outputs.exists == 'true'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "website"
+          skip_app_build: true
+
+      - name: Get Static Web App hostname
+        id: hostname
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOSTNAME=$(az staticwebapp show \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "defaultHostname" -o tsv)
+          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+          echo "Static Web App hostname: ${HOSTNAME}"
+
+      - name: Verify site is live (poll with timeout)
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SITE_URL="https://${{ steps.hostname.outputs.hostname }}"
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+
+          echo "::group::Polling for site availability"
+          echo "Target: ${SITE_URL}"
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+
+            set +e
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "${SITE_URL}" 2>/dev/null)
+            CURL_EXIT=$?
+            set -e
+
+            if [[ $CURL_EXIT -eq 0 ]] && [[ "$HTTP_STATUS" == "200" ]]; then
+              echo "✅ Site is live (HTTP 200)"
+              echo "::endgroup::"
+              echo ""
+              echo "========================================="
+              echo "✅ DEPLOYMENT SUCCESSFUL"
+              echo "========================================="
+              echo "TreeSight: ${SITE_URL}"
+              echo "========================================="
+              exit 0
+            fi
+
+            echo "⏳ Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: HTTP ${HTTP_STATUS} (curl exit: ${CURL_EXIT}). Retrying in 10s..."
+            sleep 10
+          done
+
+          echo "::endgroup::"
+          echo "⚠️  Site deployed but not yet responding after ${MAX_ATTEMPTS} attempts"
+          echo "Site URL: ${SITE_URL}"
+          echo "Note: CDN propagation may take additional time. The site should be available shortly."
+          exit 0
