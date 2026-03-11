@@ -42,6 +42,8 @@ Hybrid model (Option 3).
 - Non-breaking adoption path
 - Clear migration path to project-owned base images
 - Better reproducibility controls via explicit base inputs
+- Refresh automation now validates a dedicated `Dockerfile.base` artifact before publication
+- Published project-owned base images use run-scoped immutable tags for traceability
 
 ### Trade-offs
 

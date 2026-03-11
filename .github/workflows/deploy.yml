@@ -19,7 +19,7 @@
 # Also triggers after a successful OpenTofu apply on main so infrastructure
 # changes get a follow-up application deployment and subscription reconcile.
 #
-# Safety: main branch protection requires the lint-and-test CI check to pass
+# Safety: main branch protection requires the repository CI checks to pass
 # before any PR can merge, so code on main has already been validated.
 #
 # Container security:
