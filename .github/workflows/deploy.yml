@@ -69,6 +69,8 @@ env:
   EVENT_GRID_SYSTEM_TOPIC_NAME: evgt-kmlsat-dev
   EVENT_GRID_SUBSCRIPTION_NAME: evgs-kml-upload
   EVENT_GRID_TRIGGER_FUNCTION: kml_blob_trigger
+  BUILDER_BASE_IMAGE: ${{ vars.BUILDER_BASE_IMAGE || 'mcr.microsoft.com/azure-functions/python:4-python3.12' }}
+  RUNTIME_BASE_IMAGE: ${{ vars.RUNTIME_BASE_IMAGE || 'mcr.microsoft.com/azure-functions/python:4-python3.12' }}
 
 jobs:
   deploy-dev:
@@ -110,6 +112,9 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.image.outputs.name }}
+          build-args: |
+            BUILDER_BASE_IMAGE=${{ env.BUILDER_BASE_IMAGE }}
+            RUNTIME_BASE_IMAGE=${{ env.RUNTIME_BASE_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           labels: |
