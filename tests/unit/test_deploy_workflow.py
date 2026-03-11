@@ -125,7 +125,22 @@ class TestContainerDeployment:
         image_step = _find_step(steps, "image name") or _find_step(steps, "image tag")
         assert image_step is not None, "No image name/tag step found"
         run_script = image_step.get("run", "")
-        assert "GITHUB_SHA" in run_script, "Image tag must include the commit SHA for traceability"
+        assert "source_sha=" in run_script, "Image step must emit a source_sha output"
+        assert "$SOURCE_SHA" in run_script, "Image tag must use the resolved source SHA"
+
+    def test_image_step_derives_sha_from_checked_out_source(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Workflow-run deploys must tag and label images using the same SHA that was checked out."""
+        steps = _get_steps(deploy_workflow)
+        image_step = _find_step(steps, "image name") or _find_step(steps, "image tag")
+        assert image_step is not None, "No image name/tag step found"
+
+        env_block = image_step.get("env", {})
+        assert (
+            env_block.get("SOURCE_SHA")
+            == "${{ github.event.workflow_run.head_sha || github.sha }}"
+        )
 
     def test_registry_build_cache_ref_is_set(self, deploy_workflow: dict[str, Any]) -> None:
         """Deploy workflow must publish a stable registry cache ref for Docker BuildKit reuse."""
@@ -153,6 +168,17 @@ class TestContainerDeployment:
 
         assert cache_from == "type=registry,ref=${{ steps.image.outputs.cache_ref }}"
         assert cache_to == "type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max"
+
+    def test_docker_build_revision_label_uses_resolved_source_sha(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """OCI revision label must match the resolved source SHA, not the event SHA blindly."""
+        steps = _get_steps(deploy_workflow)
+        build = _find_step(steps, "build and push")
+        assert build is not None
+
+        labels = str(build.get("with", {}).get("labels", ""))
+        assert "org.opencontainers.image.revision=${{ steps.image.outputs.source_sha }}" in labels
 
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
