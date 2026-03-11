@@ -1,0 +1,69 @@
+name: Base Image Refresh
+
+on:
+  schedule:
+    # Weekly Monday 03:00 UTC
+    - cron: "0 3 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+jobs:
+  refresh-base-image:
+    name: Refresh Base Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image name
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}:geo-base-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push base image candidate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.image.outputs.name }}
+          build-args: |
+            BUILDER_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
+            RUNTIME_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Run geospatial import smoke check
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm "${{ steps.image.outputs.name }}" python -c "import rasterio, fiona, pyproj, shapely"
+
+      - name: Vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ steps.image.outputs.name }}
+          format: table
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
