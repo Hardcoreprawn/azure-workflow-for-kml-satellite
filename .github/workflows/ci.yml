@@ -35,7 +35,18 @@ jobs:
         run: uv run pyright
 
       - name: Run unit tests
-        run: uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
+        run: |
+          uv run pytest \
+            tests/unit/test_health_endpoints.py \
+            tests/unit/test_contact_form_endpoint.py \
+            tests/unit/test_diagnostics_endpoint_auth.py \
+            tests/unit/test_container_apps_spec.py \
+            tests/unit/test_deploy_workflow.py \
+            tests/unit/test_tofu_apply_workflow.py \
+            tests/unit/test_base_image_strategy.py \
+            tests/unit/test_ci_workflow_lanes.py \
+            tests/unit/test_base_image_refresh_workflow.py \
+            -v --tb=short
 
   native-geo-validation:
     name: Native Geo Validation
@@ -65,8 +76,7 @@ jobs:
 
       - name: Run geospatial architecture tests
         run: |
-          uv run pytest tests/unit/test_dockerfile.py -v --tb=short
-          uv run pytest tests/unit/test_base_image_strategy.py -v --tb=short
+          uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
 
       - name: Run integration tests
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

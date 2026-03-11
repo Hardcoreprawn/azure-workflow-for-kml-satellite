@@ -45,7 +45,8 @@ def test_fast_job_runs_lint_type_and_unit(ci_workflow: dict[str, Any]) -> None:
     assert "ruff" in names
     assert "pyright" in names
     assert "unit tests" in names
-    assert "pytest tests/unit" in scripts
+    assert "uv run pytest" in scripts
+    assert "tests/unit/test_health_endpoints.py" in scripts
 
 
 def test_native_job_installs_geospatial_system_deps(ci_workflow: dict[str, Any]) -> None:
