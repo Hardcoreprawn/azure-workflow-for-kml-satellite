@@ -233,8 +233,9 @@ async def orchestrator_status(
 ) -> func.HttpResponse:
     """Return the status of a specific orchestrator instance.
 
-    Useful for local development and debugging. Production monitoring
-    uses Application Insights.
+    This endpoint is intentionally anonymous for operational diagnostics:
+    deploy smoke checks and responders can quickly verify Durable instance
+    state without requiring key bootstrap first.
     """
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
@@ -272,13 +273,13 @@ async def health_liveness(req: func.HttpRequest) -> func.HttpResponse:
 
         response_body = json.dumps({"status": "alive", "service": "kml-satellite"})
         return func.HttpResponse(response_body, status_code=200, mimetype="application/json")
-    except Exception as e:
+    except Exception:
         # Config validation failed — app cannot start.
-        logger.exception("Health check (liveness) failed: %s", str(e))
+        logger.exception("Health check (liveness) failed")
         response_body = json.dumps(
             {
                 "status": "dead",
-                "error": f"{e!s}",
+                "error": "service configuration unavailable",
             }
         )
         return func.HttpResponse(response_body, status_code=500, mimetype="application/json")
@@ -309,9 +310,9 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
     try:
         _ = PipelineConfig.from_env()
         dependency_status["config"] = "ok"
-    except Exception as e:
-        logger.warning("Config validation failed (readiness): %s", str(e))
-        dependency_status["config"] = f"error: {e!s}"
+    except Exception:
+        logger.exception("Config validation failed (readiness)")
+        dependency_status["config"] = "error"
         dependencies_ok = False
 
     # 2. Verify Blob Storage connectivity.
@@ -319,9 +320,9 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
         if dependencies_ok:  # Only check if config is valid.
             _ = get_blob_service_client()
             dependency_status["blob_storage"] = "ok"
-    except Exception as e:
-        logger.warning("Blob Storage connectivity check failed (readiness): %s", str(e))
-        dependency_status["blob_storage"] = f"error: {e!s}"
+    except Exception:
+        logger.exception("Blob Storage connectivity check failed (readiness)")
+        dependency_status["blob_storage"] = "error"
         dependencies_ok = False
 
     # Build response.
@@ -343,7 +344,11 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name("marketing_interest")
-@app.route(route="contact-form", methods=["POST", "OPTIONS"])
+@app.route(
+    route="contact-form",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 async def marketing_interest(req: func.HttpRequest) -> func.HttpResponse:
     """Capture early-access requests from the marketing website (#154)."""
     if req.method == "OPTIONS":

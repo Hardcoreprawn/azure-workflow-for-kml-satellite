@@ -182,7 +182,7 @@ jobs:
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/health"
           for attempt in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            code=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "$URL" || true)
             if [ "$code" = "200" ]; then
               echo "Health endpoint ready"
               exit 0
@@ -199,7 +199,7 @@ jobs:
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/readiness"
           for attempt in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            code=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "$URL" || true)
             if [ "$code" = "200" ]; then
               echo "Readiness endpoint ready"
               exit 0
@@ -215,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/contact-form"
-          code=$(curl -s -o /tmp/contact-response.json -w "%{http_code}" \
+          code=$(curl -s --connect-timeout 5 --max-time 10 -o /tmp/contact-response.json -w "%{http_code}" \
             -X POST "$URL" \
             -H "Content-Type: application/json" \
             --data '{"email":"smoke-test@example.com","organization":"TreeSight Smoke","use_case":"deployment-smoke"}')
@@ -399,7 +399,7 @@ jobs:
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/health"
           for attempt in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            code=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "$URL" || true)
             if [ "$code" = "200" ]; then
               echo "Health endpoint ready"
               exit 0
@@ -416,7 +416,7 @@ jobs:
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/readiness"
           for attempt in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            code=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "$URL" || true)
             if [ "$code" = "200" ]; then
               echo "Readiness endpoint ready"
               exit 0
@@ -432,7 +432,7 @@ jobs:
         run: |
           set -euo pipefail
           URL="${{ steps.get-url.outputs.function_url }}/api/contact-form"
-          code=$(curl -s -o /tmp/contact-response.json -w "%{http_code}" \
+          code=$(curl -s --connect-timeout 5 --max-time 10 -o /tmp/contact-response.json -w "%{http_code}" \
             -X POST "$URL" \
             -H "Content-Type: application/json" \
             --data '{"email":"smoke-test@example.com","organization":"TreeSight Smoke","use_case":"deployment-smoke"}')

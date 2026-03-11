@@ -174,3 +174,12 @@ class TestHealthEndpointsRegistration:
         count = content.count("except Exception")
         # At least 2-4 exception handlers (liveness has 1, readiness has 2)
         assert count >= 2, "Health endpoints should handle exceptions"
+
+    def test_anonymous_health_does_not_expose_exception_details(self) -> None:
+        """Verify anonymous health endpoints do not return raw exception text."""
+        function_app_path = Path(__file__).parent.parent.parent / "function_app.py"
+        content = function_app_path.read_text()
+
+        assert '"error": f"{e!s}"' not in content
+        assert 'dependency_status["config"] = f"error: {e!s}"' not in content
+        assert 'dependency_status["blob_storage"] = f"error: {e!s}"' not in content

@@ -6,6 +6,7 @@ otherwise deployment smoke checks and remote triage can fail with 401.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -30,6 +31,8 @@ def test_readiness_route_is_anonymous() -> None:
 
 def test_orchestrator_status_route_is_anonymous() -> None:
     source = _function_app_source()
-    assert "@app.route(" in source
-    assert 'route="orchestrator/{instance_id}"' in source
-    assert "auth_level=func.AuthLevel.ANONYMOUS" in source
+    pattern = re.compile(
+        r'@app\.route\(\s*route="orchestrator/\{instance_id\}".*?auth_level=func\.AuthLevel\.ANONYMOUS.*?\)',
+        flags=re.DOTALL,
+    )
+    assert pattern.search(source)
