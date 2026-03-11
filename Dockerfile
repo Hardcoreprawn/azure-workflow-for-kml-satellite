@@ -5,6 +5,7 @@
 # Stage 1: Build GDAL and Python geospatial wheels
 # ---------------------------------------------------------------------------
 ARG BUILDER_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
+ARG RUNTIME_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
 FROM ${BUILDER_BASE_IMAGE} AS builder
 
 # Install system dependencies for building GDAL, Fiona, rasterio
@@ -45,7 +46,6 @@ COPY --chown=app:app kml_satellite/ /build/kml_satellite/
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
 # ---------------------------------------------------------------------------
-ARG RUNTIME_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
 FROM ${RUNTIME_BASE_IMAGE}
 
 # Install only the runtime GDAL/GEOS/PROJ libraries (no build tools).
