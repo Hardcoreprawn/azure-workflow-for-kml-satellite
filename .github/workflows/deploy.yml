@@ -93,8 +93,12 @@ jobs:
 
       - name: Set container image name
         id: image
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}:$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "cache_ref=ghcr.io/${GITHUB_REPOSITORY,,}:buildcache" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -115,11 +119,11 @@ jobs:
           build-args: |
             BUILDER_BASE_IMAGE=${{ env.BUILDER_BASE_IMAGE }}
             RUNTIME_BASE_IMAGE=${{ env.RUNTIME_BASE_IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ steps.image.outputs.cache_ref }}
+          cache-to: type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ steps.image.outputs.source_sha }}
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
