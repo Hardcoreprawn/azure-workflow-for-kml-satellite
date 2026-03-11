@@ -65,14 +65,17 @@ def test_dockerfile_uses_correct_base_image():
     with dockerfile_path.open(encoding="utf-8") as f:
         content = f.read()
 
-    # Verify Base Image (Python 3.12)
+    # Verify Base Image (Python 3.12) default remains explicit.
     assert "mcr.microsoft.com/azure-functions/python:4-python3.12" in content, (
-        "Dockerfile must use Python 3.12 Azure Functions base image"
+        "Dockerfile must default to Python 3.12 Azure Functions base image"
     )
 
-    # Verify Multi-Stage Build
+    # Verify Multi-Stage Build with configurable base image args.
     assert "AS builder" in content
-    assert "FROM mcr.microsoft.com/azure-functions/python:4-python3.12" in content
+    assert "ARG BUILDER_BASE_IMAGE=" in content
+    assert "ARG RUNTIME_BASE_IMAGE=" in content
+    assert "FROM ${BUILDER_BASE_IMAGE} AS builder" in content
+    assert "FROM ${RUNTIME_BASE_IMAGE}" in content
 
 
 def test_requirements_include_critical_libs():
