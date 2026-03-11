@@ -413,7 +413,9 @@ jobs:
               CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
 
               if [[ "$CURRENT_ENDPOINT" != "$WEBHOOK_URL" ]]; then
-                fail "Event Grid subscription exists but points at an unexpected endpoint."
+                log "Event Grid subscription endpoint has not converged yet. Waiting for the reconciled endpoint to appear..."
+                sleep 5
+                continue
               fi
 
               if [[ "$CURRENT_STATE" == "Succeeded" ]]; then

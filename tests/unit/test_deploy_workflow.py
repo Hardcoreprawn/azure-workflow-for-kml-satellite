@@ -312,6 +312,28 @@ class TestReadinessCheck:
             "Drift cleanup must pass --yes so Azure CLI does not prompt in CI"
         )
 
+    def test_reconcile_retries_endpoint_mismatch_before_failing(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Recreate verification must tolerate stale endpoint reads until convergence."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+
+        assert "Event Grid subscription endpoint has not converged yet" in run_script, (
+            "Reconciliation should log endpoint mismatch as a retryable convergence state"
+        )
+        assert "sleep 5" in run_script, (
+            "Endpoint mismatch verification should wait and retry instead of failing immediately"
+        )
+        assert (
+            'fail "Event Grid subscription exists but points at an unexpected endpoint."'
+            not in run_script
+        ), (
+            "Transient endpoint mismatch during recreate verification should not hard-fail immediately"
+        )
+
     def test_reconcile_detects_webhook_key_availability(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
