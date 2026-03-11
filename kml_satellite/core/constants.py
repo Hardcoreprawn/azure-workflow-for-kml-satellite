@@ -22,6 +22,9 @@ DEFAULT_INPUT_CONTAINER: str = "kml-input"
 DEFAULT_OUTPUT_CONTAINER: str = "kml-output"
 """Default blob container for all pipeline outputs (imagery, metadata, KML archive)."""
 
+PIPELINE_PAYLOADS_CONTAINER: str = "pipeline-payloads"
+"""Container used for offloaded payloads and lightweight operational captures."""
+
 
 # ---------------------------------------------------------------------------
 # Numeric defaults and bounds

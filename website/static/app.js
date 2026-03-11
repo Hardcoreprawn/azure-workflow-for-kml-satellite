@@ -4,6 +4,8 @@
  */
 
 const API_ENDPOINT = '/api/readiness';
+const CONTACT_FORM_ENDPOINT = '/api/contact-form';
+const CONTACT_FORM_FALLBACK_ENDPOINT = 'https://func-kmlsat-dev.azurewebsites.net/api/contact-form';
 const STATUS_CHECK_INTERVAL = 30000; // 30 seconds
 
 /**
@@ -125,9 +127,45 @@ async function handleInterestFormSubmit(event) {
     messageEl.textContent = '';
 
     try {
-        // In #154, this will POST to /api/contact-form
-        // For now, just acknowledge
-        console.log('Interest form data:', data);
+        const payload = {
+            email: String(data.email || '').trim(),
+            organization: String(data.organization || '').trim(),
+            use_case: String(data.use_case || '').trim(),
+            aoi_size: String(data.aoi_size || '').trim(),
+        };
+
+        let response;
+        try {
+            response = await fetch(CONTACT_FORM_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+        } catch (relativeError) {
+            console.warn('Relative API endpoint failed, trying fallback endpoint:', relativeError);
+            response = await fetch(CONTACT_FORM_FALLBACK_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+        }
+
+        if (!response.ok) {
+            let errorMessage = 'Something went wrong. Please try again.';
+            try {
+                const errorPayload = await response.json();
+                if (errorPayload && errorPayload.error) {
+                    errorMessage = String(errorPayload.error);
+                }
+            } catch (_ignored) {
+                // Keep default message if response body is not JSON.
+            }
+            throw new Error(errorMessage);
+        }
 
         messageEl.textContent = '✅ Thank you! We\'ll be in touch within 24 hours. Check your email.';
         messageEl.style.color = '#22c55e';
@@ -142,7 +180,7 @@ async function handleInterestFormSubmit(event) {
 
     } catch (error) {
         console.error('Form submission error:', error);
-        messageEl.textContent = '❌ Something went wrong. Please try again.';
+        messageEl.textContent = `❌ ${error.message || 'Something went wrong. Please try again.'}`;
         messageEl.style.color = '#ef4444';
         submitBtn.disabled = false;
         submitBtn.textContent = 'Get Early Access';
