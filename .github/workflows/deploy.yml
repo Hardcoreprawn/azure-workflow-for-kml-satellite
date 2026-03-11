@@ -196,6 +196,7 @@ jobs:
           HOST_POLL_INTERVAL_SECONDS=15
           MAX_SUBSCRIPTION_SECONDS=600
           SUBSCRIPTION_POLL_INTERVAL_SECONDS=20
+          DELETE_PROPAGATION_SECONDS=120
 
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
@@ -343,6 +344,8 @@ jobs:
           }
 
           EXISTING_JSON=$(read_existing_subscription)
+          DELETE_CONFIRMED=0
+          CREATE_ACCEPTED=0
           if [[ -n "$EXISTING_JSON" ]]; then
             EXISTING_STATE=$(extract_subscription_state "$EXISTING_JSON")
             EXISTING_ENDPOINT=$(extract_subscription_endpoint "$EXISTING_JSON")
@@ -356,6 +359,21 @@ jobs:
                 --system-topic-name "$SYSTEM_TOPIC_NAME" \
                 --resource-group "$RESOURCE_GROUP" \
                 --yes
+
+              DELETE_UNTIL=$(( $(date +%s) + DELETE_PROPAGATION_SECONDS ))
+              while (( $(date +%s) < DELETE_UNTIL )); do
+                CURRENT_JSON=$(read_existing_subscription)
+                if [[ -z "$CURRENT_JSON" ]]; then
+                  DELETE_CONFIRMED=1
+                  break
+                fi
+                log "Deletion has not propagated yet. Waiting for the old subscription to disappear..."
+                sleep 5
+              done
+
+              if [[ $DELETE_CONFIRMED -ne 1 ]]; then
+                fail "Existing subscription delete did not propagate within retry budget."
+              fi
             fi
           fi
 
@@ -389,8 +407,10 @@ jobs:
             set -e
 
             if [[ $CREATE_EXIT -eq 0 ]]; then
+              CREATE_ACCEPTED=1
               log "Subscription create call accepted by Azure."
             elif echo "$CREATE_OUTPUT" | grep -qiE "already exists"; then
+              CREATE_ACCEPTED=1
               log "Subscription already exists during reconcile; proceeding to verification."
             elif echo "$CREATE_OUTPUT" | grep -qiE "(Url validation|destination endpoint|ResourceNotFound|webhook|timed out|temporarily unavailable)"; then
               LAST_CREATE_ERROR=$(echo "$CREATE_OUTPUT" | tail -n 20)
@@ -415,6 +435,12 @@ jobs:
 
               CURRENT_STATE=$(extract_subscription_state "$CURRENT_JSON")
               CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
+
+              if [[ "$CURRENT_STATE" == "Succeeded" && -z "$CURRENT_ENDPOINT" && $DELETE_CONFIRMED -eq 1 && $CREATE_ACCEPTED -eq 1 ]]; then
+                log "Azure did not return the full endpoint URL after recreate; accepting state=Succeeded after confirmed delete and recreate."
+                SUBSCRIPTION_CREATED=1
+                break 2
+              fi
 
               if [[ "$CURRENT_ENDPOINT" != "$WEBHOOK_URL" ]]; then
                 LAST_CREATE_ERROR="Endpoint mismatch during reconcile: current_state=${CURRENT_STATE:-unknown}, current_endpoint=${CURRENT_ENDPOINT:-none}, expected_endpoint=${WEBHOOK_URL:-none}"
@@ -444,7 +470,9 @@ jobs:
           VERIFIED_STATE=$(extract_subscription_state "$VERIFIED_JSON")
           VERIFIED_ENDPOINT=$(extract_subscription_endpoint "$VERIFIED_JSON")
 
-          if [[ -z "$VERIFIED_JSON" || "$VERIFIED_STATE" != "Succeeded" || "$VERIFIED_ENDPOINT" != "$WEBHOOK_URL" ]]; then
+          if [[ -n "$VERIFIED_JSON" && "$VERIFIED_STATE" == "Succeeded" && -z "$VERIFIED_ENDPOINT" && $DELETE_CONFIRMED -eq 1 && $CREATE_ACCEPTED -eq 1 ]]; then
+            log "Final verification accepted state=Succeeded without endpoint URL after confirmed recreate."
+          elif [[ -z "$VERIFIED_JSON" || "$VERIFIED_STATE" != "Succeeded" || "$VERIFIED_ENDPOINT" != "$WEBHOOK_URL" ]]; then
             fail "Final Event Grid subscription verification failed after reconcile."
           fi
 

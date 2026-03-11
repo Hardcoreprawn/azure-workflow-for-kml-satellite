@@ -311,6 +311,15 @@ class TestReadinessCheck:
         assert "--yes" in run_script, (
             "Drift cleanup must pass --yes so Azure CLI does not prompt in CI"
         )
+        assert "Deletion has not propagated yet" in run_script, (
+            "Drift cleanup should wait for the old subscription to disappear before recreate"
+        )
+        assert "DELETE_PROPAGATION_SECONDS" in run_script, (
+            "Delete propagation should use a dedicated timeout budget, not one poll interval"
+        )
+        assert (
+            "Existing subscription delete did not propagate within retry budget." in run_script
+        ), "Delete propagation should fail clearly if the old subscription never disappears"
 
     def test_reconcile_retries_endpoint_mismatch_before_failing(
         self, deploy_workflow: dict[str, Any]
@@ -338,6 +347,18 @@ class TestReadinessCheck:
         )
         assert "current_endpoint=${CURRENT_ENDPOINT:-none}" in run_script, (
             "Endpoint mismatch diagnostics should include the last observed endpoint"
+        )
+        assert "Azure did not return the full endpoint URL after recreate" in run_script, (
+            "Recreated subscriptions should tolerate missing endpoint URLs when Azure omits them"
+        )
+        assert "DELETE_CONFIRMED" in run_script, (
+            "Accepting endpoint-less subscriptions should only happen after confirmed delete and recreate"
+        )
+        assert (
+            "Final verification accepted state=Succeeded without endpoint URL after confirmed recreate."
+            in run_script
+        ), (
+            "Final verification should honor the same endpoint-less success path after confirmed recreate"
         )
 
     def test_reconcile_inner_verify_loop_respects_outer_deadline(
