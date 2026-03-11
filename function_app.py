@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import azure.durable_functions as df
 import azure.functions as func
 
 from kml_satellite.core.config import PipelineConfig, config_get_int
-from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER
+from kml_satellite.core.constants import DEFAULT_OUTPUT_CONTAINER, PIPELINE_PAYLOADS_CONTAINER
 from kml_satellite.core.exceptions import ContractError
 from kml_satellite.core.ingress import (
     build_and_validate_orchestrator_input,
@@ -36,6 +39,45 @@ from kml_satellite.models.payloads import (
 app = func.FunctionApp()
 
 logger = logging.getLogger("kml_satellite.function_app")
+
+
+_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _sanitize_marketing_field(value: object, *, max_length: int = 2000) -> str:
+    """Return a trimmed string field suitable for persistence and logging."""
+    if value is None:
+        return ""
+    return str(value).strip()[:max_length]
+
+
+def _validate_marketing_interest_payload(
+    payload: object,
+) -> tuple[dict[str, str] | None, str | None]:
+    """Validate and normalize incoming contact form payload."""
+    if not isinstance(payload, dict):
+        return None, "Request body must be a JSON object"
+
+    email = _sanitize_marketing_field(payload.get("email"), max_length=320).lower()
+    organization = _sanitize_marketing_field(payload.get("organization"), max_length=256)
+    use_case = _sanitize_marketing_field(payload.get("use_case"), max_length=4000)
+    aoi_size = _sanitize_marketing_field(payload.get("aoi_size"), max_length=64)
+
+    if not email:
+        return None, "Field 'email' is required"
+    if not _EMAIL_PATTERN.match(email):
+        return None, "Field 'email' must be a valid email address"
+    if not organization:
+        return None, "Field 'organization' is required"
+    if not use_case:
+        return None, "Field 'use_case' is required"
+
+    return {
+        "email": email,
+        "organization": organization,
+        "use_case": use_case,
+        "aoi_size": aoi_size,
+    }, None
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +336,80 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     return func.HttpResponse(response_body, status_code=status_code, mimetype="application/json")
+
+
+@app.function_name("marketing_interest")
+@app.route(route="contact-form", methods=["POST", "OPTIONS"])
+async def marketing_interest(req: func.HttpRequest) -> func.HttpResponse:
+    """Capture early-access requests from the marketing website (#154)."""
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204)
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        response = json.dumps({"error": "Request body must be valid JSON"})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    normalized, validation_error = _validate_marketing_interest_payload(payload)
+    if validation_error:
+        response = json.dumps({"error": validation_error})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    assert normalized is not None  # Type narrowing: validation guarantees normalized payload.
+
+    submitted_at = datetime.now(UTC).isoformat()
+    submission_id = uuid4().hex
+    source_ip = _sanitize_marketing_field(
+        req.headers.get("x-forwarded-for") or req.headers.get("x-client-ip"),
+        max_length=256,
+    )
+    user_agent = _sanitize_marketing_field(req.headers.get("user-agent"), max_length=512)
+
+    submission = {
+        "submission_id": submission_id,
+        "submitted_at": submitted_at,
+        "source_ip": source_ip,
+        "user_agent": user_agent,
+        **normalized,
+    }
+
+    blob_name = f"marketing-interest/{submitted_at[:10]}/{submission_id}.json"
+
+    try:
+        blob_service = get_blob_service_client()
+        container_client = blob_service.get_container_client(PIPELINE_PAYLOADS_CONTAINER)
+        container_client.create_container()
+    except Exception:
+        # Container likely already exists; continue to upload.
+        pass
+
+    try:
+        blob_service = get_blob_service_client()
+        blob_client = blob_service.get_blob_client(
+            container=PIPELINE_PAYLOADS_CONTAINER,
+            blob=blob_name,
+        )
+        blob_client.upload_blob(json.dumps(submission), overwrite=False)
+    except Exception as exc:
+        logger.exception("Failed to persist marketing interest submission: %s", str(exc))
+        response = json.dumps({"error": "Failed to capture request. Please try again."})
+        return func.HttpResponse(response, status_code=500, mimetype="application/json")
+
+    logger.info(
+        "Marketing interest captured | submission_id=%s | organization=%s",
+        submission_id,
+        normalized["organization"],
+    )
+
+    response = json.dumps(
+        {
+            "status": "accepted",
+            "submission_id": submission_id,
+            "message": "Interest request received",
+        }
+    )
+    return func.HttpResponse(response, status_code=202, mimetype="application/json")
 
 
 # ---------------------------------------------------------------------------
