@@ -127,6 +127,33 @@ class TestContainerDeployment:
         run_script = image_step.get("run", "")
         assert "GITHUB_SHA" in run_script, "Image tag must include the commit SHA for traceability"
 
+    def test_registry_build_cache_ref_is_set(self, deploy_workflow: dict[str, Any]) -> None:
+        """Deploy workflow must publish a stable registry cache ref for Docker BuildKit reuse."""
+        steps = _get_steps(deploy_workflow)
+        image_step = _find_step(steps, "image name") or _find_step(steps, "image tag")
+        assert image_step is not None, "No image name/tag step found"
+
+        run_script = image_step.get("run", "")
+        assert "cache_ref=" in run_script, "Image step must emit a cache_ref output"
+        assert "${GITHUB_REPOSITORY,,}:buildcache" in run_script, (
+            "Cache ref must use a stable lowercased ghcr buildcache tag"
+        )
+
+    def test_docker_build_uses_registry_cache_backend(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Docker build step must use registry-backed cache import/export."""
+        steps = _get_steps(deploy_workflow)
+        build = _find_step(steps, "build and push")
+        assert build is not None
+
+        with_block = build.get("with", {})
+        cache_from = str(with_block.get("cache-from", ""))
+        cache_to = str(with_block.get("cache-to", ""))
+
+        assert cache_from == "type=registry,ref=${{ steps.image.outputs.cache_ref }}"
+        assert cache_to == "type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max"
+
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
         steps = _get_steps(deploy_workflow)
