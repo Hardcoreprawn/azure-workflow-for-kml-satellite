@@ -74,7 +74,7 @@ jobs:
       - name: Validate geospatial native imports
         run: uv run python -c "import rasterio, fiona, pyproj, shapely"
 
-      - name: Run geospatial architecture tests
+      - name: Run unit tests (geospatial lane)
         run: |
           uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
 

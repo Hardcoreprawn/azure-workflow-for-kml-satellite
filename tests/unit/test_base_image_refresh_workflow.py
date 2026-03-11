@@ -41,6 +41,11 @@ def test_workflow_has_schedule_and_manual_dispatch(workflow: dict[str, Any]) -> 
     assert "workflow_dispatch" in on_block
 
 
+def test_workflow_permissions_follow_least_privilege(workflow: dict[str, Any]) -> None:
+    permissions = workflow.get("permissions", {})
+    assert permissions == {"contents": "read", "packages": "write"}
+
+
 def test_workflow_builds_local_candidate_before_publish(workflow: dict[str, Any]) -> None:
     steps = _steps(workflow)
     build = _step_with_name_fragment(steps, "build base image candidate")
@@ -104,3 +109,4 @@ def test_base_image_workflow_uses_dedicated_dockerfile() -> None:
     assert "ARG BASE_IMAGE=" in content
     assert "FROM ${BASE_IMAGE}" in content
     assert "import rasterio, fiona, pyproj, shapely, lxml" in content
+    assert "org.opencontainers.image.source" not in content

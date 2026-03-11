@@ -60,5 +60,8 @@ def test_native_job_installs_geospatial_system_deps(ci_workflow: dict[str, Any])
 
 def test_native_job_runs_geospatial_validation(ci_workflow: dict[str, Any]) -> None:
     job = ci_workflow.get("jobs", {}).get("native-geo-validation", {})
+    names = "\n".join(_step_names(job))
     scripts = "\n".join(str(s.get("run", "")) for s in _steps(job))
+    assert "Run unit tests (geospatial lane)" in names
     assert "import rasterio, fiona, pyproj, shapely" in scripts
+    assert 'uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"' in scripts

@@ -13,8 +13,7 @@ RUN python -m pip install --no-cache-dir \
     "rasterio>=1.4.0" \
     "shapely>=2.0.6"
 
-LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
-      org.opencontainers.image.description="Reusable geospatial runtime base for KML satellite Azure Functions images"
+LABEL org.opencontainers.image.description="Reusable geospatial runtime base for KML satellite Azure Functions images"
 
 ENV GDAL_DATA=/usr/share/gdal \
     PROJ_DATA=/usr/share/proj \
