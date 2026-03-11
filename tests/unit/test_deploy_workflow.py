@@ -296,6 +296,22 @@ class TestReadinessCheck:
         assert "endpoint" in run_script, "Reconciliation must verify subscription endpoint URL"
         assert "properties" in run_script, "Reconciliation must check subscription properties"
 
+    def test_reconcile_deletes_drifted_subscription_non_interactively(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Drift cleanup must not prompt for confirmation on headless CI runners."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+
+        assert "event-subscription delete" in run_script, (
+            "Reconciliation must delete drifted Event Grid subscriptions before recreate"
+        )
+        assert "--yes" in run_script, (
+            "Drift cleanup must pass --yes so Azure CLI does not prompt in CI"
+        )
+
     def test_reconcile_detects_webhook_key_availability(
         self, deploy_workflow: dict[str, Any]
     ) -> None:

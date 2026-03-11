@@ -354,7 +354,8 @@ jobs:
               az eventgrid system-topic event-subscription delete \
                 --name "$SUBSCRIPTION_NAME" \
                 --system-topic-name "$SYSTEM_TOPIC_NAME" \
-                --resource-group "$RESOURCE_GROUP"
+                --resource-group "$RESOURCE_GROUP" \
+                --yes
             fi
           fi
 
