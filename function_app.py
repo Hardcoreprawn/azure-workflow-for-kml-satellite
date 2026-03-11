@@ -44,6 +44,85 @@ logger = logging.getLogger("kml_satellite.function_app")
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _isoformat_or_empty(value: object) -> str:
+    """Serialize datetime-like values for JSON responses."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _extract_unique_paths(results: object, *candidate_keys: str) -> list[str]:
+    """Collect unique blob paths from a list of activity result dicts."""
+    if not isinstance(results, list):
+        return []
+
+    paths: list[str] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        for key in candidate_keys:
+            value = item.get(key)
+            if isinstance(value, str) and value and value not in paths:
+                paths.append(value)
+    return paths
+
+
+def _summarize_orchestrator_output(output: object) -> dict[str, object] | None:
+    """Return a compact, diagnostics-friendly view of orchestration output."""
+    if not isinstance(output, dict):
+        return None
+
+    metadata_results = output.get("metadata_results")
+    download_results = output.get("download_results")
+    post_process_results = output.get("post_process_results")
+
+    return {
+        "status": str(output.get("status", "")),
+        "message": str(output.get("message", "")),
+        "blobName": str(output.get("blob_name", "")),
+        "featureCount": int(output.get("feature_count", 0) or 0),
+        "metadataCount": int(output.get("metadata_count", 0) or 0),
+        "imageryReady": int(output.get("imagery_ready", 0) or 0),
+        "imageryFailed": int(output.get("imagery_failed", 0) or 0),
+        "downloadsCompleted": int(output.get("downloads_completed", 0) or 0),
+        "postProcessCompleted": int(output.get("post_process_completed", 0) or 0),
+        "artifacts": {
+            "metadataPaths": _extract_unique_paths(metadata_results, "metadata_path"),
+            "rawImageryPaths": _extract_unique_paths(
+                download_results,
+                "blob_path",
+                "canonical_blob_path",
+                "source_blob_path",
+            ),
+            "clippedImageryPaths": _extract_unique_paths(
+                post_process_results,
+                "clipped_blob_path",
+                "output_path",
+            ),
+        },
+    }
+
+
+def _build_orchestrator_diagnostics_payload(status: object) -> dict[str, object]:
+    """Build a direct JSON payload for anonymous orchestration diagnostics."""
+    payload: dict[str, object] = {
+        "instanceId": str(getattr(status, "instance_id", "")),
+        "name": str(getattr(status, "name", "")),
+        "runtimeStatus": str(getattr(status, "runtime_status", "")),
+        "createdTime": _isoformat_or_empty(getattr(status, "created_time", None)),
+        "lastUpdatedTime": _isoformat_or_empty(getattr(status, "last_updated_time", None)),
+        "customStatus": getattr(status, "custom_status", None),
+    }
+
+    output_summary = _summarize_orchestrator_output(getattr(status, "output", None))
+    if output_summary is not None:
+        payload["output"] = output_summary
+
+    return payload
+
+
 def _sanitize_marketing_field(value: object, *, max_length: int = 2000) -> str:
     """Return a trimmed string field suitable for persistence and logging."""
     if value is None:
@@ -234,8 +313,8 @@ async def orchestrator_status(
     """Return the status of a specific orchestrator instance.
 
     This endpoint is intentionally anonymous for operational diagnostics:
-    deploy smoke checks and responders can quickly verify Durable instance
-    state without requiring key bootstrap first.
+    deploy smoke checks and responders can inspect Durable instance state
+    and output artifact paths without requiring key bootstrap first.
     """
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
@@ -245,7 +324,8 @@ async def orchestrator_status(
     if not status:
         return func.HttpResponse("Instance not found", status_code=404)
 
-    return client.create_check_status_response(req, instance_id)
+    response_body = json.dumps(_build_orchestrator_diagnostics_payload(status))
+    return func.HttpResponse(response_body, status_code=200, mimetype="application/json")
 
 
 # ---------------------------------------------------------------------------

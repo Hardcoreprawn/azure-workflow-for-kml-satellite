@@ -452,6 +452,21 @@ class TestOrchestratorFunction:
         )
         assert result["download_results"] == dl_results
 
+    def test_metadata_results_in_output(self) -> None:
+        """Result includes metadata_results list for diagnostics."""
+        context = _make_context(_sample_blob_event())
+        metadata_results = [
+            {"metadata_path": "metadata/2026/02/test/a1.json"},
+            {"metadata_path": "metadata/2026/02/test/a2.json"},
+        ]
+        result = _run_orchestrator(
+            context,
+            features=[{"name": "f1"}, {"name": "f2"}],
+            aois=[{"feature_name": "a1"}, {"feature_name": "a2"}],
+            metadata_results=metadata_results,
+        )
+        assert result["metadata_results"] == metadata_results
+
     def test_download_failure_captured_not_fatal(self) -> None:
         """If a download batch raises, the error is captured in results."""
         context = _make_context(_sample_blob_event())

@@ -52,7 +52,7 @@ curl -sS http://localhost:7071/api/readiness
 
 ### Orchestration status inspection
 
-- `GET /api/orchestrator/{instance_id}` — returns Durable Functions check-status response
+- `GET /api/orchestrator/{instance_id}` — returns direct JSON diagnostics with runtime state, summary counts, and discovered artifact blob paths
 
 Local check:
 
@@ -128,7 +128,7 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | --- | --- | --- | --- | --- |
 | GET | `/api/health` | Liveness probe | 200 | 500 |
 | GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
-| GET | `/api/orchestrator/{instance_id}` | Durable instance status lookup | 200 | 400 / 404 |
+| GET | `/api/orchestrator/{instance_id}` | Durable instance status + output artifact diagnostics | 200 | 400 / 404 |
 
 ### Event-driven entrypoint
 

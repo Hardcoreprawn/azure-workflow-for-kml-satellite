@@ -852,6 +852,7 @@ def build_pipeline_summary(
         "blob_url": blob_event.get("blob_url", ""),
         "feature_count": ingestion["feature_count"],
         "aoi_count": ingestion["aoi_count"],
+        "metadata_results": ingestion["metadata_results"],
         "metadata_count": ingestion["metadata_count"],
         "imagery_ready": acquisition["ready_count"],
         "imagery_failed": acquisition["failed_count"],
