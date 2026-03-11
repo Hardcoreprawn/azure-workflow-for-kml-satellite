@@ -312,6 +312,47 @@ class TestReadinessCheck:
             "Drift cleanup must pass --yes so Azure CLI does not prompt in CI"
         )
 
+    def test_reconcile_retries_endpoint_mismatch_before_failing(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Recreate verification must tolerate stale endpoint reads until convergence."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+
+        assert "Event Grid subscription endpoint has not converged yet" in run_script, (
+            "Reconciliation should log endpoint mismatch as a retryable convergence state"
+        )
+        assert "sleep 5" in run_script, (
+            "Endpoint mismatch verification should wait and retry instead of failing immediately"
+        )
+        assert (
+            'fail "Event Grid subscription exists but points at an unexpected endpoint."'
+            not in run_script
+        ), (
+            "Transient endpoint mismatch during recreate verification should not hard-fail immediately"
+        )
+        assert 'LAST_CREATE_ERROR="Endpoint mismatch during reconcile:' in run_script, (
+            "Endpoint mismatch should record actionable diagnostics for timeout failures"
+        )
+        assert "current_endpoint=${CURRENT_ENDPOINT:-none}" in run_script, (
+            "Endpoint mismatch diagnostics should include the last observed endpoint"
+        )
+
+    def test_reconcile_inner_verify_loop_respects_outer_deadline(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """The inner verification loop must not run past the overall reconcile timeout."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+
+        assert "if (( $(date +%s) >= RECONCILE_DEADLINE )); then" in run_script, (
+            "Inner verification should stop when the outer reconcile deadline is reached"
+        )
+
     def test_reconcile_detects_webhook_key_availability(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
