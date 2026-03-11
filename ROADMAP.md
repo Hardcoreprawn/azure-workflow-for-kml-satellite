@@ -1,7 +1,7 @@
 # TreeSight - Development Roadmap
 
 **Last updated:** 11 March 2026
-**Status:** Active - Phase 4 (Operations reliability and delivery velocity)
+**Status:** Active - E2E pipeline verification (production confidence gate)
 
 This roadmap is synchronized to the current GitHub issue backlog. The execution order below is dependency-first (not time-based).
 
@@ -23,6 +23,7 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 
 ### Recently completed
 
+- #131 closed: direct orchestration diagnostics payload
 - #153 closed: minimal marketing website
 - #154 closed: SWA deployment workflow
 - #155 closed: contact form handler wiring
@@ -30,33 +31,48 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 - #128 closed: Planetary Computer URL signing fix
 - #137 closed: infra migration to OpenTofu
 - #138 closed: split dev/prd state containers
+- #161 closed: Event Grid recreate propagation fix
 
-### Roadmap hygiene actions required
+### Roadmap hygiene
 
-- Remove references to non-existent issues #156, #157, #158, #159, #160, #161.
-- Correct stale status entry for #47 (still OPEN, not completed).
-- Keep phase labels aligned with issue labels (`phase-5` through `phase-9`) where those labels are already set.
+- #47 is still OPEN — do not mark closed.
+- Non-existent issues #156–#160 removed from all references.
 
 ---
 
 ## Active Execution Plan (Do Next, In Order)
 
-### Wave 0 - Restore operational visibility (blocker wave)
+### Wave 0 - Restore operational visibility ✅ COMPLETE
 
-**Goal:** regain confidence in remote verification and production diagnostics.
+- #131 closed: direct orchestration diagnostics payload (anonymous JSON, no management URLs)
+- #163 open: document readiness and diagnostics access model
+- #164 open: post-deploy smoke checks for artifact verification
 
-1. #131 - E2E manual test diagnostics blocked
-2. Create follow-up issue: post-deploy smoke checks that validate output artifacts and auth path end-to-end
-3. Create follow-up issue: explicit readiness/health access model documentation (public vs authenticated probe contract)
+---
+
+### Wave 1 - E2E pipeline verification (CURRENT — do this now)
+
+**Goal:** prove the deployed pipeline actually works end-to-end. Until this passes, all other work ships unverified software.
+
+**Rationale for promotion:** Wave 0 restored observability. We can now see what a run produces. The E2E test is the first meaningful use of that surface. CI speed improvements (former Wave 1) are about iteration cost — valuable, but the pipeline correctness question is more urgent.
+
+1. **#13** - end-to-end pipeline integration test (upload KML → verify GeoTIFF + metadata in blob storage)
+2. **#15** - error handling and retry logic verified under failure conditions
+3. **#14** - concurrent upload stress test (≥20 files)
+4. **#16** - logging and alerting validated with correlation IDs in App Insights
+5. **#17** - security review (Key Vault, Managed Identity, RBAC)
+6. **#19** - UAT sign-off
 
 **Exit criteria:**
 
-- We can verify a deployed orchestration run without manual guesswork.
-- Smoke evidence is attached to each deploy (health, readiness, artifact existence).
+- Automated test uploads `01_single_polygon_orchard.kml` and asserts GeoTIFF + metadata JSON appear at correct blob paths.
+- Multi-feature KML (`03_multi_feature_vineyard.kml`) produces correct output count.
+- All steps traceable via correlation ID in Application Insights.
+- No open P0/P1 correctness bugs.
 
-### Wave 1 - Delivery speed and CI throughput
+### Wave 2 - Delivery speed and CI throughput
 
-**Goal:** reduce feedback/deploy latency while keeping deterministic, secure builds.
+**Goal:** reduce feedback/deploy latency. Now that correctness is proven, speed up the loop.
 
 1. #152 - choose and implement native geospatial base image strategy
 2. #150 - split CI into fast lane and native geospatial lane
@@ -71,19 +87,15 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 - Native lane still enforces geospatial/runtime correctness.
 - Deploy workflow has measurable speed improvements with no readiness regressions.
 
-### Wave 2 - Hardening debt still open from Phase 3
+### Wave 3 - Hardening and quality debt
 
-**Goal:** close foundational quality/security gaps that remain open.
+**Goal:** close remaining quality/security/docs gaps before feature expansion.
 
-1. #13 - end-to-end pipeline integration test
-2. #15 - error handling and retry verification
-3. #16 - logging and alerting validation
-4. #17 - security review (Key Vault, MI, RBAC)
-5. #14 - concurrent upload stress test
-6. #18 - docs runbook/API architecture updates
-7. #19 - UAT sign-off
-8. #47 - narrow `Any` usage at third-party boundaries
-9. #132 - TypedDict to Pydantic migration (incremental, no behavior regressions)
+1. #18 - docs runbook/API architecture updates
+2. #47 - narrow `Any` usage at third-party boundaries
+3. #132 - TypedDict to Pydantic migration (incremental, no behavior regressions)
+4. #163 - document readiness and diagnostics access model
+5. #164 - post-deploy smoke checks for artifact verification
 
 **Exit criteria:**
 
@@ -160,16 +172,16 @@ Decision gate before starting:
 
 Use this exact queue unless blocked:
 
-1. #131
-2. #152
-3. #150
-4. #151
-5. #129
-6. #130
-7. #148
-8. #13
-9. #15
-10. #16
+1. #13  ← START HERE
+2. #15
+3. #14
+4. #16
+5. #17
+6. #19
+7. #152
+8. #150
+9. #151
+10. #129
 
 If blocked on an item, move to the next one and record the blocker in the issue.
 
