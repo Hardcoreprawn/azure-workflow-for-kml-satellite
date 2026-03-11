@@ -221,7 +221,11 @@ def poll_order_suborchestrator(context: df.DurableOrchestrationContext) -> objec
 
 
 @app.function_name("orchestrator_status")
-@app.route(route="orchestrator/{instance_id}", methods=["GET"])
+@app.route(
+    route="orchestrator/{instance_id}",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 @app.durable_client_input(client_name="client")
 async def orchestrator_status(
     req: func.HttpRequest,
@@ -249,7 +253,7 @@ async def orchestrator_status(
 
 
 @app.function_name("health_liveness")
-@app.route(route="health", methods=["GET"])
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 async def health_liveness(req: func.HttpRequest) -> func.HttpResponse:
     """Liveness probe — validates that function app can start.
 
@@ -281,7 +285,7 @@ async def health_liveness(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name("health_readiness")
-@app.route(route="readiness", methods=["GET"])
+@app.route(route="readiness", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
     """Readiness probe — validates all dependencies are available.
 
