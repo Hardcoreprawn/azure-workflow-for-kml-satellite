@@ -55,4 +55,6 @@ def test_contact_form_endpoint_registered_in_function_app() -> None:
     content = function_app_path.read_text(encoding="utf-8")
 
     assert '@app.function_name("marketing_interest")' in content
-    assert '@app.route(route="contact-form", methods=["POST", "OPTIONS"])' in content
+    assert 'route="contact-form"' in content
+    assert 'methods=["POST", "OPTIONS"]' in content
+    assert "auth_level=func.AuthLevel.ANONYMOUS" in content
