@@ -314,6 +314,9 @@ class TestReadinessCheck:
         assert "Deletion has not propagated yet" in run_script, (
             "Drift cleanup should wait for the old subscription to disappear before recreate"
         )
+        assert "DELETE_PROPAGATION_SECONDS" in run_script, (
+            "Delete propagation should use a dedicated timeout budget, not one poll interval"
+        )
         assert (
             "Existing subscription delete did not propagate within retry budget." in run_script
         ), "Delete propagation should fail clearly if the old subscription never disappears"
@@ -350,6 +353,12 @@ class TestReadinessCheck:
         )
         assert "DELETE_CONFIRMED" in run_script, (
             "Accepting endpoint-less subscriptions should only happen after confirmed delete and recreate"
+        )
+        assert (
+            "Final verification accepted state=Succeeded without endpoint URL after confirmed recreate."
+            in run_script
+        ), (
+            "Final verification should honor the same endpoint-less success path after confirmed recreate"
         )
 
     def test_reconcile_inner_verify_loop_respects_outer_deadline(
