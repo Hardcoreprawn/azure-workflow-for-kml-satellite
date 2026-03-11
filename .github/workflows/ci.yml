@@ -10,8 +10,37 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
+  fast-lint-type-unit:
+    name: Fast Lint Type Unit
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python and project dependencies
+        run: uv sync --all-extras
+
+      - name: Lint with ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check with pyright
+        run: uv run pyright
+
+      - name: Run unit tests
+        run: uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
+
+  native-geo-validation:
+    name: Native Geo Validation
+    runs-on: ubuntu-latest
+    needs: fast-lint-type-unit
 
     steps:
       - name: Checkout code
@@ -31,16 +60,13 @@ jobs:
       - name: Install Python and project dependencies
         run: uv sync --all-extras
 
-      - name: Lint with ruff
+      - name: Validate geospatial native imports
+        run: uv run python -c "import rasterio, fiona, pyproj, shapely"
+
+      - name: Run geospatial architecture tests
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
-      - name: Type check with pyright
-        run: uv run pyright
-
-      - name: Run unit tests
-        run: uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
+          uv run pytest tests/unit/test_dockerfile.py -v --tb=short
+          uv run pytest tests/unit/test_base_image_strategy.py -v --tb=short
 
       - name: Run integration tests
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
