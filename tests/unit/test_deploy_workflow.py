@@ -333,6 +333,25 @@ class TestReadinessCheck:
         ), (
             "Transient endpoint mismatch during recreate verification should not hard-fail immediately"
         )
+        assert 'LAST_CREATE_ERROR="Endpoint mismatch during reconcile:' in run_script, (
+            "Endpoint mismatch should record actionable diagnostics for timeout failures"
+        )
+        assert "current_endpoint=${CURRENT_ENDPOINT:-none}" in run_script, (
+            "Endpoint mismatch diagnostics should include the last observed endpoint"
+        )
+
+    def test_reconcile_inner_verify_loop_respects_outer_deadline(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """The inner verification loop must not run past the overall reconcile timeout."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = reconcile.get("run", "")
+
+        assert "if (( $(date +%s) >= RECONCILE_DEADLINE )); then" in run_script, (
+            "Inner verification should stop when the outer reconcile deadline is reached"
+        )
 
     def test_reconcile_detects_webhook_key_availability(
         self, deploy_workflow: dict[str, Any]

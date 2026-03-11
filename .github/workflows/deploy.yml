@@ -403,6 +403,10 @@ jobs:
 
             VERIFY_UNTIL=$(( $(date +%s) + SUBSCRIPTION_POLL_INTERVAL_SECONDS ))
             while (( $(date +%s) < VERIFY_UNTIL )); do
+              if (( $(date +%s) >= RECONCILE_DEADLINE )); then
+                break
+              fi
+
               CURRENT_JSON=$(read_existing_subscription)
               if [[ -z "$CURRENT_JSON" ]]; then
                 sleep 5
@@ -413,7 +417,8 @@ jobs:
               CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
 
               if [[ "$CURRENT_ENDPOINT" != "$WEBHOOK_URL" ]]; then
-                log "Event Grid subscription endpoint has not converged yet. Waiting for the reconciled endpoint to appear..."
+                LAST_CREATE_ERROR="Endpoint mismatch during reconcile: current_state=${CURRENT_STATE:-unknown}, current_endpoint=${CURRENT_ENDPOINT:-none}, expected_endpoint=${WEBHOOK_URL:-none}"
+                log "Event Grid subscription endpoint has not converged yet (state=${CURRENT_STATE:-unknown}, current_endpoint=${CURRENT_ENDPOINT:-none}, expected=${WEBHOOK_URL:-none}). Waiting for the reconciled endpoint to appear..."
                 sleep 5
                 continue
               fi
