@@ -52,7 +52,16 @@ on:
   workflow_run:
     workflows: ["OpenTofu Apply"]
     types: [completed]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      builder_base_image:
+        description: "Optional override for builder base image"
+        required: false
+        type: string
+      runtime_base_image:
+        description: "Optional override for runtime base image"
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -69,8 +78,6 @@ env:
   EVENT_GRID_SYSTEM_TOPIC_NAME: evgt-kmlsat-dev
   EVENT_GRID_SUBSCRIPTION_NAME: evgs-kml-upload
   EVENT_GRID_TRIGGER_FUNCTION: kml_blob_trigger
-  BUILDER_BASE_IMAGE: ${{ vars.BUILDER_BASE_IMAGE || 'mcr.microsoft.com/azure-functions/python:4-python3.12' }}
-  RUNTIME_BASE_IMAGE: ${{ vars.RUNTIME_BASE_IMAGE || 'mcr.microsoft.com/azure-functions/python:4-python3.12' }}
 
 jobs:
   deploy-dev:
@@ -110,6 +117,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Resolve base image inputs
+        id: base_images
+        shell: bash
+        env:
+          MANUAL_BUILDER_BASE_IMAGE: ${{ inputs.builder_base_image }}
+          MANUAL_RUNTIME_BASE_IMAGE: ${{ inputs.runtime_base_image }}
+        run: |
+          set -euo pipefail
+          builder="${MANUAL_BUILDER_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
+          runtime="${MANUAL_RUNTIME_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
+          echo "builder=$builder" >> "$GITHUB_OUTPUT"
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+
       - name: Build and push container image
         uses: docker/build-push-action@v6
         with:
@@ -117,8 +137,8 @@ jobs:
           push: true
           tags: ${{ steps.image.outputs.name }}
           build-args: |
-            BUILDER_BASE_IMAGE=${{ env.BUILDER_BASE_IMAGE }}
-            RUNTIME_BASE_IMAGE=${{ env.RUNTIME_BASE_IMAGE }}
+            BUILDER_BASE_IMAGE=${{ steps.base_images.outputs.builder }}
+            RUNTIME_BASE_IMAGE=${{ steps.base_images.outputs.runtime }}
           cache-from: type=registry,ref=${{ steps.image.outputs.cache_ref }}
           cache-to: type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max
           labels: |
