@@ -27,6 +27,8 @@ def test_strategy_adr_exists_and_documents_pinning() -> None:
     assert "provenance" in content
     assert "pin" in content or "digest" in content
     assert "option" in content, "ADR should record evaluated options"
+    assert "benchmark" in content, "ADR should capture benchmark evidence"
+    assert "reduced" in content or "%" in content, "ADR should record measured improvement"
 
 
 @pytest.fixture(scope="module")

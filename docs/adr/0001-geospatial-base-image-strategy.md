@@ -49,4 +49,31 @@ Hybrid model (Option 3).
 ### Trade-offs
 
 - Full digest pinning policy enforcement is deferred to follow-up automation work (Issue #151)
-- Benchmarking comparisons will be captured in CI/deploy run history as rollout continues
+
+## Benchmark Evidence
+
+Measurement method:
+
+- Source: GitHub Actions `Deploy Function App` workflow wall-clock duration
+- Metric: `updatedAt - run_started_at` for successful runs
+- Cutover marker for strategy rollout: commit `e4d3e1c0` (PR #178 stream)
+
+Baseline (Option 1 - upstream-only direct dependency install):
+
+- Cohort: 10 successful deploy runs before cutover
+- Average duration: **9.29 minutes**
+
+Candidate (Option 3 - hybrid, project-owned `geo-base-stable` consumed by deploy):
+
+- Cohort: 3 successful deploy runs after cutover
+- Average duration: **4.66 minutes**
+
+Observed improvement:
+
+- Average deploy duration reduced by **49.8%** relative to baseline
+- Representative successful post-cutover run: `23023881403` (6.10 minutes)
+
+Notes:
+
+- Candidate cohorts include non-build deploy tasks (readiness and Event Grid reconciliation), so this is a conservative whole-workflow measure rather than an isolated Docker build-only benchmark.
+- Option 2 (fully project-owned base) is operationally enabled by the refresh workflow publishing immutable run tags plus `geo-base-stable`/`geo-base-latest`; deploy now consumes those refs via explicit base image inputs.
