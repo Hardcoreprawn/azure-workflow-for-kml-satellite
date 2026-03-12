@@ -28,13 +28,21 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
 **Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
 
-See [PID.md](PID.md) for the full Project Initiation Document and [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) for implementation-level architecture notes.
+See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITECTURE_REVIEW.md](docs/reviews/ARCHITECTURE_REVIEW.md) for implementation-level architecture notes.
 
 ## Architecture Reference
 
-- **System architecture:** [PID.md §7](PID.md)
-- **Codebase architecture review:** [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)
+- **System architecture:** [PID.md §7](docs/PID.md)
+- **Deployed component/data-flow guide:** [docs/ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
+- **Codebase architecture review:** [docs/reviews/ARCHITECTURE_REVIEW.md](docs/reviews/ARCHITECTURE_REVIEW.md)
 - **Execution plan and phase gates:** [ROADMAP.md](ROADMAP.md)
+
+## Documentation Index
+
+- **Operations runbook:** [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)
+- **API and interfaces:** [docs/API_INTERFACE_REFERENCE.md](docs/API_INTERFACE_REFERENCE.md)
+- **Metadata JSON schema:** [docs/schemas/aoi-metadata-v2.schema.json](docs/schemas/aoi-metadata-v2.schema.json)
+- **UAT execution plan:** [docs/reviews/UAT_VALIDATION.md](docs/reviews/UAT_VALIDATION.md)
 
 ## Operations Runbook
 
@@ -155,7 +163,7 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 
 ```text
 ├── .github/workflows/ci.yml    CI pipeline (lint, type check, test)
-├── infra/                       Bicep IaC templates
+├── infra/                       OpenTofu IaC modules and environments
 ├── kml_satellite/               Application package
 │   ├── activities/              Durable Functions activity functions
 │   ├── orchestrators/           Durable Functions orchestrators
@@ -187,7 +195,7 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | Linting | ruff |
 | Type Checking | pyright |
 | Testing | pytest |
-| IaC | Bicep |
+| IaC | OpenTofu (Terraform-compatible) |
 | CI/CD | GitHub Actions |
 
 ## Getting Started

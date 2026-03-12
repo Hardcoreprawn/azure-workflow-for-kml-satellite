@@ -1,0 +1,305 @@
+{
+  "$defs": {
+    "AnalysisMetadata": {
+      "description": "Analysis section \u2014 populated by the analytical pipeline (Phase 5+).\n\nAll fields default to None/0/empty so records are valid before analysis runs.",
+      "properties": {
+        "ndvi_blob_path": {
+          "default": "",
+          "title": "Ndvi Blob Path",
+          "type": "string"
+        },
+        "ndvi_mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndvi Mean"
+        },
+        "ndvi_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndvi Min"
+        },
+        "ndvi_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ndvi Max"
+        },
+        "canopy_cover_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canopy Cover Pct"
+        },
+        "tree_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tree Count"
+        },
+        "detections_blob_path": {
+          "default": "",
+          "title": "Detections Blob Path",
+          "type": "string"
+        }
+      },
+      "title": "AnalysisMetadata",
+      "type": "object"
+    },
+    "GeometryMetadata": {
+      "description": "Geometry section of the per-AOI metadata.\n\nContains the polygon coordinates, bounding boxes, area, and centroid.\nAll coordinates are WGS 84 (EPSG:4326).\n\nAttributes:\n    type: GeoJSON geometry type, always ``\"Polygon\"``.\n    coordinates: GeoJSON-style nested coordinate arrays\n        ``[exterior_ring, *interior_rings]`` where each ring is a list\n        of ``[lon, lat]`` pairs.\n    centroid: Polygon centroid as ``[lon, lat]``.\n    bounding_box: Tight bounding box\n        ``[min_lon, min_lat, max_lon, max_lat]``.\n    buffered_bounding_box: Bounding box expanded by ``buffer_m`` metres.\n    area_hectares: Geodesic polygon area in hectares (PID 7.4.5).\n    crs: Coordinate reference system EPSG code.",
+      "properties": {
+        "type": {
+          "default": "Polygon",
+          "title": "Type",
+          "type": "string"
+        },
+        "coordinates": {
+          "items": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "title": "Coordinates",
+          "type": "array"
+        },
+        "centroid": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Centroid",
+          "type": "array"
+        },
+        "bounding_box": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Bounding Box",
+          "type": "array"
+        },
+        "buffered_bounding_box": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Buffered Bounding Box",
+          "type": "array"
+        },
+        "area_hectares": {
+          "default": 0.0,
+          "title": "Area Hectares",
+          "type": "number"
+        },
+        "crs": {
+          "default": "EPSG:4326",
+          "title": "Crs",
+          "type": "string"
+        }
+      },
+      "title": "GeometryMetadata",
+      "type": "object"
+    },
+    "ImageryMetadata": {
+      "description": "Imagery section of the per-AOI metadata.\n\nPopulated during imagery acquisition (M-2.x).  All fields default\nto empty/zero for the M-1.6 milestone \u2014 the schema is defined now\nso metadata JSON is always structurally complete.\n\nAttributes:\n    provider: Imagery provider name (e.g. ``\"maxar\"``, ``\"planet\"``).\n    scene_id: Provider-specific scene identifier.\n    acquisition_date: Scene acquisition timestamp (ISO 8601).\n    spatial_resolution_m: Ground sample distance in metres.\n    crs: Scene CRS EPSG code (may differ from AOI CRS after reproject).\n    cloud_cover_pct: Cloud cover percentage over the AOI.\n    off_nadir_angle_deg: Off-nadir viewing angle in degrees.\n    format: Image file format (e.g. ``\"GeoTIFF\"``).\n    raw_blob_path: Blob path to the raw (unclipped) imagery.\n    clipped_blob_path: Blob path to the clipped imagery.",
+      "properties": {
+        "provider": {
+          "default": "",
+          "title": "Provider",
+          "type": "string"
+        },
+        "scene_id": {
+          "default": "",
+          "title": "Scene Id",
+          "type": "string"
+        },
+        "acquisition_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Acquisition Date"
+        },
+        "spatial_resolution_m": {
+          "default": 0.0,
+          "title": "Spatial Resolution M",
+          "type": "number"
+        },
+        "crs": {
+          "default": "",
+          "title": "Crs",
+          "type": "string"
+        },
+        "cloud_cover_pct": {
+          "default": 0.0,
+          "title": "Cloud Cover Pct",
+          "type": "number"
+        },
+        "off_nadir_angle_deg": {
+          "default": 0.0,
+          "title": "Off Nadir Angle Deg",
+          "type": "number"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "raw_blob_path": {
+          "default": "",
+          "title": "Raw Blob Path",
+          "type": "string"
+        },
+        "clipped_blob_path": {
+          "default": "",
+          "title": "Clipped Blob Path",
+          "type": "string"
+        }
+      },
+      "title": "ImageryMetadata",
+      "type": "object"
+    },
+    "ProcessingMetadata": {
+      "description": "Processing section of the per-AOI metadata.\n\nRecords how the AOI was processed: buffer distance, clipping status,\ntiming, and any errors.\n\nAttributes:\n    buffer_m: Buffer distance applied in metres.\n    clipped: Whether the imagery was clipped to the AOI polygon.\n    reprojected: Whether the imagery was reprojected.\n    timestamp: Processing timestamp (ISO 8601).\n    duration_s: Total processing duration in seconds.\n    status: Processing status (``\"success\"``, ``\"partial\"``, ``\"failed\"``).\n    errors: List of error messages encountered during processing.",
+      "properties": {
+        "buffer_m": {
+          "default": 100.0,
+          "title": "Buffer M",
+          "type": "number"
+        },
+        "clipped": {
+          "default": false,
+          "title": "Clipped",
+          "type": "boolean"
+        },
+        "reprojected": {
+          "default": false,
+          "title": "Reprojected",
+          "type": "boolean"
+        },
+        "timestamp": {
+          "default": "",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "duration_s": {
+          "default": 0.0,
+          "title": "Duration S",
+          "type": "number"
+        },
+        "status": {
+          "default": "pending",
+          "title": "Status",
+          "type": "string"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        }
+      },
+      "title": "ProcessingMetadata",
+      "type": "object"
+    }
+  },
+  "description": "Top-level per-AOI metadata record (PID Section 9.2).\n\nThis is the complete JSON document written to\n``/metadata/{YYYY}/{MM}/{orchard-name}/{feature-name}.json``.\n\nAttributes:\n    schema_version: Schema identifier for forward compatibility.\n    processing_id: Orchestration instance ID (PID 7.4.4: traceability).\n    kml_filename: Name of the source KML file.\n    feature_name: Name of the feature / Placemark.\n    project_name: Project name (from metadata or filename).\n    tree_variety: Tree/crop variety (from KML ExtendedData, if present).\n    geometry: Polygon geometry and derived measurements.\n    imagery: Imagery acquisition details (populated in M-2.x).\n    processing: Pipeline execution details.",
+  "properties": {
+    "$schema": {
+      "default": "aoi-metadata-v2",
+      "title": "$Schema",
+      "type": "string"
+    },
+    "processing_id": {
+      "default": "",
+      "title": "Processing Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "default": "",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "kml_filename": {
+      "default": "",
+      "title": "Kml Filename",
+      "type": "string"
+    },
+    "feature_name": {
+      "default": "",
+      "title": "Feature Name",
+      "type": "string"
+    },
+    "project_name": {
+      "default": "",
+      "title": "Project Name",
+      "type": "string"
+    },
+    "tree_variety": {
+      "default": "",
+      "title": "Tree Variety",
+      "type": "string"
+    },
+    "geometry": {
+      "$ref": "#/$defs/GeometryMetadata"
+    },
+    "imagery": {
+      "$ref": "#/$defs/ImageryMetadata"
+    },
+    "analysis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AnalysisMetadata"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "processing": {
+      "$ref": "#/$defs/ProcessingMetadata"
+    }
+  },
+  "title": "AOIMetadataRecord",
+  "type": "object"
+}
