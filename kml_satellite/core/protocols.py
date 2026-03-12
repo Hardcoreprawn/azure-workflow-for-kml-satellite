@@ -12,7 +12,7 @@ References:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from contextlib import AbstractContextManager
@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 # Rasterio Protocols
 # ---------------------------------------------------------------------------
+
+
+class RasterArray(Protocol):
+    """Protocol for raster-like array results returned by rasterio reads."""
+
+    shape: tuple[int, ...]
 
 
 class RasterDataset(Protocol):
@@ -31,18 +37,18 @@ class RasterDataset(Protocol):
     """
 
     # Instance attributes (read-only in rasterio, declared as protocol members)
-    crs: Any
+    crs: object
     bounds: tuple[float, float, float, float]
-    transform: Any
-    meta: dict[str, Any]
-    profile: dict[str, Any]
+    transform: object
+    meta: dict[str, object]
+    profile: dict[str, object]
     width: int
     height: int
     count: int
 
-    def read(self, *args: Any, **kwargs: Any) -> Any: ...
+    def read(self, *args: object, **kwargs: object) -> RasterArray: ...
 
-    def write(self, *args: Any, **kwargs: Any) -> None: ...
+    def write(self, *args: RasterArray, **kwargs: object) -> None: ...
 
 
 class RasterioModule(Protocol):
@@ -54,15 +60,15 @@ class RasterioModule(Protocol):
     """
 
     # Submodule attributes
-    mask: Any
-    warp: Any
-    crs: Any
+    mask: object
+    warp: object
+    crs: object
 
     def open(
-        self, fp: str, mode: str = "r", **kwargs: Any
+        self, fp: str, mode: str = "r", **kwargs: object
     ) -> AbstractContextManager[RasterDataset]: ...
 
-    def band(self, ds: RasterDataset, bidx: int) -> Any: ...
+    def band(self, ds: RasterDataset, bidx: int) -> RasterArray: ...
 
 
 # ---------------------------------------------------------------------------
