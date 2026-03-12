@@ -78,6 +78,75 @@ def test_dockerfile_uses_correct_base_image():
     assert "FROM ${RUNTIME_BASE_IMAGE}" in content
 
 
+def test_dockerfile_runtime_stage_remains_slim():
+    """Guard against runtime package bloat regressions in the final image.
+
+    Runtime stage should not install heavyweight geospatial build/runtime tools
+    that are only needed in the builder stage.
+    """
+
+    dockerfile_path = WORKSPACE_ROOT / "Dockerfile"
+    content = dockerfile_path.read_text(encoding="utf-8")
+
+    runtime_stage = content.split("FROM ${RUNTIME_BASE_IMAGE}", maxsplit=1)[1]
+
+    runtime_packages: list[str] = []
+    capture = False
+    for line in runtime_stage.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("RUN apt-get update && apt-get install -y --no-install-recommends"):
+            capture = True
+            continue
+        if capture and "&& rm -rf /var/lib/apt/lists/*" in stripped:
+            capture = False
+            continue
+        if capture:
+            package = stripped.removesuffix("\\").strip()
+            if package:
+                runtime_packages.append(package)
+
+    assert runtime_packages, "Runtime stage must include explicit apt install block"
+    installed_runtime_packages = "\n".join(runtime_packages)
+
+    assert "gdal-bin" not in installed_runtime_packages, "Runtime stage must not install gdal-bin"
+    assert "build-essential" not in installed_runtime_packages, (
+        "Runtime stage must not install build-essential"
+    )
+    assert "cmake" not in installed_runtime_packages, "Runtime stage must not install cmake"
+
+
+def test_dockerfile_builder_stage_does_not_install_redundant_gdal_bin():
+    """Builder stage should use libgdal-dev without redundant gdal-bin install."""
+
+    dockerfile_path = WORKSPACE_ROOT / "Dockerfile"
+    content = dockerfile_path.read_text(encoding="utf-8")
+
+    builder_stage = content.split("FROM ${BUILDER_BASE_IMAGE} AS builder", maxsplit=1)[1]
+    builder_stage = builder_stage.split("FROM ${RUNTIME_BASE_IMAGE}", maxsplit=1)[0]
+
+    builder_packages: list[str] = []
+    capture = False
+    for line in builder_stage.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("RUN apt-get update && apt-get install -y --no-install-recommends"):
+            capture = True
+            continue
+        if capture and "&& rm -rf /var/lib/apt/lists/*" in stripped:
+            capture = False
+            continue
+        if capture:
+            package = stripped.removesuffix("\\").strip()
+            if package:
+                builder_packages.append(package)
+
+    assert builder_packages, "Builder stage must include explicit apt install block"
+    installed_builder_packages = "\n".join(builder_packages)
+    assert "libgdal-dev" in installed_builder_packages
+    assert "gdal-bin" not in installed_builder_packages, (
+        "Builder stage should avoid redundant gdal-bin install to reduce build footprint"
+    )
+
+
 def test_requirements_include_critical_libs():
     """Verify requirements.txt includes essential Azure Functions libraries."""
     req_path = WORKSPACE_ROOT / "requirements.txt"
