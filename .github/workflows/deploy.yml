@@ -161,8 +161,13 @@ jobs:
           set -euo pipefail
           builder="${MANUAL_BUILDER_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
           runtime="${MANUAL_RUNTIME_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
+          geo_preinstalled="false"
+          if [[ "$builder" == *"geo-base"* || "$runtime" == *"geo-base"* ]]; then
+            geo_preinstalled="true"
+          fi
           echo "builder=$builder" >> "$GITHUB_OUTPUT"
           echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          echo "geo_preinstalled=$geo_preinstalled" >> "$GITHUB_OUTPUT"
 
       - name: Build and push container image
         uses: docker/build-push-action@v6
@@ -173,6 +178,7 @@ jobs:
           build-args: |
             BUILDER_BASE_IMAGE=${{ steps.base_images.outputs.builder }}
             RUNTIME_BASE_IMAGE=${{ steps.base_images.outputs.runtime }}
+            GEO_DEPS_PREINSTALLED=${{ steps.base_images.outputs.geo_preinstalled }}
           cache-from: type=registry,ref=${{ steps.image.outputs.cache_ref }}
           cache-to: type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max
           labels: |

@@ -6,6 +6,7 @@
 # ---------------------------------------------------------------------------
 ARG BUILDER_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
 ARG RUNTIME_BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
+ARG GEO_DEPS_PREINSTALLED=false
 FROM ${BUILDER_BASE_IMAGE} AS builder
 
 # Install system dependencies for building GDAL, Fiona, rasterio
@@ -30,8 +31,14 @@ RUN mkdir -p /build /home/site/wwwroot/.python_packages/lib/site-packages \
 USER app
 
 COPY --chown=app:app requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --target=/home/site/wwwroot/.python_packages/lib/site-packages \
-    -r /tmp/requirements.txt
+ARG GEO_DEPS_PREINSTALLED
+RUN if [ "$GEO_DEPS_PREINSTALLED" = "true" ]; then \
+            grep -Evi '^(fiona|lxml|shapely|pyproj|rasterio)($|[<>=~!])' /tmp/requirements.txt > /tmp/requirements.runtime.txt; \
+        else \
+            cp /tmp/requirements.txt /tmp/requirements.runtime.txt; \
+        fi && \
+        pip install --no-cache-dir --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+        -r /tmp/requirements.runtime.txt
 # Copy application code
 WORKDIR /build
 COPY --chown=app:app host.json /build/

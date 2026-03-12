@@ -48,8 +48,10 @@ def deploy_workflow() -> dict[str, Any]:
 def test_dockerfile_uses_configurable_base_image_args(dockerfile_content: str) -> None:
     assert "ARG BUILDER_BASE_IMAGE=" in dockerfile_content
     assert "ARG RUNTIME_BASE_IMAGE=" in dockerfile_content
+    assert "ARG GEO_DEPS_PREINSTALLED=" in dockerfile_content
     assert "FROM ${BUILDER_BASE_IMAGE} AS builder" in dockerfile_content
     assert "FROM ${RUNTIME_BASE_IMAGE}" in dockerfile_content
+    assert 'if [ "$GEO_DEPS_PREINSTALLED" = "true" ]' in dockerfile_content
 
 
 def test_deploy_workflow_sets_base_image_build_args(deploy_workflow: dict[str, Any]) -> None:
@@ -64,3 +66,4 @@ def test_deploy_workflow_sets_base_image_build_args(deploy_workflow: dict[str, A
 
     assert "BUILDER_BASE_IMAGE=" in build_args
     assert "RUNTIME_BASE_IMAGE=" in build_args
+    assert "GEO_DEPS_PREINSTALLED=" in build_args
