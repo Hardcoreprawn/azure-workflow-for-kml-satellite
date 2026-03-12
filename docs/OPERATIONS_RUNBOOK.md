@@ -11,6 +11,30 @@ Issue: #18
 
 Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
+## Access Model
+
+Anonymous operator endpoints:
+
+- `GET /api/health`
+- `GET /api/readiness`
+- `GET /api/orchestrator/{instance_id}`
+
+Protected endpoints (function/admin/ARM auth required):
+
+- `POST /admin/host/status`
+- `GET /admin/functions`
+- Durable runtime admin endpoints under `/runtime/webhooks/durabletask/*`
+- ARM `.../host/default/listKeys`
+
+Responder verification path (remote):
+
+1. Check `GET /api/health`.
+2. Check `GET /api/readiness`.
+3. Inspect `GET /api/orchestrator/{instance_id}` for stage state and artifact paths.
+4. Verify artifact blobs exist in output storage.
+
+Do not request or expose host/admin keys in incident channels unless absolutely required for break-glass operations.
+
 ## Monitor
 
 Primary telemetry:
