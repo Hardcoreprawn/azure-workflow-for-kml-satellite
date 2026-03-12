@@ -98,6 +98,35 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Detect deployment scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Default to full deployment unless we can confidently classify as code-only.
+          strategy="full"
+          reason="manual or unknown change scope"
+
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
+            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
+
+            if [[ -n "$changed_files" ]]; then
+              # Any infra or deployment workflow change requires full reconcile.
+              if echo "$changed_files" | grep -qE '^(infra/|\.github/workflows/(deploy\.yml|tofu-plan\.yml|tofu-apply\.yml)$)'; then
+                strategy="full"
+                reason="infra/workflow changes detected"
+              else
+                strategy="fast"
+                reason="code-only changes"
+              fi
+            fi
+          fi
+
+          echo "strategy=$strategy" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "Deployment strategy: $strategy ($reason)"
+
       - name: Set container image name
         id: image
         env:
@@ -208,7 +237,8 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --image "${{ steps.image.outputs.name }}"
 
-      - name: Reconcile function readiness and Event Grid subscription
+      - name: Reconcile function readiness and Event Grid subscription (full strategy)
+        if: steps.scope.outputs.strategy == 'full'
         shell: bash
         run: |
           set -euo pipefail
@@ -498,3 +528,45 @@ jobs:
 
           log "Event Grid subscription verified: exists, provisioned, and matched to the current runtime key."
           echo "::endgroup::"
+
+      - name: Verify runtime readiness (fast strategy)
+        if: steps.scope.outputs.strategy == 'fast'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAX_READY_SECONDS=300
+          POLL_INTERVAL=10
+
+          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
+          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
+
+          log() { echo "$(date +'%H:%M:%S') | $*"; }
+          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
+
+          FQDN=$(az functionapp show \
+            --name "$FUNCTION_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query defaultHostName -o tsv)
+
+          [[ -n "$FQDN" ]] || fail "Function App hostname could not be resolved."
+
+          deadline=$(( $(date +%s) + MAX_READY_SECONDS ))
+          ready=0
+
+          while (( $(date +%s) < deadline )); do
+            set +e
+            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health")
+            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness")
+            set -e
+
+            if [[ "$health_code" == "200" && "$readiness_code" == "200" ]]; then
+              ready=1
+              break
+            fi
+
+            log "Fast strategy readiness pending (health=${health_code}, readiness=${readiness_code}); retrying in ${POLL_INTERVAL}s..."
+            sleep "$POLL_INTERVAL"
+          done
+
+          [[ "$ready" == "1" ]] || fail "Fast strategy readiness checks did not pass within ${MAX_READY_SECONDS}s."
+          log "Fast strategy verification passed: health/readiness endpoints are available."
