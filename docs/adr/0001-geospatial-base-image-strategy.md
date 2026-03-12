@@ -18,23 +18,22 @@ CI and deploy builds depend on heavyweight native geospatial dependencies (GDAL/
 
 Hybrid model (Option 3).
 
-- Keep secure defaults pointing at official Azure Functions Python image
+- Keep secure defaults pointing at a project-owned validated geospatial base (`geo-base-stable`)
 - Make both builder and runtime base images explicit build inputs
-- Allow controlled pinning (tag or digest) through workflow variables
+- Allow controlled pinning (tag or digest) through manual deploy inputs
 - Prepare path for project-owned GHCR base image rollout without breaking current deploys
 
 ## Provenance
 
-- Base image source defaults to Microsoft Azure Functions image
+- Base image source defaults to GHCR `geo-base-stable` produced by the refresh workflow
 - Image provenance remains traceable through commit-SHA tagged final images in GHCR
 - Build metadata labels remain attached in deploy workflow
 
 ## Pinning Approach
 
-- `BUILDER_BASE_IMAGE` and `RUNTIME_BASE_IMAGE` are workflow-controlled inputs
+- `builder_base_image` and `runtime_base_image` are optional `workflow_dispatch` inputs in deploy
 - Values can be pinned to immutable digests (recommended for production)
 - Defaults remain tag-based to avoid breaking immediate builds while rollout occurs
-- Deploy workflow reads `BUILDER_BASE_IMAGE` and `RUNTIME_BASE_IMAGE` from GitHub Actions repository variables with safe fallback defaults
 - Base-image refresh publishes stable rolling refs (`geo-base-stable`, `geo-base-latest`) alongside immutable run-scoped tags
 
 ## Consequences

@@ -198,6 +198,42 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | IaC | OpenTofu (Terraform-compatible) |
 | CI/CD | GitHub Actions |
 
+## CI Lanes (Issue #150)
+
+The CI pipeline is intentionally split into two lanes with different cost/latency profiles:
+
+- `Fast Lint Type Unit`: fast feedback lane (ruff, pyright, targeted unit tests) with no runner-level APT install.
+- `Native Geo Validation`: correctness lane for native geospatial/runtime surfaces (GDAL system deps, native import validation, broader test execution).
+
+Trade-off and policy:
+
+- Fast lane optimizes PR iteration time for typical application edits.
+- Native lane preserves safety for geospatial/runtime correctness and remains required in CI.
+
+Reference: `.github/workflows/ci.yml`
+
+## Geospatial Base Image Refresh (Issue #151)
+
+Base image automation runs in `.github/workflows/base-image-refresh.yml` on a weekly schedule and manual dispatch.
+
+Publication model:
+
+- Immutable run-scoped tag: `geo-base-<sha>-<run-id>-<attempt>`
+- Rolling stable refs: `geo-base-stable`, `geo-base-latest`
+
+Consumer update path:
+
+1. Default deploy behavior consumes `geo-base-stable`.
+2. For a controlled validation run, execute `Deploy Function App` via manual dispatch and provide optional overrides (`builder_base_image`, `runtime_base_image`).
+
+3. After validation, keep defaults on `geo-base-stable` or pin to a specific immutable tag/digest if stricter reproducibility is required.
+
+References:
+
+- `.github/workflows/base-image-refresh.yml`
+- `.github/workflows/deploy.yml`
+- `docs/adr/0001-geospatial-base-image-strategy.md`
+
 ## Getting Started
 
 ### Prerequisites
