@@ -98,7 +98,7 @@ For each scenario, collect:
 **Image:** `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:2dbccd41cc83cad04ac36b912461526069145c90`
 
 | Scenario | Input | Instance ID | Result | Artifacts | Notes |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | A | `01_single_polygon_orchard.kml` | `b49a255d3a174eff8a3d8a9dabc2748b` | ✅ Completed | `metadata/2026/03/alpha-orchard/block-a-fuji-apple.json`<br>`imagery/raw/2026/03/uat-scenario-a-.../block-a-fuji-apple.tif` (374 MB) | Feature: "Block A - Fuji Apple", 99.6 ha, Sentinel-2, 31s end-to-end |
 | B | `03_multi_feature_vineyard.kml` | `54e080e9ae2d4b80b2eb77a18dc6cead` | ✅ Completed | 4 metadata + 4 imagery files under `metadata/2026/03/gamma-estate/` and `imagery/raw/2026/03/uat-scenario-b-.../` | 4/4 features processed, all imagery ready, no failures |
 | C | `08_no_extended_data.kml` | `eb7fb554413a481e9d08be4c38e09da3` | ✅ Completed | `metadata/2026/03/uat-scenario-c-.../unnamed-field.json`<br>`imagery/raw/2026/03/uat-scenario-c-.../unnamed-field.tif` | feature_name→"Unnamed Field", project_name→filename, tree_variety→"". Pipeline completed gracefully. |
@@ -107,7 +107,7 @@ For each scenario, collect:
 ## Non-Blocking Findings (2026-03-12)
 
 | # | Finding | Severity | Action |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | F-1 | Post-process clipping fails with "No such file or directory" — `post_process_imagery` resolves the adapter blob path as a local filesystem path instead of reading from blob storage. Raw imagery is stored correctly; clipped images are not produced. | Non-blocking | Tracked in #172 |
 | F-2 | KML archive path is recorded in metadata output (`kml_archive_path`) but the file is never written to `kml-output`. | Non-blocking | Tracked in #173 |
 | F-3 | GHCR registry credential (`DOCKER_REGISTRY_SERVER_PASSWORD`) was null on the live function app, causing repeated `ImagePullBackOff` until fixed by supplying a PAT. Registry credential rotation should be automated or the package made public. | Non-blocking | Tracked in #174 |
