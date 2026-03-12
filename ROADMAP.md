@@ -61,7 +61,7 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 3. **#14** - concurrent upload stress test (≥20 files) ✅
 4. **#16** - logging and alerting validated with correlation IDs in App Insights ✅
 5. **#17** - security review (Key Vault, Managed Identity, RBAC) ✅
-6. **#19** - UAT sign-off (in progress; awaits #18 doc completion + domain expert session)
+6. **#19** - UAT sign-off (in progress; documentation baseline complete, awaiting domain expert session)
 
 **Exit criteria:**
 
@@ -172,16 +172,16 @@ Decision gate before starting:
 
 Use this exact queue unless blocked:
 
-1. #19  ← CURRENT (UAT sign-off)
-2. #18
-3. #152
-4. #150
-5. #151
-6. #129
-7. #130
-8. #148
-9. #47
-10. #132
+1. #19  ← CURRENT (UAT sign-off execution)
+2. #152
+3. #150
+4. #151
+5. #129
+6. #130
+7. #148
+8. #47
+9. #132
+10. #163
 
 If blocked on an item, move to the next one and record the blocker in the issue.
 
