@@ -73,3 +73,12 @@ jobs:
         run: |
           set -euo pipefail
           docker push "${{ steps.image.outputs.name }}"
+
+          stable_ref="ghcr.io/${GITHUB_REPOSITORY,,}:geo-base-stable"
+          latest_ref="ghcr.io/${GITHUB_REPOSITORY,,}:geo-base-latest"
+
+          docker tag "${{ steps.image.outputs.name }}" "$stable_ref"
+          docker tag "${{ steps.image.outputs.name }}" "$latest_ref"
+
+          docker push "$stable_ref"
+          docker push "$latest_ref"

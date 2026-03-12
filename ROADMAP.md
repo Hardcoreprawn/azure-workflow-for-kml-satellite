@@ -1,7 +1,7 @@
 # TreeSight - Development Roadmap
 
-**Last updated:** 11 March 2026
-**Status:** Active - E2E pipeline verification (production confidence gate)
+**Last updated:** 12 March 2026
+**Status:** Active - Wave 2 delivery-speed execution (#152), with Wave 1 sign-off pending domain expert approval (#19)
 
 This roadmap is synchronized to the current GitHub issue backlog. The execution order below is dependency-first (not time-based).
 
@@ -50,7 +50,7 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 
 ---
 
-### Wave 1 - E2E pipeline verification (CURRENT)
+### Wave 1 - E2E pipeline verification (ENGINEERING COMPLETE, SIGN-OFF PENDING)
 
 **Goal:** prove the deployed pipeline actually works end-to-end. Until this passes, all other work ships unverified software.
 
@@ -61,7 +61,7 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 3. **#14** - concurrent upload stress test (≥20 files) ✅
 4. **#16** - logging and alerting validated with correlation IDs in App Insights ✅
 5. **#17** - security review (Key Vault, Managed Identity, RBAC) ✅
-6. **#19** - UAT sign-off (in progress; documentation baseline complete, awaiting domain expert session)
+6. **#19** - UAT sign-off (blocked on domain expert visual review/sign-off; automated UAT run complete)
 
 **Exit criteria:**
 
@@ -96,6 +96,8 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 3. #132 - TypedDict to Pydantic migration (incremental, no behavior regressions)
 4. #163 - document readiness and diagnostics access model
 5. #164 - post-deploy smoke checks for artifact verification
+6. #176 - UX output framing policy (square-framed AOI outputs, multipolygon split default)
+7. #177 - optional H3-derived analytical outputs (AOI-first primary deliverables preserved)
 
 **Exit criteria:**
 
@@ -172,8 +174,8 @@ Decision gate before starting:
 
 Use this exact queue unless blocked:
 
-1. #19  ← CURRENT (UAT sign-off execution)
-2. #152
+1. #152  ← CURRENT (native geospatial base image strategy)
+2. #19   (human sign-off gate; unblock via domain expert review)
 3. #150
 4. #151
 5. #129
