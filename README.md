@@ -68,6 +68,36 @@ Local check:
 curl -sS http://localhost:7071/api/orchestrator/<instance-id>
 ```
 
+### Endpoint Access Contract (Issue #163)
+
+Anonymous-by-design endpoints (safe for probes and operator diagnostics):
+
+- `GET /api/health`: liveness only (host/config loaded)
+- `GET /api/readiness`: dependency readiness summary (config + storage)
+- `GET /api/orchestrator/{instance_id}`: bounded orchestration diagnostics for a known instance id
+
+Protected management endpoints (never anonymous):
+
+- `POST /admin/host/status` and `GET /admin/functions` (host management API)
+- `POST /host/default/listKeys` via ARM management plane
+- Durable runtime admin APIs under `/runtime/webhooks/durabletask/*`
+
+Why this boundary exists:
+
+- Public probes must be callable by Container Apps/ops tooling without key distribution.
+- Runtime/admin endpoints expose host control and key material; they require function/admin or ARM auth.
+
+Deployment readiness contract:
+
+1. Deploy workflow uses protected host/admin endpoints only inside OIDC-authenticated pipeline steps.
+2. Event Grid webhook reconciliation uses runtime system key after host readiness is confirmed.
+3. Remote smoke checks for operators should use anonymous endpoints plus blob artifact verification.
+
+Do not expose anonymously:
+
+- Any endpoint that returns secrets/keys, host admin metadata, or mutable runtime control.
+- Generic Durable runtime management URLs for broad instance enumeration.
+
 ### Log and alert triage
 
 1. Check Function App logs for `instance_id`, `order_id`, `blob`, and `feature` fields.
