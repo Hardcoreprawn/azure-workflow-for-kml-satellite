@@ -12,7 +12,6 @@ FROM ${BUILDER_BASE_IMAGE} AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
-    gdal-bin \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
