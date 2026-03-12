@@ -95,7 +95,7 @@ jobs:
           HOST_KEY=$(az functionapp keys list \
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "functionKeys.default" -o tsv 2>/dev/null || true)
+            --query "functionKeys.default" -o tsv)
 
           if [[ -z "$HOST_KEY" ]]; then
             # Fallback: try the master key if default is not separately listed.

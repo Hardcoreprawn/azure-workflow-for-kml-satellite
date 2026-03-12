@@ -375,12 +375,17 @@ class TestOrchestratorLogging:
             "Orchestrator start log must include correlation_id="
         )
 
-    def test_complete_log_contains_instance(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Orchestrator completion log must include instance=."""
+    def test_complete_log_contains_instance_and_features(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Orchestrator completion log must include instance= and features=."""
         ctx = self._build_context()
         _run_orchestrator_logged(ctx, caplog)
 
         msgs = _messages_at_level(caplog)
-        assert _has_field(msgs, "instance="), (
-            "Orchestrator logs must mention instance= at some point"
-        )
+        completed_msgs = [msg for msg in msgs if "Orchestrator completed" in msg]
+        assert completed_msgs, "Expected an 'Orchestrator completed' log message"
+
+        completion_msg = completed_msgs[0]
+        assert "instance=" in completion_msg, "Orchestrator completion log must include instance="
+        assert "features=" in completion_msg, "Orchestrator completion log must include features="

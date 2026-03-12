@@ -55,6 +55,7 @@ from typing import Any
 
 import httpx
 import pytest
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 
@@ -174,7 +175,9 @@ def _poll_until_terminal(instance_id: str) -> dict[str, Any]:
                 ):
                     return last
         except httpx.HTTPError:
-            pass
+            # Transient network/readiness failures are expected while polling.
+            time.sleep(_POLL_INTERVAL_S)
+            continue
         time.sleep(_POLL_INTERVAL_S)
     return last  # timed out
 
@@ -184,7 +187,7 @@ def _blob_exists(blob_svc: BlobServiceClient, container: str, blob_path: str) ->
     try:
         props = blob_svc.get_blob_client(container=container, blob=blob_path).get_blob_properties()
         return int(props.size) > 0
-    except Exception:
+    except ResourceNotFoundError:
         return False
 
 

@@ -10,7 +10,7 @@ Security checks:
     3. pre-commit config includes detect-secrets or detect-private-key hook
     4. requirements.txt / pyproject.toml: azure-identity is present (no key fallback)
     5. infra Terraform files: no hardcoded secrets or passwords
-    6. local.settings.json.template is exclude from git (or is a template only)
+    6. local.settings.json is excluded from git (only the .template file is committed)
     7. Dockerfile does not COPY local.settings.json
 
 References:
@@ -53,6 +53,11 @@ def _python_sources() -> list[Path]:
 def _tf_sources() -> list[Path]:
     """All .tf files under infra/tofu/."""
     return list(_INFRA_TF.rglob("*.tf"))
+
+
+def _without_comment_lines(text: str) -> str:
+    """Drop full-line comments so assignment regexes ignore commented examples."""
+    return "\n".join(line for line in text.splitlines() if not re.match(r"^\s*#", line))
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +113,7 @@ class TestNoPythonCredentials:
     )
     def test_no_credential_assignments(self, source: Path) -> None:
         text = source.read_text(encoding="utf-8")
-        match = _CREDENTIAL_RE.search(text)
+        match = _CREDENTIAL_RE.search(_without_comment_lines(text))
         assert match is None, (
             f"Possible hardcoded credential in {source.relative_to(_REPO_ROOT)}: {match.group()!r}"
         )
@@ -118,7 +123,7 @@ class TestNoPythonCredentials:
     )
     def test_no_connection_string_literals(self, source: Path) -> None:
         text = source.read_text(encoding="utf-8")
-        match = _CONNECTION_STRING_RE.search(text)
+        match = _CONNECTION_STRING_RE.search(_without_comment_lines(text))
         assert match is None, (
             f"Possible hardcoded connection string in {source.relative_to(_REPO_ROOT)}: "
             f"{match.group()!r}"
@@ -177,6 +182,13 @@ class TestLocalSettingsTemplate:
         assert not real_conn_pattern.search(storage), (
             "AzureWebJobsStorage must not contain a real storage connection string"
         )
+
+    def test_local_settings_json_is_gitignored(self) -> None:
+        """local.settings.json must be gitignored; only the template should be committed."""
+        gitignore = _REPO_ROOT / ".gitignore"
+        assert gitignore.exists(), ".gitignore must exist"
+        lines = [line.strip() for line in gitignore.read_text(encoding="utf-8").splitlines()]
+        assert "local.settings.json" in lines, "local.settings.json must be excluded in .gitignore"
 
 
 # ---------------------------------------------------------------------------
