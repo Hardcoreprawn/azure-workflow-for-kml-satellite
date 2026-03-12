@@ -108,9 +108,14 @@ For each scenario, collect:
 
 | # | Finding | Severity | Action |
 |---|---|---|---|
-| F-1 | Post-process clipping fails with "No such file or directory" — `post_process_imagery` resolves the adapter blob path as a local filesystem path instead of reading from blob storage. Raw imagery is stored correctly; clipped images are not produced. | Non-blocking | Raise as backlog bug issue |
-| F-2 | KML archive path is recorded in metadata output (`kml_archive_path`) but the file is never written to `kml-output`. | Non-blocking | Raise as backlog bug issue |
-| F-3 | GHCR registry credential (`DOCKER_REGISTRY_SERVER_PASSWORD`) was null on the live function app, causing repeated `ImagePullBackOff` until fixed by supplying a PAT. Registry credential rotation should be automated or the package made public. | Non-blocking | Raise as operational enhancement issue |
+| F-1 | Post-process clipping fails with "No such file or directory" — `post_process_imagery` resolves the adapter blob path as a local filesystem path instead of reading from blob storage. Raw imagery is stored correctly; clipped images are not produced. | Non-blocking | Tracked in #172 |
+| F-2 | KML archive path is recorded in metadata output (`kml_archive_path`) but the file is never written to `kml-output`. | Non-blocking | Tracked in #173 |
+| F-3 | GHCR registry credential (`DOCKER_REGISTRY_SERVER_PASSWORD`) was null on the live function app, causing repeated `ImagePullBackOff` until fixed by supplying a PAT. Registry credential rotation should be automated or the package made public. | Non-blocking | Tracked in #174 |
+
+Related architecture/UX follow-up:
+
+- #176: regular framed AOI output policy (square-framed, multipolygon split default)
+- #177: optional H3-derived analytical outputs while preserving AOI-first primary outputs
 
 ## Defect Handling During UAT
 

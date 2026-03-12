@@ -34,6 +34,8 @@ Hybrid model (Option 3).
 - `BUILDER_BASE_IMAGE` and `RUNTIME_BASE_IMAGE` are workflow-controlled inputs
 - Values can be pinned to immutable digests (recommended for production)
 - Defaults remain tag-based to avoid breaking immediate builds while rollout occurs
+- Deploy workflow reads `BUILDER_BASE_IMAGE` and `RUNTIME_BASE_IMAGE` from GitHub Actions repository variables with safe fallback defaults
+- Base-image refresh publishes stable rolling refs (`geo-base-stable`, `geo-base-latest`) alongside immutable run-scoped tags
 
 ## Consequences
 

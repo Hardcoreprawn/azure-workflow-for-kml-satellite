@@ -31,6 +31,22 @@ For dev this commonly resolves to:
 5. Metadata and imagery artifacts are written to output blob paths.
 6. Operational diagnostics are available at /api/orchestrator/{instance_id}.
 
+## Imagery Output Framing Policy (2026-03-12)
+
+User-facing imagery outputs follow an AOI-first UX policy:
+
+- Primary deliverable: regular framed outputs that fully contain each AOI feature.
+- Default framing mode target: square frame with small configurable padding.
+- MultiPolygon handling target: split into per-feature/per-polygon outputs by default.
+- Optional artifact: composite overview image for context.
+- Ground truth remains AOI geometry in metadata/contracts.
+
+Backlog tracking:
+
+- #176 (enhancement): implement regular framed output strategy and multipolygon split defaults.
+- #177 (enhancement): add optional H3-derived analytical outputs without replacing AOI-first deliverables.
+- #172 (bug): restore clipping pipeline path so framed/clipped outputs are generated from blob-backed imagery.
+
 ## Provider Adapter Boundary
 
 The orchestrator calls provider adapters only through the ImageryProvider contract in kml_satellite/providers/base.py.
