@@ -35,6 +35,39 @@ Responder verification path (remote):
 
 Do not request or expose host/admin keys in incident channels unless absolutely required for break-glass operations.
 
+## Deploy Smoke Checks (Issue #164)
+
+The deploy workflow now emits a Post-Deploy Smoke Evidence section after rollout.
+
+What it validates:
+
+1. Anonymous contract still works (`/api/health`, `/api/readiness`, `/api/orchestrator/{instance_id}`).
+2. Protected contract still holds (`/admin/*` and durable runtime endpoints deny unauthenticated calls, allow authenticated calls).
+3. Durable orchestration diagnostics reach `Completed` for the selected smoke instance.
+4. Metadata artifact paths reported by diagnostics exist in blob storage.
+
+How to interpret failures:
+
+1. `Anonymous ... expected 200` failure:
+API surface regression, routing regression, or host startup degradation.
+2. `unexpectedly accessible without auth` failure:
+security boundary regression; treat as high priority and halt rollout.
+3. `auth path failed (expected 200)` failure:
+host key/bootstrap regression or protected runtime endpoint outage.
+4. `Could not resolve smoke orchestration instance id` failure:
+trigger path regression (Event Grid ingestion/runtime discovery) or durable query mismatch.
+5. `did not reach Completed` or terminal failure status:
+pipeline correctness regression in ingestion/acquisition/fulfillment stages.
+6. `Expected smoke artifact missing` failure:
+orchestrator diagnostics and storage outputs diverged or artifact write failed.
+
+Responder action order for smoke failures:
+
+1. Capture failing evidence block from the workflow summary.
+2. Query `/api/orchestrator/{instance_id}` and inspect `output.artifacts`.
+3. Cross-check App Insights using `instance_id` and stage-level exceptions.
+4. Validate blob existence and RBAC/storage connectivity for the output container.
+
 ## Monitor
 
 Primary telemetry:

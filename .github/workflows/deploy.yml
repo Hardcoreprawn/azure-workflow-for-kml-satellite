@@ -78,6 +78,11 @@ env:
   EVENT_GRID_SYSTEM_TOPIC_NAME: evgt-kmlsat-dev
   EVENT_GRID_SUBSCRIPTION_NAME: evgs-kml-upload
   EVENT_GRID_TRIGGER_FUNCTION: kml_blob_trigger
+  SMOKE_INPUT_CONTAINER: kml-input
+  SMOKE_OUTPUT_CONTAINER: kml-output
+  SMOKE_DURABLE_TASK_HUB: KmlSatelliteHub
+  SMOKE_DURABLE_CONNECTION_NAME: Storage
+  SMOKE_KML_FIXTURE: tests/data/07_small_area_garden.kml
 
 jobs:
   deploy-dev:
@@ -570,3 +575,219 @@ jobs:
 
           [[ "$ready" == "1" ]] || fail "Fast strategy readiness checks did not pass within ${MAX_READY_SECONDS}s."
           log "Fast strategy verification passed: health/readiness endpoints are available."
+
+      - name: Post-deploy smoke checks (diagnostics, artifacts, auth contract)
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          MAX_INSTANCE_DISCOVERY_SECONDS=420
+          MAX_ORCHESTRATION_SECONDS=900
+          POLL_INTERVAL_SECONDS=15
+
+          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
+          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
+          INPUT_CONTAINER="${{ env.SMOKE_INPUT_CONTAINER }}"
+          OUTPUT_CONTAINER="${{ env.SMOKE_OUTPUT_CONTAINER }}"
+          DURABLE_TASK_HUB="${{ env.SMOKE_DURABLE_TASK_HUB }}"
+          DURABLE_CONNECTION_NAME="${{ env.SMOKE_DURABLE_CONNECTION_NAME }}"
+          SMOKE_KML_FIXTURE="${{ env.SMOKE_KML_FIXTURE }}"
+          DEPLOY_STRATEGY="${{ steps.scope.outputs.strategy }}"
+
+          log() { echo "$(date +'%H:%M:%S') | $*"; }
+          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
+          require_file() {
+            local path="$1"
+            [[ -f "$path" ]] || fail "Required file not found: $path"
+          }
+
+          require_file "$SMOKE_KML_FIXTURE"
+
+          FQDN=$(az functionapp show \
+            --name "$FUNCTION_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query defaultHostName -o tsv)
+          [[ -n "$FQDN" ]] || fail "Function App hostname could not be resolved for smoke checks."
+
+          AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
+
+          KEY_PAYLOAD=$(az rest \
+            --method post \
+            --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
+            -o json)
+
+          MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty')
+          [[ -n "$MASTER_KEY" ]] || fail "Failed to resolve master host key for smoke checks."
+          echo "::add-mask::${MASTER_KEY}"
+
+          STORAGE_CONNECTION=$(az functionapp config appsettings list \
+            --name "$FUNCTION_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "[?name=='AzureWebJobsStorage'].value | [0]" \
+            -o tsv)
+          [[ -n "$STORAGE_CONNECTION" ]] || fail "AzureWebJobsStorage app setting is missing; cannot verify artifacts."
+          echo "::add-mask::${STORAGE_CONNECTION}"
+
+          # Anonymous endpoints must remain probe-friendly.
+          health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health")
+          readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness")
+          [[ "$health_code" == "200" ]] || fail "Anonymous health endpoint check failed (expected 200, got ${health_code})."
+          [[ "$readiness_code" == "200" ]] || fail "Anonymous readiness endpoint check failed (expected 200, got ${readiness_code})."
+
+          # Protected endpoints must reject unauthenticated calls.
+          admin_unauth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/admin/host/status" || true)
+          durable_unauth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+            "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&top=1" || true)
+          [[ "$admin_unauth_code" =~ ^(401|403)$ ]] || fail "Admin endpoint unexpectedly accessible without auth (status=${admin_unauth_code})."
+          [[ "$durable_unauth_code" =~ ^(401|403)$ ]] || fail "Durable runtime endpoint unexpectedly accessible without auth (status=${durable_unauth_code})."
+
+          # Protected endpoints must be reachable with valid auth.
+          admin_auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+            -H "x-functions-key: ${MASTER_KEY}" \
+            "https://${FQDN}/admin/host/status")
+          [[ "$admin_auth_code" == "200" ]] || fail "Admin endpoint auth path failed (expected 200, got ${admin_auth_code})."
+
+          durable_probe_code=$(curl -sS -o /tmp/durable-probe.json -w '%{http_code}' --max-time 15 \
+            "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&top=1&showInput=true&code=${MASTER_KEY}")
+          [[ "$durable_probe_code" == "200" ]] || fail "Durable endpoint auth path failed (expected 200, got ${durable_probe_code})."
+
+          discover_created_from=$(date -u -Iseconds -d '24 hours ago')
+          smoke_mode="inspect"
+          smoke_blob_name=""
+
+          if [[ "$DEPLOY_STRATEGY" == "full" ]]; then
+            smoke_mode="trigger"
+            started_at_epoch=$(date +%s)
+            discover_created_from=$(date -u -Iseconds)
+            smoke_blob_name="smoke/deploy-${SOURCE_SHA:0:12}-${started_at_epoch}.kml"
+
+            log "Uploading smoke KML fixture to ${INPUT_CONTAINER}/${smoke_blob_name}"
+            az storage blob upload \
+              --only-show-errors \
+              --overwrite true \
+              --connection-string "$STORAGE_CONNECTION" \
+              --container-name "$INPUT_CONTAINER" \
+              --name "$smoke_blob_name" \
+              --file "$SMOKE_KML_FIXTURE" >/dev/null
+          fi
+
+          select_instance_id() {
+            local payload="$1"
+            local mode="$2"
+            local blob_name="$3"
+
+            if [[ "$mode" == "trigger" ]]; then
+              echo "$payload" | jq -r --arg blob "$blob_name" '
+                (if type=="array" then . elif has("durableOrchestrationState") then .durableOrchestrationState else [] end)
+                | map(
+                    select((.name // "") == "kml_processing_orchestrator")
+                    | select(((.input // "") | tostring | contains($blob)))
+                  )
+                | sort_by((.createdTime // ""))
+                | reverse
+                | .[0].instanceId // empty
+              '
+              return
+            fi
+
+            echo "$payload" | jq -r '
+              (if type=="array" then . elif has("durableOrchestrationState") then .durableOrchestrationState else [] end)
+              | map(
+                  select((.name // "") == "kml_processing_orchestrator")
+                  | select(((.input // "") | tostring | contains("kml-input")))
+                  | select((.runtimeStatus // "") == "Completed")
+                )
+              | sort_by((.createdTime // ""))
+              | reverse
+              | .[0].instanceId // empty
+            '
+          }
+
+          instance_id=""
+          discovery_deadline=$(( $(date +%s) + MAX_INSTANCE_DISCOVERY_SECONDS ))
+          while (( $(date +%s) < discovery_deadline )); do
+            instances_json=$(curl -sS --max-time 20 \
+              "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&createdTimeFrom=${discover_created_from}&top=50&showInput=true&code=${MASTER_KEY}")
+
+            instance_id=$(select_instance_id "$instances_json" "$smoke_mode" "$smoke_blob_name")
+            if [[ -n "$instance_id" ]]; then
+              break
+            fi
+
+            log "Smoke instance not discovered yet (mode=${smoke_mode}); retrying in ${POLL_INTERVAL_SECONDS}s..."
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
+
+          [[ -n "$instance_id" ]] || fail "Could not resolve smoke orchestration instance id (mode=${smoke_mode})."
+
+          diagnostics_runtime_status=""
+          diagnostics_payload='{}'
+          orchestration_deadline=$(( $(date +%s) + MAX_ORCHESTRATION_SECONDS ))
+          while (( $(date +%s) < orchestration_deadline )); do
+            diagnostics_code=$(curl -sS -o /tmp/smoke-diagnostics.json -w '%{http_code}' --max-time 15 \
+              "https://${FQDN}/api/orchestrator/${instance_id}" || true)
+
+            if [[ "$diagnostics_code" != "200" ]]; then
+              log "Diagnostics endpoint pending (instance=${instance_id}, status=${diagnostics_code}); retrying..."
+              sleep "$POLL_INTERVAL_SECONDS"
+              continue
+            fi
+
+            diagnostics_payload=$(cat /tmp/smoke-diagnostics.json)
+            diagnostics_runtime_status=$(echo "$diagnostics_payload" | jq -r '.runtimeStatus // empty')
+
+            if [[ "$diagnostics_runtime_status" == "Failed" || "$diagnostics_runtime_status" == "Terminated" || "$diagnostics_runtime_status" == "Canceled" ]]; then
+              fail "Smoke orchestration reached terminal failure status (${diagnostics_runtime_status}) for instance ${instance_id}."
+            fi
+
+            if [[ "$diagnostics_runtime_status" == "Completed" ]]; then
+              break
+            fi
+
+            log "Smoke orchestration in progress (instance=${instance_id}, runtimeStatus=${diagnostics_runtime_status:-unknown}); retrying..."
+            sleep "$POLL_INTERVAL_SECONDS"
+          done
+
+          [[ "$diagnostics_runtime_status" == "Completed" ]] || fail "Smoke orchestration did not reach Completed within ${MAX_ORCHESTRATION_SECONDS}s."
+
+          mapfile -t metadata_paths < <(echo "$diagnostics_payload" | jq -r '.output.artifacts.metadataPaths[]? | select(length > 0)')
+          [[ ${#metadata_paths[@]} -gt 0 ]] || fail "Smoke diagnostics did not include metadata artifact paths."
+
+          verified_artifacts=0
+          for artifact_path in "${metadata_paths[@]}"; do
+            exists=$(az storage blob exists \
+              --connection-string "$STORAGE_CONNECTION" \
+              --container-name "$OUTPUT_CONTAINER" \
+              --name "$artifact_path" \
+              --query exists -o tsv)
+
+            if [[ "$exists" != "true" ]]; then
+              fail "Expected smoke artifact missing: container=${OUTPUT_CONTAINER}, path=${artifact_path}"
+            fi
+
+            verified_artifacts=$((verified_artifacts + 1))
+          done
+
+          orchestrator_status_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
+            "https://${FQDN}/api/orchestrator/${instance_id}")
+
+          {
+            echo "## Post-Deploy Smoke Evidence"
+            echo ""
+            echo "- Deployment strategy: ${DEPLOY_STRATEGY}"
+            echo "- Smoke mode: ${smoke_mode}"
+            echo "- Smoke instance id: ${instance_id}"
+            echo "- Diagnostics runtime status: ${diagnostics_runtime_status}"
+            echo "- Verified metadata artifacts: ${verified_artifacts}"
+            echo "- Anonymous checks: /api/health=${health_code}, /api/readiness=${readiness_code}, /api/orchestrator/{id}=${orchestrator_status_code}"
+            echo "- Protected checks (unauth expected deny): /admin/host/status=${admin_unauth_code}, durable instances=${durable_unauth_code}"
+            echo "- Protected checks (auth expected allow): /admin/host/status=${admin_auth_code}, durable instances=${durable_probe_code}"
+            if [[ -n "$smoke_blob_name" ]]; then
+              echo "- Trigger artifact: ${INPUT_CONTAINER}/${smoke_blob_name}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          log "Post-deploy smoke checks passed (instance=${instance_id}, mode=${smoke_mode}, artifacts=${verified_artifacts})."
