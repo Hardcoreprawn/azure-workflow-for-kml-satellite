@@ -215,6 +215,8 @@ def run_ingestion_phase(
                 "processing_id": instance_id,
                 "timestamp": timestamp,
                 "tenant_id": tenant_id,
+                "source_kml_container": str(blob_event.get("container_name", "")),
+                "source_kml_blob_name": str(blob_event.get("blob_name", "")),
             },
         )
         for a in aois_list

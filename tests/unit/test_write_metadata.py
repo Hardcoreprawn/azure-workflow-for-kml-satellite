@@ -16,6 +16,7 @@ import pytest
 
 from kml_satellite.activities.write_metadata import (
     MetadataWriteError,
+    _archive_kml,
     write_metadata,
 )
 from kml_satellite.models.aoi import AOI
@@ -277,3 +278,97 @@ class TestSchemaConformance:
         aoi = _make_aoi()
         result = write_metadata(aoi)
         assert result["metadata"].get("analysis") is None
+
+
+# ===========================================================================
+# KML archive (Issue #173)
+# ===========================================================================
+
+
+class TestKMLArchive:
+    """Tests for _archive_kml and write_metadata KML archiving behaviour."""
+
+    def test_kml_archived_when_source_provided(self) -> None:
+        """KML is copied to archive path when source container/blob given."""
+        aoi = _make_aoi()
+        with (
+            patch("kml_satellite.activities.write_metadata._upload_metadata"),
+            patch("kml_satellite.activities.write_metadata._archive_kml") as mock_archive,
+        ):
+            from azure.storage.blob import BlobServiceClient
+
+            mock_client = MagicMock(spec=BlobServiceClient)
+            write_metadata(
+                aoi,
+                blob_service_client=mock_client,
+                source_kml_container="kml-input",
+                source_kml_blob_name="orchard_alpha.kml",
+                timestamp="2026-03-12T10:00:00+00:00",
+            )
+
+        mock_archive.assert_called_once()
+        call_kwargs = mock_archive.call_args
+        assert call_kwargs[1]["source_container"] == "kml-input"
+        assert call_kwargs[1]["source_blob_name"] == "orchard_alpha.kml"
+
+    def test_kml_not_archived_without_client(self) -> None:
+        """KML archive is skipped when no blob_service_client provided."""
+        aoi = _make_aoi()
+        with patch("kml_satellite.activities.write_metadata._archive_kml") as mock_archive:
+            write_metadata(
+                aoi,
+                blob_service_client=None,
+                source_kml_container="kml-input",
+                source_kml_blob_name="orchard_alpha.kml",
+            )
+        mock_archive.assert_not_called()
+
+    def test_kml_not_archived_when_source_empty(self) -> None:
+        """KML archive is skipped when source_kml_container is empty."""
+        aoi = _make_aoi()
+        with (
+            patch("kml_satellite.activities.write_metadata._upload_metadata"),
+            patch("kml_satellite.activities.write_metadata._archive_kml") as mock_archive,
+        ):
+            from azure.storage.blob import BlobServiceClient
+
+            mock_client = MagicMock(spec=BlobServiceClient)
+            write_metadata(aoi, blob_service_client=mock_client)
+
+        mock_archive.assert_not_called()
+
+    def test_archive_kml_non_fatal_on_error(self) -> None:
+        """_archive_kml logs warning and returns on error (non-fatal)."""
+        # If the source blob service raises any error, _archive_kml must not propagate.
+        from azure.storage.blob import BlobServiceClient
+
+        mock_client = MagicMock(spec=BlobServiceClient)
+        mock_blob_client = MagicMock()
+        mock_blob_client.exists.side_effect = RuntimeError("network error")
+        mock_client.get_blob_client.return_value = mock_blob_client
+
+        # Should not raise
+        _archive_kml(
+            mock_client,
+            source_container="kml-input",
+            source_blob_name="orchard.kml",
+            archive_path="kml/2026/03/alpha-orchard/orchard.kml",
+        )
+
+    def test_archive_kml_skips_missing_source_blob(self) -> None:
+        """_archive_kml skips and logs warning when source blob does not exist."""
+        from azure.storage.blob import BlobServiceClient
+
+        mock_client = MagicMock(spec=BlobServiceClient)
+        mock_blob_client = MagicMock()
+        mock_blob_client.exists.return_value = False
+        mock_client.get_blob_client.return_value = mock_blob_client
+
+        _archive_kml(
+            mock_client,
+            source_container="kml-input",
+            source_blob_name="missing.kml",
+            archive_path="kml/2026/03/unknown/missing.kml",
+        )
+
+        mock_blob_client.download_blob.assert_not_called()

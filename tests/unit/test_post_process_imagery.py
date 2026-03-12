@@ -23,7 +23,9 @@ from kml_satellite.activities.post_process_imagery import (
     PostProcessError,
     _build_geojson_polygon,
     _clip_raster,
+    _download_blob_to_temp,
     _get_raster_crs,
+    _upload_local_to_blob,
     post_process_imagery,
 )
 
@@ -491,3 +493,71 @@ class TestPostProcessDefaults(unittest.TestCase):
 
     def test_default_target_crs(self) -> None:
         assert DEFAULT_TARGET_CRS == "EPSG:4326"
+
+
+# ---------------------------------------------------------------------------
+# Tests — blob I/O helpers (Issue #172)
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadBlobToTemp(unittest.TestCase):
+    """_download_blob_to_temp — returns empty string when unavailable."""
+
+    def test_returns_empty_when_no_connection_string(self) -> None:
+        """No AzureWebJobsStorage → returns empty string without error."""
+        with patch.dict("os.environ", {}, clear=True):
+            result = _download_blob_to_temp("container", "blob/path.tif", "order-1")
+        assert result == ""
+
+    def test_returns_empty_when_container_empty(self) -> None:
+        """Empty container → returns empty string."""
+        with patch.dict("os.environ", {"AzureWebJobsStorage": "DefaultEndpointsProtocol=https"}):
+            result = _download_blob_to_temp("", "blob/path.tif", "order-1")
+        assert result == ""
+
+    def test_returns_empty_on_sdk_error(self) -> None:
+        """SDK raises -> logs warning and returns empty string."""
+        with (
+            patch.dict("os.environ", {"AzureWebJobsStorage": "UseDevelopmentStorage=true"}),
+            patch(
+                "azure.storage.blob.BlobServiceClient.from_connection_string",
+                side_effect=ValueError("bad conn"),
+            ),
+        ):
+            result = _download_blob_to_temp("ctr", "blob.tif", "order-1")
+        assert result == ""
+
+
+class TestUploadLocalToBlob(unittest.TestCase):
+    """_upload_local_to_blob — contract tests."""
+
+    def test_skips_when_no_connection_string(self) -> None:
+        """No AzureWebJobsStorage → logs warning, no exception."""
+        with patch.dict("os.environ", {}, clear=True):
+            # Should not raise
+            _upload_local_to_blob("container", "blob/path.tif", "/tmp/file.tif", "order-1")
+
+    def test_skips_when_container_empty(self) -> None:
+        """Empty container → silently skips."""
+        with patch.dict("os.environ", {"AzureWebJobsStorage": "DefaultEndpointsProtocol=https"}):
+            _upload_local_to_blob("", "blob/path.tif", "/tmp/file.tif", "order-1")
+
+    def test_raises_post_process_error_on_sdk_failure(self) -> None:
+        """SDK raises → PostProcessError (retryable) is raised."""
+
+        # Patch open so we don't need a real file, then make blob upload raise
+        with (
+            patch.dict("os.environ", {"AzureWebJobsStorage": "UseDevelopmentStorage=true"}),
+            patch("builtins.open", unittest.mock.mock_open(read_data=b"")),
+            patch("azure.storage.blob.BlobServiceClient.from_connection_string") as mock_from_cs,
+        ):
+            mock_client = MagicMock()
+            mock_blob = MagicMock()
+            mock_blob.upload_blob.side_effect = RuntimeError("upload error")
+            mock_client.get_blob_client.return_value = mock_blob
+            mock_from_cs.return_value = mock_client
+
+            with self.assertRaises(PostProcessError) as ctx:
+                _upload_local_to_blob("container", "blob.tif", "/tmp/f.tif", "order-1")
+
+        assert ctx.exception.retryable is True
