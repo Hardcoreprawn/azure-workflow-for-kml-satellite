@@ -222,6 +222,18 @@ class TestGeospatialDependencies:
             "Dockerfile must include geospatial import smoke check"
         )
 
+    def test_prunes_python_cache_artifacts(self, dockerfile_content: str) -> None:
+        """Runtime image should prune pycache/bytecode from packaged deps and app code."""
+        assert "--no-compile --target=/home/site/wwwroot/.python_packages/lib/site-packages" in (
+            dockerfile_content
+        ), "Dockerfile should disable bytecode compilation during pip install"
+        assert "-type d -name '__pycache__'" in dockerfile_content, (
+            "Dockerfile should remove __pycache__ directories from packaged artifacts"
+        )
+        assert "-name '*.pyc' -o -name '*.pyo'" in dockerfile_content, (
+            "Dockerfile should remove compiled Python bytecode files from packaged artifacts"
+        )
+
     def test_sets_gdal_config_env(self, dockerfile_content: str) -> None:
         """Builder must set GDAL_CONFIG for pip to find GDAL during wheel builds."""
         assert "GDAL_CONFIG" in dockerfile_content, (
