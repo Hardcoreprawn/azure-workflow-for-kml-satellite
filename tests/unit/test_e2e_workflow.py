@@ -42,6 +42,12 @@ def test_resolve_step_exports_storage_connection_string(e2e_workflow: dict[str, 
     assert "::add-mask::${STORAGE_CONNECTION_STRING}" in run_script, (
         "E2E workflow must mask storage connection string in logs"
     )
+    assert 'if [[ "$STORAGE_CONNECTION_STRING" != *"AccountKey="* ]]; then' in run_script, (
+        "E2E workflow must detect non-key-based AzureWebJobsStorage values"
+    )
+    assert "az storage account keys list" in run_script, (
+        "E2E workflow must fallback to storage account key resolution when needed"
+    )
 
 
 def test_run_step_injects_storage_connection_string(e2e_workflow: dict[str, Any]) -> None:

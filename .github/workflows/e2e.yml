@@ -97,6 +97,16 @@ jobs:
             --query "[?name=='AzureWebJobsStorage'].value | [0]" -o tsv)
           [[ -n "$STORAGE_CONNECTION_STRING" ]] || fail "Could not resolve AzureWebJobsStorage app setting"
 
+          if [[ "$STORAGE_CONNECTION_STRING" != *"AccountKey="* ]]; then
+            log "AzureWebJobsStorage is not key-based; resolving storage account key for E2E uploads"
+            STORAGE_KEY=$(az storage account keys list \
+              --account-name "$STORAGE_ACCOUNT" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --query "[0].value" -o tsv)
+            [[ -n "$STORAGE_KEY" ]] || fail "Could not resolve storage account key for E2E uploads"
+            STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=${STORAGE_ACCOUNT};AccountKey=${STORAGE_KEY};EndpointSuffix=core.windows.net"
+          fi
+
           # Retrieve default host key for the Durable management API.
           HOST_KEY=$(az functionapp keys list \
             --name "${{ env.FUNCTION_APP_NAME }}" \
