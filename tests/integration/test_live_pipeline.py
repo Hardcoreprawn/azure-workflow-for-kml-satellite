@@ -116,6 +116,14 @@ def _blob_service() -> BlobServiceClient:
     )
 
 
+def _normalize_runtime_status(status: str | None) -> str:
+    """Normalize Durable runtime status values across endpoint variants."""
+    value = str(status or "").strip()
+    if "." in value:
+        return value.rsplit(".", 1)[-1]
+    return value
+
+
 def _upload_kml(blob_svc: BlobServiceClient, kml_path: Path, blob_name: str) -> None:
     """Upload *kml_path* to the kml-input container as *blob_name*."""
     assert kml_path.exists(), f"Test KML not found: {kml_path}"
@@ -178,9 +186,14 @@ def _poll_until_terminal(instance_id: str) -> dict[str, Any]:
         try:
             resp = httpx.get(endpoint, timeout=30)
             if resp.status_code == 200:
-                payload: dict[str, Any] = resp.json()
+                payload: dict[str, Any] = dict(resp.json())
+                runtime_status_raw = str(payload.get("runtimeStatus") or "")
+                runtime_status = _normalize_runtime_status(runtime_status_raw)
+                payload["runtimeStatus"] = runtime_status
+                if runtime_status_raw and runtime_status_raw != runtime_status:
+                    payload["runtimeStatusRaw"] = runtime_status_raw
                 last = payload
-                if payload.get("runtimeStatus") in (
+                if runtime_status in (
                     "Completed",
                     "Failed",
                     "Terminated",
@@ -237,10 +250,17 @@ def _run_pipeline(kml_filename: str) -> tuple[str, dict[str, Any]]:
 class TestLiveSinglePolygon:
     """E2E: single-polygon KML produces metadata and imagery in under 30 minutes."""
 
+    @pytest.fixture(scope="class")
+    def single_polygon_run(self) -> tuple[str, dict[str, Any]]:
+        """Execute one live run and reuse it across single-polygon assertions."""
+        return _run_pipeline("01_single_polygon_orchard.kml")
+
     @_live
-    def test_pipeline_reaches_completed_state(self) -> None:
+    def test_pipeline_reaches_completed_state(
+        self, single_polygon_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """Pipeline must reach Completed (not Failed) for a well-formed single polygon."""
-        _, result = _run_pipeline("01_single_polygon_orchard.kml")
+        _, result = single_polygon_run
 
         assert result.get("runtimeStatus") == "Completed", (
             f"Expected Completed; got {result.get('runtimeStatus')!r}. "
@@ -248,9 +268,11 @@ class TestLiveSinglePolygon:
         )
 
     @_live
-    def test_single_polygon_metadata_artifact_written(self) -> None:
+    def test_single_polygon_metadata_artifact_written(
+        self, single_polygon_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """AC-6: at least one metadata JSON must exist in blob storage."""
-        instance_id, result = _run_pipeline("01_single_polygon_orchard.kml")
+        instance_id, result = single_polygon_run
         assert result.get("runtimeStatus") == "Completed", (
             f"Pipeline not Completed — cannot verify artifacts. "
             f"instance={instance_id} status={result.get('runtimeStatus')}"
@@ -271,9 +293,11 @@ class TestLiveSinglePolygon:
             )
 
     @_live
-    def test_metadata_path_conforms_to_pid_section_10_1(self) -> None:
+    def test_metadata_path_conforms_to_pid_section_10_1(
+        self, single_polygon_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """AC-6: metadata blob path must match ``metadata/YYYY/MM/project/feature.json``."""
-        _, result = _run_pipeline("01_single_polygon_orchard.kml")
+        _, result = single_polygon_run
         assert result.get("runtimeStatus") == "Completed"
 
         artifacts = (result.get("output") or {}).get("artifacts") or {}
@@ -287,9 +311,11 @@ class TestLiveSinglePolygon:
             )
 
     @_live
-    def test_pipeline_status_reflects_actual_outcome(self) -> None:
+    def test_pipeline_status_reflects_actual_outcome(
+        self, single_polygon_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """output.status must be 'success' or 'partial' — never silent failure."""
-        _, result = _run_pipeline("01_single_polygon_orchard.kml")
+        _, result = single_polygon_run
         assert result.get("runtimeStatus") == "Completed"
 
         output = result.get("output") or {}
@@ -299,9 +325,11 @@ class TestLiveSinglePolygon:
         )
 
     @_live
-    def test_imagery_artifacts_exist_when_status_is_success(self) -> None:
+    def test_imagery_artifacts_exist_when_status_is_success(
+        self, single_polygon_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """AC-4: if pipeline status is 'success', raw and clipped imagery must be present."""
-        _, result = _run_pipeline("01_single_polygon_orchard.kml")
+        _, result = single_polygon_run
         assert result.get("runtimeStatus") == "Completed"
 
         output = result.get("output") or {}
@@ -334,19 +362,28 @@ class TestLiveSinglePolygon:
 class TestLiveMultiFeature:
     """E2E: multi-feature KML produces independent outputs per feature."""
 
+    @pytest.fixture(scope="class")
+    def multi_feature_run(self) -> tuple[str, dict[str, Any]]:
+        """Execute one live run and reuse it across multi-feature assertions."""
+        return _run_pipeline("03_multi_feature_vineyard.kml")
+
     @_live
-    def test_multi_feature_pipeline_completes(self) -> None:
+    def test_multi_feature_pipeline_completes(
+        self, multi_feature_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """Multi-feature KML (4 Placemarks) must reach Completed state."""
-        _, result = _run_pipeline("03_multi_feature_vineyard.kml")
+        _, result = multi_feature_run
         assert result.get("runtimeStatus") == "Completed", (
             f"Multi-feature pipeline not Completed: {result.get('runtimeStatus')}. "
             f"output={result.get('output')}"
         )
 
     @_live
-    def test_multi_feature_produces_output_per_feature(self) -> None:
+    def test_multi_feature_produces_output_per_feature(
+        self, multi_feature_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """aoiCount and metadataCount must equal the number of features in the KML (4)."""
-        _, result = _run_pipeline("03_multi_feature_vineyard.kml")
+        _, result = multi_feature_run
         assert result.get("runtimeStatus") == "Completed"
 
         output = result.get("output") or {}
@@ -358,9 +395,11 @@ class TestLiveMultiFeature:
         )
 
     @_live
-    def test_no_blob_path_collisions_between_features(self) -> None:
+    def test_no_blob_path_collisions_between_features(
+        self, multi_feature_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """AC-4: each feature must produce a unique metadata blob path."""
-        _, result = _run_pipeline("03_multi_feature_vineyard.kml")
+        _, result = multi_feature_run
         assert result.get("runtimeStatus") == "Completed"
 
         artifacts = (result.get("output") or {}).get("artifacts") or {}
@@ -379,19 +418,28 @@ class TestLiveMultiFeature:
 class TestLivePolygonWithHole:
     """E2E: polygon-with-hole KML processes successfully."""
 
+    @pytest.fixture(scope="class")
+    def polygon_with_hole_run(self) -> tuple[str, dict[str, Any]]:
+        """Execute one live run and reuse it across polygon-with-hole assertions."""
+        return _run_pipeline("04_complex_polygon_with_hole.kml")
+
     @_live
-    def test_polygon_with_hole_completes(self) -> None:
+    def test_polygon_with_hole_completes(
+        self, polygon_with_hole_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """Inner-boundary KML must not crash the pipeline."""
-        _, result = _run_pipeline("04_complex_polygon_with_hole.kml")
+        _, result = polygon_with_hole_run
         assert result.get("runtimeStatus") == "Completed", (
             f"Polygon-with-hole pipeline failed: "
             f"status={result.get('runtimeStatus')} output={result.get('output')}"
         )
 
     @_live
-    def test_polygon_with_hole_produces_metadata(self) -> None:
+    def test_polygon_with_hole_produces_metadata(
+        self, polygon_with_hole_run: tuple[str, dict[str, Any]]
+    ) -> None:
         """Inner-boundary polygon must produce metadata JSON."""
-        _, result = _run_pipeline("04_complex_polygon_with_hole.kml")
+        _, result = polygon_with_hole_run
         assert result.get("runtimeStatus") == "Completed"
 
         artifacts = (result.get("output") or {}).get("artifacts") or {}

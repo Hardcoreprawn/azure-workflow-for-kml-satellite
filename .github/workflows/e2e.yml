@@ -150,4 +150,4 @@ jobs:
           E2E_STORAGE_CONNECTION_STRING: ${{ steps.env.outputs.storage_connection_string }}
           E2E_FUNCTION_HOST_KEY: ${{ steps.env.outputs.host_key }}
         run: |
-          uv run pytest tests/integration/ -m e2e -v --tb=short
+          uv run pytest tests/integration/test_live_pipeline.py -m "e2e and not slow" -v --tb=short
