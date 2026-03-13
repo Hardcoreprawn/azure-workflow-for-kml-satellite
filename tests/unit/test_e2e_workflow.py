@@ -52,6 +52,10 @@ def test_resolve_step_exports_storage_connection_string(e2e_workflow: dict[str, 
         "E2E workflow must resolve a host master key for durable API auth"
     )
     assert "jq -r '.masterKey // empty'" in run_script
+    assert "az functionapp keys list" in run_script, (
+        "E2E workflow should fallback to functionapp key APIs when ARM listKeys fails"
+    )
+    assert '--query "masterKey" -o tsv' in run_script
 
 
 def test_run_step_injects_storage_connection_string(e2e_workflow: dict[str, Any]) -> None:
