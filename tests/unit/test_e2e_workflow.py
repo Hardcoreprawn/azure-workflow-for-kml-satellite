@@ -67,3 +67,11 @@ def test_run_step_injects_storage_connection_string(e2e_workflow: dict[str, Any]
     assert env_block.get("E2E_STORAGE_CONNECTION_STRING") == (
         "${{ steps.env.outputs.storage_connection_string }}"
     )
+
+    run_script = str(run_step.get("run", ""))
+    assert "tests/integration/test_live_pipeline.py" in run_script, (
+        "Deploy-gated E2E workflow should run the canonical live pipeline proof suite"
+    )
+    assert '"e2e and not slow"' in run_script, (
+        "Deploy-gated E2E workflow must exclude slow stress tests"
+    )
