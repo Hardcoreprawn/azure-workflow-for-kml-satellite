@@ -91,6 +91,12 @@ jobs:
           STORAGE_URL="https://${STORAGE_ACCOUNT}.blob.core.windows.net"
           log "Storage account URL: $STORAGE_URL"
 
+          STORAGE_CONNECTION_STRING=$(az functionapp config appsettings list \
+            --name "${{ env.FUNCTION_APP_NAME }}" \
+            --resource-group "${{ env.RESOURCE_GROUP }}" \
+            --query "[?name=='AzureWebJobsStorage'].value | [0]" -o tsv)
+          [[ -n "$STORAGE_CONNECTION_STRING" ]] || fail "Could not resolve AzureWebJobsStorage app setting"
+
           # Retrieve default host key for the Durable management API.
           HOST_KEY=$(az functionapp keys list \
             --name "${{ env.FUNCTION_APP_NAME }}" \
@@ -108,6 +114,8 @@ jobs:
 
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
           echo "storage_url=${STORAGE_URL}" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::${STORAGE_CONNECTION_STRING}"
+          echo "storage_connection_string=${STORAGE_CONNECTION_STRING}" >> "$GITHUB_OUTPUT"
           # Mask the key so it never appears in logs.
           echo "::add-mask::${HOST_KEY}"
           echo "host_key=${HOST_KEY}" >> "$GITHUB_OUTPUT"
@@ -116,6 +124,7 @@ jobs:
         env:
           E2E_FUNCTION_APP_HOSTNAME: ${{ steps.env.outputs.hostname }}
           E2E_STORAGE_ACCOUNT_URL: ${{ steps.env.outputs.storage_url }}
+          E2E_STORAGE_CONNECTION_STRING: ${{ steps.env.outputs.storage_connection_string }}
           E2E_FUNCTION_HOST_KEY: ${{ steps.env.outputs.host_key }}
         run: |
           uv run pytest tests/integration/ -m e2e -v --tb=short

@@ -12,13 +12,16 @@ E2E_FUNCTION_APP_HOSTNAME
 E2E_STORAGE_ACCOUNT_URL
     Blob service endpoint.
     Example: ``https://stkmlsatdev.blob.core.windows.net``
+E2E_STORAGE_CONNECTION_STRING
+    Optional. Full storage connection string. When present, tests prefer
+    this over token-based auth to avoid RBAC data-plane drift.
 E2E_FUNCTION_HOST_KEY
     Default host key, used to authenticate the Durable management API
     when locating the orchestration instance triggered by our upload.
 
 Running locally
 ---------------
-Export the three variables above, then::
+Export hostname + host key and either storage variable above, then::
 
     pytest tests/integration/ -m e2e -v
 
@@ -29,8 +32,9 @@ Azure CLI after OIDC login and injects them as env vars.
 
 Design notes
 ------------
-- Blob uploads use ``DefaultAzureCredential`` — OIDC in CI, ``az login``
-  locally.  No connection strings stored in code or config.
+- Blob uploads prefer ``E2E_STORAGE_CONNECTION_STRING`` when provided by
+    workflow resolution. If absent, tests fall back to ``DefaultAzureCredential``
+    (OIDC in CI, ``az login`` locally).
 - Each test prefixes its blob name with a UUID so concurrent test runs
   never collide with each other (PID 7.4.4 Idempotent).
 - After upload the Durable management API (authenticated) is polled to
@@ -65,14 +69,16 @@ from azure.storage.blob import BlobServiceClient
 
 _HOSTNAME: str | None = os.getenv("E2E_FUNCTION_APP_HOSTNAME")
 _STORAGE_URL: str | None = os.getenv("E2E_STORAGE_ACCOUNT_URL")
+_STORAGE_CONNECTION_STRING: str | None = os.getenv("E2E_STORAGE_CONNECTION_STRING")
 _HOST_KEY: str | None = os.getenv("E2E_FUNCTION_HOST_KEY")
 
 _live = pytest.mark.skipif(
-    not all([_HOSTNAME, _STORAGE_URL, _HOST_KEY]),
+    not (_HOSTNAME and _HOST_KEY and (_STORAGE_CONNECTION_STRING or _STORAGE_URL)),
     reason=(
         "Live E2E env vars not set — skipping. "
-        "Set E2E_FUNCTION_APP_HOSTNAME, E2E_STORAGE_ACCOUNT_URL, "
-        "and E2E_FUNCTION_HOST_KEY to run against a deployed environment."
+        "Set E2E_FUNCTION_APP_HOSTNAME, E2E_FUNCTION_HOST_KEY, and either "
+        "E2E_STORAGE_CONNECTION_STRING or E2E_STORAGE_ACCOUNT_URL to run "
+        "against a deployed environment."
     ),
 )
 
@@ -99,7 +105,10 @@ _METADATA_PATH_PATTERN = re.compile(r"^metadata/\d{4}/\d{2}/[a-z0-9-]+/[a-z0-9-]
 
 
 def _blob_service() -> BlobServiceClient:
-    assert _STORAGE_URL, "E2E_STORAGE_ACCOUNT_URL must be set"
+    if _STORAGE_CONNECTION_STRING:
+        return BlobServiceClient.from_connection_string(_STORAGE_CONNECTION_STRING)
+
+    assert _STORAGE_URL, "E2E_STORAGE_ACCOUNT_URL must be set when no connection string exists"
     return BlobServiceClient(
         account_url=_STORAGE_URL,
         credential=DefaultAzureCredential(),
