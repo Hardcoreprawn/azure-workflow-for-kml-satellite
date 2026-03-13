@@ -37,7 +37,7 @@ RUN if [ "$GEO_DEPS_PREINSTALLED" = "true" ]; then \
         else \
             cp /tmp/requirements.txt /tmp/requirements.runtime.txt; \
         fi && \
-        pip install --no-cache-dir --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+        pip install --no-cache-dir --no-compile --target=/home/site/wwwroot/.python_packages/lib/site-packages \
         -r /tmp/requirements.runtime.txt
 # Copy application code
 WORKDIR /build
@@ -79,6 +79,12 @@ COPY --from=builder --chown=app:app /home/site/wwwroot/.python_packages /home/si
 COPY --from=builder --chown=app:app /build/host.json /home/site/wwwroot/
 COPY --from=builder --chown=app:app /build/function_app.py /home/site/wwwroot/
 COPY --from=builder --chown=app:app /build/kml_satellite/ /home/site/wwwroot/kml_satellite/
+
+# Remove bytecode and interpreter caches that do not provide runtime value.
+RUN find /home/site/wwwroot/.python_packages /home/site/wwwroot/kml_satellite \
+    -type d -name '__pycache__' -prune -exec rm -rf '{}' + \
+    && find /home/site/wwwroot/.python_packages /home/site/wwwroot/kml_satellite \
+    -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 
 USER app
 
