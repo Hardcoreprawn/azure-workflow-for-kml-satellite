@@ -5,29 +5,59 @@
 
 const API_ENDPOINT = '/api/readiness';
 const CONTACT_FORM_ENDPOINT = '/api/contact-form';
-const CONTACT_FORM_FALLBACK_ENDPOINT = 'https://func-kmlsat-dev.azurewebsites.net/api/contact-form';
+const DEPLOYMENT_FALLBACK_ORIGIN = '__FUNCTION_APP_ORIGIN__';
+const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.azurewebsites.net';
+const FALLBACK_API_ORIGIN = DEPLOYMENT_FALLBACK_ORIGIN.startsWith('__')
+    ? DEFAULT_FALLBACK_ORIGIN
+    : DEPLOYMENT_FALLBACK_ORIGIN;
+const READINESS_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_ENDPOINT}`;
+const CONTACT_FORM_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${CONTACT_FORM_ENDPOINT}`;
 const STATUS_CHECK_INTERVAL = 30000; // 30 seconds
 
 /**
  * Fetch pipeline status from /api/readiness
  */
+async function fetchJson(endpoint, options = {}) {
+    const headers = new Headers(options.headers || {});
+    headers.set('Accept', 'application/json');
+
+    const response = await fetch(endpoint, {
+        ...options,
+        headers,
+    });
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    if (!contentType.toLowerCase().includes('application/json')) {
+        throw new Error(`Expected JSON but received ${contentType || 'unknown content type'}`);
+    }
+
+    return response.json();
+}
+
 async function fetchPipelineStatus() {
-    try {
-        const response = await fetch(API_ENDPOINT);
-        if (response.ok) {
-            const data = await response.json();
+    let lastError = null;
+
+    for (const endpoint of [API_ENDPOINT, READINESS_FALLBACK_ENDPOINT]) {
+        try {
+            const data = await fetchJson(endpoint);
+            const ready = data.status === 'ready';
+
             return {
-                online: true,
-                status: 'Online',
-                message: data.message || 'Pipeline is ready'
+                online: ready,
+                status: ready ? 'Online' : 'Offline',
+                message: data.message || (ready ? 'Pipeline is ready' : 'Pipeline is not ready')
             };
-        } else {
-            return {
-                online: false,
-                status: 'Offline',
-                message: 'Pipeline is not responding'
-            };
+        } catch (error) {
+            lastError = error;
         }
+    }
+
+    try {
+        throw lastError || new Error('Readiness check failed');
     } catch (error) {
         console.warn('Status check failed:', error);
         return {
@@ -47,7 +77,7 @@ function updateStatusBadge(status) {
 
     badge.classList.remove('online', 'offline');
     badge.classList.add(status.online ? 'online' : 'offline');
-    text.textContent = `🟢 ${status.status}` || (status.online ? '🟢 Online' : '🔴 Offline');
+    text.textContent = status.online ? '🟢 Online' : '🔴 Offline';
 }
 
 /**

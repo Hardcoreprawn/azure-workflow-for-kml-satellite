@@ -200,7 +200,8 @@ resource "azapi_resource" "function_app" {
         cors = {
           allowedOrigins = [
             "http://localhost:1111",
-            "https://${azurerm_static_web_app.main.default_host_name}"
+            "https://${azurerm_static_web_app.main.default_host_name}",
+            "https://*.azurestaticapps.net"
           ]
           supportCredentials = false
         }
