@@ -651,6 +651,8 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
     processing_id = str(payload.get("processing_id", ""))
     timestamp = str(payload.get("timestamp", ""))
     tenant_id = str(payload.get("tenant_id", ""))
+    source_kml_container = str(payload.get("source_kml_container", ""))
+    source_kml_blob_name = str(payload.get("source_kml_blob_name", ""))
 
     logger.info(
         "write_metadata activity started | feature=%s | processing_id=%s",
@@ -670,6 +672,8 @@ def write_metadata_activity(activityInput: str) -> dict[str, object]:  # noqa: N
         timestamp=timestamp,
         tenant_id=tenant_id,
         blob_service_client=blob_service,
+        source_kml_container=source_kml_container,
+        source_kml_blob_name=source_kml_blob_name,
     )
 
     logger.info(

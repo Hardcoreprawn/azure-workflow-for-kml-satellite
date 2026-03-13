@@ -54,6 +54,8 @@ class WriteMetadataInput(TypedDict):
     processing_id: str
     timestamp: str
     tenant_id: NotRequired[str]
+    source_kml_container: NotRequired[str]
+    source_kml_blob_name: NotRequired[str]
 
 
 class WriteMetadataOutput(TypedDict):

@@ -52,6 +52,8 @@ def write_metadata(
     tenant_id: str = "",
     blob_service_client: object | None = None,
     output_container: str = DEFAULT_OUTPUT_CONTAINER,
+    source_kml_container: str = "",
+    source_kml_blob_name: str = "",
 ) -> dict[str, object]:
     """Build and store a metadata JSON document for a processed AOI.
 
@@ -62,6 +64,8 @@ def write_metadata(
         blob_service_client: Optional ``BlobServiceClient`` for writing to
             Blob Storage.  If ``None``, metadata is built and returned
             without writing (useful for testing and local dev).
+        source_kml_container: Container holding the original KML file.
+        source_kml_blob_name: Blob name of the original KML file to archive.
 
     Returns:
         A dict containing:
@@ -114,6 +118,16 @@ def write_metadata(
     # Write to Blob Storage if a client is provided
     if blob_service_client is not None:
         _upload_metadata(blob_service_client, metadata_path, metadata_json, output_container)
+
+    # Archive the original KML file alongside its metadata (FR-4.4).
+    if blob_service_client is not None and source_kml_container and source_kml_blob_name:
+        _archive_kml(
+            blob_service_client,
+            source_container=source_kml_container,
+            source_blob_name=source_kml_blob_name,
+            archive_path=kml_archive_path,
+            output_container=output_container,
+        )
 
     logger.info(
         "Metadata written | feature=%s | path=%s | processing_id=%s | tenant_id=%s",
@@ -168,3 +182,69 @@ def _upload_metadata(
     except Exception as exc:
         msg = f"Failed to upload metadata to {metadata_path}: {exc}"
         raise MetadataWriteError(msg) from exc
+
+
+def _archive_kml(
+    blob_service_client: object,
+    *,
+    source_container: str,
+    source_blob_name: str,
+    archive_path: str,
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
+) -> None:
+    """Copy the original KML blob to the archive path in the output container.
+
+    Idempotent: overwrites if the archive blob already exists (PID 7.4.4).
+    Logs a warning and returns silently on failure — the metadata write
+    is already committed and KML archiving is best-effort.
+
+    Args:
+        blob_service_client: An Azure ``BlobServiceClient`` instance.
+        source_container: Container holding the original KML file.
+        source_blob_name: Blob name of the original KML file.
+        archive_path: Destination blob path in the output container.
+        output_container: Output container for the archive.
+    """
+    try:
+        from azure.storage.blob import BlobServiceClient
+
+        if not isinstance(blob_service_client, BlobServiceClient):
+            return
+
+        source_client = blob_service_client.get_blob_client(
+            container=source_container, blob=source_blob_name
+        )
+        dest_client = blob_service_client.get_blob_client(
+            container=output_container, blob=archive_path
+        )
+
+        if not source_client.exists():
+            logger.warning(
+                "KML source blob not found — skipping archive | container=%s | blob=%s",
+                source_container,
+                source_blob_name,
+            )
+            return
+
+        source_data = source_client.download_blob().readall()
+        dest_client.upload_blob(
+            source_data,
+            overwrite=True,
+            content_type="application/vnd.google-earth.kml+xml",
+        )
+
+        logger.info(
+            "KML archived | source=%s/%s | dest=%s/%s",
+            source_container,
+            source_blob_name,
+            output_container,
+            archive_path,
+        )
+    except Exception as exc:
+        logger.warning(
+            "KML archive failed (non-fatal) | source=%s/%s | dest=%s | error=%s",
+            source_container,
+            source_blob_name,
+            archive_path,
+            exc,
+        )

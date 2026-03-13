@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -122,6 +124,8 @@ def post_process_imagery(
         msg = "post_process_imagery: blob_path is missing from download_result"
         raise PostProcessError(msg, retryable=False)
 
+    source_container = str(download_result.get("container", ""))
+
     logger.info(
         "post_process_imagery started | order=%s | feature=%s | "
         "clipping=%s | reprojection=%s | target_crs=%s",
@@ -168,6 +172,8 @@ def post_process_imagery(
         enable_reprojection=enable_reprojection,
         order_id=order_id,
         feature_name=feature_name,
+        source_container=source_container,
+        output_container=output_container,
     )
 
     duration = time.monotonic() - start_time
@@ -214,6 +220,8 @@ def _process_raster(
     enable_reprojection: bool,
     order_id: str,
     feature_name: str,
+    source_container: str = "",
+    output_container: str = "",
 ) -> dict[str, Any]:
     """Execute the raster processing pipeline (reproject + clip).
 
@@ -241,13 +249,6 @@ def _process_raster(
             "clip_error": f"rasterio not available: {exc}",
         }
 
-    # NOTE: In production, source_blob_path would reference Azure Blob Storage.
-    # The actual blob download/upload is an infrastructure concern — currently
-    # the provider adapter streams data but doesn't persist it (see M-2.4 notes).
-    # This implementation processes local file paths for testability.
-    # When blob I/O is wired, this will use rasterio's GDAL vsicurl or
-    # download to a temp file first.
-
     source_crs = ""
     reprojected = False
     clipped = False
@@ -255,15 +256,23 @@ def _process_raster(
     output_path = source_blob_path
     output_size_bytes = 0
     reprojected_temp_path = ""
+    downloaded_temp_path = ""
+    clipped_temp_path = ""
 
     try:
-        source_crs = _get_raster_crs(source_blob_path, cast("RasterioModule", rasterio))
+        # Download source blob to a local temp file for rasterio.
+        # Falls back to treating source_blob_path as a local path when
+        # AzureWebJobsStorage is unavailable (e.g. unit tests / local dev).
+        downloaded_temp_path = _download_blob_to_temp(source_container, source_blob_path, order_id)
+        local_source = downloaded_temp_path or source_blob_path
+
+        source_crs = _get_raster_crs(local_source, cast("RasterioModule", rasterio))
 
         # Step 1: Reproject if needed (FR-3.11)
-        working_path = source_blob_path
+        working_path = local_source
         if enable_reprojection and source_crs and source_crs != target_crs:
             working_path = _reproject_raster(
-                source_blob_path,
+                local_source,
                 target_crs,
                 cast("RasterioModule", rasterio),
                 order_id=order_id,
@@ -280,20 +289,26 @@ def _process_raster(
         # Step 2: Clip to AOI polygon (FR-3.12)
         if enable_clipping:
             try:
-                output_path, output_size_bytes = _clip_raster(
+                with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+                    clipped_temp_path = tmp.name
+                _, output_size_bytes = _clip_raster(
                     working_path,
-                    clipped_blob_path,
+                    clipped_temp_path,
                     exterior_coords,
                     interior_coords,
                     cast("RasterioModule", rasterio),
                     order_id=order_id,
                     feature_name=feature_name,
                 )
+                # Upload clipped output to blob storage (FR-4.3).
+                _upload_local_to_blob(
+                    output_container, clipped_blob_path, clipped_temp_path, order_id
+                )
+                output_path = clipped_blob_path
                 clipped = True
             except Exception as exc:
                 # Graceful degradation (PID 7.4.2): clipping failed.
-                # Always fall back to the original source blob path so callers
-                # receive a stable, upload-safe location.
+                # Fall back to the raw blob path so callers receive a stable reference.
                 clip_error = str(exc)
                 output_path = source_blob_path
                 logger.warning(
@@ -305,11 +320,14 @@ def _process_raster(
                     output_path,
                 )
         else:
-            output_path = working_path
-            # Populate size when reprojection-only (no clipping)
-            if reprojected and working_path != source_blob_path:
+            # No clipping: upload reprojected result to output blob if applicable.
+            if reprojected and working_path != local_source:
                 with contextlib.suppress(OSError):
                     output_size_bytes = Path(working_path).stat().st_size
+                _upload_local_to_blob(output_container, clipped_blob_path, working_path, order_id)
+                output_path = clipped_blob_path
+            else:
+                output_path = source_blob_path
 
     except Exception as exc:
         # Fatal raster processing error — graceful degradation
@@ -320,17 +338,11 @@ def _process_raster(
             exc,
         )
     finally:
-        # Clean up temporary reprojected file if it's not the final output
-        if reprojected_temp_path and reprojected_temp_path != output_path:
-            try:
-                Path(reprojected_temp_path).unlink()
-                logger.debug(
-                    "Removed temporary reprojected file | order=%s | path=%s",
-                    order_id,
-                    reprojected_temp_path,
-                )
-            except OSError:
-                pass  # Best-effort cleanup
+        # Best-effort cleanup of all local temp files
+        for _temp in (downloaded_temp_path, reprojected_temp_path, clipped_temp_path):
+            if _temp and _temp != source_blob_path:
+                with contextlib.suppress(OSError):
+                    Path(_temp).unlink()
 
     return {
         "clipped": clipped,
@@ -523,3 +535,85 @@ def _build_geojson_polygon(
         "type": "Polygon",
         "coordinates": rings,
     }
+
+
+def _download_blob_to_temp(container: str, blob_path: str, order_id: str) -> str:
+    """Download a blob to a local temp file for rasterio processing.
+
+    Returns the temp file path on success, or empty string when
+    ``AzureWebJobsStorage`` is unavailable (tests / local dev).
+    """
+    connection_string = os.environ.get("AzureWebJobsStorage", "")
+    if not connection_string or not container or not blob_path:
+        return ""
+
+    try:
+        from azure.storage.blob import BlobServiceClient
+
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        blob_client = blob_service.get_blob_client(container=container, blob=blob_path)
+
+        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+            temp_path = tmp.name
+
+        with Path(temp_path).open("wb") as f:
+            download_stream = blob_client.download_blob()
+            f.write(download_stream.readall())
+
+        logger.debug(
+            "Downloaded source blob to temp | order=%s | container=%s | blob=%s | temp=%s",
+            order_id,
+            container,
+            blob_path,
+            temp_path,
+        )
+        return temp_path
+    except Exception as exc:
+        logger.warning(
+            "Failed to download source blob | order=%s | container=%s | blob=%s | error=%s",
+            order_id,
+            container,
+            blob_path,
+            exc,
+        )
+        return ""
+
+
+def _upload_local_to_blob(
+    output_container: str, blob_path: str, local_path: str, order_id: str
+) -> None:
+    """Upload a local temp file to blob storage at the given path.
+
+    Raises ``PostProcessError`` (retryable) on upload failure so the caller
+    can apply graceful degradation.  Logs a warning and returns silently
+    when ``AzureWebJobsStorage`` is unavailable.
+    """
+    connection_string = os.environ.get("AzureWebJobsStorage", "")
+    if not connection_string or not output_container or not blob_path:
+        logger.warning(
+            "Skipping blob upload (no AzureWebJobsStorage) | order=%s | blob=%s",
+            order_id,
+            blob_path,
+        )
+        return
+
+    try:
+        from azure.storage.blob import BlobServiceClient
+
+        blob_service = BlobServiceClient.from_connection_string(connection_string)
+        blob_client = blob_service.get_blob_client(container=output_container, blob=blob_path)
+        with Path(local_path).open("rb") as f:
+            blob_client.upload_blob(f, overwrite=True, content_type="image/tiff")
+
+        logger.debug(
+            "Uploaded processed blob | order=%s | container=%s | blob=%s",
+            order_id,
+            output_container,
+            blob_path,
+        )
+    except Exception as exc:
+        msg = (
+            f"Failed to upload processed blob | order={order_id} | "
+            f"container={output_container} | blob={blob_path} | error={exc}"
+        )
+        raise PostProcessError(msg, retryable=True) from exc
