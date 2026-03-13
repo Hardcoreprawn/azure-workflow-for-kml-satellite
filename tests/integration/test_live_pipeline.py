@@ -93,9 +93,10 @@ _DATA_DIR = Path(__file__).parent.parent / "data"
 # NFR-1: pipeline under 30 min; test ceiling is 25 min to give headroom.
 _MAX_WAIT_SECONDS = 1500  # 25 minutes
 # How long to poll the Durable API before declaring the instance not found.
-_INSTANCE_FIND_TIMEOUT_S = 90  # 1.5 minutes
+_INSTANCE_FIND_TIMEOUT_S = 240  # 4 minutes
 _POLL_INTERVAL_S = 30
 _DURABLE_HUB = "KmlSatelliteHub"
+_DURABLE_CONNECTION = "Storage"
 # Blob path pattern for metadata outputs (PID Section 10.1).
 _METADATA_PATH_PATTERN = re.compile(r"^metadata/\d{4}/\d{2}/[a-z0-9-]+/[a-z0-9-]+\.json$")
 
@@ -136,8 +137,11 @@ def _find_instance_id(
     assert _HOSTNAME and _HOST_KEY, "HOSTNAME and HOST_KEY must be set"
     endpoint = (
         f"https://{_HOSTNAME}/runtime/webhooks/durabletask/instances"
-        f"?taskHubName={_DURABLE_HUB}"
+        f"?taskHub={_DURABLE_HUB}"
+        f"&connection={_DURABLE_CONNECTION}"
         f"&createdTimeFrom={created_after.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+        "&top=50"
+        "&showInput=true"
         f"&code={_HOST_KEY}"
     )
     deadline = time.monotonic() + timeout_s
