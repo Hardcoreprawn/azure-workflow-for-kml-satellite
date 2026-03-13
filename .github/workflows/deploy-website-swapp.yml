@@ -74,6 +74,42 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Get Function App hostname
+        id: function-app
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOSTNAME=$(az functionapp show \
+            --name "$FUNCTION_APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "defaultHostName" -o tsv)
+          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+          echo "Function App hostname: ${HOSTNAME}"
+
+      - name: Configure website backend fallback origin
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export FUNCTION_APP_ORIGIN="https://${{ steps.function-app.outputs.hostname }}"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("website/static/app.js")
+          content = path.read_text(encoding="utf-8")
+          updated = content.replace("__FUNCTION_APP_ORIGIN__", os.environ["FUNCTION_APP_ORIGIN"])
+
+          if content == updated:
+            raise SystemExit(
+              "Expected website/static/app.js to contain __FUNCTION_APP_ORIGIN__ placeholder"
+            )
+
+          path.write_text(updated, encoding="utf-8")
+          PY
+          echo "Configured website backend fallback origin: ${FUNCTION_APP_ORIGIN}"
+
       - name: Get Static Web App deployment token
         id: token
         if: steps.website-check.outputs.exists == 'true'
@@ -140,6 +176,7 @@ jobs:
               echo "✅ DEPLOYMENT SUCCESSFUL"
               echo "========================================="
               echo "TreeSight: ${SITE_URL}"
+              echo "Backend fallback: https://${{ steps.function-app.outputs.hostname }}"
               echo "========================================="
               exit 0
             fi
