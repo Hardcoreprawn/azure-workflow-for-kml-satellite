@@ -21,7 +21,7 @@ Registry (ghcr.io), and deploy it to Azure Functions on Container Apps:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -221,6 +221,20 @@ class TestContainerDeployment:
         )
         assert "mcr.microsoft.com/azure-functions/python:4-python3.12" in run_script
 
+    def test_smoke_runtime_status_normalized(self, deploy_workflow: dict[str, Any]) -> None:
+        """Smoke checks must normalize enum-style runtime statuses from diagnostics APIs."""
+        steps = _get_steps(deploy_workflow)
+        smoke = _find_step(steps, "post-deploy smoke checks")
+        assert smoke is not None, "No post-deploy smoke checks step found"
+
+        run_script = str(smoke.get("run", ""))
+        assert "normalize_runtime_status" in run_script, (
+            "Smoke checks must normalize runtime status strings before comparisons"
+        )
+        assert 'endswith("Completed")' in run_script, (
+            "Smoke checks must accept enum-style completed values from Durable APIs"
+        )
+
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
         steps = _get_steps(deploy_workflow)
@@ -241,7 +255,8 @@ class TestContainerDeployment:
     def test_dockerfile_in_trigger_paths(self, deploy_workflow: dict[str, Any]) -> None:
         """Dockerfile changes must trigger a deployment."""
         # PyYAML 1.1 parses bare `on:` as boolean True
-        on_block = deploy_workflow.get("on") or deploy_workflow.get(True, {})
+        workflow_any = cast("dict[Any, Any]", deploy_workflow)
+        on_block = workflow_any.get("on") or workflow_any.get(True, {})
         paths = on_block.get("push", {}).get("paths", [])
         assert "Dockerfile" in paths, (
             "Dockerfile must be in the trigger paths so image changes trigger deploy"
