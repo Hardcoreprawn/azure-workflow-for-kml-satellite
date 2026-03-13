@@ -221,6 +221,20 @@ class TestContainerDeployment:
         )
         assert "mcr.microsoft.com/azure-functions/python:4-python3.12" in run_script
 
+    def test_smoke_runtime_status_normalized(self, deploy_workflow: dict[str, Any]) -> None:
+        """Smoke checks must normalize enum-style runtime statuses from diagnostics APIs."""
+        steps = _get_steps(deploy_workflow)
+        smoke = _find_step(steps, "post-deploy smoke checks")
+        assert smoke is not None, "No post-deploy smoke checks step found"
+
+        run_script = str(smoke.get("run", ""))
+        assert "normalize_runtime_status" in run_script, (
+            "Smoke checks must normalize runtime status strings before comparisons"
+        )
+        assert 'endswith("Completed")' in run_script, (
+            "Smoke checks must accept enum-style completed values from Durable APIs"
+        )
+
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
         steps = _get_steps(deploy_workflow)

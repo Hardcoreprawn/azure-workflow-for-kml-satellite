@@ -730,12 +730,17 @@ jobs:
               | map(
                   select((.name // "") == "kml_processing_orchestrator")
                   | select(((.input // "") | tostring | contains("kml-input")))
-                  | select((.runtimeStatus // "") == "Completed")
+                  | select(((.runtimeStatus // "") | tostring | endswith("Completed")))
                 )
               | sort_by((.createdTime // ""))
               | reverse
               | .[0].instanceId // empty
             '
+          }
+
+          normalize_runtime_status() {
+            local raw_status="$1"
+            echo "${raw_status##*.}"
           }
 
           instance_id=""
@@ -770,6 +775,7 @@ jobs:
 
             diagnostics_payload=$(cat /tmp/smoke-diagnostics.json)
             diagnostics_runtime_status=$(echo "$diagnostics_payload" | jq -r '.runtimeStatus // empty')
+            diagnostics_runtime_status=$(normalize_runtime_status "$diagnostics_runtime_status")
 
             if [[ "$diagnostics_runtime_status" == "Failed" || "$diagnostics_runtime_status" == "Terminated" || "$diagnostics_runtime_status" == "Canceled" ]]; then
               fail "Smoke orchestration reached terminal failure status (${diagnostics_runtime_status}) for instance ${instance_id}."
