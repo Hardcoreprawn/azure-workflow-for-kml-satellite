@@ -161,8 +161,29 @@ jobs:
           MANUAL_RUNTIME_BASE_IMAGE: ${{ inputs.runtime_base_image }}
         run: |
           set -euo pipefail
-          builder="${MANUAL_BUILDER_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
-          runtime="${MANUAL_RUNTIME_BASE_IMAGE:-ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable}"
+
+          default_geo_base="ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable"
+          default_fallback_base="mcr.microsoft.com/azure-functions/python:4-python3.12"
+
+          builder="${MANUAL_BUILDER_BASE_IMAGE:-$default_geo_base}"
+          runtime="${MANUAL_RUNTIME_BASE_IMAGE:-$default_geo_base}"
+
+          # Work-first reliability guardrail: if the default geo base image does not
+          # exist yet, automatically fall back to the Microsoft Functions base image.
+          if [[ -z "${MANUAL_BUILDER_BASE_IMAGE}" && "$builder" == "$default_geo_base" ]]; then
+            if ! docker manifest inspect "$builder" >/dev/null 2>&1; then
+              echo "Default builder base image not found: $builder; falling back to $default_fallback_base"
+              builder="$default_fallback_base"
+            fi
+          fi
+
+          if [[ -z "${MANUAL_RUNTIME_BASE_IMAGE}" && "$runtime" == "$default_geo_base" ]]; then
+            if ! docker manifest inspect "$runtime" >/dev/null 2>&1; then
+              echo "Default runtime base image not found: $runtime; falling back to $default_fallback_base"
+              runtime="$default_fallback_base"
+            fi
+          fi
+
           geo_preinstalled="false"
           if [[ "$builder" == *"geo-base"* || "$runtime" == *"geo-base"* ]]; then
             geo_preinstalled="true"

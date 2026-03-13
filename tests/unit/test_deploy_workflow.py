@@ -204,6 +204,23 @@ class TestContainerDeployment:
         labels = str(build.get("with", {}).get("labels", ""))
         assert "org.opencontainers.image.revision=${{ steps.image.outputs.source_sha }}" in labels
 
+    def test_base_image_resolution_has_manifest_fallback(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Resolve base images must fall back when geo-base-stable is unavailable."""
+        steps = _get_steps(deploy_workflow)
+        resolve = _find_step(steps, "resolve base image inputs")
+        assert resolve is not None, "No base image resolution step found"
+
+        run_script = str(resolve.get("run", ""))
+        assert "docker manifest inspect" in run_script, (
+            "Base image resolution must verify image existence before use"
+        )
+        assert "falling back to" in run_script, (
+            "Base image resolution must provide fallback behavior when geo-base is missing"
+        )
+        assert "mcr.microsoft.com/azure-functions/python:4-python3.12" in run_script
+
     def test_no_functions_action(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must NOT use azure/functions-action (code deploy)."""
         steps = _get_steps(deploy_workflow)
