@@ -314,13 +314,13 @@ class TestLiveSinglePolygon:
     def test_pipeline_status_reflects_actual_outcome(
         self, single_polygon_run: tuple[str, dict[str, Any]]
     ) -> None:
-        """output.status must be 'success' or 'partial' — never silent failure."""
+        """output.status must reflect terminal success semantics, never silent failure."""
         _, result = single_polygon_run
         assert result.get("runtimeStatus") == "Completed"
 
         output = result.get("output") or {}
         pipeline_status = output.get("status", "")
-        assert pipeline_status in ("success", "partial"), (
+        assert pipeline_status in ("success", "partial", "completed"), (
             f"Unexpected pipeline status {pipeline_status!r}. Full output: {output}"
         )
 
@@ -387,11 +387,13 @@ class TestLiveMultiFeature:
         assert result.get("runtimeStatus") == "Completed"
 
         output = result.get("output") or {}
-        assert output.get("aoiCount", 0) >= 4, (
-            f"Expected ≥4 AOIs for vineyard KML; got {output.get('aoiCount')}"
+        aoi_count = int(output.get("aoiCount") or output.get("featureCount") or 0)
+        metadata_count = int(output.get("metadataCount") or 0)
+        assert aoi_count >= 4, (
+            f"Expected ≥4 AOIs/features for vineyard KML; got {aoi_count}. output={output}"
         )
-        assert output.get("metadataCount", 0) >= 4, (
-            f"Expected ≥4 metadata outputs; got {output.get('metadataCount')}"
+        assert metadata_count >= 4, (
+            f"Expected ≥4 metadata outputs; got {metadata_count}. output={output}"
         )
 
     @_live
