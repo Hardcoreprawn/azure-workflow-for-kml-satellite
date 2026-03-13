@@ -110,12 +110,29 @@ jobs:
             STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=${STORAGE_ACCOUNT};AccountKey=${STORAGE_KEY};EndpointSuffix=core.windows.net"
           fi
 
-          # Retrieve host master key for Durable management API calls.
+          # Retrieve host key for Durable management API calls.
+          HOST_KEY=""
           KEY_PAYLOAD=$(az rest \
             --method post \
             --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-            -o json)
-          HOST_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty')
+            -o json 2>/dev/null || true)
+          if [[ -n "$KEY_PAYLOAD" ]]; then
+            HOST_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty')
+          fi
+
+          if [[ -z "$HOST_KEY" ]]; then
+            HOST_KEY=$(az functionapp keys list \
+              --name "${{ env.FUNCTION_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --query "masterKey" -o tsv)
+          fi
+
+          if [[ -z "$HOST_KEY" ]]; then
+            HOST_KEY=$(az functionapp keys list \
+              --name "${{ env.FUNCTION_APP_NAME }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --query "functionKeys.default" -o tsv)
+          fi
           [[ -n "$HOST_KEY" ]] || fail "Could not retrieve function host key"
 
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
