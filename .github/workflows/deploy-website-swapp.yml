@@ -93,22 +93,39 @@ jobs:
         run: |
           set -euo pipefail
           export FUNCTION_APP_ORIGIN="https://${{ steps.function-app.outputs.hostname }}"
+          export WEBSITE_BUILD_VERSION="${GITHUB_SHA::7}"
           python - <<'PY'
           import os
           from pathlib import Path
 
-          path = Path("website/static/app.js")
-          content = path.read_text(encoding="utf-8")
-          updated = content.replace("__FUNCTION_APP_ORIGIN__", os.environ["FUNCTION_APP_ORIGIN"])
+          app_js_path = Path("website/static/app.js")
+          app_js_content = app_js_path.read_text(encoding="utf-8")
+          app_js_updated = app_js_content.replace(
+            "__FUNCTION_APP_ORIGIN__", os.environ["FUNCTION_APP_ORIGIN"]
+          )
 
-          if content == updated:
+          if app_js_content == app_js_updated:
             raise SystemExit(
               "Expected website/static/app.js to contain __FUNCTION_APP_ORIGIN__ placeholder"
             )
 
-          path.write_text(updated, encoding="utf-8")
+          app_js_path.write_text(app_js_updated, encoding="utf-8")
+
+          index_path = Path("website/index.html")
+          index_content = index_path.read_text(encoding="utf-8")
+          index_updated = index_content.replace(
+            "__WEBSITE_BUILD_VERSION__", os.environ["WEBSITE_BUILD_VERSION"]
+          )
+
+          if index_content == index_updated:
+            raise SystemExit(
+              "Expected website/index.html to contain __WEBSITE_BUILD_VERSION__ placeholder"
+            )
+
+          index_path.write_text(index_updated, encoding="utf-8")
           PY
           echo "Configured website backend fallback origin: ${FUNCTION_APP_ORIGIN}"
+          echo "Configured website asset version: ${WEBSITE_BUILD_VERSION}"
 
       - name: Get Static Web App deployment token
         id: token

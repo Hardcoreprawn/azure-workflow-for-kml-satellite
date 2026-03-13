@@ -19,6 +19,13 @@ def website_app_source() -> str:
 
 
 @pytest.fixture(scope="module")
+def website_index_source() -> str:
+    path = WORKSPACE_ROOT / "website" / "index.html"
+    assert path.exists(), f"website index missing at {path}"
+    return path.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
 def website_deploy_workflow() -> dict[str, Any]:
     path = WORKSPACE_ROOT / ".github" / "workflows" / "deploy-website-swapp.yml"
     assert path.exists(), f"deploy-website-swapp.yml missing at {path}"
@@ -50,6 +57,10 @@ def test_website_app_uses_backend_fallback_for_status_and_contact(website_app_so
     assert "Expected JSON but received" in website_app_source
 
 
+def test_website_index_cache_busts_app_script(website_index_source: str) -> None:
+    assert 'src="static/app.js?v=__WEBSITE_BUILD_VERSION__"' in website_index_source
+
+
 def test_website_deploy_workflow_injects_function_origin(
     website_deploy_workflow: dict[str, Any],
 ) -> None:
@@ -64,8 +75,11 @@ def test_website_deploy_workflow_injects_function_origin(
 
     run_script = str(config_step.get("run", ""))
     assert 'FUNCTION_APP_ORIGIN="https://${{ steps.function-app.outputs.hostname }}"' in run_script
+    assert 'WEBSITE_BUILD_VERSION="${GITHUB_SHA::7}"' in run_script
     assert "__FUNCTION_APP_ORIGIN__" in run_script
+    assert "__WEBSITE_BUILD_VERSION__" in run_script
     assert "website/static/app.js" in run_script
+    assert "website/index.html" in run_script
 
 
 def test_infra_allows_static_web_app_preview_origins() -> None:
