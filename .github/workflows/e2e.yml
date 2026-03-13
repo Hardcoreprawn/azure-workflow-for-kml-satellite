@@ -91,6 +91,9 @@ jobs:
           STORAGE_URL="https://${STORAGE_ACCOUNT}.blob.core.windows.net"
           log "Storage account URL: $STORAGE_URL"
 
+          AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+          RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.Web/sites/${{ env.FUNCTION_APP_NAME }}"
+
           STORAGE_CONNECTION_STRING=$(az functionapp config appsettings list \
             --name "${{ env.FUNCTION_APP_NAME }}" \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
@@ -107,19 +110,12 @@ jobs:
             STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=${STORAGE_ACCOUNT};AccountKey=${STORAGE_KEY};EndpointSuffix=core.windows.net"
           fi
 
-          # Retrieve default host key for the Durable management API.
-          HOST_KEY=$(az functionapp keys list \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query "functionKeys.default" -o tsv)
-
-          if [[ -z "$HOST_KEY" ]]; then
-            # Fallback: try the master key if default is not separately listed.
-            HOST_KEY=$(az functionapp keys list \
-              --name "${{ env.FUNCTION_APP_NAME }}" \
-              --resource-group "${{ env.RESOURCE_GROUP }}" \
-              --query "masterKey" -o tsv)
-          fi
+          # Retrieve host master key for Durable management API calls.
+          KEY_PAYLOAD=$(az rest \
+            --method post \
+            --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
+            -o json)
+          HOST_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty')
           [[ -n "$HOST_KEY" ]] || fail "Could not retrieve function host key"
 
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"

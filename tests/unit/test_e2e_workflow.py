@@ -48,6 +48,10 @@ def test_resolve_step_exports_storage_connection_string(e2e_workflow: dict[str, 
     assert "az storage account keys list" in run_script, (
         "E2E workflow must fallback to storage account key resolution when needed"
     )
+    assert "/host/default/listKeys?api-version=2024-04-01" in run_script, (
+        "E2E workflow must resolve a host master key for durable API auth"
+    )
+    assert "jq -r '.masterKey // empty'" in run_script
 
 
 def test_run_step_injects_storage_connection_string(e2e_workflow: dict[str, Any]) -> None:
