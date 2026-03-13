@@ -83,6 +83,30 @@ class TestContainerDeployment:
             "GHCR login must use secrets.GITHUB_TOKEN, not a stored credential"
         )
 
+    def test_registry_runtime_credentials_use_dedicated_pull_secret(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Runtime DOCKER_REGISTRY app settings must not use expiring GITHUB_TOKEN."""
+        steps = _get_steps(deploy_workflow)
+        configure = _find_step(steps, "configure registry credentials")
+        assert configure is not None, "No registry credential configuration step found"
+
+        run_script = str(configure.get("run", ""))
+        assert 'DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GHCR_PULL_TOKEN }}"' in run_script
+        assert 'DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"' not in run_script
+
+    def test_preflight_requires_ghcr_pull_token(self, deploy_workflow: dict[str, Any]) -> None:
+        """Pre-flight contract must fail fast if GHCR_PULL_TOKEN is missing."""
+        steps = _get_steps(deploy_workflow)
+        preflight = _find_step(steps, "pre-flight deployment contract")
+        assert preflight is not None, "No pre-flight deployment contract step found"
+
+        env_block = preflight.get("env", {})
+        assert env_block.get("GHCR_PULL_TOKEN") == "${{ secrets.GHCR_PULL_TOKEN }}"
+
+        run_script = str(preflight.get("run", ""))
+        assert 'require_value "$GHCR_PULL_TOKEN" "GHCR_PULL_TOKEN' in run_script
+
     def test_docker_build_push_step_exists(self, deploy_workflow: dict[str, Any]) -> None:
         """Workflow must build and push a Docker image."""
         steps = _get_steps(deploy_workflow)

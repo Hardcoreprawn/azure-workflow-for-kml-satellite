@@ -102,6 +102,14 @@ Operational checks:
 2. Wait for retries to complete before manual intervention.
 3. Escalate if repeated failure exceeds operational threshold.
 
+### Function App in ImagePullBackOff
+
+1. Check Function App app settings include `DOCKER_REGISTRY_SERVER_URL=ghcr.io`, `DOCKER_REGISTRY_SERVER_USERNAME=<ghcr pull principal>`, and `DOCKER_REGISTRY_SERVER_PASSWORD=<non-empty>`.
+2. If password is empty or expired, redeploy via GitHub Actions to re-apply registry credentials.
+3. Confirm the `dev` environment secret `GHCR_PULL_TOKEN` is present and valid (`read:packages` scope).
+4. Confirm workflow pre-flight passed `GHCR_PULL_TOKEN` contract validation.
+5. After recovery, restart Function App and verify `/api/health` returns 200.
+
 ## Add New Imagery Provider Adapter
 
 1. Implement ImageryProvider in kml_satellite/providers.
@@ -116,6 +124,13 @@ Operational checks:
 2. Validate managed identity role assignments still allow read.
 3. Restart/redeploy function app if required for refresh.
 4. Run /api/readiness and a live smoke upload to verify.
+
+GHCR runtime pull credential:
+
+1. Rotate GitHub PAT used by `GHCR_PULL_TOKEN` (environment `dev`) before expiry.
+2. Ensure PAT has at least `read:packages` for `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite`.
+3. Trigger deploy workflow to push updated credential into Function App app settings.
+4. Validate by scaling from zero and confirming no `ImagePullBackOff` events.
 
 ## Re-process Failed KML
 

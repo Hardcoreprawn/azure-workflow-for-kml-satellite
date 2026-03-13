@@ -26,14 +26,16 @@
 #   - Multi-stage build: build tools never reach the final image
 #   - No secrets in the image: all config injected via app settings
 #   - Images tagged with commit SHA for full traceability
-#   - GITHUB_TOKEN for ghcr.io push — no stored credentials
+#   - GITHUB_TOKEN for ghcr.io push (CI scope)
+#   - Dedicated GHCR pull token for runtime app settings (non-expiring between deploys)
 #   - .dockerignore excludes .git, tests, infra, local settings
 #
 # Requires:
 #   - OIDC federation configured for this workflow
 #   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
-#     AZURE_SUBSCRIPTION_ID
+#     AZURE_SUBSCRIPTION_ID, GHCR_PULL_TOKEN
 #   - GitHub environment variable: AZURE_LOCATION
+#   - Optional environment variable: GHCR_PULL_USERNAME (defaults to repository owner)
 # ---------------------------------------------------------------------------
 
 name: Deploy Function App
@@ -194,6 +196,8 @@ jobs:
 
       - name: Pre-flight deployment contract
         shell: bash
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -218,6 +222,7 @@ jobs:
           require_value "${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}" "EVENT_GRID_SYSTEM_TOPIC_NAME"
           require_value "${{ env.EVENT_GRID_SUBSCRIPTION_NAME }}" "EVENT_GRID_SUBSCRIPTION_NAME"
           require_value "${{ env.EVENT_GRID_TRIGGER_FUNCTION }}" "EVENT_GRID_TRIGGER_FUNCTION"
+          require_value "$GHCR_PULL_TOKEN" "GHCR_PULL_TOKEN (environment secret)"
 
           az functionapp show \
             --name "${{ env.FUNCTION_APP_NAME }}" \
@@ -238,8 +243,8 @@ jobs:
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --settings \
               DOCKER_REGISTRY_SERVER_URL=ghcr.io \
-              DOCKER_REGISTRY_SERVER_USERNAME="${{ github.actor }}" \
-              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
+              DOCKER_REGISTRY_SERVER_USERNAME="${{ vars.GHCR_PULL_USERNAME || github.repository_owner }}" \
+              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GHCR_PULL_TOKEN }}"
 
       - name: Update Function App container image
         run: |
