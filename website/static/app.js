@@ -199,19 +199,13 @@ async function handleInterestFormSubmit(event) {
 
         messageEl.textContent = '✅ Thank you! We\'ll be in touch within 24 hours. Check your email.';
         messageEl.style.color = '#22c55e';
-
-        // Reset form
-        setTimeout(() => {
-            form.reset();
-            messageEl.textContent = '';
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Get Early Access';
-        }, 3000);
+        form.reset();
 
     } catch (error) {
         console.error('Form submission error:', error);
         messageEl.textContent = `❌ ${error.message || 'Something went wrong. Please try again.'}`;
         messageEl.style.color = '#ef4444';
+    } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Get Early Access';
     }
@@ -250,21 +244,13 @@ async function handleDemoFormSubmit(event) {
             note.style.color = '#22c55e';
         }
 
-        // Show note for 5 seconds
-        setTimeout(() => {
-            if (note) {
-                note.textContent = '';
-            }
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit for Processing';
-        }, 5000);
-
     } catch (error) {
         console.error('Demo submit error:', error);
         if (note) {
             note.textContent = '❌ Submission failed. Please try again.';
             note.style.color = '#ef4444';
         }
+    } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit for Processing';
     }
