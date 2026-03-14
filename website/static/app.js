@@ -199,19 +199,13 @@ async function handleInterestFormSubmit(event) {
 
         messageEl.textContent = '✅ Thank you! We\'ll be in touch within 24 hours. Check your email.';
         messageEl.style.color = '#22c55e';
-
-        // Reset form
-        setTimeout(() => {
-            form.reset();
-            messageEl.textContent = '';
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Get Early Access';
-        }, 3000);
+        form.reset();
 
     } catch (error) {
         console.error('Form submission error:', error);
         messageEl.textContent = `❌ ${error.message || 'Something went wrong. Please try again.'}`;
         messageEl.style.color = '#ef4444';
+    } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Get Early Access';
     }
@@ -226,13 +220,15 @@ async function handleDemoFormSubmit(event) {
     const form = document.getElementById('demo-form');
     const submitBtn = form.querySelector('button[type="submit"]');
     const kmlTextarea = document.getElementById('demo-kml');
-    const note = form.querySelector('.form-note');
+    const note = document.getElementById('demo-message');
 
     const kmlContent = kmlTextarea.value.trim();
 
     if (!kmlContent) {
-        note.textContent = '❌ Please provide KML content or load a sample.';
-        note.style.color = '#ef4444';
+        if (note) {
+            note.textContent = '❌ Please provide KML content or load a sample.';
+            note.style.color = '#ef4444';
+        }
         return;
     }
 
@@ -243,20 +239,18 @@ async function handleDemoFormSubmit(event) {
         // In Phase 4, this will POST to the actual pipeline endpoint
         console.log('Demo submit:', kmlContent);
 
-        note.textContent = '✅ Your KML has been submitted for processing. You\'ll receive results via email.';
-        note.style.color = '#22c55e';
-
-        // Show note for 5 seconds
-        setTimeout(() => {
-            note.textContent = '';
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit for Processing';
-        }, 5000);
+        if (note) {
+            note.textContent = '✅ Your KML has been submitted for processing. You\'ll receive results via email.';
+            note.style.color = '#22c55e';
+        }
 
     } catch (error) {
         console.error('Demo submit error:', error);
-        note.textContent = '❌ Submission failed. Please try again.';
-        note.style.color = '#ef4444';
+        if (note) {
+            note.textContent = '❌ Submission failed. Please try again.';
+            note.style.color = '#ef4444';
+        }
+    } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit for Processing';
     }

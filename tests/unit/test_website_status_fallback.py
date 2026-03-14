@@ -55,10 +55,12 @@ def test_website_app_uses_backend_fallback_for_status_and_contact(website_app_so
         "for (const endpoint of [API_ENDPOINT, READINESS_FALLBACK_ENDPOINT])" in website_app_source
     )
     assert "Expected JSON but received" in website_app_source
+    assert "const note = document.getElementById('demo-message');" in website_app_source
 
 
 def test_website_index_cache_busts_app_script(website_index_source: str) -> None:
     assert 'src="static/app.js?v=__WEBSITE_BUILD_VERSION__"' in website_index_source
+    assert 'id="demo-message"' in website_index_source
 
 
 def test_website_deploy_workflow_injects_function_origin(
