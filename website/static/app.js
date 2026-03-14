@@ -226,13 +226,15 @@ async function handleDemoFormSubmit(event) {
     const form = document.getElementById('demo-form');
     const submitBtn = form.querySelector('button[type="submit"]');
     const kmlTextarea = document.getElementById('demo-kml');
-    const note = form.querySelector('.form-note');
+    const note = document.getElementById('demo-message');
 
     const kmlContent = kmlTextarea.value.trim();
 
     if (!kmlContent) {
-        note.textContent = '❌ Please provide KML content or load a sample.';
-        note.style.color = '#ef4444';
+        if (note) {
+            note.textContent = '❌ Please provide KML content or load a sample.';
+            note.style.color = '#ef4444';
+        }
         return;
     }
 
@@ -243,20 +245,26 @@ async function handleDemoFormSubmit(event) {
         // In Phase 4, this will POST to the actual pipeline endpoint
         console.log('Demo submit:', kmlContent);
 
-        note.textContent = '✅ Your KML has been submitted for processing. You\'ll receive results via email.';
-        note.style.color = '#22c55e';
+        if (note) {
+            note.textContent = '✅ Your KML has been submitted for processing. You\'ll receive results via email.';
+            note.style.color = '#22c55e';
+        }
 
         // Show note for 5 seconds
         setTimeout(() => {
-            note.textContent = '';
+            if (note) {
+                note.textContent = '';
+            }
             submitBtn.disabled = false;
             submitBtn.textContent = 'Submit for Processing';
         }, 5000);
 
     } catch (error) {
         console.error('Demo submit error:', error);
-        note.textContent = '❌ Submission failed. Please try again.';
-        note.style.color = '#ef4444';
+        if (note) {
+            note.textContent = '❌ Submission failed. Please try again.';
+            note.style.color = '#ef4444';
+        }
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit for Processing';
     }
