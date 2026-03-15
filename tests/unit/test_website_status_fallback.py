@@ -44,6 +44,13 @@ def _find_step(steps: list[dict[str, Any]], name_fragment: str) -> dict[str, Any
 def test_website_app_uses_backend_fallback_for_status_contact_and_demo(
     website_app_source: str,
 ) -> None:
+    assert "const REQUIRED_API_CONTRACT_VERSION = '2026-03-15.1';" in website_app_source
+    assert "const API_CONTRACT_ENDPOINT = '/api/api-contract';" in website_app_source
+    assert (
+        "const API_CONTRACT_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_CONTRACT_ENDPOINT}`;"
+        in website_app_source
+    )
+    assert "async function enforceApiContractCompatibility()" in website_app_source
     assert "const DEPLOYMENT_FALLBACK_ORIGIN = '__FUNCTION_APP_ORIGIN__';" in website_app_source
     assert (
         "const READINESS_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_ENDPOINT}`;"
@@ -95,6 +102,14 @@ def test_website_deploy_workflow_injects_function_origin(
     assert "__WEBSITE_BUILD_VERSION__" in run_script
     assert "website/static/app.js" in run_script
     assert "website/index.html" in run_script
+
+    api_contract_step = _find_step(steps, "verify backend api contract compatibility")
+    assert api_contract_step is not None, "Website deploy workflow must verify backend API contract"
+
+    contract_script = str(api_contract_step.get("run", ""))
+    assert "REQUIRED_API_CONTRACT_VERSION" in contract_script
+    assert "/api/api-contract" in contract_script
+    assert "website/static/app.js" in contract_script
 
 
 def test_infra_allows_static_web_app_preview_origins() -> None:

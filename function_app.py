@@ -42,6 +42,7 @@ logger = logging.getLogger("kml_satellite.function_app")
 
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_API_CONTRACT_VERSION = "2026-03-15.1"
 
 
 def _isoformat_or_empty(value: object) -> str:
@@ -444,6 +445,25 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     return func.HttpResponse(response_body, status_code=status_code, mimetype="application/json")
+
+
+@app.function_name("api_contract")
+@app.route(route="api-contract", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+async def api_contract(req: func.HttpRequest) -> func.HttpResponse:
+    """Publish backend API contract version for frontend compatibility gating."""
+    response = json.dumps(
+        {
+            "api_version": _API_CONTRACT_VERSION,
+            "supported_routes": [
+                "/api/health",
+                "/api/readiness",
+                "/api/contact-form",
+                "/api/demo-submit",
+                "/api/orchestrator/{instance_id}",
+            ],
+        }
+    )
+    return func.HttpResponse(response, status_code=200, mimetype="application/json")
 
 
 @app.function_name("marketing_interest")

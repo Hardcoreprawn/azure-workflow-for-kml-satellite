@@ -87,6 +87,40 @@ jobs:
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
           echo "Function App hostname: ${HOSTNAME}"
 
+      - name: Verify backend API contract compatibility
+        if: steps.website-check.outputs.exists == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REQUIRED_API_VERSION=$(python - <<'PY'
+          import re
+          from pathlib import Path
+
+          app_js = Path("website/static/app.js").read_text(encoding="utf-8")
+          match = re.search(r"REQUIRED_API_CONTRACT_VERSION\s*=\s*'([^']+)'", app_js)
+          if not match:
+            raise SystemExit("REQUIRED_API_CONTRACT_VERSION not found in website/static/app.js")
+          print(match.group(1))
+          PY
+          )
+
+          API_CONTRACT_URL="https://${{ steps.function-app.outputs.hostname }}/api/api-contract"
+          API_CONTRACT_RESPONSE=$(curl -fsS --max-time 20 "$API_CONTRACT_URL")
+          LIVE_API_VERSION=$(echo "$API_CONTRACT_RESPONSE" | jq -r '.api_version // empty')
+
+          if [[ -z "$LIVE_API_VERSION" ]]; then
+            echo "::error::Backend API contract endpoint did not return api_version"
+            exit 1
+          fi
+
+          if [[ "$LIVE_API_VERSION" != "$REQUIRED_API_VERSION" ]]; then
+            echo "::error::Backend API contract mismatch: website requires ${REQUIRED_API_VERSION}, backend is ${LIVE_API_VERSION}"
+            exit 1
+          fi
+
+          echo "✅ API contract compatible (${LIVE_API_VERSION})"
+
       - name: Configure website backend fallback origin
         if: steps.website-check.outputs.exists == 'true'
         shell: bash

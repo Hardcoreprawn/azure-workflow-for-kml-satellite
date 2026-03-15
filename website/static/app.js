@@ -4,18 +4,27 @@
  */
 
 const API_ENDPOINT = '/api/readiness';
+const API_CONTRACT_ENDPOINT = '/api/api-contract';
 const CONTACT_FORM_ENDPOINT = '/api/contact-form';
 const DEMO_SUBMIT_ENDPOINT = '/api/demo-submit';
+const REQUIRED_API_CONTRACT_VERSION = '2026-03-15.1';
 const DEPLOYMENT_FALLBACK_ORIGIN = '__FUNCTION_APP_ORIGIN__';
 const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.azurewebsites.net';
 const FALLBACK_API_ORIGIN = DEPLOYMENT_FALLBACK_ORIGIN.startsWith('__')
     ? DEFAULT_FALLBACK_ORIGIN
     : DEPLOYMENT_FALLBACK_ORIGIN;
 const READINESS_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_ENDPOINT}`;
+const API_CONTRACT_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_CONTRACT_ENDPOINT}`;
 const CONTACT_FORM_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${CONTACT_FORM_ENDPOINT}`;
 const DEMO_SUBMIT_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${DEMO_SUBMIT_ENDPOINT}`;
 const STATUS_CHECK_INTERVAL = 30000; // 30 seconds
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+const apiContractState = {
+    compatible: false,
+    checked: false,
+    version: '',
+};
 
 const DEMO_AOI_POLYGON = [
     [40.7608, -111.8915],
@@ -264,6 +273,80 @@ async function fetchPipelineStatus() {
     }
 }
 
+async function fetchApiContractVersion() {
+    let lastError = null;
+
+    for (const endpoint of [API_CONTRACT_ENDPOINT, API_CONTRACT_FALLBACK_ENDPOINT]) {
+        try {
+            const data = await fetchJson(endpoint);
+            const version = String(data.api_version || '').trim();
+            if (!version) {
+                throw new Error('Missing api_version in API contract response');
+            }
+            return version;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error('API contract check failed');
+}
+
+function setSubmissionButtonsEnabled(enabled) {
+    const demoSubmitButton = document.getElementById('submit-demo');
+    if (demoSubmitButton) {
+        demoSubmitButton.disabled = !enabled;
+    }
+
+    const interestForm = document.getElementById('interest-form');
+    const interestSubmitButton = interestForm
+        ? interestForm.querySelector('button[type="submit"]')
+        : null;
+    if (interestSubmitButton) {
+        interestSubmitButton.disabled = !enabled;
+    }
+}
+
+function showApiContractMessage(message) {
+    const demoMessage = document.getElementById('demo-message');
+    const formMessage = document.getElementById('form-message');
+
+    if (demoMessage) {
+        demoMessage.textContent = message;
+        demoMessage.style.color = '#ef4444';
+    }
+    if (formMessage) {
+        formMessage.textContent = message;
+        formMessage.style.color = '#ef4444';
+    }
+}
+
+async function enforceApiContractCompatibility() {
+    try {
+        const backendVersion = await fetchApiContractVersion();
+        apiContractState.version = backendVersion;
+        apiContractState.checked = true;
+        apiContractState.compatible = backendVersion === REQUIRED_API_CONTRACT_VERSION;
+
+        if (!apiContractState.compatible) {
+            setSubmissionButtonsEnabled(false);
+            showApiContractMessage(
+                `⚠️ Backend API contract mismatch. Website requires ${REQUIRED_API_CONTRACT_VERSION}, backend is ${backendVersion}.`
+            );
+            return;
+        }
+
+        setSubmissionButtonsEnabled(true);
+    } catch (error) {
+        apiContractState.version = '';
+        apiContractState.checked = true;
+        apiContractState.compatible = false;
+        setSubmissionButtonsEnabled(false);
+        showApiContractMessage('⚠️ Unable to validate backend API contract. Please try again later.');
+        console.error('API contract compatibility check failed:', error);
+    }
+}
+
 /**
  * Update status badge in hero section
  */
@@ -339,6 +422,12 @@ async function handleInterestFormSubmit(event) {
 
     const formData = new FormData(form);
     const data = Object.fromEntries(formData);
+
+    if (!apiContractState.compatible) {
+        messageEl.textContent = '⚠️ Backend is updating. Please retry in a moment.';
+        messageEl.style.color = '#ef4444';
+        return;
+    }
 
     // Validate
     if (!data.email || !data.organization || !data.use_case) {
@@ -424,6 +513,14 @@ async function handleDemoFormSubmit(event) {
 
     const kmlContent = kmlTextarea.value.trim();
 
+    if (!apiContractState.compatible) {
+        if (note) {
+            note.textContent = '⚠️ Backend is updating. Please retry in a moment.';
+            note.style.color = '#ef4444';
+        }
+        return;
+    }
+
     if (!demoEmail) {
         if (note) {
             note.textContent = '❌ Please provide an email so we can send your results.';
@@ -478,14 +575,6 @@ async function handleDemoFormSubmit(event) {
         }
 
         if (!response.ok) {
-            if (response.status === 404 || response.status === 405) {
-                if (note) {
-                    note.textContent = '✅ Demo mode submission received. We will display sample output while backend submission wiring is finalized.';
-                    note.style.color = '#22c55e';
-                }
-                return;
-            }
-
             let errorMessage = 'Submission failed. Please try again.';
             try {
                 const errorPayload = await response.json();
@@ -549,6 +638,7 @@ function init() {
 
     // Initial status check
     updateStatus();
+    enforceApiContractCompatibility();
     initDemoTimelapse();
 
     // Periodic status checks
