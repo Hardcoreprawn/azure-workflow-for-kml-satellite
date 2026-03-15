@@ -104,7 +104,9 @@ def test_website_deploy_workflow_injects_function_origin(
     assert "website/index.html" in run_script
 
     api_contract_step = _find_step(steps, "verify backend api contract compatibility")
-    assert api_contract_step is not None, "Website deploy workflow must verify backend API contract"
+    assert api_contract_step is not None, (
+        "Website deploy workflow must verify backend API contract"
+    )
 
     contract_script = str(api_contract_step.get("run", ""))
     assert "REQUIRED_API_CONTRACT_VERSION" in contract_script
