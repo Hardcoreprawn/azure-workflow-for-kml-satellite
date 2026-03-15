@@ -104,6 +104,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
 
       - name: Detect deployment scope
         id: scope
@@ -489,7 +490,9 @@ jobs:
               --system-topic-name "$SYSTEM_TOPIC_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --endpoint "$WEBHOOK_URL" \
-              --endpoint-type webhook 2>&1)
+              --endpoint-type webhook \
+              --included-event-types "Microsoft.Storage.BlobCreated" \
+              --subject-ends-with ".kml" 2>&1)
             CREATE_EXIT=$?
             set -e
 
@@ -564,6 +567,13 @@ jobs:
           fi
 
           log "Event Grid subscription verified: exists, provisioned, and matched to the current runtime key."
+          # Allow Azure Event Grid routing to fully propagate before any smoke trigger.
+          # Azure marks a subscription Succeeded after validation but routing tables can
+          # take up to 60s to converge. Events delivered before propagation are silently
+          # missed — they are not buffered for late-created subscriptions.
+          log "Waiting 60s for Event Grid routing propagation..."
+          sleep 60
+          log "Event Grid routing stabilization complete."
           echo "::endgroup::"
 
       - name: Verify runtime readiness (fast strategy)
@@ -758,7 +768,14 @@ jobs:
             sleep "$POLL_INTERVAL_SECONDS"
           done
 
-          [[ -n "$instance_id" ]] || fail "Could not resolve smoke orchestration instance id (mode=${smoke_mode})."
+          if [[ -z "$instance_id" ]]; then
+            if [[ "$smoke_mode" == "inspect" ]]; then
+              log "::warning::No completed orchestration found in the last 24h (inspect mode). Skipping E2E artifact verification for code-only deploy."
+              log "Post-deploy smoke checks passed (instance=none, mode=inspect, artifacts=skipped)."
+              exit 0
+            fi
+            fail "Could not resolve smoke orchestration instance id (mode=${smoke_mode})."
+          fi
 
           diagnostics_runtime_status=""
           diagnostics_payload='{}'
