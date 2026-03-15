@@ -41,7 +41,9 @@ def _find_step(steps: list[dict[str, Any]], name_fragment: str) -> dict[str, Any
     return next((step for step in steps if fragment in step.get("name", "").lower()), None)
 
 
-def test_website_app_uses_backend_fallback_for_status_and_contact(website_app_source: str) -> None:
+def test_website_app_uses_backend_fallback_for_status_contact_and_demo(
+    website_app_source: str,
+) -> None:
     assert "const DEPLOYMENT_FALLBACK_ORIGIN = '__FUNCTION_APP_ORIGIN__';" in website_app_source
     assert (
         "const READINESS_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${API_ENDPOINT}`;"
@@ -51,16 +53,27 @@ def test_website_app_uses_backend_fallback_for_status_and_contact(website_app_so
         "const CONTACT_FORM_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${CONTACT_FORM_ENDPOINT}`;"
         in website_app_source
     )
+    assert "const DEMO_SUBMIT_ENDPOINT = '/api/demo-submit';" in website_app_source
+    assert (
+        "const DEMO_SUBMIT_FALLBACK_ENDPOINT = `${FALLBACK_API_ORIGIN}${DEMO_SUBMIT_ENDPOINT}`;"
+        in website_app_source
+    )
     assert (
         "for (const endpoint of [API_ENDPOINT, READINESS_FALLBACK_ENDPOINT])" in website_app_source
     )
     assert "Expected JSON but received" in website_app_source
     assert "const note = document.getElementById('demo-message');" in website_app_source
+    assert "const demoEmailInput = document.getElementById('demo-email');" in website_app_source
+    assert "function initDemoTimelapse()" in website_app_source
+    assert "timelapseState.frames = generateTimelapseFrames(24);" in website_app_source
 
 
 def test_website_index_cache_busts_app_script(website_index_source: str) -> None:
     assert 'src="static/app.js?v=__WEBSITE_BUILD_VERSION__"' in website_index_source
     assert 'id="demo-message"' in website_index_source
+    assert 'id="demo-email"' in website_index_source
+    assert 'id="timelapse-map"' in website_index_source
+    assert 'id="timelapse-slider"' in website_index_source
 
 
 def test_website_deploy_workflow_injects_function_origin(

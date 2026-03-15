@@ -159,6 +159,29 @@ def _validate_marketing_interest_payload(
     }, None
 
 
+def _validate_demo_submission_payload(
+    payload: object,
+) -> tuple[dict[str, str] | None, str | None]:
+    """Validate and normalize incoming demo submission payload."""
+    if not isinstance(payload, dict):
+        return None, "Request body must be a JSON object"
+
+    email = _sanitize_marketing_field(payload.get("email"), max_length=320).lower()
+    kml = _sanitize_marketing_field(payload.get("kml"), max_length=200000)
+
+    if not email:
+        return None, "Field 'email' is required"
+    if not _EMAIL_PATTERN.match(email):
+        return None, "Field 'email' must be a valid email address"
+    if not kml:
+        return None, "Field 'kml' is required"
+
+    return {
+        "email": email,
+        "kml": kml,
+    }, None
+
+
 # ---------------------------------------------------------------------------
 # Trigger: Blob Created → Start Orchestration
 # ---------------------------------------------------------------------------
@@ -496,6 +519,81 @@ async def marketing_interest(req: func.HttpRequest) -> func.HttpResponse:
             "status": "accepted",
             "submission_id": submission_id,
             "message": "Interest request received",
+        }
+    )
+    return func.HttpResponse(response, status_code=202, mimetype="application/json")
+
+
+@app.function_name("demo_submission")
+@app.route(
+    route="demo-submit",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+async def demo_submission(req: func.HttpRequest) -> func.HttpResponse:
+    """Capture demo requests with email + KML payload for async processing delivery."""
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=204)
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        response = json.dumps({"error": "Request body must be valid JSON"})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    normalized, validation_error = _validate_demo_submission_payload(payload)
+    if validation_error:
+        response = json.dumps({"error": validation_error})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    assert normalized is not None  # Type narrowing: validation guarantees normalized payload.
+
+    submitted_at = datetime.now(UTC).isoformat()
+    submission_id = uuid4().hex
+    source_ip = _sanitize_marketing_field(
+        req.headers.get("x-forwarded-for") or req.headers.get("x-client-ip"),
+        max_length=256,
+    )
+    user_agent = _sanitize_marketing_field(req.headers.get("user-agent"), max_length=512)
+
+    submission = {
+        "submission_id": submission_id,
+        "submitted_at": submitted_at,
+        "source_ip": source_ip,
+        "user_agent": user_agent,
+        "status": "pending",
+        **normalized,
+    }
+
+    blob_name = f"demo-submissions/{submitted_at[:10]}/{submission_id}.json"
+
+    try:
+        blob_service = get_blob_service_client()
+        container_client = blob_service.get_container_client(PIPELINE_PAYLOADS_CONTAINER)
+        container_client.create_container()
+    except Exception:
+        # Container likely already exists; continue to upload.
+        pass
+
+    try:
+        blob_service = get_blob_service_client()
+        blob_client = blob_service.get_blob_client(
+            container=PIPELINE_PAYLOADS_CONTAINER,
+            blob=blob_name,
+        )
+        blob_client.upload_blob(json.dumps(submission), overwrite=False)
+    except Exception as exc:
+        logger.exception("Failed to persist demo submission: %s", str(exc))
+        response = json.dumps({"error": "Failed to capture demo request. Please try again."})
+        return func.HttpResponse(response, status_code=500, mimetype="application/json")
+
+    logger.info("Demo submission captured | submission_id=%s", submission_id)
+
+    response = json.dumps(
+        {
+            "status": "accepted",
+            "submission_id": submission_id,
+            "message": "Demo request received",
         }
     )
     return func.HttpResponse(response, status_code=202, mimetype="application/json")

@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TreeSight — AI-Powered Tree Analysis from Satellite Imagery</title>
     <link rel="stylesheet" href="static/style.css">
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        crossorigin="anonymous"
+    >
 </head>
 <body>
     <!-- Navigation -->
@@ -130,6 +135,16 @@
                     <h3>Try the Pipeline</h3>
                     <form id="demo-form" class="form">
                         <fieldset>
+                            <div class="form-group">
+                                <label for="demo-email">Email Address *</label>
+                                <input
+                                    type="email"
+                                    id="demo-email"
+                                    name="email"
+                                    required
+                                    placeholder="name@company.com"
+                                >
+                            </div>
                             <label for="demo-kml">Upload Sample KML (or provide URL):</label>
                             <textarea
                                 id="demo-kml"
@@ -147,6 +162,26 @@
                         💡 <strong>Note:</strong> Demo processing is limited to small AOIs.
                         For production use, <a href="#early-access">request early access</a>.
                     </p>
+                </div>
+            </div>
+            <div class="demo-visualizer">
+                <div class="demo-visualizer-header">
+                    <h3>Live Visual Preview</h3>
+                    <p>
+                        Satellite basemap with sample AOI overlays and a recent-captures timelapse.
+                        This is demo mode now and will be replaced by real per-submission outputs.
+                    </p>
+                </div>
+                <div class="timelapse-map" id="timelapse-map" aria-label="Satellite map timelapse preview"></div>
+                <div class="timelapse-controls">
+                    <button type="button" class="btn btn-primary" id="timelapse-play">Play Timelapse</button>
+                    <button type="button" class="btn btn-secondary" id="timelapse-next">Next Frame</button>
+                    <input type="range" id="timelapse-slider" min="0" max="0" value="0" step="1" aria-label="Timelapse frame selector">
+                </div>
+                <div class="timelapse-meta">
+                    <p><strong>Frame:</strong> <span id="timelapse-frame-label">Initializing...</span></p>
+                    <p><strong>Cloud Cover:</strong> <span id="timelapse-cloud">-</span></p>
+                    <p><strong>Vegetation Signal:</strong> <span id="timelapse-vigor">-</span></p>
                 </div>
             </div>
         </div>
@@ -296,6 +331,7 @@
         </div>
     </footer>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
     <script src="static/app.js?v=__WEBSITE_BUILD_VERSION__"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 # TreeSight - Development Roadmap
 
-**Last updated:** 12 March 2026
-**Status:** Active - Wave 2 delivery-speed execution (#152), with Wave 1 sign-off pending domain expert approval (#19)
+**Last updated:** 15 March 2026
+**Status:** Active - Demo readiness fast-track (Wave 2.5) with secure result delivery and branding due diligence
 
 This roadmap is synchronized to the current GitHub issue backlog. The execution order below is dependency-first (not time-based).
 
@@ -37,6 +37,12 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 
 - #47 is still OPEN — do not mark closed.
 - Non-existent issues #156–#160 removed from all references.
+
+### Newly added (demo readiness)
+
+- #201 open: demo flow requires email and persists demo submissions
+- #200 open: secure valet-token links for result delivery
+- #199 open: TreeSight naming/trademark/domain conflict research
 
 ---
 
@@ -86,6 +92,21 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 - Fast CI lane under 5 minutes for typical app-only PRs.
 - Native lane still enforces geospatial/runtime correctness.
 - Deploy workflow has measurable speed improvements with no readiness regressions.
+
+### Wave 2.5 - Demo readiness and secure output delivery (NEW)
+
+**Goal:** make the public demo trustworthy and easy to run live, with secure async result access.
+
+1. #201 - demo flow: require email + persist demo submission requests
+2. #200 - secure valet-token results links + token validation path
+3. #199 - branding due diligence for "TreeSight" and alternatives
+
+**Exit criteria:**
+
+- Demo submit path captures and validates a real email before accepting processing requests.
+- Demo outputs are delivered via short-lived, scoped valet-token links (no direct storage credential exposure).
+- Demo UX supports short in-page wait + async email completion fallback.
+- Name risk assessment for "TreeSight" is documented with recommendation and alternatives.
 
 ### Wave 3 - Hardening and quality debt
 
@@ -174,16 +195,16 @@ Decision gate before starting:
 
 Use this exact queue unless blocked:
 
-1. #152  ← CURRENT (native geospatial base image strategy)
-2. #19   (human sign-off gate; unblock via domain expert review)
-3. #150
-4. #151
-5. #129
-6. #130
-7. #148
-8. #47
-9. #132
-10. #163
+1. #201  ← CURRENT (demo email capture + persisted intake)
+2. #200  (valet-token result delivery)
+3. #199  (name availability/conflict research)
+4. #19   (human sign-off gate; unblock via domain expert review)
+5. #152
+6. #150
+7. #151
+8. #129
+9. #130
+10. #148
 
 If blocked on an item, move to the next one and record the blocker in the issue.
 
