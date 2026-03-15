@@ -673,9 +673,26 @@ jobs:
           [[ -n "$STORAGE_CONNECTION" ]] || fail "AzureWebJobsStorage app setting is missing; cannot verify artifacts."
           echo "::add-mask::${STORAGE_CONNECTION}"
 
-          # Anonymous endpoints must remain probe-friendly.
-          health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health")
-          readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness")
+          # Anonymous endpoints must remain probe-friendly. After container image
+          # update, ingress may briefly serve 404 while route maps converge.
+          MAX_ANON_ENDPOINT_READY_SECONDS=180
+          ANON_ENDPOINT_POLL_INTERVAL=10
+          anon_deadline=$(( $(date +%s) + MAX_ANON_ENDPOINT_READY_SECONDS ))
+          health_code="000"
+          readiness_code="000"
+
+          while (( $(date +%s) < anon_deadline )); do
+            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health" || true)
+            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness" || true)
+
+            if [[ "$health_code" == "200" && "$readiness_code" == "200" ]]; then
+              break
+            fi
+
+            log "Anonymous endpoint probe pending (health=${health_code}, readiness=${readiness_code}); retrying in ${ANON_ENDPOINT_POLL_INTERVAL}s..."
+            sleep "$ANON_ENDPOINT_POLL_INTERVAL"
+          done
+
           [[ "$health_code" == "200" ]] || fail "Anonymous health endpoint check failed (expected 200, got ${health_code})."
           [[ "$readiness_code" == "200" ]] || fail "Anonymous readiness endpoint check failed (expected 200, got ${readiness_code})."
 
