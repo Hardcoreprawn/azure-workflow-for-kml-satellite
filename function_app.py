@@ -449,7 +449,7 @@ async def health_readiness(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.function_name("api_contract")
 @app.route(route="api-contract", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-async def api_contract(req: func.HttpRequest) -> func.HttpResponse:
+async def api_contract(_req: func.HttpRequest) -> func.HttpResponse:
     """Publish backend API contract version for frontend compatibility gating."""
     response = json.dumps(
         {
