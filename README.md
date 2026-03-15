@@ -495,6 +495,33 @@ docker logs <container-id>
 curl http://localhost:8080/api/health
 ```
 
+## API Contract Versioning
+
+The frontend and backend share a contract version string that enforces backend-first deployment discipline. The website deploy workflow **will not proceed** unless the live backend reports the expected version at `/api/api-contract`.
+
+Current contract version: `2026-03-15.1` (defined in `function_app.py` as `_API_CONTRACT_VERSION` and in `website/static/app.js` as `REQUIRED_API_CONTRACT_VERSION`).
+
+### When to bump the version
+
+Bump the contract version whenever the frontend requires a new API capability that does not yet exist in the deployed backend. Examples:
+
+- A new HTTP route that the frontend will call
+- A changed response schema that the frontend depends on
+- A renamed or removed endpoint
+
+Do **not** bump for backend-only changes (new logic, bug fixes, performance improvements) that do not affect the frontend interface.
+
+### How to bump
+
+1. Decide on the new version string using the format `YYYY-MM-DD.N` (e.g. `2026-04-01.1`).
+2. In `function_app.py`, update `_API_CONTRACT_VERSION = "NEW_VERSION"`.
+3. In `website/static/app.js`, update `REQUIRED_API_CONTRACT_VERSION = 'NEW_VERSION'`.
+4. Implement the new API capability in `function_app.py`.
+5. **Deploy the backend first** and confirm the deploy workflow passes (`/api/api-contract` returns the new version).
+6. Then deploy the frontend — the preflight gate in `deploy-website-swapp.yml` reads `REQUIRED_API_CONTRACT_VERSION` from source, calls the live endpoint, and only continues if the versions match.
+
+If you deploy the frontend before the backend is ready, the gate will fail with a version mismatch error. This is intentional.
+
 ## Contributing
 
 1. Create a feature branch from `main` (`git checkout -b feature/issue-number-description`)
