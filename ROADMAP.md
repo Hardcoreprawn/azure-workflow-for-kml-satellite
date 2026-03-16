@@ -1,7 +1,7 @@
 # TreeSight - Development Roadmap
 
-**Last updated:** 15 March 2026
-**Status:** Active - Demo readiness fast-track (Wave 2.5) with secure result delivery and branding due diligence
+**Last updated:** 16 March 2026
+**Status:** Active - Demo readiness and CI/CD reliability hardening
 
 This roadmap is synchronized to the current GitHub issue backlog. The execution order below is dependency-first (not time-based).
 
@@ -40,9 +40,16 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 
 ### Newly added (demo readiness)
 
-- #201 open: demo flow requires email and persists demo submissions
+- #201 closed: demo flow requires email and persists demo submissions
 - #200 open: secure valet-token links for result delivery
 - #199 open: TreeSight naming/trademark/domain conflict research
+
+### Newly added (from recent Actions run analysis)
+
+- #208 open: harden deploy fast-strategy readiness for sustained 404 startup windows
+- #205 open: add retry/backoff resilience to website API contract verification step
+- #206 open: publish actionable Trivy findings artifacts for scheduled base-image failures
+- #207 open: add guardrails to prevent format-only CI failures on direct main pushes
 
 ---
 
@@ -93,13 +100,28 @@ This roadmap is synchronized to the current GitHub issue backlog. The execution 
 - Native lane still enforces geospatial/runtime correctness.
 - Deploy workflow has measurable speed improvements with no readiness regressions.
 
+### Wave 2.1 - CI/CD Reliability Hardening (NEW)
+
+**Goal:** reduce flaky or low-signal pipeline failures observed in recent GitHub Actions runs.
+
+1. #208 - harden deploy fast-strategy readiness for `/api/health` + `/api/readiness` 404 startup windows
+2. #205 - make website API contract verification resilient to transient backend timeout
+3. #206 - publish actionable Trivy findings artifacts and summaries on base-image scan failures
+4. #207 - prevent format-only CI failures on `main` via branch/format guardrails
+
+**Exit criteria:**
+
+- Deploy fast strategy no longer fails solely on transient `404/404` warmup windows.
+- Website deploy contract gate tolerates transient timeout but still fails on real version mismatch.
+- Base-image refresh failures include downloadable vulnerability details sufficient for direct remediation.
+- Format-only failures are caught before `main` red CI states.
+
 ### Wave 2.5 - Demo readiness and secure output delivery (NEW)
 
 **Goal:** make the public demo trustworthy and easy to run live, with secure async result access.
 
-1. #201 - demo flow: require email + persist demo submission requests
-2. #200 - secure valet-token results links + token validation path
-3. #199 - branding due diligence for "TreeSight" and alternatives
+1. #200 - secure valet-token results links + token validation path
+2. #199 - branding due diligence for "TreeSight" and alternatives
 
 **Exit criteria:**
 
@@ -195,16 +217,16 @@ Decision gate before starting:
 
 Use this exact queue unless blocked:
 
-1. #201  ← CURRENT (demo email capture + persisted intake)
-2. #200  (valet-token result delivery)
-3. #199  (name availability/conflict research)
-4. #19   (human sign-off gate; unblock via domain expert review)
-5. #152
-6. #150
-7. #151
-8. #129
-9. #130
-10. #148
+1. #208  (deploy fast-strategy readiness hardening)
+2. #205  (website API contract timeout resilience)
+3. #206  (Trivy actionable artifact/summaries)
+4. #200  (valet-token result delivery)
+5. #199  (name availability/conflict research)
+6. #19   (human sign-off gate; unblock via domain expert review)
+7. #152
+8. #150
+9. #151
+10. #129
 
 If blocked on an item, move to the next one and record the blocker in the issue.
 
