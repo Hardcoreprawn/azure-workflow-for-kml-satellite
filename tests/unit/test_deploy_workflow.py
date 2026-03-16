@@ -460,3 +460,43 @@ class TestReadinessCheck:
         # Must have max duration (variable naming may vary: MAX_DURATION, MAX_*_SECONDS, etc.)
         has_max = any(x in run_script for x in ["MAX_", "max_", "timeout"])
         assert has_max, "Reconciliation must have timeout bounds"
+
+    def test_fast_strategy_has_adaptive_admin_probe_fallback(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Fast strategy must pivot to authenticated admin probes on prolonged 404 warmup."""
+        steps = _get_steps(deploy_workflow)
+        fast = _find_step(steps, "verify runtime readiness (fast strategy)")
+        assert fast is not None, "Fast readiness step not found"
+
+        run_script = str(fast.get("run", ""))
+        assert "host/default/listKeys" in run_script, (
+            "Fast strategy must resolve host keys for adaptive fallback probes"
+        )
+        assert "/admin/host/status" in run_script, (
+            "Fast strategy fallback must probe authenticated host status"
+        )
+        assert "/admin/functions" in run_script, (
+            "Fast strategy fallback must verify trigger indexing via /admin/functions"
+        )
+        assert "kml_blob_trigger" in run_script or "EVENT_GRID_TRIGGER_FUNCTION" in run_script, (
+            "Fast strategy fallback must verify Event Grid trigger registration"
+        )
+
+    def test_fast_strategy_tracks_404_only_window_before_failing(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Fast strategy should treat sustained 404 startup as a recoverable warmup signal."""
+        steps = _get_steps(deploy_workflow)
+        fast = _find_step(steps, "verify runtime readiness (fast strategy)")
+        assert fast is not None, "Fast readiness step not found"
+
+        run_script = str(fast.get("run", ""))
+        assert "health=404" not in run_script, (
+            "Guard: script should use code variables, not hardcoded logs"
+        )
+        assert "health_code" in run_script and "readiness_code" in run_script
+        assert "404" in run_script, "Fast strategy should branch on 404 startup responses"
+        assert "Fast strategy adaptive fallback" in run_script, (
+            "Fast strategy should emit a clear adaptive fallback log marker"
+        )
