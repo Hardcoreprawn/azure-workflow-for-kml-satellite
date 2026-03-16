@@ -88,6 +88,87 @@ def test_workflow_scans_vulnerabilities(workflow: dict[str, Any]) -> None:
     assert "trivy" in uses or "grype" in uses
 
 
+class TestTrivyDiagnosticsAndPolicy:
+    """Contracts for issue #206 actionable Trivy outputs and exception policy."""
+
+    def test_workflow_generates_structured_trivy_reports(self, workflow: dict[str, Any]) -> None:
+        steps = _steps(workflow)
+
+        scan = _step_with_name_fragment(steps, "vulnerability scan")
+        assert scan is not None, "Primary Trivy scan step missing"
+        scan_with = scan.get("with", {})
+        assert scan_with.get("format") == "json", (
+            "Primary Trivy scan must emit JSON so failures are actionable"
+        )
+        assert "trivy-results.json" in str(scan_with.get("output", ""))
+        assert str(scan_with.get("exit-code", "")) == "0", (
+            "Report generation step must not fail before summary/artifact publication"
+        )
+
+        sarif = _step_with_name_fragment(steps, "sarif")
+        assert sarif is not None, "Workflow must also generate a SARIF report"
+        sarif_with = sarif.get("with", {})
+        assert sarif_with.get("format") == "sarif"
+        assert "trivy-results.sarif" in str(sarif_with.get("output", ""))
+
+    def test_workflow_uploads_trivy_artifacts_even_on_failure(
+        self, workflow: dict[str, Any]
+    ) -> None:
+        steps = _steps(workflow)
+
+        upload = _step_with_name_fragment(steps, "upload trivy")
+        assert upload is not None, "Workflow must upload Trivy findings as an artifact"
+        assert "actions/upload-artifact" in str(upload.get("uses", ""))
+        assert upload.get("if") == "always()", (
+            "Trivy reports must upload even when the vulnerability gate fails"
+        )
+
+        upload_with = upload.get("with", {})
+        assert "trivy" in str(upload_with.get("name", "")).lower()
+        artifact_path = str(upload_with.get("path", ""))
+        assert "trivy-results.json" in artifact_path
+        assert "trivy-results.sarif" in artifact_path
+
+    def test_workflow_publishes_blocker_summary_from_json(self, workflow: dict[str, Any]) -> None:
+        steps = _steps(workflow)
+
+        summary = _step_with_name_fragment(steps, "summary")
+        assert summary is not None, "Workflow must publish a Trivy blocker summary"
+        run_script = str(summary.get("run", ""))
+        assert "GITHUB_STEP_SUMMARY" in run_script
+        assert "VulnerabilityID" in run_script
+        assert "PkgName" in run_script
+        assert "InstalledVersion" in run_script
+        assert "FixedVersion" in run_script
+        assert "Severity" in run_script
+        assert "blocking" in run_script.lower(), (
+            "Summary must include blocker counts for before/after comparison"
+        )
+
+    def test_workflow_validates_allowlist_metadata_and_renders_trivy_ignorefile(
+        self, workflow: dict[str, Any]
+    ) -> None:
+        steps = _steps(workflow)
+
+        validate = _step_with_name_fragment(steps, "allowlist")
+        assert validate is not None, "Workflow must validate allowlist metadata"
+        run_script = str(validate.get("run", ""))
+        assert "owner" in run_script.lower(), "Allowlist validation must require owner"
+        assert "expires_on" in run_script, "Allowlist validation must require expiry metadata"
+        assert "expired_at" in run_script, "Workflow must render Trivy-compatible expiry field"
+        assert "statement" in run_script, "Workflow must preserve exception rationale"
+
+    def test_workflow_enforces_gate_from_structured_report(self, workflow: dict[str, Any]) -> None:
+        steps = _steps(workflow)
+
+        gate = _step_with_name_fragment(steps, "gate")
+        assert gate is not None, "Workflow must enforce the vulnerability gate explicitly"
+        run_script = str(gate.get("run", ""))
+        assert "trivy-results.json" in run_script
+        assert "HIGH" in run_script and "CRITICAL" in run_script
+        assert "exit 1" in run_script, "Gate step must fail the job when blockers remain"
+
+
 def test_workflow_uses_immutable_run_scoped_tag(workflow: dict[str, Any]) -> None:
     steps = _steps(workflow)
     image_step = _step_with_name_fragment(steps, "set image name")

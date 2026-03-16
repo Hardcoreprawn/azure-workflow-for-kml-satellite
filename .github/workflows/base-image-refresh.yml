@@ -59,14 +59,215 @@ jobs:
           set -euo pipefail
           docker run --rm "${{ steps.image.outputs.name }}" python -c "import rasterio, fiona, pyproj, shapely"
 
+      - name: Validate Trivy allowlist policy
+        id: allowlist
+        shell: bash
+        env:
+          POLICY_FILE: security/trivy/base-image-allowlist.yaml
+          RENDERED_IGNORE_FILE: artifacts/trivy/base-image/.trivyignore.yaml
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$RENDERED_IGNORE_FILE")"
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import datetime as dt
+          import os
+          from pathlib import Path
+
+          import yaml
+
+          policy_file = Path(os.environ["POLICY_FILE"])
+          rendered_ignore_file = Path(os.environ["RENDERED_IGNORE_FILE"])
+
+          if not policy_file.exists():
+              raise SystemExit(f"Allowlist policy file missing: {policy_file}")
+
+          policy = yaml.safe_load(policy_file.read_text(encoding="utf-8")) or {}
+          exceptions = policy.get("exceptions", [])
+          if not isinstance(exceptions, list):
+              raise SystemExit("Allowlist policy must define exceptions as a list")
+
+          today = dt.date.today()
+          vulnerabilities: list[dict[str, object]] = []
+
+          for index, exception in enumerate(exceptions, start=1):
+              if not isinstance(exception, dict):
+                  raise SystemExit(f"Exception #{index} must be a mapping")
+
+              required_fields = ("id", "owner", "expires_on", "statement")
+              missing = [field for field in required_fields if not exception.get(field)]
+              if missing:
+                  raise SystemExit(
+                      f"Exception #{index} missing required fields: {', '.join(missing)}"
+                  )
+
+              expires_on = dt.date.fromisoformat(str(exception["expires_on"]))
+              if expires_on < today:
+                  raise SystemExit(
+                      f"Exception {exception['id']} expired on {expires_on.isoformat()}"
+                  )
+
+              rendered_exception: dict[str, object] = {
+                  "id": exception["id"],
+                  "expired_at": expires_on.isoformat(),
+                  "statement": f"{exception['statement']} [owner: {exception['owner']}]",
+              }
+
+              if exception.get("paths"):
+                  rendered_exception["paths"] = exception["paths"]
+              if exception.get("purls"):
+                  rendered_exception["purls"] = exception["purls"]
+
+              vulnerabilities.append(rendered_exception)
+
+          rendered = {
+              "vulnerabilities": vulnerabilities,
+              "misconfigurations": [],
+              "secrets": [],
+              "licenses": [],
+          }
+          rendered_ignore_file.write_text(
+              yaml.safe_dump(rendered, sort_keys=False),
+              encoding="utf-8",
+          )
+          PY
+
+          echo "ignorefile=${RENDERED_IGNORE_FILE}" >> "$GITHUB_OUTPUT"
+          echo "Allowlist policy validated: ${POLICY_FILE}"
+
       - name: Vulnerability scan (Trivy)
         uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ steps.image.outputs.name }}
-          format: table
+          format: json
+          output: artifacts/trivy/base-image/trivy-results.json
           vuln-type: os,library
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          trivyignores: ${{ steps.allowlist.outputs.ignorefile }}
+          exit-code: "0"
+
+      - name: Generate Trivy SARIF report
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ steps.image.outputs.name }}
+          format: sarif
+          output: artifacts/trivy/base-image/trivy-results.sarif
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          trivyignores: ${{ steps.allowlist.outputs.ignorefile }}
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+          exit-code: "0"
+
+      - name: Publish Trivy blocker summary
+        id: trivy-summary
+        shell: bash
+        env:
+          JSON_REPORT: artifacts/trivy/base-image/trivy-results.json
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          json_report = Path(os.environ["JSON_REPORT"])
+          if not json_report.exists():
+              raise SystemExit(f"Trivy JSON report missing: {json_report}")
+
+          report = json.loads(json_report.read_text(encoding="utf-8"))
+          blockers: list[dict[str, str]] = []
+
+          for result in report.get("Results") or []:
+              for vulnerability in result.get("Vulnerabilities") or []:
+                  if vulnerability.get("Severity") not in {"HIGH", "CRITICAL"}:
+                      continue
+                  blockers.append(
+                      {
+                          "VulnerabilityID": str(vulnerability.get("VulnerabilityID", "")),
+                          "PkgName": str(vulnerability.get("PkgName", "")),
+                          "InstalledVersion": str(vulnerability.get("InstalledVersion", "")),
+                          "FixedVersion": str(vulnerability.get("FixedVersion", "")),
+                          "Severity": str(vulnerability.get("Severity", "")),
+                      }
+                  )
+
+          critical = sum(1 for blocker in blockers if blocker["Severity"] == "CRITICAL")
+          high = sum(1 for blocker in blockers if blocker["Severity"] == "HIGH")
+          top_blockers = blockers[:10]
+
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary_path.open("a", encoding="utf-8") as summary:
+              summary.write("### Trivy blocking vulnerabilities\n\n")
+              summary.write(f"- Blocking findings: {len(blockers)}\n")
+              summary.write(f"- Critical: {critical}\n")
+              summary.write(f"- High: {high}\n\n")
+              if top_blockers:
+                  summary.write("| CVE | Package | Severity | Installed | Fixed |\n")
+                  summary.write("| --- | --- | --- | --- | --- |\n")
+                  for blocker in top_blockers:
+                      fixed_version = blocker["FixedVersion"] or "none"
+                      summary.write(
+                          f"| {blocker['VulnerabilityID']} | {blocker['PkgName']} | {blocker['Severity']} | {blocker['InstalledVersion']} | {fixed_version} |\n"
+                      )
+              else:
+                  summary.write("No HIGH/CRITICAL blockers detected.\n")
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"blocking_count={len(blockers)}\n")
+              output.write(f"critical_count={critical}\n")
+              output.write(f"high_count={high}\n")
+          PY
+
+      - name: Upload Trivy findings artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-base-image-findings
+          path: |
+            artifacts/trivy/base-image/trivy-results.json
+            artifacts/trivy/base-image/trivy-results.sarif
+            security/trivy/base-image-allowlist.yaml
+          retention-days: 30
+
+      - name: Enforce HIGH/CRITICAL vulnerability gate
+        shell: bash
+        env:
+          JSON_REPORT: artifacts/trivy/base-image/trivy-results.json
+        run: |
+          set -euo pipefail
+
+          BLOCKING_COUNT=$(python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          json_report = Path(os.environ["JSON_REPORT"])
+          if not json_report.exists():
+              raise SystemExit(f"Trivy JSON report missing: {json_report}")
+
+          report = json.loads(json_report.read_text(encoding="utf-8"))
+          blocking_count = 0
+          for result in report.get("Results") or []:
+              for vulnerability in result.get("Vulnerabilities") or []:
+                  if vulnerability.get("Severity") in {"HIGH", "CRITICAL"}:
+                      blocking_count += 1
+          print(blocking_count)
+          PY
+          )
+
+          echo "Blocking HIGH/CRITICAL findings: ${BLOCKING_COUNT}"
+          if [[ "${BLOCKING_COUNT}" -gt 0 ]]; then
+            echo "::error::HIGH/CRITICAL vulnerability gate failed based on trivy-results.json"
+            exit 1
+          fi
 
       - name: Publish validated base image
         shell: bash
