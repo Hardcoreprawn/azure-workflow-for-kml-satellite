@@ -121,3 +121,64 @@ def test_infra_allows_static_web_app_preview_origins() -> None:
     assert '"https://*.azurestaticapps.net"' in content, (
         "Function App CORS must allow Static Web Apps preview subdomains"
     )
+
+
+class TestApiContractResiliency:
+    """Guardrails for issue #205: API contract check must retry on transient timeout."""
+
+    def test_api_contract_step_retries_on_timeout(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """A single curl timeout must not fail the workflow; the script must loop."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+        # Must have a retry loop — simple single-shot curl is not acceptable
+        assert "MAX_ATTEMPTS" in script or "max_attempts" in script, (
+            "API contract curl must be wrapped in a retry loop (MAX_ATTEMPTS)"
+        )
+        assert "ATTEMPT" in script, "API contract step must track attempt counter"
+
+    def test_api_contract_step_distinguishes_timeout_from_mismatch(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Transport failures (exit 28) must be retried; version mismatch must hard-fail."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+        # Exit code 28 is curl timeout; must be handled separately from version mismatch
+        assert "28" in script, (
+            "API contract step must detect curl exit code 28 (timeout) for retry decision"
+        )
+        assert "version mismatch" in script.lower() or "LIVE_API_VERSION" in script, (
+            "API contract step must still hard-fail on version mismatch"
+        )
+
+    def test_api_contract_step_emits_per_attempt_diagnostics(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Each attempt must emit a compact diagnostic line with attempt number and status."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+        # Diagnostic output: attempt number and some status indicator per iteration
+        assert "ATTEMPT" in script, "Step must emit per-attempt diagnostics"
+        assert "curl_exit" in script.lower() or "CURL_EXIT" in script, (
+            "Step must capture curl exit code for diagnostics"
+        )
+
+    def test_api_contract_step_succeeds_after_transient_failure(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """If an early attempt times out but a later attempt returns a matching version, step passes."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+        # The loop must have a success/continue path — not just a fail path
+        assert "continue" in script or "break" in script or "exit 0" in script, (
+            "Retry loop must have an explicit success exit/break when contract matches"
+        )

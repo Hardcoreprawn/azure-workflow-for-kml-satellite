@@ -106,20 +106,65 @@ jobs:
           )
 
           API_CONTRACT_URL="https://${{ steps.function-app.outputs.hostname }}/api/api-contract"
-          API_CONTRACT_RESPONSE=$(curl -fsS --max-time 20 "$API_CONTRACT_URL")
-          LIVE_API_VERSION=$(echo "$API_CONTRACT_RESPONSE" | jq -r '.api_version // empty')
+          MAX_ATTEMPTS=5
+          ATTEMPT=0
+          BACKOFF=5
 
-          if [[ -z "$LIVE_API_VERSION" ]]; then
-            echo "::error::Backend API contract endpoint did not return api_version"
-            exit 1
-          fi
+          while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            START_MS=$(date +%s%3N)
 
-          if [[ "$LIVE_API_VERSION" != "$REQUIRED_API_VERSION" ]]; then
-            echo "::error::Backend API contract mismatch: website requires ${REQUIRED_API_VERSION}, backend is ${LIVE_API_VERSION}"
-            exit 1
-          fi
+            set +e
+            API_CONTRACT_RESPONSE=$(curl -fsS --max-time 20 -w "\n%{http_code}" "$API_CONTRACT_URL" 2>/dev/null)
+            CURL_EXIT=$?
+            set -e
 
-          echo "✅ API contract compatible (${LIVE_API_VERSION})"
+            END_MS=$(date +%s%3N)
+            ELAPSED_MS=$((END_MS - START_MS))
+            HTTP_STATUS=$(echo "$API_CONTRACT_RESPONSE" | tail -1)
+            BODY=$(echo "$API_CONTRACT_RESPONSE" | head -n -1)
+
+            echo "contract-check attempt=${ATTEMPT}/${MAX_ATTEMPTS} curl_exit=${CURL_EXIT} http=${HTTP_STATUS} elapsed=${ELAPSED_MS}ms endpoint=${API_CONTRACT_URL}"
+
+            # Transient transport failure (timeout=28, connect=7, DNS=6): retry with backoff
+            if [[ $CURL_EXIT -eq 28 || $CURL_EXIT -eq 7 || $CURL_EXIT -eq 6 ]]; then
+              echo "::warning::Attempt ${ATTEMPT}: transient transport error (curl exit ${CURL_EXIT}). Retrying in ${BACKOFF}s..."
+              if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+                sleep $BACKOFF
+                BACKOFF=$((BACKOFF * 2))
+              fi
+              continue
+            fi
+
+            # Non-transport curl failure (e.g. TLS, bad status): retry
+            if [[ $CURL_EXIT -ne 0 ]]; then
+              echo "::warning::Attempt ${ATTEMPT}: curl failed (exit ${CURL_EXIT} http ${HTTP_STATUS}). Retrying in ${BACKOFF}s..."
+              if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+                sleep $BACKOFF
+                BACKOFF=$((BACKOFF * 2))
+              fi
+              continue
+            fi
+
+            LIVE_API_VERSION=$(echo "$BODY" | jq -r '.api_version // empty')
+
+            if [[ -z "$LIVE_API_VERSION" ]]; then
+              echo "::error::Backend API contract endpoint did not return api_version (non-JSON or empty response)"
+              exit 1
+            fi
+
+            # Hard-fail on version mismatch — no retry, this is a contract violation
+            if [[ "$LIVE_API_VERSION" != "$REQUIRED_API_VERSION" ]]; then
+              echo "::error::Backend API contract version mismatch: website requires ${REQUIRED_API_VERSION}, backend is ${LIVE_API_VERSION}"
+              exit 1
+            fi
+
+            echo "✅ API contract compatible (${LIVE_API_VERSION}) on attempt ${ATTEMPT}"
+            exit 0
+          done
+
+          echo "::error::API contract check failed after ${MAX_ATTEMPTS} attempts (all transport errors)"
+          exit 1
 
       - name: Configure website backend fallback origin
         if: steps.website-check.outputs.exists == 'true'
