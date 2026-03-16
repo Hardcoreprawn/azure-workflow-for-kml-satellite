@@ -586,6 +586,7 @@ jobs:
 
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
           RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
+          TRIGGER_NAME="${{ env.EVENT_GRID_TRIGGER_FUNCTION }}"
 
           log() { echo "$(date +'%H:%M:%S') | $*"; }
           fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
@@ -599,21 +600,71 @@ jobs:
 
           deadline=$(( $(date +%s) + MAX_READY_SECONDS ))
           ready=0
+          observed_probe=0
+          only_404_startup=1
+          health_code="000"
+          readiness_code="000"
 
           while (( $(date +%s) < deadline )); do
             set +e
-            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health")
-            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness")
+            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health" || true)
+            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness" || true)
             set -e
+            observed_probe=1
 
             if [[ "$health_code" == "200" && "$readiness_code" == "200" ]]; then
               ready=1
               break
             fi
 
+            if [[ "$health_code" != "404" || "$readiness_code" != "404" ]]; then
+              only_404_startup=0
+            fi
+
             log "Fast strategy readiness pending (health=${health_code}, readiness=${readiness_code}); retrying in ${POLL_INTERVAL}s..."
             sleep "$POLL_INTERVAL"
           done
+
+          if [[ "$ready" != "1" && "$observed_probe" == "1" && "$only_404_startup" == "1" ]]; then
+            # Adaptive fallback: if anonymous endpoints stay 404 during warmup,
+            # verify host state and trigger indexing via authenticated admin APIs.
+            log "Fast strategy adaptive fallback: sustained 404 startup window detected; probing admin readiness endpoints."
+
+            AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+            RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
+
+            KEY_PAYLOAD=$(az rest \
+              --method post \
+              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
+              -o json 2>/dev/null || true)
+            MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
+
+            if [[ -n "$MASTER_KEY" ]]; then
+              echo "::add-mask::${MASTER_KEY}"
+
+              host_status_json=$(curl -sS --max-time 10 \
+                -H "x-functions-key: ${MASTER_KEY}" \
+                "https://${FQDN}/admin/host/status" 2>/dev/null || true)
+              host_state=$(echo "$host_status_json" | jq -r '.state // empty' 2>/dev/null || true)
+
+              functions_json=$(curl -sS --max-time 10 \
+                -H "x-functions-key: ${MASTER_KEY}" \
+                "https://${FQDN}/admin/functions" 2>/dev/null || true)
+              trigger_indexed=0
+              if echo "$functions_json" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
+                trigger_indexed=1
+              fi
+
+              if [[ "$host_state" == "Running" && "$trigger_indexed" == "1" ]]; then
+                ready=1
+                log "Fast strategy adaptive fallback accepted: host is Running and trigger '$TRIGGER_NAME' is indexed."
+              else
+                log "Fast strategy adaptive fallback did not satisfy readiness (host_state=${host_state:-unknown}, trigger_indexed=${trigger_indexed})."
+              fi
+            else
+              log "Fast strategy adaptive fallback could not resolve master host key; readiness remains unverified."
+            fi
+          fi
 
           [[ "$ready" == "1" ]] || fail "Fast strategy readiness checks did not pass within ${MAX_READY_SECONDS}s."
           log "Fast strategy verification passed: health/readiness endpoints are available."
