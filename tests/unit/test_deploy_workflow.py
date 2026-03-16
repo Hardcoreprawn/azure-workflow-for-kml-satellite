@@ -446,6 +446,31 @@ class TestReadinessCheck:
             "Reconciliation must include the webhook code in subscription URL"
         )
 
+    def test_reconcile_restarts_once_on_running_but_unindexed_timeout(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Reconciliation should self-heal when host is Running but trigger index is empty."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = str(reconcile.get("run", ""))
+
+        assert "probe_runtime_readiness_until" in run_script, (
+            "Reconciliation should centralize readiness probing for reuse across retry windows"
+        )
+        assert "host running but trigger unindexed" in run_script.lower(), (
+            "Reconciliation should detect and log the specific running-but-unindexed failure mode"
+        )
+        assert "az functionapp restart" in run_script, (
+            "Reconciliation should restart the Function App once before hard failing"
+        )
+        assert "RESTART_READY_SECONDS=300" in run_script, (
+            "Restart recovery window should be explicitly bounded"
+        )
+        assert "RESTART_READINESS_DEADLINE" in run_script, (
+            "Restart path should reuse deadline-bound readiness verification"
+        )
+
     def test_reconcile_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
         """Reconciliation must have wall-clock timeout, not just attempt count."""
         steps = _get_steps(deploy_workflow)

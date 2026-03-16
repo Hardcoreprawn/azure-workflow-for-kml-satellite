@@ -330,81 +330,97 @@ jobs:
           LAST_KEY_STATUS="unavailable"
           TRIGGER_INDEXED=0
 
-          while (( $(date +%s) < READINESS_DEADLINE )); do
-            KEY_PAYLOAD=$(az rest \
-              --method post \
-              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-              -o json 2>/dev/null || true)
+          probe_runtime_readiness_until() {
+            local deadline="$1"
 
-            MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
-            EVENTGRID_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.systemKeys.eventgrid_extension // .systemKeys.eventgridextensionconfig_extension // .masterKey // empty' 2>/dev/null || true)
+            while (( $(date +%s) < deadline )); do
+              KEY_PAYLOAD=$(az rest \
+                --method post \
+                --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
+                -o json 2>/dev/null || true)
 
-            if [[ -z "$MASTER_KEY" ]]; then
-              LAST_KEY_STATUS="unavailable"
-              log "Host keys are not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
+              EVENTGRID_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.systemKeys.eventgrid_extension // .systemKeys.eventgridextensionconfig_extension // .masterKey // empty' 2>/dev/null || true)
 
-            LAST_KEY_STATUS="available"
-            echo "::add-mask::${MASTER_KEY}"
-            echo "::add-mask::${EVENTGRID_KEY}"
+              if [[ -z "$MASTER_KEY" ]]; then
+                LAST_KEY_STATUS="unavailable"
+                log "Host keys are not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
 
-            set +e
-            HOST_STATUS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${MASTER_KEY}" \
-              "https://${FQDN}/admin/host/status" 2>/dev/null)
-            HOST_STATUS_EXIT=$?
-            set -e
+              LAST_KEY_STATUS="available"
+              echo "::add-mask::${MASTER_KEY}"
+              echo "::add-mask::${EVENTGRID_KEY}"
 
-            if [[ $HOST_STATUS_EXIT -ne 0 ]]; then
-              log "Host status endpoint unavailable (curl=${HOST_STATUS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              set +e
+              HOST_STATUS_JSON=$(curl -sS --max-time 10 \
+                -H "x-functions-key: ${MASTER_KEY}" \
+                "https://${FQDN}/admin/host/status" 2>/dev/null)
+              HOST_STATUS_EXIT=$?
+              set -e
 
-            LAST_STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
-            if [[ "$LAST_STATE" != "Running" ]]; then
-              log "Host state is '$LAST_STATE'. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              if [[ $HOST_STATUS_EXIT -ne 0 ]]; then
+                log "Host status endpoint unavailable (curl=${HOST_STATUS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
 
-            set +e
-            FUNCTIONS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${MASTER_KEY}" \
-              "https://${FQDN}/admin/functions" 2>/dev/null)
-            FUNCTIONS_EXIT=$?
-            set -e
+              LAST_STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
+              if [[ "$LAST_STATE" != "Running" ]]; then
+                log "Host state is '$LAST_STATE'. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
 
-            if [[ $FUNCTIONS_EXIT -ne 0 ]]; then
-              log "Function registry endpoint unavailable (curl=${FUNCTIONS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              set +e
+              FUNCTIONS_JSON=$(curl -sS --max-time 10 \
+                -H "x-functions-key: ${MASTER_KEY}" \
+                "https://${FQDN}/admin/functions" 2>/dev/null)
+              FUNCTIONS_EXIT=$?
+              set -e
 
-            LAST_FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
-            if echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
-              TRIGGER_INDEXED=1
-            else
-              TRIGGER_INDEXED=0
-            fi
+              if [[ $FUNCTIONS_EXIT -ne 0 ]]; then
+                log "Function registry endpoint unavailable (curl=${FUNCTIONS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
 
-            if [[ $TRIGGER_INDEXED -ne 1 ]]; then
-              log "Trigger '$TRIGGER_NAME' not indexed yet (functions seen: ${LAST_FUNCTION_COUNT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              LAST_FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
+              if echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
+                TRIGGER_INDEXED=1
+              else
+                TRIGGER_INDEXED=0
+              fi
 
-            if [[ -z "$EVENTGRID_KEY" ]]; then
-              log "Event Grid webhook key is not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
+              if [[ $TRIGGER_INDEXED -ne 1 ]]; then
+                log "Trigger '$TRIGGER_NAME' not indexed yet (functions seen: ${LAST_FUNCTION_COUNT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
 
-            log "Runtime readiness contract satisfied: host running, trigger indexed, webhook key available."
-            break
-          done
+              if [[ -z "$EVENTGRID_KEY" ]]; then
+                log "Event Grid webhook key is not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
+                sleep "$HOST_POLL_INTERVAL_SECONDS"
+                continue
+              fi
+
+              log "Runtime readiness contract satisfied: host running, trigger indexed, webhook key available."
+              break
+            done
+          }
+
+          probe_runtime_readiness_until "$READINESS_DEADLINE"
+
+          if [[ "$LAST_STATE" == "Running" && $TRIGGER_INDEXED -ne 1 && "$LAST_KEY_STATUS" == "available" ]]; then
+            # Self-heal path for the observed failure mode: host is running but index metadata is empty.
+            RESTART_READY_SECONDS=300
+            log "Readiness timed out with host running but trigger unindexed. Restarting Function App once and retrying for ${RESTART_READY_SECONDS}s..."
+            az functionapp restart --name "$FUNCTION_APP" --resource-group "$RESOURCE_GROUP"
+            sleep 20
+            RESTART_READINESS_DEADLINE=$(( $(date +%s) + RESTART_READY_SECONDS ))
+            probe_runtime_readiness_until "$RESTART_READINESS_DEADLINE"
+          fi
 
           if [[ "$LAST_STATE" != "Running" || $TRIGGER_INDEXED -ne 1 || "$LAST_KEY_STATUS" != "available" || -z "$EVENTGRID_KEY" ]]; then
             fail "Runtime readiness contract not satisfied within ${MAX_HOST_READY_SECONDS}s (state=${LAST_STATE}, trigger_indexed=${TRIGGER_INDEXED}, functions_seen=${LAST_FUNCTION_COUNT}, keys=${LAST_KEY_STATUS})."
