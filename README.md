@@ -167,6 +167,12 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET | `/api/health` | Liveness probe | 200 | 500 |
 | GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
 | GET | `/api/orchestrator/{instance_id}` | Durable instance status + output artifact diagnostics | 200 | 400 / 404 |
+| GET | `/api/demo-results?token=...` | Validate valet token and reveal one authorized demo artifact | 200 | 401 / 403 |
+| GET | `/api/demo-results/download?token=...` | Proxy a single authorized demo artifact download | 200 | 401 / 403 / 404 |
+
+Protected/internal endpoint:
+
+- `POST /api/demo-results-token` — mint a short-lived, replay-limited valet token for one demo artifact (Function auth)
 
 ### Event-driven entrypoint
 

@@ -9,10 +9,17 @@ the wiring layer between Azure Functions bindings and application code.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
+import mimetypes
+import os
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import azure.durable_functions as df
@@ -43,6 +50,8 @@ logger = logging.getLogger("kml_satellite.function_app")
 
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _API_CONTRACT_VERSION = "2026-03-15.1"
+_DEMO_VALET_TOKEN_TTL_SECONDS = 24 * 60 * 60
+_DEMO_VALET_TOKEN_MAX_USES = 3
 
 
 def _isoformat_or_empty(value: object) -> str:
@@ -129,6 +138,268 @@ def _sanitize_marketing_field(value: object, *, max_length: int = 2000) -> str:
     if value is None:
         return ""
     return str(value).strip()[:max_length]
+
+
+def _get_demo_valet_secret() -> bytes:
+    """Return the HMAC secret for signed valet tokens."""
+    secret = os.getenv("DEMO_VALET_TOKEN_SECRET", "").strip()
+    if not secret:
+        raise RuntimeError("DEMO_VALET_TOKEN_SECRET is not configured")
+    return secret.encode("utf-8")
+
+
+def _base64url_encode_bytes(value: bytes) -> str:
+    """Encode bytes without `=` padding for URL-safe tokens."""
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _base64url_decode_bytes(value: str) -> bytes:
+    """Decode a URL-safe base64 segment with optional stripped padding."""
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(f"{value}{padding}")
+
+
+def _hash_demo_recipient(email: str) -> str:
+    """Return a stable hash for the token-bound recipient."""
+    normalized = email.strip().lower().encode("utf-8")
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def _get_demo_valet_ttl_seconds() -> int:
+    """Return the configured valet token TTL in seconds."""
+    value = os.getenv("DEMO_VALET_TOKEN_TTL_SECONDS", str(_DEMO_VALET_TOKEN_TTL_SECONDS))
+    try:
+        parsed = int(value)
+    except ValueError:
+        return _DEMO_VALET_TOKEN_TTL_SECONDS
+    return parsed if parsed > 0 else _DEMO_VALET_TOKEN_TTL_SECONDS
+
+
+def _get_demo_valet_max_uses() -> int:
+    """Return the configured per-token replay limit."""
+    value = os.getenv("DEMO_VALET_TOKEN_MAX_USES", str(_DEMO_VALET_TOKEN_MAX_USES))
+    try:
+        parsed = int(value)
+    except ValueError:
+        return _DEMO_VALET_TOKEN_MAX_USES
+    return parsed if parsed > 0 else _DEMO_VALET_TOKEN_MAX_USES
+
+
+def _mint_demo_valet_token(
+    *,
+    submission_id: str,
+    submission_blob_name: str,
+    artifact_path: str,
+    recipient_email: str,
+    expires_at: datetime | None = None,
+    nonce: str | None = None,
+    max_uses: int | None = None,
+    output_container: str = DEFAULT_OUTPUT_CONTAINER,
+) -> str:
+    """Create a signed valet token scoped to a single demo artifact."""
+    now = datetime.now(UTC)
+    if expires_at is None:
+        expires_at = now + timedelta(seconds=_get_demo_valet_ttl_seconds())
+
+    claims = {
+        "submission_id": submission_id,
+        "submission_blob_name": submission_blob_name,
+        "artifact_path": artifact_path,
+        "recipient_hash": _hash_demo_recipient(recipient_email),
+        "exp": int(expires_at.timestamp()),
+        "nonce": nonce or uuid4().hex,
+        "max_uses": max_uses or _get_demo_valet_max_uses(),
+        "output_container": output_container,
+    }
+
+    payload = _base64url_encode_bytes(
+        json.dumps(claims, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signature = _base64url_encode_bytes(
+        hmac.new(_get_demo_valet_secret(), payload.encode("utf-8"), hashlib.sha256).digest()
+    )
+    return f"{payload}.{signature}"
+
+
+def _verify_demo_valet_token(
+    token: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[dict[str, object] | None, str | None]:
+    """Verify token signature and expiry without exposing internal failure detail."""
+    try:
+        payload_segment, signature_segment = token.split(".", 1)
+    except ValueError:
+        return None, "invalid"
+
+    try:
+        expected_signature = _base64url_encode_bytes(
+            hmac.new(
+                _get_demo_valet_secret(),
+                payload_segment.encode("utf-8"),
+                hashlib.sha256,
+            ).digest()
+        )
+    except RuntimeError:
+        return None, "misconfigured"
+
+    if not hmac.compare_digest(signature_segment, expected_signature):
+        return None, "invalid"
+
+    try:
+        claims = json.loads(_base64url_decode_bytes(payload_segment).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None, "invalid"
+
+    if not isinstance(claims, dict):
+        return None, "invalid"
+
+    current_time = now or datetime.now(UTC)
+    expires_at = claims.get("exp")
+    if not isinstance(expires_at, int):
+        return None, "invalid"
+    if current_time.timestamp() > expires_at:
+        return None, "expired"
+
+    return claims, None
+
+
+def _extract_demo_artifact_paths(submission: object) -> list[str]:
+    """Collect unique artifact paths from a persisted demo submission record."""
+    if not isinstance(submission, dict):
+        return []
+
+    artifacts = submission.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return []
+
+    paths: list[str] = []
+    for key in ("metadataPaths", "rawImageryPaths", "clippedImageryPaths"):
+        values = artifacts.get(key)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str) and value and value not in paths:
+                paths.append(value)
+    return paths
+
+
+def _load_json_blob(
+    blob_service: Any, *, container: str, blob_name: str
+) -> dict[str, object] | None:
+    """Load a JSON blob from storage or return None when it does not exist."""
+    try:
+        blob_client = blob_service.get_blob_client(container=container, blob=blob_name)
+        payload = blob_client.download_blob().readall()
+    except Exception:
+        return None
+
+    try:
+        decoded = payload.decode("utf-8") if isinstance(payload, bytes) else str(payload)
+        data = json.loads(decoded)
+    except (UnicodeDecodeError, ValueError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _find_demo_submission_blob_name(blob_service: Any, submission_id: str) -> str | None:
+    """Locate a persisted demo submission record by scanning the payload prefix."""
+    try:
+        container_client = blob_service.get_container_client(PIPELINE_PAYLOADS_CONTAINER)
+        blobs = container_client.list_blobs(name_starts_with="demo-submissions/")
+    except Exception:
+        return None
+
+    suffix = f"/{submission_id}.json"
+    for blob in blobs:
+        name = getattr(blob, "name", "")
+        if isinstance(name, str) and name.endswith(suffix):
+            return name
+    return None
+
+
+def _get_demo_token_usage_blob_name(nonce: str) -> str:
+    """Return the blob name used to track token replay usage."""
+    return f"demo-valet-usage/{nonce}.json"
+
+
+def _get_demo_token_usage_count(blob_service: Any, nonce: str) -> int:
+    """Return the current usage count for a replay-limited token."""
+    payload = _load_json_blob(
+        blob_service,
+        container=PIPELINE_PAYLOADS_CONTAINER,
+        blob_name=_get_demo_token_usage_blob_name(nonce),
+    )
+    if not payload:
+        return 0
+    count = payload.get("count", 0)
+    return count if isinstance(count, int) and count >= 0 else 0
+
+
+def _consume_demo_token_use(blob_service: Any, claims: dict[str, object]) -> bool:
+    """Increment the replay counter and return False once the max use count is exceeded."""
+    nonce = claims.get("nonce")
+    max_uses = claims.get("max_uses")
+    if not isinstance(nonce, str) or not isinstance(max_uses, int):
+        return False
+
+    usage_count = _get_demo_token_usage_count(blob_service, nonce)
+    if usage_count >= max_uses:
+        return False
+
+    blob_service.get_blob_client(
+        container=PIPELINE_PAYLOADS_CONTAINER,
+        blob=_get_demo_token_usage_blob_name(nonce),
+    ).upload_blob(
+        json.dumps(
+            {
+                "nonce": nonce,
+                "count": usage_count + 1,
+                "last_used_at": datetime.now(UTC).isoformat(),
+            }
+        ),
+        overwrite=True,
+    )
+    return True
+
+
+def _guess_artifact_mimetype(blob_path: str) -> str:
+    """Return a reasonable content type for proxied artifact downloads."""
+    guessed, _ = mimetypes.guess_type(blob_path)
+    return guessed or "application/octet-stream"
+
+
+def _load_demo_submission_for_claims(
+    blob_service: Any, claims: dict[str, object]
+) -> tuple[dict[str, object] | None, str | None]:
+    """Resolve the persisted submission record referenced by token claims."""
+    submission_blob_name = claims.get("submission_blob_name")
+    if not isinstance(submission_blob_name, str) or not submission_blob_name:
+        return None, None
+
+    submission = _load_json_blob(
+        blob_service,
+        container=PIPELINE_PAYLOADS_CONTAINER,
+        blob_name=submission_blob_name,
+    )
+    return submission, submission_blob_name
+
+
+def _artifact_is_authorized(submission: dict[str, object], claims: dict[str, object]) -> bool:
+    """Check that the token still matches the persisted submission record."""
+    artifact_path = claims.get("artifact_path")
+    recipient_hash = claims.get("recipient_hash")
+    if not isinstance(artifact_path, str) or not isinstance(recipient_hash, str):
+        return False
+
+    email = submission.get("email")
+    if not isinstance(email, str) or _hash_demo_recipient(email) != recipient_hash:
+        return False
+
+    return artifact_path in _extract_demo_artifact_paths(submission)
 
 
 def _validate_marketing_interest_payload(
@@ -460,6 +731,9 @@ async def api_contract(_req: func.HttpRequest) -> func.HttpResponse:
                 "/api/readiness",
                 "/api/contact-form",
                 "/api/demo-submit",
+                "/api/demo-results-token",
+                "/api/demo-results",
+                "/api/demo-results/download",
                 "/api/orchestrator/{instance_id}",
             ],
         }
@@ -618,6 +892,179 @@ async def demo_submission(req: func.HttpRequest) -> func.HttpResponse:
         }
     )
     return func.HttpResponse(response, status_code=202, mimetype="application/json")
+
+
+@app.function_name("demo_result_token")
+@app.route(
+    route="demo-results-token",
+    methods=["POST"],
+    auth_level=func.AuthLevel.FUNCTION,
+)
+async def demo_result_token(req: func.HttpRequest) -> func.HttpResponse:
+    """Issue a short-lived valet token scoped to one demo artifact."""
+    try:
+        payload = req.get_json()
+    except ValueError:
+        response = json.dumps({"error": "Request body must be valid JSON"})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    if not isinstance(payload, dict):
+        response = json.dumps({"error": "Request body must be a JSON object"})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    submission_id = _sanitize_marketing_field(payload.get("submission_id"), max_length=128)
+    artifact_path = _sanitize_marketing_field(payload.get("artifact_path"), max_length=1024)
+    if not submission_id or not artifact_path:
+        response = json.dumps({"error": "Fields 'submission_id' and 'artifact_path' are required"})
+        return func.HttpResponse(response, status_code=400, mimetype="application/json")
+
+    try:
+        blob_service = get_blob_service_client()
+        submission_blob_name = _find_demo_submission_blob_name(blob_service, submission_id)
+        if submission_blob_name is None:
+            return func.HttpResponse(status_code=404)
+
+        submission = _load_json_blob(
+            blob_service,
+            container=PIPELINE_PAYLOADS_CONTAINER,
+            blob_name=submission_blob_name,
+        )
+        if not submission or artifact_path not in _extract_demo_artifact_paths(submission):
+            return func.HttpResponse(status_code=404)
+
+        email = submission.get("email")
+        output_container = submission.get("output_container", DEFAULT_OUTPUT_CONTAINER)
+        if not isinstance(email, str) or not email:
+            return func.HttpResponse(status_code=409)
+        if not isinstance(output_container, str) or not output_container:
+            output_container = DEFAULT_OUTPUT_CONTAINER
+
+        token = _mint_demo_valet_token(
+            submission_id=submission_id,
+            submission_blob_name=submission_blob_name,
+            artifact_path=artifact_path,
+            recipient_email=email,
+            output_container=output_container,
+        )
+    except RuntimeError:
+        logger.exception("Demo valet token secret is not configured")
+        return func.HttpResponse(status_code=503)
+    except Exception:
+        logger.exception(
+            "Failed to issue demo result token | submission_id=%s | artifact_path=%s",
+            submission_id,
+            artifact_path,
+        )
+        return func.HttpResponse(status_code=500)
+
+    response = json.dumps(
+        {
+            "token": token,
+            "results_url": f"/api/demo-results?token={token}",
+            "download_url": f"/api/demo-results/download?token={token}",
+        }
+    )
+    return func.HttpResponse(response, status_code=200, mimetype="application/json")
+
+
+@app.function_name("demo_results")
+@app.route(
+    route="demo-results",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+async def demo_results(req: func.HttpRequest) -> func.HttpResponse:
+    """Validate a valet token and expose only the intended demo artifact metadata."""
+    token = _sanitize_marketing_field(getattr(req, "params", {}).get("token"), max_length=8192)
+    if not token:
+        return func.HttpResponse(status_code=401)
+
+    claims, error = _verify_demo_valet_token(token)
+    if error == "expired":
+        return func.HttpResponse(status_code=403)
+    if error == "misconfigured":
+        return func.HttpResponse(status_code=503)
+    if error or claims is None:
+        return func.HttpResponse(status_code=401)
+
+    try:
+        blob_service = get_blob_service_client()
+        submission, _ = _load_demo_submission_for_claims(blob_service, claims)
+        if not submission or not _artifact_is_authorized(submission, claims):
+            return func.HttpResponse(status_code=403)
+
+        artifact_path = str(claims["artifact_path"])
+        response = json.dumps(
+            {
+                "submission_id": str(claims["submission_id"]),
+                "status": str(submission.get("status", "unknown")),
+                "artifact": {
+                    "path": artifact_path,
+                    "kind": Path(artifact_path).suffix.lower().lstrip(".") or "blob",
+                    "download_url": f"/api/demo-results/download?token={token}",
+                },
+            }
+        )
+        return func.HttpResponse(response, status_code=200, mimetype="application/json")
+    except Exception:
+        logger.exception("Failed to resolve demo results for a valet token")
+        return func.HttpResponse(status_code=500)
+
+
+@app.function_name("demo_result_download")
+@app.route(
+    route="demo-results/download",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+async def demo_result_download(req: func.HttpRequest) -> func.HttpResponse:
+    """Proxy a demo artifact download after validating a signed valet token."""
+    token = _sanitize_marketing_field(getattr(req, "params", {}).get("token"), max_length=8192)
+    if not token:
+        return func.HttpResponse(status_code=401)
+
+    claims, error = _verify_demo_valet_token(token)
+    if error == "expired":
+        return func.HttpResponse(status_code=403)
+    if error == "misconfigured":
+        return func.HttpResponse(status_code=503)
+    if error or claims is None:
+        return func.HttpResponse(status_code=401)
+
+    try:
+        blob_service = get_blob_service_client()
+        submission, _ = _load_demo_submission_for_claims(blob_service, claims)
+        if not submission or not _artifact_is_authorized(submission, claims):
+            return func.HttpResponse(status_code=403)
+        if not _consume_demo_token_use(blob_service, claims):
+            return func.HttpResponse(status_code=403)
+
+        artifact_path = str(claims["artifact_path"])
+        output_container = claims.get("output_container", DEFAULT_OUTPUT_CONTAINER)
+        if not isinstance(output_container, str) or not output_container:
+            output_container = DEFAULT_OUTPUT_CONTAINER
+
+        blob_client = blob_service.get_blob_client(container=output_container, blob=artifact_path)
+        payload = blob_client.download_blob().readall()
+        try:
+            content_type = blob_client.get_blob_properties().content_settings.content_type
+        except Exception:
+            content_type = _guess_artifact_mimetype(artifact_path)
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{Path(artifact_path).name}"',
+        }
+        return func.HttpResponse(
+            body=payload,
+            status_code=200,
+            mimetype=content_type or _guess_artifact_mimetype(artifact_path),
+            headers=headers,
+        )
+    except FileNotFoundError:
+        return func.HttpResponse(status_code=404)
+    except Exception:
+        logger.exception("Failed to proxy demo artifact download")
+        return func.HttpResponse(status_code=500)
 
 
 # ---------------------------------------------------------------------------
