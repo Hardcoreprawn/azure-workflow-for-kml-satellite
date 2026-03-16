@@ -526,9 +526,10 @@ If you deploy the frontend before the backend is ready, the gate will fail with 
 
 1. Create a feature branch from `main` (`git checkout -b feature/issue-number-description`)
 2. Make changes following the engineering principles in [PID.md §7.4](PID.md)
-3. Pre-commit hooks enforce lint, format, and type checks automatically
-4. Add/update tests — all new code requires unit tests
-5. Open a PR using the provided template
+3. Run `uv run ruff format .` before opening or updating a PR
+4. Pre-commit hooks enforce lint, format, and type checks automatically, and PR CI uploads a formatting patch artifact if drift is detected
+5. Add/update tests — all new code requires unit tests
+6. Open a PR using the provided template; changes to `main` should go through PRs rather than direct pushes
 
 ## Licence
 

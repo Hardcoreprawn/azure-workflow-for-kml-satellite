@@ -27,9 +27,44 @@ jobs:
         run: uv sync --all-extras
 
       - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Check formatting with ruff-format
+        id: ruff-format-check
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: uv run ruff format --check .
+
+      - name: Generate formatting autofix patch
+        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
+          set -euo pipefail
+          uv run ruff format .
+          git diff -- . ':(exclude).venv/**' > ruff-format.patch
+          if [[ ! -s ruff-format.patch ]]; then
+            echo "Expected ruff-format.patch to contain formatting changes"
+            exit 1
+          fi
+
+          {
+            echo "### Formatting autofix required"
+            echo ""
+            echo "Run \\`uv run ruff format .\\` locally, commit the result, and push again."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload formatting patch artifact
+        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-format-autofix-patch
+          path: ruff-format.patch
+          retention-days: 7
+
+      - name: Fail on formatting drift
+        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
+        run: |
+          echo "::error::Formatting drift detected. Run 'uv run ruff format .' locally, commit the changes, and push again."
+          exit 1
 
       - name: Type check with pyright
         run: uv run pyright
