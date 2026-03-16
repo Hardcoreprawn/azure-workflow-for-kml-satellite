@@ -182,3 +182,50 @@ class TestApiContractResiliency:
         assert "continue" in script or "break" in script or "exit 0" in script, (
             "Retry loop must have an explicit success exit/break when contract matches"
         )
+
+    def test_api_contract_step_tracks_404_only_window(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Sustained 404 windows should be handled explicitly, not as generic curl failures."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+
+        assert "only_404_window" in script, (
+            "API contract step must track whether failures are sustained 404 startup windows"
+        )
+        assert "HTTP_STATUS" in script and '"404"' in script, (
+            "API contract step must branch on explicit HTTP 404 responses"
+        )
+
+    def test_api_contract_step_checks_backend_health_on_404_window(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """If contract endpoint stays 404, workflow should probe backend health/readiness for diagnostics."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+
+        assert "/api/health" in script, "404 handling must probe /api/health"
+        assert "/api/readiness" in script, "404 handling must probe /api/readiness"
+        assert "curl -sS -o /dev/null -w" in script, (
+            "404 diagnostics should log probe HTTP statuses"
+        )
+
+    def test_api_contract_step_emits_actionable_404_error_message(
+        self, website_deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Final 404 failure should point to likely cause (backend missing/outdated route)."""
+        steps = _get_steps(website_deploy_workflow)
+        step = _find_step(steps, "verify backend api contract compatibility")
+        assert step is not None, "API contract step not found"
+        script = str(step.get("run", ""))
+
+        assert "persisted 404" in script.lower(), (
+            "Workflow should emit a specific persisted-404 diagnostic message"
+        )
+        assert "deploy backend" in script.lower() or "backend image" in script.lower(), (
+            "Persisted 404 guidance must tell operators to deploy/update backend before website"
+        )

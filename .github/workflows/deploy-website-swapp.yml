@@ -106,9 +106,13 @@ jobs:
           )
 
           API_CONTRACT_URL="https://${{ steps.function-app.outputs.hostname }}/api/api-contract"
+          HEALTH_URL="https://${{ steps.function-app.outputs.hostname }}/api/health"
+          READINESS_URL="https://${{ steps.function-app.outputs.hostname }}/api/readiness"
           MAX_ATTEMPTS=5
           ATTEMPT=0
           BACKOFF=5
+          only_404_window=1
+          observed_probe=0
 
           while [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; do
             ATTEMPT=$((ATTEMPT + 1))
@@ -123,12 +127,27 @@ jobs:
             ELAPSED_MS=$((END_MS - START_MS))
             HTTP_STATUS=$(echo "$API_CONTRACT_RESPONSE" | tail -1)
             BODY=$(echo "$API_CONTRACT_RESPONSE" | head -n -1)
+            observed_probe=1
+
+            if [[ "$HTTP_STATUS" != "404" ]]; then
+              only_404_window=0
+            fi
 
             echo "contract-check attempt=${ATTEMPT}/${MAX_ATTEMPTS} curl_exit=${CURL_EXIT} http=${HTTP_STATUS} elapsed=${ELAPSED_MS}ms endpoint=${API_CONTRACT_URL}"
 
             # Transient transport failure (timeout=28, connect=7, DNS=6): retry with backoff
             if [[ $CURL_EXIT -eq 28 || $CURL_EXIT -eq 7 || $CURL_EXIT -eq 6 ]]; then
               echo "::warning::Attempt ${ATTEMPT}: transient transport error (curl exit ${CURL_EXIT}). Retrying in ${BACKOFF}s..."
+              if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
+                sleep $BACKOFF
+                BACKOFF=$((BACKOFF * 2))
+              fi
+              continue
+            fi
+
+            # Contract route can stay 404 for a short startup window while Functions are still indexing.
+            if [[ $CURL_EXIT -eq 22 && "$HTTP_STATUS" == "404" ]]; then
+              echo "::warning::Attempt ${ATTEMPT}: API contract endpoint returned 404. Treating as transient startup window and retrying in ${BACKOFF}s..."
               if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
                 sleep $BACKOFF
                 BACKOFF=$((BACKOFF * 2))
@@ -162,6 +181,13 @@ jobs:
             echo "✅ API contract compatible (${LIVE_API_VERSION}) on attempt ${ATTEMPT}"
             exit 0
           done
+
+          if [[ "$observed_probe" == "1" && "$only_404_window" == "1" ]]; then
+            HEALTH_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
+            READINESS_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$READINESS_URL" 2>/dev/null || echo "000")
+            echo "::error::API contract endpoint persisted 404 across ${MAX_ATTEMPTS} attempts. health=${HEALTH_STATUS} readiness=${READINESS_STATUS}. Likely backend image/route is outdated; deploy backend before website."
+            exit 1
+          fi
 
           echo "::error::API contract check failed after ${MAX_ATTEMPTS} attempts (all transport errors)"
           exit 1
