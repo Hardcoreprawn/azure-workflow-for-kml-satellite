@@ -471,6 +471,42 @@ class TestReadinessCheck:
             "Restart path should reuse deadline-bound readiness verification"
         )
 
+    def test_reconcile_probes_webhook_before_subscription_create(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Reconciliation should verify the webhook handshake directly before Event Grid create loops."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = str(reconcile.get("run", ""))
+
+        assert "probe_eventgrid_webhook_until" in run_script, (
+            "Reconciliation should extract direct webhook validation into a reusable probe"
+        )
+        assert "aeg-event-type: SubscriptionValidation" in run_script, (
+            "Webhook probe should emulate Event Grid subscription validation requests"
+        )
+        assert "MAX_WEBHOOK_VALIDATION_SECONDS=180" in run_script, (
+            "Webhook validation should use an explicit bounded readiness window"
+        )
+        assert "Event Grid webhook endpoint did not become validation-ready" in run_script, (
+            "Webhook readiness failures should fail with an actionable message"
+        )
+
+    def test_reconcile_uses_reactive_retry_delay_for_subscription_create(
+        self, deploy_workflow: dict[str, Any]
+    ) -> None:
+        """Retry cadence should be state-driven instead of a flat static sleep between create attempts."""
+        steps = _get_steps(deploy_workflow)
+        reconcile = _find_step(steps, "reconcile")
+        assert reconcile is not None
+        run_script = str(reconcile.get("run", ""))
+
+        assert 'retry_delay="$SUBSCRIPTION_POLL_INTERVAL_SECONDS"' in run_script
+        assert "Retrying in ${retry_delay}s..." in run_script
+        assert "if (( retry_delay < 30 )); then" in run_script
+        assert "retry_delay=$((retry_delay + 5))" in run_script
+
     def test_reconcile_has_wall_clock_timeout(self, deploy_workflow: dict[str, Any]) -> None:
         """Reconciliation must have wall-clock timeout, not just attempt count."""
         steps = _get_steps(deploy_workflow)

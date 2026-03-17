@@ -283,7 +283,9 @@ jobs:
           MAX_HOST_READY_SECONDS=900
           HOST_POLL_INTERVAL_SECONDS=15
           MAX_SUBSCRIPTION_SECONDS=600
-          SUBSCRIPTION_POLL_INTERVAL_SECONDS=20
+          SUBSCRIPTION_POLL_INTERVAL_SECONDS=5
+          MAX_WEBHOOK_VALIDATION_SECONDS=180
+          WEBHOOK_VALIDATION_POLL_INTERVAL_SECONDS=5
           DELETE_PROPAGATION_SECONDS=120
 
           FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
@@ -430,6 +432,58 @@ jobs:
           echo "::group::Reconcile Event Grid subscription"
           WEBHOOK_URL="https://${FQDN}/runtime/webhooks/eventgrid?functionName=${TRIGGER_NAME}&code=${EVENTGRID_KEY}"
 
+          probe_eventgrid_webhook_until() {
+            local deadline="$1"
+
+            while (( $(date +%s) < deadline )); do
+              local validation_code="probe-$(date +%s)"
+              local probe_payload
+              local probe_body_file
+              local probe_http_code
+              local probe_body
+              local curl_exit
+
+              probe_payload=$(jq -nc --arg validation_code "$validation_code" '[{
+                id: "copilot-validation-probe",
+                eventType: "Microsoft.EventGrid.SubscriptionValidationEvent",
+                subject: "/subscriptions/mock/resourceGroups/mock/providers/Microsoft.Storage/storageAccounts/mock",
+                eventTime: "2026-03-16T00:00:00Z",
+                data: {
+                  validationCode: $validation_code,
+                  validationUrl: "https://example.invalid/validation"
+                },
+                dataVersion: "1",
+                metadataVersion: "1",
+                topic: "/subscriptions/mock/resourceGroups/mock/providers/Microsoft.Storage/storageAccounts/mock"
+              }]')
+              probe_body_file=$(mktemp)
+
+              set +e
+              probe_http_code=$(curl -sS --max-time 10 \
+                -o "$probe_body_file" \
+                -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -H 'aeg-event-type: SubscriptionValidation' \
+                --data "$probe_payload" \
+                "$WEBHOOK_URL")
+              curl_exit=$?
+              set -e
+
+              probe_body=$(cat "$probe_body_file" 2>/dev/null || true)
+              rm -f "$probe_body_file"
+
+              if [[ $curl_exit -eq 0 && "$probe_http_code" == "200" ]] && echo "$probe_body" | grep -Fq "$validation_code"; then
+                log "Webhook validation probe succeeded; runtime webhook is ready for Event Grid subscription validation."
+                return 0
+              fi
+
+              log "Webhook validation probe not ready yet (curl=${curl_exit}, http=${probe_http_code:-000}); retrying in ${WEBHOOK_VALIDATION_POLL_INTERVAL_SECONDS}s..."
+              sleep "$WEBHOOK_VALIDATION_POLL_INTERVAL_SECONDS"
+            done
+
+            return 1
+          }
+
           read_existing_subscription() {
             az eventgrid system-topic event-subscription show \
               --name "$SUBSCRIPTION_NAME" \
@@ -446,6 +500,9 @@ jobs:
           extract_subscription_endpoint() {
             echo "$1" | jq -r '.destination.properties.endpointUrl // .properties.destination.properties.endpointUrl // empty' 2>/dev/null || true
           }
+
+          WEBHOOK_VALIDATION_DEADLINE=$(( $(date +%s) + MAX_WEBHOOK_VALIDATION_SECONDS ))
+          probe_eventgrid_webhook_until "$WEBHOOK_VALIDATION_DEADLINE" || fail "Event Grid webhook endpoint did not become validation-ready within ${MAX_WEBHOOK_VALIDATION_SECONDS}s."
 
           EXISTING_JSON=$(read_existing_subscription)
           DELETE_CONFIRMED=0
@@ -485,6 +542,7 @@ jobs:
           LAST_CREATE_ERROR=""
           RECONCILE_DEADLINE=$(( $(date +%s) + MAX_SUBSCRIPTION_SECONDS ))
           ATTEMPT=0
+          retry_delay="$SUBSCRIPTION_POLL_INTERVAL_SECONDS"
 
           while (( $(date +%s) < RECONCILE_DEADLINE )); do
             CURRENT_JSON=$(read_existing_subscription)
@@ -520,8 +578,13 @@ jobs:
               log "Subscription already exists during reconcile; proceeding to verification."
             elif echo "$CREATE_OUTPUT" | grep -qiE "(Url validation|destination endpoint|ResourceNotFound|webhook|timed out|temporarily unavailable)"; then
               LAST_CREATE_ERROR=$(echo "$CREATE_OUTPUT" | tail -n 20)
-              log "Subscription prerequisites are not ready yet. Retrying in ${SUBSCRIPTION_POLL_INTERVAL_SECONDS}s..."
-              sleep "$SUBSCRIPTION_POLL_INTERVAL_SECONDS"
+              WEBHOOK_VALIDATION_DEADLINE=$(( $(date +%s) + MAX_WEBHOOK_VALIDATION_SECONDS ))
+              probe_eventgrid_webhook_until "$WEBHOOK_VALIDATION_DEADLINE" || true
+              log "Subscription prerequisites are not ready yet. Retrying in ${retry_delay}s..."
+              sleep "$retry_delay"
+              if (( retry_delay < 30 )); then
+                retry_delay=$((retry_delay + 5))
+              fi
               continue
             else
               fail "Non-retryable Event Grid subscription create failure: $(echo "$CREATE_OUTPUT" | tail -n 20)"
