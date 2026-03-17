@@ -444,25 +444,24 @@ http_response=$(curl -sS -o /dev/null -w "%{http_code}" \
 
 **Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_readiness_uses_function_list`](tests/unit/test_deploy_workflow.py)
 
-#### Event Grid validation failures
+#### Event Grid subscription reliability
 
 **Symptom:**
 
 ```text
-Webhook validation handshake failed for 'https://func-app.azurewebsites.net/...'
-Destination endpoint not found or did not respond within expected timeout.
+Event Grid subscription creation fails or churns during runtime warmup.
 ```
 
-**Cause:** For Azure Functions hosted on Azure Container Apps, using `endpointType: AzureFunction` with ARM resource ID (`.../functions/kml_blob_trigger`) can fail because the function child resource is not reliably discoverable by Event Grid during subscription creation.
+**Cause:** Runtime readiness and subscription reconciliation were coupled to webhook URL validation behavior (`/runtime/webhooks/eventgrid?...&code=...`), which is timing-sensitive during host startup and restart windows.
 
-**Solution:** Use webhook destination wiring to the Functions runtime endpoint and keep two-pass deployment:
+**Solution:** Use Event Grid `endpointType: AzureFunction` with function resource ID destination and keep runtime-aware two-pass deployment:
 
 1. **First pass:** Deploy infrastructure + Function App with `enableEventGridSubscription=false`
 2. **Poll readiness:** Wait for `/api/health` to return 200 (functions loaded)
-3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff), where Event Grid points to:
-  `https://<function-host>/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=<eventgrid-system-key>`
+3. **Second pass:** Reconcile Event Grid subscription after readiness using destination resource ID:
+  `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Web/sites/<function-app>/functions/kml_blob_trigger`
 
-This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) and mirrored in [infra/tofu/main.tf](infra/tofu/main.tf).
 
 **Test coverage:** [`tests/unit/test_deploy_workflow.py::TestReadinessCheck::test_event_grid_uses_two_pass_toggle`](tests/unit/test_deploy_workflow.py)
 

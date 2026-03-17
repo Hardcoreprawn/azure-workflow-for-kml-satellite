@@ -259,7 +259,7 @@ resource "azapi_resource" "event_grid_system_topic"
 resource "azapi_resource" "event_grid_subscription"  # Filter: *.kml
 ```
 
-**Webhook Endpoint:** `/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=...`
+**Event Grid Destination:** `endpointType=AzureFunction`, `resourceId=/subscriptions/.../providers/Microsoft.Web/sites/<app>/functions/kml_blob_trigger`
 
 ### 🔴 Critical Gaps
 

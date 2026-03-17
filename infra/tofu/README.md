@@ -77,5 +77,6 @@ Optional helper script:
 ## Notes
 
 - Function App on Container Apps and the Event Grid system topic are created via `azapi` resources for parity with current ARM/Bicep behavior.
-- The deploy workflow owns Event Grid webhook subscription reconciliation because it can verify host readiness, trigger indexing, and current webhook keys before making the subscription live.
-- `enable_event_grid_subscription` defaults to `false` to avoid OpenTofu racing runtime indexing or publishing a stale webhook key.
+- Event Grid subscription wiring should target `endpointType=AzureFunction` with function resource IDs (`.../sites/<app>/functions/<functionName>`), not runtime webhook URLs.
+- The deploy workflow owns Event Grid subscription reconciliation because it can verify host readiness and trigger indexing before publishing the subscription destination.
+- `enable_event_grid_subscription` defaults to `false` to avoid OpenTofu racing runtime indexing; runtime-aware deploy reconciliation should make the final subscription update.

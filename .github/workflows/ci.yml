@@ -75,6 +75,7 @@ jobs:
             tests/unit/test_health_endpoints.py \
             tests/unit/test_contact_form_endpoint.py \
             tests/unit/test_function_index_contract.py \
+            tests/unit/test_event_grid_connector_pattern.py \
             tests/unit/test_diagnostics_endpoint_auth.py \
             tests/unit/test_container_apps_spec.py \
             tests/unit/test_deploy_workflow.py \

@@ -293,7 +293,7 @@ class TestReadinessCheck:
             "Reconciliation must call /admin/functions to verify trigger registration"
         )
         assert "x-functions-key" in run_script, "Reconciliation must authenticate with host key"
-        assert "listKeys" in run_script, "Reconciliation must fetch host/webhook keys via listKeys"
+        assert "listKeys" in run_script, "Reconciliation must fetch host keys via listKeys"
 
     def test_reconcile_checks_running_state(self, deploy_workflow: dict[str, Any]) -> None:
         """Reconciliation must gate on host state=Running."""
@@ -386,7 +386,7 @@ class TestReadinessCheck:
         assert reconcile is not None
         run_script = reconcile.get("run", "")
 
-        assert "Event Grid subscription endpoint has not converged yet" in run_script, (
+        assert "Event Grid subscription destination has not converged yet" in run_script, (
             "Reconciliation should log endpoint mismatch as a retryable convergence state"
         )
         assert "sleep 5" in run_script, (
@@ -404,14 +404,14 @@ class TestReadinessCheck:
         assert "current_endpoint=${CURRENT_ENDPOINT:-none}" in run_script, (
             "Endpoint mismatch diagnostics should include the last observed endpoint"
         )
-        assert "Azure did not return the full endpoint URL after recreate" in run_script, (
-            "Recreated subscriptions should tolerate missing endpoint URLs when Azure omits them"
+        assert "Azure did not return destination resource details after recreate" in run_script, (
+            "Recreated subscriptions should tolerate missing destination details when Azure omits them"
         )
         assert "DELETE_CONFIRMED" in run_script, (
             "Accepting endpoint-less subscriptions should only happen after confirmed delete and recreate"
         )
         assert (
-            "Final verification accepted state=Succeeded without endpoint URL after confirmed recreate."
+            "Final verification accepted state=Succeeded without destination details after confirmed recreate."
             in run_script
         ), (
             "Final verification should honor the same endpoint-less success path after confirmed recreate"
@@ -430,20 +430,26 @@ class TestReadinessCheck:
             "Inner verification should stop when the outer reconcile deadline is reached"
         )
 
-    def test_reconcile_detects_webhook_key_availability(
+    def test_reconcile_uses_azure_function_destination_connector(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Reconciliation must verify webhook key is available before creating subscription."""
+        """Reconciliation must create Event Grid subscription via Azure Function endpoint type."""
         steps = _get_steps(deploy_workflow)
         reconcile = _find_step(steps, "reconcile")
         assert reconcile is not None
         run_script = reconcile.get("run", "")
-        # Check for EventGrid or webhook key reference
-        assert "eventgrid" in run_script.lower() or "webhook" in run_script.lower(), (
-            "Reconciliation must verify Event Grid webhook key is available"
+
+        assert "--endpoint-type azurefunction" in run_script, (
+            "Reconciliation must use Event Grid azurefunction endpoint type"
         )
-        assert "code=" in run_script or "code" in run_script, (
-            "Reconciliation must include the webhook code in subscription URL"
+        assert "/functions/${TRIGGER_NAME}" in run_script, (
+            "Reconciliation must target the Function child resource ID"
+        )
+        assert "--endpoint-type webhook" not in run_script, (
+            "Webhook destination should not be used for Function App subscription reconcile"
+        )
+        assert "runtime/webhooks/eventgrid" not in run_script, (
+            "Reconciliation should not depend on runtime webhook URL wiring"
         )
 
     def test_reconcile_restarts_once_on_running_but_unindexed_timeout(
@@ -471,26 +477,23 @@ class TestReadinessCheck:
             "Restart path should reuse deadline-bound readiness verification"
         )
 
-    def test_reconcile_probes_webhook_before_subscription_create(
+    def test_reconcile_does_not_require_webhook_validation_probe(
         self, deploy_workflow: dict[str, Any]
     ) -> None:
-        """Reconciliation should verify the webhook handshake directly before Event Grid create loops."""
+        """Azure Function destination should avoid explicit webhook handshake probe logic."""
         steps = _get_steps(deploy_workflow)
         reconcile = _find_step(steps, "reconcile")
         assert reconcile is not None
         run_script = str(reconcile.get("run", ""))
 
-        assert "probe_eventgrid_webhook_until" in run_script, (
-            "Reconciliation should extract direct webhook validation into a reusable probe"
+        assert "probe_eventgrid_webhook_until" not in run_script, (
+            "Reconciliation should no longer implement manual webhook handshake probes"
         )
-        assert "aeg-event-type: SubscriptionValidation" in run_script, (
-            "Webhook probe should emulate Event Grid subscription validation requests"
+        assert "aeg-event-type: SubscriptionValidation" not in run_script, (
+            "Subscription validation emulation is unnecessary with azurefunction destination"
         )
-        assert "MAX_WEBHOOK_VALIDATION_SECONDS=180" in run_script, (
-            "Webhook validation should use an explicit bounded readiness window"
-        )
-        assert "Event Grid webhook endpoint did not become validation-ready" in run_script, (
-            "Webhook readiness failures should fail with an actionable message"
+        assert "Event Grid webhook endpoint did not become validation-ready" not in run_script, (
+            "Webhook-specific failure mode should not be present after connector migration"
         )
 
     def test_reconcile_uses_reactive_retry_delay_for_subscription_create(

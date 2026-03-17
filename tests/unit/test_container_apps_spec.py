@@ -8,7 +8,7 @@ Container Apps Requirements (Python v2):
    all functions from serving, including health endpoints
 2. HTTP trigger parameters must match binding names (e.g., `req` not `_req`)
 3. All async functions must be properly awaitable
-4. Event Grid webhook endpoint must be at /runtime/webhooks/eventgrid
+4. Event Grid trigger function must be indexed and discoverable by runtime
 5. Health probes required for Container Apps orchestration:
    - /api/health (liveness) — fast config validation
    - /api/readiness — dependency checks (storage, keyvault)

@@ -290,23 +290,6 @@ resource "azapi_resource" "event_grid_system_topic" {
   }
 }
 
-resource "azapi_resource_action" "function_host_keys" {
-  type        = "Microsoft.Web/sites@2024-04-01"
-  resource_id = azapi_resource.function_app.id
-  action      = "host/default/listKeys"
-  method      = "POST"
-
-  response_export_values = ["masterKey", "systemKeys.eventgrid_extension", "systemKeys.eventgridextensionconfig_extension"]
-}
-
-locals {
-  eventgrid_key = coalesce(
-    try(azapi_resource_action.function_host_keys.output.systemKeys.eventgrid_extension, null),
-    try(azapi_resource_action.function_host_keys.output.systemKeys.eventgridextensionconfig_extension, null),
-    try(azapi_resource_action.function_host_keys.output.masterKey, null)
-  )
-}
-
 resource "azapi_resource" "event_grid_subscription" {
   count = var.enable_event_grid_subscription ? 1 : 0
 
@@ -317,9 +300,9 @@ resource "azapi_resource" "event_grid_subscription" {
   body = {
     properties = {
       destination = {
-        endpointType = "WebHook"
+        endpointType = "AzureFunction"
         properties = {
-          endpointUrl                   = "https://${azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=${local.eventgrid_key}"
+          resourceId                    = "${azapi_resource.function_app.id}/functions/kml_blob_trigger"
           maxEventsPerBatch             = 1
           preferredBatchSizeInKilobytes = 64
         }
@@ -337,5 +320,4 @@ resource "azapi_resource" "event_grid_subscription" {
     }
   }
 
-  depends_on = [azapi_resource_action.function_host_keys]
 }
