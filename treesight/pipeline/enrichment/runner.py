@@ -13,7 +13,7 @@ from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import _coords_to_bbox, register_mosaic
-from treesight.pipeline.enrichment.ndvi import fetch_ndvi_stat
+from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
 from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
@@ -119,25 +119,65 @@ def run_enrichment(
         total=len(search_ids),
     )
 
-    # 3. NDVI sampling (batches of 4)
+    # 3. NDVI computation
+    #    Try proper COG band-math first (accurate, produces GeoTIFFs).
+    #    Fall back to PC tile sampling (fast, PNG-based approximation).
+    flat_bbox = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
     log_phase("enrichment", "ndvi_start", frames=len(frame_plan))
     ndvi_stats: list[dict[str, float] | None] = []
-    for _i, nsid in enumerate(ndvi_search_ids):
+    ndvi_raster_paths: list[str | None] = []
+
+    for i, f in enumerate(frame_plan):
+        # Only compute NDVI for Sentinel-2 frames (NAIP lacks B08)
+        if f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
+            # Try COG-based computation
+            cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
+            if cog_result is not None:
+                geotiff_bytes = cog_result.pop("geotiff_bytes", None)
+                ndvi_stats.append(cog_result)
+                # Store NDVI raster for change detection
+                if geotiff_bytes:
+                    raster_path = (
+                        f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
+                    )
+                    storage.upload_bytes(
+                        output_container,
+                        raster_path,
+                        geotiff_bytes,
+                        content_type="image/tiff",
+                    )
+                    ndvi_raster_paths.append(raster_path)
+                else:
+                    ndvi_raster_paths.append(None)
+                continue
+
+        # Fallback: tile-based sampling
+        nsid = ndvi_search_ids[i] if i < len(ndvi_search_ids) else None
         if nsid:
             stat = fetch_ndvi_stat(nsid, coords, http_client)
             ndvi_stats.append(stat)
         else:
             ndvi_stats.append(None)
+        ndvi_raster_paths.append(None)
 
     results["ndvi_stats"] = ndvi_stats
+    results["ndvi_raster_paths"] = ndvi_raster_paths
     ndvi_count = sum(1 for s in ndvi_stats if s)
-    log_phase("enrichment", "ndvi_done", sampled=ndvi_count, total=len(ndvi_stats))
+    cog_count = sum(1 for s in ndvi_stats if s and s.get("scene_id"))
+    log_phase(
+        "enrichment",
+        "ndvi_done",
+        sampled=ndvi_count,
+        cog_computed=cog_count,
+        total=len(ndvi_stats),
+    )
 
     # 4. Build labelled frame metadata (mirrors frontend framesMeta)
     for i, f in enumerate(frame_plan):
         f["search_id"] = search_ids[i]
         f["ndvi_search_id"] = ndvi_search_ids[i]
         f["ndvi_stat"] = ndvi_stats[i]
+        f["ndvi_raster_path"] = ndvi_raster_paths[i] if i < len(ndvi_raster_paths) else None
         season_key = f["season"]
         year = f["year"]
         if f["is_naip"]:

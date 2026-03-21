@@ -1,19 +1,243 @@
-"""NDVI sampling from Planetary Computer tiles."""
+"""NDVI computation from Sentinel-2 COGs and PC tile sampling.
+
+Two approaches available:
+- ``compute_ndvi``: proper band-math from B04/B08 COGs via rasterio (accurate,
+  produces GeoTIFFs for downstream change detection)
+- ``fetch_ndvi_stat``: lightweight PC tile-based sampling via PNG parsing (fast,
+  used for enrichment timeline overview)
+"""
 
 from __future__ import annotations
 
+import io
 import logging
 import math
 import struct
 import zlib
-from typing import cast
+from typing import Any, cast
 
 import httpx
 
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.log import log_phase
 from treesight.pipeline.enrichment.mosaic import PC_API
 
 logger = logging.getLogger(__name__)
+
+# ── STAC search helper ────────────────────────────────────────
+
+STAC_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
+
+
+def _find_best_s2_scene(
+    bbox: list[float],
+    date_start: str,
+    date_end: str,
+    max_cloud: float = 20.0,
+) -> dict[str, Any] | None:
+    """Search STAC for the least-cloudy Sentinel-2 L2A scene in a window.
+
+    Returns a dict with ``{"B04": url, "B08": url, "scene_id": ..., ...}``
+    or None if nothing suitable was found.
+    """
+    import planetary_computer
+    from pystac_client import Client
+
+    catalog = Client.open(STAC_API, modifier=planetary_computer.sign_inplace)
+    search = catalog.search(
+        collections=["sentinel-2-l2a"],
+        bbox=bbox,
+        datetime=f"{date_start}/{date_end}",
+        query={"eo:cloud_cover": {"lte": max_cloud}},
+        max_items=1,
+        sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
+    )
+
+    items = list(search.items())
+    if not items:
+        return None
+
+    item = items[0]
+    b04 = item.assets.get("B04")
+    b08 = item.assets.get("B08")
+    if not b04 or not b08:
+        logger.warning("S2 item %s missing B04/B08 assets", item.id)
+        return None
+
+    return {
+        "scene_id": item.id,
+        "B04": b04.href,
+        "B08": b08.href,
+        "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
+        "datetime": item.properties.get("datetime", ""),
+        "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
+    }
+
+
+# ── COG-based NDVI computation ────────────────────────────────
+
+
+def compute_ndvi(
+    bbox: list[float],
+    date_start: str,
+    date_end: str,
+    max_cloud: float = 20.0,
+) -> dict[str, Any] | None:
+    """Compute NDVI from Sentinel-2 B04/B08 COGs for the given bbox and date range.
+
+    Uses COG windowed reads (HTTP range requests) to fetch only the pixels
+    covering the bounding box.  Calculates ``(B08 − B04) / (B08 + B04)``
+    and returns statistics plus the NDVI raster as GeoTIFF bytes.
+
+    Parameters
+    ----------
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326.
+    date_start, date_end : str
+        ISO date strings for the search window.
+    max_cloud : float
+        Maximum cloud cover percentage.
+
+    Returns
+    -------
+    dict or None
+        ``{"mean", "min", "max", "std", "valid_pixels", "scene_id",
+        "cloud_cover", "geotiff_bytes"}`` on success; None if no scene found.
+    """
+    import numpy as np
+    import rasterio
+
+    log_phase("ndvi", "search_start", bbox=bbox, window=f"{date_start}/{date_end}")
+
+    scene = _find_best_s2_scene(bbox, date_start, date_end, max_cloud)
+    if not scene:
+        log_phase("ndvi", "no_scene_found")
+        return None
+
+    log_phase(
+        "ndvi",
+        "reading_bands",
+        scene_id=scene["scene_id"],
+        cloud_cover=scene["cloud_cover"],
+    )
+
+    try:
+        # Read B04 (Red) windowed to bbox
+        b04_data, b04_profile = _cog_band_read(scene["B04"], bbox)
+        # Read B08 (NIR) windowed to bbox
+        b08_data, _b08_profile = _cog_band_read(scene["B08"], bbox)
+
+        # Ensure same shape (B04 is 10m, B08 is 10m for S2 L2A — should match)
+        if b04_data.shape != b08_data.shape:
+            # Resample to smaller extent
+            min_h = min(b04_data.shape[0], b08_data.shape[0])
+            min_w = min(b04_data.shape[1], b08_data.shape[1])
+            b04_data = b04_data[:min_h, :min_w]
+            b08_data = b08_data[:min_h, :min_w]
+
+        # Convert to float for band math
+        red = b04_data.astype(np.float32)
+        nir = b08_data.astype(np.float32)
+
+        # NDVI = (NIR - Red) / (NIR + Red), with zero-division guard
+        denom = nir + red
+        ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
+
+        # Mask invalid (nodata) pixels — S2 L2A uses 0 as nodata
+        valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
+        valid_pixels = ndvi[valid_mask]
+
+        if len(valid_pixels) == 0:
+            log_phase("ndvi", "no_valid_pixels", scene_id=scene["scene_id"])
+            return None
+
+        stats = {
+            "mean": round(float(np.mean(valid_pixels)), 4),
+            "min": round(float(np.min(valid_pixels)), 4),
+            "max": round(float(np.max(valid_pixels)), 4),
+            "std": round(float(np.std(valid_pixels)), 4),
+            "median": round(float(np.median(valid_pixels)), 4),
+            "valid_pixels": len(valid_pixels),
+            "total_pixels": int(ndvi.size),
+            "scene_id": scene["scene_id"],
+            "cloud_cover": scene["cloud_cover"],
+            "datetime": scene["datetime"],
+        }
+
+        # Write NDVI raster as single-band float32 GeoTIFF
+        buf = io.BytesIO()
+        profile = b04_profile.copy()
+        profile.update(
+            count=1,
+            dtype="float32",
+            nodata=np.nan,
+            height=ndvi.shape[0],
+            width=ndvi.shape[1],
+            compress="deflate",
+        )
+        with rasterio.open(buf, "w", **profile) as dst:
+            dst.write(ndvi[np.newaxis, :, :])
+
+        stats["geotiff_bytes"] = buf.getvalue()
+
+        log_phase(
+            "ndvi",
+            "compute_done",
+            scene_id=scene["scene_id"],
+            mean=stats["mean"],
+            valid_pixels=stats["valid_pixels"],
+            raster_kb=len(stats["geotiff_bytes"]) // 1024,
+        )
+        return stats
+
+    except Exception as exc:
+        logger.warning("NDVI computation failed for %s: %s", scene.get("scene_id"), exc)
+        return None
+
+
+def _cog_band_read(
+    url: str,
+    bbox: list[float],
+) -> tuple[Any, dict[str, Any]]:
+    """Read a single band from a COG, windowed to bbox.
+
+    Returns (2d_array, profile_dict).
+    """
+    import rasterio
+    from rasterio.windows import from_bounds as window_from_bounds
+
+    with rasterio.open(url) as src:
+        src_bbox = _transform_bbox_4326(bbox, str(src.crs))
+        window = window_from_bounds(*src_bbox, transform=src.transform)
+        window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
+        data = src.read(1, window=window)
+        profile = {
+            "driver": "GTiff",
+            "crs": src.crs,
+            "transform": src.window_transform(window),
+        }
+    return data, profile
+
+
+def _transform_bbox_4326(
+    bbox: list[float],
+    dst_crs: str,
+) -> tuple[float, float, float, float]:
+    """Reproject [min_lon, min_lat, max_lon, max_lat] from EPSG:4326."""
+    if dst_crs in ("EPSG:4326", "epsg:4326"):
+        return (bbox[0], bbox[1], bbox[2], bbox[3])
+
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
+    x_min, y_min = transformer.transform(bbox[0], bbox[1])
+    x_max, y_max = transformer.transform(bbox[2], bbox[3])
+    return (
+        min(x_min, x_max),
+        min(y_min, y_max),
+        max(x_min, x_max),
+        max(y_min, y_max),
+    )
 
 
 def fetch_ndvi_stat(
