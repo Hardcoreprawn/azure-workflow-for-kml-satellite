@@ -24,18 +24,24 @@ from treesight.security.auth import (
 
 class TestAuthEnabled:
     def test_disabled_when_no_config(self):
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", ""), \
-             patch("treesight.security.auth.CIAM_CLIENT_ID", ""):
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", ""),
+            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
+        ):
             assert auth_enabled() is False
 
     def test_disabled_when_partial_config(self):
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"), \
-             patch("treesight.security.auth.CIAM_CLIENT_ID", ""):
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"),
+            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
+        ):
             assert auth_enabled() is False
 
     def test_enabled_when_fully_configured(self):
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"), \
-             patch("treesight.security.auth.CIAM_CLIENT_ID", "abc-123"):
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"),
+            patch("treesight.security.auth.CIAM_CLIENT_ID", "abc-123"),
+        ):
             assert auth_enabled() is True
 
 
@@ -91,14 +97,18 @@ class TestValidateToken:
                 validate_token("Basic abc")
 
     def test_raises_on_invalid_token_format(self):
-        with patch("treesight.security.auth.auth_enabled", return_value=True), \
-             patch("treesight.security.auth._fetch_jwks", return_value={"keys": []}):
+        with (
+            patch("treesight.security.auth.auth_enabled", return_value=True),
+            patch("treesight.security.auth._fetch_jwks", return_value={"keys": []}),
+        ):
             with pytest.raises(ValueError, match="Invalid token format"):
                 validate_token("Bearer not-a-jwt")
 
     def test_raises_when_jwks_empty(self):
-        with patch("treesight.security.auth.auth_enabled", return_value=True), \
-             patch("treesight.security.auth._fetch_jwks", return_value={}):
+        with (
+            patch("treesight.security.auth.auth_enabled", return_value=True),
+            patch("treesight.security.auth._fetch_jwks", return_value={}),
+        ):
             with pytest.raises(ValueError, match="Could not retrieve signing keys"):
                 validate_token("Bearer xxx")
 
@@ -127,8 +137,10 @@ class TestJwksCache:
         mock_oidc = {"jwks_uri": "https://example.com/jwks", "issuer": "https://example.com"}
         mock_jwks = {"keys": [{"kid": "new"}]}
 
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"), \
-             patch("treesight.security.auth.requests.get") as mock_get:
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
+            patch("treesight.security.auth.requests.get") as mock_get,
+        ):
             mock_get.return_value.json.side_effect = [mock_oidc, mock_jwks]
             result = _fetch_jwks()
             assert result == mock_jwks
@@ -139,8 +151,10 @@ class TestJwksCache:
         _jwks_cache["keys"] = stale_keys
         _jwks_cache["fetched_at"] = time.monotonic() - 100000  # expired
 
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"), \
-             patch("treesight.security.auth.requests.get", side_effect=Exception("network")):
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
+            patch("treesight.security.auth.requests.get", side_effect=Exception("network")),
+        ):
             result = _fetch_jwks()
             assert result == stale_keys
 
@@ -166,8 +180,10 @@ class TestCheckAuth:
         mock_req = MagicMock()
         mock_req.headers = {"Authorization": "Bearer bad"}
 
-        with patch("blueprints._helpers.auth_enabled", return_value=True), \
-             patch("blueprints._helpers.validate_token", side_effect=ValueError("Invalid token")):
+        with (
+            patch("blueprints._helpers.auth_enabled", return_value=True),
+            patch("blueprints._helpers.validate_token", side_effect=ValueError("Invalid token")),
+        ):
             with pytest.raises(ValueError, match="Invalid token"):
                 check_auth(mock_req)
 
@@ -178,9 +194,11 @@ class TestCheckAuth:
         mock_req.headers = {"Authorization": "Bearer good-token"}
 
         fake_claims = {"sub": "user-1", "name": "Test User"}
-        with patch("blueprints._helpers.auth_enabled", return_value=True), \
-             patch("blueprints._helpers.validate_token", return_value=fake_claims), \
-             patch("blueprints._helpers.get_user_id", return_value="user-1"):
+        with (
+            patch("blueprints._helpers.auth_enabled", return_value=True),
+            patch("blueprints._helpers.validate_token", return_value=fake_claims),
+            patch("blueprints._helpers.get_user_id", return_value="user-1"),
+        ):
             claims, user_id = check_auth(mock_req)
             assert claims == fake_claims
             assert user_id == "user-1"
@@ -199,9 +217,7 @@ class TestRequireAuth:
         def my_endpoint(req, auth_claims=None, user_id=None):
             import azure.functions as func
 
-            return func.HttpResponse(
-                json.dumps({"user": user_id}), mimetype="application/json"
-            )
+            return func.HttpResponse(json.dumps({"user": user_id}), mimetype="application/json")
 
         mock_req = MagicMock()
         mock_req.method = "POST"
@@ -224,8 +240,10 @@ class TestRequireAuth:
         mock_req.method = "POST"
         mock_req.headers = {"Authorization": "Bearer bad"}
 
-        with patch("blueprints._helpers.auth_enabled", return_value=True), \
-             patch("blueprints._helpers.validate_token", side_effect=ValueError("Token expired")):
+        with (
+            patch("blueprints._helpers.auth_enabled", return_value=True),
+            patch("blueprints._helpers.validate_token", side_effect=ValueError("Token expired")),
+        ):
             resp = my_endpoint(mock_req)
             assert resp.status_code == 401
             body = json.loads(resp.get_body())
