@@ -339,6 +339,19 @@ resource "azapi_resource" "function_app" {
             name  = "AZURE_AI_DEPLOYMENT"
             value = "gpt-4o-mini"
           }
+        ] : [], var.ciam_tenant_name != "" ? [
+          {
+            name  = "CIAM_TENANT_NAME"
+            value = var.ciam_tenant_name
+          },
+          {
+            name  = "CIAM_CLIENT_ID"
+            value = var.ciam_client_id
+          },
+          {
+            name  = "CIAM_AUDIENCE"
+            value = var.ciam_client_id
+          }
         ] : [])
       }
     }

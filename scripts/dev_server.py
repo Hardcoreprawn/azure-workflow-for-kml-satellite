@@ -95,7 +95,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+    def log_message(self, format: str, *args: object) -> None:
         path = args[0] if args else ""
         tag = "PROXY" if isinstance(path, str) and "/api/" in path else "STATIC"
         super().log_message(f"[{tag}] {format}", *args)

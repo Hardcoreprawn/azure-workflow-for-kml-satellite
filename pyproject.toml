@@ -19,6 +19,7 @@ dependencies = [
     "pystac-client>=0.8.0",
     "planetary-computer>=1.0.0",
     "httpx>=0.28.0",
+    "PyJWT[crypto]>=2.9.0",
 ]
 
 [project.optional-dependencies]
@@ -46,11 +47,52 @@ markers = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+exclude = ["scripts/_register_ciam_app.py", "scripts/_setup_ciam.py", "scripts/_create_user_flow.py"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "W",     # pycodestyle warnings
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear (common pitfalls)
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "S",     # flake8-bandit (security)
+    "T20",   # flake8-print (no stray prints in lib code)
+    "C90",   # mccabe complexity
+    "RUF",   # ruff-specific rules
+]
+ignore = [
+    "S101",    # assert used in tests
+    "T201",    # print() used in scripts/
+    "RUF001",  # ambiguous unicode chars in strings (σ, – intentional)
+    "RUF002",  # ambiguous unicode chars in docstrings
+    "RUF003",  # ambiguous unicode chars in comments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "T20", "SIM117"]
+"scripts/**" = ["T20", "S", "C901"]
+"blueprints/analysis.py" = ["C901"]
+"blueprints/pipeline.py" = ["C901"]
+"treesight/pipeline/enrichment.py" = ["C901"]
+"treesight/security/auth.py" = ["C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+include = ["treesight", "blueprints"]
+exclude = ["scripts/_*"]
 
 [dependency-groups]
 dev = [
     "lxml-stubs>=0.5.1",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
 ]

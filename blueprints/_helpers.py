@@ -2,8 +2,11 @@
 
 import json
 import re
+from functools import wraps
 
 import azure.functions as func
+
+from treesight.security.auth import auth_enabled, get_user_id, validate_token
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_FIELD_LEN = 2000
@@ -27,10 +30,54 @@ def error_response(status: int, message: str) -> func.HttpResponse:
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
 }
 
 
 def cors_preflight() -> func.HttpResponse:
     """Return a 204 CORS preflight response."""
     return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
+
+
+def require_auth(fn):
+    """Decorator that validates CIAM JWT on the request.
+
+    When CIAM is not configured the request passes through unauthenticated
+    (graceful degradation for local dev / pre-auth deployments).
+
+    On success, the original function receives two extra keyword arguments:
+        auth_claims  — decoded JWT claims dict
+        user_id      — subject identifier string
+    """
+
+    @wraps(fn)
+    def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+        if req.method == "OPTIONS":
+            return cors_preflight()
+
+        if not auth_enabled():
+            # Auth not configured — allow through without auth
+            return fn(req, auth_claims={}, user_id="anonymous")
+
+        auth_header = req.headers.get("Authorization", "")
+        try:
+            claims = validate_token(auth_header)
+        except ValueError as exc:
+            return error_response(401, str(exc))
+
+        return fn(req, auth_claims=claims, user_id=get_user_id(claims))
+
+    return wrapper
+
+
+def check_auth(req: func.HttpRequest) -> tuple:
+    """Validate CIAM JWT and return (claims, user_id).
+
+    Returns ({}, "anonymous") when CIAM is not configured.
+    Raises ValueError with a user-safe message on auth failure.
+    """
+    if not auth_enabled():
+        return {}, "anonymous"
+    auth_header = req.headers.get("Authorization", "")
+    claims = validate_token(auth_header)
+    return claims, get_user_id(claims)

@@ -15,3 +15,5 @@ budget_contact_emails = ["alerts@jablab.dev"]
 # Uncomment after creating CNAME in Cloudflare DNS:
 # custom_domain        = "treesight.jablab.dev"
 enable_azure_ai         = false
+ciam_tenant_name        = "treesightauth"
+ciam_client_id          = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"

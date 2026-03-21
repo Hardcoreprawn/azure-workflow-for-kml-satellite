@@ -11,7 +11,7 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import cors_preflight, error_response
+from blueprints._helpers import check_auth, cors_preflight, error_response
 from treesight.ai import generate_analysis
 
 bp = func.Blueprint()
@@ -58,14 +58,12 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
     }
     """
     if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-        )
+        return cors_preflight()
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc))
 
     try:
         body = req.get_json()
@@ -144,7 +142,7 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
         )
 
     except Exception as e:
-        return error_response(500, f"Analysis failed: {str(e)}")
+        return error_response(500, f"Analysis failed: {e!s}")
 
 
 def _default_analysis(text: str) -> dict[str, Any]:
@@ -214,6 +212,11 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight()
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc))
 
     try:
         body = req.get_json()
@@ -363,7 +366,7 @@ health) based on the trajectory and data.
         )
 
     except Exception as e:
-        return error_response(500, f"Timelapse analysis failed: {str(e)}")
+        return error_response(500, f"Timelapse analysis failed: {e!s}")
 
 
 def _calculate_trends(

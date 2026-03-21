@@ -9,6 +9,7 @@ instead of ``dict[str, Any]`` — the runtime cannot resolve parameterised
 generics on binding arguments.
 """
 
+import contextlib
 import json
 import logging
 import uuid
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 import azure.durable_functions as df
 import azure.functions as func
 
+from blueprints._helpers import check_auth
 from treesight.config import config_get_int
 from treesight.constants import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
@@ -492,10 +494,8 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
     input_container = payload.get("input_container", "")
     source_file = payload["source_file"]
     if input_container and source_file:
-        try:
+        with contextlib.suppress(Exception):
             kml_bytes = storage.download_bytes(input_container, source_file)
-        except Exception:
-            pass  # KML archival is best-effort
 
     return _write(
         aoi=aoi,
@@ -691,7 +691,7 @@ async def timelapse_data(
 
 @bp.route(
     route="timelapse-analysis-save",
-    methods=["POST"],
+    methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
@@ -700,6 +700,16 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     Stores the LLM analysis alongside the enrichment manifest so it
     can be retrieved without re-running the LLM.
     """
+    if req.method == "OPTIONS":
+        from blueprints._helpers import cors_preflight
+
+        return cors_preflight()
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return _error_response(401, str(exc))
+
     try:
         body = req.get_json()
     except ValueError:
@@ -859,18 +869,16 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
 def _extract_container(blob_url: str) -> str:
     parts = blob_url.split("/")
     for i, p in enumerate(parts):
-        if p.endswith(".blob.core.windows.net") or p == "devstoreaccount1":
-            if i + 1 < len(parts):
-                return parts[i + 1]
+        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 1 < len(parts):
+            return parts[i + 1]
     return ""
 
 
 def _extract_blob_name(blob_url: str) -> str:
     parts = blob_url.split("/")
     for i, p in enumerate(parts):
-        if p.endswith(".blob.core.windows.net") or p == "devstoreaccount1":
-            if i + 2 < len(parts):
-                return "/".join(parts[i + 2 :])
+        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 2 < len(parts):
+            return "/".join(parts[i + 2 :])
     return ""
 
 

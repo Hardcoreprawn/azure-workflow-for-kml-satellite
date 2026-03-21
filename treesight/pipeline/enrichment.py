@@ -505,7 +505,7 @@ def run_enrichment(
     # 3. NDVI sampling (batches of 4)
     log_phase("enrichment", "ndvi_start", frames=len(frame_plan))
     ndvi_stats: list[dict[str, float] | None] = []
-    for i, nsid in enumerate(ndvi_search_ids):
+    for _i, nsid in enumerate(ndvi_search_ids):
         if nsid:
             stat = fetch_ndvi_stat(nsid, coords, http_client)
             ndvi_stats.append(stat)

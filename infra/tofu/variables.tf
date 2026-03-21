@@ -100,3 +100,17 @@ variable "azure_ai_location" {
   type        = string
   default     = "swedencentral"
 }
+
+# --- Entra External ID (CIAM) authentication (M2.1) ---
+
+variable "ciam_tenant_name" {
+  description = "CIAM tenant name (the prefix before .onmicrosoft.com). Empty to disable auth."
+  type        = string
+  default     = ""
+}
+
+variable "ciam_client_id" {
+  description = "CIAM app registration client ID for the SPA + API."
+  type        = string
+  default     = ""
+}

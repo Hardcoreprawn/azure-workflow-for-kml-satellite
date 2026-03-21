@@ -6,7 +6,7 @@ and uses the well-known Azurite connection string.
 
 from __future__ import annotations
 
-import os  # noqa: I001
+import os
 import sys
 import time
 

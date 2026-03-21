@@ -201,7 +201,7 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
         if not any(domain.endswith(allow) for allow in PROXY_ALLOWED_DOMAINS):
             return error_response(403, f"Domain not whitelisted: {domain}")
     except Exception as e:
-        return error_response(400, f"Invalid URL: {str(e)}")
+        return error_response(400, f"Invalid URL: {e!s}")
 
     try:
         resp = requests.get(target_url, timeout=PROXY_TIMEOUT_SECONDS)
@@ -217,6 +217,6 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
     except requests.Timeout:
         return error_response(504, "Request timeout")
     except requests.RequestException as e:
-        return error_response(502, f"Upstream error: {str(e)}")
+        return error_response(502, f"Upstream error: {e!s}")
     except Exception as e:
-        return error_response(500, f"Proxy error: {str(e)}")
+        return error_response(500, f"Proxy error: {e!s}")

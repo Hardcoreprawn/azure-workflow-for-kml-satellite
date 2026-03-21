@@ -75,6 +75,11 @@ DEMO_VALET_TOKEN_SECRET = _env("DEMO_VALET_TOKEN_SECRET")
 DEMO_VALET_TOKEN_TTL_SECONDS = _env_int("DEMO_VALET_TOKEN_TTL_SECONDS", 86400)
 DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 
+# Entra External ID (CIAM) authentication
+CIAM_TENANT_NAME = _env("CIAM_TENANT_NAME")
+CIAM_CLIENT_ID = _env("CIAM_CLIENT_ID")
+CIAM_AUDIENCE = _env("CIAM_AUDIENCE")  # defaults to CIAM_CLIENT_ID if empty
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""
