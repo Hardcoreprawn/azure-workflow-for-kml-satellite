@@ -193,8 +193,6 @@ resource "azurerm_consumption_budget_resource_group" "main" {
   lifecycle {
     ignore_changes = [time_period]
   }
-
-  tags = local.tags
 }
 
 resource "azurerm_key_vault" "main" {
