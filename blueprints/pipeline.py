@@ -31,7 +31,7 @@ from treesight.constants import (
 from treesight.errors import ContractError
 from treesight.models.blob_event import BlobEvent
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
-from treesight.security.rate_limit import demo_limiter, get_client_ip
+from treesight.security.rate_limit import demo_limiter, get_client_ip, pipeline_limiter
 
 # At runtime resolves to bare ``dict`` (Azure Functions binding requirement);
 # Pylance sees ``dict[str, Any]`` for full type-checking.
@@ -42,19 +42,37 @@ else:
 
 bp = df.Blueprint()
 
+# Maximum body size for analysis save endpoint (128 KiB)
+_MAX_ANALYSIS_BODY_BYTES = 131_072
+
 
 # ---------------------------------------------------------------------------
 # Blob trigger → start orchestration (§4.2)
 # ---------------------------------------------------------------------------
 
 
-@bp.route(route="orchestrator/{instance_id}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+@bp.route(
+    route="orchestrator/{instance_id}",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
 @bp.durable_client_input(client_name="client")
 async def orchestrator_status(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """GET /api/orchestrator/{instance_id} — direct JSON diagnostics (§4.3)."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return _error_response(401, str(exc))
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return _error_response(429, "Rate limit exceeded — try again later")
+
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
         return func.HttpResponse(
@@ -82,6 +100,7 @@ async def orchestrator_status(
         json.dumps(result, default=str),
         status_code=200,
         mimetype="application/json",
+        headers=cors_headers(req),
     )
 
 
@@ -717,6 +736,12 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
         check_auth(req)
     except ValueError as exc:
         return _error_response(401, str(exc))
+
+    raw_body = req.get_body()
+    if len(raw_body) > _MAX_ANALYSIS_BODY_BYTES:
+        return _error_response(
+            413, f"Request body too large (max {_MAX_ANALYSIS_BODY_BYTES} bytes)"
+        )
 
     try:
         body = req.get_json()

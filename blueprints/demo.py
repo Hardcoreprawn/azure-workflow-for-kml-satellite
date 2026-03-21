@@ -25,7 +25,7 @@ from treesight.constants import (
     DEFAULT_OUTPUT_CONTAINER,
     PIPELINE_PAYLOADS_CONTAINER,
 )
-from treesight.security.rate_limit import demo_limiter, get_client_ip
+from treesight.security.rate_limit import demo_limiter, get_client_ip, proxy_limiter
 from treesight.security.valet import mint_valet_token, verify_valet_token
 from treesight.storage.client import BlobStorageClient
 
@@ -209,6 +209,9 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not proxy_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Rate limit exceeded — try again later", req=req)
 
     target_url = req.params.get("url")
 

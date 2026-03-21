@@ -51,6 +51,12 @@ form_limiter = RateLimiter(max_requests=5, window_seconds=60)
 # Demo/pipeline endpoints: 3 requests per 60 seconds per IP
 demo_limiter = RateLimiter(max_requests=3, window_seconds=60)
 
+# Pipeline status polling: 30 requests per 60 seconds per IP
+pipeline_limiter = RateLimiter(max_requests=30, window_seconds=60)
+
+# CORS proxy: 60 requests per 60 seconds per IP
+proxy_limiter = RateLimiter(max_requests=60, window_seconds=60)
+
 
 def get_client_ip(req) -> str:
     """Extract client IP from Azure Functions request headers."""
