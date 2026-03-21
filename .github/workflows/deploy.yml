@@ -125,6 +125,32 @@ jobs:
           ARM_USE_OIDC: "true"
         run: tofu apply -auto-approve tfplan
 
+      # azapi v2 crashes when updating the function app body (identity bug).
+      # So tofu ignores body changes and we apply mutable config via CLI.
+      - name: Configure Function App
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          FUNC_RG=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+
+          az webapp config container set \
+            --name "$FUNC_NAME" \
+            --resource-group "$FUNC_RG" \
+            --registry-server ghcr.io \
+            --image "${{ needs.build-image.outputs.image_uri }}"
+
+          az webapp config appsettings set \
+            --name "$FUNC_NAME" \
+            --resource-group "$FUNC_RG" \
+            --settings \
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              DOCKER_REGISTRY_SERVER_URL=ghcr.io
+
   # ── 3. Deploy static website ───────────────────────────────
   deploy-website:
     name: Deploy Static Website

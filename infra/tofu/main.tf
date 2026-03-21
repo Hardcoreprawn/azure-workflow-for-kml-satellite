@@ -261,9 +261,10 @@ resource "azapi_resource" "function_app" {
 
   # Workaround: azapi v2 "Missing Resource Identity After Update" bug.
   # The ARM API omits identity from update responses, crashing the provider.
-  # Identity is created once and never changes, so ignoring is safe.
+  # Body changes (image, app settings) are handled by az CLI in the deploy
+  # pipeline to avoid triggering updates that hit this bug.
   lifecycle {
-    ignore_changes = [identity]
+    ignore_changes = [identity, body]
   }
 
   body = {
@@ -324,14 +325,6 @@ resource "azapi_resource" "function_app" {
           {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
-          },
-          {
-            name  = "DOCKER_REGISTRY_SERVER_URL"
-            value = "ghcr.io"
-          },
-          {
-            name  = "WEBSITES_ENABLE_APP_SERVICE_STORAGE"
-            value = "false"
           }
         ], var.enable_azure_ai ? [
           {
