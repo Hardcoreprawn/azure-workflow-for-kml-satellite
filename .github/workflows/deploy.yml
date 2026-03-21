@@ -130,6 +130,7 @@ jobs:
     name: Deploy Static Website
     runs-on: ubuntu-latest
     needs: deploy-infra
+    environment: dev
     steps:
       - uses: actions/checkout@v4
 
