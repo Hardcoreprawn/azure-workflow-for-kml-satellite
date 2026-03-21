@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from treesight.log import log_phase
@@ -120,7 +121,7 @@ def compute_change_map(
 
 def detect_changes(
     frame_plan: list[dict[str, Any]],
-    ndvi_raster_paths: list[str | None],
+    ndvi_raster_paths: Sequence[str | None],
     output_container: str,
     project_name: str,
     timestamp: str,
