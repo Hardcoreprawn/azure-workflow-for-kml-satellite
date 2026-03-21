@@ -170,9 +170,7 @@ class PipelineSummary(BaseModel):
         metadata_paths = [
             r.get("metadata_path", "") for r in self.metadata_results if r.get("metadata_path")
         ]
-        raw_paths = [
-            r.get("blob_path", "") for r in self.download_results if r.get("blob_path")
-        ]
+        raw_paths = [r.get("blob_path", "") for r in self.download_results if r.get("blob_path")]
         clipped_paths = [
             r.get("clipped_blob_path", "")
             for r in self.post_process_results

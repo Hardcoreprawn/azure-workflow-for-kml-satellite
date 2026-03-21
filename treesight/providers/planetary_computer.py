@@ -49,7 +49,6 @@ DEFAULT_MAX_ITEMS = 5
 
 
 class PlanetaryComputerProvider(ImageryProvider):
-
     def __init__(self, config: ProviderConfig | None = None) -> None:
         config = config or {}
         self.api_url = str(config.get("api_url", DEFAULT_API_URL))
@@ -88,11 +87,16 @@ class PlanetaryComputerProvider(ImageryProvider):
             # Try each collection individually in priority order.
             for collection in collections:
                 results = self._search_collection(
-                    catalog, [collection], aoi, filters, datetime_range,
+                    catalog,
+                    [collection],
+                    aoi,
+                    filters,
+                    datetime_range,
                 )
                 if results:
                     log_phase(
-                        "acquisition", "search_complete",
+                        "acquisition",
+                        "search_complete",
                         aoi_name=aoi.feature_name,
                         collection=collection,
                         results_count=len(results),
@@ -100,11 +104,13 @@ class PlanetaryComputerProvider(ImageryProvider):
                     return results
                 logger.info(
                     "No results from %s for %s, trying next collection",
-                    collection, aoi.feature_name,
+                    collection,
+                    aoi.feature_name,
                 )
             # All collections exhausted
             log_phase(
-                "acquisition", "search_complete",
+                "acquisition",
+                "search_complete",
                 aoi_name=aoi.feature_name,
                 results_count=0,
             )
@@ -112,10 +118,15 @@ class PlanetaryComputerProvider(ImageryProvider):
 
         # Fallback disabled — single combined search across all collections.
         results = self._search_collection(
-            catalog, collections, aoi, filters, datetime_range,
+            catalog,
+            collections,
+            aoi,
+            filters,
+            datetime_range,
         )
         log_phase(
-            "acquisition", "search_complete",
+            "acquisition",
+            "search_complete",
             aoi_name=aoi.feature_name,
             results_count=len(results),
         )
@@ -154,23 +165,25 @@ class PlanetaryComputerProvider(ImageryProvider):
             crs_code = self._extract_crs(props)
             default_gsd = COLLECTION_DEFAULT_GSD.get(coll_id, 10.0)
 
-            results.append(SearchResult(
-                scene_id=item.id,
-                provider=self.name,
-                acquisition_date=acq_date,
-                cloud_cover_pct=float(props.get("eo:cloud_cover", 0.0)),
-                spatial_resolution_m=float(props.get("gsd", default_gsd)),
-                off_nadir_deg=float(props.get("view:off_nadir", 0.0)),
-                crs=crs_code,
-                bbox=list(item.bbox) if item.bbox else aoi.buffered_bbox,
-                asset_url=asset.href,
-                extra={
-                    "collection": coll_id,
-                    "asset_key": asset_key,
-                    "platform": props.get("platform", ""),
-                    "media_type": asset.media_type or "",
-                },
-            ))
+            results.append(
+                SearchResult(
+                    scene_id=item.id,
+                    provider=self.name,
+                    acquisition_date=acq_date,
+                    cloud_cover_pct=float(props.get("eo:cloud_cover", 0.0)),
+                    spatial_resolution_m=float(props.get("gsd", default_gsd)),
+                    off_nadir_deg=float(props.get("view:off_nadir", 0.0)),
+                    crs=crs_code,
+                    bbox=list(item.bbox) if item.bbox else aoi.buffered_bbox,
+                    asset_url=asset.href,
+                    extra={
+                        "collection": coll_id,
+                        "asset_key": asset_key,
+                        "platform": props.get("platform", ""),
+                        "media_type": asset.media_type or "",
+                    },
+                )
+            )
 
         # Sort by cloud cover ascending (least cloudy first)
         results.sort(key=lambda r: r.cloud_cover_pct)
@@ -229,8 +242,10 @@ class PlanetaryComputerProvider(ImageryProvider):
         returned (the detail layer is simply absent).
         """
         log_phase(
-            "acquisition", "composite_search",
-            aoi_name=aoi.feature_name, provider=self.name,
+            "acquisition",
+            "composite_search",
+            aoi_name=aoi.feature_name,
+            provider=self.name,
         )
 
         if self._stub_mode:
@@ -245,7 +260,10 @@ class PlanetaryComputerProvider(ImageryProvider):
 
         # --- NAIP detail layer (best single image) ---
         naip_results = self._search_collection(
-            catalog, ["naip"], aoi, filters,
+            catalog,
+            ["naip"],
+            aoi,
+            filters,
             datetime_range=self._build_datetime_range(filters),
         )
         if naip_results:
@@ -254,18 +272,23 @@ class PlanetaryComputerProvider(ImageryProvider):
             results.append(best_naip)
             logger.info(
                 "NAIP detail found for %s: %s (%.1fm)",
-                aoi.feature_name, best_naip.scene_id,
+                aoi.feature_name,
+                best_naip.scene_id,
                 best_naip.spatial_resolution_m,
             )
         else:
             logger.info(
-                "No NAIP coverage for %s, Sentinel-2 only", aoi.feature_name,
+                "No NAIP coverage for %s, Sentinel-2 only",
+                aoi.feature_name,
             )
 
         # --- Sentinel-2 temporal series ---
         s2_filters = filters.model_copy()
         s2_results = self._search_collection(
-            catalog, ["sentinel-2-l2a"], aoi, s2_filters,
+            catalog,
+            ["sentinel-2-l2a"],
+            aoi,
+            s2_filters,
             datetime_range=self._build_datetime_range(s2_filters),
         )
         for r in s2_results[:temporal_count]:
@@ -273,7 +296,8 @@ class PlanetaryComputerProvider(ImageryProvider):
             results.append(r)
 
         log_phase(
-            "acquisition", "composite_search_complete",
+            "acquisition",
+            "composite_search_complete",
             aoi_name=aoi.feature_name,
             naip=1 if naip_results else 0,
             s2=min(len(s2_results), temporal_count),
@@ -385,7 +409,10 @@ class PlanetaryComputerProvider(ImageryProvider):
         )
 
     def _stub_composite_search(
-        self, aoi: AOI, filters: ImageryFilters, temporal_count: int,
+        self,
+        aoi: AOI,
+        filters: ImageryFilters,
+        temporal_count: int,
     ) -> list[SearchResult]:
         """Synthetic composite results for unit tests."""
         from datetime import timedelta
@@ -395,39 +422,43 @@ class PlanetaryComputerProvider(ImageryProvider):
 
         # NAIP detail
         naip_id = f"naip_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-        results.append(SearchResult(
-            scene_id=naip_id,
-            provider=self.name,
-            acquisition_date=now,
-            cloud_cover_pct=0.0,
-            spatial_resolution_m=0.6,
-            off_nadir_deg=0.0,
-            crs="EPSG:26911",
-            bbox=aoi.buffered_bbox,
-            asset_url=f"https://stub.blob.core.windows.net/imagery/{naip_id}.tif",
-            extra={"collection": "naip", "asset_key": "image", "role": "detail", "stub": True},
-        ))
+        results.append(
+            SearchResult(
+                scene_id=naip_id,
+                provider=self.name,
+                acquisition_date=now,
+                cloud_cover_pct=0.0,
+                spatial_resolution_m=0.6,
+                off_nadir_deg=0.0,
+                crs="EPSG:26911",
+                bbox=aoi.buffered_bbox,
+                asset_url=f"https://stub.blob.core.windows.net/imagery/{naip_id}.tif",
+                extra={"collection": "naip", "asset_key": "image", "role": "detail", "stub": True},
+            )
+        )
 
         # S2 temporal series
         for i in range(temporal_count):
             dt = now - timedelta(days=60 * (i + 1))
             s2_id = f"S2B_MSIL2A_{dt.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-            results.append(SearchResult(
-                scene_id=s2_id,
-                provider=self.name,
-                acquisition_date=dt,
-                cloud_cover_pct=5.0 + i * 2,
-                spatial_resolution_m=10.0,
-                off_nadir_deg=3.0,
-                crs="EPSG:32611",
-                bbox=aoi.buffered_bbox,
-                asset_url=f"https://stub.blob.core.windows.net/imagery/{s2_id}.tif",
-                extra={
-                    "collection": "sentinel-2-l2a",
-                    "asset_key": "visual",
-                    "role": "temporal",
-                    "stub": True,
-                },
-            ))
+            results.append(
+                SearchResult(
+                    scene_id=s2_id,
+                    provider=self.name,
+                    acquisition_date=dt,
+                    cloud_cover_pct=5.0 + i * 2,
+                    spatial_resolution_m=10.0,
+                    off_nadir_deg=3.0,
+                    crs="EPSG:32611",
+                    bbox=aoi.buffered_bbox,
+                    asset_url=f"https://stub.blob.core.windows.net/imagery/{s2_id}.tif",
+                    extra={
+                        "collection": "sentinel-2-l2a",
+                        "asset_key": "visual",
+                        "role": "temporal",
+                        "stub": True,
+                    },
+                )
+            )
 
         return results

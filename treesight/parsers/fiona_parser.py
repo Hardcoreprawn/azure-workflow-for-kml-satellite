@@ -10,6 +10,8 @@ from treesight.log import logger
 from treesight.models.feature import Feature
 from treesight.parsers import ensure_closed as _ensure_closed
 
+_NAME_KEYS = frozenset({"Name", "name", "Description", "description"})
+
 
 def parse_kml_fiona(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using Fiona (GDAL driver). Returns list of Features."""

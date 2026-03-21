@@ -12,21 +12,16 @@ from rasterio.transform import Affine as Affine
 class Band:
     """Opaque handle returned by :func:`rasterio.band`."""
 
-
 @overload
 def open(
     fp: str | BytesIO | BinaryIO,
     mode: Literal["w"],
     **kwargs: object,
 ) -> DatasetWriter: ...
-
-
 @overload
 def open(
     fp: str | BytesIO | BinaryIO,
     mode: str = ...,
     **kwargs: object,
 ) -> DatasetReader: ...
-
-
 def band(ds: DatasetReader | DatasetWriter, bidx: int) -> Band: ...

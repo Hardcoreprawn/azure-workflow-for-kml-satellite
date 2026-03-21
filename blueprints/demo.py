@@ -27,6 +27,7 @@ bp = func.Blueprint()
 
 # --- POST /api/demo-submit ---
 
+
 @bp.route(route="demo-submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
@@ -83,6 +84,7 @@ def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
 
 # --- POST /api/demo-valet-tokens ---
 
+
 @bp.route(route="demo-valet-tokens", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def demo_valet_tokens(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -130,6 +132,7 @@ def demo_valet_tokens(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # --- GET /api/demo-artifacts?token=... ---
+
 
 @bp.route(route="demo-artifacts", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def demo_artifacts(req: func.HttpRequest) -> func.HttpResponse:
@@ -187,7 +190,7 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
 
-    target_url = req.params.get('url')
+    target_url = req.params.get("url")
 
     if not target_url:
         return error_response(400, "Missing 'url' query parameter")
@@ -209,7 +212,7 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
             headers={
                 "Access-Control-Allow-Origin": "*",
                 "Cache-Control": "max-age=3600",
-            }
+            },
         )
     except requests.Timeout:
         return error_response(504, "Request timeout")

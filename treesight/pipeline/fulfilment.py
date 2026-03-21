@@ -42,8 +42,15 @@ def _make_stub_geotiff() -> bytes:
     transform = _tfm(36.78, -1.33, 36.83, -1.28, 50, 50)
     data = np.ones((3, 50, 50), dtype=np.uint8) * 128
     with rasterio.open(
-        buf, "w", driver="GTiff", height=50, width=50,
-        count=3, dtype="uint8", crs="EPSG:4326", transform=transform,
+        buf,
+        "w",
+        driver="GTiff",
+        height=50,
+        width=50,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=transform,
     ) as dst:
         dst.write(data)
     return buf.getvalue()
@@ -109,7 +116,8 @@ def download_imagery(
 
         duration = time.monotonic() - start
         log_phase(
-            "fulfilment", "download_complete",
+            "fulfilment",
+            "download_complete",
             order_id=order_id,
             blob_path=dest_path,
             size_bytes=len(image_bytes),
@@ -169,9 +177,7 @@ def post_process_imagery(
     try:
         safe_name = aoi.feature_name.replace(" ", "_").replace("/", "_")
         scene_id = download_result.get("scene_id", "")
-        clipped_path = (
-            f"imagery/clipped/{project_name}/{timestamp}/{safe_name}/{scene_id}.tif"
-        )
+        clipped_path = f"imagery/clipped/{project_name}/{timestamp}/{safe_name}/{scene_id}.tif"
 
         # Fetch the raw raster bytes from storage
         raw_bytes = storage.download_bytes(
@@ -206,7 +212,8 @@ def post_process_imagery(
 
         duration = time.monotonic() - start
         log_phase(
-            "fulfilment", "post_process_complete",
+            "fulfilment",
+            "post_process_complete",
             order_id=order_id,
             clipped=clipped,
             reprojected=reprojected,
@@ -279,9 +286,7 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
 
         window = window_from_bounds(*src_bbox, transform=src.transform)
         # Clamp to dataset bounds
-        window = window.intersection(
-            rasterio.windows.Window(0, 0, src.width, src.height)
-        )
+        window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
 
         data = src.read(window=window)
         win_transform = src.window_transform(window)
@@ -301,7 +306,8 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
 
     result = buf.getvalue()
     log_phase(
-        "fulfilment", "cog_read_complete",
+        "fulfilment",
+        "cog_read_complete",
         size_bytes=len(result),
         window_shape=f"{data.shape[1]}x{data.shape[2]}",
     )
@@ -309,7 +315,9 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
 
 
 def _transform_bbox(
-    bbox: list[float], src_crs: str, dst_crs: str,
+    bbox: list[float],
+    src_crs: str,
+    dst_crs: str,
 ) -> tuple[float, float, float, float]:
     """Reproject a bounding box between CRS."""
     if src_crs == dst_crs:
@@ -332,9 +340,7 @@ def _clip_to_bbox(src: rasterio.DatasetReader, bbox: list[float]) -> bytes:
     """Clip an open rasterio dataset to a bounding box, return GeoTIFF bytes."""
     src_bbox = _transform_bbox(bbox, "EPSG:4326", str(src.crs))
     window = window_from_bounds(*src_bbox, transform=src.transform)
-    window = window.intersection(
-        rasterio.windows.Window(0, 0, src.width, src.height)
-    )
+    window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
 
     data = src.read(window=window)
     win_transform = src.window_transform(window)
@@ -361,7 +367,11 @@ def _reproject_bytes(tiff_bytes: bytes, target_crs: str) -> bytes:
                 msg = "Source GeoTIFF has no CRS — cannot reproject"
                 raise ValueError(msg)
             transform, width, height = calculate_default_transform(
-                src.crs, target_crs, src.width, src.height, *src.bounds,
+                src.crs,
+                target_crs,
+                src.width,
+                src.height,
+                *src.bounds,
             )
             profile = src.profile.copy()
             profile.update(

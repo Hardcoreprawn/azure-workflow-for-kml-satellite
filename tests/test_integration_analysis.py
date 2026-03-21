@@ -26,6 +26,7 @@ from treesight.pipeline.enrichment import (
 # Simulate the frontend JavaScript data transform in Python
 # ---------------------------------------------------------------------------
 
+
 def _frontend_transform_ndvi(
     frame_plan: list[dict[str, Any]],
     ndvi_stats: list[dict[str, Any] | None],
@@ -66,12 +67,14 @@ def _frontend_transform_weather(
     length = min(len(labels), len(temps), len(precips))
     for j in range(length):
         if temps[j] is not None and precips[j] is not None:
-            timeseries.append({
-                "month": labels[j],
-                "month_index": j,
-                "temperature": float(temps[j]),
-                "precipitation": float(precips[j]),
-            })
+            timeseries.append(
+                {
+                    "month": labels[j],
+                    "month_index": j,
+                    "temperature": float(temps[j]),
+                    "precipitation": float(precips[j]),
+                }
+            )
     return timeseries
 
 
@@ -119,11 +122,13 @@ def _make_fake_ndvi_stats(
         year = f["year"]
         base = base_ndvi.get(season, 0.40)
         mean = round(base + (year - first_year) * yearly_trend, 3)
-        stats.append({
-            "mean": mean,
-            "min": round(mean - 0.12, 3),
-            "max": round(mean + 0.15, 3),
-        })
+        stats.append(
+            {
+                "mean": mean,
+                "min": round(mean - 0.12, 3),
+                "max": round(mean + 0.15, 3),
+            }
+        )
     return stats
 
 
@@ -164,6 +169,7 @@ def _seasonal_factor(month: int) -> float:
 # ---------------------------------------------------------------------------
 # Integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestFramePlanIntegrity:
     """Verify enrichment frame plan has the metadata analysis needs."""
@@ -413,15 +419,11 @@ class TestPromptContextBuilding:
 
         if trends.get("ndvi_by_season"):
             for skey, sdata in trends["ndvi_by_season"].items():
-                context_lines.append(
-                    f"{skey.capitalize()}: avg={sdata['avg']:.3f}"
-                )
+                context_lines.append(f"{skey.capitalize()}: avg={sdata['avg']:.3f}")
 
         assert trends.get("weather_period")
         context_lines.append(f"Weather data: {trends['weather_period']}")
-        context_lines.append(
-            f"Temperature: avg {trends['temp_avg']:.1f}°C"
-        )
+        context_lines.append(f"Temperature: avg {trends['temp_avg']:.1f}°C")
 
         context_str = "\n".join(context_lines)
 

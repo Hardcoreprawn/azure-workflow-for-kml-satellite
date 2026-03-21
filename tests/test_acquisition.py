@@ -291,9 +291,16 @@ class TestAcquireComposite:
         orders = acquire_composite(aoi, provider, ImageryFilters(), temporal_count=2)
 
         required_keys = {
-            "order_id", "scene_id", "provider", "cloud_cover_pct",
-            "acquisition_date", "spatial_resolution_m", "asset_url",
-            "aoi_feature_name", "role", "collection",
+            "order_id",
+            "scene_id",
+            "provider",
+            "cloud_cover_pct",
+            "acquisition_date",
+            "spatial_resolution_m",
+            "asset_url",
+            "aoi_feature_name",
+            "role",
+            "collection",
         }
         for order in orders:
             missing = required_keys - order.keys()

@@ -6,10 +6,9 @@ and uses the well-known Azurite connection string.
 
 from __future__ import annotations
 
-import os
+import os  # noqa: I001
 import sys
 import time
-
 
 HOST = os.environ.get("AZURITE_BLOB_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AZURITE_BLOB_PORT", "10000"))

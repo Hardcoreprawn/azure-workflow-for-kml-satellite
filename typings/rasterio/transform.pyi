@@ -9,7 +9,6 @@ class Affine:
     def __iter__(self) -> Iterator[float]: ...
     def __len__(self) -> int: ...
 
-
 def from_bounds(
     west: float,
     south: float,

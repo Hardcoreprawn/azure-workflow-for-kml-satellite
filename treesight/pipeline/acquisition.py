@@ -98,7 +98,8 @@ def acquire_composite(
         collection = r.extra.get("collection", "")
 
         log_phase(
-            "acquisition", "order_placed",
+            "acquisition",
+            "order_placed",
             aoi_name=aoi.feature_name,
             scene_id=r.scene_id,
             order_id=order_id,
@@ -106,18 +107,20 @@ def acquire_composite(
             collection=collection,
         )
 
-        orders.append({
-            "order_id": order_id,
-            "scene_id": r.scene_id,
-            "provider": provider.name,
-            "cloud_cover_pct": r.cloud_cover_pct,
-            "acquisition_date": r.acquisition_date.isoformat(),
-            "spatial_resolution_m": r.spatial_resolution_m,
-            "asset_url": r.asset_url,
-            "aoi_feature_name": aoi.feature_name,
-            "role": role,
-            "collection": collection,
-        })
+        orders.append(
+            {
+                "order_id": order_id,
+                "scene_id": r.scene_id,
+                "provider": provider.name,
+                "cloud_cover_pct": r.cloud_cover_pct,
+                "acquisition_date": r.acquisition_date.isoformat(),
+                "spatial_resolution_m": r.spatial_resolution_m,
+                "asset_url": r.asset_url,
+                "aoi_feature_name": aoi.feature_name,
+                "role": role,
+                "collection": collection,
+            }
+        )
 
     return orders
 

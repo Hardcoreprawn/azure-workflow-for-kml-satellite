@@ -15,7 +15,6 @@ class Resampling(enum.IntEnum):
     average = 5
     mode = 6
 
-
 def calculate_default_transform(
     src_crs: CRS | str,
     dst_crs: CRS | str,
@@ -26,8 +25,6 @@ def calculate_default_transform(
     right: float,
     top: float,
 ) -> tuple[Affine, int, int]: ...
-
-
 def reproject(
     source: Band | numpy.ndarray,
     destination: Band | numpy.ndarray,

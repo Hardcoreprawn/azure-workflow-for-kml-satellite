@@ -12,7 +12,6 @@ class Window:
     ) -> None: ...
     def intersection(self, other: Window) -> Window: ...
 
-
 def from_bounds(
     left: float,
     bottom: float,

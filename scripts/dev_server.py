@@ -105,11 +105,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="TreeSight local dev server")
     parser.add_argument("--port", type=int, default=1111, help="Dev server port (default: 1111)")
     parser.add_argument(
-        "--func-port", type=int, default=7071,
+        "--func-port",
+        type=int,
+        default=7071,
         help="Func host port (default: 7071)",
     )
     parser.add_argument(
-        "--func-host", default="localhost",
+        "--func-host",
+        default="localhost",
         help="Func host hostname (default: localhost)",
     )
     args = parser.parse_args()

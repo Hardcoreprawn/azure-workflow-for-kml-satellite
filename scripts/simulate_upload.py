@@ -190,7 +190,11 @@ def main() -> None:
         provider_config = {"asset_key": args.asset_key}
         print(f"  provider_config: {provider_config}")
     instance_id = fire_event_grid(
-        blob_url, blob_name, content_length, args.container, provider_config=provider_config,
+        blob_url,
+        blob_name,
+        content_length,
+        args.container,
+        provider_config=provider_config,
     )
 
     # Step 4: Poll (optional)

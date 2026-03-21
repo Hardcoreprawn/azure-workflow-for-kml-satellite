@@ -37,8 +37,12 @@ SEASONS: list[dict[str, Any]] = [
 SEASONAL_YEARS = list(range(2018, 2026))
 NAIP_ONLY_YEARS = [2012, 2014, 2016]
 NAIP_SUMMERS = {
-    "2012-summer", "2014-summer", "2016-summer",
-    "2018-summer", "2020-summer", "2022-summer",
+    "2012-summer",
+    "2014-summer",
+    "2016-summer",
+    "2018-summer",
+    "2020-summer",
+    "2022-summer",
 }
 
 
@@ -74,7 +78,8 @@ def _season_window(year: int, season: dict[str, Any]) -> dict[str, str]:
 
 
 def _coords_to_bbox(
-    coords: list[list[float]], pad: float = 0.02,
+    coords: list[list[float]],
+    pad: float = 0.02,
 ) -> list[list[float]]:
     """Compute a bounding box polygon from AOI coords.
 
@@ -87,8 +92,10 @@ def _coords_to_bbox(
     min_lon = min(lons) - pad
     max_lon = max(lons) + pad
     return [
-        [min_lon, min_lat], [max_lon, min_lat],
-        [max_lon, max_lat], [min_lon, max_lat],
+        [min_lon, min_lat],
+        [max_lon, min_lat],
+        [max_lon, max_lat],
+        [min_lon, max_lat],
         [min_lon, min_lat],
     ]
 
@@ -102,30 +109,34 @@ def build_frame_plan(coords: list[list[float]]) -> list[dict[str, Any]]:
     if has_naip:
         for yr in NAIP_ONLY_YEARS:
             w = _season_window(yr, summer)
-            frames.append({
-                "year": yr,
-                "season": "summer",
-                "start": w["start"],
-                "end": w["end"],
-                "collection": "naip",
-                "asset": "image",
-                "is_naip": True,
-            })
+            frames.append(
+                {
+                    "year": yr,
+                    "season": "summer",
+                    "start": w["start"],
+                    "end": w["end"],
+                    "collection": "naip",
+                    "asset": "image",
+                    "is_naip": True,
+                }
+            )
 
     for yr in SEASONAL_YEARS:
         for s in SEASONS:
             w = _season_window(yr, s)
             naip_key = f"{yr}-{s['key']}"
             use_naip = has_naip and naip_key in NAIP_SUMMERS
-            frames.append({
-                "year": yr,
-                "season": s["key"],
-                "start": w["start"],
-                "end": w["end"],
-                "collection": "naip" if use_naip else "sentinel-2-l2a",
-                "asset": "image" if use_naip else "visual",
-                "is_naip": use_naip,
-            })
+            frames.append(
+                {
+                    "year": yr,
+                    "season": s["key"],
+                    "start": w["start"],
+                    "end": w["end"],
+                    "collection": "naip" if use_naip else "sentinel-2-l2a",
+                    "asset": "image" if use_naip else "visual",
+                    "is_naip": use_naip,
+                }
+            )
 
     return frames
 
@@ -231,9 +242,7 @@ def aggregate_weather_monthly(weather: dict[str, Any]) -> dict[str, Any]:
     return {
         "labels": keys,
         "temp": [
-            round(sum(months[k]["temp"]) / len(months[k]["temp"]), 1)
-            if months[k]["temp"]
-            else None
+            round(sum(months[k]["temp"]) / len(months[k]["temp"]), 1) if months[k]["temp"] else None
             for k in keys
         ],
         "precip": [round(months[k]["precip"], 1) for k in keys],
@@ -256,7 +265,7 @@ def fetch_ndvi_stat(
     lon = (min(lons) + max(lons)) / 2
 
     z = 12
-    n = 2 ** z
+    n = 2**z
     x = int((lon + 180) / 360 * n)
     lat_rad = math.radians(lat)
     y = int((1 - math.log(math.tan(lat_rad) + 1 / math.cos(lat_rad)) / math.pi) / 2 * n)
@@ -439,7 +448,8 @@ def run_enrichment(
         results["weather_daily"] = weather
         results["weather_monthly"] = aggregate_weather_monthly(weather)
         log_phase(
-            "enrichment", "weather_done",
+            "enrichment",
+            "weather_done",
             days=len(weather.get("dates", [])),
         )
     else:
@@ -460,7 +470,12 @@ def run_enrichment(
             else []
         )
         sid = register_mosaic(
-            f["collection"], f["start"], f["end"], bbox, extra, http_client,
+            f["collection"],
+            f["start"],
+            f["end"],
+            bbox,
+            extra,
+            http_client,
         )
         search_ids.append(sid)
 
@@ -481,7 +496,8 @@ def run_enrichment(
     results["search_ids"] = search_ids
     results["ndvi_search_ids"] = ndvi_search_ids
     log_phase(
-        "enrichment", "mosaic_done",
+        "enrichment",
+        "mosaic_done",
         registered=sum(1 for s in search_ids if s),
         total=len(search_ids),
     )
@@ -525,7 +541,8 @@ def run_enrichment(
     results["manifest_path"] = manifest_path
 
     log_phase(
-        "enrichment", "complete",
+        "enrichment",
+        "complete",
         duration=f"{duration:.1f}s",
         manifest=manifest_path,
         frames=len(frame_plan),

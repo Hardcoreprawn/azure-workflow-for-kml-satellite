@@ -44,10 +44,12 @@ bp = df.Blueprint()
 # Blob trigger → start orchestration (§4.2)
 # ---------------------------------------------------------------------------
 
+
 @bp.route(route="orchestrator/{instance_id}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @bp.durable_client_input(client_name="client")
 async def orchestrator_status(
-    req: func.HttpRequest, client: df.DurableOrchestrationClient,
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """GET /api/orchestrator/{instance_id} — direct JSON diagnostics (§4.3)."""
     instance_id = req.route_params.get("instance_id", "")
@@ -83,7 +85,8 @@ async def orchestrator_status(
 @bp.event_grid_trigger(arg_name="event")
 @bp.durable_client_input(client_name="client")
 async def blob_trigger(
-    event: func.EventGridEvent, client: df.DurableOrchestrationClient,
+    event: func.EventGridEvent,
+    client: df.DurableOrchestrationClient,
 ) -> None:
     """Event Grid BlobCreated → validate → start orchestration (§4.2)."""
     data = event.get_json()
@@ -125,6 +128,7 @@ async def blob_trigger(
 # Orchestrator (§3 three-phase pipeline)
 # ---------------------------------------------------------------------------
 
+
 @bp.orchestration_trigger(context_name="context")
 def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]
     """Three-phase sequential orchestrator with fan-out parallelism."""
@@ -150,7 +154,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         offloaded = True
 
     # Fan-out: prepare AOIs
-    context.set_custom_status({"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)})
+    context.set_custom_status(
+        {"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)}
+    )
     aoi_tasks = [
         context.call_activity("prepare_aoi", {"feature": f, "buffer_m": inp.get("buffer_m")})
         for f in feature_list
@@ -159,19 +165,23 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 
     # Fan-out: write metadata
     meta_tasks = [
-        context.call_activity("write_metadata", {
-            "aoi": aoi,
-            "processing_id": instance_id,
-            "timestamp": ctx["timestamp"],
-            "tenant_id": inp.get("tenant_id", ""),
-            "source_file": blob_name,
-            "output_container": inp.get("output_container", DEFAULT_OUTPUT_CONTAINER),
-            "input_container": inp.get("container_name", DEFAULT_INPUT_CONTAINER),
-        })
+        context.call_activity(
+            "write_metadata",
+            {
+                "aoi": aoi,
+                "processing_id": instance_id,
+                "timestamp": ctx["timestamp"],
+                "tenant_id": inp.get("tenant_id", ""),
+                "source_file": blob_name,
+                "output_container": inp.get("output_container", DEFAULT_OUTPUT_CONTAINER),
+                "input_container": inp.get("container_name", DEFAULT_INPUT_CONTAINER),
+            },
+        )
         for aoi in aois
     ]
     metadata_results = cast(
-        "list[dict[str, Any]]", (yield context.task_all(meta_tasks)),
+        "list[dict[str, Any]]",
+        (yield context.task_all(meta_tasks)),
     )
 
     ingestion: dict[str, Any] = {
@@ -190,17 +200,21 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     if composite:
         # Composite mode: NAIP detail + S2 temporal for each AOI
         acq_tasks = [
-            context.call_activity("acquire_composite", {
-                "aoi": aoi,
-                "provider_name": inp.get("provider_name", "planetary_computer"),
-                "provider_config": inp.get("provider_config"),
-                "imagery_filters": inp.get("imagery_filters"),
-                "temporal_count": config_get_int(inp, "temporal_count", 6),
-            })
+            context.call_activity(
+                "acquire_composite",
+                {
+                    "aoi": aoi,
+                    "provider_name": inp.get("provider_name", "planetary_computer"),
+                    "provider_config": inp.get("provider_config"),
+                    "imagery_filters": inp.get("imagery_filters"),
+                    "temporal_count": config_get_int(inp, "temporal_count", 6),
+                },
+            )
             for aoi in aois
         ]
         all_order_lists = cast(
-            "list[list[dict[str, Any]]]", (yield context.task_all(acq_tasks)),
+            "list[list[dict[str, Any]]]",
+            (yield context.task_all(acq_tasks)),
         )
         # Flatten: each activity returns a list of orders
         orders: list[dict[str, Any]] = []
@@ -208,12 +222,15 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             orders.extend(order_list)
     else:
         acq_tasks = [
-            context.call_activity("acquire_imagery", {
-                "aoi": aoi,
-                "provider_name": inp.get("provider_name", "planetary_computer"),
-                "provider_config": inp.get("provider_config"),
-                "imagery_filters": inp.get("imagery_filters"),
-            })
+            context.call_activity(
+                "acquire_imagery",
+                {
+                    "aoi": aoi,
+                    "provider_name": inp.get("provider_name", "planetary_computer"),
+                    "provider_config": inp.get("provider_config"),
+                    "imagery_filters": inp.get("imagery_filters"),
+                },
+            )
             for aoi in aois
         ]
         orders = cast("list[dict[str, Any]]", (yield context.task_all(acq_tasks)))
@@ -221,14 +238,17 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     # Poll orders
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
     poll_tasks = [
-        context.call_activity("poll_order", {
-            "order_id": o.get("order_id", ""),
-            "scene_id": o.get("scene_id", ""),
-            "aoi_feature_name": o.get("aoi_feature_name", ""),
-            "provider_name": inp.get("provider_name", "planetary_computer"),
-            "provider_config": inp.get("provider_config"),
-            "overrides": inp,
-        })
+        context.call_activity(
+            "poll_order",
+            {
+                "order_id": o.get("order_id", ""),
+                "scene_id": o.get("scene_id", ""),
+                "aoi_feature_name": o.get("aoi_feature_name", ""),
+                "provider_name": inp.get("provider_name", "planetary_computer"),
+                "provider_config": inp.get("provider_config"),
+                "overrides": inp,
+            },
+        )
         for o in orders
         if o.get("order_id")
     ]
@@ -241,10 +261,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     failed: list[dict[str, Any]] = [r for r in poll_results if r.get("state") != "ready"]
 
     # Build lookups from acquisition results (signed download URLs + metadata)
-    asset_urls: dict[str, str] = {
-        o.get("order_id", ""): o.get("asset_url", "")
-        for o in orders
-    }
+    asset_urls: dict[str, str] = {o.get("order_id", ""): o.get("asset_url", "") for o in orders}
     order_meta: dict[str, dict[str, str]] = {
         o.get("order_id", ""): {
             "role": o.get("role", ""),
@@ -270,30 +287,37 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     # Download in batches
     download_results: list[dict[str, Any]] = []
     for i in range(0, len(ready), batch_size):
-        batch = ready[i:i + batch_size]
+        batch = ready[i : i + batch_size]
         dl_tasks = [
-            context.call_activity("download_imagery", {
-                "outcome": outcome,
-                "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
-                "aoi_bbox": aoi_lookup.get(
-                    outcome.get("aoi_feature_name", ""), {},
-                ).get("buffered_bbox"),
-                "role": order_meta.get(
-                    outcome.get("order_id", ""), {},
-                ).get("role", ""),
-                "collection": order_meta.get(
-                    outcome.get("order_id", ""), {},
-                ).get("collection", ""),
-                "provider_name": inp.get("provider_name", "planetary_computer"),
-                "provider_config": inp.get("provider_config"),
-                "project_name": ctx["project_name"],
-                "timestamp": ctx["timestamp"],
-                "output_container": output_container,
-            })
+            context.call_activity(
+                "download_imagery",
+                {
+                    "outcome": outcome,
+                    "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
+                    "aoi_bbox": aoi_lookup.get(
+                        outcome.get("aoi_feature_name", ""),
+                        {},
+                    ).get("buffered_bbox"),
+                    "role": order_meta.get(
+                        outcome.get("order_id", ""),
+                        {},
+                    ).get("role", ""),
+                    "collection": order_meta.get(
+                        outcome.get("order_id", ""),
+                        {},
+                    ).get("collection", ""),
+                    "provider_name": inp.get("provider_name", "planetary_computer"),
+                    "provider_config": inp.get("provider_config"),
+                    "project_name": ctx["project_name"],
+                    "timestamp": ctx["timestamp"],
+                    "output_container": output_container,
+                },
+            )
             for outcome in batch
         ]
         batch_results = cast(
-            "list[dict[str, Any]]", (yield context.task_all(dl_tasks)),
+            "list[dict[str, Any]]",
+            (yield context.task_all(dl_tasks)),
         )
         download_results.extend(batch_results)
 
@@ -306,27 +330,33 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 
     # Build aoi_lookup earlier in case it's needed (already built before pp)
     # Post-process in batches
-    context.set_custom_status({"phase": "fulfilment", "step": "post_processing", "downloads": len(download_results)})
+    context.set_custom_status(
+        {"phase": "fulfilment", "step": "post_processing", "downloads": len(download_results)}
+    )
     pp_batch_size = config_get_int(inp, "post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE)
     pp_results: list[dict[str, Any]] = []
 
     for i in range(0, len(successful_downloads), pp_batch_size):
-        batch = successful_downloads[i:i + pp_batch_size]
+        batch = successful_downloads[i : i + pp_batch_size]
         pp_tasks = [
-            context.call_activity("post_process_imagery", {
-                "download_result": dl,
-                "aoi": aoi_lookup.get(dl.get("aoi_feature_name", ""), {}),
-                "project_name": ctx["project_name"],
-                "timestamp": ctx["timestamp"],
-                "target_crs": inp.get("target_crs", "EPSG:4326"),
-                "enable_clipping": inp.get("enable_clipping", True),
-                "enable_reprojection": inp.get("enable_reprojection", True),
-                "output_container": output_container,
-            })
+            context.call_activity(
+                "post_process_imagery",
+                {
+                    "download_result": dl,
+                    "aoi": aoi_lookup.get(dl.get("aoi_feature_name", ""), {}),
+                    "project_name": ctx["project_name"],
+                    "timestamp": ctx["timestamp"],
+                    "target_crs": inp.get("target_crs", "EPSG:4326"),
+                    "enable_clipping": inp.get("enable_clipping", True),
+                    "enable_reprojection": inp.get("enable_reprojection", True),
+                    "output_container": output_container,
+                },
+            )
             for dl in batch
         ]
         batch_pp = cast(
-            "list[dict[str, Any]]", (yield context.task_all(pp_tasks)),
+            "list[dict[str, Any]]",
+            (yield context.task_all(pp_tasks)),
         )
         pp_results.extend(batch_pp)
 
@@ -359,23 +389,30 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             if bb and len(bb) == 4:
                 min_lat, min_lon, max_lat, max_lon = bb
                 all_coords = [
-                    [min_lat, min_lon], [min_lat, max_lon],
-                    [max_lat, max_lon], [max_lat, min_lon],
+                    [min_lat, min_lon],
+                    [min_lat, max_lon],
+                    [max_lat, max_lon],
+                    [max_lat, min_lon],
                     [min_lat, min_lon],
                 ]
                 break
 
     enrichment: dict[str, Any] = {}
     if all_coords:
-        enrichment = cast("dict[str, Any]", (yield context.call_activity(
-            "run_enrichment",
-            {
-                "coords": all_coords,
-                "project_name": ctx["project_name"],
-                "timestamp": ctx["timestamp"],
-                "output_container": output_container,
-            },
-        )))
+        enrichment = cast(
+            "dict[str, Any]",
+            (
+                yield context.call_activity(
+                    "run_enrichment",
+                    {
+                        "coords": all_coords,
+                        "project_name": ctx["project_name"],
+                        "timestamp": ctx["timestamp"],
+                        "output_container": output_container,
+                    },
+                )
+            ),
+        )
 
     # --- Summary ---
     summary = build_pipeline_summary(
@@ -399,6 +436,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 # Activities
 # NOTE: payload params are typed as bare ``dict`` — see module docstring.
 # ---------------------------------------------------------------------------
+
 
 @bp.activity_trigger(input_name="payload")
 def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
@@ -509,7 +547,9 @@ def acquire_composite(payload: _Payload) -> list[dict[str, Any]]:
         else ImageryFilters()
     )
     return _composite(
-        aoi, provider, filters,
+        aoi,
+        provider,
+        filters,
         temporal_count=int(payload.get("temporal_count", 6)),
     )
 
@@ -602,6 +642,7 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
 # Enrichment manifest serving endpoints
 # ---------------------------------------------------------------------------
 
+
 @bp.route(
     route="timelapse-data/{instance_id}",
     methods=["GET"],
@@ -609,7 +650,8 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
 )
 @bp.durable_client_input(client_name="client")
 async def timelapse_data(
-    req: func.HttpRequest, client: df.DurableOrchestrationClient,
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """GET /api/timelapse-data/{instance_id} — serve cached enrichment manifest.
 
@@ -719,10 +761,12 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
 # Demo processing endpoint — submits KML and starts orchestration directly
 # ---------------------------------------------------------------------------
 
+
 @bp.route(route="demo-process", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @bp.durable_client_input(client_name="client")
 async def demo_process(
-    req: func.HttpRequest, client: df.DurableOrchestrationClient,
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """POST /api/demo-process — upload KML and start pipeline orchestration.
 
@@ -793,6 +837,7 @@ def _error_response(status: int, message: str) -> func.HttpResponse:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, Any]) -> None:
     if not blob_name:
         raise ContractError("Blob name is empty", code="EMPTY_BLOB_NAME")
@@ -808,9 +853,7 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
     if content_length == 0:
         raise ContractError("Empty blob", code="EMPTY_BLOB")
     if content_length > MAX_KML_FILE_SIZE_BYTES:
-        raise ContractError(
-            f"File exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", code="FILE_TOO_LARGE"
-        )
+        raise ContractError(f"File exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", code="FILE_TOO_LARGE")
 
 
 def _extract_container(blob_url: str) -> str:
@@ -827,7 +870,7 @@ def _extract_blob_name(blob_url: str) -> str:
     for i, p in enumerate(parts):
         if p.endswith(".blob.core.windows.net") or p == "devstoreaccount1":
             if i + 2 < len(parts):
-                return "/".join(parts[i + 2:])
+                return "/".join(parts[i + 2 :])
     return ""
 
 

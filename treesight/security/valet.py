@@ -78,9 +78,7 @@ def verify_valet_token(
     payload_b64, sig_b64 = parts
     try:
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
-        expected_sig = hmac.new(
-            secret.encode("utf-8"), payload_bytes, hashlib.sha256
-        ).digest()
+        expected_sig = hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).digest()
         actual_sig = base64.urlsafe_b64decode(sig_b64)
     except Exception as exc:
         raise ValueError("Token decode error") from exc

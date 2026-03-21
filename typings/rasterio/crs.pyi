@@ -1,6 +1,5 @@
 """Minimal type stubs for rasterio.crs."""
 
-
 class CRS:
     def __str__(self) -> str: ...
     def __bool__(self) -> bool: ...

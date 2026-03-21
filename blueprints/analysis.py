@@ -69,7 +69,7 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "POST, OPTIONS",
                 "Access-Control-Allow-Headers": "Content-Type",
-            }
+            },
         )
 
     try:
@@ -97,15 +97,12 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
             context_lines.append(f"NDVI (current): {context['ndvi_mean']:.3f}")
         if context.get("ndvi_previous") is not None:
             context_lines.append(f"NDVI (previous): {context['ndvi_previous']:.3f}")
-            ndvi_change = context['ndvi_mean'] - context['ndvi_previous']
-            pct = ndvi_change / context['ndvi_previous'] * 100
-            context_lines.append(
-                f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)"
-            )
+            ndvi_change = context["ndvi_mean"] - context["ndvi_previous"]
+            pct = ndvi_change / context["ndvi_previous"] * 100
+            context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
         if context.get("ndvi_min") is not None:
             context_lines.append(
-                f"NDVI Range: {context['ndvi_min']:.3f}"
-                f" to {context['ndvi_max']:.3f}"
+                f"NDVI Range: {context['ndvi_min']:.3f} to {context['ndvi_max']:.3f}"
             )
 
         context_lines.append("\n=== Weather Context ===")
@@ -149,7 +146,7 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
                     "prompt": prompt,
                     "stream": False,
                     "temperature": 0.3,
-                }
+                },
             )
             response.raise_for_status()
 
@@ -160,7 +157,7 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
 
         # Parse JSON from response
         try:
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if json_match:
                 analysis = json.loads(json_match.group())
             else:
@@ -172,7 +169,7 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
             json.dumps(analysis),
             status_code=200,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     except Exception as e:
@@ -187,11 +184,11 @@ def _default_analysis(text: str) -> dict[str, Any]:
                 "category": "analysis",
                 "severity": "normal",
                 "description": text[:150],
-                "recommendation": "Review full analysis above"
+                "recommendation": "Review full analysis above",
             }
         ],
         "summary": text[:200],
-        "score": 0.5
+        "score": 0.5,
     }
 
 
@@ -270,48 +267,35 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         if context.get("aoi_name"):
             context_lines.append(f"Area of Interest: {context['aoi_name']}")
         if context.get("date_range_start") and context.get("date_range_end"):
-            start = context['date_range_start']
-            end = context['date_range_end']
-            context_lines.append(
-                f"Analysis Period: {start} to {end}"
-            )
+            start = context["date_range_start"]
+            end = context["date_range_end"]
+            context_lines.append(f"Analysis Period: {start} to {end}")
         if context.get("latitude") and context.get("longitude"):
             context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
-        n_frames = context.get('frame_count', len(ndvi_series))
-        context_lines.append(
-            f"\nObservations: {n_frames} satellite frames analyzed"
-        )
+        n_frames = context.get("frame_count", len(ndvi_series))
+        context_lines.append(f"\nObservations: {n_frames} satellite frames analyzed")
 
         context_lines.append("\n=== NDVI Vegetation Analysis ===")
         if trend_info.get("ndvi_avg") is not None:
             context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
         if trend_info.get("ndvi_min_val") is not None:
-            lo = trend_info['ndvi_min_val']
-            hi = trend_info['ndvi_max_val']
-            context_lines.append(
-                f"NDVI Range: {lo:.3f} to {hi:.3f}"
-            )
+            lo = trend_info["ndvi_min_val"]
+            hi = trend_info["ndvi_max_val"]
+            context_lines.append(f"NDVI Range: {lo:.3f} to {hi:.3f}")
         if trend_info.get("ndvi_volatility"):
-            vol = trend_info['ndvi_volatility']
-            std = trend_info.get('ndvi_std_dev', 0)
-            context_lines.append(
-                f"Volatility: {vol} (σ={std:.3f})"
-            )
+            vol = trend_info["ndvi_volatility"]
+            std = trend_info.get("ndvi_std_dev", 0)
+            context_lines.append(f"Volatility: {vol} (σ={std:.3f})")
         if trend_info.get("ndvi_trajectory"):
             context_lines.append(f"Multi-year Trajectory: {trend_info['ndvi_trajectory']}")
         if trend_info.get("ndvi_yoy_avg_change") is not None:
-            yoy = trend_info['ndvi_yoy_avg_change']
-            context_lines.append(
-                f"Avg Year-over-Year Change (same season):"
-                f" {yoy:+.4f}"
-            )
+            yoy = trend_info["ndvi_yoy_avg_change"]
+            context_lines.append(f"Avg Year-over-Year Change (same season): {yoy:+.4f}")
         elif trend_info.get("ndvi_change") is not None:
-            chg = trend_info['ndvi_change']
-            pct = trend_info.get('ndvi_pct_change', 0)
-            context_lines.append(
-                f"Overall Change: {chg:+.3f} ({pct:+.1f}%)"
-            )
+            chg = trend_info["ndvi_change"]
+            pct = trend_info.get("ndvi_pct_change", 0)
+            context_lines.append(f"Overall Change: {chg:+.3f} ({pct:+.1f}%)")
 
         # Season breakdown
         if trend_info.get("ndvi_by_season"):
@@ -326,31 +310,25 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         if trend_info.get("weather_period"):
             context_lines.append(f"Weather data: {trend_info['weather_period']}")
         if trend_info.get("temp_avg") is not None:
-            t_avg = trend_info['temp_avg']
-            t_lo = trend_info.get('temp_min', 0)
-            t_hi = trend_info.get('temp_max', 0)
+            t_avg = trend_info["temp_avg"]
+            t_lo = trend_info.get("temp_min", 0)
+            t_hi = trend_info.get("temp_max", 0)
             context_lines.append(
-                f"Temperature: avg {t_avg:.1f}°C"
-                f" (range {t_lo:.1f} to {t_hi:.1f}°C)"
+                f"Temperature: avg {t_avg:.1f}°C (range {t_lo:.1f} to {t_hi:.1f}°C)"
             )
         if trend_info.get("temp_change") is not None:
-            t_chg = trend_info['temp_change']
-            t_src = trend_info.get('temp_change_source', 'unknown')
-            context_lines.append(
-                f"Temperature Change: {t_chg:+.1f}°C — {t_src}"
-            )
+            t_chg = trend_info["temp_change"]
+            t_src = trend_info.get("temp_change_source", "unknown")
+            context_lines.append(f"Temperature Change: {t_chg:+.1f}°C — {t_src}")
         if trend_info.get("precip_total") is not None:
-            p_tot = trend_info['precip_total']
-            p_avg = trend_info.get('precip_avg', 0)
-            context_lines.append(
-                f"Total Precipitation: {p_tot:.0f}mm"
-                f" (avg {p_avg:.0f}mm/month)"
-            )
+            p_tot = trend_info["precip_total"]
+            p_avg = trend_info.get("precip_avg", 0)
+            context_lines.append(f"Total Precipitation: {p_tot:.0f}mm (avg {p_avg:.0f}mm/month)")
         if trend_info.get("dry_months"):
-            dry = ', '.join(str(m) for m in trend_info['dry_months'])
+            dry = ", ".join(str(m) for m in trend_info["dry_months"])
             context_lines.append(f"Dry months (<10mm): {dry}")
         if trend_info.get("wet_months"):
-            wet = ', '.join(str(m) for m in trend_info['wet_months'])
+            wet = ", ".join(str(m) for m in trend_info["wet_months"])
             context_lines.append(f"Wet months (>150mm): {wet}")
 
         context_lines.append("\n=== Significant Year-over-Year Events ===")
@@ -410,7 +388,7 @@ health) based on the trajectory and data.
                     "stream": False,
                     "temperature": 0.3,
                 },
-                timeout=150.0
+                timeout=150.0,
             )
             response.raise_for_status()
 
@@ -421,7 +399,7 @@ health) based on the trajectory and data.
 
         # Parse JSON from response
         try:
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
             if json_match:
                 analysis = json.loads(json_match.group())
             else:
@@ -436,7 +414,7 @@ health) based on the trajectory and data.
             json.dumps(analysis),
             status_code=200,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"}
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     except Exception as e:
@@ -458,8 +436,7 @@ def _calculate_trends(
     if ndvi_series:
         # All means (including None placeholders for alignment)
         ndvi_means: list[float] = [
-            float(s["mean"]) for s in ndvi_series
-            if s.get("mean") is not None
+            float(s["mean"]) for s in ndvi_series if s.get("mean") is not None
         ]
 
         if len(ndvi_means) >= 2:
@@ -470,10 +447,12 @@ def _calculate_trends(
             # Volatility (standard deviation)
             avg = trends["ndvi_avg"]
             variance = sum((x - avg) ** 2 for x in ndvi_means) / len(ndvi_means)
-            trends["ndvi_std_dev"] = round(variance ** 0.5, 4)
+            trends["ndvi_std_dev"] = round(variance**0.5, 4)
             trends["ndvi_volatility"] = (
-                "High" if trends["ndvi_std_dev"] > 0.15
-                else "Moderate" if trends["ndvi_std_dev"] > 0.08
+                "High"
+                if trends["ndvi_std_dev"] > 0.15
+                else "Moderate"
+                if trends["ndvi_std_dev"] > 0.08
                 else "Low"
             )
 
@@ -503,14 +482,16 @@ def _calculate_trends(
                         direction = "recovery" if delta > 0 else "decline"
                         events.append(
                             f"{season_key.capitalize()} {pairs[idx][0]}: "
-                            f"NDVI {direction} of {delta:+.3f} vs {pairs[idx-1][0]}"
+                            f"NDVI {direction} of {delta:+.3f} vs {pairs[idx - 1][0]}"
                         )
 
         if yoy_changes:
             trends["ndvi_yoy_avg_change"] = round(sum(yoy_changes) / len(yoy_changes), 4)
             trends["ndvi_trajectory"] = (
-                "Improving" if trends["ndvi_yoy_avg_change"] > 0.02
-                else "Declining" if trends["ndvi_yoy_avg_change"] < -0.02
+                "Improving"
+                if trends["ndvi_yoy_avg_change"] > 0.02
+                else "Declining"
+                if trends["ndvi_yoy_avg_change"] < -0.02
                 else "Stable"
             )
         elif len(ndvi_means) >= 2:
@@ -525,8 +506,10 @@ def _calculate_trends(
             else:
                 trends["ndvi_pct_change"] = 0.0
             trends["ndvi_trajectory"] = (
-                "Improving" if trends["ndvi_change"] > 0.02
-                else "Declining" if trends["ndvi_change"] < -0.02
+                "Improving"
+                if trends["ndvi_change"] > 0.02
+                else "Declining"
+                if trends["ndvi_change"] < -0.02
                 else "Stable"
             )
 
@@ -548,16 +531,12 @@ def _calculate_trends(
 
     if weather_series:
         temps: list[float] = [
-            float(s["temperature"]) for s in weather_series
-            if s.get("temperature") is not None
+            float(s["temperature"]) for s in weather_series if s.get("temperature") is not None
         ]
         precips: list[float] = [
-            float(s["precipitation"]) for s in weather_series
-            if s.get("precipitation") is not None
+            float(s["precipitation"]) for s in weather_series if s.get("precipitation") is not None
         ]
-        months: list[str] = [
-            str(s["month"]) for s in weather_series if s.get("month")
-        ]
+        months: list[str] = [str(s["month"]) for s in weather_series if s.get("month")]
 
         if len(temps) >= 2:
             trends["temp_avg"] = round(sum(temps) / len(temps), 1)
@@ -571,9 +550,8 @@ def _calculate_trends(
                 try:
                     first_parts = months[0].split("-")
                     last_parts = months[-1].split("-")
-                    real_span = (
-                        (int(last_parts[0]) - int(first_parts[0])) * 12
-                        + (int(last_parts[1]) - int(first_parts[1]))
+                    real_span = (int(last_parts[0]) - int(first_parts[0])) * 12 + (
+                        int(last_parts[1]) - int(first_parts[1])
                     )
                 except (ValueError, IndexError):
                     real_span = len(months)
@@ -615,4 +593,3 @@ def _calculate_trends(
                 trends["wet_months"] = wet_months[:6]
 
     return trends
-

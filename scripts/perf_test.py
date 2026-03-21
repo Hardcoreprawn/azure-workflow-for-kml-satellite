@@ -241,15 +241,20 @@ def main() -> None:
     parser.add_argument("--max-items", type=int, default=5, help="Max STAC results per AOI")
     parser.add_argument("--max-cloud", type=float, default=30.0, help="Max cloud cover %%")
     parser.add_argument(
-        "--date-range", type=int, default=90,
+        "--date-range",
+        type=int,
+        default=90,
         help="Look back N days from today for imagery",
     )
     parser.add_argument(
-        "--download-top", type=int, default=1,
+        "--download-top",
+        type=int,
+        default=1,
         help="Download the top N results per AOI (0 = search only)",
     )
     parser.add_argument(
-        "--compare-assets", action="store_true",
+        "--compare-assets",
+        action="store_true",
         help="Search with multiple asset keys and compare availability/sizes",
     )
     args = parser.parse_args()
@@ -289,15 +294,16 @@ def main() -> None:
         date_end=date_end,
     )
     print(
-        f"  Filters: cloud < {args.max_cloud}%,"
-        f" dates {date_start:%Y-%m-%d} → {date_end:%Y-%m-%d}"
+        f"  Filters: cloud < {args.max_cloud}%, dates {date_start:%Y-%m-%d} → {date_end:%Y-%m-%d}"
     )
     print(f"  Asset key: {args.asset_key}, max items: {args.max_items}")
 
-    provider = PlanetaryComputerProvider(config={
-        "asset_key": args.asset_key,
-        "max_items": args.max_items,
-    })
+    provider = PlanetaryComputerProvider(
+        config={
+            "asset_key": args.asset_key,
+            "max_items": args.max_items,
+        }
+    )
 
     all_results: dict[str, list[SearchResult]] = {}
     search_times: dict[str, float] = {}
@@ -337,8 +343,10 @@ def main() -> None:
             if results:
                 r = results[0]
                 media = r.extra.get("media_type", "?")
-                print(f"            top scene: {r.scene_id}  cloud: {r.cloud_cover_pct:.1f}%  "
-                      f"media: {media}")
+                print(
+                    f"            top scene: {r.scene_id}  cloud: {r.cloud_cover_pct:.1f}%  "
+                    f"media: {media}"
+                )
 
     # -----------------------------------------------------------------------
     # Phase 3: Download & Validate

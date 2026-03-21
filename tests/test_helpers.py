@@ -21,6 +21,7 @@ from treesight.parsers import ensure_closed
 # ensure_closed
 # ---------------------------------------------------------------------------
 
+
 class TestEnsureClosed:
     """Coordinate ring closure utility."""
 
@@ -57,6 +58,7 @@ class TestEnsureClosed:
 # sanitise
 # ---------------------------------------------------------------------------
 
+
 class TestSanitise:
     def test_strips_whitespace(self):
         assert sanitise("  hello  ") == "hello"
@@ -76,6 +78,7 @@ class TestSanitise:
 # ---------------------------------------------------------------------------
 # error_response
 # ---------------------------------------------------------------------------
+
 
 class TestErrorResponse:
     def test_returns_http_response(self):
@@ -100,6 +103,7 @@ class TestErrorResponse:
 # cors_preflight
 # ---------------------------------------------------------------------------
 
+
 class TestCorsPreflight:
     def test_returns_204(self):
         resp = cors_preflight()
@@ -115,21 +119,28 @@ class TestCorsPreflight:
 # EMAIL_RE
 # ---------------------------------------------------------------------------
 
+
 class TestEmailRegex:
-    @pytest.mark.parametrize("email", [
-        "user@example.com",
-        "a@b.co",
-        "foo.bar+tag@domain.org",
-    ])
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "user@example.com",
+            "a@b.co",
+            "foo.bar+tag@domain.org",
+        ],
+    )
     def test_valid_emails(self, email: str):
         assert EMAIL_RE.match(email)
 
-    @pytest.mark.parametrize("email", [
-        "",
-        "no-at-sign",
-        "@missing-local.com",
-        "spaces in@email.com",
-        "user@",
-    ])
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "",
+            "no-at-sign",
+            "@missing-local.com",
+            "spaces in@email.com",
+            "user@",
+        ],
+    )
     def test_invalid_emails(self, email: str):
         assert not EMAIL_RE.match(email)

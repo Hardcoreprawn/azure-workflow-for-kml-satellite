@@ -21,9 +21,8 @@ from blueprints.analysis import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_ndvi_entry(
-    year: int, season: str, mean: float, *, start: str = ""
-) -> dict[str, Any]:
+
+def _make_ndvi_entry(year: int, season: str, mean: float, *, start: str = "") -> dict[str, Any]:
     """Build an NDVI timeseries entry matching the frontend format."""
     return {
         "date": start or f"{year}-06-01",
@@ -44,6 +43,7 @@ def _make_weather_entry(month: str, temp: float, precip: float) -> dict[str, Any
 # ---------------------------------------------------------------------------
 # NDVI trend tests
 # ---------------------------------------------------------------------------
+
 
 class TestNdviTrends:
     """Verify NDVI trend calculations are seasonally-aware."""
@@ -122,8 +122,14 @@ class TestNdviTrends:
         """Frames with null NDVI should not crash or skew averages."""
         series: list[dict[str, Any]] = [
             _make_ndvi_entry(2020, "summer", 0.55),
-            {"date": "2020-12-01", "season": "winter", "year": 2020,
-             "mean": None, "min": None, "max": None},
+            {
+                "date": "2020-12-01",
+                "season": "winter",
+                "year": 2020,
+                "mean": None,
+                "min": None,
+                "max": None,
+            },
             _make_ndvi_entry(2021, "summer", 0.57),
         ]
         result = _calculate_trends(series, [])
@@ -145,6 +151,7 @@ class TestNdviTrends:
 # ---------------------------------------------------------------------------
 # Weather trend tests
 # ---------------------------------------------------------------------------
+
 
 class TestWeatherTrends:
     """Verify weather analysis uses actual month labels."""
@@ -206,6 +213,7 @@ class TestWeatherTrends:
 # Combined (NDVI + Weather) tests
 # ---------------------------------------------------------------------------
 
+
 class TestCombinedTrends:
     """Test that combined NDVI + weather data produces coherent analysis."""
 
@@ -219,7 +227,10 @@ class TestCombinedTrends:
             ndvi.append(_make_ndvi_entry(yr, "summer", 0.60 + (yr - 2020) * 0.01))
             ndvi.append(_make_ndvi_entry(yr, "autumn", 0.35 + (yr - 2020) * 0.01))
             for m, temp, precip in [
-                (1, 3.0, 70), (4, 11.0, 50), (7, 21.0, 35), (10, 9.0, 65),
+                (1, 3.0, 70),
+                (4, 11.0, 50),
+                (7, 21.0, 35),
+                (10, 9.0, 65),
             ]:
                 weather.append(_make_weather_entry(f"{yr}-{m:02d}", temp, precip))
 
