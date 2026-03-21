@@ -26,6 +26,7 @@ permissions:
   contents: read
   id-token: write
   packages: write          # push to GHCR
+  security-events: write   # upload Trivy SARIF
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -67,6 +68,22 @@ jobs:
           docker build -t "${IMAGE_NAME}:${{ github.sha }}" -t "${IMAGE_NAME}:latest" .
           docker push "${IMAGE_NAME}:${{ github.sha }}"
           docker push "${IMAGE_NAME}:latest"
+
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image_uri }}
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"        # warn, don't block deploy (set to "1" to gate)
+
+      - name: Upload Trivy image SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
 
   # ── 2. Deploy infrastructure with OpenTofu ─────────────────
   deploy-infra:

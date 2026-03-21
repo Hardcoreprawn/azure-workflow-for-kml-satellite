@@ -1,0 +1,174 @@
+# ─────────────────────────────────────────────────────────────
+# Security — SAST, dependency audit, container & IaC scanning
+#
+# Runs on every PR and weekly.  Results upload to GitHub
+# Security → Code scanning so findings appear inline on PRs.
+# ─────────────────────────────────────────────────────────────
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 07:00 UTC (after CodeQL at 06:00)
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to Code Scanning
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ── 1. Semgrep — fast Python SAST ──────────────────────────
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config auto \
+            --config p/python \
+            --config p/owasp-top-ten \
+            --config p/security-audit \
+            --sarif --output semgrep.sarif \
+            --error \
+            --exclude tests/
+        env:
+          # Optional — set SEMGREP_APP_TOKEN in repo secrets for
+          # Semgrep Cloud Platform integration (team dashboards, etc.)
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ── 2. pip-audit — Python dependency CVEs ───────────────────
+  pip-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run pip-audit
+        run: |
+          uv run pip-audit \
+            --strict \
+            --desc \
+            --format json \
+            --output pip-audit.json || true
+
+      - name: Convert to SARIF & check
+        run: |
+          uv run python -c "
+          import json, sys
+          raw = json.load(open('pip-audit.json'))
+          deps = raw.get('dependencies', [])
+          vulns = [d for d in deps if d.get('vulns')]
+          if not vulns:
+              print('No vulnerabilities found')
+              sys.exit(0)
+
+          # Build SARIF
+          rules, results = [], []
+          seen = set()
+          for dep in vulns:
+              for v in dep['vulns']:
+                  vid = v['id']
+                  if vid not in seen:
+                      seen.add(vid)
+                      rules.append({
+                          'id': vid,
+                          'shortDescription': {'text': f\"{dep['name']} {dep['version']}: {vid}\"},
+                          'helpUri': v.get('more_info', f'https://osv.dev/vulnerability/{vid}'),
+                      })
+                  results.append({
+                      'ruleId': vid,
+                      'level': 'error',
+                      'message': {'text': f\"Vulnerability {vid} in {dep['name']}=={dep['version']}: {v.get('description', vid)}. Fix: upgrade to {v.get('fix_versions', ['unknown'])}\"},
+                      'locations': [{'physicalLocation': {'artifactLocation': {'uri': 'pyproject.toml'}, 'region': {'startLine': 1}}}],
+                  })
+
+          sarif = {
+              '\$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
+              'version': '2.1.0',
+              'runs': [{
+                  'tool': {'driver': {'name': 'pip-audit', 'rules': rules}},
+                  'results': results,
+              }],
+          }
+          with open('pip-audit.sarif', 'w') as f:
+              json.dump(sarif, f, indent=2)
+          print(f'Found {len(results)} vulnerability/ies')
+          sys.exit(1)
+          "
+
+      - name: Upload pip-audit SARIF
+        if: always() && hashFiles('pip-audit.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pip-audit.sarif
+          category: pip-audit
+
+  # ── 3. Trivy — IaC misconfiguration scanning ───────────────
+  trivy-iac:
+    name: Trivy IaC Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy (IaC)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: infra/tofu
+          format: sarif
+          output: trivy-iac.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "1"
+
+      - name: Upload Trivy IaC SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+
+  # ── 4. Trivy — filesystem (Python deps + Dockerfile) ───────
+  trivy-fs:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy (filesystem)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+
+      - name: Upload Trivy FS SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
