@@ -138,18 +138,16 @@ jobs:
           FUNC_RG=$(tofu output -raw resource_group_name)
           FUNC_NAME=$(tofu output -raw function_app_name)
 
-          az webapp config container set \
+          az functionapp config set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
-            --docker-registry-server-url "https://ghcr.io" \
-            --docker-custom-image-name "${{ needs.build-image.outputs.image_uri }}"
+            --linux-fx-version "DOCKER|${{ needs.build-image.outputs.image_uri }}"
 
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
             --settings \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
-              DOCKER_REGISTRY_SERVER_URL=ghcr.io
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false
 
   # ── 3. Deploy static website ───────────────────────────────
   deploy-website:
