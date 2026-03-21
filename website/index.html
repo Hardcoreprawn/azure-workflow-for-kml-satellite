@@ -229,6 +229,24 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 /* --- Contract warning --- */
 .contract-warning{background:rgba(210,153,34,.1);color:var(--c-orange);border:1px solid rgba(210,153,34,.3);padding:10px 16px;border-radius:var(--radius);font-size:.875rem;margin-bottom:16px;display:none}
 .contract-warning.show{display:block}
+
+/* --- Onboarding banner --- */
+.onboard-banner{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;font-size:.875rem;flex-wrap:wrap}
+.onboard-banner .onboard-icon{font-size:1.5rem;flex-shrink:0}
+.onboard-banner .onboard-text{flex:1;min-width:200px}
+.onboard-banner .onboard-text strong{color:var(--c-text)}
+.onboard-banner .onboard-text p{color:var(--c-muted);margin:2px 0 0;font-size:.8rem}
+.onboard-banner .btn-sm{padding:6px 16px;font-size:.8rem;border-radius:var(--radius);font-weight:600;white-space:nowrap}
+
+/* --- File drop zone --- */
+.drop-zone{border:2px dashed var(--c-border);border-radius:var(--radius);padding:20px;text-align:center;color:var(--c-muted);font-size:.85rem;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:12px;position:relative}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--c-accent);background:rgba(88,166,255,.05)}
+.drop-zone .drop-icon{font-size:1.5rem;margin-bottom:6px}
+.drop-zone .drop-text strong{color:var(--c-text)}
+.drop-zone .drop-hint{font-size:.75rem;margin-top:4px;color:var(--c-muted)}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop-zone .file-name{color:var(--c-green);font-weight:500;margin-top:6px;font-size:.8rem}
+.drop-divider{text-align:center;color:var(--c-muted);font-size:.75rem;margin:4px 0 12px;text-transform:uppercase;letter-spacing:.08em}
 </style>
 </head>
 <body>
@@ -243,6 +261,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <ul>
       <li><a href="#problem">Overview</a></li>
       <li><a href="#demo">Demo</a></li>
+      <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#early-access">Early Access</a></li>
@@ -293,6 +312,14 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   <div class="container">
     <div class="section-label">Try It</div>
     <h2>Live Demo</h2>
+    <div class="onboard-banner" id="onboard-banner">
+      <span class="onboard-icon">🗺️</span>
+      <div class="onboard-text">
+        <strong>New to KML files?</strong>
+        <p>Learn how to draw an area of interest in Google Earth Pro and export it as KML — no GIS experience needed.</p>
+      </div>
+      <a href="/kml-guide.html" class="btn btn-secondary btn-sm">Read the Guide</a>
+    </div>
     <div id="contract-warning" class="contract-warning">
       API contract version mismatch. Demo submissions are disabled until the backend is updated.
     </div>
@@ -307,9 +334,18 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <div class="demo-layout" id="demo-layout">
       <div id="demo-input-col">
         <div class="demo-form">
+          <div class="drop-zone" id="drop-zone">
+            <div class="drop-icon">📁</div>
+            <div class="drop-text"><strong>Drop a .kml or .kmz file here</strong>, or click to browse</div>
+            <div class="drop-hint">Supports KML and KMZ files up to 5 MB</div>
+            <div class="file-name" id="drop-file-name"></div>
+            <input type="file" id="file-input" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
+          </div>
+          <div class="drop-divider">— or paste KML text —</div>
           <label for="demo-kml">KML Content</label>
           <textarea id="demo-kml" placeholder="Paste your KML content here, or use the sample below…"></textarea>
           <button class="btn btn-primary" id="demo-submit" style="width:100%">Process KML</button>
+          <p style="font-size:.7rem;color:var(--c-muted);text-align:center;margin-top:8px">Your data is automatically deleted after 30 days. <a href="/privacy.html">Privacy Policy</a></p>
           <div id="demo-status" class="demo-status"></div>
           <div id="pipeline-progress">
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML…</div>
@@ -426,6 +462,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">The demo map shows real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time. The pipeline uses the same composite search strategy in production.</div></div>
       <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
       <div class="faq-item"><div class="faq-q">How is the pipeline deployed?</div><div class="faq-a">Azure Functions on Container Apps with Durable Functions orchestration, Azure Blob Storage, Event Grid triggers, and a Static Web App for the frontend. All managed via OpenTofu.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML/KMZ files and analysis results are automatically deleted after <strong>30 days</strong>. Server logs are retained for 90 days for debugging. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a> for full details.</div></div>
     </div>
   </div>
 </section>
@@ -452,7 +489,8 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 <!-- Footer -->
 <footer>
   <div class="container">
-    <p>&copy; 2025 TreeSight. API contract version: <span id="contract-version">—</span></p>
+    <p>&copy; 2025 TreeSight. API contract version: <span id="contract-version">—</span>
+    <br><a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
   </div>
 </footer>
 
@@ -891,6 +929,130 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     const item = e.target.closest('.faq-item');
     if (item) item.classList.toggle('open');
   });
+
+  /* --- File upload (drag-drop + click) --- */
+  (function() {
+    var dropZone = document.getElementById('drop-zone');
+    var fileInput = document.getElementById('file-input');
+    var fileNameEl = document.getElementById('drop-file-name');
+    var textarea = document.getElementById('demo-kml');
+    var MAX_SIZE = 5 * 1024 * 1024; /* 5 MB */
+
+    function handleFile(file) {
+      if (!file) return;
+      if (file.size > MAX_SIZE) {
+        fileNameEl.textContent = 'File too large (max 5 MB)';
+        fileNameEl.style.color = 'var(--c-red)';
+        return;
+      }
+      var name = file.name.toLowerCase();
+      if (name.endsWith('.kmz')) {
+        readKmz(file);
+      } else if (name.endsWith('.kml')) {
+        readKml(file);
+      } else {
+        fileNameEl.textContent = 'Unsupported file type — use .kml or .kmz';
+        fileNameEl.style.color = 'var(--c-red)';
+      }
+    }
+
+    function readKml(file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        textarea.value = e.target.result;
+        fileNameEl.textContent = '✓ ' + file.name;
+        fileNameEl.style.color = '';
+      };
+      reader.onerror = function() {
+        fileNameEl.textContent = 'Error reading file';
+        fileNameEl.style.color = 'var(--c-red)';
+      };
+      reader.readAsText(file);
+    }
+
+    function readKmz(file) {
+      fileNameEl.textContent = 'Reading KMZ…';
+      fileNameEl.style.color = '';
+      var reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          var blob = new Blob([e.target.result]);
+          var ds = new DecompressionStream('deflate-raw');
+          /* KMZ is a ZIP — find the local file header and extract */
+          var buf = await blob.arrayBuffer();
+          var view = new DataView(buf);
+          var kmlContent = null;
+
+          /* Walk ZIP local file headers */
+          var offset = 0;
+          while (offset < buf.byteLength - 4) {
+            var sig = view.getUint32(offset, true);
+            if (sig !== 0x04034b50) break;  /* PK\x03\x04 */
+            var compMethod = view.getUint16(offset + 8, true);
+            var compSize = view.getUint32(offset + 18, true);
+            var uncompSize = view.getUint32(offset + 22, true);
+            var fnLen = view.getUint16(offset + 26, true);
+            var extraLen = view.getUint16(offset + 28, true);
+            var fnBytes = new Uint8Array(buf, offset + 30, fnLen);
+            var fn = new TextDecoder().decode(fnBytes);
+            var dataStart = offset + 30 + fnLen + extraLen;
+
+            if (fn.toLowerCase().endsWith('.kml')) {
+              var compressed = new Uint8Array(buf, dataStart, compSize);
+              if (compMethod === 0) {
+                /* Stored (no compression) */
+                kmlContent = new TextDecoder().decode(compressed);
+              } else if (compMethod === 8) {
+                /* Deflated */
+                var stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+                var decompressed = await new Response(stream).text();
+                kmlContent = decompressed;
+              }
+              break;
+            }
+            offset = dataStart + compSize;
+          }
+
+          if (kmlContent) {
+            textarea.value = kmlContent;
+            fileNameEl.textContent = '✓ ' + file.name;
+            fileNameEl.style.color = '';
+          } else {
+            fileNameEl.textContent = 'No .kml found inside KMZ archive';
+            fileNameEl.style.color = 'var(--c-red)';
+          }
+        } catch (err) {
+          console.error('KMZ extraction error:', err);
+          fileNameEl.textContent = 'Could not extract KMZ — try pasting the KML text instead';
+          fileNameEl.style.color = 'var(--c-red)';
+        }
+      };
+      reader.onerror = function() {
+        fileNameEl.textContent = 'Error reading file';
+        fileNameEl.style.color = 'var(--c-red)';
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    /* Drag events */
+    dropZone.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', function() {
+      dropZone.classList.remove('dragover');
+    });
+    dropZone.addEventListener('drop', function(e) {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+
+    /* Click / file input */
+    fileInput.addEventListener('change', function() {
+      if (fileInput.files.length) handleFile(fileInput.files[0]);
+    });
+  })();
 
   /* --- Timelapse Visualiser — Composite: NAIP detail + Sentinel-2 temporal --- */
   const PC_API = 'https://planetarycomputer.microsoft.com/api/data/v1';

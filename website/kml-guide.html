@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KML Guide — TreeSight</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--c-bg:#0c1117;--c-surface:#161b22;--c-border:#30363d;--c-text:#e6edf3;--c-muted:#8b949e;--c-accent:#58a6ff;--c-green:#3fb950;--c-red:#f85149;--c-orange:#d29922;--c-purple:#bc8cff;--radius:8px;--shadow:0 2px 12px rgba(0,0,0,.4)}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--c-bg);color:var(--c-text);line-height:1.6;overflow-x:hidden}
+a{color:var(--c-accent);text-decoration:none}a:hover{text-decoration:underline}
+.container{max-width:780px;margin:0 auto;padding:0 24px}
+
+/* --- Nav --- */
+nav{position:sticky;top:0;z-index:1000;background:rgba(12,17,23,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--c-border);padding:12px 0}
+nav .container{max-width:1120px;display:flex;align-items:center;justify-content:space-between}
+nav .logo{font-weight:700;font-size:1.25rem;display:flex;align-items:center;gap:8px}
+nav .logo svg{width:24px;height:24px;fill:var(--c-accent)}
+nav ul{list-style:none;display:flex;gap:24px}
+nav ul a{color:var(--c-muted);font-size:.875rem;transition:color .15s}
+nav ul a:hover{color:var(--c-text);text-decoration:none}
+
+/* --- Content --- */
+.hero-sm{padding:60px 0 40px;text-align:center}
+.hero-sm h1{font-size:2rem;font-weight:700;letter-spacing:-.02em}
+.hero-sm p{color:var(--c-muted);font-size:1rem;max-width:560px;margin:12px auto 0}
+
+.guide-section{padding:40px 0}
+.guide-section + .guide-section{border-top:1px solid var(--c-border)}
+.section-label{text-transform:uppercase;font-size:.75rem;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:8px}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+
+.step-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.step-card h3{margin-top:0;color:var(--c-accent)}
+.step-card p{margin:6px 0}
+.step-number{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--c-accent);color:#fff;font-size:.85rem;font-weight:700;margin-right:8px;flex-shrink:0}
+
+.tip{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-green);margin:16px 0}
+.tip::before{content:'💡 ';font-size:1rem}
+
+.warning{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-orange);margin:16px 0}
+.warning::before{content:'⚠️ ';font-size:1rem}
+
+code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:2px 6px;font-size:.85rem;font-family:'SF Mono',SFMono-Regular,Consolas,monospace}
+
+.btn{display:inline-block;padding:10px 24px;border-radius:var(--radius);font-weight:600;font-size:.875rem;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--c-accent);color:#fff}.btn-primary:hover{background:#79c0ff;text-decoration:none}
+.btn-secondary{background:transparent;color:var(--c-accent);border:1px solid var(--c-accent)}.btn-secondary:hover{background:rgba(88,166,255,.1);text-decoration:none}
+.cta-row{display:flex;gap:12px;justify-content:center;margin-top:28px;flex-wrap:wrap}
+
+footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;color:var(--c-muted);font-size:.8rem}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <a href="/" class="logo" style="text-decoration:none;color:var(--c-text)">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      TreeSight
+    </a>
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/#demo">Demo</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+      <li><a href="/#early-access">Early Access</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero-sm">
+  <div class="container">
+    <h1>How to Create a KML File</h1>
+    <p>A step-by-step guide to drawing your area of interest and exporting it as KML for use with TreeSight.</p>
+  </div>
+</header>
+
+<main>
+
+<!-- What is KML? -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Background</div>
+    <h2>What is KML?</h2>
+    <p><strong style="color:var(--c-text)">KML (Keyhole Markup Language)</strong> is an XML-based format for geographic data. It's the standard format used by Google Earth, and it's what TreeSight uses to define your area of interest.</p>
+    <p>A KML file contains one or more <strong style="color:var(--c-text)">polygons</strong> — shapes drawn on the map that define exactly where you want satellite imagery analysed. TreeSight also supports <strong style="color:var(--c-text)">KMZ</strong> files, which are compressed archives containing KML.</p>
+    <div class="tip">You don't need any GIS experience. If you can draw a shape on Google Maps, you can create a KML file.</div>
+  </div>
+</section>
+
+<!-- Recommended tool -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Recommended Tool</div>
+    <h2>Google Earth Pro (Free)</h2>
+    <p>We recommend <strong style="color:var(--c-text)">Google Earth Pro</strong> — it's free, runs on Windows, macOS, and Linux, and makes it easy to draw polygons and export KML.</p>
+    <ol>
+      <li>Download from <strong style="color:var(--c-text)">google.com/earth/about/versions</strong> — choose "Google Earth Pro on desktop"</li>
+      <li>Install and open the application</li>
+      <li>Sign in with a Google account (or skip — it's optional)</li>
+    </ol>
+    <div class="tip">Already have QGIS, ArcGIS, or another GIS tool? Any software that exports standard KML polygons will work with TreeSight.</div>
+  </div>
+</section>
+
+<!-- Step-by-step -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Step by Step</div>
+    <h2>Creating Your KML File</h2>
+
+    <div class="step-card">
+      <h3><span class="step-number">1</span> Navigate to your area</h3>
+      <p>Use the search bar in Google Earth Pro to find the area you're interested in. You can search by place name, coordinates, or simply zoom and pan to the right location.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">2</span> Draw a polygon</h3>
+      <p>Click <strong style="color:var(--c-text)">Add → Polygon</strong> in the menu bar (or press <code>Ctrl+Shift+G</code>). A dialog box will appear.</p>
+      <p>Give your polygon a name (e.g., "Farm boundary" or "Forest plot"), then click on the map to place each corner of your shape. Click the first point again to close the polygon.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">3</span> Refine your selection</h3>
+      <p>Drag the corner points to adjust the shape. You can also right-click on an edge to add more points for a more precise boundary.</p>
+      <p>When you're happy with the shape, click <strong style="color:var(--c-text)">OK</strong> in the dialog.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">4</span> Save as KML</h3>
+      <p>Right-click the polygon in the <strong style="color:var(--c-text)">Places</strong> panel on the left, then select <strong style="color:var(--c-text)">Save Place As…</strong></p>
+      <p>In the save dialog:</p>
+      <ul>
+        <li>Choose <strong style="color:var(--c-text)">KML</strong> or <strong style="color:var(--c-text)">KMZ</strong> from the "Save as type" dropdown</li>
+        <li>Pick a location on your computer and click <strong style="color:var(--c-text)">Save</strong></li>
+      </ul>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">5</span> Upload to TreeSight</h3>
+      <p>Go to the <a href="/#demo">Live Demo</a> section, drag your KML/KMZ file onto the upload area (or paste the KML text), and click <strong style="color:var(--c-text)">Run Pipeline</strong>.</p>
+      <p>TreeSight will extract the polygons, find matching satellite imagery, and deliver your analysis in minutes.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Tips -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Tips &amp; Limits</div>
+    <h2>Getting the Best Results</h2>
+
+    <h3>Polygon size</h3>
+    <p>TreeSight works best with areas between <strong style="color:var(--c-text)">1 hectare and 10,000 hectares</strong>. Very small polygons may not intersect enough satellite tiles; very large ones may take longer to process.</p>
+
+    <h3>Multiple polygons</h3>
+    <p>You can include multiple polygons in a single KML file. TreeSight will process each one individually and return results for all of them.</p>
+
+    <h3>Coordinate system</h3>
+    <p>KML files always use <strong style="color:var(--c-text)">WGS 84 (EPSG:4326)</strong> coordinates. Google Earth Pro handles this automatically — no manual CRS configuration needed.</p>
+
+    <div class="warning">Avoid self-intersecting polygons (figure-eight shapes). TreeSight validates geometry and will reject invalid shapes with a clear error message.</div>
+
+    <h3>KML vs KMZ</h3>
+    <p><strong style="color:var(--c-text)">KML</strong> is plain XML text — you can open it in any text editor. <strong style="color:var(--c-text)">KMZ</strong> is a compressed ZIP archive containing KML and optional assets. TreeSight supports both.</p>
+
+    <h3>Alternative tools</h3>
+    <ul>
+      <li><strong style="color:var(--c-text)">Google My Maps</strong> — draw shapes in your browser, export as KML</li>
+      <li><strong style="color:var(--c-text)">QGIS</strong> — free professional GIS, export any vector layer as KML</li>
+      <li><strong style="color:var(--c-text)">geojson.io</strong> — draw polygons online, then convert GeoJSON to KML</li>
+    </ul>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="guide-section" style="text-align:center">
+  <div class="container">
+    <h2>Ready to try it?</h2>
+    <p>Upload your KML file and see satellite analysis in minutes.</p>
+    <div class="cta-row">
+      <a href="/#demo" class="btn btn-primary">Try the Demo</a>
+      <a href="/#early-access" class="btn btn-secondary">Request Early Access</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2025 TreeSight. <a href="/">Back to home</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
