@@ -324,6 +324,14 @@ resource "azapi_resource" "function_app" {
           {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
+          },
+          {
+            name  = "DOCKER_REGISTRY_SERVER_URL"
+            value = "https://ghcr.io"
+          },
+          {
+            name  = "WEBSITES_ENABLE_APP_SERVICE_STORAGE"
+            value = "false"
           }
         ], var.enable_azure_ai ? [
           {
