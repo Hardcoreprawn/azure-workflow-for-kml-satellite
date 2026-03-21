@@ -13,8 +13,14 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_preflight, error_response
 from treesight.ai import generate_analysis
+from treesight.security.rate_limit import ai_limiter, get_client_ip
 
 bp = func.Blueprint()
+
+# Maximum size (bytes) for the JSON body on AI endpoints to prevent cost abuse
+_MAX_AI_BODY_BYTES = 32_768  # 32 KiB
+# Maximum number of NDVI timeseries entries
+_MAX_TIMESERIES_ENTRIES = 120
 
 
 @bp.route(route="frame-analysis", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -64,6 +70,13 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc))
+
+    if not ai_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Rate limit exceeded — try again shortly")
+
+    raw_body = req.get_body()
+    if len(raw_body) > _MAX_AI_BODY_BYTES:
+        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)")
 
     try:
         body = req.get_json()
@@ -218,6 +231,13 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError as exc:
         return error_response(401, str(exc))
 
+    if not ai_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Rate limit exceeded — try again shortly")
+
+    raw_body = req.get_body()
+    if len(raw_body) > _MAX_AI_BODY_BYTES:
+        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)")
+
     try:
         body = req.get_json()
     except ValueError:
@@ -228,9 +248,15 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     if not context or not context.get("ndvi_timeseries"):
         return error_response(400, "Missing 'context' with ndvi_timeseries")
 
+    ndvi_ts = context.get("ndvi_timeseries", [])
+    if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
+        return error_response(
+            400, f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries"
+        )
+
     try:
         # Extract timeseries data
-        ndvi_series = context.get("ndvi_timeseries", [])
+        ndvi_series = ndvi_ts
         weather_series = context.get("weather_timeseries", [])
 
         # Calculate trend statistics

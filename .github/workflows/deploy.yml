@@ -143,11 +143,18 @@ jobs:
             --resource-group "$FUNC_RG" \
             --image "${{ needs.build-image.outputs.image_uri }}"
 
+          # Read CIAM config from tfvars (body is ignore_changes in tofu)
+          CIAM_TENANT=$(grep 'ciam_tenant_name' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
+          CIAM_CLIENT=$(grep 'ciam_client_id' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
+
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
             --settings \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false
+              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              CIAM_TENANT_NAME="$CIAM_TENANT" \
+              CIAM_CLIENT_ID="$CIAM_CLIENT" \
+              CIAM_AUDIENCE="$CIAM_CLIENT"
 
   # ── 3. Deploy static website ───────────────────────────────
   deploy-website:

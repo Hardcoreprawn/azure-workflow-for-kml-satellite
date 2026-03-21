@@ -19,6 +19,7 @@ from treesight.constants import (
     DEFAULT_OUTPUT_CONTAINER,
     PIPELINE_PAYLOADS_CONTAINER,
 )
+from treesight.security.rate_limit import demo_limiter, get_client_ip
 from treesight.security.valet import mint_valet_token, verify_valet_token
 from treesight.storage.client import BlobStorageClient
 
@@ -32,6 +33,9 @@ bp = func.Blueprint()
 def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204)
+
+    if not demo_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Rate limit exceeded — try again later")
 
     try:
         body = req.get_json()

@@ -31,6 +31,7 @@ from treesight.constants import (
 from treesight.errors import ContractError
 from treesight.models.blob_event import BlobEvent
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
+from treesight.security.rate_limit import demo_limiter, get_client_ip
 
 # At runtime resolves to bare ``dict`` (Azure Functions binding requirement);
 # Pylance sees ``dict[str, Any]`` for full type-checking.
@@ -783,6 +784,14 @@ async def demo_process(
     Accepts ``{"kml_content": "..."}`` and returns ``{"instance_id": "..."}``
     which can be polled via ``GET /api/orchestrator/{instance_id}``.
     """
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return _error_response(401, str(exc))
+
+    if not demo_limiter.is_allowed(get_client_ip(req)):
+        return _error_response(429, "Rate limit exceeded — try again later")
+
     try:
         body = req.get_json()
     except ValueError:
