@@ -327,7 +327,7 @@ resource "azapi_resource" "function_app" {
           },
           {
             name  = "DOCKER_REGISTRY_SERVER_URL"
-            value = "https://ghcr.io"
+            value = "ghcr.io"
           },
           {
             name  = "WEBSITES_ENABLE_APP_SERVICE_STORAGE"
