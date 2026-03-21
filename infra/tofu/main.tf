@@ -156,6 +156,47 @@ resource "azurerm_monitor_metric_alert" "high_latency" {
   tags = local.tags
 }
 
+resource "azurerm_consumption_budget_resource_group" "main" {
+  name              = "budget-${local.name_suffix}"
+  resource_group_id = azurerm_resource_group.main.id
+  amount            = var.budget_amount
+  time_grain        = "Monthly"
+
+  time_period {
+    start_date = formatdate("YYYY-MM-01'T'00:00:00Z", timestamp())
+  }
+
+  notification {
+    enabled        = true
+    threshold      = 50
+    operator       = "GreaterThan"
+    threshold_type = "Actual"
+    contact_emails = var.budget_contact_emails
+  }
+
+  notification {
+    enabled        = true
+    threshold      = 80
+    operator       = "GreaterThan"
+    threshold_type = "Actual"
+    contact_emails = var.budget_contact_emails
+  }
+
+  notification {
+    enabled        = true
+    threshold      = 100
+    operator       = "GreaterThan"
+    threshold_type = "Forecasted"
+    contact_emails = var.budget_contact_emails
+  }
+
+  lifecycle {
+    ignore_changes = [time_period]
+  }
+
+  tags = local.tags
+}
+
 resource "azurerm_key_vault" "main" {
   name                          = local.names.key_vault
   location                      = azurerm_resource_group.main.location
@@ -251,7 +292,7 @@ resource "azapi_resource" "function_app" {
     }
   }
 
-  response_export_values = ["id", "name", "identity.principalId", "properties.defaultHostName"]
+  response_export_values = ["id", "name", "properties.defaultHostName"]
 }
 
 resource "azurerm_static_web_app" "main" {
@@ -266,13 +307,13 @@ resource "azurerm_static_web_app" "main" {
 resource "azurerm_role_assignment" "storage_blob_data_contributor" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azapi_resource.function_app.output.identity.principalId
+  principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "key_vault_secrets_user" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = azapi_resource.function_app.output.identity.principalId
+  principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
 resource "azapi_resource" "event_grid_system_topic" {

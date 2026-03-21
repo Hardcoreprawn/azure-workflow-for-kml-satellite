@@ -10,3 +10,5 @@ container_image                   = "mcr.microsoft.com/azure-functions/python:4-
 default_tags = {
   cost-center = "prd"
 }
+budget_amount         = 50
+budget_contact_emails = ["alerts@jablab.dev"]

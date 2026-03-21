@@ -1,5 +1,7 @@
 """Azure Functions entry point — registers all blueprints."""
 
+import logging
+
 import azure.functions as func
 
 from blueprints.analysis import bp as analysis_bp
@@ -7,10 +9,22 @@ from blueprints.contact import bp as contact_bp
 from blueprints.demo import bp as demo_bp
 from blueprints.health import bp as health_bp
 from blueprints.pipeline import bp as pipeline_bp
-from treesight.config import validate_config
+from treesight.config import STORAGE_CONNECTION_STRING, validate_config
 
 # Fail-fast config validation (§8.6)
 validate_config()
+
+# Wire up distributed replay store for valet tokens (M1.8)
+if STORAGE_CONNECTION_STRING:
+    try:
+        from treesight.security import TableReplayStore, set_replay_store
+
+        set_replay_store(TableReplayStore(STORAGE_CONNECTION_STRING))
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not initialise Table replay store; falling back to in-memory",
+            exc_info=True,
+        )
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 

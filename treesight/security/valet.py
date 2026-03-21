@@ -15,9 +15,15 @@ from treesight.config import (
     DEMO_VALET_TOKEN_SECRET,
     DEMO_VALET_TOKEN_TTL_SECONDS,
 )
+from treesight.security.replay import InMemoryReplayStore, ReplayStore
 
-# In-memory replay counter. In production, use distributed storage.
-_replay_counts: dict[str, int] = {}
+_replay_store: ReplayStore = InMemoryReplayStore()
+
+
+def set_replay_store(store: ReplayStore) -> None:
+    """Replace the active replay store (call at startup to use Table Storage)."""
+    global _replay_store
+    _replay_store = store
 
 
 def mint_valet_token(
@@ -92,10 +98,10 @@ def verify_valet_token(
         raise ValueError("Token expired")
 
     nonce = claims.get("nonce", "")
-    count = _replay_counts.get(nonce, 0)
     max_uses = claims.get("max_uses", 3)
+    ttl = int(claims.get("exp", 0) - time.time()) + 60  # keep entry slightly past token expiry
+    count = _replay_store.get_and_increment(nonce, max(ttl, 60))
     if count >= max_uses:
         raise ValueError("Token replay limit exceeded")
-    _replay_counts[nonce] = count + 1
 
     return claims

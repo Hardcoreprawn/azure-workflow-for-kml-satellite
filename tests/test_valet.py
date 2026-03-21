@@ -6,9 +6,10 @@ import time
 
 import pytest
 
+from treesight.security.replay import InMemoryReplayStore
 from treesight.security.valet import (
-    _replay_counts,
     mint_valet_token,
+    set_replay_store,
     verify_valet_token,
 )
 
@@ -17,10 +18,11 @@ SECRET = "test-valet-secret-32chars-min!!"
 
 @pytest.fixture(autouse=True)
 def _clear_replay():
-    """Reset replay counter between tests."""
-    _replay_counts.clear()
+    """Reset replay store to a fresh InMemoryReplayStore between tests."""
+    store = InMemoryReplayStore()
+    set_replay_store(store)
     yield
-    _replay_counts.clear()
+    set_replay_store(InMemoryReplayStore())
 
 
 class TestMintValetToken:

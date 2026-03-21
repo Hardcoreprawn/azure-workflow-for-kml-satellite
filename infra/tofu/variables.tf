@@ -71,3 +71,14 @@ variable "default_tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "budget_amount" {
+  description = "Monthly cost budget for the resource group in the subscription currency."
+  type        = number
+  default     = 10
+}
+
+variable "budget_contact_emails" {
+  description = "Email addresses to receive budget alerts."
+  type        = list(string)
+}
