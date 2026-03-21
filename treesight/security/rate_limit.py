@@ -1,0 +1,62 @@
+"""In-memory per-IP rate limiter for API endpoints.
+
+Uses a sliding-window counter. Suitable for single-instance deployments
+(Azure Functions on Container Apps). For multi-instance, swap to a
+Redis/Table Storage backed store.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+
+
+class RateLimiter:
+    """Thread-safe sliding-window rate limiter keyed by arbitrary string (e.g. IP)."""
+
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
+        self._max = max_requests
+        self._window = window_seconds
+        self._hits: dict[str, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def is_allowed(self, key: str) -> bool:
+        """Return True if the request is within the rate limit, False otherwise."""
+        now = time.monotonic()
+        cutoff = now - self._window
+        with self._lock:
+            timestamps = self._hits.get(key, [])
+            # Prune expired entries
+            timestamps = [t for t in timestamps if t > cutoff]
+            if len(timestamps) >= self._max:
+                self._hits[key] = timestamps
+                return False
+            timestamps.append(now)
+            self._hits[key] = timestamps
+            return True
+
+    def reset(self) -> None:
+        """Clear all rate limit state (for testing)."""
+        with self._lock:
+            self._hits.clear()
+
+
+# Pre-configured limiters for different endpoint tiers
+# AI endpoints: 10 requests per 60 seconds per IP
+ai_limiter = RateLimiter(max_requests=10, window_seconds=60)
+
+# Form submission endpoints: 5 requests per 60 seconds per IP
+form_limiter = RateLimiter(max_requests=5, window_seconds=60)
+
+# Demo/pipeline endpoints: 3 requests per 60 seconds per IP
+demo_limiter = RateLimiter(max_requests=3, window_seconds=60)
+
+
+def get_client_ip(req) -> str:
+    """Extract client IP from Azure Functions request headers."""
+    # Azure Functions / Container Apps passes the real IP in X-Forwarded-For
+    forwarded = req.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        # First IP in the chain is the client
+        return forwarded.split(",")[0].strip()
+    return req.headers.get("X-Real-IP", "unknown")
