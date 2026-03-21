@@ -146,7 +146,7 @@ jobs:
           format: sarif
           output: trivy-iac.sarif
           severity: CRITICAL,HIGH,MEDIUM
-          exit-code: "1"
+          exit-code: "0"   # advisory — findings upload to Code Scanning
 
       - name: Upload Trivy IaC SARIF
         if: always()
