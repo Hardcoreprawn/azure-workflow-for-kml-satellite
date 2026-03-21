@@ -61,3 +61,16 @@ updates:
       - "docker"
     commit-message:
       prefix: "docker"
+
+  # Terraform / OpenTofu providers
+  - package-ecosystem: "terraform"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "infra"
+    commit-message:
+      prefix: "infra"
