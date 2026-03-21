@@ -18,7 +18,9 @@ def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using lxml. Fallback when Fiona/GDAL is unavailable."""
     from lxml import etree
 
-    root: _Element = etree.fromstring(kml_bytes)
+    # Secure parser: disable external entities and network access to prevent XXE
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
+    root: _Element = etree.fromstring(kml_bytes, parser=parser)
     features: list[Feature] = []
 
     for placemark in root.iter(f"{KML_NS}Placemark"):

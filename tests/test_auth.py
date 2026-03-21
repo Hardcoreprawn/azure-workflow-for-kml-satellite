@@ -273,6 +273,15 @@ class TestRequireAuth:
 
 class TestCorsHeaders:
     def test_authorization_in_allowed_headers(self):
-        from blueprints._helpers import CORS_HEADERS
+        import azure.functions as func
 
-        assert "Authorization" in CORS_HEADERS["Access-Control-Allow-Headers"]
+        from blueprints._helpers import cors_headers
+
+        req = func.HttpRequest(
+            method="OPTIONS",
+            url="/api/test",
+            headers={"Origin": "https://polite-glacier-0d6885003.4.azurestaticapps.net"},
+            body=b"",
+        )
+        headers = cors_headers(req)
+        assert "Authorization" in headers["Access-Control-Allow-Headers"]

@@ -1,4 +1,4 @@
-![alt text](image.png)# TreeSight — System Specification
+# TreeSight — System Specification
 
 **Version:** 1.0.0  
 **Date:** 17 March 2026  
@@ -1033,7 +1033,7 @@ Written to blob storage by the `write_metadata` activity.
     "correlation_id": "string",
     "tenant_id": "string",
     "output_container": "string",
-    
+
     "provider_name": "string (optional)",
     "provider_config": {"key": "value"} | null,
     "imagery_filters": {"key": "value"} | null,

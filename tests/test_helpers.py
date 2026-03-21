@@ -8,9 +8,9 @@ import azure.functions as func
 import pytest
 
 from blueprints._helpers import (
-    CORS_HEADERS,
     EMAIL_RE,
     MAX_FIELD_LEN,
+    cors_headers,
     cors_preflight,
     error_response,
     sanitise,
@@ -105,14 +105,29 @@ class TestErrorResponse:
 
 
 class TestCorsPreflight:
+    def _make_req(self, origin="https://polite-glacier-0d6885003.4.azurestaticapps.net"):
+        return func.HttpRequest(
+            method="OPTIONS",
+            url="/api/test",
+            headers={"Origin": origin},
+            body=b"",
+        )
+
     def test_returns_204(self):
-        resp = cors_preflight()
+        resp = cors_preflight(self._make_req())
         assert resp.status_code == 204
 
-    def test_cors_headers_present(self):
-        resp = cors_preflight()
-        for key, value in CORS_HEADERS.items():
+    def test_cors_headers_present_for_allowed_origin(self):
+        req = self._make_req()
+        resp = cors_preflight(req)
+        expected = cors_headers(req)
+        for key, value in expected.items():
             assert resp.headers.get(key) == value
+
+    def test_no_origin_header_for_unknown_origin(self):
+        req = self._make_req(origin="https://evil.example.com")
+        resp = cors_preflight(req)
+        assert "Access-Control-Allow-Origin" not in resp.headers
 
 
 # ---------------------------------------------------------------------------

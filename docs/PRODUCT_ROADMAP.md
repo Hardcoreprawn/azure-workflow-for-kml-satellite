@@ -416,7 +416,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 5.6 | **Load testing** (10+ concurrent pipelines) | Medium | 1.2 | Must validate scaling before growth marketing pushes traffic |
 | 5.7 | **Test coverage measurement** (target >70%) | Low | — | Confidence to ship fast without regressions |
 
-**Exit criteria:** 30+ paid users. Net revenue retention > 100% (expansion > churn). At least 5 users on monitoring subscriptions. 
+**Exit criteria:** 30+ paid users. Net revenue retention > 100% (expansion > churn). At least 5 users on monitoring subscriptions.
 
 **Key metric:** Monthly active users returning > 40%.
 

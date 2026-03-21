@@ -289,10 +289,10 @@ if len(ndvi_means) >= 2:
     trends["ndvi_start"] = ndvi_means[0]
     trends["ndvi_end"] = ndvi_means[-1]
     trends["ndvi_change"] = trends["ndvi_end"] - trends["ndvi_start"]
-    
+
     # Safe division
     trends["ndvi_pct_change"] = (
-        (trends["ndvi_change"] / trends["ndvi_start"] * 100) 
+        (trends["ndvi_change"] / trends["ndvi_start"] * 100)
         if trends["ndvi_start"] != 0 else 0
     )
 ```
@@ -398,8 +398,8 @@ except json.JSONDecodeError:
 def _default_analysis(response_text: str) -> dict:
     """Return minimal but valid analysis structure when LLM fails."""
     return {
-        "observations": [{"category": "anomaly", "severity": "high", 
-                         "description": "Analysis incomplete: LLM parsing failed", 
+        "observations": [{"category": "anomaly", "severity": "high",
+                         "description": "Analysis incomplete: LLM parsing failed",
                          "recommendation": "Check LLM output"}],
         "summary": response_text[:200],
         "score": 0.0,
@@ -461,12 +461,12 @@ def _calculate_trends(ndvi_series: list, weather_series: list) -> dict:
 from typing import Any
 
 def _calculate_trends(
-    ndvi_series: list[dict[str, Any]], 
+    ndvi_series: list[dict[str, Any]],
     weather_series: list[dict[str, Any]]
 ) -> dict[str, Any]:
 ```
 
-**Impact:** 
+**Impact:**
 - Enables mypy/pyright type checking
 - Prevents subtle dict key errors
 - **Dijkstra principle:** Type specificity reduces conceptual complexity
