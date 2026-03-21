@@ -197,6 +197,19 @@ textarea{min-height:120px;font-family:monospace;font-size:.8rem}
 .fire-marker{background:transparent;border:none}
 .fire-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,80,20,0.7);border:1.5px solid #ff4500;box-shadow:0 0 6px rgba(255,69,0,0.5)}
 
+/* --- Comparison split view (#226) --- */
+.compare-controls{display:none;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;font-size:.8rem;color:var(--c-muted)}
+.compare-controls.show{display:flex}
+.compare-controls select{padding:4px 8px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;color:var(--c-text);font-size:.75rem;max-width:180px}
+.compare-controls .compare-label{font-size:.7rem;color:var(--c-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+#compare-divider{position:absolute;top:0;bottom:0;width:4px;background:var(--c-accent);cursor:ew-resize;z-index:800;touch-action:none;display:none}
+#compare-divider::after{content:'⇔';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--c-accent);color:#fff;font-size:.65rem;padding:4px 2px;border-radius:4px;pointer-events:none;line-height:1}
+#map-wrapper{position:relative}
+#map-wrapper .compare-tag{position:absolute;top:8px;z-index:700;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:3px;pointer-events:none;display:none}
+#map-wrapper .compare-tag.show{display:block}
+#compare-tag-left{left:8px;background:rgba(63,185,80,.85);color:#fff}
+#compare-tag-right{right:8px;background:rgba(88,166,255,.85);color:#fff}
+
 /* --- Flood event markers --- */
 .flood-marker{background:transparent;border:none}
 .flood-dot{width:12px;height:12px;border-radius:50%;background:rgba(66,165,245,0.6);border:1.5px solid #1e88e5;box-shadow:0 0 8px rgba(30,136,229,0.6)}
@@ -390,12 +403,18 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         </div>
       </div>
       <div id="demo-viewer-col">
-        <div id="map"></div>
+        <div id="map-wrapper">
+          <div id="map"></div>
+          <div id="compare-divider"></div>
+          <div class="compare-tag" id="compare-tag-left">Before</div>
+          <div class="compare-tag" id="compare-tag-right">After</div>
+        </div>
         <div class="map-controls">
           <div class="controls-row">
             <button id="play-btn" disabled>▶ Play</button>
             <input type="range" id="frame-slider" min="0" max="0" value="0">
             <span id="frame-counter"></span>
+            <button id="compare-btn" disabled title="Compare two frames side by side">⇔ Compare</button>
           </div>
           <div class="label-row">
             <span id="frame-label">Loading imagery…</span>
@@ -404,6 +423,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
               <button id="btn-ndvi">NDVI</button>
             </div>
           </div>
+        </div>
+        <div class="compare-controls" id="compare-controls">
+          <span class="compare-label">Left:</span>
+          <select id="compare-left"></select>
+          <span class="compare-label">Right:</span>
+          <select id="compare-right"></select>
         </div>
         <div id="frame-info">Registering mosaics with Planetary Computer…</div>
         <div id="cache-progress"><div class="bar"><div class="fill" id="cache-fill" style="width:0%"></div></div><div class="text" id="cache-text">Caching tiles…</div></div>
@@ -831,6 +856,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   /* Back-to-KML button */
   document.getElementById('back-to-kml').addEventListener('click', function() {
+    if (compareActive) exitCompareMode();
     document.getElementById('demo-layout').classList.remove('timelapse-active');
     document.getElementById('timelapse-header').classList.remove('visible');
     requestAnimationFrame(function(){ map.invalidateSize(); });
@@ -1580,8 +1606,174 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     document.getElementById('btn-ndvi').classList.toggle('active', !isRgb);
     document.getElementById('header-btn-rgb').classList.toggle('active', isRgb);
     document.getElementById('header-btn-ndvi').classList.toggle('active', !isRgb);
+    if (compareActive) { updateCompareClip(); } else { showFrame(currentFrame); }
+  }
+
+  /* ---- Comparison split view (#226) ---- */
+  var compareActive = false;
+  var compareLeftIdx = 0;
+  var compareRightIdx = 0;
+  var compareDividerX = 0.5; /* 0..1 fraction of map width */
+
+  function populateCompareSelects() {
+    var selL = document.getElementById('compare-left');
+    var selR = document.getElementById('compare-right');
+    selL.innerHTML = '';
+    selR.innerHTML = '';
+    for (var i = 0; i < framesMeta.length; i++) {
+      var opt = '<option value="'+i+'">' + escapeHtml(framesMeta[i].label) + '</option>';
+      selL.innerHTML += opt;
+      selR.innerHTML += opt;
+    }
+    /* Default: first and last frame */
+    selL.value = 0;
+    selR.value = framesMeta.length - 1;
+    compareLeftIdx = 0;
+    compareRightIdx = framesMeta.length - 1;
+  }
+
+  function enterCompareMode() {
+    if (!frameLayers.length) return;
+    compareActive = true;
+    /* Pause playback */
+    if (playing) {
+      clearInterval(playTimer); playing = false;
+      document.getElementById('play-btn').textContent = '\u25B6 Play';
+    }
+    populateCompareSelects();
+    document.getElementById('compare-controls').classList.add('show');
+    document.getElementById('compare-btn').textContent = '✕ Exit Compare';
+    document.getElementById('play-btn').disabled = true;
+    document.getElementById('frame-slider').disabled = true;
+    /* Show divider */
+    var divider = document.getElementById('compare-divider');
+    divider.style.display = 'block';
+    document.getElementById('compare-tag-left').classList.add('show');
+    document.getElementById('compare-tag-right').classList.add('show');
+    compareDividerX = 0.5;
+    updateCompareClip();
+  }
+
+  function exitCompareMode() {
+    compareActive = false;
+    document.getElementById('compare-controls').classList.remove('show');
+    document.getElementById('compare-btn').textContent = '\u21d4 Compare';
+    document.getElementById('play-btn').disabled = false;
+    document.getElementById('frame-slider').disabled = false;
+    document.getElementById('compare-divider').style.display = 'none';
+    document.getElementById('compare-tag-left').classList.remove('show');
+    document.getElementById('compare-tag-right').classList.remove('show');
+    /* Remove clip from all tile panes */
+    var mapEl = document.getElementById('map');
+    var panes = mapEl.querySelectorAll('.leaflet-tile-pane .leaflet-layer');
+    for (var i = 0; i < panes.length; i++) {
+      panes[i].style.clip = '';
+    }
     showFrame(currentFrame);
   }
+
+  function updateCompareClip() {
+    if (!compareActive) return;
+    var mapEl = document.getElementById('map');
+    var rect = mapEl.getBoundingClientRect();
+    var splitPx = Math.round(rect.width * compareDividerX);
+
+    /* Position divider */
+    document.getElementById('compare-divider').style.left = splitPx + 'px';
+
+    /* Determine which layers to use for left / right */
+    var useNdvi = layerMode === 'ndvi';
+    var lIdx = compareLeftIdx;
+    var rIdx = compareRightIdx;
+
+    /* First hide all layers */
+    frameLayers.forEach(function(l){ l.setOpacity(0); });
+    ndviLayers.forEach(function(l){ if(l) l.setOpacity(0); });
+
+    /* Show left-side layer and right-side layer at full opacity */
+    var leftLayer, rightLayer;
+    if (useNdvi && ndviSearchIds[lIdx]) {
+      if (!ndviLayers[lIdx]) {
+        ndviLayers[lIdx] = pcNdviLayer(ndviSearchIds[lIdx]);
+        ndviLayers[lIdx].addTo(map);
+      }
+      leftLayer = ndviLayers[lIdx];
+    } else {
+      leftLayer = frameLayers[lIdx];
+    }
+    if (useNdvi && ndviSearchIds[rIdx]) {
+      if (!ndviLayers[rIdx]) {
+        ndviLayers[rIdx] = pcNdviLayer(ndviSearchIds[rIdx]);
+        ndviLayers[rIdx].addTo(map);
+      }
+      rightLayer = ndviLayers[rIdx];
+    } else {
+      rightLayer = frameLayers[rIdx];
+    }
+
+    leftLayer.setOpacity(1);
+    rightLayer.setOpacity(1);
+
+    /* Apply CSS clip to the tile container elements */
+    var h = rect.height;
+    /* clip: rect(top, right, bottom, left) */
+    if (leftLayer.getContainer()) {
+      leftLayer.getContainer().style.clip = 'rect(0px, ' + splitPx + 'px, ' + h + 'px, 0px)';
+    }
+    if (rightLayer.getContainer()) {
+      rightLayer.getContainer().style.clip = 'rect(0px, ' + rect.width + 'px, ' + h + 'px, ' + splitPx + 'px)';
+    }
+
+    /* Update labels */
+    document.getElementById('compare-tag-left').textContent = framesMeta[lIdx].label;
+    document.getElementById('compare-tag-right').textContent = framesMeta[rIdx].label;
+    document.getElementById('frame-label').textContent = 'Comparing: ' + framesMeta[lIdx].label + '  vs  ' + framesMeta[rIdx].label;
+
+    labelsLayer.bringToFront();
+    aoiPolygon.bringToFront();
+    aoiSubPolygons.forEach(function(l){ l.bringToFront(); });
+  }
+
+  /* Compare button toggle */
+  document.getElementById('compare-btn').addEventListener('click', function() {
+    if (compareActive) exitCompareMode(); else enterCompareMode();
+  });
+
+  /* Frame select changes */
+  document.getElementById('compare-left').addEventListener('change', function() {
+    compareLeftIdx = parseInt(this.value);
+    updateCompareClip();
+  });
+  document.getElementById('compare-right').addEventListener('change', function() {
+    compareRightIdx = parseInt(this.value);
+    updateCompareClip();
+  });
+
+  /* Draggable divider */
+  (function() {
+    var divider = document.getElementById('compare-divider');
+    var dragging = false;
+
+    function onMove(clientX) {
+      if (!dragging || !compareActive) return;
+      var mapEl = document.getElementById('map');
+      var rect = mapEl.getBoundingClientRect();
+      var x = clientX - rect.left;
+      compareDividerX = Math.max(0.05, Math.min(0.95, x / rect.width));
+      updateCompareClip();
+    }
+
+    divider.addEventListener('mousedown', function(e) { dragging = true; e.preventDefault(); });
+    document.addEventListener('mousemove', function(e) { if (dragging) onMove(e.clientX); });
+    document.addEventListener('mouseup', function() { dragging = false; });
+    /* Touch support */
+    divider.addEventListener('touchstart', function(e) { dragging = true; e.preventDefault(); }, {passive: false});
+    document.addEventListener('touchmove', function(e) { if (dragging && e.touches.length) onMove(e.touches[0].clientX); });
+    document.addEventListener('touchend', function() { dragging = false; });
+  })();
+
+  /* Re-clip on map move/resize */
+  map.on('move zoom resize', function() { if (compareActive) updateCompareClip(); });
 
   /* ---- Weather data (Open-Meteo Historical Weather API) ---- */
   var weatherData = null;  /* {dates:[], temp:[], precip:[]} */
@@ -2784,6 +2976,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     document.getElementById('timelapse-header').classList.add('visible');
     requestAnimationFrame(function(){ map.invalidateSize(); });
     document.getElementById('demo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    /* Exit compare mode if active */
+    if (compareActive) exitCompareMode();
+    document.getElementById('compare-btn').disabled = true;
     /* Stop playback */
     if (playing) { clearInterval(playTimer); playing = false; }
     document.getElementById('play-btn').textContent = '\u25B6 Play';
@@ -2917,6 +3112,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       function onAllCached() {
         progressEl.style.display = 'none';
         document.getElementById('play-btn').disabled = false;
+        document.getElementById('compare-btn').disabled = false;
         document.getElementById('frame-info').textContent = framesMeta[currentFrame].info;
         document.getElementById('play-btn').click(); /* auto-play */
         /* Show insights panels now; weather will arrive async */
@@ -2959,6 +3155,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       setTimeout(function(){
         if (document.getElementById('play-btn').disabled) {
           document.getElementById('play-btn').disabled = false;
+          document.getElementById('compare-btn').disabled = false;
           progressEl.style.display = 'none';
         }
       }, 25000);

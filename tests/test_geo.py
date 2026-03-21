@@ -124,3 +124,68 @@ class TestPrepareAOI:
         )
         aoi = prepare_aoi(f)
         assert aoi.area_warning != ""
+
+
+class TestSquareBbox:
+    """Tests for ``square_bbox``."""
+
+    def test_already_square_adds_padding(self):
+        from treesight.geo import square_bbox
+
+        # ~111m per side at equator → square already
+        bbox = [36.0, 0.0, 36.001, 0.001]
+        result = square_bbox(bbox, padding_pct=10.0)
+
+        # Should still be centred on original
+        mid_lon = (bbox[0] + bbox[2]) / 2
+        mid_lat = (bbox[1] + bbox[3]) / 2
+        result_mid_lon = (result[0] + result[2]) / 2
+        result_mid_lat = (result[1] + result[3]) / 2
+        assert abs(result_mid_lon - mid_lon) < 1e-6
+        assert abs(result_mid_lat - mid_lat) < 1e-6
+
+        # Side should be ~10% larger than original
+        orig_lat_span = bbox[3] - bbox[1]
+        result_lat_span = result[3] - result[1]
+        assert result_lat_span > orig_lat_span
+
+    def test_rectangular_becomes_square(self):
+        from treesight.geo import square_bbox
+
+        # Wide rectangle: lon span > lat span
+        bbox = [36.0, 0.0, 36.01, 0.001]  # ~10x wider than tall
+        result = square_bbox(bbox, padding_pct=0.0)
+
+        result_lon_span = result[2] - result[0]
+        result_lat_span = result[3] - result[1]
+        # In metres they should be approximately equal
+        import math
+
+        from treesight.constants import METRES_PER_DEGREE_LATITUDE
+
+        lat_m = result_lat_span * METRES_PER_DEGREE_LATITUDE
+        lon_m = (
+            result_lon_span
+            * METRES_PER_DEGREE_LATITUDE
+            * math.cos(math.radians((result[1] + result[3]) / 2))
+        )
+        assert abs(lat_m - lon_m) / max(lat_m, lon_m) < 0.01  # <1% difference
+
+    def test_contains_original_bbox(self):
+        from treesight.geo import square_bbox
+
+        bbox = [36.8, -1.31, 36.81, -1.3]
+        result = square_bbox(bbox, padding_pct=10.0)
+        assert result[0] <= bbox[0]
+        assert result[1] <= bbox[1]
+        assert result[2] >= bbox[2]
+        assert result[3] >= bbox[3]
+
+    def test_zero_padding(self):
+        from treesight.geo import square_bbox
+
+        bbox = [0.0, 0.0, 0.001, 0.001]
+        result = square_bbox(bbox, padding_pct=0.0)
+        # Side should be >= original span (no padding, but squaring)
+        assert result[2] - result[0] >= bbox[2] - bbox[0] - 1e-10
+        assert result[3] - result[1] >= bbox[3] - bbox[1] - 1e-10

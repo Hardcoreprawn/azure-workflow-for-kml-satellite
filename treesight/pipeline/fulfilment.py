@@ -168,8 +168,18 @@ def post_process_imagery(
     enable_reprojection: bool,
     output_container: str,
     storage: BlobStorageClient,
+    square_frame: bool = False,
+    frame_padding_pct: float = 10.0,
 ) -> dict[str, Any]:
-    """Clip to AOI geometry and/or reproject a downloaded GeoTIFF."""
+    """Clip to AOI geometry and/or reproject a downloaded GeoTIFF.
+
+    When *square_frame* is True, outputs a square-framed rendering window
+    that wholly contains the AOI polygon with *frame_padding_pct* % padding
+    (#176).  This is purely for display — the user's irregular polygon is
+    preserved in AOI metadata for all analytical operations (NDVI, change
+    detection, area calculations).  The square frame gives regular tiles
+    that are easy to compare side-by-side in a UI grid.
+    """
     start = time.monotonic()
     order_id = download_result.get("order_id", "")
     source_path = download_result.get("blob_path", "")
@@ -177,7 +187,12 @@ def post_process_imagery(
     try:
         safe_name = aoi.feature_name.replace(" ", "_").replace("/", "_")
         scene_id = download_result.get("scene_id", "")
-        clipped_path = f"imagery/clipped/{project_name}/{timestamp}/{safe_name}/{scene_id}.tif"
+
+        # Output path depends on framing mode
+        if square_frame:
+            clipped_path = f"imagery/framed/{project_name}/{timestamp}/{safe_name}/{scene_id}.tif"
+        else:
+            clipped_path = f"imagery/clipped/{project_name}/{timestamp}/{safe_name}/{scene_id}.tif"
 
         # Fetch the raw raster bytes from storage
         raw_bytes = storage.download_bytes(
@@ -194,7 +209,13 @@ def post_process_imagery(
         with MemoryFile(raw_bytes) as memfile, memfile.open() as src:
             source_crs = str(src.crs) if src.crs else ""
 
-            if enable_clipping and aoi.exterior_coords:
+            if square_frame and aoi.bbox:
+                from treesight.geo import square_bbox
+
+                sq_bbox = square_bbox(aoi.bbox, padding_pct=frame_padding_pct)
+                output_bytes = _clip_to_bbox(src, sq_bbox)
+                clipped = True
+            elif enable_clipping and aoi.exterior_coords:
                 output_bytes = _clip_to_bbox(src, aoi.buffered_bbox)
                 clipped = True
 

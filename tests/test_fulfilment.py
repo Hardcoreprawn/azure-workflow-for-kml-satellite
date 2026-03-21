@@ -341,3 +341,44 @@ class TestPostProcessImagery:
 
         assert result["processing_duration_seconds"] >= 0
         assert result["order_id"] == "order-1"
+
+    def test_square_frame_outputs_to_framed_path(self, aoi: AOI) -> None:
+        """square_frame=True writes to imagery/framed/ not imagery/clipped/."""
+        from treesight.pipeline.fulfilment import post_process_imagery
+
+        storage = self._mock_storage()
+        result = post_process_imagery(
+            download_result=self._download_result(),
+            aoi=aoi,
+            project_name="farm",
+            timestamp="ts",
+            target_crs="EPSG:32637",
+            enable_clipping=True,
+            enable_reprojection=False,
+            output_container="kml-output",
+            storage=storage,
+            square_frame=True,
+        )
+
+        assert result["clipped"] is True
+        assert result["clipped_blob_path"].startswith("imagery/framed/farm/")
+
+    def test_square_frame_false_uses_clipped_path(self, aoi: AOI) -> None:
+        """square_frame=False preserves the original clipped/ output path."""
+        from treesight.pipeline.fulfilment import post_process_imagery
+
+        storage = self._mock_storage()
+        result = post_process_imagery(
+            download_result=self._download_result(),
+            aoi=aoi,
+            project_name="farm",
+            timestamp="ts",
+            target_crs="EPSG:32637",
+            enable_clipping=True,
+            enable_reprojection=False,
+            output_container="kml-output",
+            storage=storage,
+            square_frame=False,
+        )
+
+        assert result["clipped_blob_path"].startswith("imagery/clipped/farm/")
