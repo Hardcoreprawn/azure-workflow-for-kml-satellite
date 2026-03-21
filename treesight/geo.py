@@ -98,6 +98,59 @@ def _spherical_area_ha(coords: list[list[float]]) -> float:
     return area_m2 / 10_000.0
 
 
+def square_bbox(
+    bbox: list[float],
+    padding_pct: float = 10.0,
+) -> list[float]:
+    """Create a square viewing window around an AOI bounding box.
+
+    This is a **rendering** concern — the square frame determines the
+    extent of output imagery tiles so they display consistently in a
+    grid / comparison UI.  The user's actual polygon geometry is
+    preserved unchanged for all analytical operations (NDVI, change
+    detection, area calculations).
+
+    Takes ``[min_lon, min_lat, max_lon, max_lat]`` and returns a square
+    bbox centred on the original, sized to wholly contain the AOI
+    plus *padding_pct* % on each side.
+
+    Parameters
+    ----------
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326.
+    padding_pct : float
+        Percentage padding to add on each side (default 10%).
+
+    Returns
+    -------
+    list[float]
+        Square ``[min_lon, min_lat, max_lon, max_lat]``.
+    """
+    min_lon, min_lat, max_lon, max_lat = bbox
+    mid_lat = (min_lat + max_lat) / 2.0
+    mid_lon = (min_lon + max_lon) / 2.0
+
+    # Convert to approximate metres for square calculation
+    lat_span_m = (max_lat - min_lat) * METRES_PER_DEGREE_LATITUDE
+    lon_span_m = (max_lon - min_lon) * METRES_PER_DEGREE_LATITUDE * math.cos(math.radians(mid_lat))
+
+    # Square side = max of both spans + padding
+    side_m = max(lat_span_m, lon_span_m) * (1 + padding_pct / 100.0)
+    half_side_m = side_m / 2.0
+
+    # Back to degrees
+    half_lat = half_side_m / METRES_PER_DEGREE_LATITUDE
+    cos_lat = math.cos(math.radians(mid_lat))
+    half_lon = half_side_m / (METRES_PER_DEGREE_LATITUDE * cos_lat) if cos_lat > 0 else half_lat
+
+    return [
+        mid_lon - half_lon,
+        mid_lat - half_lat,
+        mid_lon + half_lon,
+        mid_lat + half_lat,
+    ]
+
+
 def _centroid(coords: list[list[float]]) -> list[float]:
     if not coords:
         return [0.0, 0.0]

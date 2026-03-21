@@ -353,6 +353,8 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
                     "enable_clipping": inp.get("enable_clipping", True),
                     "enable_reprojection": inp.get("enable_reprojection", True),
                     "output_container": output_container,
+                    "square_frame": inp.get("square_frame", True),
+                    "frame_padding_pct": inp.get("frame_padding_pct", 10.0),
                 },
             )
             for dl in batch
@@ -620,6 +622,8 @@ def post_process_imagery(payload: _Payload) -> dict[str, Any]:
         enable_reprojection=payload.get("enable_reprojection", True),
         output_container=payload["output_container"],
         storage=storage,
+        square_frame=payload.get("square_frame", True),
+        frame_padding_pct=payload.get("frame_padding_pct", 10.0),
     )
 
 
