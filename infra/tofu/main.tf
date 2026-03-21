@@ -365,13 +365,19 @@ resource "azurerm_dns_cname_record" "static_web_app" {
   record              = azurerm_static_web_app.main.default_host_name
 }
 
+resource "time_sleep" "dns_propagation" {
+  count           = var.custom_domain != "" ? 1 : 0
+  create_duration = "60s"
+  depends_on      = [azurerm_dns_cname_record.static_web_app]
+}
+
 resource "azurerm_static_web_app_custom_domain" "main" {
   count             = var.custom_domain != "" ? 1 : 0
   static_web_app_id = azurerm_static_web_app.main.id
   domain_name       = var.custom_domain
   validation_type   = "cname-delegation"
 
-  depends_on = [azurerm_dns_cname_record.static_web_app]
+  depends_on = [time_sleep.dns_propagation]
 }
 
 resource "azurerm_role_assignment" "storage_blob_data_contributor" {
