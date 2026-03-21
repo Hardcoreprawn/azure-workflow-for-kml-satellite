@@ -349,35 +349,16 @@ resource "azurerm_static_web_app" "main" {
 }
 
 # --- Custom domain (M1.5) ---
-
-data "azurerm_dns_zone" "main" {
-  count               = var.custom_domain != "" ? 1 : 0
-  name                = var.dns_zone_name
-  resource_group_name = var.dns_zone_resource_group
-}
-
-resource "azurerm_dns_cname_record" "static_web_app" {
-  count               = var.custom_domain != "" ? 1 : 0
-  name                = var.custom_domain_prefix
-  zone_name           = data.azurerm_dns_zone.main[0].name
-  resource_group_name = data.azurerm_dns_zone.main[0].resource_group_name
-  ttl                 = 3600
-  record              = azurerm_static_web_app.main.default_host_name
-}
-
-resource "time_sleep" "dns_propagation" {
-  count           = var.custom_domain != "" ? 1 : 0
-  create_duration = "60s"
-  depends_on      = [azurerm_dns_cname_record.static_web_app]
-}
+# Prerequisites (manual, one-time):
+#   1. Create a CNAME record in your DNS provider (e.g. Cloudflare):
+#      treesight.jablab.dev → <SWA default hostname>
+#   2. Wait for DNS propagation, then run tofu apply.
 
 resource "azurerm_static_web_app_custom_domain" "main" {
   count             = var.custom_domain != "" ? 1 : 0
   static_web_app_id = azurerm_static_web_app.main.id
   domain_name       = var.custom_domain
   validation_type   = "cname-delegation"
-
-  depends_on = [time_sleep.dns_propagation]
 }
 
 resource "azurerm_role_assignment" "storage_blob_data_contributor" {

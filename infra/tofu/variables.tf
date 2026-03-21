@@ -89,24 +89,6 @@ variable "custom_domain" {
   default     = ""
 }
 
-variable "custom_domain_prefix" {
-  description = "DNS record name (prefix before the zone, e.g. 'treesight')."
-  type        = string
-  default     = ""
-}
-
-variable "dns_zone_name" {
-  description = "Azure DNS zone name (e.g. jablab.dev)."
-  type        = string
-  default     = ""
-}
-
-variable "dns_zone_resource_group" {
-  description = "Resource group containing the Azure DNS zone."
-  type        = string
-  default     = ""
-}
-
 variable "enable_azure_ai" {
   description = "Deploy Azure OpenAI resource for AI analysis (M1.6)."
   type        = bool
