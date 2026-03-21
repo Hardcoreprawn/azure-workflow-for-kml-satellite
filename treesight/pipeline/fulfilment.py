@@ -191,17 +191,16 @@ def post_process_imagery(
         source_crs = ""
         output_bytes = raw_bytes
 
-        with MemoryFile(raw_bytes) as memfile:
-            with memfile.open() as src:
-                source_crs = str(src.crs) if src.crs else ""
+        with MemoryFile(raw_bytes) as memfile, memfile.open() as src:
+            source_crs = str(src.crs) if src.crs else ""
 
-                if enable_clipping and aoi.exterior_coords:
-                    output_bytes = _clip_to_bbox(src, aoi.buffered_bbox)
-                    clipped = True
+            if enable_clipping and aoi.exterior_coords:
+                output_bytes = _clip_to_bbox(src, aoi.buffered_bbox)
+                clipped = True
 
-                if enable_reprojection and source_crs and source_crs != target_crs:
-                    output_bytes = _reproject_bytes(output_bytes, target_crs)
-                    reprojected = True
+            if enable_reprojection and source_crs and source_crs != target_crs:
+                output_bytes = _reproject_bytes(output_bytes, target_crs)
+                reprojected = True
 
         storage.upload_bytes(
             output_container,
@@ -361,38 +360,37 @@ def _clip_to_bbox(src: rasterio.DatasetReader, bbox: list[float]) -> bytes:
 
 def _reproject_bytes(tiff_bytes: bytes, target_crs: str) -> bytes:
     """Reproject GeoTIFF bytes to *target_crs*, return new GeoTIFF bytes."""
-    with MemoryFile(tiff_bytes) as memfile:
-        with memfile.open() as src:
-            if src.crs is None:
-                msg = "Source GeoTIFF has no CRS — cannot reproject"
-                raise ValueError(msg)
-            transform, width, height = calculate_default_transform(
-                src.crs,
-                target_crs,
-                src.width,
-                src.height,
-                *src.bounds,
-            )
-            profile = src.profile.copy()
-            profile.update(
-                crs=target_crs,
-                transform=transform,
-                width=width,
-                height=height,
-            )
+    with MemoryFile(tiff_bytes) as memfile, memfile.open() as src:
+        if src.crs is None:
+            msg = "Source GeoTIFF has no CRS — cannot reproject"
+            raise ValueError(msg)
+        transform, width, height = calculate_default_transform(
+            src.crs,
+            target_crs,
+            src.width,
+            src.height,
+            *src.bounds,
+        )
+        profile = src.profile.copy()
+        profile.update(
+            crs=target_crs,
+            transform=transform,
+            width=width,
+            height=height,
+        )
 
-            buf = io.BytesIO()
-            with rasterio.open(buf, "w", **profile) as dst:
-                for i in range(1, src.count + 1):
-                    reproject(
-                        source=rasterio.band(src, i),
-                        destination=rasterio.band(dst, i),
-                        src_transform=src.transform,
-                        src_crs=src.crs,
-                        dst_transform=transform,
-                        dst_crs=target_crs,
-                        resampling=Resampling.bilinear,
-                    )
+        buf = io.BytesIO()
+        with rasterio.open(buf, "w", **profile) as dst:
+            for i in range(1, src.count + 1):
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs=target_crs,
+                    resampling=Resampling.bilinear,
+                )
     return buf.getvalue()
 
 
@@ -402,12 +400,14 @@ def fetch_asset_bytes(url: str) -> bytes:
 
     log_phase("fulfilment", "fetch_start", url=url[:120])
 
-    with httpx.Client(timeout=300.0, follow_redirects=True) as client:
-        with client.stream("GET", url) as response:
-            response.raise_for_status()
-            chunks: list[bytes] = []
-            for chunk in response.iter_bytes(chunk_size=1_048_576):
-                chunks.append(chunk)
+    with (
+        httpx.Client(timeout=300.0, follow_redirects=True) as client,
+        client.stream("GET", url) as response,
+    ):
+        response.raise_for_status()
+        chunks: list[bytes] = []
+        for chunk in response.iter_bytes(chunk_size=1_048_576):
+            chunks.append(chunk)
 
     data = b"".join(chunks)
     log_phase("fulfilment", "fetch_complete", size_bytes=len(data))

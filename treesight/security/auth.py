@@ -81,7 +81,7 @@ def validate_token(auth_header: str) -> dict[str, Any]:
     try:
         unverified = jwt.get_unverified_header(token)
     except jwt.DecodeError:
-        raise ValueError("Invalid token format")
+        raise ValueError("Invalid token format") from None
 
     kid = unverified.get("kid")
     if not kid:
@@ -91,7 +91,7 @@ def validate_token(auth_header: str) -> dict[str, Any]:
     public_key = None
     for key_data in jwks.get("keys", []):
         if key_data.get("kid") == kid:
-            public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+            public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)  # type: ignore[attr-defined]
             break
 
     if not public_key:
@@ -100,7 +100,7 @@ def validate_token(auth_header: str) -> dict[str, Any]:
         jwks = _fetch_jwks()
         for key_data in jwks.get("keys", []):
             if key_data.get("kid") == kid:
-                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key_data)  # type: ignore[attr-defined]
                 break
 
     if not public_key:
@@ -120,13 +120,13 @@ def validate_token(auth_header: str) -> dict[str, Any]:
     try:
         claims = jwt.decode(token, public_key, **decode_opts)
     except jwt.ExpiredSignatureError:
-        raise ValueError("Token has expired")
+        raise ValueError("Token has expired") from None
     except jwt.InvalidAudienceError:
-        raise ValueError("Token audience mismatch")
+        raise ValueError("Token audience mismatch") from None
     except jwt.InvalidIssuerError:
-        raise ValueError("Token issuer mismatch")
+        raise ValueError("Token issuer mismatch") from None
     except jwt.InvalidTokenError as exc:
-        raise ValueError(f"Invalid token: {exc}")
+        raise ValueError(f"Invalid token: {exc}") from None
 
     return claims
 

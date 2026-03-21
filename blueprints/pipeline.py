@@ -9,6 +9,7 @@ instead of ``dict[str, Any]`` — the runtime cannot resolve parameterised
 generics on binding arguments.
 """
 
+import contextlib
 import json
 import logging
 import uuid
@@ -493,10 +494,8 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
     input_container = payload.get("input_container", "")
     source_file = payload["source_file"]
     if input_container and source_file:
-        try:
+        with contextlib.suppress(Exception):
             kml_bytes = storage.download_bytes(input_container, source_file)
-        except Exception:
-            pass  # KML archival is best-effort
 
     return _write(
         aoi=aoi,
@@ -870,18 +869,16 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
 def _extract_container(blob_url: str) -> str:
     parts = blob_url.split("/")
     for i, p in enumerate(parts):
-        if p.endswith(".blob.core.windows.net") or p == "devstoreaccount1":
-            if i + 1 < len(parts):
-                return parts[i + 1]
+        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 1 < len(parts):
+            return parts[i + 1]
     return ""
 
 
 def _extract_blob_name(blob_url: str) -> str:
     parts = blob_url.split("/")
     for i, p in enumerate(parts):
-        if p.endswith(".blob.core.windows.net") or p == "devstoreaccount1":
-            if i + 2 < len(parts):
-                return "/".join(parts[i + 2 :])
+        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 2 < len(parts):
+            return "/".join(parts[i + 2 :])
     return ""
 
 

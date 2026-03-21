@@ -59,7 +59,7 @@ class TableReplayStore:
             logger.warning("Could not ensure replay table exists", exc_info=True)
 
     @property
-    def _table(self):  # noqa: ANN202
+    def _table(self):
         return self._service.get_table_client(self._table_name)
 
     def get_and_increment(self, nonce: str, ttl_seconds: int) -> int:
@@ -82,7 +82,7 @@ class TableReplayStore:
             prev = count
             entity["use_count"] = count + 1
             entity["expires"] = expires
-            self._table.update_entity(entity, mode="merge")
+            self._table.update_entity(entity, mode="merge")  # type: ignore[arg-type]
             return prev
         except ResourceNotFoundError:
             entity = {

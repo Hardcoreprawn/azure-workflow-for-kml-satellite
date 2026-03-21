@@ -142,7 +142,7 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
         )
 
     except Exception as e:
-        return error_response(500, f"Analysis failed: {str(e)}")
+        return error_response(500, f"Analysis failed: {e!s}")
 
 
 def _default_analysis(text: str) -> dict[str, Any]:
@@ -366,7 +366,7 @@ health) based on the trajectory and data.
         )
 
     except Exception as e:
-        return error_response(500, f"Timelapse analysis failed: {str(e)}")
+        return error_response(500, f"Timelapse analysis failed: {e!s}")
 
 
 def _calculate_trends(

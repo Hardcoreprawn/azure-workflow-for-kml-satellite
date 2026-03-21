@@ -147,10 +147,7 @@ def step_download(url: str, bbox: list[float] | None = None) -> tuple[bytes, flo
     from treesight.pipeline.fulfilment import cog_windowed_read, fetch_asset_bytes
 
     start = time.monotonic()
-    if bbox:
-        data = cog_windowed_read(url, bbox)
-    else:
-        data = fetch_asset_bytes(url)
+    data = cog_windowed_read(url, bbox) if bbox else fetch_asset_bytes(url)
     elapsed = time.monotonic() - start
     return data, elapsed
 

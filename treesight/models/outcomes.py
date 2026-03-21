@@ -13,7 +13,7 @@ from pydantic import BaseModel, computed_field
 class MetadataResult(BaseModel):
     """Result of writing AOI metadata to blob storage."""
 
-    metadata: dict[str, Any] = {}  # noqa: RUF012
+    metadata: dict[str, Any] = {}
     metadata_path: str = ""
     kml_archive_path: str = ""
 
@@ -23,9 +23,9 @@ class IngestionResult(BaseModel):
 
     feature_count: int = 0
     offloaded: bool = False
-    aois: list[dict[str, Any]] = []  # noqa: RUF012
+    aois: list[dict[str, Any]] = []
     aoi_count: int = 0
-    metadata_results: list[dict[str, Any]] = []  # noqa: RUF012
+    metadata_results: list[dict[str, Any]] = []
     metadata_count: int = 0
 
 
@@ -56,7 +56,7 @@ class ImageryOutcome(BaseModel):
 class AcquisitionResult(BaseModel):
     """Phase 2 result — imagery search, order, and polling."""
 
-    imagery_outcomes: list[dict[str, Any]] = []  # noqa: RUF012
+    imagery_outcomes: list[dict[str, Any]] = []
     ready_count: int = 0
     failed_count: int = 0
 
@@ -105,11 +105,11 @@ class PostProcessResult(BaseModel):
 class FulfillmentResult(BaseModel):
     """Phase 3 result — download and post-processing."""
 
-    download_results: list[dict[str, Any]] = []  # noqa: RUF012
+    download_results: list[dict[str, Any]] = []
     downloads_completed: int = 0
     downloads_succeeded: int = 0
     downloads_failed: int = 0
-    post_process_results: list[dict[str, Any]] = []  # noqa: RUF012
+    post_process_results: list[dict[str, Any]] = []
     pp_completed: int = 0
     pp_clipped: int = 0
     pp_reprojected: int = 0
@@ -129,7 +129,7 @@ class PipelineSummary(BaseModel):
     feature_count: int = 0
     aoi_count: int = 0
     metadata_count: int = 0
-    metadata_results: list[dict[str, Any]] = []  # noqa: RUF012
+    metadata_results: list[dict[str, Any]] = []
     imagery_ready: int = 0
     imagery_failed: int = 0
     downloads_completed: int = 0
@@ -139,9 +139,9 @@ class PipelineSummary(BaseModel):
     post_process_clipped: int = 0
     post_process_reprojected: int = 0
     post_process_failed: int = 0
-    imagery_outcomes: list[dict[str, Any]] = []  # noqa: RUF012
-    download_results: list[dict[str, Any]] = []  # noqa: RUF012
-    post_process_results: list[dict[str, Any]] = []  # noqa: RUF012
+    imagery_outcomes: list[dict[str, Any]] = []
+    download_results: list[dict[str, Any]] = []
+    post_process_results: list[dict[str, Any]] = []
     message: str = ""
 
     def compute_status(self) -> None:

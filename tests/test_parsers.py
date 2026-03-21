@@ -129,7 +129,7 @@ class TestMaybeUnzip:
         buf = BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("readme.txt", b"nothing here")
-        with pytest.raises(ValueError, match="no .kml file"):
+        with pytest.raises(ValueError, match=r"no .kml file"):
             maybe_unzip(buf.getvalue())
 
     def test_kmz_round_trip_parse(self, sample_kml_bytes: bytes):

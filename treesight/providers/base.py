@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from treesight.models.aoi import AOI
 from treesight.models.imagery import ImageryFilters, SearchResult
 
-ProviderConfig = dict[str, str | int | bool | dict[str, str]]
+ProviderConfig = dict[str, str | int | bool | dict[str, str] | list[str]]
 
 
 @dataclass
@@ -32,6 +32,7 @@ class ImageryProvider(ABC):
 
     def __init__(self, config: ProviderConfig | None = None) -> None:
         """Initialise with optional provider-specific configuration."""
+        self.config = config
 
     @property
     @abstractmethod
