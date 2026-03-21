@@ -523,25 +523,22 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
   var enrichmentPayload = null;    /* cached enrichment manifest from pipeline */
 
-  /* --- Azure AD B2C configuration --- */
-  /* These are populated once the B2C tenant is provisioned.
-     When B2C_CLIENT_ID is empty, auth is disabled and the app works anonymously. */
-  const B2C_TENANT_NAME = '';          /* e.g. 'treesightauth' */
-  const B2C_CLIENT_ID = '';            /* App registration client ID */
-  const B2C_POLICY_NAME = 'B2C_1_signup_signin';
-  const B2C_AUTHORITY = B2C_TENANT_NAME
-    ? 'https://' + B2C_TENANT_NAME + '.b2clogin.com/' + B2C_TENANT_NAME + '.onmicrosoft.com/' + B2C_POLICY_NAME
+  /* --- Entra External ID (CIAM) authentication --- */
+  /* These are populated once the CIAM tenant is provisioned.
+     When CIAM_CLIENT_ID is empty, auth is disabled and the app works anonymously. */
+  const CIAM_TENANT_NAME = 'treesightauth';
+  const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
+  const CIAM_AUTHORITY = CIAM_TENANT_NAME
+    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/'
     : '';
-  const B2C_KNOWN_AUTHORITY = B2C_TENANT_NAME
-    ? 'https://' + B2C_TENANT_NAME + '.b2clogin.com'
-    : '';
-  const B2C_SCOPES = B2C_CLIENT_ID ? [B2C_CLIENT_ID] : [];
+  const CIAM_KNOWN_AUTHORITY = CIAM_AUTHORITY;
+  const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
 
   var msalInstance = null;
   var currentAccount = null;
   var accessToken = null;
 
-  function authEnabled() { return !!(B2C_TENANT_NAME && B2C_CLIENT_ID && typeof msal !== 'undefined'); }
+  function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
 
   /* Initialise MSAL */
   function initAuth() {
@@ -551,9 +548,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     }
     var msalConfig = {
       auth: {
-        clientId: B2C_CLIENT_ID,
-        authority: B2C_AUTHORITY,
-        knownAuthorities: [B2C_KNOWN_AUTHORITY],
+        clientId: CIAM_CLIENT_ID,
+        authority: CIAM_AUTHORITY,
+        knownAuthorities: [CIAM_KNOWN_AUTHORITY],
         redirectUri: window.location.origin + '/',
         postLogoutRedirectUri: window.location.origin + '/',
       },
@@ -561,7 +558,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     };
     msalInstance = new msal.PublicClientApplication(msalConfig);
 
-    /* Handle redirect promise (returns from B2C login) */
+    /* Handle redirect promise (returns from CIAM login) */
     msalInstance.handleRedirectPromise().then(function(resp) {
       if (resp && resp.account) {
         msalInstance.setActiveAccount(resp.account);
@@ -577,7 +574,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   function login() {
     if (!msalInstance) return;
-    msalInstance.loginRedirect({ scopes: B2C_SCOPES });
+    msalInstance.loginRedirect({ scopes: CIAM_SCOPES });
   }
 
   function logout() {
@@ -588,13 +585,13 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   async function acquireToken() {
     if (!msalInstance || !currentAccount) return null;
     try {
-      var resp = await msalInstance.acquireTokenSilent({ scopes: B2C_SCOPES, account: currentAccount });
+      var resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount });
       accessToken = resp.accessToken || resp.idToken;
       return accessToken;
     } catch {
       /* Silent failed — trigger interactive */
       try {
-        msalInstance.acquireTokenRedirect({ scopes: B2C_SCOPES });
+        msalInstance.acquireTokenRedirect({ scopes: CIAM_SCOPES });
       } catch { /* redirect will navigate away */ }
       return null;
     }

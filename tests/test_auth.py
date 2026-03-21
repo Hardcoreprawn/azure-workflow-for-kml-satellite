@@ -1,4 +1,4 @@
-"""Tests for Azure AD B2C JWT authentication (treesight.security.auth)."""
+"""Tests for Entra External ID (CIAM) JWT authentication (treesight.security.auth)."""
 
 from __future__ import annotations
 
@@ -12,31 +12,31 @@ from treesight.security.auth import (
     _fetch_jwks,
     _jwks_cache,
     _oidc_config_url,
-    b2c_enabled,
+    auth_enabled,
     get_user_id,
     validate_token,
 )
 
 # ---------------------------------------------------------------------------
-# b2c_enabled
+# auth_enabled
 # ---------------------------------------------------------------------------
 
 
-class TestB2CEnabled:
+class TestAuthEnabled:
     def test_disabled_when_no_config(self):
-        with patch("treesight.security.auth.B2C_TENANT_NAME", ""), \
-             patch("treesight.security.auth.B2C_CLIENT_ID", ""):
-            assert b2c_enabled() is False
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", ""), \
+             patch("treesight.security.auth.CIAM_CLIENT_ID", ""):
+            assert auth_enabled() is False
 
     def test_disabled_when_partial_config(self):
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "mytenant"), \
-             patch("treesight.security.auth.B2C_CLIENT_ID", ""):
-            assert b2c_enabled() is False
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"), \
+             patch("treesight.security.auth.CIAM_CLIENT_ID", ""):
+            assert auth_enabled() is False
 
     def test_enabled_when_fully_configured(self):
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "mytenant"), \
-             patch("treesight.security.auth.B2C_CLIENT_ID", "abc-123"):
-            assert b2c_enabled() is True
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"), \
+             patch("treesight.security.auth.CIAM_CLIENT_ID", "abc-123"):
+            assert auth_enabled() is True
 
 
 # ---------------------------------------------------------------------------
@@ -46,12 +46,11 @@ class TestB2CEnabled:
 
 class TestOidcConfigUrl:
     def test_url_format(self):
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "mytenant"), \
-             patch("treesight.security.auth.B2C_POLICY_NAME", "B2C_1_signup_signin"):
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"):
             url = _oidc_config_url()
-            assert "mytenant.b2clogin.com" in url
-            assert "B2C_1_signup_signin" in url
-            assert url.endswith("/.well-known/openid-configuration")
+            assert "mytenant.ciamlogin.com" in url
+            assert "mytenant.onmicrosoft.com" in url
+            assert url.endswith("/v2.0/.well-known/openid-configuration")
 
 
 # ---------------------------------------------------------------------------
@@ -77,28 +76,28 @@ class TestGetUserId:
 
 class TestValidateToken:
     def test_raises_when_not_configured(self):
-        with patch("treesight.security.auth.b2c_enabled", return_value=False):
+        with patch("treesight.security.auth.auth_enabled", return_value=False):
             with pytest.raises(ValueError, match="not configured"):
                 validate_token("Bearer xxx")
 
     def test_raises_on_missing_header(self):
-        with patch("treesight.security.auth.b2c_enabled", return_value=True):
+        with patch("treesight.security.auth.auth_enabled", return_value=True):
             with pytest.raises(ValueError, match="Missing or malformed"):
                 validate_token("")
 
     def test_raises_on_malformed_header(self):
-        with patch("treesight.security.auth.b2c_enabled", return_value=True):
+        with patch("treesight.security.auth.auth_enabled", return_value=True):
             with pytest.raises(ValueError, match="Missing or malformed"):
                 validate_token("Basic abc")
 
     def test_raises_on_invalid_token_format(self):
-        with patch("treesight.security.auth.b2c_enabled", return_value=True), \
+        with patch("treesight.security.auth.auth_enabled", return_value=True), \
              patch("treesight.security.auth._fetch_jwks", return_value={"keys": []}):
             with pytest.raises(ValueError, match="Invalid token format"):
                 validate_token("Bearer not-a-jwt")
 
     def test_raises_when_jwks_empty(self):
-        with patch("treesight.security.auth.b2c_enabled", return_value=True), \
+        with patch("treesight.security.auth.auth_enabled", return_value=True), \
              patch("treesight.security.auth._fetch_jwks", return_value={}):
             with pytest.raises(ValueError, match="Could not retrieve signing keys"):
                 validate_token("Bearer xxx")
@@ -116,8 +115,7 @@ class TestJwksCache:
         _jwks_cache["keys"] = fake_keys
         _jwks_cache["fetched_at"] = time.monotonic()
 
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "t"), \
-             patch("treesight.security.auth.B2C_POLICY_NAME", "p"):
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"):
             result = _fetch_jwks()
             assert result == fake_keys
 
@@ -129,8 +127,7 @@ class TestJwksCache:
         mock_oidc = {"jwks_uri": "https://example.com/jwks", "issuer": "https://example.com"}
         mock_jwks = {"keys": [{"kid": "new"}]}
 
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "t"), \
-             patch("treesight.security.auth.B2C_POLICY_NAME", "p"), \
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"), \
              patch("treesight.security.auth.requests.get") as mock_get:
             mock_get.return_value.json.side_effect = [mock_oidc, mock_jwks]
             result = _fetch_jwks()
@@ -142,8 +139,7 @@ class TestJwksCache:
         _jwks_cache["keys"] = stale_keys
         _jwks_cache["fetched_at"] = time.monotonic() - 100000  # expired
 
-        with patch("treesight.security.auth.B2C_TENANT_NAME", "t"), \
-             patch("treesight.security.auth.B2C_POLICY_NAME", "p"), \
+        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"), \
              patch("treesight.security.auth.requests.get", side_effect=Exception("network")):
             result = _fetch_jwks()
             assert result == stale_keys
@@ -155,11 +151,11 @@ class TestJwksCache:
 
 
 class TestCheckAuth:
-    def test_returns_anonymous_when_b2c_disabled(self):
+    def test_returns_anonymous_when_auth_disabled(self):
         from blueprints._helpers import check_auth
 
         mock_req = MagicMock()
-        with patch("blueprints._helpers.b2c_enabled", return_value=False):
+        with patch("blueprints._helpers.auth_enabled", return_value=False):
             claims, user_id = check_auth(mock_req)
             assert claims == {}
             assert user_id == "anonymous"
@@ -170,7 +166,7 @@ class TestCheckAuth:
         mock_req = MagicMock()
         mock_req.headers = {"Authorization": "Bearer bad"}
 
-        with patch("blueprints._helpers.b2c_enabled", return_value=True), \
+        with patch("blueprints._helpers.auth_enabled", return_value=True), \
              patch("blueprints._helpers.validate_token", side_effect=ValueError("Invalid token")):
             with pytest.raises(ValueError, match="Invalid token"):
                 check_auth(mock_req)
@@ -182,7 +178,7 @@ class TestCheckAuth:
         mock_req.headers = {"Authorization": "Bearer good-token"}
 
         fake_claims = {"sub": "user-1", "name": "Test User"}
-        with patch("blueprints._helpers.b2c_enabled", return_value=True), \
+        with patch("blueprints._helpers.auth_enabled", return_value=True), \
              patch("blueprints._helpers.validate_token", return_value=fake_claims), \
              patch("blueprints._helpers.get_user_id", return_value="user-1"):
             claims, user_id = check_auth(mock_req)
@@ -196,7 +192,7 @@ class TestCheckAuth:
 
 
 class TestRequireAuth:
-    def test_passes_through_when_b2c_disabled(self):
+    def test_passes_through_when_auth_disabled(self):
         from blueprints._helpers import require_auth
 
         @require_auth
@@ -210,7 +206,7 @@ class TestRequireAuth:
         mock_req = MagicMock()
         mock_req.method = "POST"
 
-        with patch("blueprints._helpers.b2c_enabled", return_value=False):
+        with patch("blueprints._helpers.auth_enabled", return_value=False):
             resp = my_endpoint(mock_req)
             body = json.loads(resp.get_body())
             assert body["user"] == "anonymous"
@@ -228,7 +224,7 @@ class TestRequireAuth:
         mock_req.method = "POST"
         mock_req.headers = {"Authorization": "Bearer bad"}
 
-        with patch("blueprints._helpers.b2c_enabled", return_value=True), \
+        with patch("blueprints._helpers.auth_enabled", return_value=True), \
              patch("blueprints._helpers.validate_token", side_effect=ValueError("Token expired")):
             resp = my_endpoint(mock_req)
             assert resp.status_code == 401
@@ -247,7 +243,7 @@ class TestRequireAuth:
         mock_req = MagicMock()
         mock_req.method = "OPTIONS"
 
-        with patch("blueprints._helpers.b2c_enabled", return_value=True):
+        with patch("blueprints._helpers.auth_enabled", return_value=True):
             resp = my_endpoint(mock_req)
             assert resp.status_code == 204
 

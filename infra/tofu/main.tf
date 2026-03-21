@@ -339,22 +339,18 @@ resource "azapi_resource" "function_app" {
             name  = "AZURE_AI_DEPLOYMENT"
             value = "gpt-4o-mini"
           }
-        ] : [], var.b2c_tenant_name != "" ? [
+        ] : [], var.ciam_tenant_name != "" ? [
           {
-            name  = "B2C_TENANT_NAME"
-            value = var.b2c_tenant_name
+            name  = "CIAM_TENANT_NAME"
+            value = var.ciam_tenant_name
           },
           {
-            name  = "B2C_CLIENT_ID"
-            value = var.b2c_client_id
+            name  = "CIAM_CLIENT_ID"
+            value = var.ciam_client_id
           },
           {
-            name  = "B2C_POLICY_NAME"
-            value = var.b2c_policy_name
-          },
-          {
-            name  = "B2C_AUDIENCE"
-            value = var.b2c_client_id
+            name  = "CIAM_AUDIENCE"
+            value = var.ciam_client_id
           }
         ] : [])
       }

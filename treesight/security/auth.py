@@ -1,4 +1,4 @@
-"""Azure AD B2C JWT validation for API endpoints."""
+"""Entra External ID (CIAM) JWT validation for API endpoints."""
 
 import logging
 import threading
@@ -8,7 +8,7 @@ from typing import Any
 import jwt
 import requests
 
-from treesight.config import B2C_AUDIENCE, B2C_CLIENT_ID, B2C_POLICY_NAME, B2C_TENANT_NAME
+from treesight.config import CIAM_AUDIENCE, CIAM_CLIENT_ID, CIAM_TENANT_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +19,16 @@ _JWKS_TTL = 86400  # 24 hours
 
 
 def _oidc_config_url() -> str:
-    """Return the OpenID Connect discovery URL for the B2C policy."""
+    """Return the OpenID Connect discovery URL for the CIAM tenant."""
     return (
-        f"https://{B2C_TENANT_NAME}.b2clogin.com/"
-        f"{B2C_TENANT_NAME}.onmicrosoft.com/"
-        f"{B2C_POLICY_NAME}/v2.0/.well-known/openid-configuration"
+        f"https://{CIAM_TENANT_NAME}.ciamlogin.com/"
+        f"{CIAM_TENANT_NAME}.onmicrosoft.com/"
+        f"v2.0/.well-known/openid-configuration"
     )
 
 
 def _fetch_jwks() -> dict[str, Any]:
-    """Fetch JWKS from B2C discovery endpoint with caching."""
+    """Fetch JWKS from CIAM discovery endpoint with caching."""
     now = time.monotonic()
     with _jwks_lock:
         if _jwks_cache.get("keys") and now - _jwks_cache.get("fetched_at", 0) < _JWKS_TTL:
@@ -44,7 +44,7 @@ def _fetch_jwks() -> dict[str, Any]:
             _jwks_cache["issuer"] = oidc.get("issuer", "")
         return jwks
     except Exception:
-        logger.warning("Failed to fetch B2C JWKS", exc_info=True)
+        logger.warning("Failed to fetch CIAM JWKS", exc_info=True)
         # Return stale cache if available
         with _jwks_lock:
             return _jwks_cache.get("keys", {})
@@ -56,17 +56,17 @@ def _get_issuer() -> str:
         return _jwks_cache.get("issuer", "")
 
 
-def b2c_enabled() -> bool:
-    """Return True if B2C configuration is present."""
-    return bool(B2C_TENANT_NAME and B2C_CLIENT_ID)
+def auth_enabled() -> bool:
+    """Return True if CIAM authentication configuration is present."""
+    return bool(CIAM_TENANT_NAME and CIAM_CLIENT_ID)
 
 
 def validate_token(auth_header: str) -> dict[str, Any]:
-    """Validate a B2C JWT and return the decoded claims.
+    """Validate a CIAM JWT and return the decoded claims.
 
     Raises ValueError with a user-safe message on failure.
     """
-    if not b2c_enabled():
+    if not auth_enabled():
         raise ValueError("Authentication is not configured")
 
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -106,7 +106,7 @@ def validate_token(auth_header: str) -> dict[str, Any]:
     if not public_key:
         raise ValueError("Token signed with unknown key")
 
-    audience = B2C_AUDIENCE or B2C_CLIENT_ID
+    audience = CIAM_AUDIENCE or CIAM_CLIENT_ID
     issuer = _get_issuer()
 
     decode_opts: dict[str, Any] = {

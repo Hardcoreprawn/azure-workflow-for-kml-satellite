@@ -6,7 +6,7 @@ from functools import wraps
 
 import azure.functions as func
 
-from treesight.security.auth import b2c_enabled, get_user_id, validate_token
+from treesight.security.auth import auth_enabled, get_user_id, validate_token
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_FIELD_LEN = 2000
@@ -40,10 +40,10 @@ def cors_preflight() -> func.HttpResponse:
 
 
 def require_auth(fn):
-    """Decorator that validates B2C JWT on the request.
+    """Decorator that validates CIAM JWT on the request.
 
-    When B2C is not configured the request passes through unauthenticated
-    (graceful degradation for local dev / pre-B2C deployments).
+    When CIAM is not configured the request passes through unauthenticated
+    (graceful degradation for local dev / pre-auth deployments).
 
     On success, the original function receives two extra keyword arguments:
         auth_claims  — decoded JWT claims dict
@@ -55,8 +55,8 @@ def require_auth(fn):
         if req.method == "OPTIONS":
             return cors_preflight()
 
-        if not b2c_enabled():
-            # B2C not configured — allow through without auth
+        if not auth_enabled():
+            # Auth not configured — allow through without auth
             return fn(req, auth_claims={}, user_id="anonymous")
 
         auth_header = req.headers.get("Authorization", "")
@@ -71,12 +71,12 @@ def require_auth(fn):
 
 
 def check_auth(req: func.HttpRequest) -> tuple:
-    """Validate B2C JWT and return (claims, user_id).
+    """Validate CIAM JWT and return (claims, user_id).
 
-    Returns ({}, "anonymous") when B2C is not configured.
+    Returns ({}, "anonymous") when CIAM is not configured.
     Raises ValueError with a user-safe message on auth failure.
     """
-    if not b2c_enabled():
+    if not auth_enabled():
         return {}, "anonymous"
     auth_header = req.headers.get("Authorization", "")
     claims = validate_token(auth_header)
