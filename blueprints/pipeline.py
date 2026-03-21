@@ -707,7 +707,7 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
         return cors_preflight()
 
     try:
-        _claims, _user_id = check_auth(req)
+        check_auth(req)
     except ValueError as exc:
         return _error_response(401, str(exc))
 

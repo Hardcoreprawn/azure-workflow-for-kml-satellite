@@ -61,7 +61,7 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         return cors_preflight()
 
     try:
-        _claims, _user_id = check_auth(req)
+        check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc))
 
@@ -214,7 +214,7 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         return cors_preflight()
 
     try:
-        _claims, _user_id = check_auth(req)
+        check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc))
 
