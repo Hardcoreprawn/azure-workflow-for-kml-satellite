@@ -1,4 +1,0 @@
-# Temporary, auditable suppressions for the base-image refresh workflow.
-# Each exception must include an owner, expiry date, and rationale.
-# The workflow validates this file and renders a Trivy-compatible ignore file at runtime.
-exceptions: []

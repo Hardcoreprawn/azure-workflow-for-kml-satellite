@@ -1,7 +1,0 @@
-# Production defaults — override via CI/CD or tfvars file
-subscription_id         = "" # Set via TF_VAR_subscription_id or -var
-environment             = "prod"
-location                = "westeurope"
-custom_domain           = "treesight.jablab.dev"
-budget_contact_email    = "" # Set via TF_VAR_budget_contact_email
-demo_valet_token_secret = "" # Set via TF_VAR_demo_valet_token_secret
