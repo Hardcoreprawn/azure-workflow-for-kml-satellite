@@ -11,7 +11,7 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_preflight, error_response
+from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
 from treesight.security.rate_limit import ai_limiter, get_client_ip
 
@@ -64,29 +64,31 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
     }
     """
     if req.method == "OPTIONS":
-        return cors_preflight()
+        return cors_preflight(req)
 
     try:
         check_auth(req)
     except ValueError as exc:
-        return error_response(401, str(exc))
+        return error_response(401, str(exc), req=req)
 
     if not ai_limiter.is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded — try again shortly")
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)")
+        return error_response(
+            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
+        )
 
     try:
         body = req.get_json()
     except ValueError:
-        return error_response(400, "Invalid JSON body")
+        return error_response(400, "Invalid JSON body", req=req)
 
     context = body.get("context", {})
 
     if not context:
-        return error_response(400, "Missing 'context' with satellite metadata")
+        return error_response(400, "Missing 'context' with satellite metadata", req=req)
 
     try:
         # Build analysis prompt from context
@@ -151,11 +153,11 @@ Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
             json.dumps(analysis),
             status_code=200,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers=cors_headers(req),
         )
 
-    except Exception as e:
-        return error_response(500, f"Analysis failed: {e!s}")
+    except Exception:
+        return error_response(500, "Analysis failed", req=req)
 
 
 def _default_analysis(text: str) -> dict[str, Any]:
@@ -224,34 +226,38 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     }
     """
     if req.method == "OPTIONS":
-        return cors_preflight()
+        return cors_preflight(req)
 
     try:
         check_auth(req)
     except ValueError as exc:
-        return error_response(401, str(exc))
+        return error_response(401, str(exc), req=req)
 
     if not ai_limiter.is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded — try again shortly")
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)")
+        return error_response(
+            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
+        )
 
     try:
         body = req.get_json()
     except ValueError:
-        return error_response(400, "Invalid JSON body")
+        return error_response(400, "Invalid JSON body", req=req)
 
     context = body.get("context", {})
 
     if not context or not context.get("ndvi_timeseries"):
-        return error_response(400, "Missing 'context' with ndvi_timeseries")
+        return error_response(400, "Missing 'context' with ndvi_timeseries", req=req)
 
     ndvi_ts = context.get("ndvi_timeseries", [])
     if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
         return error_response(
-            400, f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries"
+            400,
+            f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries",
+            req=req,
         )
 
     try:
@@ -388,11 +394,11 @@ health) based on the trajectory and data.
             json.dumps(analysis),
             status_code=200,
             mimetype="application/json",
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers=cors_headers(req),
         )
 
-    except Exception as e:
-        return error_response(500, f"Timelapse analysis failed: {e!s}")
+    except Exception:
+        return error_response(500, "Analysis failed", req=req)
 
 
 def _calculate_trends(

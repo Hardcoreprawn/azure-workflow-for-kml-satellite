@@ -13,7 +13,13 @@ from urllib.parse import urlparse
 import azure.functions as func
 import requests
 
-from blueprints._helpers import CORS_HEADERS, EMAIL_RE, error_response, sanitise
+from blueprints._helpers import (
+    EMAIL_RE,
+    cors_headers,
+    cors_preflight,
+    error_response,
+    sanitise,
+)
 from treesight.constants import (
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
@@ -169,14 +175,24 @@ def demo_artifacts(req: func.HttpRequest) -> func.HttpResponse:
 
 # --- GET /api/proxy (CORS proxy for external flood/fire APIs) ---
 
-PROXY_ALLOWED_DOMAINS = [
-    "environment.data.gov.uk",
-    "waterdata.usgs.gov",
-    "firms.modaps.eosdis.nasa.gov",
-    "api.open-meteo.com",
-]
+PROXY_ALLOWED_DOMAINS = frozenset(
+    {
+        "environment.data.gov.uk",
+        "waterdata.usgs.gov",
+        "firms.modaps.eosdis.nasa.gov",
+        "api.open-meteo.com",
+    }
+)
 
 PROXY_TIMEOUT_SECONDS = 10
+_PROXY_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB
+
+
+def _is_domain_allowed(domain: str) -> bool:
+    """Exact match or subdomain match against the allowlist."""
+    return domain in PROXY_ALLOWED_DOMAINS or any(
+        domain.endswith("." + allowed) for allowed in PROXY_ALLOWED_DOMAINS
+    )
 
 
 @bp.route(route="proxy", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -192,35 +208,42 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
       - https://firms.modaps.eosdis.nasa.gov/* (NASA fire hotspots)
     """
     if req.method == "OPTIONS":
-        return func.HttpResponse(status_code=204, headers=CORS_HEADERS)
+        return cors_preflight(req)
 
     target_url = req.params.get("url")
 
     if not target_url:
-        return error_response(400, "Missing 'url' query parameter")
+        return error_response(400, "Missing 'url' query parameter", req=req)
 
     try:
         parsed = urlparse(target_url)
-        domain = parsed.netloc.lower()
-        if not any(domain.endswith(allow) for allow in PROXY_ALLOWED_DOMAINS):
-            return error_response(403, f"Domain not whitelisted: {domain}")
-    except Exception as e:
-        return error_response(400, f"Invalid URL: {e!s}")
+        if parsed.scheme not in ("http", "https"):
+            return error_response(400, "Only http/https URLs are allowed", req=req)
+        domain = parsed.netloc.lower().split(":")[0]  # strip port
+        if not _is_domain_allowed(domain):
+            return error_response(403, "Domain not whitelisted", req=req)
+    except Exception:
+        return error_response(400, "Invalid URL", req=req)
 
     try:
-        resp = requests.get(target_url, timeout=PROXY_TIMEOUT_SECONDS)
+        resp = requests.get(
+            target_url,
+            timeout=PROXY_TIMEOUT_SECONDS,
+            allow_redirects=False,
+            stream=True,
+        )
+        body = resp.raw.read(_PROXY_MAX_RESPONSE_BYTES + 1)
+        if len(body) > _PROXY_MAX_RESPONSE_BYTES:
+            return error_response(502, "Upstream response too large", req=req)
+        hdrs = cors_headers(req)
+        hdrs["Cache-Control"] = "max-age=3600"
         return func.HttpResponse(
-            resp.content,
+            body,
             status_code=resp.status_code,
             mimetype=resp.headers.get("Content-Type", "application/json"),
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "max-age=3600",
-            },
+            headers=hdrs,
         )
     except requests.Timeout:
-        return error_response(504, "Request timeout")
-    except requests.RequestException as e:
-        return error_response(502, f"Upstream error: {e!s}")
-    except Exception as e:
-        return error_response(500, f"Proxy error: {e!s}")
+        return error_response(504, "Request timeout", req=req)
+    except requests.RequestException:
+        return error_response(502, "Upstream request failed", req=req)

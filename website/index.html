@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TreeSight — Geospatial KML-to-Satellite Imagery Pipeline</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--c-bg:#0c1117;--c-surface:#161b22;--c-border:#30363d;--c-text:#e6edf3;--c-muted:#8b949e;--c-accent:#58a6ff;--c-green:#3fb950;--c-red:#f85149;--c-orange:#d29922;--c-purple:#bc8cff;--radius:8px;--shadow:0 2px 12px rgba(0,0,0,.4)}
@@ -510,11 +510,13 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   </div>
 </footer>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
 <script src="https://alcdn.msauth.net/browser/2.42.0/js/msal-browser.min.js" crossorigin="anonymous"></script>
 <script>
 (function(){
   'use strict';
+
+  function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s))); return d.innerHTML; }
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
   const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.politebush-dbd595e5.uksouth.azurecontainerapps.io';
@@ -753,12 +755,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     var el = document.getElementById('pipeline-results');
     var stats = document.getElementById('pipeline-stats');
     stats.innerHTML =
-      '<div class="stat"><b>'+( output.featureCount||0)+'</b> features parsed</div>'+
-      '<div class="stat"><b>'+( output.metadataCount||0)+'</b> AOIs prepared</div>'+
-      '<div class="stat"><b>'+( output.imageryReady||0)+'</b> scenes acquired</div>'+
-      '<div class="stat"><b>'+( output.imageryFailed||0)+'</b> failed</div>'+
-      '<div class="stat"><b>'+( output.downloadsCompleted||0)+'</b> downloaded</div>'+
-      '<div class="stat"><b>'+( output.postProcessCompleted||0)+'</b> clipped &amp; reprojected</div>';
+      '<div class="stat"><b>'+parseInt(output.featureCount,10)||0+'</b> features parsed</div>'+
+      '<div class="stat"><b>'+parseInt(output.metadataCount,10)||0+'</b> AOIs prepared</div>'+
+      '<div class="stat"><b>'+parseInt(output.imageryReady,10)||0+'</b> scenes acquired</div>'+
+      '<div class="stat"><b>'+parseInt(output.imageryFailed,10)||0+'</b> failed</div>'+
+      '<div class="stat"><b>'+parseInt(output.downloadsCompleted,10)||0+'</b> downloaded</div>'+
+      '<div class="stat"><b>'+parseInt(output.postProcessCompleted,10)||0+'</b> clipped &amp; reprojected</div>';
     el.style.display = 'block';
   }
 
@@ -2136,7 +2138,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         iconAnchor: [5, 5]
       });
       var m = L.marker([f.lat, f.lon], { icon: icon })
-        .bindPopup('<b>\ud83d\udd25 Fire Hotspot</b><br>Date: '+f.date+'<br>Confidence: '+f.confidence+'<br>FRP: '+f.frp+' MW')
+        .bindPopup('<b>\ud83d\udd25 Fire Hotspot</b><br>Date: '+escapeHtml(f.date)+'<br>Confidence: '+escapeHtml(f.confidence)+'<br>FRP: '+escapeHtml(f.frp)+' MW')
         .addTo(map);
       fireMarkers.push(m);
     });
@@ -2147,15 +2149,15 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     fireMarkers.length = 0;
   }
 
-  /* ---- Flood Events (UK EA, USGS, ERA5 Water Table) ---- 
-     
+  /* ---- Flood Events (UK EA, USGS, ERA5 Water Table) ----
+
      This system integrates regional flood event data to:
      1. Mark flood event locations on the timelapse map
      2. Alert users when NDVI drops correlate with flood impacts
      3. Provide water-related context for vegetation stress
-     
+
      INTEGRATION ARCHITECTURE:
-     
+
      A. UK Environment Agency (EA) — for UK areas (Scotland, England, Wales)
         Data source: https://environment.data.gov.uk/flood-monitoring/
         API endpoints:
@@ -2165,12 +2167,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           const r = await fetch('https://environment.data.gov.uk/flood-monitoring/flood-areas');
           Returns GeoJSON with properties: {severityLevel, areaId, centroid, dateStarted, dateEnded}
         Expected fields: [{lat, lon, date, severity: 'Warning'|'Alert'|'Historical', source: 'EA'}]
-        
+
         For Mountsorrel 2021-2022: Replace fetchFloodEvents UK section with:
           - Query dateRange spanning flood period (2021-07 to 2022-06)
           - Filter by polygon intersection with EA flood areas
           - Mark `severity: 'Severe'` if declared emergency
-        
+
      B. USGS Water Resources — for US areas (CONUS)
         Data source: https://waterdata.usgs.gov/
         API endpoints:
@@ -2180,17 +2182,17 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           Fetch nearby USGS stream gauges: GET ?sites=auto&parameterCd=00060 (discharge)
           Calculate flood thresholds (2-year/10-year recurrence intervals)
         Expected fields: [{lat, lon, date, stage: number, threshold: 'Minor'|'Moderate'|'Major'}]
-     
+
      C. NASA/ESA Satellite Water Detection — global coverage
         Sentinel-1 SAR (radar) detects standing water independent of clouds
         MNDWI: (GREEN - SWIR) / (GREEN + SWIR) from Sentinel-2 bands
         Integration: Query Planetary Computer for flooded pixels in time range
         Expected fields: [{lat, lon, dateRange, waterFraction: 0.0-1.0}]
-     
+
      D. ERA5 Reanalysis — global historical water table & precipitation
         Copernicus Climate Data Store: /total_precipitation, /volumetric_soil_water
         Integration: Correlate precipitation spikes with NDVI drops
-        
+
      IMPLEMENTATION CHECKLIST:
      1. [ ] Add API keys to .env (EA token, USGS API key if needed)
      2. [ ] Replace mock `fetchFloodEvents()` with real API calls
@@ -2199,7 +2201,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
      5. [ ] Add data quality flags (e.g., confidence, source reliability)
      6. [ ] Test regional detection (Mountsorrel for UK, California for US)
      7. [ ] Visualize flood uncertainty (dashed vs. solid markers for confirmed vs. estimated)
-     
+
      TESTING DATA:
      - Mountsorrel, UK: July 2021 severe flooding (query EA records)
      - Merced County, CA: 2017 river flooding (query USGS records)
@@ -2215,7 +2217,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     }
     avgLat /= coords.length;
     avgLon /= coords.length;
-    
+
     /* UK bounds: roughly 50-59N, -8 to 2E */
     if (avgLat >= 50 && avgLat <= 59 && avgLon >= -8 && avgLon <= 2) return 'uk';
     /* US CONUS: roughly 24-50N, -125 to -66W */
@@ -2233,21 +2235,14 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       var r = await fetch(url);
       if (r.ok) return r;
     } catch(e) {}
-    
+
     try {
       /* Try backend CORS proxy if available (/api/proxy endpoint) */
       var proxiedUrl = '/api/proxy?url=' + encodeURIComponent(url);
       var r = await fetch(proxiedUrl);
       if (r.ok) return r;
     } catch(e) {}
-    
-    try {
-      /* Fallback: public CORS proxy */
-      var proxiedUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url) + '&raw=true';
-      var r = await fetch(proxiedUrl);
-      if (r.ok) return r;
-    } catch(e) {}
-    
+
     return null;
   }
 
@@ -2270,7 +2265,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         'https://environment.data.gov.uk/flood-monitoring/flood-areas?areaType=RiverBasin',
         'https://environment.data.gov.uk/flood-monitoring/flood-areas',
       ];
-      
+
       var data = null;
       for (var i = 0; i < urls.length; i++) {
         try {
@@ -2282,12 +2277,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           continue;
         }
       }
-      
+
       if (!data || !data.items) return null;
-      
+
       var center = getAoiCentroidAndRadius(coords);
       var events = [];
-      
+
       /* Filter EA flood areas by distance to AOI centroid */
       data.items.forEach(function(area) {
         if (!area.center || !area.center.coordinates) return;
@@ -2305,7 +2300,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           });
         }
       });
-      
+
       return events.length > 0 ? events : null;
     } catch(e) { return null; }
   }
@@ -2314,14 +2309,14 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   async function fetchUsFloodEvents(coords, timeRange) {
     try {
       var center = getAoiCentroidAndRadius(coords);
-      
+
       /* First, query NWIS for streamflow sites near AOI via CORS proxy */
       /* Try multiple endpoint formats */
       var queries = [
         /* Format 1: Daily values with bounding box */
         'https://waterdata.usgs.gov/nwis/dv?'
           + 'format=json'
-          + '&bBox=' + (center.lon - 0.1) + ',' + (center.lat - 0.1) + ',' 
+          + '&bBox=' + (center.lon - 0.1) + ',' + (center.lat - 0.1) + ','
                      + (center.lon + 0.1) + ',' + (center.lat + 0.1)
           + '&parameterCd=00065,00060'  /* Stage & Discharge */
           + '&siteStatus=all'
@@ -2329,10 +2324,10 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         /* Format 2: Site search by location */
         'https://waterdata.usgs.gov/nwis/qw?'
           + 'format=json'
-          + '&bBox=' + (center.lon - 0.1) + ',' + (center.lat - 0.1) + ',' 
+          + '&bBox=' + (center.lon - 0.1) + ',' + (center.lat - 0.1) + ','
                      + (center.lon + 0.1) + ',' + (center.lat + 0.1),
       ];
-      
+
       var data = null;
       for (var i = 0; i < queries.length; i++) {
         try {
@@ -2344,21 +2339,21 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           continue;
         }
       }
-      
+
       if (!data) return null;
-      
+
       var events = [];
       var timeSeries = data.value?.timeSeries || data.sites || [];
       if (!timeSeries.length) return null;
-      
+
       var now = new Date();
       var cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);  /* last 30 days */
-      
+
       timeSeries.forEach(function(ts) {
         if (!ts.sourceInfo) return;
         var lat = ts.sourceInfo.geoLocation?.geogLocation?.srs330lat;
         var lon = ts.sourceInfo.geoLocation?.geogLocation?.srs330lon;
-        
+
         /* Check if site has recent high stage/discharge data */
         var values = ts.values[0]?.value || [];
         values.slice(-5).forEach(function(val) {  /* check last 5 values */
@@ -2375,7 +2370,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           }
         });
       });
-      
+
       return events.length > 0 ? events : null;
     } catch(e) { return null; }
   }
@@ -2384,15 +2379,15 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   async function fetchFloodEvents(coords, timeRange) {
     var region = getRegionForCoords(coords);
     if (!region) return null;
-    
+
     /* Check cache (5 min TTL) */
-    if (floodEventCache[region] && 
+    if (floodEventCache[region] &&
         Date.now() - floodEventCache[region].timestamp < 5 * 60 * 1000) {
       return floodEventCache[region].data;
     }
-    
+
     var results = null;
-    
+
     /* Multi-region flood event router with real API integration and mock fallback */
     try {
       if (region === 'uk') {
@@ -2412,19 +2407,19 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         results = getMockUsFloodData(coords);
       }
     }
-    
+
     /* Store in cache */
     if (results) {
       floodEventCache[region] = { data: results, timestamp: Date.now() };
     }
-    
+
     return results;
   }
 
   /* Mock UK flood data for Mountsorrel area (July 2021 EA severe flooding) */
   function getMockUkFloodData(coords) {
     var center = getAoiCentroidAndRadius(coords);
-    
+
     /* Check if this is approximatelyMountsorrel area (52.71-52.74N, -1.16-1.13W) */
     if (center.lat >= 52.70 && center.lat <= 52.75 && center.lon >= -1.20 && center.lon <= -1.10) {
       return [
@@ -2459,9 +2454,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         iconAnchor: [6, 6]
       });
       var popup = '<b>💧 Flood Event</b><br>';
-      if (f.date) popup += 'Date: '+f.date+'<br>';
-      if (f.severity) popup += 'Severity: '+f.severity+'<br>';
-      if (f.type) popup += 'Type: '+f.type;
+      if (f.date) popup += 'Date: '+escapeHtml(f.date)+'<br>';
+      if (f.severity) popup += 'Severity: '+escapeHtml(f.severity)+'<br>';
+      if (f.type) popup += 'Type: '+escapeHtml(f.type);
       var m = L.marker([f.lat, f.lon], { icon: icon })
         .bindPopup(popup)
         .addTo(map);
@@ -2557,7 +2552,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
     var all = rows.concat(alerts);
     el.innerHTML = all.map(function(r){
-      return '<div class="insight-row'+(r.alert?' alert':'')+'"><span class="insight-icon">'+r.icon+'</span> '+r.text+'</div>';
+      return '<div class="insight-row'+(r.alert?' alert':'')+'"><span class="insight-icon">'+escapeHtml(r.icon)+'</span> '+escapeHtml(r.text)+'</div>';
     }).join('');
   }
 
@@ -2586,13 +2581,13 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     var m = framesMeta[idx];
     var badge = m.isNaip && !useNdvi ? ' <span class="naip-badge">NAIP 0.6m</span>' : '';
     var ndviBadge = useNdvi ? ' <span class="naip-badge" style="background:var(--c-green)">NDVI</span>' : '';
-    document.getElementById('frame-label').innerHTML = m.label+badge+ndviBadge;
+    document.getElementById('frame-label').innerHTML = escapeHtml(m.label)+badge+ndviBadge;
     document.getElementById('frame-counter').textContent = (idx+1)+' / '+frameLayers.length;
     document.getElementById('frame-slider').value = idx;
     document.getElementById('frame-info').textContent = m.info;
 
     /* Update header bar */
-    document.getElementById('header-frame-label').innerHTML = m.label+badge+ndviBadge + ' <span style="color:var(--c-muted);font-size:.75rem;margin-left:4px">' + (idx+1)+'/'+frameLayers.length + '</span>';
+    document.getElementById('header-frame-label').innerHTML = escapeHtml(m.label)+badge+ndviBadge + ' <span style="color:var(--c-muted);font-size:.75rem;margin-left:4px">' + (idx+1)+'/'+frameLayers.length + '</span>';
 
     /* Update weather marker, NDVI trend marker, and insights */
     updateWeatherMarker();
@@ -2623,16 +2618,16 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     var obsHtml = '';
     if (analysis.observations && Array.isArray(analysis.observations)) {
       analysis.observations.forEach(function(obs) {
-        var severity = obs.severity || 'normal';
+        var severity = escapeHtml(obs.severity || 'normal');
         obsHtml += '<div class="observation">' +
-          '<div class="obs-category">' + (obs.category || 'Analysis') +
+          '<div class="obs-category">' + escapeHtml(obs.category || 'Analysis') +
             ' <span class="obs-severity severity-' + severity + '">' + severity.toUpperCase() + '</span>' +
           '</div>';
         if (obs.description) {
-          obsHtml += '<div class="obs-description">' + obs.description + '</div>';
+          obsHtml += '<div class="obs-description">' + escapeHtml(obs.description) + '</div>';
         }
         if (obs.recommendation) {
-          obsHtml += '<div class="obs-recommendation">💡 ' + obs.recommendation + '</div>';
+          obsHtml += '<div class="obs-recommendation">💡 ' + escapeHtml(obs.recommendation) + '</div>';
         }
         obsHtml += '</div>';
       });
@@ -2682,8 +2677,8 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
       /* 2. No saved analysis — run fresh LLM analysis */
       // Get AOI name
-      var aoiNameForAnalysis = (selectedAoiIndex >= 0 && aoiPolygonsData[selectedAoiIndex] && aoiPolygonsData[selectedAoiIndex].name) 
-        ? aoiPolygonsData[selectedAoiIndex].name 
+      var aoiNameForAnalysis = (selectedAoiIndex >= 0 && aoiPolygonsData[selectedAoiIndex] && aoiPolygonsData[selectedAoiIndex].name)
+        ? aoiPolygonsData[selectedAoiIndex].name
         : 'Area of Interest';
 
       // Collect NDVI time series — include ALL frames (null entries preserve alignment)

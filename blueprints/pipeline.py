@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, cast
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import check_auth
+from blueprints._helpers import check_auth, cors_headers, cors_preflight
 from treesight.config import config_get_int
 from treesight.constants import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
@@ -660,6 +660,11 @@ async def timelapse_data(
     containing weather, NDVI, mosaic search IDs, and frame metadata.
     The frontend uses this instead of fetching from external APIs.
     """
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return _error_response(400, str(exc))
+
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
         return _error_response(400, "instance_id required")
@@ -686,7 +691,7 @@ async def timelapse_data(
         json.dumps(data, default=str),
         status_code=200,
         mimetype="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
+        headers=cors_headers(req),
     )
 
 
@@ -702,9 +707,7 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     can be retrieved without re-running the LLM.
     """
     if req.method == "OPTIONS":
-        from blueprints._helpers import cors_preflight
-
-        return cors_preflight()
+        return cors_preflight(req)
 
     try:
         check_auth(req)
@@ -736,7 +739,7 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
         json.dumps({"saved": True, "path": analysis_path}),
         status_code=200,
         mimetype="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
+        headers=cors_headers(req),
     )
 
 
@@ -747,6 +750,11 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
 )
 def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     """GET /api/timelapse-analysis-load/{instance_id} — retrieve saved analysis."""
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return _error_response(400, str(exc))
+
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
         return _error_response(400, "instance_id required")
@@ -764,7 +772,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
         json.dumps(data, default=str),
         status_code=200,
         mimetype="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
+        headers=cors_headers(req),
     )
 
 
