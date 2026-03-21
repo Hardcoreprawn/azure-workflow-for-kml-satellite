@@ -1,31 +1,10 @@
-# Exclude version control
-.git
-.gitignore
-
-# Exclude CI/CD and infrastructure
-.github
-infra
-
-# Exclude development files
-.venv
-.env
+.venv/
+__pycache__/
 *.pyc
-__pycache__
-.ruff_cache
-.mypy_cache
-.pytest_cache
-
-# Exclude test files
-tests
-
-# Exclude local settings and documentation
-local.settings.json
-local.settings.json.template
-*.md
-
-# Exclude Python project files (not needed at runtime)
-pyproject.toml
-uv.lock
-
-# Exclude Docker files from build context
-.dockerignore
+.git/
+.pytest_cache/
+.ruff_cache/
+azurite-data/
+website/
+tests/
+.mypy_cache/

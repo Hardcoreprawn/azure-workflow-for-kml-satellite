@@ -1,0 +1,115 @@
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: treesight-azurite
+    ports:
+      - "10000:10000"  # Blob
+      - "10001:10001"  # Queue
+      - "10002:10002"  # Table
+    volumes:
+      - azurite-data:/data
+    command: >-
+      azurite
+      --blobHost 0.0.0.0
+      --queueHost 0.0.0.0
+      --tableHost 0.0.0.0
+      --loose
+      --skipApiVersionCheck
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10000"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  init-storage:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: treesight-init
+    depends_on:
+      azurite:
+        condition: service_healthy
+    volumes:
+      - ./scripts/init_storage_docker.py:/app/init_storage_docker.py:ro
+    working_dir: /app
+    environment:
+      AZURITE_BLOB_HOST: azurite
+    command: ["python", "init_storage_docker.py"]
+    restart: "no"
+
+  func:
+    build: .
+    container_name: treesight-func
+    ports:
+      - "7071:80"
+    depends_on:
+      azurite:
+        condition: service_healthy
+    environment:
+      AzureWebJobsStorage: >-
+        DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
+      AzureWebJobsFeatureFlags: EnableWorkerIndexing
+      FUNCTIONS_WORKER_RUNTIME: python
+      WEBSITE_HOSTNAME: "localhost:80"
+      IMAGERY_PROVIDER: planetary_computer
+      IMAGERY_RESOLUTION_TARGET_M: "0.5"
+      IMAGERY_MAX_CLOUD_COVER_PCT: "20.0"
+      AOI_BUFFER_M: "100.0"
+      AOI_MAX_AREA_HA: "10000.0"
+      DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me
+      DEMO_VALET_TOKEN_TTL_SECONDS: "86400"
+      DEMO_VALET_TOKEN_MAX_USES: "3"
+      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "mistral"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  web:
+    image: python:3.12-slim
+    container_name: treesight-web
+    ports:
+      - "1111:1111"
+    depends_on:
+      func:
+        condition: service_healthy
+    volumes:
+      - ./website:/app/website:ro
+      - ./scripts/dev_server.py:/app/scripts/dev_server.py:ro
+    working_dir: /app
+    command: >-
+      python scripts/dev_server.py --port 1111 --func-host func --func-port 80
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: treesight-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Pre-pull model on startup (optional - comment out if using existing image)
+    # Note: This will take time on first run (~4GB download)
+    # command: sh -c "ollama pull mistral && ollama serve"
+
+volumes:
+  azurite-data:
+  ollama-data:

@@ -1,916 +1,140 @@
-# ---------------------------------------------------------------------------
-# Function App Deployment — Container
-# ---------------------------------------------------------------------------
-# Builds a Docker image with GDAL and geospatial libraries, pushes it to
-# GitHub Container Registry (ghcr.io), and deploys the container to Azure
-# Functions on Container Apps.
+# ─────────────────────────────────────────────────────────────
+# Deploy — Build, push to ACR, deploy infra & app
 #
-# IMPORTANT sequencing guardrail:
-#   Infrastructure provisions the Function App platform and Event Grid system
-#   topic. This workflow owns the webhook subscription reconciliation because
-#   the subscription depends on runtime-only facts that cannot be assumed at
-#   infra apply time:
-#     1) Build and push custom container image to ghcr.io
-#     2) Update Function App to use the new container image
-#     3) Prove host readiness: host running, trigger indexed, webhook key ready
-#     4) Reconcile and verify the Event Grid subscription against that runtime
+# Triggered on push to main (after CI passes) or manually.
 #
-# Triggers on push to main when application code or Dockerfile changes.
-# Also triggers after a successful OpenTofu apply on main so infrastructure
-# changes get a follow-up application deployment and subscription reconcile.
-#
-# Safety: main branch protection requires the repository CI checks to pass
-# before any PR can merge, so code on main has already been validated.
-#
-# Container security:
-#   - Multi-stage build: build tools never reach the final image
-#   - No secrets in the image: all config injected via app settings
-#   - Images tagged with commit SHA for full traceability
-#   - GITHUB_TOKEN for ghcr.io push (CI scope)
-#   - Dedicated GHCR pull token for runtime app settings (non-expiring between deploys)
-#   - .dockerignore excludes .git, tests, infra, local settings
-#
-# Requires:
-#   - OIDC federation configured for this workflow
-#   - GitHub environment secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID,
-#     AZURE_SUBSCRIPTION_ID, GHCR_PULL_TOKEN
-#   - GitHub environment variable: AZURE_LOCATION
-#   - Optional environment variable: GHCR_PULL_USERNAME (defaults to repository owner)
-# ---------------------------------------------------------------------------
-
-name: Deploy Function App
+# Required GitHub secrets:
+#   AZURE_CLIENT_ID        — Service principal app ID
+#   AZURE_TENANT_ID        — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID  — Target subscription
+#   AZURE_CREDENTIALS      — Service principal credentials JSON (for az login)
+#   DEMO_VALET_TOKEN_SECRET — Valet token signing key
+#   BUDGET_CONTACT_EMAIL    — Email for cost alerts
+#   SWA_DEPLOYMENT_TOKEN    — Static Web App deployment token (from infra output)
+# ─────────────────────────────────────────────────────────────
+name: Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "function_app.py"
-      - "kml_satellite/**"
-      - "host.json"
-      - "requirements.txt"
-      - "Dockerfile"
-      - ".dockerignore"
-      - ".github/workflows/deploy.yml"
   workflow_run:
-    workflows: ["OpenTofu Apply"]
+    workflows: [CI]
     types: [completed]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      builder_base_image:
-        description: "Optional override for builder base image"
-        required: false
-        type: string
-      runtime_base_image:
-        description: "Optional override for runtime base image"
-        required: false
-        type: string
 
 permissions:
-  id-token: write
   contents: read
-  packages: write
+  id-token: write
 
 concurrency:
-  group: deploy-function-app-${{ github.ref }}
+  group: deploy-prod
   cancel-in-progress: false
 
 env:
-  FUNCTION_APP_NAME: func-kmlsat-dev
-  RESOURCE_GROUP: rg-kmlsat-dev
-  EVENT_GRID_SYSTEM_TOPIC_NAME: evgt-kmlsat-dev
-  EVENT_GRID_SUBSCRIPTION_NAME: evgs-kml-upload
-  EVENT_GRID_TRIGGER_FUNCTION: kml_blob_trigger
-  SMOKE_INPUT_CONTAINER: kml-input
-  SMOKE_OUTPUT_CONTAINER: kml-output
-  SMOKE_DURABLE_TASK_HUB: KmlSatelliteHub
-  SMOKE_DURABLE_CONNECTION_NAME: Storage
-  SMOKE_KML_FIXTURE: tests/data/07_small_area_garden.kml
+  TOFU_VERSION: "1.8.0"
 
 jobs:
-  deploy-dev:
-    name: Deploy (Dev)
+  deploy-infra:
+    name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    environment: dev
-    timeout-minutes: 45
-    if: |
-      github.event_name != 'workflow_run' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_branch == 'main'
-      )
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      acr_login_server: ${{ steps.outputs.outputs.acr_login_server }}
+      acr_name: ${{ steps.outputs.outputs.acr_name }}
+      resource_group: ${{ steps.outputs.outputs.resource_group }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 2
+      - uses: actions/checkout@v4
 
-      - name: Detect deployment scope
-        id: scope
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Default to full deployment unless we can confidently classify as code-only.
-          strategy="full"
-          reason="manual or unknown change scope"
-
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
-            changed_files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || true)
-
-            if [[ -n "$changed_files" ]]; then
-              # Any infra or deployment workflow change requires full reconcile.
-              if echo "$changed_files" | grep -qE '^(infra/|\.github/workflows/(deploy\.yml|tofu-plan\.yml|tofu-apply\.yml)$)'; then
-                strategy="full"
-                reason="infra/workflow changes detected"
-              else
-                strategy="fast"
-                reason="code-only changes"
-              fi
-            fi
-          fi
-
-          echo "strategy=$strategy" >> "$GITHUB_OUTPUT"
-          echo "reason=$reason" >> "$GITHUB_OUTPUT"
-          echo "Deployment strategy: $strategy ($reason)"
-
-      - name: Set container image name
-        id: image
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: |
-          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}:$SOURCE_SHA" >> "$GITHUB_OUTPUT"
-          echo "cache_ref=ghcr.io/${GITHUB_REPOSITORY,,}:buildcache" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Resolve base image inputs
-        id: base_images
-        shell: bash
-        env:
-          MANUAL_BUILDER_BASE_IMAGE: ${{ inputs.builder_base_image }}
-          MANUAL_RUNTIME_BASE_IMAGE: ${{ inputs.runtime_base_image }}
-        run: |
-          set -euo pipefail
-
-          default_geo_base="ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:geo-base-stable"
-          default_fallback_base="mcr.microsoft.com/azure-functions/python:4-python3.12"
-
-          builder="${MANUAL_BUILDER_BASE_IMAGE:-$default_geo_base}"
-          runtime="${MANUAL_RUNTIME_BASE_IMAGE:-$default_geo_base}"
-
-          # Work-first reliability guardrail: if the default geo base image does not
-          # exist yet, automatically fall back to the Microsoft Functions base image.
-          if [[ -z "${MANUAL_BUILDER_BASE_IMAGE}" && "$builder" == "$default_geo_base" ]]; then
-            if ! docker manifest inspect "$builder" >/dev/null 2>&1; then
-              echo "Default builder base image not found: $builder; falling back to $default_fallback_base"
-              builder="$default_fallback_base"
-            fi
-          fi
-
-          if [[ -z "${MANUAL_RUNTIME_BASE_IMAGE}" && "$runtime" == "$default_geo_base" ]]; then
-            if ! docker manifest inspect "$runtime" >/dev/null 2>&1; then
-              echo "Default runtime base image not found: $runtime; falling back to $default_fallback_base"
-              runtime="$default_fallback_base"
-            fi
-          fi
-
-          geo_preinstalled="false"
-          if [[ "$builder" == *"geo-base"* || "$runtime" == *"geo-base"* ]]; then
-            geo_preinstalled="true"
-          fi
-          echo "builder=$builder" >> "$GITHUB_OUTPUT"
-          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
-          echo "geo_preinstalled=$geo_preinstalled" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push container image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.image.outputs.name }}
-          build-args: |
-            BUILDER_BASE_IMAGE=${{ steps.base_images.outputs.builder }}
-            RUNTIME_BASE_IMAGE=${{ steps.base_images.outputs.runtime }}
-            GEO_DEPS_PREINSTALLED=${{ steps.base_images.outputs.geo_preinstalled }}
-          cache-from: type=registry,ref=${{ steps.image.outputs.cache_ref }}
-          cache-to: type=registry,ref=${{ steps.image.outputs.cache_ref }},mode=max
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.image.outputs.source_sha }}
-
-      - name: Azure Login (OIDC)
+      - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Pre-flight deployment contract
-        shell: bash
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: Tofu Init
+        working-directory: infra
         env:
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
-          require_command() {
-            local cmd="$1"
-            command -v "$cmd" >/dev/null 2>&1 || fail "Required command '$cmd' is not available on the runner."
-          }
-          require_value() {
-            local value="$1"
-            local label="$2"
-            [[ -n "$value" ]] || fail "$label is empty."
-          }
-
-          require_command az
-          require_command jq
-          require_command curl
-
-          require_value "${{ env.FUNCTION_APP_NAME }}" "FUNCTION_APP_NAME"
-          require_value "${{ env.RESOURCE_GROUP }}" "RESOURCE_GROUP"
-          require_value "${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}" "EVENT_GRID_SYSTEM_TOPIC_NAME"
-          require_value "${{ env.EVENT_GRID_SUBSCRIPTION_NAME }}" "EVENT_GRID_SUBSCRIPTION_NAME"
-          require_value "${{ env.EVENT_GRID_TRIGGER_FUNCTION }}" "EVENT_GRID_TRIGGER_FUNCTION"
-          require_value "$GHCR_PULL_TOKEN" "GHCR_PULL_TOKEN (environment secret)"
-
-          az functionapp show \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query id -o tsv >/dev/null
-
-          az eventgrid system-topic show \
-            --name "${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --query id -o tsv >/dev/null
-
-          log "Deployment contract verified: Function App and Event Grid system topic both exist."
-
-      - name: Configure registry credentials
-        run: |
-          az functionapp config appsettings set \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --settings \
-              DOCKER_REGISTRY_SERVER_URL=ghcr.io \
-              DOCKER_REGISTRY_SERVER_USERNAME="${{ vars.GHCR_PULL_USERNAME || github.repository_owner }}" \
-              DOCKER_REGISTRY_SERVER_PASSWORD="${{ secrets.GHCR_PULL_TOKEN }}"
-
-      - name: Update Function App container image
-        run: |
-          az functionapp config container set \
-            --name "${{ env.FUNCTION_APP_NAME }}" \
-            --resource-group "${{ env.RESOURCE_GROUP }}" \
-            --image "${{ steps.image.outputs.name }}"
-
-      - name: Reconcile function readiness and Event Grid subscription (full strategy)
-        if: steps.scope.outputs.strategy == 'full'
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAX_HOST_READY_SECONDS=900
-          HOST_POLL_INTERVAL_SECONDS=15
-          MAX_SUBSCRIPTION_SECONDS=600
-          SUBSCRIPTION_POLL_INTERVAL_SECONDS=20
-          DELETE_PROPAGATION_SECONDS=120
-
-          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
-          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
-          SYSTEM_TOPIC_NAME="${{ env.EVENT_GRID_SYSTEM_TOPIC_NAME }}"
-          SUBSCRIPTION_NAME="${{ env.EVENT_GRID_SUBSCRIPTION_NAME }}"
-          TRIGGER_NAME="${{ env.EVENT_GRID_TRIGGER_FUNCTION }}"
-          AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
-
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
-          require_nonempty() {
-            local value="$1"
-            local label="$2"
-            [[ -n "$value" ]] || fail "$label is empty."
-          }
-
-          echo "::group::Resolve Function App hostname"
-          FQDN=""
-          for attempt in {1..10}; do
-            FQDN=$(az functionapp show \
-              --name "$FUNCTION_APP" \
-              --resource-group "$RESOURCE_GROUP" \
-              --query defaultHostName -o tsv 2>/dev/null || true)
-
-            if [[ -n "$FQDN" ]]; then
-              break
-            fi
-
-            log "Hostname not available yet (attempt ${attempt}/10). Retrying in 3s..."
-            sleep 3
-          done
-          require_nonempty "$FQDN" "Function App default hostname"
-          log "Resolved Function App hostname: $FQDN"
-          echo "::endgroup::"
-
-          echo "::group::Verify runtime readiness contract"
-          READINESS_DEADLINE=$(( $(date +%s) + MAX_HOST_READY_SECONDS ))
-          MASTER_KEY=""
-          EVENTGRID_KEY=""
-          LAST_STATE="Unknown"
-          LAST_FUNCTION_COUNT="unknown"
-          LAST_KEY_STATUS="unavailable"
-          TRIGGER_INDEXED=0
-
-          while (( $(date +%s) < READINESS_DEADLINE )); do
-            KEY_PAYLOAD=$(az rest \
-              --method post \
-              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-              -o json 2>/dev/null || true)
-
-            MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
-            EVENTGRID_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.systemKeys.eventgrid_extension // .systemKeys.eventgridextensionconfig_extension // .masterKey // empty' 2>/dev/null || true)
-
-            if [[ -z "$MASTER_KEY" ]]; then
-              LAST_KEY_STATUS="unavailable"
-              log "Host keys are not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            LAST_KEY_STATUS="available"
-            echo "::add-mask::${MASTER_KEY}"
-            echo "::add-mask::${EVENTGRID_KEY}"
-
-            set +e
-            HOST_STATUS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${MASTER_KEY}" \
-              "https://${FQDN}/admin/host/status" 2>/dev/null)
-            HOST_STATUS_EXIT=$?
-            set -e
-
-            if [[ $HOST_STATUS_EXIT -ne 0 ]]; then
-              log "Host status endpoint unavailable (curl=${HOST_STATUS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            LAST_STATE=$(echo "$HOST_STATUS_JSON" | jq -r '.state // "Unknown"' 2>/dev/null || echo "InvalidJSON")
-            if [[ "$LAST_STATE" != "Running" ]]; then
-              log "Host state is '$LAST_STATE'. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            set +e
-            FUNCTIONS_JSON=$(curl -sS --max-time 10 \
-              -H "x-functions-key: ${MASTER_KEY}" \
-              "https://${FQDN}/admin/functions" 2>/dev/null)
-            FUNCTIONS_EXIT=$?
-            set -e
-
-            if [[ $FUNCTIONS_EXIT -ne 0 ]]; then
-              log "Function registry endpoint unavailable (curl=${FUNCTIONS_EXIT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            LAST_FUNCTION_COUNT=$(echo "$FUNCTIONS_JSON" | jq 'length' 2>/dev/null || echo "unknown")
-            if echo "$FUNCTIONS_JSON" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
-              TRIGGER_INDEXED=1
-            else
-              TRIGGER_INDEXED=0
-            fi
-
-            if [[ $TRIGGER_INDEXED -ne 1 ]]; then
-              log "Trigger '$TRIGGER_NAME' not indexed yet (functions seen: ${LAST_FUNCTION_COUNT}). Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            if [[ -z "$EVENTGRID_KEY" ]]; then
-              log "Event Grid webhook key is not available yet. Waiting ${HOST_POLL_INTERVAL_SECONDS}s..."
-              sleep "$HOST_POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            log "Runtime readiness contract satisfied: host running, trigger indexed, webhook key available."
-            break
-          done
-
-          if [[ "$LAST_STATE" != "Running" || $TRIGGER_INDEXED -ne 1 || "$LAST_KEY_STATUS" != "available" || -z "$EVENTGRID_KEY" ]]; then
-            fail "Runtime readiness contract not satisfied within ${MAX_HOST_READY_SECONDS}s (state=${LAST_STATE}, trigger_indexed=${TRIGGER_INDEXED}, functions_seen=${LAST_FUNCTION_COUNT}, keys=${LAST_KEY_STATUS})."
-          fi
-          echo "::endgroup::"
-
-          echo "::group::Reconcile Event Grid subscription"
-          WEBHOOK_URL="https://${FQDN}/runtime/webhooks/eventgrid?functionName=${TRIGGER_NAME}&code=${EVENTGRID_KEY}"
-
-          read_existing_subscription() {
-            az eventgrid system-topic event-subscription show \
-              --name "$SUBSCRIPTION_NAME" \
-              --system-topic-name "$SYSTEM_TOPIC_NAME" \
-              --resource-group "$RESOURCE_GROUP" \
-              --include-full-endpoint-url \
-              -o json 2>/dev/null || true
-          }
-
-          extract_subscription_state() {
-            echo "$1" | jq -r '.provisioningState // .properties.provisioningState // empty' 2>/dev/null || true
-          }
-
-          extract_subscription_endpoint() {
-            echo "$1" | jq -r '.destination.properties.endpointUrl // .properties.destination.properties.endpointUrl // empty' 2>/dev/null || true
-          }
-
-          EXISTING_JSON=$(read_existing_subscription)
-          DELETE_CONFIRMED=0
-          CREATE_ACCEPTED=0
-          if [[ -n "$EXISTING_JSON" ]]; then
-            EXISTING_STATE=$(extract_subscription_state "$EXISTING_JSON")
-            EXISTING_ENDPOINT=$(extract_subscription_endpoint "$EXISTING_JSON")
-
-            if [[ "$EXISTING_STATE" == "Succeeded" && "$EXISTING_ENDPOINT" == "$WEBHOOK_URL" ]]; then
-              log "Event Grid subscription already matches the verified runtime endpoint."
-            else
-              log "Event Grid subscription drift detected (state='${EXISTING_STATE:-unknown}'). Deleting before recreate."
-              az eventgrid system-topic event-subscription delete \
-                --name "$SUBSCRIPTION_NAME" \
-                --system-topic-name "$SYSTEM_TOPIC_NAME" \
-                --resource-group "$RESOURCE_GROUP" \
-                --yes
-
-              DELETE_UNTIL=$(( $(date +%s) + DELETE_PROPAGATION_SECONDS ))
-              while (( $(date +%s) < DELETE_UNTIL )); do
-                CURRENT_JSON=$(read_existing_subscription)
-                if [[ -z "$CURRENT_JSON" ]]; then
-                  DELETE_CONFIRMED=1
-                  break
-                fi
-                log "Deletion has not propagated yet. Waiting for the old subscription to disappear..."
-                sleep 5
-              done
-
-              if [[ $DELETE_CONFIRMED -ne 1 ]]; then
-                fail "Existing subscription delete did not propagate within retry budget."
-              fi
-            fi
-          fi
-
-          SUBSCRIPTION_CREATED=0
-          LAST_CREATE_ERROR=""
-          RECONCILE_DEADLINE=$(( $(date +%s) + MAX_SUBSCRIPTION_SECONDS ))
-          ATTEMPT=0
-
-          while (( $(date +%s) < RECONCILE_DEADLINE )); do
-            CURRENT_JSON=$(read_existing_subscription)
-            if [[ -n "$CURRENT_JSON" ]]; then
-              CURRENT_STATE=$(extract_subscription_state "$CURRENT_JSON")
-              CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
-              if [[ "$CURRENT_STATE" == "Succeeded" && "$CURRENT_ENDPOINT" == "$WEBHOOK_URL" ]]; then
-                SUBSCRIPTION_CREATED=1
-                break
-              fi
-            fi
-
-            ATTEMPT=$((ATTEMPT + 1))
-            log "Subscription reconcile attempt ${ATTEMPT}..."
-
-            set +e
-            CREATE_OUTPUT=$(az eventgrid system-topic event-subscription create \
-              --name "$SUBSCRIPTION_NAME" \
-              --system-topic-name "$SYSTEM_TOPIC_NAME" \
-              --resource-group "$RESOURCE_GROUP" \
-              --endpoint "$WEBHOOK_URL" \
-              --endpoint-type webhook \
-              --included-event-types "Microsoft.Storage.BlobCreated" \
-              --subject-ends-with ".kml" 2>&1)
-            CREATE_EXIT=$?
-            set -e
-
-            if [[ $CREATE_EXIT -eq 0 ]]; then
-              CREATE_ACCEPTED=1
-              log "Subscription create call accepted by Azure."
-            elif echo "$CREATE_OUTPUT" | grep -qiE "already exists"; then
-              CREATE_ACCEPTED=1
-              log "Subscription already exists during reconcile; proceeding to verification."
-            elif echo "$CREATE_OUTPUT" | grep -qiE "(Url validation|destination endpoint|ResourceNotFound|webhook|timed out|temporarily unavailable)"; then
-              LAST_CREATE_ERROR=$(echo "$CREATE_OUTPUT" | tail -n 20)
-              log "Subscription prerequisites are not ready yet. Retrying in ${SUBSCRIPTION_POLL_INTERVAL_SECONDS}s..."
-              sleep "$SUBSCRIPTION_POLL_INTERVAL_SECONDS"
-              continue
-            else
-              fail "Non-retryable Event Grid subscription create failure: $(echo "$CREATE_OUTPUT" | tail -n 20)"
-            fi
-
-            VERIFY_UNTIL=$(( $(date +%s) + SUBSCRIPTION_POLL_INTERVAL_SECONDS ))
-            while (( $(date +%s) < VERIFY_UNTIL )); do
-              if (( $(date +%s) >= RECONCILE_DEADLINE )); then
-                break
-              fi
-
-              CURRENT_JSON=$(read_existing_subscription)
-              if [[ -z "$CURRENT_JSON" ]]; then
-                sleep 5
-                continue
-              fi
-
-              CURRENT_STATE=$(extract_subscription_state "$CURRENT_JSON")
-              CURRENT_ENDPOINT=$(extract_subscription_endpoint "$CURRENT_JSON")
-
-              if [[ "$CURRENT_STATE" == "Succeeded" && -z "$CURRENT_ENDPOINT" && $DELETE_CONFIRMED -eq 1 && $CREATE_ACCEPTED -eq 1 ]]; then
-                log "Azure did not return the full endpoint URL after recreate; accepting state=Succeeded after confirmed delete and recreate."
-                SUBSCRIPTION_CREATED=1
-                break 2
-              fi
-
-              if [[ "$CURRENT_ENDPOINT" != "$WEBHOOK_URL" ]]; then
-                LAST_CREATE_ERROR="Endpoint mismatch during reconcile: current_state=${CURRENT_STATE:-unknown}, current_endpoint=${CURRENT_ENDPOINT:-none}, expected_endpoint=${WEBHOOK_URL:-none}"
-                log "Event Grid subscription endpoint has not converged yet (state=${CURRENT_STATE:-unknown}, current_endpoint=${CURRENT_ENDPOINT:-none}, expected=${WEBHOOK_URL:-none}). Waiting for the reconciled endpoint to appear..."
-                sleep 5
-                continue
-              fi
-
-              if [[ "$CURRENT_STATE" == "Succeeded" ]]; then
-                SUBSCRIPTION_CREATED=1
-                break 2
-              fi
-
-              if [[ "$CURRENT_STATE" == "Failed" ]]; then
-                fail "Event Grid subscription provisioning entered the Failed state."
-              fi
-
-              sleep 5
-            done
-          done
-
-          if [[ $SUBSCRIPTION_CREATED -ne 1 ]]; then
-            fail "Event Grid subscription did not converge within ${MAX_SUBSCRIPTION_SECONDS}s. Last create error: ${LAST_CREATE_ERROR:-none captured}."
-          fi
-
-          VERIFIED_JSON=$(read_existing_subscription)
-          VERIFIED_STATE=$(extract_subscription_state "$VERIFIED_JSON")
-          VERIFIED_ENDPOINT=$(extract_subscription_endpoint "$VERIFIED_JSON")
-
-          if [[ -n "$VERIFIED_JSON" && "$VERIFIED_STATE" == "Succeeded" && -z "$VERIFIED_ENDPOINT" && $DELETE_CONFIRMED -eq 1 && $CREATE_ACCEPTED -eq 1 ]]; then
-            log "Final verification accepted state=Succeeded without endpoint URL after confirmed recreate."
-          elif [[ -z "$VERIFIED_JSON" || "$VERIFIED_STATE" != "Succeeded" || "$VERIFIED_ENDPOINT" != "$WEBHOOK_URL" ]]; then
-            fail "Final Event Grid subscription verification failed after reconcile."
-          fi
-
-          log "Event Grid subscription verified: exists, provisioned, and matched to the current runtime key."
-          # Allow Azure Event Grid routing to fully propagate before any smoke trigger.
-          # Azure marks a subscription Succeeded after validation but routing tables can
-          # take up to 60s to converge. Events delivered before propagation are silently
-          # missed — they are not buffered for late-created subscriptions.
-          log "Waiting 60s for Event Grid routing propagation..."
-          sleep 60
-          log "Event Grid routing stabilization complete."
-          echo "::endgroup::"
-
-      - name: Verify runtime readiness (fast strategy)
-        if: steps.scope.outputs.strategy == 'fast'
-        shell: bash
-        run: |
-          set -euo pipefail
-          MAX_READY_SECONDS=300
-          POLL_INTERVAL=10
-
-          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
-          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
-          TRIGGER_NAME="${{ env.EVENT_GRID_TRIGGER_FUNCTION }}"
-
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
-
-          FQDN=$(az functionapp show \
-            --name "$FUNCTION_APP" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query defaultHostName -o tsv)
-
-          [[ -n "$FQDN" ]] || fail "Function App hostname could not be resolved."
-
-          deadline=$(( $(date +%s) + MAX_READY_SECONDS ))
-          ready=0
-          observed_probe=0
-          only_404_startup=1
-          health_code="000"
-          readiness_code="000"
-
-          while (( $(date +%s) < deadline )); do
-            set +e
-            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health" || true)
-            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness" || true)
-            set -e
-            observed_probe=1
-
-            if [[ "$health_code" == "200" && "$readiness_code" == "200" ]]; then
-              ready=1
-              break
-            fi
-
-            if [[ "$health_code" != "404" || "$readiness_code" != "404" ]]; then
-              only_404_startup=0
-            fi
-
-            log "Fast strategy readiness pending (health=${health_code}, readiness=${readiness_code}); retrying in ${POLL_INTERVAL}s..."
-            sleep "$POLL_INTERVAL"
-          done
-
-          if [[ "$ready" != "1" && "$observed_probe" == "1" && "$only_404_startup" == "1" ]]; then
-            # Adaptive fallback: if anonymous endpoints stay 404 during warmup,
-            # verify host state and trigger indexing via authenticated admin APIs.
-            log "Fast strategy adaptive fallback: sustained 404 startup window detected; probing admin readiness endpoints."
-
-            AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-            RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
-
-            KEY_PAYLOAD=$(az rest \
-              --method post \
-              --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-              -o json 2>/dev/null || true)
-            MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty' 2>/dev/null || true)
-
-            if [[ -n "$MASTER_KEY" ]]; then
-              echo "::add-mask::${MASTER_KEY}"
-
-              host_status_json=$(curl -sS --max-time 10 \
-                -H "x-functions-key: ${MASTER_KEY}" \
-                "https://${FQDN}/admin/host/status" 2>/dev/null || true)
-              host_state=$(echo "$host_status_json" | jq -r '.state // empty' 2>/dev/null || true)
-
-              functions_json=$(curl -sS --max-time 10 \
-                -H "x-functions-key: ${MASTER_KEY}" \
-                "https://${FQDN}/admin/functions" 2>/dev/null || true)
-              trigger_indexed=0
-              if echo "$functions_json" | jq -r '.[]?.name // empty' 2>/dev/null | grep -Fxq "$TRIGGER_NAME"; then
-                trigger_indexed=1
-              fi
-
-              if [[ "$host_state" == "Running" && "$trigger_indexed" == "1" ]]; then
-                ready=1
-                log "Fast strategy adaptive fallback accepted: host is Running and trigger '$TRIGGER_NAME' is indexed."
-              else
-                log "Fast strategy adaptive fallback did not satisfy readiness (host_state=${host_state:-unknown}, trigger_indexed=${trigger_indexed})."
-              fi
-            else
-              log "Fast strategy adaptive fallback could not resolve master host key; readiness remains unverified."
-            fi
-          fi
-
-          [[ "$ready" == "1" ]] || fail "Fast strategy readiness checks did not pass within ${MAX_READY_SECONDS}s."
-          log "Fast strategy verification passed: health/readiness endpoints are available."
-
-      - name: Post-deploy smoke checks (diagnostics, artifacts, auth contract)
-        shell: bash
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: tofu init
+
+      - name: Tofu Plan
+        working-directory: infra
         env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_demo_valet_token_secret: ${{ secrets.DEMO_VALET_TOKEN_SECRET }}
+          TF_VAR_budget_contact_email: ${{ secrets.BUDGET_CONTACT_EMAIL }}
+          TF_VAR_docker_image_tag: ${{ github.sha }}
+        run: tofu plan -out=tfplan
+
+      - name: Tofu Apply
+        working-directory: infra
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: tofu apply -auto-approve tfplan
+
+      - name: Export outputs
+        id: outputs
+        working-directory: infra
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
         run: |
-          set -euo pipefail
+          echo "acr_login_server=$(tofu output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+          echo "acr_name=$(tofu output -raw acr_name)" >> "$GITHUB_OUTPUT"
+          echo "resource_group=$(tofu output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
 
-          MAX_INSTANCE_DISCOVERY_SECONDS=420
-          MAX_ORCHESTRATION_SECONDS=900
-          POLL_INTERVAL_SECONDS=15
+  deploy-functions:
+    name: Build & Push Functions Container
+    runs-on: ubuntu-latest
+    needs: deploy-infra
+    steps:
+      - uses: actions/checkout@v4
 
-          FUNCTION_APP="${{ env.FUNCTION_APP_NAME }}"
-          RESOURCE_GROUP="${{ env.RESOURCE_GROUP }}"
-          INPUT_CONTAINER="${{ env.SMOKE_INPUT_CONTAINER }}"
-          OUTPUT_CONTAINER="${{ env.SMOKE_OUTPUT_CONTAINER }}"
-          DURABLE_TASK_HUB="${{ env.SMOKE_DURABLE_TASK_HUB }}"
-          DURABLE_CONNECTION_NAME="${{ env.SMOKE_DURABLE_CONNECTION_NAME }}"
-          SMOKE_KML_FIXTURE="${{ env.SMOKE_KML_FIXTURE }}"
-          DEPLOY_STRATEGY="${{ steps.scope.outputs.strategy }}"
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-          log() { echo "$(date +'%H:%M:%S') | $*"; }
-          fail() { echo "::error::$(date +'%H:%M:%S') | $*"; exit 1; }
-          require_file() {
-            local path="$1"
-            [[ -f "$path" ]] || fail "Required file not found: $path"
-          }
+      - name: ACR Login
+        run: az acr login --name ${{ needs.deploy-infra.outputs.acr_name }}
 
-          require_file "$SMOKE_KML_FIXTURE"
+      - name: Build & Push
+        run: |
+          IMAGE="${{ needs.deploy-infra.outputs.acr_login_server }}/treesight:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          # Also tag as latest
+          docker tag "$IMAGE" "${{ needs.deploy-infra.outputs.acr_login_server }}/treesight:latest"
+          docker push "${{ needs.deploy-infra.outputs.acr_login_server }}/treesight:latest"
 
-          FQDN=$(az functionapp show \
-            --name "$FUNCTION_APP" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query defaultHostName -o tsv)
-          [[ -n "$FQDN" ]] || fail "Function App hostname could not be resolved for smoke checks."
+  deploy-website:
+    name: Deploy Static Website
+    runs-on: ubuntu-latest
+    needs: deploy-infra
+    steps:
+      - uses: actions/checkout@v4
 
-          AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-          RESOURCE_ID="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Web/sites/${FUNCTION_APP}"
-
-          KEY_PAYLOAD=$(az rest \
-            --method post \
-            --uri "https://management.azure.com${RESOURCE_ID}/host/default/listKeys?api-version=2024-04-01" \
-            -o json)
-
-          MASTER_KEY=$(echo "$KEY_PAYLOAD" | jq -r '.masterKey // empty')
-          [[ -n "$MASTER_KEY" ]] || fail "Failed to resolve master host key for smoke checks."
-          echo "::add-mask::${MASTER_KEY}"
-
-          STORAGE_CONNECTION=$(az functionapp config appsettings list \
-            --name "$FUNCTION_APP" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query "[?name=='AzureWebJobsStorage'].value | [0]" \
-            -o tsv)
-          [[ -n "$STORAGE_CONNECTION" ]] || fail "AzureWebJobsStorage app setting is missing; cannot verify artifacts."
-          echo "::add-mask::${STORAGE_CONNECTION}"
-
-          # Anonymous endpoints must remain probe-friendly. After container image
-          # update, ingress may briefly serve 404 while route maps converge.
-          MAX_ANON_ENDPOINT_READY_SECONDS=180
-          ANON_ENDPOINT_POLL_INTERVAL=10
-          anon_deadline=$(( $(date +%s) + MAX_ANON_ENDPOINT_READY_SECONDS ))
-          health_code="000"
-          readiness_code="000"
-
-          while (( $(date +%s) < anon_deadline )); do
-            health_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/health" || true)
-            readiness_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/api/readiness" || true)
-
-            if [[ "$health_code" == "200" && "$readiness_code" == "200" ]]; then
-              break
-            fi
-
-            log "Anonymous endpoint probe pending (health=${health_code}, readiness=${readiness_code}); retrying in ${ANON_ENDPOINT_POLL_INTERVAL}s..."
-            sleep "$ANON_ENDPOINT_POLL_INTERVAL"
-          done
-
-          [[ "$health_code" == "200" ]] || fail "Anonymous health endpoint check failed (expected 200, got ${health_code})."
-          [[ "$readiness_code" == "200" ]] || fail "Anonymous readiness endpoint check failed (expected 200, got ${readiness_code})."
-
-          # Protected endpoints must reject unauthenticated calls.
-          admin_unauth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${FQDN}/admin/host/status" || true)
-          durable_unauth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
-            "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&top=1" || true)
-          [[ "$admin_unauth_code" =~ ^(401|403)$ ]] || fail "Admin endpoint unexpectedly accessible without auth (status=${admin_unauth_code})."
-          [[ "$durable_unauth_code" =~ ^(401|403)$ ]] || fail "Durable runtime endpoint unexpectedly accessible without auth (status=${durable_unauth_code})."
-
-          # Protected endpoints must be reachable with valid auth.
-          admin_auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
-            -H "x-functions-key: ${MASTER_KEY}" \
-            "https://${FQDN}/admin/host/status")
-          [[ "$admin_auth_code" == "200" ]] || fail "Admin endpoint auth path failed (expected 200, got ${admin_auth_code})."
-
-          durable_probe_code=$(curl -sS -o /tmp/durable-probe.json -w '%{http_code}' --max-time 15 \
-            "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&top=1&showInput=true&code=${MASTER_KEY}")
-          [[ "$durable_probe_code" == "200" ]] || fail "Durable endpoint auth path failed (expected 200, got ${durable_probe_code})."
-
-          discover_created_from=$(date -u -Iseconds -d '24 hours ago')
-          smoke_mode="inspect"
-          smoke_blob_name=""
-
-          if [[ "$DEPLOY_STRATEGY" == "full" ]]; then
-            smoke_mode="trigger"
-            started_at_epoch=$(date +%s)
-            discover_created_from=$(date -u -Iseconds)
-            smoke_blob_name="smoke/deploy-${SOURCE_SHA:0:12}-${started_at_epoch}.kml"
-
-            log "Uploading smoke KML fixture to ${INPUT_CONTAINER}/${smoke_blob_name}"
-            az storage blob upload \
-              --only-show-errors \
-              --overwrite true \
-              --connection-string "$STORAGE_CONNECTION" \
-              --container-name "$INPUT_CONTAINER" \
-              --name "$smoke_blob_name" \
-              --file "$SMOKE_KML_FIXTURE" >/dev/null
-          fi
-
-          select_instance_id() {
-            local payload="$1"
-            local mode="$2"
-            local blob_name="$3"
-
-            if [[ "$mode" == "trigger" ]]; then
-              echo "$payload" | jq -r --arg blob "$blob_name" '
-                (if type=="array" then . elif has("durableOrchestrationState") then .durableOrchestrationState else [] end)
-                | map(
-                    select((.name // "") == "kml_processing_orchestrator")
-                    | select(((.input // "") | tostring | contains($blob)))
-                  )
-                | sort_by((.createdTime // ""))
-                | reverse
-                | .[0].instanceId // empty
-              '
-              return
-            fi
-
-            echo "$payload" | jq -r '
-              (if type=="array" then . elif has("durableOrchestrationState") then .durableOrchestrationState else [] end)
-              | map(
-                  select((.name // "") == "kml_processing_orchestrator")
-                  | select(((.input // "") | tostring | contains("kml-input")))
-                  | select(((.runtimeStatus // "") | tostring | endswith("Completed")))
-                )
-              | sort_by((.createdTime // ""))
-              | reverse
-              | .[0].instanceId // empty
-            '
-          }
-
-          normalize_runtime_status() {
-            local raw_status="$1"
-            echo "${raw_status##*.}"
-          }
-
-          instance_id=""
-          discovery_deadline=$(( $(date +%s) + MAX_INSTANCE_DISCOVERY_SECONDS ))
-          while (( $(date +%s) < discovery_deadline )); do
-            instances_json=$(curl -sS --max-time 20 \
-              "https://${FQDN}/runtime/webhooks/durabletask/instances?taskHub=${DURABLE_TASK_HUB}&connection=${DURABLE_CONNECTION_NAME}&createdTimeFrom=${discover_created_from}&top=50&showInput=true&code=${MASTER_KEY}")
-
-            instance_id=$(select_instance_id "$instances_json" "$smoke_mode" "$smoke_blob_name")
-            if [[ -n "$instance_id" ]]; then
-              break
-            fi
-
-            log "Smoke instance not discovered yet (mode=${smoke_mode}); retrying in ${POLL_INTERVAL_SECONDS}s..."
-            sleep "$POLL_INTERVAL_SECONDS"
-          done
-
-          if [[ -z "$instance_id" ]]; then
-            if [[ "$smoke_mode" == "inspect" ]]; then
-              log "::warning::No completed orchestration found in the last 24h (inspect mode). Skipping E2E artifact verification for code-only deploy."
-              log "Post-deploy smoke checks passed (instance=none, mode=inspect, artifacts=skipped)."
-              exit 0
-            fi
-            fail "Could not resolve smoke orchestration instance id (mode=${smoke_mode})."
-          fi
-
-          diagnostics_runtime_status=""
-          diagnostics_payload='{}'
-          orchestration_deadline=$(( $(date +%s) + MAX_ORCHESTRATION_SECONDS ))
-          while (( $(date +%s) < orchestration_deadline )); do
-            diagnostics_code=$(curl -sS -o /tmp/smoke-diagnostics.json -w '%{http_code}' --max-time 15 \
-              "https://${FQDN}/api/orchestrator/${instance_id}" || true)
-
-            if [[ "$diagnostics_code" != "200" ]]; then
-              log "Diagnostics endpoint pending (instance=${instance_id}, status=${diagnostics_code}); retrying..."
-              sleep "$POLL_INTERVAL_SECONDS"
-              continue
-            fi
-
-            diagnostics_payload=$(cat /tmp/smoke-diagnostics.json)
-            diagnostics_runtime_status=$(echo "$diagnostics_payload" | jq -r '.runtimeStatus // empty')
-            diagnostics_runtime_status=$(normalize_runtime_status "$diagnostics_runtime_status")
-
-            if [[ "$diagnostics_runtime_status" == "Failed" || "$diagnostics_runtime_status" == "Terminated" || "$diagnostics_runtime_status" == "Canceled" ]]; then
-              fail "Smoke orchestration reached terminal failure status (${diagnostics_runtime_status}) for instance ${instance_id}."
-            fi
-
-            if [[ "$diagnostics_runtime_status" == "Completed" ]]; then
-              break
-            fi
-
-            log "Smoke orchestration in progress (instance=${instance_id}, runtimeStatus=${diagnostics_runtime_status:-unknown}); retrying..."
-            sleep "$POLL_INTERVAL_SECONDS"
-          done
-
-          [[ "$diagnostics_runtime_status" == "Completed" ]] || fail "Smoke orchestration did not reach Completed within ${MAX_ORCHESTRATION_SECONDS}s."
-
-          mapfile -t metadata_paths < <(echo "$diagnostics_payload" | jq -r '.output.artifacts.metadataPaths[]? | select(length > 0)')
-          [[ ${#metadata_paths[@]} -gt 0 ]] || fail "Smoke diagnostics did not include metadata artifact paths."
-
-          verified_artifacts=0
-          for artifact_path in "${metadata_paths[@]}"; do
-            exists=$(az storage blob exists \
-              --connection-string "$STORAGE_CONNECTION" \
-              --container-name "$OUTPUT_CONTAINER" \
-              --name "$artifact_path" \
-              --query exists -o tsv)
-
-            if [[ "$exists" != "true" ]]; then
-              fail "Expected smoke artifact missing: container=${OUTPUT_CONTAINER}, path=${artifact_path}"
-            fi
-
-            verified_artifacts=$((verified_artifacts + 1))
-          done
-
-          orchestrator_status_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 \
-            "https://${FQDN}/api/orchestrator/${instance_id}")
-
-          {
-            echo "## Post-Deploy Smoke Evidence"
-            echo ""
-            echo "- Deployment strategy: ${DEPLOY_STRATEGY}"
-            echo "- Smoke mode: ${smoke_mode}"
-            echo "- Smoke instance id: ${instance_id}"
-            echo "- Diagnostics runtime status: ${diagnostics_runtime_status}"
-            echo "- Verified metadata artifacts: ${verified_artifacts}"
-            echo "- Anonymous checks: /api/health=${health_code}, /api/readiness=${readiness_code}, /api/orchestrator/{id}=${orchestrator_status_code}"
-            echo "- Protected checks (unauth expected deny): /admin/host/status=${admin_unauth_code}, durable instances=${durable_unauth_code}"
-            echo "- Protected checks (auth expected allow): /admin/host/status=${admin_auth_code}, durable instances=${durable_probe_code}"
-            if [[ -n "$smoke_blob_name" ]]; then
-              echo "- Trigger artifact: ${INPUT_CONTAINER}/${smoke_blob_name}"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          log "Post-deploy smoke checks passed (instance=${instance_id}, mode=${smoke_mode}, artifacts=${verified_artifacts})."
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: /website
+          skip_app_build: true
+          skip_api_build: true

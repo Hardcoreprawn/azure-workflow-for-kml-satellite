@@ -1,95 +1,103 @@
-"""Shared pytest fixtures for the KML Satellite test suite."""
+"""Shared fixtures for the TreeSight test suite."""
 
+from __future__ import annotations
+
+import os
 from pathlib import Path
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Path fixtures
-# ---------------------------------------------------------------------------
+# Ensure Azure storage env var is set for config module import
+os.environ.setdefault("AzureWebJobsStorage", "UseDevelopmentStorage=true")
+os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
 
-TESTS_DIR = Path(__file__).parent
-DATA_DIR = TESTS_DIR / "data"
-EDGE_CASES_DIR = DATA_DIR / "edge_cases"
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture()
-def data_dir() -> Path:
-    """Return the path to the test data directory."""
-    return DATA_DIR
+def sample_kml_bytes() -> bytes:
+    """Minimal valid KML with a single polygon (triangle in Kenya)."""
+    return (FIXTURES_DIR / "sample.kml").read_bytes()
 
 
 @pytest.fixture()
-def edge_cases_dir() -> Path:
-    """Return the path to the edge-cases test data directory."""
-    return EDGE_CASES_DIR
-
-
-# ---------------------------------------------------------------------------
-# Sample KML file fixtures
-# ---------------------------------------------------------------------------
+def multi_polygon_kml_bytes() -> bytes:
+    """KML containing a MultiPolygon placemark."""
+    return (FIXTURES_DIR / "multi_polygon.kml").read_bytes()
 
 
 @pytest.fixture()
-def single_polygon_kml(data_dir: Path) -> Path:
-    """Path to a simple single-polygon KML (orchard, ~12 ha)."""
-    return data_dir / "01_single_polygon_orchard.kml"
+def sample_feature():
+    """Pre-built Feature for tests that don't need KML parsing."""
+    from treesight.models.feature import Feature
+
+    return Feature(
+        name="Block A - Fuji Apple",
+        description="Test orchard block",
+        exterior_coords=[
+            [36.8, -1.3],
+            [36.81, -1.3],
+            [36.81, -1.31],
+            [36.8, -1.31],
+            [36.8, -1.3],
+        ],
+        interior_coords=[],
+        crs="EPSG:4326",
+        metadata={"crop": "apple", "variety": "fuji"},
+        source_file="test.kml",
+        feature_index=0,
+    )
 
 
 @pytest.fixture()
-def multipolygon_kml(data_dir: Path) -> Path:
-    """Path to a MultiGeometry KML with 3 polygon blocks."""
-    return data_dir / "02_multipolygon_orchard_blocks.kml"
+def sample_aoi():
+    """Pre-built AOI for tests that don't need geometry computation."""
+    from treesight.models.aoi import AOI
+
+    return AOI(
+        feature_name="Block A - Fuji Apple",
+        source_file="test.kml",
+        feature_index=0,
+        exterior_coords=[
+            [36.8, -1.3],
+            [36.81, -1.3],
+            [36.81, -1.31],
+            [36.8, -1.31],
+            [36.8, -1.3],
+        ],
+        bbox=[36.8, -1.31, 36.81, -1.3],
+        buffered_bbox=[36.7991, -1.3109, 36.8109, -1.2991],
+        area_ha=12.3,
+        centroid=[36.805, -1.305],
+        buffer_m=100.0,
+        crs="EPSG:4326",
+        metadata={"crop": "apple"},
+    )
 
 
 @pytest.fixture()
-def multi_feature_kml(data_dir: Path) -> Path:
-    """Path to a multi-feature KML with 4 separate Placemarks."""
-    return data_dir / "03_multi_feature_vineyard.kml"
+def sample_blob_event_dict() -> dict:
+    """Dict representation of a BlobEvent as it arrives from Event Grid."""
+    return {
+        "blob_url": "https://teststorage.blob.core.windows.net/kml-input/uploads/farm.kml",
+        "container_name": "kml-input",
+        "blob_name": "uploads/farm.kml",
+        "content_length": 4096,
+        "content_type": "application/vnd.google-earth.kml+xml",
+        "event_time": "2025-01-15T10:30:00Z",
+        "correlation_id": "evt-abc-123",
+    }
 
 
 @pytest.fixture()
-def polygon_with_hole_kml(data_dir: Path) -> Path:
-    """Path to a polygon-with-hole KML (innerBoundaryIs)."""
-    return data_dir / "04_complex_polygon_with_hole.kml"
-
-
-@pytest.fixture()
-def nested_folders_kml(data_dir: Path) -> Path:
-    """Path to a KML with nested Folder hierarchy."""
-    return data_dir / "09_folder_nested_features.kml"
-
-
-# ---------------------------------------------------------------------------
-# Edge-case KML file fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def not_xml_kml(edge_cases_dir: Path) -> Path:
-    """Path to a file that is not valid XML."""
-    return edge_cases_dir / "11_malformed_not_xml.kml"
-
-
-@pytest.fixture()
-def empty_kml(edge_cases_dir: Path) -> Path:
-    """Path to a valid KML with no features."""
-    return edge_cases_dir / "13_empty_no_features.kml"
-
-
-@pytest.fixture()
-def point_only_kml(edge_cases_dir: Path) -> Path:
-    """Path to a KML containing only Point geometry (no polygons)."""
-    return edge_cases_dir / "14_point_only_no_polygons.kml"
-
-
-@pytest.fixture()
-def degenerate_kml(edge_cases_dir: Path) -> Path:
-    """Path to a KML with degenerate geometries."""
-    return edge_cases_dir / "15_degenerate_geometries.kml"
-
-
-@pytest.fixture()
-def invalid_coords_kml(edge_cases_dir: Path) -> Path:
-    """Path to a KML with out-of-range coordinates."""
-    return edge_cases_dir / "16_invalid_coordinates.kml"
+def tenant_blob_event_dict() -> dict:
+    """BlobEvent dict for a tenant-scoped container."""
+    return {
+        "blob_url": "https://teststorage.blob.core.windows.net/acme-input/uploads/orchard.kml",
+        "container_name": "acme-input",
+        "blob_name": "uploads/orchard.kml",
+        "content_length": 2048,
+        "content_type": "application/vnd.google-earth.kml+xml",
+        "event_time": "2025-01-15T11:00:00Z",
+        "correlation_id": "evt-def-456",
+    }

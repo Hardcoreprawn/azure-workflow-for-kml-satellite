@@ -1,3 +1,6 @@
+# ─────────────────────────────────────────────────────────────
+# CI — Lint, test, build on every push & PR
+# ─────────────────────────────────────────────────────────────
 name: CI
 
 on:
@@ -9,110 +12,44 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
-  fast-lint-type-unit:
-    name: Fast Lint Type Unit
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install Python and project dependencies
-        run: uv sync --all-extras
-
-      - name: Lint with ruff
-        run: uv run ruff check .
-
-      - name: Check formatting with ruff-format
-        id: ruff-format-check
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        run: uv run ruff format --check .
-
-      - name: Generate formatting autofix patch
-        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
-        run: |
-          set -euo pipefail
-          uv run ruff format .
-          git diff -- . ':(exclude).venv/**' > ruff-format.patch
-          if [[ ! -s ruff-format.patch ]]; then
-            echo "Expected ruff-format.patch to contain formatting changes"
-            exit 1
-          fi
-
-          {
-            echo "### Formatting autofix required"
-            echo ""
-            echo "Run \\`uv run ruff format .\\` locally, commit the result, and push again."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload formatting patch artifact
-        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-format-autofix-patch
-          path: ruff-format.patch
-          retention-days: 7
-
-      - name: Fail on formatting drift
-        if: github.event_name == 'pull_request' && steps.ruff-format-check.outcome == 'failure'
-        run: |
-          echo "::error::Formatting drift detected. Run 'uv run ruff format .' locally, commit the changes, and push again."
-          exit 1
-
-      - name: Type check with pyright
-        run: uv run pyright
-
-      - name: Run unit tests
-        run: |
-          uv run pytest \
-            tests/unit/test_health_endpoints.py \
-            tests/unit/test_contact_form_endpoint.py \
-            tests/unit/test_diagnostics_endpoint_auth.py \
-            tests/unit/test_container_apps_spec.py \
-            tests/unit/test_deploy_workflow.py \
-            tests/unit/test_tofu_apply_workflow.py \
-            tests/unit/test_base_image_strategy.py \
-            tests/unit/test_ci_workflow_lanes.py \
-            tests/unit/test_base_image_refresh_workflow.py \
-            -v --tb=short
-
-  native-geo-validation:
-    name: Native Geo Validation
+  test:
+    name: Test
     runs-on: ubuntu-latest
-    needs: fast-lint-type-unit
-
+    env:
+      AzureWebJobsStorage: "UseDevelopmentStorage=true"
+      DEMO_VALET_TOKEN_SECRET: "ci-test-secret"
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: uv run pytest tests/ -v -m "not integration" --tb=short
+      - run: uv run pytest tests/ -v -m "not integration" --cov=treesight --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          enable-cache: true
+          name: coverage
+          path: coverage.xml
 
-      - name: Install system dependencies (GDAL)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            gdal-bin libgdal-dev libgeos-dev libproj-dev
-
-      - name: Install Python and project dependencies
-        run: uv sync --all-extras
-
-      - name: Validate geospatial native imports
-        run: uv run python -c "import rasterio, fiona, pyproj, shapely"
-
-      - name: Run unit tests (geospatial lane)
-        run: |
-          uv run pytest tests/unit -v --tb=short -m "not integration and not e2e"
-
-      - name: Run integration tests
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: uv run pytest tests/integration -v --tb=short -m "integration"
+  build:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t treesight:${{ github.sha }} .

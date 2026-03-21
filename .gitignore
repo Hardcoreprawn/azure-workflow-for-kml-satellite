@@ -1,77 +1,58 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.egg-info/
 dist/
 build/
-*.egg
 .eggs/
-.mypy_cache/
-.pyright/
-.ruff_cache/
-
-# Virtual environments
+*.egg
 .venv/
-.venv-backup-*/
-venv/
-ENV/
+
+# Azure Functions
+local.settings.json
+.python_packages/
+.func/
 
 # IDE
-.vscode/settings.json
-.vscode/launch.json
+.vscode/
 .idea/
 *.swp
 *.swo
 
 # OS
-Thumbs.db
 .DS_Store
-Desktop.ini
+Thumbs.db
 
-# Logs
-*-log.txt
-ci_status.txt
+# Docker / Azurite
+azurite-data/
+.azurite/
 
-
-# Azure Functions
-local.settings.json
-.python_packages/
-bin/
-obj/
-
-# Docker
-# .dockerignore is tracked — it's needed for secure container builds
-
-# Environment variables
+# Environment
 .env
 .env.*
 
-# Test outputs
-tests/output/
+# Coverage
 htmlcov/
 .coverage
-.coverage.*
 coverage.xml
-*.cover
 
-# Raster / geospatial scratch files
-*.tif
-*.tiff
-!tests/data/**/*.tif
+# Test / Lint caches
+.pytest_cache/
+.ruff_cache/
 
-# Bicep compiled ARM JSON (build artifacts)
-infra/**/*.json
-!infra/**/bicepconfig.json
+# uv
+uv.lock
 
-# Terraform / OpenTofu
-.terraform/
-*.tfplan
-.tfstate
-.tfstate.*
-.terraform.lock.hcl
-crash.log
-
-# Static site build artifacts
-/site/
-tofu-run.log
+# OpenTofu / Terraform
+infra/.terraform/
+infra/.tofu/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/tfplan
+infra/.terraform.lock.hcl
+infra/terraform.tfvars
+infra/override.tf
+infra/override.tf.json
+infra/*_override.tf
+infra/*_override.tf.json

@@ -6,31 +6,15 @@
         "isEnabled": true,
         "excludedTypes": "Request"
       }
-    },
-    "logLevel": {
-      "default": "Information",
-      "Host.Results": "Error",
-      "Function": "Information",
-      "Host.Aggregator": "Trace"
+    }
+  },
+  "extensions": {
+    "durableTask": {
+      "hubName": "TreeSightHub"
     }
   },
   "extensionBundle": {
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
     "version": "[4.*, 5.0.0)"
-  },
-  "extensions": {
-    "durableTask": {
-      "hubName": "KmlSatelliteHub",
-      "storageProvider": {
-        "type": "AzureStorage"
-      },
-      "tracing": {
-        "traceInputsAndOutputs": false,
-        "traceReplayEvents": false
-      },
-      "maxConcurrentActivityFunctions": 10,
-      "maxConcurrentOrchestratorFunctions": 5
-    }
-  },
-  "functionTimeout": "00:10:00"
+  }
 }
