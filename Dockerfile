@@ -24,7 +24,7 @@ RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
     uv pip install --system -r /tmp/requirements.txt
 
 # Copy application code
-COPY host.json local.settings.json function_app.py ./
+COPY host.json function_app.py ./
 COPY treesight/ treesight/
 COPY blueprints/ blueprints/
 COPY scripts/ scripts/
