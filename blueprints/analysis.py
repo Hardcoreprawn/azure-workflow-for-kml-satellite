@@ -11,7 +11,7 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import cors_preflight, error_response
+from blueprints._helpers import check_auth, cors_preflight, error_response
 from treesight.ai import generate_analysis
 
 bp = func.Blueprint()
@@ -58,14 +58,12 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
     }
     """
     if req.method == "OPTIONS":
-        return func.HttpResponse(
-            status_code=204,
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type",
-            },
-        )
+        return cors_preflight()
+
+    try:
+        _claims, _user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc))
 
     try:
         body = req.get_json()
@@ -214,6 +212,11 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight()
+
+    try:
+        _claims, _user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc))
 
     try:
         body = req.get_json()

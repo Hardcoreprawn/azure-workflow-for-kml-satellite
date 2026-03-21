@@ -100,3 +100,23 @@ variable "azure_ai_location" {
   type        = string
   default     = "swedencentral"
 }
+
+# --- Azure AD B2C authentication (M2.1) ---
+
+variable "b2c_tenant_name" {
+  description = "Azure AD B2C tenant name (the prefix before .onmicrosoft.com). Empty to disable auth."
+  type        = string
+  default     = ""
+}
+
+variable "b2c_client_id" {
+  description = "B2C app registration client ID for the SPA + API."
+  type        = string
+  default     = ""
+}
+
+variable "b2c_policy_name" {
+  description = "B2C sign-up/sign-in user flow policy name."
+  type        = string
+  default     = "B2C_1_signup_signin"
+}

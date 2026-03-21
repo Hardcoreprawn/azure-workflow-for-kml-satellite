@@ -247,6 +247,16 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
 .drop-zone .file-name{color:var(--c-green);font-weight:500;margin-top:6px;font-size:.8rem}
 .drop-divider{text-align:center;color:var(--c-muted);font-size:.75rem;margin:4px 0 12px;text-transform:uppercase;letter-spacing:.08em}
+
+/* --- Auth UI --- */
+.auth-area{display:flex;align-items:center;gap:10px;margin-left:12px}
+.auth-user{font-size:.8rem;color:var(--c-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auth-btn{padding:5px 14px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);transition:all .15s}
+.auth-btn:hover{background:rgba(88,166,255,.1)}
+.auth-btn.logout{border-color:var(--c-border);color:var(--c-muted)}
+.auth-btn.logout:hover{border-color:var(--c-red);color:var(--c-red)}
+.login-prompt{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:var(--c-muted);text-align:center;display:none}
+.login-prompt a{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
@@ -267,6 +277,11 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <li><a href="#early-access">Early Access</a></li>
       <li><span id="status-badge">Checking…</span></li>
     </ul>
+    <div class="auth-area" id="auth-area">
+      <span class="auth-user" id="auth-user" style="display:none"></span>
+      <button class="auth-btn" id="auth-login-btn" style="display:none">Sign In</button>
+      <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
+    </div>
   </div>
 </nav>
 
@@ -344,6 +359,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           <div class="drop-divider">— or paste KML text —</div>
           <label for="demo-kml">KML Content</label>
           <textarea id="demo-kml" placeholder="Paste your KML content here, or use the sample below…"></textarea>
+          <div class="login-prompt" id="login-prompt">🔒 <a id="login-prompt-link">Sign in</a> to process KML files and run satellite analysis.</div>
           <button class="btn btn-primary" id="demo-submit" style="width:100%">Process KML</button>
           <p style="font-size:.7rem;color:var(--c-muted);text-align:center;margin-top:8px">Your data is automatically deleted after 30 days. <a href="/privacy.html">Privacy Policy</a></p>
           <div id="demo-status" class="demo-status"></div>
@@ -495,6 +511,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://alcdn.msauth.net/browser/2.42.0/js/msal-browser.min.js" crossorigin="anonymous"></script>
 <script>
 (function(){
   'use strict';
@@ -506,9 +523,125 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
   var enrichmentPayload = null;    /* cached enrichment manifest from pipeline */
 
+  /* --- Azure AD B2C configuration --- */
+  /* These are populated once the B2C tenant is provisioned.
+     When B2C_CLIENT_ID is empty, auth is disabled and the app works anonymously. */
+  const B2C_TENANT_NAME = '';          /* e.g. 'treesightauth' */
+  const B2C_CLIENT_ID = '';            /* App registration client ID */
+  const B2C_POLICY_NAME = 'B2C_1_signup_signin';
+  const B2C_AUTHORITY = B2C_TENANT_NAME
+    ? 'https://' + B2C_TENANT_NAME + '.b2clogin.com/' + B2C_TENANT_NAME + '.onmicrosoft.com/' + B2C_POLICY_NAME
+    : '';
+  const B2C_KNOWN_AUTHORITY = B2C_TENANT_NAME
+    ? 'https://' + B2C_TENANT_NAME + '.b2clogin.com'
+    : '';
+  const B2C_SCOPES = B2C_CLIENT_ID ? [B2C_CLIENT_ID] : [];
+
+  var msalInstance = null;
+  var currentAccount = null;
+  var accessToken = null;
+
+  function authEnabled() { return !!(B2C_TENANT_NAME && B2C_CLIENT_ID && typeof msal !== 'undefined'); }
+
+  /* Initialise MSAL */
+  function initAuth() {
+    if (!authEnabled()) {
+      /* Auth not configured — hide auth UI, allow anonymous access */
+      return;
+    }
+    var msalConfig = {
+      auth: {
+        clientId: B2C_CLIENT_ID,
+        authority: B2C_AUTHORITY,
+        knownAuthorities: [B2C_KNOWN_AUTHORITY],
+        redirectUri: window.location.origin + '/',
+        postLogoutRedirectUri: window.location.origin + '/',
+      },
+      cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
+    };
+    msalInstance = new msal.PublicClientApplication(msalConfig);
+
+    /* Handle redirect promise (returns from B2C login) */
+    msalInstance.handleRedirectPromise().then(function(resp) {
+      if (resp && resp.account) {
+        msalInstance.setActiveAccount(resp.account);
+      }
+      currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
+      if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
+      updateAuthUI();
+    }).catch(function(err) {
+      console.warn('MSAL redirect error:', err);
+      updateAuthUI();
+    });
+  }
+
+  function login() {
+    if (!msalInstance) return;
+    msalInstance.loginRedirect({ scopes: B2C_SCOPES });
+  }
+
+  function logout() {
+    if (!msalInstance) return;
+    msalInstance.logoutRedirect({ account: currentAccount });
+  }
+
+  async function acquireToken() {
+    if (!msalInstance || !currentAccount) return null;
+    try {
+      var resp = await msalInstance.acquireTokenSilent({ scopes: B2C_SCOPES, account: currentAccount });
+      accessToken = resp.accessToken || resp.idToken;
+      return accessToken;
+    } catch {
+      /* Silent failed — trigger interactive */
+      try {
+        msalInstance.acquireTokenRedirect({ scopes: B2C_SCOPES });
+      } catch { /* redirect will navigate away */ }
+      return null;
+    }
+  }
+
+  function updateAuthUI() {
+    var loginBtn = document.getElementById('auth-login-btn');
+    var logoutBtn = document.getElementById('auth-logout-btn');
+    var userSpan = document.getElementById('auth-user');
+    var loginPrompt = document.getElementById('login-prompt');
+
+    if (!authEnabled()) {
+      /* Auth not configured — hide everything, anonymous access */
+      loginBtn.style.display = 'none';
+      logoutBtn.style.display = 'none';
+      userSpan.style.display = 'none';
+      loginPrompt.style.display = 'none';
+      return;
+    }
+
+    if (currentAccount) {
+      var name = currentAccount.name || currentAccount.username || 'User';
+      userSpan.textContent = name;
+      userSpan.style.display = 'inline';
+      loginBtn.style.display = 'none';
+      logoutBtn.style.display = 'inline';
+      loginPrompt.style.display = 'none';
+    } else {
+      userSpan.style.display = 'none';
+      loginBtn.style.display = 'inline';
+      logoutBtn.style.display = 'none';
+      loginPrompt.style.display = 'block';
+    }
+  }
+
+  function isLoggedIn() { return !authEnabled() || !!currentAccount; }
+
   /* --- API helper --- */
   async function apiFetch(path, opts) {
     var base = apiBase || DEFAULT_FALLBACK_ORIGIN;
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    /* Attach bearer token if authenticated */
+    if (currentAccount && authEnabled()) {
+      var token = accessToken || await acquireToken();
+      if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
+    }
     try { return await fetch(base + path, opts); } catch { return null; }
   }
 
@@ -710,8 +843,17 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   /* Main submit handler */
   document.getElementById('demo-submit').addEventListener('click', async function() {
     var btn = this;
-    var kml = document.getElementById('demo-kml').value.trim();
     var statusEl = document.getElementById('demo-status');
+
+    /* Require login when auth is configured */
+    if (!isLoggedIn()) {
+      statusEl.textContent = 'Please sign in to process KML files.';
+      statusEl.className = 'demo-status show error';
+      login();
+      return;
+    }
+
+    var kml = document.getElementById('demo-kml').value.trim();
 
     if (!kml) {
       statusEl.textContent = 'Paste KML content above first.';
@@ -2853,6 +2995,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   document.getElementById('frame-info').textContent = 'Pipeline will parse, search, download, clip and reproject imagery for your AOI';
 
   /* --- Init --- */
+  initAuth();
+  document.getElementById('auth-login-btn').addEventListener('click', login);
+  document.getElementById('auth-logout-btn').addEventListener('click', logout);
+  var loginPromptLink = document.getElementById('login-prompt-link');
+  if (loginPromptLink) loginPromptLink.addEventListener('click', login);
+
   discoverApiBase().then(function() {
     checkContract();
     checkStatus();

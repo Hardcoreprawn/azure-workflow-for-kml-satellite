@@ -75,6 +75,12 @@ DEMO_VALET_TOKEN_SECRET = _env("DEMO_VALET_TOKEN_SECRET")
 DEMO_VALET_TOKEN_TTL_SECONDS = _env_int("DEMO_VALET_TOKEN_TTL_SECONDS", 86400)
 DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 
+# Azure AD B2C authentication
+B2C_TENANT_NAME = _env("B2C_TENANT_NAME")
+B2C_CLIENT_ID = _env("B2C_CLIENT_ID")
+B2C_POLICY_NAME = _env("B2C_POLICY_NAME", "B2C_1_signup_signin")
+B2C_AUDIENCE = _env("B2C_AUDIENCE")  # defaults to B2C_CLIENT_ID if empty
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""

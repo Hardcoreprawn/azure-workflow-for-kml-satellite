@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 import azure.durable_functions as df
 import azure.functions as func
 
+from blueprints._helpers import check_auth
 from treesight.config import config_get_int
 from treesight.constants import (
     DEFAULT_DOWNLOAD_BATCH_SIZE,
@@ -691,7 +692,7 @@ async def timelapse_data(
 
 @bp.route(
     route="timelapse-analysis-save",
-    methods=["POST"],
+    methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
@@ -700,6 +701,16 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     Stores the LLM analysis alongside the enrichment manifest so it
     can be retrieved without re-running the LLM.
     """
+    if req.method == "OPTIONS":
+        from blueprints._helpers import cors_preflight
+
+        return cors_preflight()
+
+    try:
+        _claims, _user_id = check_auth(req)
+    except ValueError as exc:
+        return _error_response(401, str(exc))
+
     try:
         body = req.get_json()
     except ValueError:
