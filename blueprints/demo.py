@@ -15,6 +15,7 @@ import requests
 
 from blueprints._helpers import (
     EMAIL_RE,
+    check_auth,
     cors_headers,
     cors_preflight,
     error_response,
@@ -25,7 +26,8 @@ from treesight.constants import (
     DEFAULT_OUTPUT_CONTAINER,
     PIPELINE_PAYLOADS_CONTAINER,
 )
-from treesight.security.rate_limit import demo_limiter, get_client_ip, proxy_limiter
+from treesight.security.quota import consume_quota
+from treesight.security.rate_limit import get_client_ip, proxy_limiter
 from treesight.security.valet import mint_valet_token, verify_valet_token
 from treesight.storage.client import BlobStorageClient
 
@@ -40,8 +42,15 @@ def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204)
 
-    if not demo_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Rate limit exceeded — try again later")
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc))
+
+    try:
+        consume_quota(user_id)
+    except ValueError as exc:
+        return error_response(403, str(exc))
 
     try:
         body = req.get_json()
