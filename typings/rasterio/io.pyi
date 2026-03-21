@@ -18,6 +18,7 @@ class DatasetReader:
     nodata: float | None
     driver: str
     profile: dict[str, object]
+    res: tuple[float, float]
 
     def read(
         self,

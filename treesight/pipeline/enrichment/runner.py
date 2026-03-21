@@ -11,6 +11,7 @@ import httpx
 
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
 from treesight.log import log_phase
+from treesight.pipeline.enrichment.change_detection import detect_changes
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import _coords_to_bbox, register_mosaic
 from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
@@ -188,7 +189,28 @@ def run_enrichment(
         src = "NAIP © USDA" if f["is_naip"] else "Sentinel-2 L2A"
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
 
-    # 5. Store manifest
+    # 5. Change detection — compare same-season NDVI rasters year-over-year
+    if any(ndvi_raster_paths):
+        log_phase("enrichment", "change_detection_start")
+        change_results = detect_changes(
+            frame_plan=frame_plan,
+            ndvi_raster_paths=ndvi_raster_paths,
+            output_container=output_container,
+            project_name=project_name,
+            timestamp=timestamp,
+            storage=storage,
+        )
+        results["change_detection"] = change_results
+        log_phase(
+            "enrichment",
+            "change_detection_done",
+            comparisons=change_results["summary"]["comparisons"],
+            trajectory=change_results["summary"].get("trajectory"),
+        )
+    else:
+        results["change_detection"] = {"season_changes": [], "summary": {}}
+
+    # 6. Store manifest
     duration = time.monotonic() - start
     results["enrichment_duration_seconds"] = round(duration, 1)
     results["enriched_at"] = datetime.now(UTC).isoformat()
