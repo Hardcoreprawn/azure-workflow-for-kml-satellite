@@ -173,6 +173,61 @@ jobs:
               CIAM_CLIENT_ID="$CIAM_CLIENT" \
               CIAM_AUDIENCE="$CIAM_CLIENT"
 
+      - name: Verify runtime readiness
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          BASE_URL="https://${HOSTNAME}"
+          MAX_WAIT=360          # 6 minutes — generous for Container Apps cold start
+          INTERVAL=10
+          elapsed=0
+          health_code=0
+          ready_code=0
+
+          echo "Waiting for ${BASE_URL}/api/health to become ready..."
+
+          while [ $elapsed -lt $MAX_WAIT ]; do
+            health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
+            ready_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/readiness" 2>/dev/null || echo "000")
+
+            echo "  [${elapsed}s] health=${health_code} readiness=${ready_code}"
+
+            # Success: both return 200
+            if [ "$health_code" = "200" ] && [ "$ready_code" = "200" ]; then
+              echo "✅ Runtime is healthy and ready."
+              exit 0
+            fi
+
+            # Fail fast on server errors (5xx) — indicates a real crash
+            if [[ "$health_code" =~ ^5 ]] || [[ "$ready_code" =~ ^5 ]]; then
+              echo "❌ Server error detected (health=${health_code}, readiness=${ready_code}). Failing."
+              exit 1
+            fi
+
+            # 404 / 000 / other — likely routing lag, keep waiting
+            sleep $INTERVAL
+            elapsed=$((elapsed + INTERVAL))
+          done
+
+          # Final diagnostics
+          echo ""
+          echo "❌ Readiness checks did not pass within ${MAX_WAIT}s."
+          echo "── Endpoint probe matrix ──"
+          echo "  health:    ${health_code}"
+          echo "  readiness: ${ready_code}"
+          echo "  elapsed:   ${elapsed}s"
+          echo ""
+          echo "This may indicate:"
+          echo "  - Container image failed to start (check Container Apps logs)"
+          echo "  - Route registration lag exceeded timeout"
+          echo "  - The function app hostname has changed"
+          exit 1
+
   # ── 3. Deploy static website ───────────────────────────────
   deploy-website:
     name: Deploy Static Website
