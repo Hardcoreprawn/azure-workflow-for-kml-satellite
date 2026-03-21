@@ -1033,7 +1033,7 @@ Written to blob storage by the `write_metadata` activity.
     "correlation_id": "string",
     "tenant_id": "string",
     "output_container": "string",
-    
+
     "provider_name": "string (optional)",
     "provider_config": {"key": "value"} | null,
     "imagery_filters": {"key": "value"} | null,
