@@ -14,9 +14,7 @@ import time
 from typing import Any
 
 # Correlation ID propagated through async call chains.
-correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "correlation_id", default=""
-)
+correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="")
 
 logger = logging.getLogger("treesight")
 
@@ -116,6 +114,4 @@ def log_duration(
 ) -> str:
     """Log a phase step with its duration in milliseconds."""
     duration_ms = round((time.monotonic() - started) * 1000)
-    return log_phase(
-        phase, step, instance_id=instance_id, duration_ms=duration_ms, **extra
-    )
+    return log_phase(phase, step, instance_id=instance_id, duration_ms=duration_ms, **extra)
