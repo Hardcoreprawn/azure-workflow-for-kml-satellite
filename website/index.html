@@ -500,7 +500,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   'use strict';
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
-  const DEFAULT_FALLBACK_ORIGIN = '';
+  const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.politebush-dbd595e5.uksouth.azurecontainerapps.io';
   let apiBase = '';
   let contractOk = false;
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
@@ -508,12 +508,19 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   /* --- API helper --- */
   async function apiFetch(path, opts) {
-    const urls = [apiBase + path];
-    if (DEFAULT_FALLBACK_ORIGIN) urls.push(DEFAULT_FALLBACK_ORIGIN + path);
-    for (const url of urls) {
-      try { return await fetch(url, opts); } catch { continue; }
-    }
-    return null;
+    var base = apiBase || DEFAULT_FALLBACK_ORIGIN;
+    try { return await fetch(base + path, opts); } catch { return null; }
+  }
+
+  /* --- API discovery: detect if same-origin proxies to backend --- */
+  async function discoverApiBase() {
+    if (!DEFAULT_FALLBACK_ORIGIN) return;
+    try {
+      var res = await fetch('/api/health');
+      if (res.ok) { apiBase = ''; return; }          /* SWA proxies → use same-origin */
+    } catch { /* network error */ }
+    apiBase = DEFAULT_FALLBACK_ORIGIN;                /* fallback to function app directly */
+    console.log('API base: ' + apiBase);
   }
 
   /* --- Contract check (§12.3) --- */
@@ -2593,16 +2600,17 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         date_range_end: framePlan && framePlan.length > 0 ? framePlan[framePlan.length - 1].end : null
       };
 
-      var response = await fetch('/api/timelapse-analysis', {
+      var response = await apiFetch('/api/timelapse-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ context: contextData })
       });
 
-      if (!response.ok) {
-        var errData = await response.json();
-        error.textContent = '❌ ' + (errData.error || 'Analysis failed');
+      if (!response || !response.ok) {
+        var errData = response ? await response.json().catch(function(){return {};}) : {};
+        error.textContent = '❌ ' + (errData.error || 'Analysis failed (HTTP ' + (response?response.status:'unreachable') + ')');
         error.style.display = 'block';
+        loading.style.display = 'none';
         return;
       }
 
@@ -2845,9 +2853,11 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   document.getElementById('frame-info').textContent = 'Pipeline will parse, search, download, clip and reproject imagery for your AOI';
 
   /* --- Init --- */
-  checkContract();
-  checkStatus();
-  setInterval(checkStatus, 30000);
+  discoverApiBase().then(function() {
+    checkContract();
+    checkStatus();
+    setInterval(checkStatus, 30000);
+  });
 
 })();
 </script>

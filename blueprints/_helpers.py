@@ -20,6 +20,7 @@ def error_response(status: int, message: str) -> func.HttpResponse:
         json.dumps({"error": message}),
         status_code=status,
         mimetype="application/json",
+        headers={"Access-Control-Allow-Origin": "*"},
     )
 
 
