@@ -138,10 +138,10 @@ jobs:
           FUNC_RG=$(tofu output -raw resource_group_name)
           FUNC_NAME=$(tofu output -raw function_app_name)
 
-          az functionapp config set \
+          az functionapp config container set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
-            --linux-fx-version "DOCKER|${{ needs.build-image.outputs.image_uri }}"
+            --image "${{ needs.build-image.outputs.image_uri }}"
 
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
