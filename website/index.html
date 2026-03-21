@@ -229,6 +229,14 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 /* --- Contract warning --- */
 .contract-warning{background:rgba(210,153,34,.1);color:var(--c-orange);border:1px solid rgba(210,153,34,.3);padding:10px 16px;border-radius:var(--radius);font-size:.875rem;margin-bottom:16px;display:none}
 .contract-warning.show{display:block}
+
+/* --- Onboarding banner --- */
+.onboard-banner{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;font-size:.875rem;flex-wrap:wrap}
+.onboard-banner .onboard-icon{font-size:1.5rem;flex-shrink:0}
+.onboard-banner .onboard-text{flex:1;min-width:200px}
+.onboard-banner .onboard-text strong{color:var(--c-text)}
+.onboard-banner .onboard-text p{color:var(--c-muted);margin:2px 0 0;font-size:.8rem}
+.onboard-banner .btn-sm{padding:6px 16px;font-size:.8rem;border-radius:var(--radius);font-weight:600;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -243,6 +251,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <ul>
       <li><a href="#problem">Overview</a></li>
       <li><a href="#demo">Demo</a></li>
+      <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#early-access">Early Access</a></li>
@@ -293,6 +302,14 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   <div class="container">
     <div class="section-label">Try It</div>
     <h2>Live Demo</h2>
+    <div class="onboard-banner" id="onboard-banner">
+      <span class="onboard-icon">🗺️</span>
+      <div class="onboard-text">
+        <strong>New to KML files?</strong>
+        <p>Learn how to draw an area of interest in Google Earth Pro and export it as KML — no GIS experience needed.</p>
+      </div>
+      <a href="/kml-guide.html" class="btn btn-secondary btn-sm">Read the Guide</a>
+    </div>
     <div id="contract-warning" class="contract-warning">
       API contract version mismatch. Demo submissions are disabled until the backend is updated.
     </div>
