@@ -42,14 +42,8 @@ class RateLimiter:
 
 
 # Pre-configured limiters for different endpoint tiers
-# AI endpoints: 10 requests per 60 seconds per IP
-ai_limiter = RateLimiter(max_requests=10, window_seconds=60)
-
 # Form submission endpoints: 5 requests per 60 seconds per IP
 form_limiter = RateLimiter(max_requests=5, window_seconds=60)
-
-# Demo/pipeline endpoints: 3 requests per 60 seconds per IP
-demo_limiter = RateLimiter(max_requests=3, window_seconds=60)
 
 # Pipeline status polling: 30 requests per 60 seconds per IP
 pipeline_limiter = RateLimiter(max_requests=30, window_seconds=60)

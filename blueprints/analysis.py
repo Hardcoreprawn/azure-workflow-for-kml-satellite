@@ -13,7 +13,6 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
-from treesight.security.rate_limit import ai_limiter, get_client_ip
 
 bp = func.Blueprint()
 
@@ -70,9 +69,6 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
-
-    if not ai_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Rate limit exceeded — try again shortly")
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
@@ -232,9 +228,6 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
-
-    if not ai_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Rate limit exceeded — try again shortly")
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
