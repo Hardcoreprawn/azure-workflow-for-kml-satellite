@@ -40,9 +40,6 @@ coverage.xml
 .pytest_cache/
 .ruff_cache/
 
-# uv
-uv.lock
-
 # OpenTofu / Terraform
 infra/.terraform/
 infra/.tofu/

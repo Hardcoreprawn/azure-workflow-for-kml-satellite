@@ -1,4 +1,4 @@
-![alt text](image.png)# TreeSight — System Specification
+# TreeSight — System Specification
 
 **Version:** 1.0.0  
 **Date:** 17 March 2026  
