@@ -345,6 +345,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           <label for="demo-kml">KML Content</label>
           <textarea id="demo-kml" placeholder="Paste your KML content here, or use the sample below…"></textarea>
           <button class="btn btn-primary" id="demo-submit" style="width:100%">Process KML</button>
+          <p style="font-size:.7rem;color:var(--c-muted);text-align:center;margin-top:8px">Your data is automatically deleted after 30 days. <a href="/privacy.html">Privacy Policy</a></p>
           <div id="demo-status" class="demo-status"></div>
           <div id="pipeline-progress">
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML…</div>
@@ -461,6 +462,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">The demo map shows real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time. The pipeline uses the same composite search strategy in production.</div></div>
       <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
       <div class="faq-item"><div class="faq-q">How is the pipeline deployed?</div><div class="faq-a">Azure Functions on Container Apps with Durable Functions orchestration, Azure Blob Storage, Event Grid triggers, and a Static Web App for the frontend. All managed via OpenTofu.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML/KMZ files and analysis results are automatically deleted after <strong>30 days</strong>. Server logs are retained for 90 days for debugging. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a> for full details.</div></div>
     </div>
   </div>
 </section>
