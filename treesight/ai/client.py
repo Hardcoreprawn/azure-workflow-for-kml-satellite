@@ -4,6 +4,11 @@ Priority:
   1. Azure AI Foundry / Azure OpenAI (if AZURE_AI_ENDPOINT is set)
   2. Local Ollama (if OLLAMA_URL is reachable)
   3. Graceful degradation (return empty analysis)
+
+A per-provider circuit breaker (§4.8) prevents hammering a failing
+endpoint.  After *CIRCUIT_FAILURE_THRESHOLD* consecutive failures the
+circuit opens for *CIRCUIT_COOLDOWN_SECONDS*, during which the provider
+is skipped.  One probe request is allowed after cooldown.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any
 
 import httpx
@@ -35,6 +41,70 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
 AI_CACHE_CONTAINER = os.environ.get("AI_CACHE_CONTAINER", "kml-output")
 AI_CACHE_PREFIX = "ai-cache/"
 AI_CACHE_ENABLED = os.environ.get("AI_CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+
+# Circuit breaker
+CIRCUIT_FAILURE_THRESHOLD = int(os.environ.get("AI_CIRCUIT_FAILURE_THRESHOLD", "3"))
+CIRCUIT_COOLDOWN_SECONDS = float(os.environ.get("AI_CIRCUIT_COOLDOWN_SECONDS", "60"))
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker
+# ---------------------------------------------------------------------------
+
+
+class _CircuitBreaker:
+    """Simple in-process circuit breaker for an external provider.
+
+    States:
+      closed  — requests pass through normally
+      open    — provider is skipped (consecutive failures ≥ threshold)
+      half-open — one probe request allowed after cooldown
+    """
+
+    def __init__(self, name: str, threshold: int, cooldown: float) -> None:
+        self.name = name
+        self._threshold = threshold
+        self._cooldown = cooldown
+        self._consecutive_failures = 0
+        self._opened_at: float = 0.0
+
+    @property
+    def state(self) -> str:
+        if self._consecutive_failures < self._threshold:
+            return "closed"
+        elapsed = time.monotonic() - self._opened_at
+        if elapsed < self._cooldown:
+            return "open"
+        return "half-open"
+
+    def allow_request(self) -> bool:
+        s = self.state
+        if s == "closed":
+            return True
+        if s == "half-open":
+            logger.info("Circuit %s half-open — allowing probe request", self.name)
+            return True
+        return False
+
+    def record_success(self) -> None:
+        if self._consecutive_failures > 0:
+            logger.info("Circuit %s reset after successful call", self.name)
+        self._consecutive_failures = 0
+
+    def record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._threshold:
+            self._opened_at = time.monotonic()
+            logger.warning(
+                "Circuit %s OPEN after %d consecutive failures (cooldown %.0fs)",
+                self.name,
+                self._consecutive_failures,
+                self._cooldown,
+            )
+
+
+_azure_circuit = _CircuitBreaker("azure-ai", CIRCUIT_FAILURE_THRESHOLD, CIRCUIT_COOLDOWN_SECONDS)
+_ollama_circuit = _CircuitBreaker("ollama", CIRCUIT_FAILURE_THRESHOLD, CIRCUIT_COOLDOWN_SECONDS)
 
 
 def _cache_key(prompt: str) -> str:
@@ -77,8 +147,11 @@ def _cache_write(cache_key: str, result: dict[str, Any]) -> None:
 
 
 def _call_azure_ai(prompt: str) -> str | None:
-    """Call Azure AI Foundry / Azure OpenAI endpoint."""
+    """Call Azure AI Foundry / Azure OpenAI endpoint (circuit-protected)."""
     if not AZURE_AI_ENDPOINT or not AZURE_AI_API_KEY:
+        return None
+    if not _azure_circuit.allow_request():
+        logger.debug("Azure AI circuit open — skipping")
         return None
 
     url = (
@@ -109,14 +182,20 @@ def _call_azure_ai(prompt: str) -> str | None:
             resp = client.post(url, json=body, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+            _azure_circuit.record_success()
             return data["choices"][0]["message"]["content"]
     except Exception:
         logger.warning("Azure AI call failed", exc_info=True)
+        _azure_circuit.record_failure()
         return None
 
 
 def _call_ollama(prompt: str) -> str | None:
-    """Call local Ollama endpoint as fallback."""
+    """Call local Ollama endpoint as fallback (circuit-protected)."""
+    if not _ollama_circuit.allow_request():
+        logger.debug("Ollama circuit open — skipping")
+        return None
+
     try:
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
             resp = client.post(
@@ -130,9 +209,11 @@ def _call_ollama(prompt: str) -> str | None:
                 timeout=150.0,
             )
             resp.raise_for_status()
+            _ollama_circuit.record_success()
             return resp.json().get("response", "")
     except Exception:
         logger.warning("Ollama call failed", exc_info=True)
+        _ollama_circuit.record_failure()
         return None
 
 

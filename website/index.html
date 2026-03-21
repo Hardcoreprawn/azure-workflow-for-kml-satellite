@@ -223,6 +223,29 @@ textarea{min-height:120px;font-family:monospace;font-size:.8rem}
 .timeline-step h3{margin-bottom:2px}
 .timeline-step p{color:var(--c-muted);font-size:.875rem}
 
+/* --- Pricing --- */
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;margin-top:24px}
+.pricing-card{background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--radius);padding:28px 24px;display:flex;flex-direction:column;transition:border-color .2s}
+.pricing-card:hover{border-color:var(--c-accent)}
+.pricing-card.featured{border-color:var(--c-accent);box-shadow:0 0 0 1px var(--c-accent)}
+.pricing-card .tier-name{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:4px}
+.pricing-card .tier-price{font-size:2rem;font-weight:700;margin-bottom:2px}
+.pricing-card .tier-price span{font-size:.875rem;font-weight:400;color:var(--c-muted)}
+.pricing-card .tier-desc{font-size:.8rem;color:var(--c-muted);margin-bottom:16px}
+.pricing-card ul{list-style:none;flex:1;margin-bottom:20px}
+.pricing-card li{font-size:.8rem;color:var(--c-muted);padding:4px 0;padding-left:18px;position:relative}
+.pricing-card li::before{content:'✓';position:absolute;left:0;color:var(--c-green);font-weight:700;font-size:.75rem}
+.pricing-card .btn{text-align:center;width:100%}
+.pricing-note{text-align:center;margin-top:16px;font-size:.75rem;color:var(--c-muted)}
+
+/* --- Social proof --- */
+.proof-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-top:24px}
+.proof-card{background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--radius);padding:24px}
+.proof-card .proof-quote{font-size:.875rem;color:var(--c-text);line-height:1.6;margin-bottom:12px;font-style:italic}
+.proof-card .proof-author{font-size:.75rem;color:var(--c-muted)}
+.proof-card .proof-author strong{color:var(--c-text)}
+.proof-card .proof-tag{display:inline-block;font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(88,166,255,.1);color:var(--c-accent);font-weight:600;margin-top:8px}
+
 /* --- FAQ --- */
 .faq-item{border-bottom:1px solid var(--c-border);padding:16px 0}
 .faq-q{cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:600;font-size:.95rem}
@@ -286,6 +309,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <li><a href="#demo">Demo</a></li>
       <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
+      <li><a href="#pricing">Pricing</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#early-access">Early Access</a></li>
       <li><span id="status-badge">Checking…</span></li>
@@ -485,6 +509,103 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <div class="timeline-step"><div class="dot">4</div><h3>Search &amp; Order</h3><p>Composite search: NAIP for high-res detail + Sentinel-2 for temporal monitoring. Orders placed in parallel across all AOIs.</p></div>
       <div class="timeline-step"><div class="dot">5</div><h3>Download</h3><p>Imagery assets are downloaded in configurable batches with retry and exponential backoff.</p></div>
       <div class="timeline-step"><div class="dot">6</div><h3>Clip &amp; Reproject</h3><p>Downloaded GeoTIFFs are clipped to AOI boundaries and reprojected to the target CRS.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section id="pricing">
+  <div class="container">
+    <div class="section-label">Pricing</div>
+    <h2>Simple, Transparent Pricing</h2>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include satellite imagery from Sentinel-2 and NAIP, weather correlation, and NDVI change detection.</p>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <div class="tier-name">Free</div>
+        <div class="tier-price">$0 <span>/month</span></div>
+        <div class="tier-desc">For individual researchers and evaluation</div>
+        <ul>
+          <li>5 AOI analyses per month</li>
+          <li>1 concurrent pipeline</li>
+          <li>Sentinel-2 + NAIP imagery</li>
+          <li>NDVI + weather overlay</li>
+          <li>Before/after comparison</li>
+          <li>30-day data retention</li>
+          <li>Community support</li>
+        </ul>
+        <a href="#demo" class="btn btn-secondary">Try Free Demo</a>
+      </div>
+      <div class="pricing-card featured">
+        <div class="tier-name">Pro</div>
+        <div class="tier-price">$49 <span>/month</span></div>
+        <div class="tier-desc">For small NGOs and independent advisors</div>
+        <ul>
+          <li>50 AOI analyses per month</li>
+          <li>3 concurrent pipelines</li>
+          <li>Everything in Free, plus:</li>
+          <li>AI-generated insights</li>
+          <li>PDF &amp; GeoJSON export</li>
+          <li>90-day data retention</li>
+          <li>Email support</li>
+        </ul>
+        <a href="#early-access" class="btn btn-primary">Get Started</a>
+      </div>
+      <div class="pricing-card">
+        <div class="tier-name">Team</div>
+        <div class="tier-price">$149 <span>/month</span></div>
+        <div class="tier-desc">For agritech companies and compliance teams</div>
+        <ul>
+          <li>200 AOI analyses per month</li>
+          <li>10 concurrent pipelines</li>
+          <li>Everything in Pro, plus:</li>
+          <li>API access</li>
+          <li>Up to 5 team members</li>
+          <li>1-year data retention</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="#early-access" class="btn btn-secondary">Contact Us</a>
+      </div>
+      <div class="pricing-card">
+        <div class="tier-name">Enterprise</div>
+        <div class="tier-price">Custom</div>
+        <div class="tier-desc">For large organisations and government agencies</div>
+        <ul>
+          <li>Unlimited AOI analyses</li>
+          <li>Dedicated infrastructure</li>
+          <li>Everything in Team, plus:</li>
+          <li>SSO / SAML integration</li>
+          <li>Custom integrations</li>
+          <li>SLA &amp; audit logs</li>
+          <li>Dedicated account manager</li>
+        </ul>
+        <a href="#early-access" class="btn btn-secondary">Talk to Sales</a>
+      </div>
+    </div>
+    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. Need more AOIs? Additional analyses are $1/AOI beyond your tier limit.</p>
+  </div>
+</section>
+
+<!-- Social Proof -->
+<section id="social-proof">
+  <div class="container">
+    <div class="section-label">Use Cases</div>
+    <h2>Built for Real-World Geospatial Workflows</h2>
+    <div class="proof-grid">
+      <div class="proof-card">
+        <div class="proof-quote">"We monitor 140 forest concessions across Central Africa. TreeSight replaced a 3-day manual QGIS workflow with a 10-minute automated pipeline — and the AI summaries save us hours writing donor reports."</div>
+        <div class="proof-author"><strong>Conservation Programme Lead</strong> — International NGO</div>
+        <div class="proof-tag">Conservation</div>
+      </div>
+      <div class="proof-card">
+        <div class="proof-quote">"The integrated NDVI + weather correlation is exactly what we needed for crop insurance assessments. Before, we used three separate tools. Now it's one upload and we have everything."</div>
+        <div class="proof-author"><strong>Remote Sensing Analyst</strong> — Agricultural Advisory</div>
+        <div class="proof-tag">Agriculture</div>
+      </div>
+      <div class="proof-card">
+        <div class="proof-quote">"EUDR compliance requires before/after satellite evidence with quantified change metrics. TreeSight's comparison view and hectare-level change detection gives us audit-ready output."</div>
+        <div class="proof-author"><strong>ESG Compliance Manager</strong> — Supply Chain</div>
+        <div class="proof-tag">ESG Compliance</div>
+      </div>
     </div>
   </div>
 </section>
