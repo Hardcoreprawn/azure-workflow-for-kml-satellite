@@ -141,8 +141,8 @@ jobs:
           az webapp config container set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
-            --registry-server ghcr.io \
-            --image "${{ needs.build-image.outputs.image_uri }}"
+            --docker-registry-server-url "https://ghcr.io" \
+            --docker-custom-image-name "${{ needs.build-image.outputs.image_uri }}"
 
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
