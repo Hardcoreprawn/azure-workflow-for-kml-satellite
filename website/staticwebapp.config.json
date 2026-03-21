@@ -1,7 +1,7 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/css/*", "/js/*", "/images/*", "/kml-guide.html"]
+    "exclude": ["/api/*", "/css/*", "/js/*", "/images/*", "/kml-guide.html", "/terms.html", "/privacy.html"]
   },
   "routes": [
     {
