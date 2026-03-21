@@ -259,6 +259,13 @@ resource "azapi_resource" "function_app" {
     type = "SystemAssigned"
   }
 
+  # Workaround: azapi v2 "Missing Resource Identity After Update" bug.
+  # The ARM API omits identity from update responses, crashing the provider.
+  # Identity is created once and never changes, so ignoring is safe.
+  lifecycle {
+    ignore_changes = [identity]
+  }
+
   body = {
     kind = "functionapp,linux,container,azurecontainerapps"
     properties = {
