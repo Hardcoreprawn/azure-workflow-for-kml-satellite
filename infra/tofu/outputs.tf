@@ -32,3 +32,8 @@ output "event_grid_system_topic_name" {
   value       = azapi_resource.event_grid_system_topic.name
   description = "Event Grid system topic name."
 }
+
+output "site_url" {
+  value       = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
+  description = "Primary site URL (custom domain if configured, otherwise default)."
+}

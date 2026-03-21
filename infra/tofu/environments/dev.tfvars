@@ -12,3 +12,8 @@ default_tags = {
 }
 budget_amount         = 10
 budget_contact_emails = ["alerts@jablab.dev"]
+custom_domain         = "treesight.jablab.dev"
+custom_domain_prefix  = "treesight"
+dns_zone_name         = "jablab.dev"
+dns_zone_resource_group = "jabr_personal"
+enable_azure_ai         = false

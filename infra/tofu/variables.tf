@@ -82,3 +82,39 @@ variable "budget_contact_emails" {
   description = "Email addresses to receive budget alerts."
   type        = list(string)
 }
+
+variable "custom_domain" {
+  description = "Full custom domain for the Static Web App (e.g. treesight.jablab.dev). Empty to skip."
+  type        = string
+  default     = ""
+}
+
+variable "custom_domain_prefix" {
+  description = "DNS record name (prefix before the zone, e.g. 'treesight')."
+  type        = string
+  default     = ""
+}
+
+variable "dns_zone_name" {
+  description = "Azure DNS zone name (e.g. jablab.dev)."
+  type        = string
+  default     = ""
+}
+
+variable "dns_zone_resource_group" {
+  description = "Resource group containing the Azure DNS zone."
+  type        = string
+  default     = ""
+}
+
+variable "enable_azure_ai" {
+  description = "Deploy Azure OpenAI resource for AI analysis (M1.6)."
+  type        = bool
+  default     = false
+}
+
+variable "azure_ai_location" {
+  description = "Azure region for the OpenAI resource (must support the model)."
+  type        = string
+  default     = "swedencentral"
+}

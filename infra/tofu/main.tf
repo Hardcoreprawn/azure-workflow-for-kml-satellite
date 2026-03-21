@@ -210,6 +210,36 @@ resource "azurerm_key_vault" "main" {
   tags                          = local.tags
 }
 
+# --- Azure OpenAI for AI analysis (M1.6) ---
+
+resource "azurerm_cognitive_account" "openai" {
+  count                 = var.enable_azure_ai ? 1 : 0
+  name                  = "oai-${local.name_suffix}"
+  location              = var.azure_ai_location
+  resource_group_name   = azurerm_resource_group.main.name
+  kind                  = "OpenAI"
+  sku_name              = "S0"
+  custom_subdomain_name = "oai-${local.name_suffix}"
+  tags                  = local.tags
+}
+
+resource "azurerm_cognitive_deployment" "gpt4o_mini" {
+  count                = var.enable_azure_ai ? 1 : 0
+  name                 = "gpt-4o-mini"
+  cognitive_account_id = azurerm_cognitive_account.openai[0].id
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-4o-mini"
+    version = "2024-07-18"
+  }
+
+  sku {
+    name     = "Standard"
+    capacity = 8 # 8K tokens-per-minute
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location
@@ -239,14 +269,17 @@ resource "azapi_resource" "function_app" {
       siteConfig = {
         linuxFxVersion = "DOCKER|${var.container_image}"
         cors = {
-          allowedOrigins = [
-            "http://localhost:1111",
-            "https://${azurerm_static_web_app.main.default_host_name}",
-            "https://*.azurestaticapps.net"
-          ]
+          allowedOrigins = concat(
+            [
+              "http://localhost:1111",
+              "https://${azurerm_static_web_app.main.default_host_name}",
+              "https://*.azurestaticapps.net",
+            ],
+            var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
+          )
           supportCredentials = false
         }
-        appSettings = [
+        appSettings = concat([
           {
             name  = "AzureWebJobsStorage"
             value = azurerm_storage_account.main.primary_connection_string
@@ -287,7 +320,20 @@ resource "azapi_resource" "function_app" {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
           }
-        ]
+        ], var.enable_azure_ai ? [
+          {
+            name  = "AZURE_AI_ENDPOINT"
+            value = azurerm_cognitive_account.openai[0].endpoint
+          },
+          {
+            name  = "AZURE_AI_API_KEY"
+            value = azurerm_cognitive_account.openai[0].primary_access_key
+          },
+          {
+            name  = "AZURE_AI_DEPLOYMENT"
+            value = "gpt-4o-mini"
+          }
+        ] : [])
       }
     }
   }
@@ -302,6 +348,32 @@ resource "azurerm_static_web_app" "main" {
   sku_tier            = "Free"
   sku_size            = "Free"
   tags                = local.tags
+}
+
+# --- Custom domain (M1.5) ---
+
+data "azurerm_dns_zone" "main" {
+  count               = var.custom_domain != "" ? 1 : 0
+  name                = var.dns_zone_name
+  resource_group_name = var.dns_zone_resource_group
+}
+
+resource "azurerm_dns_cname_record" "static_web_app" {
+  count               = var.custom_domain != "" ? 1 : 0
+  name                = var.custom_domain_prefix
+  zone_name           = data.azurerm_dns_zone.main[0].name
+  resource_group_name = data.azurerm_dns_zone.main[0].resource_group_name
+  ttl                 = 3600
+  record              = azurerm_static_web_app.main.default_host_name
+}
+
+resource "azurerm_static_web_app_custom_domain" "main" {
+  count             = var.custom_domain != "" ? 1 : 0
+  static_web_app_id = azurerm_static_web_app.main.id
+  domain_name       = var.custom_domain
+  validation_type   = "cname-delegation"
+
+  depends_on = [azurerm_dns_cname_record.static_web_app]
 }
 
 resource "azurerm_role_assignment" "storage_blob_data_contributor" {

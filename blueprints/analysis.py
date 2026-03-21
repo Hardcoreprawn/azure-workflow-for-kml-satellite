@@ -1,25 +1,20 @@
-"""AI-powered frame analysis and annotations using local LLM (Phase 3 - Item #9).
+"""AI-powered frame analysis and annotations (Phase 3 - Item #9, M1.6).
+
+Uses Azure AI Foundry with Ollama fallback via treesight.ai.
 
 NOTE: Do NOT add ``from __future__ import annotations`` to blueprint modules.
 See blueprints/pipeline.py module docstring for details.
 """
 
 import json
-import os
-import re
 from typing import Any
 
 import azure.functions as func
-import httpx
 
 from blueprints._helpers import cors_preflight, error_response
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.ai import generate_analysis
 
 bp = func.Blueprint()
-
-# Local LLM endpoint (default Ollama on localhost:11434)
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
 
 
 @bp.route(route="frame-analysis", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -136,34 +131,10 @@ Provide analysis as JSON with exactly this structure (respond ONLY with valid JS
 Categories: vegetation_health, water, clearing, anomaly, or trend.
 Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
 
-        # Call local LLM
-        try:
-            http_client = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
-            response = http_client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "temperature": 0.3,
-                },
-            )
-            response.raise_for_status()
-
-            result = response.json()
-            response_text = result.get("response", "")
-        except Exception as e:
-            return error_response(503, f"Local LLM unavailable: {str(e)}")
-
-        # Parse JSON from response
-        try:
-            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
-            if json_match:
-                analysis = json.loads(json_match.group())
-            else:
-                analysis = _default_analysis(response_text)
-        except json.JSONDecodeError:
-            analysis = _default_analysis(response_text)
+        # Call AI provider (Azure AI Foundry → Ollama → graceful degradation)
+        analysis = generate_analysis(prompt)
+        if analysis is None:
+            analysis = _default_analysis("AI analysis unavailable — all providers failed")
 
         return func.HttpResponse(
             json.dumps(analysis),
@@ -376,36 +347,10 @@ most reliable indicators.
 health) based on the trajectory and data.
 - Keep observations SPECIFIC — cite actual values from the data."""
 
-        # Call local LLM
-        try:
-            # Ollama can take 60-70+ seconds, and Azure Functions timeout can be up to 230 seconds
-            http_client = httpx.Client(timeout=150.0)
-            response = http_client.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "temperature": 0.3,
-                },
-                timeout=150.0,
-            )
-            response.raise_for_status()
-
-            result = response.json()
-            response_text = result.get("response", "")
-        except Exception as e:
-            return error_response(503, f"Local LLM unavailable: {str(e)}")
-
-        # Parse JSON from response
-        try:
-            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
-            if json_match:
-                analysis = json.loads(json_match.group())
-            else:
-                analysis = _default_analysis(response_text)
-        except json.JSONDecodeError:
-            analysis = _default_analysis(response_text)
+        # Call AI provider (Azure AI Foundry → Ollama → graceful degradation)
+        analysis = generate_analysis(prompt)
+        if analysis is None:
+            analysis = _default_analysis("AI analysis unavailable — all providers failed")
 
         # Add calculated trend info to response
         analysis["trend_data"] = trend_info
