@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Many Blocks</name>
+    <Placemark>
+      <name>Block 1</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.80,-1.30,0 36.81,-1.30,0 36.81,-1.31,0 36.80,-1.31,0 36.80,-1.30,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block 2</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.82,-1.30,0 36.83,-1.30,0 36.83,-1.31,0 36.82,-1.31,0 36.82,-1.30,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block 3</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.84,-1.30,0 36.85,-1.30,0 36.85,-1.31,0 36.84,-1.31,0 36.84,-1.30,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block 4</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.80,-1.32,0 36.81,-1.32,0 36.81,-1.33,0 36.80,-1.33,0 36.80,-1.32,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block 5</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.82,-1.32,0 36.83,-1.32,0 36.83,-1.33,0 36.82,-1.33,0 36.82,-1.32,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Triangle Field</name>
+    <Placemark>
+      <name>Triangle Plot</name>
+      <description>Minimum valid polygon (3 vertices)</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.80,-1.30,0
+              36.82,-1.30,0
+              36.81,-1.32,0
+              36.80,-1.30,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

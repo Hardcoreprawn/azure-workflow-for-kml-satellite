@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Overlapping Blocks</name>
+    <Placemark>
+      <name>Block West</name>
+      <description>Overlaps with east block</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.80,-1.30,0
+              36.82,-1.30,0
+              36.82,-1.32,0
+              36.80,-1.32,0
+              36.80,-1.30,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block East</name>
+      <description>Overlaps with west block</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.81,-1.30,0
+              36.83,-1.30,0
+              36.83,-1.32,0
+              36.81,-1.32,0
+              36.81,-1.30,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

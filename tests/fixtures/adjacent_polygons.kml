@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Adjacent Blocks</name>
+    <Placemark>
+      <name>Block North</name>
+      <description>Northern adjacent block</description>
+      <ExtendedData>
+        <Data name="crop"><value>wheat</value></Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.80,-1.30,0
+              36.82,-1.30,0
+              36.82,-1.31,0
+              36.80,-1.31,0
+              36.80,-1.30,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block South</name>
+      <description>Southern adjacent block sharing north edge</description>
+      <ExtendedData>
+        <Data name="crop"><value>maize</value></Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.80,-1.31,0
+              36.82,-1.31,0
+              36.82,-1.32,0
+              36.80,-1.32,0
+              36.80,-1.31,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

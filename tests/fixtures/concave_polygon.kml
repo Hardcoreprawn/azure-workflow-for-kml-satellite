@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Non-Convex Block</name>
+    <Placemark>
+      <name>L-Shaped Field</name>
+      <description>Non-convex (concave) polygon shaped like an L</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.800,-1.300,0
+              36.810,-1.300,0
+              36.810,-1.305,0
+              36.805,-1.305,0
+              36.805,-1.310,0
+              36.800,-1.310,0
+              36.800,-1.300,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

@@ -27,6 +27,60 @@ def multi_polygon_kml_bytes() -> bytes:
 
 
 @pytest.fixture()
+def single_polygon_kml_bytes() -> bytes:
+    """KML with a single polygon placemark."""
+    return (FIXTURES_DIR / "single_polygon.kml").read_bytes()
+
+
+@pytest.fixture()
+def polygon_with_hole_kml_bytes() -> bytes:
+    """KML with a polygon that has an interior ring (hole)."""
+    return (FIXTURES_DIR / "polygon_with_hole.kml").read_bytes()
+
+
+@pytest.fixture()
+def tiny_polygon_kml_bytes() -> bytes:
+    """KML with a very small polygon (< 0.1 ha)."""
+    return (FIXTURES_DIR / "tiny_polygon.kml").read_bytes()
+
+
+@pytest.fixture()
+def huge_polygon_kml_bytes() -> bytes:
+    """KML with a very large polygon that triggers area warning."""
+    return (FIXTURES_DIR / "huge_polygon.kml").read_bytes()
+
+
+@pytest.fixture()
+def concave_polygon_kml_bytes() -> bytes:
+    """KML with an L-shaped (concave) polygon."""
+    return (FIXTURES_DIR / "concave_polygon.kml").read_bytes()
+
+
+@pytest.fixture()
+def adjacent_polygons_kml_bytes() -> bytes:
+    """KML with two adjacent polygons sharing an edge."""
+    return (FIXTURES_DIR / "adjacent_polygons.kml").read_bytes()
+
+
+@pytest.fixture()
+def overlapping_polygons_kml_bytes() -> bytes:
+    """KML with two overlapping polygons."""
+    return (FIXTURES_DIR / "overlapping_polygons.kml").read_bytes()
+
+
+@pytest.fixture()
+def five_polygons_kml_bytes() -> bytes:
+    """KML with five polygons — tests scaling / many-AOI handling."""
+    return (FIXTURES_DIR / "five_polygons.kml").read_bytes()
+
+
+@pytest.fixture()
+def triangle_polygon_kml_bytes() -> bytes:
+    """KML with a triangle — minimum valid polygon."""
+    return (FIXTURES_DIR / "triangle_polygon.kml").read_bytes()
+
+
+@pytest.fixture()
 def sample_feature():
     """Pre-built Feature for tests that don't need KML parsing."""
     from treesight.models.feature import Feature

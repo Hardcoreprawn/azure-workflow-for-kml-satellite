@@ -22,6 +22,7 @@ class AOI(BaseModel):
         bbox: Tight bounding box ``[min_lon, min_lat, max_lon, max_lat]``.
         buffered_bbox: Bounding box expanded by ``buffer_m`` metres.
         area_ha: Geodesic polygon area in hectares.
+        perimeter_km: Geodesic polygon perimeter in kilometres.
         centroid: Polygon centroid ``[lon, lat]``.
         buffer_m: Buffer distance applied in metres (default 100, range 50–200).
         crs: Always ``EPSG:4326``.
@@ -37,6 +38,7 @@ class AOI(BaseModel):
     bbox: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
     buffered_bbox: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
     area_ha: float = 0.0
+    perimeter_km: float = 0.0
     centroid: list[float] = Field(default_factory=lambda: [0.0, 0.0])
     buffer_m: float = DEFAULT_AOI_BUFFER_M
     crs: str = "EPSG:4326"
