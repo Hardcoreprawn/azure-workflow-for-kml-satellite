@@ -43,7 +43,8 @@ def _find_best_s2_scene(
     """Search STAC for the least-cloudy Sentinel-2 L2A scene in a window.
 
     Returns a dict with ``{"B04": url, "B08": url, "scene_id": ..., ...}``
-    or None if nothing suitable was found.
+    plus an optional ``"SCL"`` key when the Scene Classification Layer is
+    available, or None if nothing suitable was found.
     """
     import planetary_computer
     from pystac_client import Client
@@ -87,13 +88,11 @@ def _find_best_s2_scene(
 
 # SCL (Scene Classification Layer) valid pixel classes for NDVI.
 # See: https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm-overview
-VALID_SCL_CLASSES = frozenset(
-    {
-        2,  # Dark area pixels
-        4,  # Vegetation
-        5,  # Bare soils
-        6,  # Water (optional — valid surface, NDVI ≈ −0.1 to 0)
-    }
+VALID_SCL_CLASSES = (
+    2,  # Dark area pixels
+    4,  # Vegetation
+    5,  # Bare soils
+    6,  # Water (optional — valid surface, NDVI ≈ −0.1 to 0)
 )
 
 
@@ -121,8 +120,10 @@ def compute_ndvi(
     Returns
     -------
     dict or None
-        ``{"mean", "min", "max", "std", "valid_pixels", "scene_id",
-        "cloud_cover", "geotiff_bytes"}`` on success; None if no scene found.
+        ``{"mean", "min", "max", "std", "median", "valid_pixels",
+        "total_pixels", "scene_id", "cloud_cover", "datetime",
+        "scl_applied", "scl_masked_pixels", "geotiff_bytes"}`` on success;
+        None if no scene found.
     """
     import numpy as np
     import rasterio
@@ -184,7 +185,7 @@ def compute_ndvi(
 
         # Apply SCL pixel-level cloud/shadow/snow mask
         if scl_mask is not None:
-            scl_valid = np.isin(scl_mask, list(VALID_SCL_CLASSES))
+            scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
             scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
             valid_mask = valid_mask & scl_valid
 
@@ -278,8 +279,13 @@ def _resample_scl(
     if scl_data.shape == target_shape:
         return scl_data
 
-    row_idx = (np.arange(target_shape[0]) * scl_data.shape[0] / target_shape[0]).astype(int)
-    col_idx = (np.arange(target_shape[1]) * scl_data.shape[1] / target_shape[1]).astype(int)
+    # Map target pixel centres to source indices and round to nearest (true NN).
+    row_scale = scl_data.shape[0] / target_shape[0]
+    col_scale = scl_data.shape[1] / target_shape[1]
+    row_coords = (np.arange(target_shape[0]) + 0.5) * row_scale - 0.5
+    col_coords = (np.arange(target_shape[1]) + 0.5) * col_scale - 0.5
+    row_idx = np.rint(row_coords).astype(int)
+    col_idx = np.rint(col_coords).astype(int)
     np.clip(row_idx, 0, scl_data.shape[0] - 1, out=row_idx)
     np.clip(col_idx, 0, scl_data.shape[1] - 1, out=col_idx)
     return scl_data[np.ix_(row_idx, col_idx)]
