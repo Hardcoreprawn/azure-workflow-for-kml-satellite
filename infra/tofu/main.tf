@@ -381,6 +381,12 @@ resource "azapi_resource" "swa_backend_link" {
       region            = azurerm_resource_group.main.location
     }
   }
+
+  timeouts {
+    create = "60m"
+    update = "60m"
+    delete = "30m"
+  }
 }
 
 # --- Custom domain (M1.5) ---
