@@ -106,6 +106,13 @@ jobs:
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
 
+      - name: Cache OpenTofu providers
+        uses: actions/cache@v4
+        with:
+          path: infra/tofu/.terraform/providers
+          key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
+          restore-keys: tofu-providers-
+
       - name: Tofu Init
         working-directory: infra/tofu
         env:
@@ -114,11 +121,24 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          tofu init \
-            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"
+          MAX_RETRIES=3
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "tofu init attempt ${attempt}/${MAX_RETRIES}"
+            if tofu init \
+              -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+              -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
+              -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"; then
+              echo "✅ tofu init succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "⚠️ tofu init failed, retrying in 10s..."
+              sleep 10
+            fi
+          done
+          echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
+          exit 1
 
       - name: Tofu Plan
         working-directory: infra/tofu
