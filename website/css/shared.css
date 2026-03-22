@@ -74,6 +74,10 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .auth-area{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .auth-btn{padding:6px 16px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);transition:all .15s;white-space:nowrap;text-decoration:none;display:inline-block}
 .auth-btn:hover{background:rgba(88,166,255,.15);text-decoration:none}
+.auth-btn.primary{background:var(--c-accent);color:#fff;border-color:var(--c-accent)}
+.auth-btn.primary:hover{background:#79c0ff}
+.auth-btn.logout{border-color:var(--c-border);color:var(--c-muted)}
+.auth-btn.logout:hover{border-color:var(--c-red);color:var(--c-red)}
 
 @media(max-width:860px){
   .auth-area{gap:6px}

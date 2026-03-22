@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TreeSight — Geospatial KML-to-Satellite Imagery Pipeline</title>
 <meta name="description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI vegetation health, weather correlation, and AI-powered insights. Free during early access.">
-<link rel="canonical" href="https://polite-glacier-0d6885003.4.azurestaticapps.net/">
+<link rel="canonical" href="/">
 <meta property="og:title" content="TreeSight — Geospatial Satellite Imagery Analysis">
 <meta property="og:description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI, weather data, and AI insights.">
-<meta property="og:url" content="https://polite-glacier-0d6885003.4.azurestaticapps.net/">
+<meta property="og:url" content="/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="TreeSight">
 <meta name="twitter:card" content="summary">
@@ -38,7 +38,7 @@ nav ul a:hover{color:var(--c-text);text-decoration:none}
 #status-badge{font-size:.75rem;padding:3px 10px;border-radius:12px;font-weight:600;background:var(--c-surface);color:var(--c-muted);border:1px solid var(--c-border);transition:all .3s}
 #status-badge.online{background:rgba(63,185,80,.15);color:var(--c-green);border-color:var(--c-green)}
 #status-badge.offline{background:rgba(248,81,73,.15);color:var(--c-red);border-color:var(--c-red)}
-@media(max-width:860px){nav ul{gap:12px}nav ul a{font-size:.8rem}.auth-area{gap:6px}.auth-btn{padding:5px 10px;font-size:.75rem}}
+@media(max-width:860px){nav ul{gap:12px}nav ul a{font-size:.8rem}}
 @media(max-width:600px){nav .container{flex-wrap:wrap;justify-content:center}nav ul{order:3;width:100%;justify-content:center;gap:10px;padding-top:8px;border-top:1px solid var(--c-border);margin-top:4px}}
 
 /* --- Hero --- */
@@ -297,15 +297,8 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .drop-zone .file-name{color:var(--c-green);font-weight:500;margin-top:6px;font-size:.8rem}
 .drop-divider{text-align:center;color:var(--c-muted);font-size:.75rem;margin:4px 0 12px;text-transform:uppercase;letter-spacing:.08em}
 
-/* --- Auth UI --- */
-.auth-area{display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* --- Auth UI (base in shared.css, modifiers here) --- */
 .auth-user{font-size:.8rem;color:var(--c-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.auth-btn{padding:6px 16px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);transition:all .15s;white-space:nowrap}
-.auth-btn:hover{background:rgba(88,166,255,.15);text-decoration:none}
-.auth-btn.primary{background:var(--c-accent);color:#fff;border-color:var(--c-accent)}
-.auth-btn.primary:hover{background:#79c0ff}
-.auth-btn.logout{border-color:var(--c-border);color:var(--c-muted)}
-.auth-btn.logout:hover{border-color:var(--c-red);color:var(--c-red)}
 .login-prompt{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:var(--c-muted);text-align:center;display:none}
 .login-prompt a{cursor:pointer;font-weight:600}
 </style>
