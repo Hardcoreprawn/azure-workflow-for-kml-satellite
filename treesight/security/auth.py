@@ -56,19 +56,15 @@ def _get_issuer() -> str:
         return _jwks_cache.get("issuer", "")
 
 
-_auth_warning_logged = False
-
-
 def auth_enabled() -> bool:
     """Return True if CIAM authentication configuration is present."""
-    global _auth_warning_logged
     enabled = bool(CIAM_TENANT_NAME and CIAM_CLIENT_ID)
-    if not enabled and not _auth_warning_logged:
+    if not enabled and not getattr(auth_enabled, "_warned", False):
         logger.warning(
             "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
             "All requests will be treated as anonymous."
         )
-        _auth_warning_logged = True
+        auth_enabled._warned = True  # type: ignore[attr-defined]
     return enabled
 
 
