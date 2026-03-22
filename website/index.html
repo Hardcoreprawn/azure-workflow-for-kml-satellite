@@ -971,11 +971,12 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   function showPipelineError(msg) {
     var el = document.getElementById('pipeline-error');
     var friendly = msg;
-    if (msg.indexOf('API contract') !== -1 || msg.indexOf('contract version') !== -1) {
+    var normalized = (msg || '').toString().toLowerCase();
+    if (normalized.indexOf('api contract') !== -1 || normalized.indexOf('contract version') !== -1) {
       friendly = 'The analysis service is being updated. Please try again in a few minutes.';
-    } else if (msg.indexOf('timeout') !== -1 || msg.indexOf('Timeout') !== -1 || msg.indexOf('ETIMEDOUT') !== -1) {
+    } else if (normalized.indexOf('timeout') !== -1 || normalized.indexOf('timed out') !== -1 || normalized.indexOf('etimedout') !== -1) {
       friendly = 'The data source is responding slowly. Please try again shortly.';
-    } else if (msg.indexOf('Pipeline error') !== -1) {
+    } else if (normalized.indexOf('pipeline error') !== -1) {
       friendly = 'Something went wrong processing your data. Please try again or use a smaller AOI.';
     }
     el.textContent = friendly;

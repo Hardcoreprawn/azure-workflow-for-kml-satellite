@@ -8,6 +8,7 @@ The TreeSight system includes AI-powered analysis of satellite imagery using a l
 
 1. **Nvidia GPU** with CUDA support
 2. **Nvidia Docker Runtime** - Install nvidia-docker:
+
    ```bash
    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
@@ -18,6 +19,7 @@ The TreeSight system includes AI-powered analysis of satellite imagery using a l
    ```
 
 3. **Verify Docker GPU access**:
+
    ```bash
    docker run --rm --runtime=nvidia nvidia/cuda:12.1.1-runtime-ubuntu22.04 nvidia-smi
    ```
@@ -31,11 +33,13 @@ make dev-up
 ```
 
 Or manually:
+
 ```bash
 docker compose up -d
 ```
 
 The Ollama service will:
+
 - Start on port `11434`
 - Use Nvidia GPU automatically
 - Auto-pull the `mistral` model on first run (~4GB)
@@ -45,7 +49,7 @@ The Ollama service will:
 
 If running Ollama outside Docker:
 
-1. **Install Ollama**: https://ollama.ai
+1. **Install Ollama**: <https://ollama.ai>
 2. **Start service**: `ollama serve`
 3. **Pull model**: `ollama pull mistral`
 4. **Configure Functions** to use local LLM:
@@ -54,7 +58,7 @@ If running Ollama outside Docker:
 
 1. **Upload a KML file** and process it as usual
 2. **Navigate to a frame** in the timelapse
-3. **Click "Get AI Insights for Current Frame"** button in the 🤖 AI Observations panel
+3. **Click "Get AI Insights for Current Frame"** button in the 🤖 AI Analysis panel
 4. The LLM analyzes:
    - Current & previous NDVI values
    - Vegetation health trends
@@ -105,14 +109,17 @@ Based on satellite metadata (not image pixels), the LLM generates observations a
 ## Troubleshooting
 
 ### Connection Refused
+
 - Check Ollama is running: `ollama serve`
 - Verify port 11434 is accessible
 - Set `OLLAMA_URL` if using non-default host
 
 ### Slow Responses
+
 - Try lighter model: `ollama pull neural-chat`
 - Or use GPU: Install CUDA/ROCm for Ollama
 
 ### OOM Errors
+
 - Reduce model size: `ollama pull mistral:7b`
 - Or increase available system memory
