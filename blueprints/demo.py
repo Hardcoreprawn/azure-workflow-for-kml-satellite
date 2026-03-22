@@ -72,7 +72,7 @@ def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     kml_bytes = kml_content.encode("utf-8")
     if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
         return error_response(
-            400,
+            413,
             f"KML exceeds {MAX_KML_FILE_SIZE_BYTES // 1_048_576} MiB limit",
         )
 
