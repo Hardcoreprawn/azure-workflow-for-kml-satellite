@@ -347,7 +347,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <h2>The Problem With Manual Imagery Pipelines</h2>
     <div class="card-grid cols-2">
       <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
-      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. TreeSight's durable orchestrator runs end-to-end in minutes with automatic retry and parallelism.</p></div>
+      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. TreeSight's durable orchestrator typically completes in minutes for standard AOIs, with automatic retry and parallelism. Processing time varies with AOI size and cloud cover.</p></div>
       <div class="card"><div class="icon">🔐</div><h3>Multi-Tenant Blind Spots</h3><p>Container-per-tenant isolation, tenant-scoped routing, and valet tokens keep data separated without complex infrastructure.</p></div>
       <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — TreeSight handles all of it correctly.</p></div>
     </div>
@@ -491,8 +491,13 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           <div id="period-assessment"></div>
         </div>
         <div id="ai-insights-panel" style="display:none">
-          <h3>🤖 AI Observations</h3>
-          <button id="btn-get-ai-insights" type="button" style="margin-bottom:12px;padding:8px 14px;background:var(--c-accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-size:.8rem;width:100%;">Get AI Insights for Timelapse</button>
+          <h3>🤖 AI Analysis</h3>
+          <div id="ai-insights-example" style="font-size:.8rem;margin-bottom:12px;padding:10px;background:rgba(100,200,255,.07);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-muted)">
+            <p style="margin-bottom:6px;color:var(--c-text);font-weight:600">Example AI Analysis Output</p>
+            <p style="margin-bottom:6px">"NDVI declined steadily from 0.72 to 0.58 between March–August 2024. This coincides with a 34% below-average rainfall period (Open-Meteo). The vegetation stress pattern is consistent with drought-induced canopy thinning rather than land-use change, as the decline is gradual and spatially uniform across the AOI."</p>
+            <p style="font-size:.75rem;color:var(--c-muted);font-style:italic">Powered by LLM analysis of NDVI trends + weather data. Not a trained computer vision model.</p>
+          </div>
+          <button id="btn-get-ai-insights" type="button" style="margin-bottom:12px;padding:8px 14px;background:var(--c-accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-size:.8rem;width:100%;">Get AI Analysis for Timelapse</button>
           <div id="ai-insights-summary" style="display:none;font-size:.8rem;margin-bottom:12px;padding:8px;background:rgba(100,200,255,.1);border-radius:var(--radius)"></div>
           <div id="ai-insights-content" style="display:none;font-size:.8rem"></div>
           <div id="ai-insights-loading" style="display:none;font-size:.8rem;color:var(--c-muted)">Analyzing timelapse with AI...</div>
@@ -965,7 +970,16 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   function showPipelineError(msg) {
     var el = document.getElementById('pipeline-error');
-    el.textContent = msg;
+    var friendly = msg;
+    var normalized = (msg || '').toString().toLowerCase();
+    if (normalized.indexOf('api contract') !== -1 || normalized.indexOf('contract version') !== -1) {
+      friendly = 'The analysis service is being updated. Please try again in a few minutes.';
+    } else if (normalized.indexOf('timeout') !== -1 || normalized.indexOf('timed out') !== -1 || normalized.indexOf('etimedout') !== -1) {
+      friendly = 'The data source is responding slowly. Please try again shortly.';
+    } else if (normalized.indexOf('pipeline error') !== -1) {
+      friendly = 'Something went wrong processing your data. Please try again or use a smaller AOI.';
+    }
+    el.textContent = friendly;
     el.style.display = 'block';
   }
 
@@ -1134,7 +1148,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       showPipelineError('Pipeline error: ' + err.message);
       /* Still launch timelapse so the demo remains functional */
       enrichmentPayload = null;
-      document.getElementById('frame-info').textContent = 'Pipeline encountered an error — loading imagery directly…';
+      document.getElementById('frame-info').textContent = 'Loading imagery directly — some features may be limited.';
       launchTimelapse(coords, polygons);
     } finally {
       btn.disabled = false;
@@ -2981,6 +2995,8 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   function renderAnalysis(analysis) {
     var content = document.getElementById('ai-insights-content');
     var summary = document.getElementById('ai-insights-summary');
+    var example = document.getElementById('ai-insights-example');
+    if (example) example.style.display = 'none';
     var obsHtml = '';
     if (analysis.observations && Array.isArray(analysis.observations)) {
       analysis.observations.forEach(function(obs) {

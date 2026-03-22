@@ -19,15 +19,18 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 ### ✅ Status: PASSING (after fix)
 
 **Issue Found:**
+
 - Heading: H2 "Live Demo" → H4 "Pipeline Results" (direct jump)
 - Root Cause: Analysis panels used H4 instead of H3
 
 **Fix Applied:**
+
 - Changed 6 H4 headings to H3 in demo section
 - Now complies with WCAG 2.1 Level AA heading hierarchy
 - Result: **0 hierarchy violations** across all 23 headings
 
 **Heading Levels Distribution:**
+
 | Level | Count | Usage |
 |-------|-------|-------|
 | H1 | 1 | Page title ("KML to Satellite Imagery, Automated") |
@@ -46,12 +49,14 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 2.1 Grid Systems
 
 **Demo Layout (`.demo-layout`):**
+
 - Base: `grid-template-columns: 1fr 1fr` (50/50 split)
 - Timelapse Active: `grid-template-columns: 58% 1fr` (58/42 split)
 - Mobile Fallback: `grid-template-columns: 1fr` (stacked)
 - **Finding:** Consistent use of CSS Grid, proper responsive breakpoints
 
 **Analysis Panel (`.demo-analysis-col`):**
+
 - Flex column layout with consistent 12px gaps
 - All subsections (insights, weather, NDVI trend, period summary) properly aligned
 - Vertical rhythm maintained across all panels
@@ -64,6 +69,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 **Component Gaps:** Standardized 12–20px gaps throughout
 
 **Card Components:**
+
 - Padding: 24px (consistent)
 - Border: 1px solid `var(--c-border)`
 - Hover: Border color transitions to accent
@@ -72,7 +78,8 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 2.3 Color Scheme
 
 **CSS Custom Properties (Design Tokens):**
-```
+
+```css
 --c-bg:      #0c1117     (Background)
 --c-surface: #161b22     (Surface/Card)
 --c-border:  #30363d     (Borders)
@@ -159,7 +166,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
    - Climate Context (weather chart)
    - Vegetation Health Trend
    - Period Summary
-   - AI Observations
+   - AI Analysis
 
 **Finding:** Excellent spatial affordance. Input and output clearly separated. Analysis panels ordered by temporal scope (immediate results → trends → AI synthesis).
 
@@ -172,7 +179,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 | Climate Context | Historical 30-year avg + current | Static + frame marker |
 | Vegetation Trend | All 32 frames | Static |
 | Period Summary | 8-year aggregate (2017–2025) | Static |
-| AI Observations | 8-year trend synthesis | On-demand (button) |
+| AI Analysis | 8-year trend synthesis | On-demand (button) |
 
 **Finding:** ✅ Excellent temporal organization. Each panel serves a distinct analytical purpose.
 
@@ -185,6 +192,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 5.1 Semantic HTML
 
 **Strengths:**
+
 - ✅ Proper `<header>`, `<nav>`, `<section>`, `<footer>` structure
 - ✅ Form inputs use `<label>` elements (implicit or explicit)
 - ✅ Buttons are `<button>` elements, not `<div>`
@@ -192,12 +200,14 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 - ✅ Heading hierarchy is correct (H1–H3 only, no skips)
 
 **Observations:**
+
 - Analysis panels are `<div>` blocks with `<h3>` headings (acceptable for layout flexibility)
 - No ARIA labels on custom controls (e.g., layer toggle buttons)
 
 #### 5.2 Color Contrast
 
 **Tested Pairs:**
+
 | Element | FG | BG | Ratio | Required | Status |
 |---------|----|----|-------|----------|--------|
 | Body text | #e6edf3 | #0c1117 | 10.2:1 | 4.5:1 (AA) | ✅ |
@@ -210,12 +220,14 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 5.3 Interactive Elements
 
 **Strengths:**
+
 - ✅ Buttons have visible `:hover` and `:focus` states
 - ✅ Form inputs have visible `:focus` states (border-color transition)
 - ✅ Layer toggle uses `.active` class (visual indicator)
 - ✅ Cursor changes to `pointer` on interactive elements
 
 **Recommendations:**
+
 1. Add `outline: 2px solid var(--c-accent)` to `:focus` for better keyboard navigation visibility
 2. Consider ARIA attributes for custom controls (e.g., `aria-label` on RGB/NDVI toggle)
 3. Add `aria-current="page"` to active navigation links
@@ -223,6 +235,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 5.4 Responsiveness
 
 **Breakpoints Implemented:**
+
 ```css
 @media (max-width: 768px) {
   .demo-layout { grid-template-columns: 1fr; }
@@ -231,6 +244,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 ```
 
 **Testing at Common Widths:**
+
 | Width | Status | Notes |
 |-------|--------|-------|
 | 1920px (Desktop) | ✅ | Full multi-column layout |
@@ -250,12 +264,14 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 6.1 Form Elements
 
 **KML Input (`<textarea>`):**
+
 - ✅ Clear placeholder text
 - ✅ Monospace font for code visibility
 - ✅ Focus state visible
 - ✅ Proper sizing (120px min-height)
 
 **Sample Picker (`<select>`):**
+
 - ✅ Semantic `<select>` element (not custom)
 - ✅ Clear option labels
 - ✅ Properly styled
@@ -263,6 +279,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 6.2 Buttons
 
 **Consistency Checks:**
+
 - **Primary buttons** (`.btn-primary`): Accent background, white text
 - **Secondary buttons** (`.btn-secondary`): Transparent, accent border
 - **Control buttons** (map, layer toggle): Surface background, muted text
@@ -272,6 +289,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 6.3 Sliders & Controls
 
 **Frame Slider:**
+
 - ✅ HTML5 `<input type="range">`
 - ✅ Accent color applied via `accent-color` CSS property
 - ✅ Keyboard accessible (arrow keys)
@@ -280,12 +298,14 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 #### 6.4 Data Visualization Containers
 
 **Map (`#map`):**
+
 - Canvas-based (Leaflet)
 - ✅ Fixed aspect ratio maintained
 - ✅ Border-radius applied for consistency
 - ✅ Proper z-index management
 
 **Weather Chart & NDVI Trend:**
+
 - Canvas-based (Chart.js or similar)
 - ✅ Proper container sizing (height: 80px for weather, flexible for NDVI)
 - ✅ Marker overlay for temporal synchronization
@@ -329,6 +349,7 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 ### ✅ Status: PASSING
 
 **Structure:**
+
 1. Reset & defaults (box-sizing, margins, padding)
 2. CSS Custom Properties (design tokens)
 3. Typography
@@ -346,12 +367,14 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 ### ✅ Status: PASSING
 
 **CSS Performance:**
+
 - ✅ No complex selectors
 - ✅ Minimal specificity issues
 - ✅ Efficient use of CSS Grid/Flexbox
 - ✅ Hardware acceleration hints (`backface-visibility: hidden` on tiles)
 
 **Rendering:**
+
 - ✅ Smooth transitions (0.15s, 0.2s, 0.3s consistently fast)
 - ✅ No jank-inducing animations
 - ✅ Proper use of `will-change` avoided (good practice — only use when needed)
@@ -381,12 +404,14 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 ## 11. Component Naming & Discoverability Summary
 
 ### Pros ✅
+
 - **Semantic IDs:** Every ID is self-explanatory (e.g., `ai-insights-panel` = AI insights section)
 - **Consistent Prefixes:** Easy to group related components
 - **No Collisions:** 100+ unique IDs with zero conflicts
 - **Future-Proof:** New components can follow established patterns
 
 ### Cons
+
 - **HTML/CSS Mix:** Some styling in inline `style` attributes (acceptable for demo, but consider CSS classes)
 - **Deep Nesting:** Some divs go 6+ levels deep (not ideal, but manageable)
 
@@ -399,6 +424,7 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 ### ✅ Status: EXCELLENT
 
 **Information Pyramid (Top to Bottom):**
+
 1. **Hero Value** — "KML to Satellite, Automated" (largest text, centered)
 2. **Problem** — Why users need TreeSight (context)
 3. **Solution** — What TreeSight does (capabilities)
@@ -430,6 +456,7 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 ✅ **PRODUCTION READY**
 
 The TreeSight UI is **well-structured, accessible, and user-friendly**. Heading hierarchy has been corrected. Overall design demonstrates strong principles of:
+
 - **Clarity** — Every element has a purpose
 - **Consistency** — Colors, spacing, typography align throughout
 - **Accessibility** — WCAG AA compliant, semantic HTML
@@ -442,12 +469,15 @@ The TreeSight UI is **well-structured, accessible, and user-friendly**. Heading 
 ## Appendices
 
 ### A. Design Token Usage
+
 All colors, spacing, and typography values are centralized in CSS custom properties. This enables:
+
 - ✅ Rapid theme changes
 - ✅ Consistent updates
 - ✅ Dark mode support (already in place)
 
 ### B. Accessibility Checklist (WCAG 2.1 Level AA)
+
 - ✅ Heading hierarchy correct
 - ✅ Color contrast sufficient
 - ✅ Focus indicators visible
@@ -458,7 +488,9 @@ All colors, spacing, and typography values are centralized in CSS custom propert
 - 📋 Touch targets could be larger
 
 ### C. Browser Compatibility
+
 No specific browser testing in this report, but:
+
 - CSS uses standard properties (Grid, Flexbox, CSS vars)
 - No vendor prefixes required for modern browsers
 - Fallbacks in place for older browsers (e.g., `grid-template-columns: 1fr`)
