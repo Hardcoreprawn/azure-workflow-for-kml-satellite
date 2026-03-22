@@ -671,7 +671,6 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s))); return d.innerHTML; }
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
-  const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.politebush-dbd595e5.uksouth.azurecontainerapps.io';
   let apiBase = '';
   let contractOk = false;
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
@@ -789,7 +788,6 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   /* --- API helper --- */
   async function apiFetch(path, opts) {
-    var base = apiBase || DEFAULT_FALLBACK_ORIGIN;
     opts = opts || {};
     opts.headers = opts.headers || {};
     /* Attach bearer token if authenticated */
@@ -797,18 +795,16 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       var token = accessToken || await acquireToken();
       if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
     }
-    try { return await fetch(base + path, opts); } catch { return null; }
+    try { return await fetch(apiBase + path, opts); } catch { return null; }
   }
 
-  /* --- API discovery: detect if same-origin proxies to backend --- */
+  /* --- API discovery: verify backend is reachable via SWA proxy --- */
   async function discoverApiBase() {
-    if (!DEFAULT_FALLBACK_ORIGIN) return;
     try {
       var res = await fetch('/api/health');
-      if (res.ok) { apiBase = ''; return; }          /* SWA proxies → use same-origin */
+      if (res.ok) { apiBase = ''; return; }
     } catch { /* network error */ }
-    apiBase = DEFAULT_FALLBACK_ORIGIN;                /* fallback to function app directly */
-    console.log('API base: ' + apiBase);
+    console.warn('Backend not reachable via /api — check SWA linked backend configuration');
   }
 
   /* --- Contract check (§12.3) --- */
