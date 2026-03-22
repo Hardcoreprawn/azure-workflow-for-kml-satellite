@@ -687,7 +687,7 @@ async def timelapse_data(
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(400, str(exc))
+        return _error_response(401, str(exc))
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
@@ -783,7 +783,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(400, str(exc))
+        return _error_response(401, str(exc))
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:

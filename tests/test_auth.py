@@ -27,6 +27,7 @@ class TestAuthEnabled:
         with (
             patch("treesight.security.auth.CIAM_TENANT_NAME", ""),
             patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
+            patch("treesight.security.auth.REQUIRE_AUTH", False),
         ):
             assert auth_enabled() is False
 
@@ -34,6 +35,7 @@ class TestAuthEnabled:
         with (
             patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"),
             patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
+            patch("treesight.security.auth.REQUIRE_AUTH", False),
         ):
             assert auth_enabled() is False
 
@@ -43,6 +45,15 @@ class TestAuthEnabled:
             patch("treesight.security.auth.CIAM_CLIENT_ID", "abc-123"),
         ):
             assert auth_enabled() is True
+
+    def test_require_auth_raises_when_ciam_missing(self):
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", ""),
+            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
+            patch("treesight.security.auth.REQUIRE_AUTH", True),
+        ):
+            with pytest.raises(RuntimeError, match="REQUIRE_AUTH"):
+                auth_enabled()
 
 
 # ---------------------------------------------------------------------------
