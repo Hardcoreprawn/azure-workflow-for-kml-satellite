@@ -7,12 +7,27 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import json
+import re
 from typing import Any
 
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
+
+# Prompt-injection defence: strip anything that isn't alphanumeric,
+# whitespace, hyphens, periods, commas, or parentheses.
+_PROMPT_SAFE_RE = re.compile(r"[^A-Za-z0-9\s\-.,()]+")
+_MAX_PROMPT_FIELD_LEN = 200
+
+
+def _sanitise_for_prompt(value: str) -> str:
+    """Sanitise a user-supplied string before embedding it in an LLM prompt."""
+    if not isinstance(value, str):
+        return ""
+    cleaned = _PROMPT_SAFE_RE.sub("", value)
+    return cleaned.strip()[:_MAX_PROMPT_FIELD_LEN]
+
 
 bp = func.Blueprint()
 
@@ -90,9 +105,13 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         # Build analysis prompt from context
         context_lines: list[str] = []
         if context.get("aoi_name"):
-            context_lines.append(f"Area of Interest: {context['aoi_name']}")
+            aoi_name = _sanitise_for_prompt(context["aoi_name"])
+            if aoi_name:
+                context_lines.append(f"Area of Interest: {aoi_name}")
         if context.get("date"):
-            context_lines.append(f"Date: {context['date']}")
+            date_val = _sanitise_for_prompt(context["date"])
+            if date_val:
+                context_lines.append(f"Date: {date_val}")
         if context.get("latitude") and context.get("longitude"):
             context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
@@ -264,11 +283,14 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         # Build analysis prompt with temporal context
         context_lines: list[str] = []
         if context.get("aoi_name"):
-            context_lines.append(f"Area of Interest: {context['aoi_name']}")
+            aoi_name = _sanitise_for_prompt(context["aoi_name"])
+            if aoi_name:
+                context_lines.append(f"Area of Interest: {aoi_name}")
         if context.get("date_range_start") and context.get("date_range_end"):
-            start = context["date_range_start"]
-            end = context["date_range_end"]
-            context_lines.append(f"Analysis Period: {start} to {end}")
+            start = _sanitise_for_prompt(context["date_range_start"])
+            end = _sanitise_for_prompt(context["date_range_end"])
+            if start and end:
+                context_lines.append(f"Analysis Period: {start} to {end}")
         if context.get("latitude") and context.get("longitude"):
             context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 

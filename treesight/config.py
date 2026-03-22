@@ -79,6 +79,7 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 CIAM_TENANT_NAME = _env("CIAM_TENANT_NAME")
 CIAM_CLIENT_ID = _env("CIAM_CLIENT_ID")
 CIAM_AUDIENCE = _env("CIAM_AUDIENCE")  # defaults to CIAM_CLIENT_ID if empty
+REQUIRE_AUTH = _env("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 
 
 def validate_config() -> None:
@@ -94,5 +95,7 @@ def validate_config() -> None:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:
         errors.append(f"AOI_MAX_AREA_HA must be > 0, got {AOI_MAX_AREA_HA}")
+    if REQUIRE_AUTH and not (CIAM_TENANT_NAME and CIAM_CLIENT_ID):
+        errors.append("REQUIRE_AUTH is set but CIAM_TENANT_NAME or CIAM_CLIENT_ID is missing")
     if errors:
         raise ConfigValidationError("; ".join(errors))
