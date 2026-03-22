@@ -59,13 +59,15 @@ class TestFetchEaFloods:
         assert events[0]["source"] == "ea"
         assert events[0]["severity"] == "Warning"
 
-    def test_returns_empty_on_error(self):
+    def test_returns_error_on_failure(self):
         with patch(
             "treesight.pipeline.enrichment.flood.httpx.get",
             side_effect=Exception("timeout"),
         ):
             events = fetch_ea_floods(52.0, -1.5, 53.0, -0.5)
-        assert events == []
+        assert len(events) == 1
+        assert events[0]["source"] == "ea_error"
+        assert "error" in events[0]
 
 
 # ---------------------------------------------------------------------------
@@ -104,15 +106,17 @@ class TestFetchUsgsStreamflow:
         assert len(events) == 1
         assert events[0]["source"] == "usgs"
         assert events[0]["site_name"] == "Test River"
-        assert events[0]["discharge_cfs"] == "1500"
+        assert events[0]["discharge_cfs"] == 1500.0
 
-    def test_returns_empty_on_error(self):
+    def test_returns_error_on_failure(self):
         with patch(
             "treesight.pipeline.enrichment.flood.httpx.get",
             side_effect=Exception("timeout"),
         ):
             events = fetch_usgs_streamflow(39.0, -101.0, 41.0, -99.0)
-        assert events == []
+        assert len(events) == 1
+        assert events[0]["source"] == "usgs_error"
+        assert "error" in events[0]
 
 
 # ---------------------------------------------------------------------------

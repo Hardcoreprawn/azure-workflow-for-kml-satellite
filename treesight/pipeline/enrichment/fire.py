@@ -7,6 +7,8 @@ Requires a free FIRMS MAP_KEY (env var FIRMS_API_KEY).
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import os
 from typing import Any
@@ -53,6 +55,7 @@ def fetch_fire_hotspots(
     min_lat, max_lat = min(lats), max(lats)
 
     # FIRMS area endpoint: /api/area/csv/{key}/{source}/{bbox}/{day_range}
+    day_range = max(1, min(10, day_range))  # Clamp to FIRMS 1-10 range
     bbox_str = f"{min_lon},{min_lat},{max_lon},{max_lat}"
     url = f"{FIRMS_API_BASE}/{FIRMS_API_KEY}/{FIRMS_SOURCE}/{bbox_str}/{day_range}"
 
@@ -61,31 +64,39 @@ def fetch_fire_hotspots(
         resp.raise_for_status()
         events = _parse_firms_csv(resp.text)
         return {"source": "firms_viirs", "events": events, "count": len(events)}
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "FIRMS fire hotspot fetch failed: HTTP %s",
+            exc.response.status_code,
+        )
+        return {"source": "firms_error", "events": [], "count": 0}
     except Exception as exc:
-        logger.warning("FIRMS fire hotspot fetch failed: %s", exc)
+        logger.warning(
+            "FIRMS fire hotspot fetch failed: %s",
+            type(exc).__name__,
+        )
         return {"source": "firms_error", "events": [], "count": 0}
 
 
 def _parse_firms_csv(csv_text: str) -> list[dict[str, Any]]:
     """Parse FIRMS CSV response into a list of fire event dicts."""
-    lines = csv_text.strip().split("\n")
-    if len(lines) < 2:
-        return []
-
-    headers = [h.strip().lower() for h in lines[0].split(",")]
+    reader = csv.DictReader(io.StringIO(csv_text.strip()))
     events: list[dict[str, Any]] = []
 
-    for line in lines[1:101]:  # Limit to 100 events
-        cols = line.split(",")
-        if len(cols) != len(headers):
+    for i, row in enumerate(reader):
+        if i >= 100:  # Limit to 100 events
+            break
+        # Require latitude/longitude; skip rows where they are missing or blank
+        lat_str = (row.get("latitude") or "").strip()
+        lon_str = (row.get("longitude") or "").strip()
+        if not lat_str or not lon_str:
             continue
-        row = dict(zip(headers, cols, strict=False))
         try:
             events.append(
                 {
                     "source": "firms",
-                    "latitude": float(row.get("latitude", 0)),
-                    "longitude": float(row.get("longitude", 0)),
+                    "latitude": float(lat_str),
+                    "longitude": float(lon_str),
                     "acq_date": row.get("acq_date", ""),
                     "acq_time": row.get("acq_time", ""),
                     "confidence": row.get("confidence", ""),

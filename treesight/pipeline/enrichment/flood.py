@@ -71,7 +71,7 @@ def fetch_ea_floods(
         return events
     except Exception as exc:
         logger.warning("EA flood fetch failed: %s", exc)
-        return []
+        return [{"source": "ea_error", "error": str(exc)}]
 
 
 def fetch_usgs_streamflow(
@@ -114,14 +114,14 @@ def fetch_usgs_streamflow(
                     "longitude": site_info.get("geoLocation", {})
                     .get("geogLocation", {})
                     .get("longitude"),
-                    "discharge_cfs": latest.get("value"),
+                    "discharge_cfs": float(latest["value"]) if latest.get("value") else None,
                     "datetime": latest.get("dateTime", ""),
                 }
             )
         return events
     except Exception as exc:
         logger.warning("USGS streamflow fetch failed: %s", exc)
-        return []
+        return [{"source": "usgs_error", "error": str(exc)}]
 
 
 def fetch_flood_events(

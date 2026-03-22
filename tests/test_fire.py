@@ -35,7 +35,7 @@ class TestParseFirmsCsv:
         csv = (
             "latitude,longitude,acq_date,acq_time,confidence,frp,bright_ti4\n"
             "52.1,-1.2,2024-01-15,0600,high,12.5,310.2\n"
-            "bad,row\n"
+            ",,2024-01-15,0600,high,12.5,310.2\n"
         )
         events = _parse_firms_csv(csv)
         assert len(events) == 1
