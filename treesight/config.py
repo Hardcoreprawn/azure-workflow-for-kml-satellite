@@ -95,5 +95,7 @@ def validate_config() -> None:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:
         errors.append(f"AOI_MAX_AREA_HA must be > 0, got {AOI_MAX_AREA_HA}")
+    if REQUIRE_AUTH and not (CIAM_TENANT_NAME and CIAM_CLIENT_ID):
+        errors.append("REQUIRE_AUTH is set but CIAM_TENANT_NAME or CIAM_CLIENT_ID is missing")
     if errors:
         raise ConfigValidationError("; ".join(errors))

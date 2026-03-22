@@ -17,7 +17,7 @@ from treesight.ai import generate_analysis
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
-_PROMPT_SAFE_RE = re.compile(r"[^\w\s\-.,()]+")
+_PROMPT_SAFE_RE = re.compile(r"[^A-Za-z0-9\s\-.,()]+")
 _MAX_PROMPT_FIELD_LEN = 200
 
 
@@ -105,9 +105,13 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         # Build analysis prompt from context
         context_lines: list[str] = []
         if context.get("aoi_name"):
-            context_lines.append(f"Area of Interest: {_sanitise_for_prompt(context['aoi_name'])}")
+            aoi_name = _sanitise_for_prompt(context["aoi_name"])
+            if aoi_name:
+                context_lines.append(f"Area of Interest: {aoi_name}")
         if context.get("date"):
-            context_lines.append(f"Date: {_sanitise_for_prompt(context['date'])}")
+            date_val = _sanitise_for_prompt(context["date"])
+            if date_val:
+                context_lines.append(f"Date: {date_val}")
         if context.get("latitude") and context.get("longitude"):
             context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
@@ -279,11 +283,14 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         # Build analysis prompt with temporal context
         context_lines: list[str] = []
         if context.get("aoi_name"):
-            context_lines.append(f"Area of Interest: {_sanitise_for_prompt(context['aoi_name'])}")
+            aoi_name = _sanitise_for_prompt(context["aoi_name"])
+            if aoi_name:
+                context_lines.append(f"Area of Interest: {aoi_name}")
         if context.get("date_range_start") and context.get("date_range_end"):
             start = _sanitise_for_prompt(context["date_range_start"])
             end = _sanitise_for_prompt(context["date_range_end"])
-            context_lines.append(f"Analysis Period: {start} to {end}")
+            if start and end:
+                context_lines.append(f"Analysis Period: {start} to {end}")
         if context.get("latitude") and context.get("longitude"):
             context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 

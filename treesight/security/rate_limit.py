@@ -66,9 +66,12 @@ def get_client_ip(req) -> str:
 
     forwarded = req.headers.get("X-Forwarded-For", "")
     if forwarded:
-        # Rightmost entry is set by the last trusted proxy
+        # Rightmost entry is set by the last trusted proxy (Azure
+        # Container Apps / SWA append the real client IP as the final
+        # entry).  This resists spoofing by ignoring client-supplied
+        # entries earlier in the chain.
         parts = [p.strip() for p in forwarded.split(",") if p.strip()]
         if parts:
             return parts[-1]
 
-    return req.headers.get("X-Real-IP", "unknown")
+    return (req.headers.get("X-Real-IP") or "unknown").strip()
