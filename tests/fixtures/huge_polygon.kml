@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Huge Region</name>
+    <Placemark>
+      <name>National Park</name>
+      <description>Very large polygon exceeding area limit</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              30.0,-10.0,0
+              40.0,-10.0,0
+              40.0,0.0,0
+              30.0,0.0,0
+              30.0,-10.0,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

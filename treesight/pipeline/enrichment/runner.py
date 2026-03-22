@@ -11,6 +11,10 @@ import httpx
 
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
 from treesight.log import log_phase
+from treesight.pipeline.enrichment.aoi_metrics import (
+    compute_aoi_metrics,
+    compute_multi_aoi_summary,
+)
 from treesight.pipeline.enrichment.change_detection import detect_changes
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import _coords_to_bbox, register_mosaic
@@ -30,11 +34,20 @@ def run_enrichment(
     timestamp: str,
     output_container: str,
     storage: BlobStorageClient,
+    aoi_list: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run full enrichment pipeline — the main entry point.
 
     Fetches weather, registers mosaics, samples NDVI, and stores everything
     in blob storage as a single timelapse_payload.json manifest.
+
+    Parameters
+    ----------
+    aoi_list : list of dict, optional
+        Per-AOI data dicts (from AOI.model_dump()).  When supplied the
+        manifest will include ``per_aoi_metrics`` with quantitative
+        statistics for each AOI individually.
+
     Returns the enrichment results dict.
     """
     start = time.monotonic()
@@ -210,7 +223,23 @@ def run_enrichment(
     else:
         results["change_detection"] = {"season_changes": [], "summary": {}}
 
-    # 6. Store manifest
+    # 6. Per-AOI quantitative metrics (when AOI list is provided)
+    if aoi_list:
+        log_phase("enrichment", "aoi_metrics_start", aoi_count=len(aoi_list))
+        per_aoi: list[dict[str, Any]] = []
+        for aoi_data in aoi_list:
+            m = compute_aoi_metrics(
+                aoi_data=aoi_data,
+                ndvi_stats=ndvi_stats,
+                weather_daily=results.get("weather_daily"),
+                change_detection=results.get("change_detection"),
+            )
+            per_aoi.append(m)
+        results["per_aoi_metrics"] = per_aoi
+        results["multi_aoi_summary"] = compute_multi_aoi_summary(per_aoi)
+        log_phase("enrichment", "aoi_metrics_done", aoi_count=len(per_aoi))
+
+    # 7. Store manifest
     duration = time.monotonic() - start
     results["enrichment_duration_seconds"] = round(duration, 1)
     results["enriched_at"] = datetime.now(UTC).isoformat()

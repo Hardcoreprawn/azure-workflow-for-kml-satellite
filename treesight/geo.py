@@ -18,6 +18,7 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
     bbox = _compute_bbox(exterior)
     buffered_bbox = _buffer_bbox(bbox, buf)
     area_ha = _geodesic_area_ha(exterior)
+    perimeter_km = _geodesic_perimeter_km(exterior)
     centroid = _centroid(exterior)
 
     area_warning = ""
@@ -33,6 +34,7 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
         bbox=bbox,
         buffered_bbox=buffered_bbox,
         area_ha=area_ha,
+        perimeter_km=perimeter_km,
         centroid=centroid,
         buffer_m=buf,
         crs="EPSG:4326",
@@ -80,6 +82,40 @@ def _geodesic_area_ha(coords: list[list[float]]) -> float:
     except ImportError:
         # Fallback: simple spherical excess (less accurate)
         return _spherical_area_ha(coords)
+
+
+def _geodesic_perimeter_km(coords: list[list[float]]) -> float:
+    """Compute geodesic perimeter of a polygon in kilometres.
+
+    Uses pyproj Geod for WGS84 ellipsoid accuracy; falls back to
+    Haversine summation when pyproj is unavailable.
+    """
+    if len(coords) < 2:
+        return 0.0
+    try:
+        from pyproj import Geod
+
+        geod = Geod(ellps="WGS84")
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        _area_m2, perimeter_m = geod.polygon_area_perimeter(lons, lats)
+        return abs(perimeter_m) / 1_000.0
+    except ImportError:
+        return _haversine_perimeter_km(coords)
+
+
+def _haversine_perimeter_km(coords: list[list[float]]) -> float:
+    """Approximate perimeter using Haversine distance. Fallback when pyproj unavailable."""
+    total = 0.0
+    for i in range(len(coords) - 1):
+        lon1, lat1 = math.radians(coords[i][0]), math.radians(coords[i][1])
+        lon2, lat2 = math.radians(coords[i + 1][0]), math.radians(coords[i + 1][1])
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        total += EARTH_RADIUS_M * c
+    return total / 1_000.0
 
 
 def _spherical_area_ha(coords: list[list[float]]) -> float:

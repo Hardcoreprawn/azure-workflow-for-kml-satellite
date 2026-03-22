@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Tiny Plot</name>
+    <Placemark>
+      <name>Garden Bed</name>
+      <description>Very small polygon under 0.1 hectare</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.800,-1.300,0
+              36.8003,-1.300,0
+              36.8003,-1.3003,0
+              36.800,-1.3003,0
+              36.800,-1.300,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

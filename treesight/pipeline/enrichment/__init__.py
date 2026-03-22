@@ -4,6 +4,11 @@ Re-exports public API for backward compatibility so that
 ``from treesight.pipeline.enrichment import run_enrichment`` still works.
 """
 
+from treesight.pipeline.enrichment.aoi_metrics import (
+    compute_aoi_metrics,
+    compute_multi_aoi_summary,
+    compute_ndvi_trend,
+)
 from treesight.pipeline.enrichment.change_detection import (
     compute_change_map,
     detect_changes,
@@ -20,8 +25,11 @@ from treesight.pipeline.enrichment.weather import (
 __all__ = [
     "aggregate_weather_monthly",
     "build_frame_plan",
+    "compute_aoi_metrics",
     "compute_change_map",
+    "compute_multi_aoi_summary",
     "compute_ndvi",
+    "compute_ndvi_trend",
     "detect_changes",
     "fetch_ndvi_stat",
     "fetch_weather",
