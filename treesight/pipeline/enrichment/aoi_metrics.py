@@ -81,14 +81,14 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
     else:
         direction = "declining"
 
-    # Consecutive drops
+    # Consecutive drops (track original frame index, not filtered index)
     max_drop = 0.0
     max_drop_idx = -1
     for i in range(1, n):
         drop = means[i - 1] - means[i]
         if drop > max_drop:
             max_drop = drop
-            max_drop_idx = i
+            max_drop_idx = valid[i][0]  # original frame index
 
     # Coefficient of variation (stability indicator)
     std = math.sqrt(sum((m - y_mean) ** 2 for m in means) / n) if n > 1 else 0.0
@@ -154,9 +154,9 @@ def compute_aoi_metrics(
     centroid = aoi_data.get("centroid", [0, 0])
 
     metrics["geometry"] = {
-        "area_ha": round(area_ha, 2),
+        "area_ha": area_ha,
         "area_km2": round(area_ha / 100, 4),
-        "perimeter_km": round(perimeter_km, 2),
+        "perimeter_km": perimeter_km,
         "compactness": _compactness_index(area_ha, perimeter_km),
         "centroid_lon": round(centroid[0], 6),
         "centroid_lat": round(centroid[1], 6),
@@ -267,8 +267,8 @@ def compute_multi_aoi_summary(
 
     return {
         "aoi_count": n,
-        "total_area_ha": round(total_area, 2),
-        "total_perimeter_km": round(total_perimeter, 2),
+        "total_area_ha": round(total_area, 4),
+        "total_perimeter_km": round(total_perimeter, 4),
         "weighted_mean_ndvi": weighted_ndvi,
         "health_distribution": health_counts,
         "trend_distribution": trend_counts,
@@ -315,7 +315,11 @@ def _worst_change(changes: list[dict[str, Any]], key: str) -> dict[str, Any] | N
     val = worst.get(key, 0)
     if val <= 0:
         return None
+    season = worst.get("season", "")
+    # Support both legacy (year_a/year_b) and current (year_from/year_to) keys.
+    year_start = worst.get("year_from") or worst.get("year_a") or ""
+    year_end = worst.get("year_to") or worst.get("year_b") or ""
     return {
         "value_ha": round(val, 2),
-        "period": f"{worst.get('season', '')} {worst.get('year_a', '')}→{worst.get('year_b', '')}",
+        "period": f"{season} {year_start}\u2192{year_end}",
     }

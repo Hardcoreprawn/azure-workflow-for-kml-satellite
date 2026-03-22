@@ -224,7 +224,14 @@ def run_enrichment(
         results["change_detection"] = {"season_changes": [], "summary": {}}
 
     # 6. Per-AOI quantitative metrics (when AOI list is provided)
-    if aoi_list:
+    #
+    # NOTE: Geometry metrics (area, perimeter, compactness, bbox) are truly
+    # per-AOI.  NDVI/change/weather are currently derived from the union
+    # bounding box — accurate for single-AOI KMLs, shared across AOIs for
+    # multi-AOI KMLs.  data_scope="per_aoi" vs "union" is set accordingly.
+    # Per-AOI NDVI/change computation is planned for a follow-up.
+    if aoi_list is not None:
+        data_scope = "per_aoi" if len(aoi_list) <= 1 else "union"
         log_phase("enrichment", "aoi_metrics_start", aoi_count=len(aoi_list))
         per_aoi: list[dict[str, Any]] = []
         for aoi_data in aoi_list:
@@ -234,6 +241,7 @@ def run_enrichment(
                 weather_daily=results.get("weather_daily"),
                 change_detection=results.get("change_detection"),
             )
+            m["ndvi_data_scope"] = data_scope
             per_aoi.append(m)
         results["per_aoi_metrics"] = per_aoi
         results["multi_aoi_summary"] = compute_multi_aoi_summary(per_aoi)

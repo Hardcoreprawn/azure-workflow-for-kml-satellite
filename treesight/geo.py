@@ -106,10 +106,16 @@ def _geodesic_perimeter_km(coords: list[list[float]]) -> float:
 
 def _haversine_perimeter_km(coords: list[list[float]]) -> float:
     """Approximate perimeter using Haversine distance. Fallback when pyproj unavailable."""
+    if len(coords) < 2:
+        return 0.0
+    # Ensure ring closure: add closing segment if first != last
+    ring = list(coords)
+    if ring[0] != ring[-1]:
+        ring.append(ring[0])
     total = 0.0
-    for i in range(len(coords) - 1):
-        lon1, lat1 = math.radians(coords[i][0]), math.radians(coords[i][1])
-        lon2, lat2 = math.radians(coords[i + 1][0]), math.radians(coords[i + 1][1])
+    for i in range(len(ring) - 1):
+        lon1, lat1 = math.radians(ring[i][0]), math.radians(ring[i][1])
+        lon2, lat2 = math.radians(ring[i + 1][0]), math.radians(ring[i + 1][1])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
         a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
