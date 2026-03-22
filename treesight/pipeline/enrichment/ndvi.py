@@ -1,5 +1,10 @@
 """NDVI computation from Sentinel-2 COGs and PC tile sampling.
 
+Design decision: Sentinel-2 L2A is the sole NDVI source.  NAIP is used only
+for high-resolution visual context (before/after comparison).  NAIP imagery
+may be 3-band (RGB) in some states/years; if NAIP NDVI is added later, the
+caller must verify that the scene has ≥4 bands (RGBN) before computing.
+
 Two approaches available:
 - ``compute_ndvi``: proper band-math from B04/B08 COGs via rasterio (accurate,
   produces GeoTIFFs for downstream change detection)
