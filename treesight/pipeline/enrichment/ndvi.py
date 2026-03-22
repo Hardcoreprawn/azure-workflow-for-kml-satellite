@@ -1,5 +1,10 @@
 """NDVI computation from Sentinel-2 COGs and PC tile sampling.
 
+Design decision: Sentinel-2 L2A is the sole NDVI source.  NAIP is used only
+for high-resolution visual context (before/after comparison).  NAIP imagery
+may be 3-band (RGB) in some states/years; if NAIP NDVI is added later, the
+caller must verify that the scene has ≥4 bands (RGBN) before computing.
+
 Two approaches available:
 - ``compute_ndvi``: proper band-math from B04/B08 COGs via rasterio (accurate,
   produces GeoTIFFs for downstream change detection)
@@ -38,7 +43,8 @@ def _find_best_s2_scene(
     """Search STAC for the least-cloudy Sentinel-2 L2A scene in a window.
 
     Returns a dict with ``{"B04": url, "B08": url, "scene_id": ..., ...}``
-    or None if nothing suitable was found.
+    plus an optional ``"SCL"`` key when the Scene Classification Layer is
+    available, or None if nothing suitable was found.
     """
     import planetary_computer
     from pystac_client import Client
@@ -60,11 +66,12 @@ def _find_best_s2_scene(
     item = items[0]
     b04 = item.assets.get("B04")
     b08 = item.assets.get("B08")
+    scl = item.assets.get("SCL")
     if not b04 or not b08:
         logger.warning("S2 item %s missing B04/B08 assets", item.id)
         return None
 
-    return {
+    result: dict[str, Any] = {
         "scene_id": item.id,
         "B04": b04.href,
         "B08": b08.href,
@@ -72,9 +79,21 @@ def _find_best_s2_scene(
         "datetime": item.properties.get("datetime", ""),
         "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
     }
+    if scl:
+        result["SCL"] = scl.href
+    return result
 
 
 # ── COG-based NDVI computation ────────────────────────────────
+
+# SCL (Scene Classification Layer) valid pixel classes for NDVI.
+# See: https://sentinels.copernicus.eu/web/sentinel/technical-guides/sentinel-2-msi/level-2a/algorithm-overview
+VALID_SCL_CLASSES = (
+    2,  # Dark area pixels
+    4,  # Vegetation
+    5,  # Bare soils
+    6,  # Water (optional — valid surface, NDVI ≈ −0.1 to 0)
+)
 
 
 def compute_ndvi(
@@ -101,8 +120,10 @@ def compute_ndvi(
     Returns
     -------
     dict or None
-        ``{"mean", "min", "max", "std", "valid_pixels", "scene_id",
-        "cloud_cover", "geotiff_bytes"}`` on success; None if no scene found.
+        ``{"mean", "min", "max", "std", "median", "valid_pixels",
+        "total_pixels", "scene_id", "cloud_cover", "datetime",
+        "scl_applied", "scl_masked_pixels", "geotiff_bytes"}`` on success;
+        None if no scene found.
     """
     import numpy as np
     import rasterio
@@ -135,6 +156,22 @@ def compute_ndvi(
             b04_data = b04_data[:min_h, :min_w]
             b08_data = b08_data[:min_h, :min_w]
 
+        # Read SCL band for pixel-level cloud masking (20m → resample to 10m)
+        scl_mask = None
+        scl_masked_count = 0
+        if scene.get("SCL"):
+            try:
+                scl_data, _scl_profile = _cog_band_read(scene["SCL"], bbox)
+                # Resample SCL (20m) to match B04/B08 (10m) via nearest-neighbour
+                scl_mask = _resample_scl(scl_data, b04_data.shape)
+                log_phase("ndvi", "scl_loaded", scene_id=scene["scene_id"])
+            except Exception as scl_exc:
+                logger.warning(
+                    "SCL read failed for %s, falling back to no pixel mask: %s",
+                    scene["scene_id"],
+                    scl_exc,
+                )
+
         # Convert to float for band math
         red = b04_data.astype(np.float32)
         nir = b08_data.astype(np.float32)
@@ -145,6 +182,13 @@ def compute_ndvi(
 
         # Mask invalid (nodata) pixels — S2 L2A uses 0 as nodata
         valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
+
+        # Apply SCL pixel-level cloud/shadow/snow mask
+        if scl_mask is not None:
+            scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
+            scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
+            valid_mask = valid_mask & scl_valid
+
         valid_pixels = ndvi[valid_mask]
 
         if len(valid_pixels) == 0:
@@ -159,6 +203,8 @@ def compute_ndvi(
             "median": round(float(np.median(valid_pixels)), 4),
             "valid_pixels": len(valid_pixels),
             "total_pixels": int(ndvi.size),
+            "scl_masked_pixels": scl_masked_count,
+            "scl_applied": scl_mask is not None,
             "scene_id": scene["scene_id"],
             "cloud_cover": scene["cloud_cover"],
             "datetime": scene["datetime"],
@@ -217,6 +263,32 @@ def _cog_band_read(
             "transform": src.window_transform(window),
         }
     return data, profile
+
+
+def _resample_scl(
+    scl_data: Any,
+    target_shape: tuple[int, int],
+) -> Any:
+    """Resample SCL (20 m) to target shape (10 m) via nearest-neighbour.
+
+    SCL is categorical — interpolation would produce invalid class values.
+    Uses numpy index mapping instead of scipy to avoid an extra dependency.
+    """
+    import numpy as np
+
+    if scl_data.shape == target_shape:
+        return scl_data
+
+    # Map target pixel centres to source indices and round to nearest (true NN).
+    row_scale = scl_data.shape[0] / target_shape[0]
+    col_scale = scl_data.shape[1] / target_shape[1]
+    row_coords = (np.arange(target_shape[0]) + 0.5) * row_scale - 0.5
+    col_coords = (np.arange(target_shape[1]) + 0.5) * col_scale - 0.5
+    row_idx = np.rint(row_coords).astype(int)
+    col_idx = np.rint(col_coords).astype(int)
+    np.clip(row_idx, 0, scl_data.shape[0] - 1, out=row_idx)
+    np.clip(col_idx, 0, scl_data.shape[1] - 1, out=col_idx)
+    return scl_data[np.ix_(row_idx, col_idx)]
 
 
 def _transform_bbox_4326(

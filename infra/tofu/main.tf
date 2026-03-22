@@ -364,9 +364,23 @@ resource "azurerm_static_web_app" "main" {
   name                = local.names.static_web_app
   location            = var.static_web_app_location
   resource_group_name = azurerm_resource_group.main.name
-  sku_tier            = "Free"
-  sku_size            = "Free"
+  sku_tier            = "Standard"
+  sku_size            = "Standard"
   tags                = local.tags
+}
+
+# --- Linked backend: route /api/* through SWA to the Function App (#234) ---
+resource "azapi_resource" "swa_backend_link" {
+  type      = "Microsoft.Web/staticSites/linkedBackends@2024-04-01"
+  parent_id = azurerm_static_web_app.main.id
+  name      = "backend"
+
+  body = {
+    properties = {
+      backendResourceId = azapi_resource.function_app.id
+      region            = azurerm_resource_group.main.location
+    }
+  }
 }
 
 # --- Custom domain (M1.5) ---

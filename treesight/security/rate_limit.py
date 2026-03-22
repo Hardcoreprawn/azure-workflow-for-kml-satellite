@@ -53,10 +53,25 @@ proxy_limiter = RateLimiter(max_requests=60, window_seconds=60)
 
 
 def get_client_ip(req) -> str:
-    """Extract client IP from Azure Functions request headers."""
-    # Azure Functions / Container Apps passes the real IP in X-Forwarded-For
+    """Extract client IP from Azure Functions request headers.
+
+    Prefers Azure-specific headers, then uses the rightmost
+    X-Forwarded-For entry (set by the last trusted proxy) to
+    resist header spoofing.
+    """
+    # Azure-specific header (set by SWA / Container Apps)
+    azure_ip = req.headers.get("X-Azure-ClientIP", "")
+    if azure_ip:
+        return azure_ip.strip()
+
     forwarded = req.headers.get("X-Forwarded-For", "")
     if forwarded:
-        # First IP in the chain is the client
-        return forwarded.split(",")[0].strip()
-    return req.headers.get("X-Real-IP", "unknown")
+        # Rightmost entry is set by the last trusted proxy (Azure
+        # Container Apps / SWA append the real client IP as the final
+        # entry).  This resists spoofing by ignoring client-supplied
+        # entries earlier in the chain.
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+
+    return (req.headers.get("X-Real-IP") or "unknown").strip()

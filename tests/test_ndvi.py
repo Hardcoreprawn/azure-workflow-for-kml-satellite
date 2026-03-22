@@ -172,8 +172,9 @@ class TestFetchNdviStat:
 def _s2_scene_fixture(
     scene_id: str = "S2A_test",
     cloud_cover: float = 5.0,
+    with_scl: bool = False,
 ) -> dict[str, Any]:
-    return {
+    result: dict[str, Any] = {
         "scene_id": scene_id,
         "B04": "https://example.com/B04.tif",
         "B08": "https://example.com/B08.tif",
@@ -181,6 +182,9 @@ def _s2_scene_fixture(
         "datetime": "2024-07-15T10:00:00Z",
         "crs": "EPSG:32632",
     }
+    if with_scl:
+        result["SCL"] = "https://example.com/SCL.tif"
+    return result
 
 
 def _band_profile(rows: int = 10, cols: int = 10) -> dict[str, Any]:
@@ -318,3 +322,146 @@ class TestTransformBbox4326:
         bbox = [-0.5, 51.4, -0.4, 51.5]
         result = _transform_bbox_4326(bbox, "epsg:4326")
         assert result == (-0.5, 51.4, -0.4, 51.5)
+
+
+# ---------------------------------------------------------------------------
+# Tests for _resample_scl (nearest-neighbour upscaling)
+# ---------------------------------------------------------------------------
+
+
+class TestResampleScl:
+    def test_identity_when_same_shape(self):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import _resample_scl
+
+        scl = np.array([[4, 5], [2, 9]], dtype=np.uint8)
+        result = _resample_scl(scl, (2, 2))
+        assert np.array_equal(result, scl)
+
+    def test_upscale_2x(self):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import _resample_scl
+
+        scl = np.array([[4, 9], [5, 8]], dtype=np.uint8)
+        result = _resample_scl(scl, (4, 4))
+        assert result.shape == (4, 4)
+        # Top-left quadrant should be 4 (vegetation)
+        assert result[0, 0] == 4
+        assert result[0, 1] == 4
+        assert result[1, 0] == 4
+        # Bottom-right should be 8 (cloud)
+        assert result[3, 3] == 8
+
+    def test_preserves_categorical_values(self):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import _resample_scl
+
+        scl = np.array([[0, 11], [3, 6]], dtype=np.uint8)
+        result = _resample_scl(scl, (6, 6))
+        unique = set(result.flatten())
+        assert unique <= {0, 3, 6, 11}
+
+
+# ---------------------------------------------------------------------------
+# Tests for SCL masking in compute_ndvi
+# ---------------------------------------------------------------------------
+
+
+class TestComputeNdviWithScl:
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_scl_masks_cloud_pixels(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture(with_scl=True)
+
+        b04 = np.full((4, 4), 1000, dtype=np.uint16)
+        b08 = np.full((4, 4), 3000, dtype=np.uint16)
+        # SCL at 20m = half resolution: 2x2 → resampled to 4x4
+        # class 4 = vegetation (valid), class 9 = cloud (masked)
+        scl = np.array([[4, 9], [4, 4]], dtype=np.uint8)
+        profile = _band_profile(4, 4)
+        scl_profile = _band_profile(2, 2)
+
+        mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
+
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+
+        assert result is not None
+        assert result["scl_applied"] is True
+        assert result["scl_masked_pixels"] == 4  # top-right 2x2 quadrant masked
+        assert result["valid_pixels"] == 12  # 16 total - 4 cloud
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_no_scl_in_scene(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        # Scene without SCL key
+        mock_find.return_value = _s2_scene_fixture(with_scl=False)
+
+        b04 = np.full((4, 4), 1000, dtype=np.uint16)
+        b08 = np.full((4, 4), 3000, dtype=np.uint16)
+        profile = _band_profile(4, 4)
+
+        mock_read.side_effect = [(b04, profile), (b08, profile)]
+
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+
+        assert result is not None
+        assert result["scl_applied"] is False
+        assert result["scl_masked_pixels"] == 0
+        assert result["valid_pixels"] == 16
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_scl_read_failure_falls_back(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture(with_scl=True)
+
+        b04 = np.full((4, 4), 1000, dtype=np.uint16)
+        b08 = np.full((4, 4), 3000, dtype=np.uint16)
+        profile = _band_profile(4, 4)
+
+        # B04 and B08 succeed, SCL read raises an error
+        mock_read.side_effect = [(b04, profile), (b08, profile), Exception("SCL read failed")]
+
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+
+        assert result is not None
+        # Fallback: SCL not applied, all pixels valid
+        assert result["scl_applied"] is False
+        assert result["scl_masked_pixels"] == 0
+        assert result["valid_pixels"] == 16
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_scl_masks_all_pixels_returns_none(self, mock_find, mock_read):
+        import numpy as np
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture(with_scl=True)
+
+        b04 = np.full((4, 4), 1000, dtype=np.uint16)
+        b08 = np.full((4, 4), 3000, dtype=np.uint16)
+        # All pixels are cloud (class 9)
+        scl = np.full((2, 2), 9, dtype=np.uint8)
+        profile = _band_profile(4, 4)
+        scl_profile = _band_profile(2, 2)
+
+        mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
+
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+
+        assert result is None  # no valid pixels after masking
