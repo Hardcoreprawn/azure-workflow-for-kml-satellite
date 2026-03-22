@@ -346,7 +346,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <div class="section-label">Why TreeSight</div>
     <h2>The Problem With Manual Imagery Pipelines</h2>
     <div class="card-grid cols-2">
-      <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, polling orders, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
+      <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
       <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. TreeSight's durable orchestrator runs end-to-end in minutes with automatic retry and parallelism.</p></div>
       <div class="card"><div class="icon">🔐</div><h3>Multi-Tenant Blind Spots</h3><p>Container-per-tenant isolation, tenant-scoped routing, and valet tokens keep data separated without complex infrastructure.</p></div>
       <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — TreeSight handles all of it correctly.</p></div>
@@ -512,8 +512,8 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <div class="timeline-step"><div class="dot">1</div><h3>Upload KML</h3><p>A KML file is uploaded to blob storage, triggering an Event Grid event.</p></div>
       <div class="timeline-step"><div class="dot">2</div><h3>Parse &amp; Validate</h3><p>Fiona (or lxml fallback) extracts polygon features, normalises coordinates, and auto-closes rings.</p></div>
       <div class="timeline-step"><div class="dot">3</div><h3>Prepare AOIs</h3><p>Each feature becomes an Area of Interest with bounding box, geodesic area, centroid, and buffered search extent.</p></div>
-      <div class="timeline-step"><div class="dot">4</div><h3>Search &amp; Order</h3><p>Composite search: NAIP for high-res detail + Sentinel-2 for temporal monitoring. Orders placed in parallel across all AOIs.</p></div>
-      <div class="timeline-step"><div class="dot">5</div><h3>Download</h3><p>Imagery assets are downloaded in configurable batches with retry and exponential backoff.</p></div>
+      <div class="timeline-step"><div class="dot">4</div><h3>Search &amp; Queue</h3><p>Composite search: NAIP for high-res detail (US only) + Sentinel-2 for global temporal monitoring. Matching scenes selected and queued in parallel across all AOIs.</p></div>
+      <div class="timeline-step"><div class="dot">5</div><h3>Download</h3><p>Queued imagery assets are downloaded in configurable batches with retry and exponential backoff.</p></div>
       <div class="timeline-step"><div class="dot">6</div><h3>Clip &amp; Reproject</h3><p>Downloaded GeoTIFFs are clipped to AOI boundaries and reprojected to the target CRS.</p></div>
     </div>
   </div>
@@ -531,9 +531,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         <div class="tier-price">$0 <span>/month</span></div>
         <div class="tier-desc">For individual researchers and evaluation</div>
         <ul>
-          <li>5 AOI analyses per month</li>
+          <li>5 AOI analyses total <em>(beta)</em></li>
           <li>1 concurrent pipeline</li>
-          <li>Sentinel-2 + NAIP imagery</li>
+          <li>Sentinel-2 (global) + NAIP (US) imagery</li>
           <li>NDVI + weather overlay</li>
           <li>Before/after comparison</li>
           <li>30-day data retention</li>
@@ -550,7 +550,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           <li>3 concurrent pipelines</li>
           <li>Everything in Free, plus:</li>
           <li>AI-generated insights</li>
-          <li>PDF &amp; GeoJSON export</li>
+          <li>GeoJSON &amp; CSV export</li>
           <li>90-day data retention</li>
           <li>Email support</li>
         </ul>
@@ -576,7 +576,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         <div class="tier-price">Custom</div>
         <div class="tier-desc">For large organisations and government agencies</div>
         <ul>
-          <li>Unlimited AOI analyses</li>
+          <li>High-volume AOI analyses</li>
           <li>Dedicated infrastructure</li>
           <li>Everything in Team, plus:</li>
           <li>SSO / SAML integration</li>
@@ -587,7 +587,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         <a href="#early-access" class="btn btn-secondary">Talk to Sales</a>
       </div>
     </div>
-    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. Need more AOIs? Additional analyses are $1/AOI beyond your tier limit.</p>
+    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. Enterprise pricing scales with compute usage. Need more AOIs? <a href="#early-access">Contact us</a> to discuss high-volume pricing.</p>
   </div>
 </section>
 
@@ -598,18 +598,15 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     <h2>Built for Real-World Geospatial Workflows</h2>
     <div class="proof-grid">
       <div class="proof-card">
-        <div class="proof-quote">"We monitor 140 forest concessions across Central Africa. TreeSight replaced a 3-day manual QGIS workflow with a 10-minute automated pipeline — and the AI summaries save us hours writing donor reports."</div>
-        <div class="proof-author"><strong>Conservation Programme Lead</strong> — International NGO</div>
+        <div class="proof-quote">A conservation team monitoring 140 forest concessions across Central Africa replaces a 3-day manual QGIS workflow with a 10-minute automated pipeline — and uses AI summaries to save hours writing donor reports.</div>
         <div class="proof-tag">Conservation</div>
       </div>
       <div class="proof-card">
-        <div class="proof-quote">"The integrated NDVI + weather correlation is exactly what we needed for crop insurance assessments. Before, we used three separate tools. Now it's one upload and we have everything."</div>
-        <div class="proof-author"><strong>Remote Sensing Analyst</strong> — Agricultural Advisory</div>
+        <div class="proof-quote">An agricultural advisory uses integrated NDVI + weather correlation for crop insurance assessments. One upload replaces three separate tools, with everything in a single dashboard.</div>
         <div class="proof-tag">Agriculture</div>
       </div>
       <div class="proof-card">
-        <div class="proof-quote">"EUDR compliance requires before/after satellite evidence with quantified change metrics. TreeSight's comparison view and hectare-level change detection gives us audit-ready output."</div>
-        <div class="proof-author"><strong>ESG Compliance Manager</strong> — Supply Chain</div>
+        <div class="proof-quote">An ESG compliance team uses before/after satellite evidence with quantified change metrics for EUDR reporting. The comparison view and hectare-level change detection provide audit-ready output.</div>
         <div class="proof-tag">ESG Compliance</div>
       </div>
     </div>
@@ -670,7 +667,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <div class="faq-item"><div class="faq-q">What file formats are supported?</div><div class="faq-a">KML files with Polygon and MultiPolygon geometries. The parser handles both Fiona/GDAL and a pure-lxml fallback for environments without GDAL.</div></div>
       <div class="faq-item"><div class="faq-q">What satellite imagery providers are supported?</div><div class="faq-a">Microsoft Planetary Computer is the default provider, with composite search: NAIP for high-resolution detail (0.6 m, US coverage) and Sentinel-2 L2A for global temporal monitoring (10 m). The provider registry is pluggable — additional providers can be added by implementing the ImageryProvider interface.</div></div>
       <div class="faq-item"><div class="faq-q">How does multi-tenancy work?</div><div class="faq-a">Each tenant gets isolated input/output containers (e.g. acme-input, acme-output). The tenant ID is derived from the container name, and all pipeline outputs are scoped accordingly.</div></div>
-      <div class="faq-item"><div class="faq-q">What happens if an imagery order times out?</div><div class="faq-a">Orders are polled with configurable intervals and timeouts. Failed or timed-out orders are tracked in the pipeline summary as partial_imagery status, while successful orders continue through fulfilment.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens if an imagery download fails?</div><div class="faq-a">Downloads are retried with configurable intervals and exponential backoff. Failed or timed-out downloads are flagged as partial in the pipeline summary, while successful downloads continue through fulfilment.</div></div>
       <div class="faq-item"><div class="faq-q">How large can KML files be?</div><div class="faq-a">The maximum KML file size is 10 MiB. For very large feature sets, the payload offloader automatically moves data to blob storage to stay within the Durable Functions 48 KiB history limit.</div></div>
       <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">The demo map shows real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time. The pipeline uses the same composite search strategy in production.</div></div>
       <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
@@ -717,7 +714,6 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
   function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s))); return d.innerHTML; }
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
-  const DEFAULT_FALLBACK_ORIGIN = 'https://func-kmlsat-dev.politebush-dbd595e5.uksouth.azurecontainerapps.io';
   let apiBase = '';
   let contractOk = false;
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
@@ -835,7 +831,6 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   /* --- API helper --- */
   async function apiFetch(path, opts) {
-    var base = apiBase || DEFAULT_FALLBACK_ORIGIN;
     opts = opts || {};
     opts.headers = opts.headers || {};
     /* Attach bearer token if authenticated */
@@ -843,18 +838,16 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       var token = accessToken || await acquireToken();
       if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
     }
-    try { return await fetch(base + path, opts); } catch { return null; }
+    try { return await fetch(apiBase + path, opts); } catch { return null; }
   }
 
-  /* --- API discovery: detect if same-origin proxies to backend --- */
+  /* --- API discovery: verify backend is reachable via SWA proxy --- */
   async function discoverApiBase() {
-    if (!DEFAULT_FALLBACK_ORIGIN) return;
     try {
       var res = await fetch('/api/health');
-      if (res.ok) { apiBase = ''; return; }          /* SWA proxies → use same-origin */
+      if (res.ok) { apiBase = ''; return; }
     } catch { /* network error */ }
-    apiBase = DEFAULT_FALLBACK_ORIGIN;                /* fallback to function app directly */
-    console.log('API base: ' + apiBase);
+    console.warn('Backend not reachable via /api — check SWA linked backend configuration');
   }
 
   /* --- Contract check (§12.3) --- */
