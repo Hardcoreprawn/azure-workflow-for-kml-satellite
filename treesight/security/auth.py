@@ -8,7 +8,7 @@ from typing import Any
 import jwt
 import requests
 
-from treesight.config import CIAM_AUDIENCE, CIAM_CLIENT_ID, CIAM_TENANT_NAME
+from treesight.config import CIAM_AUDIENCE, CIAM_CLIENT_ID, CIAM_TENANT_NAME, REQUIRE_AUTH
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +57,25 @@ def _get_issuer() -> str:
 
 
 def auth_enabled() -> bool:
-    """Return True if CIAM authentication configuration is present."""
+    """Return True if CIAM authentication configuration is present.
+
+    When REQUIRE_AUTH is set, raises RuntimeError at startup if CIAM
+    configuration is incomplete — preventing silent anonymous access
+    in production.
+    """
     enabled = bool(CIAM_TENANT_NAME and CIAM_CLIENT_ID)
-    if not enabled and not getattr(auth_enabled, "_warned", False):
-        logger.warning(
-            "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
-            "All requests will be treated as anonymous."
-        )
-        auth_enabled._warned = True  # type: ignore[attr-defined]
+    if not enabled:
+        if REQUIRE_AUTH:
+            raise RuntimeError(
+                "REQUIRE_AUTH is set but CIAM_TENANT_NAME or CIAM_CLIENT_ID "
+                "is missing. Refusing to start without authentication."
+            )
+        if not getattr(auth_enabled, "_warned", False):
+            logger.warning(
+                "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
+                "All requests will be treated as anonymous."
+            )
+            auth_enabled._warned = True  # type: ignore[attr-defined]
     return enabled
 
 
