@@ -13,6 +13,8 @@ from treesight.pipeline.enrichment.change_detection import (
     compute_change_map,
     detect_changes,
 )
+from treesight.pipeline.enrichment.fire import fetch_fire_hotspots
+from treesight.pipeline.enrichment.flood import fetch_flood_events
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import register_mosaic
 from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
@@ -31,6 +33,8 @@ __all__ = [
     "compute_ndvi",
     "compute_ndvi_trend",
     "detect_changes",
+    "fetch_fire_hotspots",
+    "fetch_flood_events",
     "fetch_ndvi_stat",
     "fetch_weather",
     "register_mosaic",

@@ -1,4 +1,4 @@
-"""Enrichment orchestrator — runs weather, mosaic, NDVI, and stores manifest."""
+"""Enrichment orchestrator — runs weather, flood, fire, mosaic, NDVI, and stores manifest."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from treesight.pipeline.enrichment.aoi_metrics import (
     compute_multi_aoi_summary,
 )
 from treesight.pipeline.enrichment.change_detection import detect_changes
+from treesight.pipeline.enrichment.fire import fetch_fire_hotspots
+from treesight.pipeline.enrichment.flood import fetch_flood_events
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import _coords_to_bbox, register_mosaic
 from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
@@ -87,6 +89,18 @@ def run_enrichment(
         results["weather_daily"] = None
         results["weather_monthly"] = None
         log_phase("enrichment", "weather_failed")
+
+    # 1b. Flood event detection
+    log_phase("enrichment", "flood_start")
+    flood_data = fetch_flood_events(bbox, center_lat, center_lon)
+    results["flood_events"] = flood_data
+    log_phase("enrichment", "flood_done", source=flood_data["source"], count=flood_data["count"])
+
+    # 1c. Fire hotspot detection
+    log_phase("enrichment", "fire_start")
+    fire_data = fetch_fire_hotspots(bbox)
+    results["fire_hotspots"] = fire_data
+    log_phase("enrichment", "fire_done", source=fire_data["source"], count=fire_data["count"])
 
     # 2. Mosaic registration
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
