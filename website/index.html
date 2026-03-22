@@ -315,6 +315,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
       <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
       <li><a href="#pricing">Pricing</a></li>
+      <li><a href="#data-sources">Data</a></li>
       <li><a href="#faq">FAQ</a></li>
       <li><a href="#early-access">Early Access</a></li>
     </ul>
@@ -609,6 +610,55 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
         <div class="proof-tag">ESG Compliance</div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- Data Sources & Methodology -->
+<section id="data-sources">
+  <div class="container">
+    <div class="section-label">Transparency</div>
+    <h2>Data Sources &amp; Methodology</h2>
+    <p style="color:var(--c-muted);max-width:640px;margin-bottom:20px">TreeSight uses publicly available satellite imagery and environmental data. Here's exactly where the data comes from and how we process it.</p>
+
+    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">Sources</h3>
+    <div style="overflow-x:auto;margin-bottom:24px">
+      <table style="width:100%;border-collapse:collapse;font-size:.8rem;color:var(--c-muted)">
+        <thead><tr style="border-bottom:1px solid var(--c-border);text-align:left">
+          <th style="padding:8px 12px;color:var(--c-text)">Layer</th>
+          <th style="padding:8px 12px;color:var(--c-text)">Source</th>
+          <th style="padding:8px 12px;color:var(--c-text)">Resolution</th>
+          <th style="padding:8px 12px;color:var(--c-text)">Coverage</th>
+          <th style="padding:8px 12px;color:var(--c-text)">Frequency</th>
+        </tr></thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Optical imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/sentinel-2-l2a" style="color:var(--c-accent)">Sentinel-2 L2A</a> via Planetary Computer</td><td style="padding:8px 12px">10 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">~5 days</td></tr>
+          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">High-res imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/naip" style="color:var(--c-accent)">NAIP</a> via Planetary Computer</td><td style="padding:8px 12px">0.6 m</td><td style="padding:8px 12px">US (CONUS) only</td><td style="padding:8px 12px">~2–3 year cycle</td></tr>
+          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Weather</td><td style="padding:8px 12px"><a href="https://open-meteo.com/en/docs/historical-weather-api" style="color:var(--c-accent)">Open-Meteo</a> Historical Archive</td><td style="padding:8px 12px">~25 km grid</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Daily</td></tr>
+          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Flood events</td><td style="padding:8px 12px">UK Environment Agency / USGS streamflow</td><td style="padding:8px 12px">Point/area</td><td style="padding:8px 12px">UK, US</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
+          <tr><td style="padding:8px 12px">Fire hotspots</td><td style="padding:8px 12px"><a href="https://firms.modaps.eosdis.nasa.gov/" style="color:var(--c-accent)">NASA FIRMS</a> VIIRS/SNPP</td><td style="padding:8px 12px">375 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:.75rem;color:var(--c-muted);margin-bottom:16px">
+      Note: Flood and fire layers are experimental and depend on third-party APIs and required access keys.
+      Availability and recency may vary, and these layers can sometimes return no data.
+    </p>
+
+    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">How We Process It</h3>
+    <ul style="font-size:.8rem;color:var(--c-muted);list-style:disc;padding-left:20px;margin-bottom:24px;line-height:1.8">
+      <li><strong style="color:var(--c-text)">NDVI</strong> — Computed from Sentinel-2 10 m bands: (B08 − B04) / (B08 + B04). NAIP is used for visual context only, not for NDVI.</li>
+      <li><strong style="color:var(--c-text)">Cloud filtering</strong> — Scenes with &gt;20% cloud cover are excluded. Pixel-level SCL masking is planned.</li>
+      <li><strong style="color:var(--c-text)">Weather</strong> — Queried at AOI centroid coordinates, aggregated from daily to monthly statistics.</li>
+      <li><strong style="color:var(--c-text)">Change detection</strong> — Same-season year-over-year raster differencing with ±0.1 NDVI significance threshold.</li>
+    </ul>
+
+    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">Known Limitations</h3>
+    <ul style="font-size:.8rem;color:var(--c-muted);list-style:disc;padding-left:20px;line-height:1.8">
+      <li>Cloud filtering is scene-level only — some cloudy pixels may be included in otherwise clear scenes.</li>
+      <li>Weather is queried at a single centroid point, not a polygon-weighted spatial average. For large AOIs, this may not represent conditions across the full area.</li>
+      <li>Sentinel-2 revisits every ~5 days, but cloud-free images for a specific location may be weeks apart.</li>
+      <li>NAIP imagery is updated on a 2–3 year cycle and is not suitable for temporal change monitoring.</li>
+    </ul>
   </div>
 </section>
 
