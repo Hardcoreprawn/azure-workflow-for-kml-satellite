@@ -69,3 +69,16 @@ nav ul a:hover{color:var(--c-text);text-decoration:none}
 
 /* --- Footer --- */
 footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;color:var(--c-muted);font-size:.8rem}
+
+/* --- Auth Area (nav) --- */
+.auth-area{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.auth-btn{padding:6px 16px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);transition:all .15s;white-space:nowrap;text-decoration:none;display:inline-block}
+.auth-btn:hover{background:rgba(88,166,255,.15);text-decoration:none}
+
+@media(max-width:860px){
+  .auth-area{gap:6px}
+  .auth-btn{padding:5px 10px;font-size:.75rem}
+}
+
+/* --- Noscript --- */
+.noscript-banner{background:var(--c-orange);color:#000;text-align:center;padding:12px;font-size:.9rem;font-weight:600}
