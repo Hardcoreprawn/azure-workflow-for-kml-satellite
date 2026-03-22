@@ -1,0 +1,71 @@
+/* === TreeSight — Shared Styles ===
+   Single source of truth for variables, nav, footer, buttons, and base styles.
+   Referenced by all pages. Page-specific styles remain in inline <style> blocks. */
+
+/* --- Reset --- */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* --- Design Tokens --- */
+:root{
+  --c-bg:#0c1117;
+  --c-surface:#161b22;
+  --c-border:#30363d;
+  --c-text:#e6edf3;
+  --c-muted:#8b949e;
+  --c-accent:#58a6ff;
+  --c-green:#3fb950;
+  --c-red:#f85149;
+  --c-orange:#d29922;
+  --c-purple:#bc8cff;
+  --radius:8px;
+  --shadow:0 2px 12px rgba(0,0,0,.4);
+}
+
+/* --- Base --- */
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){
+  html{scroll-behavior:auto}
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--c-bg);color:var(--c-text);line-height:1.6;overflow-x:hidden}
+a{color:var(--c-accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* --- Layout --- */
+.container{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* --- Nav --- */
+nav{position:sticky;top:0;z-index:1000;background:rgba(12,17,23,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--c-border);padding:12px 0}
+nav .container{display:flex;align-items:center;gap:16px}
+nav .logo{font-weight:700;font-size:1.25rem;display:flex;align-items:center;gap:8px;flex-shrink:0;text-decoration:none;color:var(--c-text)}
+nav .logo:hover{text-decoration:none}
+nav .logo svg{width:24px;height:24px;fill:var(--c-accent)}
+nav ul{list-style:none;display:flex;gap:20px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+nav ul a{color:var(--c-muted);font-size:.875rem;transition:color .15s}
+nav ul a:hover{color:var(--c-text);text-decoration:none}
+
+@media(max-width:860px){
+  nav ul{gap:12px}
+  nav ul a{font-size:.8rem}
+}
+@media(max-width:600px){
+  nav .container{flex-wrap:wrap;justify-content:center}
+  nav ul{order:3;width:100%;justify-content:center;gap:10px;padding-top:8px;border-top:1px solid var(--c-border);margin-top:4px}
+}
+
+/* --- Buttons --- */
+.btn{display:inline-block;padding:10px 24px;border-radius:var(--radius);font-weight:600;font-size:.875rem;cursor:pointer;border:none;transition:all .15s}
+.btn-primary{background:var(--c-accent);color:#fff}
+.btn-primary:hover{background:#79c0ff;text-decoration:none}
+.btn-secondary{background:transparent;color:var(--c-accent);border:1px solid var(--c-accent)}
+.btn-secondary:hover{background:rgba(88,166,255,.1);text-decoration:none}
+
+/* --- Common Components --- */
+.section-label{text-transform:uppercase;font-size:.75rem;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:8px}
+
+/* Hero — subpage variant */
+.hero-sm{padding:60px 0 40px;text-align:center}
+.hero-sm h1{font-size:2rem;font-weight:700;letter-spacing:-.02em}
+.hero-sm p{color:var(--c-muted);font-size:.9rem;margin-top:8px}
+
+/* --- Footer --- */
+footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;color:var(--c-muted);font-size:.8rem}
