@@ -856,11 +856,25 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 
   /* --- API discovery: verify backend is reachable via SWA proxy --- */
   async function discoverApiBase() {
+    /* 1. Try SWA linked backend proxy (ideal — no CORS needed) */
     try {
       var res = await fetch('/api/health');
       if (res.ok) { apiBase = ''; return; }
     } catch { /* network error */ }
-    console.warn('Backend not reachable via /api — check SWA linked backend configuration');
+
+    /* 2. Load deploy-time config for direct Function App hostname (#282) */
+    try {
+      var cfgRes = await fetch('/api-config.json');
+      if (cfgRes.ok) {
+        var cfg = await cfgRes.json();
+        if (cfg.apiBase) {
+          var probe = await fetch(cfg.apiBase + '/api/health');
+          if (probe.ok) { apiBase = cfg.apiBase; return; }
+        }
+      }
+    } catch { /* config not available or backend unreachable */ }
+
+    console.warn('Backend not reachable — check SWA backend configuration or api-config.json');
   }
 
   /* --- Contract check (§12.3) --- */

@@ -369,25 +369,11 @@ resource "azurerm_static_web_app" "main" {
   tags                = local.tags
 }
 
-# --- Linked backend: route /api/* through SWA to the Function App (#234) ---
-resource "azapi_resource" "swa_backend_link" {
-  type      = "Microsoft.Web/staticSites/linkedBackends@2024-04-01"
-  parent_id = azurerm_static_web_app.main.id
-  name      = "backend"
-
-  body = {
-    properties = {
-      backendResourceId = azapi_resource.function_app.id
-      region            = azurerm_resource_group.main.location
-    }
-  }
-
-  timeouts {
-    create = "60m"
-    update = "60m"
-    delete = "30m"
-  }
-}
+# --- Linked backend (disabled): the linkedBackends ARM API returns 500
+# for Function Apps on Container Apps (kind: azurecontainerapps).
+# See #282 — the frontend falls back to calling the Function App directly
+# via the hostname injected at deploy time in /api-config.json.
+# Re-enable if Azure adds Container Apps Function App support. ---
 
 # --- Custom domain (M1.5) ---
 # Prerequisites (manual, one-time):
