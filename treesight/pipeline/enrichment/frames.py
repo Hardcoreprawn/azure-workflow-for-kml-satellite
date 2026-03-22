@@ -11,7 +11,7 @@ SEASONS: list[dict[str, Any]] = [
     {"key": "summer", "label": "Summer", "months": [6, 7, 8]},
     {"key": "autumn", "label": "Autumn", "months": [9, 10, 11]},
 ]
-SEASONAL_YEARS = list(range(2018, 2026))
+SEASONAL_YEARS = list(range(2018, 2027))
 NAIP_ONLY_YEARS = [2012, 2014, 2016]
 NAIP_SUMMERS = {
     "2012-summer",

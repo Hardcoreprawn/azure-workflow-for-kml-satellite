@@ -24,6 +24,7 @@ from blueprints._helpers import (
 from treesight.constants import (
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
+    MAX_KML_FILE_SIZE_BYTES,
     PIPELINE_PAYLOADS_CONTAINER,
 )
 from treesight.security.quota import consume_quota
@@ -68,8 +69,14 @@ def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if not isinstance(kml_content, str) or not kml_content.strip():
         return error_response(400, "kml_content is required")
 
-    submission_id = str(uuid.uuid4())
     kml_bytes = kml_content.encode("utf-8")
+    if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
+        return error_response(
+            400,
+            f"KML exceeds {MAX_KML_FILE_SIZE_BYTES // 1_048_576} MiB limit",
+        )
+
+    submission_id = str(uuid.uuid4())
     kml_blob_name = f"demo/{submission_id}.kml"
 
     storage = BlobStorageClient()

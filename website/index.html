@@ -1562,9 +1562,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
    *
    *   NAIP vintages for this AOI: 2012, 2014, 2016, 2018, 2020, 2022
    *   Pre-2018: NAIP-only summer frames (no S2 coverage)
-   *   2018–2025: 4 seasons/yr; summer uses NAIP when available, S2 elsewhere
+   *   2018–2026: 4 seasons/yr; summer uses NAIP when available, S2 elsewhere
    *
-   *   Total: 3 standalone NAIP + 8 yrs × 4 seasons = 35 frames (6 NAIP)
+   *   Total: 3 standalone NAIP + 9 yrs × 4 seasons = 39 frames (6 NAIP)
    *   All layers pre-cached at opacity 0 → flicker-free playback
    */
   const SEASONS = [
@@ -1574,7 +1574,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
     {key:'autumn', label:'Autumn', months:[9,10,11],icon:'\uD83C\uDF42'}
   ];
   /* Full seasonal range (S2 reliable from 2018) */
-  const SEASONAL_YEARS = [2018,2019,2020,2021,2022,2023,2024,2025];
+  const SEASONAL_YEARS = [2018,2019,2020,2021,2022,2023,2024,2025,2026];
   /* Pre-S2 years — NAIP-only summer snapshots */
   const NAIP_ONLY_YEARS = [2012,2014,2016];
   /* All NAIP summers available at this AOI (0.6 m) */
