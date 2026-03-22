@@ -58,7 +58,14 @@ def _get_issuer() -> str:
 
 def auth_enabled() -> bool:
     """Return True if CIAM authentication configuration is present."""
-    return bool(CIAM_TENANT_NAME and CIAM_CLIENT_ID)
+    enabled = bool(CIAM_TENANT_NAME and CIAM_CLIENT_ID)
+    if not enabled and not getattr(auth_enabled, "_warned", False):
+        logger.warning(
+            "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
+            "All requests will be treated as anonymous."
+        )
+        auth_enabled._warned = True  # type: ignore[attr-defined]
+    return enabled
 
 
 def validate_token(auth_header: str) -> dict[str, Any]:

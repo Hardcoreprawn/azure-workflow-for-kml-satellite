@@ -505,7 +505,7 @@ curl http://localhost:8080/api/health
 
 The frontend and backend share a contract version string that enforces backend-first deployment discipline. The website deploy workflow **will not proceed** unless the live backend reports the expected version at `/api/api-contract`.
 
-Current contract version: `2026-03-15.1` (defined in `function_app.py` as `_API_CONTRACT_VERSION` and in `website/static/app.js` as `REQUIRED_API_CONTRACT_VERSION`).
+Current contract version: `2026-03-15.1` (defined in `treesight/constants.py` as `API_CONTRACT_VERSION` and checked inline in `website/index.html`).
 
 ### When to bump the version
 
@@ -520,11 +520,11 @@ Do **not** bump for backend-only changes (new logic, bug fixes, performance impr
 ### How to bump
 
 1. Decide on the new version string using the format `YYYY-MM-DD.N` (e.g. `2026-04-01.1`).
-2. In `function_app.py`, update `_API_CONTRACT_VERSION = "NEW_VERSION"`.
-3. In `website/static/app.js`, update `REQUIRED_API_CONTRACT_VERSION = 'NEW_VERSION'`.
+2. In `treesight/constants.py`, update `API_CONTRACT_VERSION = "NEW_VERSION"`.
+3. Update the version check in `website/index.html` if the frontend validates the version string.
 4. Implement the new API capability in `function_app.py`.
 5. **Deploy the backend first** and confirm the deploy workflow passes (`/api/api-contract` returns the new version).
-6. Then deploy the frontend — the preflight gate in `deploy-website-swapp.yml` reads `REQUIRED_API_CONTRACT_VERSION` from source, calls the live endpoint, and only continues if the versions match.
+6. Then deploy the frontend — the deploy workflow checks that the live backend version matches before proceeding.
 
 If you deploy the frontend before the backend is ready, the gate will fail with a version mismatch error. This is intentional.
 
