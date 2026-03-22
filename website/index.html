@@ -634,11 +634,15 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
           <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Optical imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/sentinel-2-l2a" style="color:var(--c-accent)">Sentinel-2 L2A</a> via Planetary Computer</td><td style="padding:8px 12px">10 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">~5 days</td></tr>
           <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">High-res imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/naip" style="color:var(--c-accent)">NAIP</a> via Planetary Computer</td><td style="padding:8px 12px">0.6 m</td><td style="padding:8px 12px">US (CONUS) only</td><td style="padding:8px 12px">~2–3 year cycle</td></tr>
           <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Weather</td><td style="padding:8px 12px"><a href="https://open-meteo.com/en/docs/historical-weather-api" style="color:var(--c-accent)">Open-Meteo</a> Historical Archive</td><td style="padding:8px 12px">~25 km grid</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Daily</td></tr>
-          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Flood events</td><td style="padding:8px 12px">UK Environment Agency / USGS streamflow</td><td style="padding:8px 12px">Point/area</td><td style="padding:8px 12px">UK, US</td><td style="padding:8px 12px">Real-time</td></tr>
-          <tr><td style="padding:8px 12px">Fire hotspots</td><td style="padding:8px 12px"><a href="https://firms.modaps.eosdis.nasa.gov/" style="color:var(--c-accent)">NASA FIRMS</a> VIIRS/SNPP</td><td style="padding:8px 12px">375 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Near real-time</td></tr>
+          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Flood events</td><td style="padding:8px 12px">UK Environment Agency / USGS streamflow</td><td style="padding:8px 12px">Point/area</td><td style="padding:8px 12px">UK, US</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
+          <tr><td style="padding:8px 12px">Fire hotspots</td><td style="padding:8px 12px"><a href="https://firms.modaps.eosdis.nasa.gov/" style="color:var(--c-accent)">NASA FIRMS</a> VIIRS/SNPP</td><td style="padding:8px 12px">375 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
         </tbody>
       </table>
     </div>
+    <p style="font-size:.75rem;color:var(--c-muted);margin-bottom:16px">
+      Note: Flood and fire layers are experimental and depend on third-party APIs and required access keys.
+      Availability and recency may vary, and these layers can sometimes return no data.
+    </p>
 
     <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">How We Process It</h3>
     <ul style="font-size:.8rem;color:var(--c-muted);list-style:disc;padding-left:20px;margin-bottom:24px;line-height:1.8">
