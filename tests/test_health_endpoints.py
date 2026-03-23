@@ -1,0 +1,116 @@
+"""Tests for health, readiness, and contract endpoints (blueprints/health.py).
+
+Covers:
+- Response status codes and JSON bodies
+- CORS headers on GET responses (cross-origin API discovery)
+- OPTIONS preflight handling
+- Unknown origins are rejected
+"""
+
+import json
+
+import azure.functions as func
+
+from blueprints.health import contract, health, readiness
+from treesight.constants import API_CONTRACT_VERSION
+
+_ALLOWED_ORIGIN = "https://polite-glacier-0d6885003.4.azurestaticapps.net"
+_CUSTOM_DOMAIN_ORIGIN = "https://treesight.hrdcrprwn.com"
+_UNKNOWN_ORIGIN = "https://evil.example.com"
+
+
+def _make_req(method="GET", origin=_ALLOWED_ORIGIN):
+    return func.HttpRequest(
+        method=method,
+        url="/api/health",
+        headers={"Origin": origin} if origin else {},
+        body=b"",
+    )
+
+
+# ---------------------------------------------------------------------------
+# /api/health
+# ---------------------------------------------------------------------------
+
+
+class TestHealth:
+    def test_returns_200(self):
+        resp = health(_make_req())
+        assert resp.status_code == 200
+
+    def test_body_is_healthy(self):
+        resp = health(_make_req())
+        assert json.loads(resp.get_body()) == {"status": "healthy"}
+
+    def test_cors_header_for_allowed_origin(self):
+        resp = health(_make_req())
+        assert resp.headers.get("Access-Control-Allow-Origin") == _ALLOWED_ORIGIN
+
+    def test_cors_header_for_custom_domain(self):
+        resp = health(_make_req(origin=_CUSTOM_DOMAIN_ORIGIN))
+        assert resp.headers.get("Access-Control-Allow-Origin") == _CUSTOM_DOMAIN_ORIGIN
+
+    def test_no_cors_header_for_unknown_origin(self):
+        resp = health(_make_req(origin=_UNKNOWN_ORIGIN))
+        assert "Access-Control-Allow-Origin" not in resp.headers
+
+    def test_options_returns_204(self):
+        resp = health(_make_req(method="OPTIONS"))
+        assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# /api/readiness
+# ---------------------------------------------------------------------------
+
+
+class TestReadiness:
+    def test_returns_200(self):
+        resp = readiness(_make_req())
+        assert resp.status_code == 200
+
+    def test_body_contains_status_and_version(self):
+        resp = readiness(_make_req())
+        body = json.loads(resp.get_body())
+        assert body["status"] == "ready"
+        assert body["api_version"] == API_CONTRACT_VERSION
+
+    def test_cors_header_for_allowed_origin(self):
+        resp = readiness(_make_req())
+        assert resp.headers.get("Access-Control-Allow-Origin") == _ALLOWED_ORIGIN
+
+    def test_no_cors_header_for_unknown_origin(self):
+        resp = readiness(_make_req(origin=_UNKNOWN_ORIGIN))
+        assert "Access-Control-Allow-Origin" not in resp.headers
+
+    def test_options_returns_204(self):
+        resp = readiness(_make_req(method="OPTIONS"))
+        assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# /api/contract
+# ---------------------------------------------------------------------------
+
+
+class TestContract:
+    def test_returns_200(self):
+        resp = contract(_make_req())
+        assert resp.status_code == 200
+
+    def test_body_contains_version(self):
+        resp = contract(_make_req())
+        body = json.loads(resp.get_body())
+        assert body["api_version"] == API_CONTRACT_VERSION
+
+    def test_cors_header_for_allowed_origin(self):
+        resp = contract(_make_req())
+        assert resp.headers.get("Access-Control-Allow-Origin") == _ALLOWED_ORIGIN
+
+    def test_no_cors_header_for_unknown_origin(self):
+        resp = contract(_make_req(origin=_UNKNOWN_ORIGIN))
+        assert "Access-Control-Allow-Origin" not in resp.headers
+
+    def test_options_returns_204(self):
+        resp = contract(_make_req(method="OPTIONS"))
+        assert resp.status_code == 204
