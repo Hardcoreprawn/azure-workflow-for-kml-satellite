@@ -61,7 +61,7 @@ repos:
     rev: v1.5.0
     hooks:
       - id: detect-secrets
-        exclude: \.lock$|local\.settings\.json\.template$
+        exclude: \.lock$|local\.settings\.json\.template$|website/js/msal-browser\.min\.js$
 
   # ---------------------------------------------------------------------------
   # Bicep — lint infrastructure templates

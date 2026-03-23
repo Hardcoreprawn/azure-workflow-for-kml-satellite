@@ -433,8 +433,8 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
-<!-- nosemgrep: html.security.audit.missing-integrity — MSAL CDN does not expose stable hashes; CSP script-src restricts to alcdn.msauth.net -->
-<script src="https://alcdn.msauth.net/browser/2.42.0/js/msal-browser.min.js" crossorigin="anonymous"></script> <!-- nosemgrep -->
+<!-- Self-hosted MSAL v2.39.0 — Microsoft CDN deprecated from v3, see cdn-usage.md -->
+<script src="/js/msal-browser.min.js"></script>
 <script src="/js/app.js"></script>
 </body>
 </html>
