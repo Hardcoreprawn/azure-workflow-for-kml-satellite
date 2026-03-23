@@ -1,7 +1,7 @@
 # TreeSight — Product Roadmap & Business Strategy
 
-**Date:** 20 March 2026
-**Status:** Draft v1
+**Date:** 22 March 2026
+**Status:** Draft v2 — updated to reflect M1–M3 completion
 
 ---
 
@@ -67,12 +67,14 @@
 ### 2.2 Value Proposition Canvas
 
 **Customer pains eliminated:**
+
 - Hours/days of manual GIS work per AOI
 - Need for specialist GIS staff
 - Fragmented tooling (separate systems for imagery, weather, analysis)
 - No audit trail for compliance use cases
 
 **Gains created:**
+
 - Minutes-to-insight turnaround
 - AI-generated plain-English narratives
 - Integrated NDVI + weather + fire + flood context
@@ -196,7 +198,7 @@ KMZ is a ZIP archive containing a `doc.kml` file (and optionally embedded images
 
 #### Architecture
 
-```
+```text
 Timer Trigger (1st of each month)
   → Query subscribed AOIs from Cosmos DB
   → For each AOI: run pipeline (acquisition → enrichment) for latest Sentinel-2 scene
@@ -221,14 +223,14 @@ Timer Trigger (1st of each month)
 
 | # | Criterion | Status | Notes |
 |---|-----------|--------|-------|
-| H1 | **Authentication provider** (Azure AD B2C, Auth0, or Clerk) | Not started | Required for accounts + billing |
-| H2 | **Rate limiting** (per-user, per-IP) | Partial | Valet tokens exist; need per-user enforcement |
+| H1 | **Authentication provider** (Azure Entra External ID CIAM) | ✅ Done | JWT auth with RS256 JWKS validation, graceful degradation |
+| H2 | **Rate limiting** (per-user, per-IP) | ✅ Done | Per-IP sliding window (contact, pipeline poll, proxy), per-user quota (5 runs) |
 | H3 | **Application Insights / monitoring** | Not started | Must have before taking real traffic |
 | H4 | **Error alerting** (PagerDuty / Teams webhook) | Not started | Catch failures before users report them |
 | H5 | **Cost budget alerts** (Azure Cost Management) | Not started | Prevent runaway GPU costs |
-| H6 | **CI/CD pipeline** | Not started | Roadmap item #9; required for safe deployments |
+| H6 | **CI/CD pipeline** | ✅ Done | GitHub Actions: CI (lint, test, build), Deploy (infra, container, SWA), Security (Semgrep, Trivy, pip-audit, CodeQL) |
 | H7 | **HTTPS + custom domain** | Partial | Static Web App has HTTPS; need custom domain |
-| H8 | **Terms of service & privacy policy** | Not started | Legal prerequisite |
+| H8 | **Terms of service & privacy policy** | ✅ Done | terms.html and privacy.html deployed |
 | H9 | **Database for user records** | Not started | Azure Cosmos DB (serverless) or PostgreSQL Flexible |
 | H10 | **Secrets rotation / Key Vault wiring** | Partial | Config references Key Vault; needs production wiring |
 
@@ -286,6 +288,7 @@ At demo scale (50 analyses/month), AI cost is **< $0.25/month** — effectively 
 | **Prompt optimisation** (shorter system prompt, structured output) | 30–50% | Reduces token count per call |
 
 **Recommended approach for demo:**
+
 1. Use Azure AI Foundry with a cost-effective model (GPT-4o-mini or Mistral via model catalog)
 2. Cache AI results in blob storage keyed by `{aoi_hash}_{frame_index}`
 3. Set per-user daily call limits (e.g. 10 AI analyses/day on free tier)
@@ -307,7 +310,7 @@ At demo scale (50 analyses/month), AI cost is **< $0.25/month** — effectively 
 
 Single source of truth. Every item has a clear reason ("why now"), a value driver, and a dependency chain. Milestones are revenue gates — we don't move to the next milestone until the current one is releasable.
 
-### Milestone 1 — Deployable Product (Weeks 1–4)
+### Milestone 1 — Deployable Product ✅ COMPLETE
 
 **Goal:** Live on Azure, with CI/CD, monitoring, and auth. Nothing user-facing changes yet, but we can deploy safely and measure.
 
@@ -328,7 +331,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 ---
 
-### Milestone 2 — Free Tier Launch (Weeks 3–6)
+### Milestone 2 — Free Tier Launch ✅ COMPLETE
 
 **Goal:** Real users can sign up, run analyses, and we can track activation. No payment yet — pure learning.
 
@@ -352,11 +355,13 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 ---
 
-### Milestone 3 — Core Analysis Value (Weeks 4–8)
+### Milestone 3 — Core Analysis Value ✅ COMPLETE
 
 **Goal:** The analysis output is good enough that users would pay for it. This is the product-market fit milestone.
 
 **Why now:** Free tier users are in; now we need to deliver value worth paying for. These features are what competitors lack: integrated NDVI + weather + AI in one view.
+
+**Site Review Remediation** (8 PRs merged): SCL cloud masking, data methodology page, security hardening, event detection (flood/fire), copy fixes, demo polish, website polish. 445 tests passing.
 
 | # | Item | Effort | Depends On | Value Driver |
 |---|------|--------|------------|-------------|
@@ -488,11 +493,11 @@ These items don't have their own milestone. They ride alongside feature work to 
 
 ### Summary View
 
-```
-M1  Deployable Product          Wk 1–4   ░░░░░░░░░░░░
-M2  Free Tier Launch            Wk 3–6       ░░░░░░░░░░
-M3  Core Analysis Value         Wk 4–8         ░░░░░░░░░░░░
-M4  Revenue                     Wk 6–10            ░░░░░░░░░░░░
+```text
+M1  Deployable Product          Wk 1–4   ████████████  ✅
+M2  Free Tier Launch            Wk 3–6       ██████████  ✅
+M3  Core Analysis Value         Wk 4–8         ████████████  ✅
+M4  Revenue                     Wk 6–10            ░░░░░░░░░░░░  ← CURRENT
 M5  Growth & Retention          Wk 8–14               ░░░░░░░░░░░░░░░░
 M6  Team & API                  Wk 12–18                     ░░░░░░░░░░░░░░░░
 M7  Enterprise & Differentiation Wk 16–24+                          ░░░░░░░░░░░░░░░░░░
@@ -546,7 +551,7 @@ Revenue milestones:
 
 ---
 
-**Next action:** Begin Milestone 1, item 1.1 (CI/CD pipeline) to unblock all subsequent work.
+**Next action:** Begin Milestone 4 items — pricing page, usage metering, Stripe billing, and user dashboard. OpenAPI spec created (docs/openapi.yaml). See GitHub Issues for current backlog.
 
 ---
 
@@ -569,7 +574,7 @@ Revenue milestones:
 
 **The gap we fill:** Between free-but-manual tools (Google Earth, GFW) and powerful-but-expensive platforms (Planet, Descartes Labs).
 
-```
+```text
                           Ease of Use
                     High ◄──────────────► Low
               ┌──────────────────────────────────┐
@@ -585,6 +590,7 @@ Revenue milestones:
 ```
 
 **Our differentiation:**
+
 1. **KML-first workflow** — no one else starts from "upload a KML, get analysis back"
 2. **Integrated enrichment** — NDVI + weather + fire + flood + AI narrative in one place
 3. **Self-serve at SMB price** — $49/mo vs. $10K+/yr for Planet
@@ -616,6 +622,7 @@ The broader **geospatial analytics market** (including GIS, mapping, and spatial
 ### 11.2 Serviceable Addressable Market (SAM)
 
 TreeSight targets **self-serve satellite change detection for non-GIS users** — the segment that:
+
 - Needs satellite analysis but can't afford Planet/Maxar ($10K+/yr)
 - Doesn't have GIS staff to use Google Earth Engine
 - Wants more than free tools like GFW offer (custom AOIs, weather, AI)

@@ -20,7 +20,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --all-extras
       - run: uv run ruff check .
@@ -32,13 +32,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AzureWebJobsStorage: "UseDevelopmentStorage=true"
-      DEMO_VALET_TOKEN_SECRET: "ci-test-secret"
+      DEMO_VALET_TOKEN_SECRET: "ci-test-secret"  # pragma: allowlist secret
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --all-extras
       - run: uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: coverage
@@ -50,6 +50,6 @@ jobs:
     needs: [lint, test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build image (smoke test)
         run: docker build -t treesight:ci-check .

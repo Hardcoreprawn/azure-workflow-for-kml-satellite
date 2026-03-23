@@ -44,7 +44,7 @@ jobs:
     outputs:
       image_uri: ${{ steps.meta.outputs.image_uri }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -94,7 +94,7 @@ jobs:
     outputs:
       function_app_hostname: ${{ steps.hostname.outputs.hostname }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -109,7 +109,7 @@ jobs:
           tofu_version: ${{ env.TOFU_VERSION }}
 
       - name: Cache OpenTofu providers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: infra/tofu/.terraform/providers
           key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
@@ -269,7 +269,7 @@ jobs:
     needs: deploy-infra
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Inject API config
         run: |

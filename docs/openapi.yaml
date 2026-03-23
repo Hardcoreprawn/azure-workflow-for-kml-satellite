@@ -1,0 +1,721 @@
+openapi: "3.1.0"
+info:
+  title: TreeSight API
+  version: "1.0.0"
+  description: |
+    TreeSight — satellite imagery analysis platform. Upload a KML boundary,
+    get automated NDVI change detection, weather correlation and AI-generated
+    insights for conservation, agriculture and ESG compliance use cases.
+
+    ## Authentication
+
+    Most endpoints require a **CIAM JWT** issued by Azure Entra External ID.
+    Pass it as `Authorization: Bearer {token}`.
+
+    Demo artifact downloads use short-lived **valet tokens** instead of JWTs.
+
+    Health and contract endpoints are unauthenticated.
+
+    ## Rate Limits
+
+    Certain endpoints enforce per-IP sliding-window rate limits.  When exceeded
+    the API returns `429 Too Many Requests`.
+
+    | Scope         | Limit        | Applies to                     |
+    |---------------|-------------|--------------------------------|
+    | Contact form  | 5 / 60 s   | `/api/contact-form`            |
+    | Pipeline poll | 30 / 60 s  | `/api/orchestrator/{id}`       |
+    | CORS proxy    | 60 / 60 s  | `/api/proxy`                   |
+
+    ## Pipeline Quota (Free Tier)
+
+    Each user may execute up to **5 pipeline runs**. Exceeding this returns
+    `403 Forbidden` with a quota-exhausted message.
+  contact:
+    name: TreeSight
+    url: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: https://polite-glacier-0d6885003.4.azurestaticapps.net/api
+    description: Production (Azure Static Web Apps → Function App)
+  - url: http://localhost:7071/api
+    description: Local development
+
+tags:
+  - name: health
+    description: Health and readiness probes
+  - name: demo
+    description: Demo pipeline submission and artifact retrieval
+  - name: pipeline
+    description: Pipeline orchestration and status
+  - name: analysis
+    description: AI-powered satellite analysis
+  - name: export
+    description: Data export (GeoJSON, CSV)
+  - name: contact
+    description: Contact form
+
+paths:
+  # ── Health ────────────────────────────────────────────────
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                required: [status]
+
+  /readiness:
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is ready to accept requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  api_version:
+                    type: string
+                    example: v1
+                required: [status, api_version]
+
+  /contract:
+    get:
+      operationId: getContract
+      summary: API version contract
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: API contract metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  api_version:
+                    type: string
+                    example: v1
+                required: [api_version]
+
+  # ── Demo ──────────────────────────────────────────────────
+  /demo-submit:
+    post:
+      operationId: demoSubmit
+      summary: Submit a KML for demo pipeline processing
+      description: |
+        Accepts raw KML text, uploads it to blob storage and triggers
+        the analysis pipeline.  Consumes one quota unit per call.
+      tags: [demo]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kml_content:
+                  type: string
+                  description: Raw KML/KMZ XML content
+              required: [kml_content]
+      responses:
+        "202":
+          description: Pipeline started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission_id:
+                    type: string
+                    description: Unique identifier for this submission
+                  instance_id:
+                    type: string
+                    description: Durable Functions orchestration instance ID
+                  status:
+                    type: string
+                    example: accepted
+                required: [submission_id, instance_id, status]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/QuotaExhausted"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /demo-process:
+    post:
+      operationId: demoProcess
+      summary: Start a demo pipeline run
+      description: |
+        Triggers a pipeline run for a previously uploaded KML.
+        Consumes one quota unit.
+      tags: [demo]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                blob_name:
+                  type: string
+                  description: Blob name of the uploaded KML
+              required: [blob_name]
+      responses:
+        "202":
+          description: Pipeline started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance_id:
+                    type: string
+                  status:
+                    type: string
+                    example: accepted
+                required: [instance_id, status]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/QuotaExhausted"
+
+  /demo-valet-tokens:
+    post:
+      operationId: demoValetTokens
+      summary: Generate valet tokens for artifact download
+      description: |
+        Creates short-lived HMAC-signed tokens that grant access
+        to specific pipeline output artifacts.  Requires function-level
+        authentication (Azure Functions host key).
+      tags: [demo]
+      security:
+        - functionKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                submission_id:
+                  type: string
+                artifact_paths:
+                  type: array
+                  items:
+                    type: string
+              required: [submission_id, artifact_paths]
+      responses:
+        "200":
+          description: Valet tokens generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        artifact_path:
+                          type: string
+                        token:
+                          type: string
+                        expires_at:
+                          type: string
+                          format: date-time
+                required: [tokens]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /demo-artifacts:
+    get:
+      operationId: demoArtifacts
+      summary: Download a pipeline artifact using a valet token
+      description: |
+        Retrieves a specific artifact (imagery, GeoJSON, etc.) using a
+        short-lived valet token.  No JWT required.
+      tags: [demo]
+      security:
+        - valetToken: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: HMAC-signed valet token
+      responses:
+        "200":
+          description: Artifact content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          description: Token invalid, expired, or replay detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Pipeline ──────────────────────────────────────────────
+  /orchestrator/{instance_id}:
+    get:
+      operationId: getOrchestratorStatus
+      summary: Poll pipeline orchestration status
+      description: |
+        Returns the current status of a Durable Functions orchestration,
+        including progress updates and final output when complete.
+      tags: [pipeline]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+      responses:
+        "200":
+          description: Orchestration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runtimeStatus:
+                    type: string
+                    enum: [Running, Completed, Failed, Terminated, Pending]
+                  custom_status:
+                    type: object
+                    description: Progress information (step, percentage, message)
+                  output:
+                    description: Final pipeline output (present when Completed)
+                    $ref: "#/components/schemas/PipelineSummary"
+                required: [runtimeStatus]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /timelapse-data/{instance_id}:
+    get:
+      operationId: getTimelapseData
+      summary: Retrieve timelapse imagery data for a pipeline run
+      tags: [pipeline]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+      responses:
+        "200":
+          description: Timelapse data with imagery URLs and metadata
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Instance not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Analysis ──────────────────────────────────────────────
+  /frame-analysis:
+    post:
+      operationId: frameAnalysis
+      summary: AI analysis of a single imagery frame
+      description: |
+        Sends NDVI, weather, and imagery metadata to Azure AI Foundry
+        for single-frame analysis.  Returns structured observations,
+        a severity score, and plain-English summary.
+      tags: [analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Frame context (NDVI stats, weather, metadata)
+        description: Maximum body size 32 KiB
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: Payload too large (> 32 KiB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /timelapse-analysis:
+    post:
+      operationId: timelapseAnalysis
+      summary: AI analysis of a temporal imagery series
+      description: |
+        Analyses NDVI trends over time, correlates with weather data,
+        and generates a narrative summary of change detection findings.
+      tags: [analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Timelapse context (multi-frame NDVI, weather series)
+        description: Maximum body size 32 KiB
+      responses:
+        "200":
+          description: Timelapse analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: Payload too large (> 32 KiB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /timelapse-analysis-save:
+    post:
+      operationId: timelapseAnalysisSave
+      summary: Persist a timelapse analysis result
+      description: |
+        Saves a completed analysis to blob storage for later retrieval.
+        Maximum body size 128 KiB.
+      tags: [analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Analysis saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: saved
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: Payload too large (> 128 KiB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /timelapse-analysis-load/{instance_id}:
+    get:
+      operationId: timelapseAnalysisLoad
+      summary: Load a previously saved timelapse analysis
+      tags: [analysis]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+      responses:
+        "200":
+          description: Previously saved analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Export ────────────────────────────────────────────────
+  /export/{instance_id}/{format}:
+    get:
+      operationId: exportData
+      summary: Export pipeline results
+      description: |
+        Downloads pipeline output in the specified format.
+      tags: [export]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+        - name: format
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [geojson, csv]
+          description: Export format
+      responses:
+        "200":
+          description: Exported data
+          content:
+            application/geo+json:
+              schema:
+                type: object
+                description: GeoJSON FeatureCollection
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Instance or data not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Contact ───────────────────────────────────────────────
+  /contact-form:
+    post:
+      operationId: submitContactForm
+      summary: Submit the website contact form
+      tags: [contact]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                message:
+                  type: string
+              required: [name, email, message]
+      responses:
+        "200":
+          description: Message received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: received
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  # ── Proxy ─────────────────────────────────────────────────
+  /proxy:
+    get:
+      operationId: corsProxy
+      summary: CORS proxy for third-party APIs
+      description: |
+        Proxies GET requests to allowed third-party APIs (e.g. Open-Meteo,
+        FIRMS fire data) to work around browser CORS restrictions.
+        Response size capped at 5 MiB.
+      tags: [demo]
+      security: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: Target URL to proxy (must match allowlist)
+      responses:
+        "200":
+          description: Proxied response
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: URL not on allowlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "502":
+          description: Upstream error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: CIAM JWT from Azure Entra External ID
+    functionKey:
+      type: apiKey
+      in: header
+      name: x-functions-key
+      description: Azure Functions host key
+    valetToken:
+      type: apiKey
+      in: query
+      name: token
+      description: Short-lived HMAC-signed valet token
+
+  parameters:
+    instanceId:
+      name: instance_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Durable Functions orchestration instance ID
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      required: [error]
+
+    AnalysisResult:
+      type: object
+      properties:
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Observation"
+        summary:
+          type: string
+          description: 2-3 sentence plain-English summary
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Overall health score (0 = critical, 1 = healthy)
+        key_finding:
+          type: string
+          description: Single most important finding (timelapse only)
+      required: [observations, summary, score]
+
+    Observation:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [vegetation_health, water, clearing, anomaly, trend]
+        severity:
+          type: string
+          enum: [critical, high, moderate, low, normal]
+        description:
+          type: string
+        recommendation:
+          type: string
+      required: [category, severity, description, recommendation]
+
+    PipelineSummary:
+      type: object
+      description: Aggregated pipeline output when orchestration completes
+      properties:
+        status:
+          type: string
+          enum: [success, partial, failed]
+        features_parsed:
+          type: integer
+        aois_prepared:
+          type: integer
+        scenes_found:
+          type: integer
+        downloads_completed:
+          type: integer
+        enrichment_manifest:
+          type: string
+          description: Blob path to the enrichment manifest JSON
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    QuotaExhausted:
+      description: Free tier quota exhausted (5 pipeline runs)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Free quota exhausted (5 pipeline runs). Please upgrade to continue."
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: "Rate limit exceeded. Try again later."
+
+security:
+  - bearerAuth: []
