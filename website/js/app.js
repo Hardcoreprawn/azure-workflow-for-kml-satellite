@@ -2803,62 +2803,89 @@
     return new Date(iso).toLocaleDateString();
   }
 
+  /* DOM helper — create element with class, text, and attributes */
+  function el(tag, className, text, attrs) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    if (attrs) { for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, attrs[k]); } }
+    return node;
+  }
+
+  function clearChildren(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
   function renderKmlList(kmls) {
     var list = document.getElementById('dash-kml-list');
     var count = document.getElementById('dash-kml-count');
     count.textContent = kmls.length;
+    clearChildren(list);
     if (!kmls.length) {
-      list.innerHTML = '<div class="dash-empty">No KML files yet. Upload one to get started.</div>';
+      list.appendChild(el('div', 'dash-empty', 'No KML files yet. Upload one to get started.'));
       return;
     }
-    list.innerHTML = kmls.map(function(k) {
-      return '<div class="dash-item" data-kml-id="' + escapeHtml(k.id) + '">' +
-        '<div class="dash-item-info">' +
-          '<div class="dash-item-name">' + escapeHtml(k.name) + '</div>' +
-          '<div class="dash-item-meta">' + (k.polygon_count || 0) + ' polygon' + (k.polygon_count !== 1 ? 's' : '') + ' · ' + timeAgo(k.uploaded_at) + '</div>' +
-        '</div>' +
-        '<div class="dash-item-actions">' +
-          '<button class="dash-action" title="Download" data-action="download-kml" data-id="' + escapeHtml(k.id) + '" data-name="' + escapeHtml(k.name) + '">⬇</button>' +
-          '<button class="dash-action danger" title="Delete" data-action="delete-kml" data-id="' + escapeHtml(k.id) + '">✕</button>' +
-        '</div></div>';
-    }).join('');
+    kmls.forEach(function(k) {
+      var row = el('div', 'dash-item', null, { 'data-kml-id': k.id });
+
+      var info = el('div', 'dash-item-info');
+      info.appendChild(el('div', 'dash-item-name', k.name));
+      info.appendChild(el('div', 'dash-item-meta', (k.polygon_count || 0) + ' polygon' + (k.polygon_count !== 1 ? 's' : '') + ' · ' + timeAgo(k.uploaded_at)));
+      row.appendChild(info);
+
+      var actions = el('div', 'dash-item-actions');
+      actions.appendChild(el('button', 'dash-action', '⬇', { title: 'Download', 'data-action': 'download-kml', 'data-id': k.id, 'data-name': k.name }));
+      actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-kml', 'data-id': k.id }));
+      row.appendChild(actions);
+
+      list.appendChild(row);
+    });
   }
 
   function renderAnalysisList(analyses) {
     var list = document.getElementById('dash-analysis-list');
     var count = document.getElementById('dash-analysis-count');
     count.textContent = analyses.length;
+    clearChildren(list);
     if (!analyses.length) {
-      list.innerHTML = '<div class="dash-empty">No analyses yet. Process a KML to create one.</div>';
+      list.appendChild(el('div', 'dash-empty', 'No analyses yet. Process a KML to create one.'));
       return;
     }
-    list.innerHTML = analyses.map(function(a) {
+    analyses.forEach(function(a) {
       var statusClass = a.status || 'completed';
       var statusLabel = statusClass === 'completed' ? '✓ Completed' : statusClass === 'running' ? '⟳ Running' : '✕ Failed';
-      var meta = escapeHtml(a.kml_name || 'Untitled');
-      if (a.aoi_name) meta += ' · ' + escapeHtml(a.aoi_name);
-      if (a.frame_count) meta += ' · ' + a.frame_count + ' frames';
-      meta += ' · ' + timeAgo(a.created_at);
-      return '<div class="dash-item" data-analysis-id="' + escapeHtml(a.id) + '">' +
-        '<div class="dash-item-info">' +
-          '<div class="dash-item-name">' + escapeHtml(a.kml_name || 'Analysis') + (a.aoi_name ? ' — ' + escapeHtml(a.aoi_name) : '') + '</div>' +
-          '<div class="dash-item-meta">' + meta + '</div>' +
-        '</div>' +
-        '<div class="dash-item-actions">' +
-          '<span class="dash-status ' + statusClass + '">' + statusLabel + '</span>' +
-          '<button class="dash-action danger" title="Delete" data-action="delete-analysis" data-id="' + escapeHtml(a.id) + '">✕</button>' +
-        '</div></div>';
-    }).join('');
+      var nameText = (a.kml_name || 'Analysis') + (a.aoi_name ? ' — ' + a.aoi_name : '');
+      var metaParts = [a.kml_name || 'Untitled'];
+      if (a.aoi_name) metaParts.push(a.aoi_name);
+      if (a.frame_count) metaParts.push(a.frame_count + ' frames');
+      metaParts.push(timeAgo(a.created_at));
+
+      var row = el('div', 'dash-item', null, { 'data-analysis-id': a.id });
+
+      var info = el('div', 'dash-item-info');
+      info.appendChild(el('div', 'dash-item-name', nameText));
+      info.appendChild(el('div', 'dash-item-meta', metaParts.join(' · ')));
+      row.appendChild(info);
+
+      var actions = el('div', 'dash-item-actions');
+      actions.appendChild(el('span', 'dash-status ' + statusClass, statusLabel));
+      actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-analysis', 'data-id': a.id }));
+      row.appendChild(actions);
+
+      list.appendChild(row);
+    });
   }
 
   async function loadDashboard() {
     var list = document.getElementById('dash-kml-list');
-    list.innerHTML = '<div class="dash-loading">Loading library…</div>';
-    document.getElementById('dash-analysis-list').innerHTML = '<div class="dash-loading">Loading…</div>';
+    var analysisList = document.getElementById('dash-analysis-list');
+    clearChildren(list);
+    list.appendChild(el('div', 'dash-loading', 'Loading library…'));
+    clearChildren(analysisList);
+    analysisList.appendChild(el('div', 'dash-loading', 'Loading…'));
 
     var res = await apiFetch('/api/library');
     if (!res || !res.ok) {
-      list.innerHTML = '<div class="dash-empty">Could not load library.</div>';
+      clearChildren(list);
+      list.appendChild(el('div', 'dash-empty', 'Could not load library.'));
       return;
     }
     var data = await res.json();
