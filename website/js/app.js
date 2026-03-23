@@ -5,7 +5,6 @@
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
   let apiBase = '';
-  let contractOk = false;
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
   var enrichmentPayload = null;    /* cached enrichment manifest from pipeline */
 
@@ -30,6 +29,7 @@
   function initAuth() {
     if (!authEnabled()) {
       /* Auth not configured — hide auth UI, allow anonymous access */
+      updateAuthUI();
       return;
     }
     var msalConfig = {
@@ -161,9 +161,7 @@
       if (!res || !res.ok) return;
       const data = await res.json();
       document.getElementById('contract-version').textContent = data.api_version || '—';
-      if (data.api_version === EXPECTED_CONTRACT) {
-        contractOk = true;
-      } else {
+      if (data.api_version !== EXPECTED_CONTRACT) {
         document.getElementById('contract-warning').classList.add('show');
         document.getElementById('demo-submit').disabled = true;
         document.getElementById('demo-submit').style.opacity = '0.5';
@@ -645,7 +643,6 @@
       reader.onload = async function(e) {
         try {
           var blob = new Blob([e.target.result]);
-          var ds = new DecompressionStream('deflate-raw');
           /* KMZ is a ZIP — find the local file header and extract */
           var buf = await blob.arrayBuffer();
           var view = new DataView(buf);
@@ -2067,9 +2064,6 @@
       var events = [];
       var timeSeries = data.value?.timeSeries || data.sites || [];
       if (!timeSeries.length) return null;
-
-      var now = new Date();
-      var cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);  /* last 30 days */
 
       timeSeries.forEach(function(ts) {
         if (!ts.sourceInfo) return;
