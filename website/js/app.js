@@ -253,13 +253,22 @@
   function showPipelineResults(output) {
     var el = document.getElementById('pipeline-results');
     var stats = document.getElementById('pipeline-stats');
-    stats.innerHTML =
-      '<div class="stat"><b>'+parseInt(output.featureCount,10)||0+'</b> features parsed</div>'+
-      '<div class="stat"><b>'+parseInt(output.metadataCount,10)||0+'</b> AOIs prepared</div>'+
-      '<div class="stat"><b>'+parseInt(output.imageryReady,10)||0+'</b> scenes acquired</div>'+
-      '<div class="stat"><b>'+parseInt(output.imageryFailed,10)||0+'</b> failed</div>'+
-      '<div class="stat"><b>'+parseInt(output.downloadsCompleted,10)||0+'</b> downloaded</div>'+
-      '<div class="stat"><b>'+parseInt(output.postProcessCompleted,10)||0+'</b> clipped &amp; reprojected</div>';
+    function addStat(value, label) {
+      var div = document.createElement('div');
+      div.className = 'stat';
+      var b = document.createElement('b');
+      b.textContent = parseInt(value, 10) || 0;
+      div.appendChild(b);
+      div.appendChild(document.createTextNode(' ' + label));
+      stats.appendChild(div);
+    }
+    stats.replaceChildren();
+    addStat(output.featureCount, 'features parsed');
+    addStat(output.metadataCount, 'AOIs prepared');
+    addStat(output.imageryReady, 'scenes acquired');
+    addStat(output.imageryFailed, 'failed');
+    addStat(output.downloadsCompleted, 'downloaded');
+    addStat(output.postProcessCompleted, 'clipped & reprojected');
     el.style.display = 'block';
   }
 
@@ -1100,12 +1109,14 @@
   function populateCompareSelects() {
     var selL = document.getElementById('compare-left');
     var selR = document.getElementById('compare-right');
-    selL.innerHTML = '';
-    selR.innerHTML = '';
+    selL.replaceChildren();
+    selR.replaceChildren();
     for (var i = 0; i < framesMeta.length; i++) {
-      var opt = '<option value="'+i+'">' + escapeHtml(framesMeta[i].label) + '</option>';
-      selL.innerHTML += opt;
-      selR.innerHTML += opt;
+      var optL = document.createElement('option');
+      optL.value = i;
+      optL.textContent = framesMeta[i].label;
+      selL.appendChild(optL);
+      selR.appendChild(optL.cloneNode(true));
     }
     /* Default: first and last frame */
     selL.value = 0;
@@ -1747,7 +1758,7 @@
       assessText = 'Insufficient data for period comparison.';
     }
 
-    grid.innerHTML = html;
+    grid.innerHTML = html; // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all values are numeric (.toFixed), no user input
     assess.textContent = assessText;
     panel.style.display = 'block';
   }
@@ -2226,9 +2237,17 @@
     });
 
     var all = rows.concat(alerts);
-    el.innerHTML = all.map(function(r){
-      return '<div class="insight-row'+(r.alert?' alert':'')+'"><span class="insight-icon">'+escapeHtml(r.icon)+'</span> '+escapeHtml(r.text)+'</div>';
-    }).join('');
+    el.replaceChildren();
+    all.forEach(function(r) {
+      var row = document.createElement('div');
+      row.className = 'insight-row' + (r.alert ? ' alert' : '');
+      var icon = document.createElement('span');
+      icon.className = 'insight-icon';
+      icon.textContent = r.icon;
+      row.appendChild(icon);
+      row.appendChild(document.createTextNode(' ' + r.text));
+      el.appendChild(row);
+    });
   }
 
   var frameLayers = [], framesMeta = [];
@@ -2254,15 +2273,38 @@
     aoiPolygon.bringToFront();
     aoiSubPolygons.forEach(function(l){ l.bringToFront(); });
     var m = framesMeta[idx];
-    var badge = m.isNaip && !useNdvi ? ' <span class="naip-badge">NAIP 0.6m</span>' : '';
-    var ndviBadge = useNdvi ? ' <span class="naip-badge" style="background:var(--c-green)">NDVI</span>' : '';
-    document.getElementById('frame-label').innerHTML = escapeHtml(m.label)+badge+ndviBadge;
+    function buildLabelNodes(container, label, isNaip, showNdvi) {
+      container.replaceChildren();
+      container.appendChild(document.createTextNode(label));
+      if (isNaip && !showNdvi) {
+        var b = document.createElement('span');
+        b.className = 'naip-badge';
+        b.textContent = 'NAIP 0.6m';
+        container.appendChild(document.createTextNode(' '));
+        container.appendChild(b);
+      }
+      if (showNdvi) {
+        var n = document.createElement('span');
+        n.className = 'naip-badge';
+        n.style.background = 'var(--c-green)';
+        n.textContent = 'NDVI';
+        container.appendChild(document.createTextNode(' '));
+        container.appendChild(n);
+      }
+    }
+    buildLabelNodes(document.getElementById('frame-label'), m.label, m.isNaip, useNdvi);
     document.getElementById('frame-counter').textContent = (idx+1)+' / '+frameLayers.length;
     document.getElementById('frame-slider').value = idx;
     document.getElementById('frame-info').textContent = m.info;
 
     /* Update header bar */
-    document.getElementById('header-frame-label').innerHTML = escapeHtml(m.label)+badge+ndviBadge + ' <span style="color:var(--c-muted);font-size:.75rem;margin-left:4px">' + (idx+1)+'/'+frameLayers.length + '</span>';
+    var headerLabel = document.getElementById('header-frame-label');
+    buildLabelNodes(headerLabel, m.label, m.isNaip, useNdvi);
+    var counter = document.createElement('span');
+    counter.style.cssText = 'color:var(--c-muted);font-size:.75rem;margin-left:4px';
+    counter.textContent = (idx+1)+'/'+frameLayers.length;
+    headerLabel.appendChild(document.createTextNode(' '));
+    headerLabel.appendChild(counter);
 
     /* Update weather marker, NDVI trend marker, and insights */
     updateWeatherMarker();
@@ -2309,7 +2351,7 @@
         obsHtml += '</div>';
       });
     }
-    content.innerHTML = obsHtml;
+    content.innerHTML = obsHtml; // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all dynamic values passed through escapeHtml()
     content.style.display = 'block';
     if (analysis.summary) {
       summary.textContent = analysis.summary;
