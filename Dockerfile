@@ -1,31 +1,27 @@
-# Azure Functions Python host for local development.
-# Installs Core Tools v4 + Python deps, then runs `func start`.
+# Azure Functions Python container image for TreeSight.
+# No system GDAL/GEOS/PROJ required — manylinux wheels for rasterio,
+# fiona, pyproj, and shapely bundle their own native libraries.
 
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12
+
+LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
+      org.opencontainers.image.description="TreeSight – satellite vegetation-analysis API"
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 WORKDIR /home/site/wwwroot
 
-# Install system deps for GDAL/Fiona/rasterio
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-        gdal-bin libgdal-dev && \
-    rm -rf /var/lib/apt/lists/*
-
 # Install uv for fast dependency resolution
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
 
-# Copy dependency manifest and install into system Python
-# (Azure Functions Python worker uses system interpreter, not a venv)
-COPY pyproject.toml ./
+# Install Python packages into system interpreter
+COPY pyproject.toml uv.lock ./
 RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
-    uv pip install --system -r /tmp/requirements.txt
+    uv pip install --system -r /tmp/requirements.txt && \
+    rm -f /tmp/requirements.txt
 
-# Copy application code
+# Copy application code only (no scripts/, typings/, tests/, docs/)
 COPY host.json function_app.py ./
 COPY treesight/ treesight/
 COPY blueprints/ blueprints/
-COPY scripts/ scripts/
-COPY typings/ typings/
