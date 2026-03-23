@@ -13,10 +13,10 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 WORKDIR /home/site/wwwroot
 
 # Install uv for fast dependency resolution
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
 
 # Install Python packages into system interpreter
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
     uv pip install --system -r /tmp/requirements.txt && \
     rm -f /tmp/requirements.txt
