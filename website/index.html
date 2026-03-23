@@ -29,14 +29,15 @@
       TreeSight
     </a>
     <ul>
-      <li><a href="#problem">Overview</a></li>
-      <li><a href="#demo">Demo</a></li>
+      <li class="nav-marketing"><a href="#problem">Overview</a></li>
+      <li id="nav-library" style="display:none"><a href="#dashboard">My Library</a></li>
+      <li><a href="#demo" id="nav-demo-link">Demo</a></li>
       <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
-      <li><a href="#pricing">Pricing</a></li>
+      <li class="nav-marketing"><a href="#pricing">Pricing</a></li>
       <li><a href="#data-sources">Data</a></li>
-      <li><a href="#faq">FAQ</a></li>
-      <li><a href="#early-access">Early Access</a></li>
+      <li class="nav-marketing"><a href="#faq">FAQ</a></li>
+      <li class="nav-marketing"><a href="#early-access">Early Access</a></li>
     </ul>
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
@@ -80,6 +81,76 @@
       <div class="cap-item"><span class="dot"></span>Durable Functions orchestration with fan-out parallelism</div>
       <div class="cap-item"><span class="dot"></span>Automatic retry with exponential backoff</div>
       <div class="cap-item"><span class="dot"></span>Clip and reproject to target CRS</div>
+    </div>
+  </div>
+</section>
+
+<!-- Dashboard (authenticated users only) -->
+<section id="dashboard" style="display:none">
+  <div class="container">
+    <div class="section-label">Your Workspace</div>
+    <h2>My Library</h2>
+    <div class="dash-toolbar">
+      <button class="btn btn-primary btn-sm" id="dash-upload-btn">+ Upload KML</button>
+      <a href="#demo" class="btn btn-secondary btn-sm">Process New KML</a>
+    </div>
+
+    <!-- Upload Form (hidden by default) -->
+    <div id="dash-upload-form" class="dash-upload-form" style="display:none">
+      <div class="demo-form" style="margin-bottom:24px">
+        <h3 style="margin-bottom:12px">Upload KML to Library</h3>
+        <div class="drop-zone" id="dash-drop-zone">
+          <div class="drop-icon">📁</div>
+          <div class="drop-text"><strong>Drop a .kml file here</strong>, or click to browse</div>
+          <div class="file-name" id="dash-drop-file-name"></div>
+          <input type="file" id="dash-file-input" accept=".kml,application/vnd.google-earth.kml+xml">
+        </div>
+        <div class="drop-divider">— or paste KML text —</div>
+        <label for="dash-kml-name">Name (optional)</label>
+        <input type="text" id="dash-kml-name" placeholder="My forest area">
+        <label for="dash-kml-content">KML Content</label>
+        <textarea id="dash-kml-content" placeholder="Paste KML content here…" style="min-height:80px"></textarea>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="dash-upload-submit" style="flex:1">Save to Library</button>
+          <button class="btn btn-secondary" id="dash-upload-cancel">Cancel</button>
+        </div>
+        <div id="dash-upload-status" class="demo-status"></div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <!-- KMLs Panel -->
+      <div class="dash-panel">
+        <div class="dash-panel-header">
+          <h3>KML Files</h3>
+          <span class="dash-count" id="dash-kml-count">0</span>
+        </div>
+        <div id="dash-kml-list" class="dash-list">
+          <div class="dash-empty" id="dash-kml-empty">No KML files yet. Upload one to get started.</div>
+        </div>
+      </div>
+
+      <!-- Analyses Panel -->
+      <div class="dash-panel">
+        <div class="dash-panel-header">
+          <h3>Analyses</h3>
+          <span class="dash-count" id="dash-analysis-count">0</span>
+        </div>
+        <div id="dash-analysis-list" class="dash-list">
+          <div class="dash-empty" id="dash-analysis-empty">No analyses yet. Process a KML to create one.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account Section -->
+    <div class="dash-account">
+      <h3>Account &amp; Data Rights</h3>
+      <p style="color:var(--c-muted);font-size:.85rem;margin-bottom:12px">Under UK GDPR, you have the right to export or permanently delete all your data at any time.</p>
+      <div class="dash-account-actions">
+        <button class="btn btn-secondary btn-sm" id="dash-export-btn">Export My Data</button>
+        <button class="btn btn-danger btn-sm" id="dash-delete-account-btn">Delete My Account</button>
+      </div>
+      <div id="dash-account-status" class="demo-status" style="margin-top:12px"></div>
     </div>
   </div>
 </section>

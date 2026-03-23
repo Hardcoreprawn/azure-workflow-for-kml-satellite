@@ -83,12 +83,18 @@
     }
   }
 
+  /* Marketing sections to hide when logged in */
+  var MARKETING_SECTIONS = ['problem', 'social-proof', 'pricing', 'faq', 'early-access'];
+
   function updateAuthUI() {
     var loginBtn = document.getElementById('auth-login-btn');
     var logoutBtn = document.getElementById('auth-logout-btn');
     var userSpan = document.getElementById('auth-user');
     var loginPrompt = document.getElementById('login-prompt');
     var submitBtn = document.getElementById('demo-submit');
+    var dashboard = document.getElementById('dashboard');
+    var hero = document.querySelector('.hero');
+    var navLibrary = document.getElementById('nav-library');
 
     if (!authEnabled()) {
       /* Auth not configured — hide auth controls, anonymous access */
@@ -108,12 +114,38 @@
       logoutBtn.style.display = 'inline';
       loginPrompt.style.display = 'none';
       if (submitBtn) submitBtn.textContent = 'Process KML';
+
+      /* Logged in: show dashboard, hide marketing fluff */
+      if (dashboard) dashboard.style.display = '';
+      if (hero) hero.style.display = 'none';
+      if (navLibrary) navLibrary.style.display = '';
+      MARKETING_SECTIONS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      document.querySelectorAll('.nav-marketing').forEach(function(li) { li.style.display = 'none'; });
+      var demoLink = document.getElementById('nav-demo-link');
+      if (demoLink) demoLink.textContent = 'New Analysis';
+      /* Load library data */
+      if (!dashboardLoaded) loadDashboard();
     } else {
       userSpan.style.display = 'none';
       loginBtn.style.display = 'inline';
       logoutBtn.style.display = 'none';
       loginPrompt.style.display = 'block';
       if (submitBtn) submitBtn.textContent = 'Sign In to Process KML';
+
+      /* Logged out: show marketing, hide dashboard */
+      if (dashboard) dashboard.style.display = 'none';
+      if (hero) hero.style.display = '';
+      if (navLibrary) navLibrary.style.display = 'none';
+      MARKETING_SECTIONS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = '';
+      });
+      document.querySelectorAll('.nav-marketing').forEach(function(li) { li.style.display = ''; });
+      var demoLink2 = document.getElementById('nav-demo-link');
+      if (demoLink2) demoLink2.textContent = 'Demo';
     }
   }
 
@@ -447,6 +479,9 @@
       /* Step 6: Launch timelapse with pipeline-produced data */
       document.getElementById('frame-info').textContent = 'Loading satellite imagery timelapse…';
       launchTimelapse(coords, polygons);
+
+      /* Auto-save KML + analysis to user's library */
+      autoSaveToLibrary(kml, instanceId, output);
 
     } catch(err) {
       showPipelineError('Pipeline error: ' + err.message);
@@ -2752,12 +2787,305 @@
   document.getElementById('frame-label').textContent = 'Load KML and click Process to begin';
   document.getElementById('frame-info').textContent = 'Pipeline will parse, search, download, clip and reproject imagery for your AOI';
 
+  /* =====================================================================
+     Dashboard — User Library, GDPR account management (M4.4)
+     ===================================================================== */
+
+  var dashboardLoaded = false;
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  function renderKmlList(kmls) {
+    var list = document.getElementById('dash-kml-list');
+    var count = document.getElementById('dash-kml-count');
+    count.textContent = kmls.length;
+    if (!kmls.length) {
+      list.innerHTML = '<div class="dash-empty">No KML files yet. Upload one to get started.</div>';
+      return;
+    }
+    list.innerHTML = kmls.map(function(k) {
+      return '<div class="dash-item" data-kml-id="' + escapeHtml(k.id) + '">' +
+        '<div class="dash-item-info">' +
+          '<div class="dash-item-name">' + escapeHtml(k.name) + '</div>' +
+          '<div class="dash-item-meta">' + (k.polygon_count || 0) + ' polygon' + (k.polygon_count !== 1 ? 's' : '') + ' · ' + timeAgo(k.uploaded_at) + '</div>' +
+        '</div>' +
+        '<div class="dash-item-actions">' +
+          '<button class="dash-action" title="Download" data-action="download-kml" data-id="' + escapeHtml(k.id) + '" data-name="' + escapeHtml(k.name) + '">⬇</button>' +
+          '<button class="dash-action danger" title="Delete" data-action="delete-kml" data-id="' + escapeHtml(k.id) + '">✕</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function renderAnalysisList(analyses) {
+    var list = document.getElementById('dash-analysis-list');
+    var count = document.getElementById('dash-analysis-count');
+    count.textContent = analyses.length;
+    if (!analyses.length) {
+      list.innerHTML = '<div class="dash-empty">No analyses yet. Process a KML to create one.</div>';
+      return;
+    }
+    list.innerHTML = analyses.map(function(a) {
+      var statusClass = a.status || 'completed';
+      var statusLabel = statusClass === 'completed' ? '✓ Completed' : statusClass === 'running' ? '⟳ Running' : '✕ Failed';
+      var meta = escapeHtml(a.kml_name || 'Untitled');
+      if (a.aoi_name) meta += ' · ' + escapeHtml(a.aoi_name);
+      if (a.frame_count) meta += ' · ' + a.frame_count + ' frames';
+      meta += ' · ' + timeAgo(a.created_at);
+      return '<div class="dash-item" data-analysis-id="' + escapeHtml(a.id) + '">' +
+        '<div class="dash-item-info">' +
+          '<div class="dash-item-name">' + escapeHtml(a.kml_name || 'Analysis') + (a.aoi_name ? ' — ' + escapeHtml(a.aoi_name) : '') + '</div>' +
+          '<div class="dash-item-meta">' + meta + '</div>' +
+        '</div>' +
+        '<div class="dash-item-actions">' +
+          '<span class="dash-status ' + statusClass + '">' + statusLabel + '</span>' +
+          '<button class="dash-action danger" title="Delete" data-action="delete-analysis" data-id="' + escapeHtml(a.id) + '">✕</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  async function loadDashboard() {
+    var list = document.getElementById('dash-kml-list');
+    list.innerHTML = '<div class="dash-loading">Loading library…</div>';
+    document.getElementById('dash-analysis-list').innerHTML = '<div class="dash-loading">Loading…</div>';
+
+    var res = await apiFetch('/api/library');
+    if (!res || !res.ok) {
+      list.innerHTML = '<div class="dash-empty">Could not load library.</div>';
+      return;
+    }
+    var data = await res.json();
+    renderKmlList(data.kmls || []);
+    renderAnalysisList(data.analyses || []);
+    dashboardLoaded = true;
+  }
+
+  async function dashUploadKml() {
+    var nameEl = document.getElementById('dash-kml-name');
+    var contentEl = document.getElementById('dash-kml-content');
+    var statusEl = document.getElementById('dash-upload-status');
+    var content = contentEl.value.trim();
+
+    if (!content) {
+      statusEl.textContent = 'Paste KML content or drop a file first.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Uploading…';
+    statusEl.className = 'demo-status show';
+
+    var res = await apiFetch('/api/library/kmls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nameEl.value.trim(), kml_content: content })
+    });
+
+    if (!res || !res.ok) {
+      var err = res ? await res.json().catch(function() { return {}; }) : {};
+      statusEl.textContent = err.error || 'Upload failed';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Saved to library!';
+    statusEl.className = 'demo-status show success';
+    nameEl.value = '';
+    contentEl.value = '';
+    document.getElementById('dash-drop-file-name').textContent = '';
+    setTimeout(function() {
+      document.getElementById('dash-upload-form').style.display = 'none';
+      statusEl.className = 'demo-status';
+    }, 1200);
+    loadDashboard();
+  }
+
+  async function dashDeleteKml(kmlId) {
+    if (!confirm('Delete this KML and all linked analyses? This cannot be undone.')) return;
+    var res = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId), { method: 'DELETE' });
+    if (res && res.ok) loadDashboard();
+  }
+
+  async function dashDownloadKml(kmlId, name) {
+    var res = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+    if (!res || !res.ok) return;
+    var blob = await res.blob();
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (name || 'download') + '.kml';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function dashDeleteAnalysis(analysisId) {
+    if (!confirm('Delete this analysis? This cannot be undone.')) return;
+    var res = await apiFetch('/api/library/analyses/' + encodeURIComponent(analysisId), { method: 'DELETE' });
+    if (res && res.ok) loadDashboard();
+  }
+
+  async function dashExportData() {
+    var statusEl = document.getElementById('dash-account-status');
+    statusEl.textContent = 'Preparing export…';
+    statusEl.className = 'demo-status show';
+    var res = await apiFetch('/api/account/export');
+    if (!res || !res.ok) {
+      statusEl.textContent = 'Export failed. Please try again.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+    var blob = await res.blob();
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'treesight-data-export.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    statusEl.textContent = 'Export downloaded.';
+    statusEl.className = 'demo-status show success';
+    setTimeout(function() { statusEl.className = 'demo-status'; }, 3000);
+  }
+
+  async function dashDeleteAccount() {
+    var statusEl = document.getElementById('dash-account-status');
+    if (!confirm('PERMANENTLY delete your account and ALL data?\n\nThis cannot be undone. All KML files, analyses, and settings will be erased.')) return;
+    var confirmText = prompt('Type "DELETE" to confirm permanent account deletion:');
+    if (confirmText !== 'DELETE') {
+      statusEl.textContent = 'Deletion cancelled.';
+      statusEl.className = 'demo-status show';
+      setTimeout(function() { statusEl.className = 'demo-status'; }, 3000);
+      return;
+    }
+
+    statusEl.textContent = 'Deleting all data…';
+    statusEl.className = 'demo-status show';
+
+    var res = await apiFetch('/api/account', {
+      method: 'DELETE',
+      headers: { 'X-Confirm-Delete': 'permanently-delete-all-my-data' }
+    });
+
+    if (!res || !res.ok) {
+      statusEl.textContent = 'Deletion failed. Please try again or contact support.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Account deleted. Signing out…';
+    statusEl.className = 'demo-status show success';
+    setTimeout(function() { logout(); }, 2000);
+  }
+
+  /* Auto-save KML + analysis to library after pipeline completes */
+  async function autoSaveToLibrary(kmlContent, instanceId, output) {
+    if (!isLoggedIn() || !authEnabled()) return;
+    try {
+      /* Save KML to library */
+      var kmlRes = await apiFetch('/api/library/kmls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kml_content: kmlContent })
+      });
+      if (!kmlRes || !kmlRes.ok) return;
+      var kmlRecord = await kmlRes.json();
+
+      /* Save analysis record */
+      var frameCount = 0;
+      if (output && output.timelapse_frames) frameCount = output.timelapse_frames.length || 0;
+      else if (output && output.frame_count) frameCount = output.frame_count;
+      await apiFetch('/api/library/analyses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kml_id: kmlRecord.id,
+          kml_name: kmlRecord.name,
+          instance_id: instanceId,
+          status: 'completed',
+          frame_count: frameCount
+        })
+      });
+
+      /* Refresh dashboard if visible */
+      if (document.getElementById('dashboard').style.display !== 'none') loadDashboard();
+    } catch (e) {
+      console.warn('Auto-save to library failed:', e);
+    }
+  }
+
+  function initDashboard() {
+    /* Upload button toggle */
+    document.getElementById('dash-upload-btn').addEventListener('click', function() {
+      var form = document.getElementById('dash-upload-form');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('dash-upload-cancel').addEventListener('click', function() {
+      document.getElementById('dash-upload-form').style.display = 'none';
+    });
+    document.getElementById('dash-upload-submit').addEventListener('click', dashUploadKml);
+
+    /* Upload drop zone */
+    var dropZone = document.getElementById('dash-drop-zone');
+    var fileInput = document.getElementById('dash-file-input');
+    if (dropZone && fileInput) {
+      dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+      dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('dragover'); });
+      dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        var file = e.dataTransfer.files[0];
+        if (file) readDashKmlFile(file);
+      });
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files[0]) readDashKmlFile(fileInput.files[0]);
+      });
+    }
+
+    /* Delegated click handlers for KML and analysis lists */
+    document.getElementById('dash-kml-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      var id = btn.getAttribute('data-id');
+      if (action === 'delete-kml') dashDeleteKml(id);
+      else if (action === 'download-kml') dashDownloadKml(id, btn.getAttribute('data-name'));
+    });
+    document.getElementById('dash-analysis-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      if (btn.getAttribute('data-action') === 'delete-analysis') dashDeleteAnalysis(btn.getAttribute('data-id'));
+    });
+
+    /* Account actions */
+    document.getElementById('dash-export-btn').addEventListener('click', dashExportData);
+    document.getElementById('dash-delete-account-btn').addEventListener('click', dashDeleteAccount);
+  }
+
+  function readDashKmlFile(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('dash-kml-content').value = e.target.result;
+      document.getElementById('dash-drop-file-name').textContent = file.name;
+      if (!document.getElementById('dash-kml-name').value) {
+        document.getElementById('dash-kml-name').value = file.name.replace(/\.kml$/i, '');
+      }
+    };
+    reader.readAsText(file);
+  }
+
   /* --- Init --- */
   initAuth();
   document.getElementById('auth-login-btn').addEventListener('click', login);
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   var loginPromptLink = document.getElementById('login-prompt-link');
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
+
+  /* --- Dashboard --- */
+  initDashboard();
 
   discoverApiBase().then(function() {
     checkContract();

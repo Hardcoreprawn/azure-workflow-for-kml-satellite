@@ -9,6 +9,7 @@ from blueprints.contact import bp as contact_bp
 from blueprints.demo import bp as demo_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
+from blueprints.library import bp as library_bp
 from blueprints.pipeline import bp as pipeline_bp
 from treesight.config import STORAGE_CONNECTION_STRING, validate_config
 
@@ -35,6 +36,7 @@ app.register_functions(contact_bp)
 app.register_functions(demo_bp)
 app.register_functions(analysis_bp)
 app.register_functions(export_bp)
+app.register_functions(library_bp)
 
 # Register durable pipeline blueprint
 app.register_functions(pipeline_bp)

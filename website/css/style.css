@@ -264,3 +264,36 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .auth-user{font-size:.8rem;color:var(--c-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .login-prompt{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:var(--c-muted);text-align:center;display:none}
 .login-prompt a{cursor:pointer;font-weight:600}
+
+/* --- Dashboard --- */
+.dash-toolbar{display:flex;gap:8px;margin-bottom:20px}
+.btn-sm{padding:6px 16px;font-size:.8rem}
+.dashboard-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:768px){.dashboard-grid{grid-template-columns:1fr}}
+.dash-panel{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);overflow:hidden}
+.dash-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--c-border)}
+.dash-panel-header h3{font-size:.95rem}
+.dash-count{font-size:.75rem;background:var(--c-bg);border:1px solid var(--c-border);padding:2px 10px;border-radius:12px;color:var(--c-muted)}
+.dash-list{max-height:400px;overflow-y:auto}
+.dash-empty{padding:32px 20px;text-align:center;color:var(--c-muted);font-size:.85rem}
+.dash-item{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid var(--c-border);transition:background .15s}
+.dash-item:hover{background:rgba(88,166,255,.04)}
+.dash-item:last-child{border-bottom:none}
+.dash-item-info{flex:1;min-width:0}
+.dash-item-name{font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-item-meta{font-size:.72rem;color:var(--c-muted);margin-top:2px}
+.dash-item-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.dash-action{background:var(--c-bg);border:1px solid var(--c-border);color:var(--c-muted);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.dash-action:hover{border-color:var(--c-accent);color:var(--c-accent)}
+.dash-action.danger:hover{border-color:var(--c-red);color:var(--c-red)}
+.dash-status{font-size:.7rem;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.dash-status.completed{background:rgba(63,185,80,.1);color:var(--c-green)}
+.dash-status.running{background:rgba(88,166,255,.1);color:var(--c-accent)}
+.dash-status.failed{background:rgba(248,81,73,.1);color:var(--c-red)}
+.dash-account{margin-top:24px;padding:20px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius)}
+.dash-account h3{font-size:.95rem;margin-bottom:8px}
+.dash-account-actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn-danger{background:transparent;color:var(--c-red);border:1px solid var(--c-red);display:inline-block;padding:10px 24px;border-radius:var(--radius);font-weight:600;font-size:.875rem;cursor:pointer;transition:all .15s}
+.btn-danger:hover{background:rgba(248,81,73,.1);text-decoration:none}
+.dash-upload-form .demo-form{border-color:var(--c-accent)}
+.dash-loading{padding:32px 20px;text-align:center;color:var(--c-muted);font-size:.85rem}

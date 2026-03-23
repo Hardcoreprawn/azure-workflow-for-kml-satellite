@@ -102,6 +102,24 @@ class BlobStorageClient:
             "last_modified": props.last_modified.isoformat() if props.last_modified else "",
         }
 
+    def delete_blob(self, container: str, blob_path: str) -> bool:
+        """Delete a blob. Return ``True`` if it existed, ``False`` otherwise."""
+        blob = self._client.get_blob_client(container, blob_path)
+        try:
+            blob.delete_blob()
+            log_phase("storage", "delete", blob_path=blob_path, container=container)
+            return True
+        except Exception:
+            return False
+
+    def list_blobs(self, container: str, prefix: str) -> list[str]:
+        """Return blob names under *prefix* in *container*."""
+        container_client = self._client.get_container_client(container)
+        try:
+            return [b.name for b in container_client.list_blobs(name_starts_with=prefix)]
+        except Exception:
+            return []
+
     def stream_blob(self, container: str, blob_path: str) -> StorageStreamDownloader[bytes]:
         """Return a ``StorageStreamDownloader`` for streaming responses."""
         blob = self._client.get_blob_client(container, blob_path)
