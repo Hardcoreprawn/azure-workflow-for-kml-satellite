@@ -37,8 +37,8 @@
         clientId: CIAM_CLIENT_ID,
         authority: CIAM_AUTHORITY,
         knownAuthorities: [CIAM_KNOWN_AUTHORITY],
-        redirectUri: window.location.origin + '/',
-        postLogoutRedirectUri: window.location.origin + '/',
+        redirectUri: window.location.origin,
+        postLogoutRedirectUri: window.location.origin,
       },
       cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
     };
