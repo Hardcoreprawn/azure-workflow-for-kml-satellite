@@ -2832,6 +2832,7 @@
       row.appendChild(info);
 
       var actions = el('div', 'dash-item-actions');
+      actions.appendChild(el('button', 'dash-action', '▶ Analyse', { title: 'Run analysis', 'data-action': 'analyse-kml', 'data-id': k.id, 'data-name': k.name }));
       actions.appendChild(el('button', 'dash-action', '⬇', { title: 'Download', 'data-action': 'download-kml', 'data-id': k.id, 'data-name': k.name }));
       actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-kml', 'data-id': k.id }));
       row.appendChild(actions);
@@ -2867,6 +2868,11 @@
 
       var actions = el('div', 'dash-item-actions');
       actions.appendChild(el('span', 'dash-status ' + statusClass, statusLabel));
+      if (statusClass === 'completed' && a.instance_id) {
+        actions.appendChild(el('button', 'dash-action', '▶', { title: 'Open analysis', 'data-action': 'open-analysis', 'data-id': a.id, 'data-instance': a.instance_id, 'data-kml-id': a.kml_id || '' }));
+        actions.appendChild(el('button', 'dash-action', '⬇ GeoJSON', { title: 'Export GeoJSON', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'geojson' }));
+        actions.appendChild(el('button', 'dash-action', '⬇ CSV', { title: 'Export CSV', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'csv' }));
+      }
       actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-analysis', 'data-id': a.id }));
       row.appendChild(actions);
 
@@ -2955,6 +2961,89 @@
     if (!confirm('Delete this analysis? This cannot be undone.')) return;
     var res = await apiFetch('/api/library/analyses/' + encodeURIComponent(analysisId), { method: 'DELETE' });
     if (res && res.ok) loadDashboard();
+  }
+
+  async function dashOpenAnalysis(instanceId, kmlId) {
+    if (!instanceId) return;
+    /* Scroll to the demo section and show loading state */
+    document.getElementById('demo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    /* Fetch enrichment data from the pipeline run */
+    enrichmentPayload = null;
+    try {
+      var enrichRes = await apiFetch('/api/timelapse-data/' + encodeURIComponent(instanceId));
+      if (!enrichRes || !enrichRes.ok) {
+        alert('Could not load analysis data. The pipeline output may have expired.');
+        return;
+      }
+      enrichmentPayload = await enrichRes.json();
+    } catch (e) {
+      alert('Failed to load analysis: ' + e.message);
+      return;
+    }
+
+    /* Get coordinates — prefer enrichment payload, fall back to KML library */
+    var coords = null;
+    var polygons = null;
+    if (enrichmentPayload.coords && enrichmentPayload.coords.length >= 3) {
+      coords = enrichmentPayload.coords;
+    }
+    if (!coords && kmlId) {
+      try {
+        var kmlRes = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+        if (kmlRes && kmlRes.ok) {
+          var kmlText = await kmlRes.text();
+          var parsed = parseKmlCoords(kmlText);
+          if (parsed && parsed.length) {
+            polygons = parsed;
+            coords = parsed.length === 1 ? parsed[0].coords : parsed.reduce(function(all, p) { return all.concat(p.coords); }, []);
+          }
+        }
+      } catch (e) { console.warn('Could not fetch KML for coordinates:', e); }
+    }
+    if (!coords) {
+      alert('Could not determine AOI coordinates for this analysis.');
+      return;
+    }
+
+    pipelineInstanceId = instanceId;
+    launchTimelapse(coords, polygons);
+  }
+
+  function dashExportAnalysis(instanceId, format) {
+    if (!instanceId || !format) return;
+    /* Fetch with auth header then trigger browser download */
+    apiFetch('/api/export/' + encodeURIComponent(instanceId) + '/' + encodeURIComponent(format))
+      .then(function(res) {
+        if (!res || !res.ok) { alert('Export failed. The pipeline data may have expired.'); return; }
+        return res.blob().then(function(blob) {
+          var ext = format === 'geojson' ? '.geojson' : '.csv';
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'treesight_' + instanceId.slice(0, 8) + ext;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        });
+      })
+      .catch(function(e) { alert('Export error: ' + e.message); });
+  }
+
+  async function dashAnalyseKml(kmlId) {
+    if (!kmlId) return;
+    /* Fetch KML content from library */
+    var kmlRes = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+    if (!kmlRes || !kmlRes.ok) {
+      alert('Could not load KML file.');
+      return;
+    }
+    var kmlText = await kmlRes.text();
+
+    /* Put KML content into the demo textarea and trigger processing */
+    document.getElementById('demo-kml').value = kmlText;
+    document.getElementById('demo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    /* Trigger the submit button (reuses existing pipeline flow) */
+    document.getElementById('demo-submit').click();
   }
 
   async function dashExportData() {
@@ -3077,14 +3166,17 @@
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
       var action = btn.getAttribute('data-action');
-      var id = btn.getAttribute('data-id');
-      if (action === 'delete-kml') dashDeleteKml(id);
-      else if (action === 'download-kml') dashDownloadKml(id, btn.getAttribute('data-name'));
+      if (action === 'delete-kml') dashDeleteKml(btn.getAttribute('data-id'));
+      else if (action === 'download-kml') dashDownloadKml(btn.getAttribute('data-id'), btn.getAttribute('data-name'));
+      else if (action === 'analyse-kml') dashAnalyseKml(btn.getAttribute('data-id'));
     });
     document.getElementById('dash-analysis-list').addEventListener('click', function(e) {
       var btn = e.target.closest('[data-action]');
       if (!btn) return;
-      if (btn.getAttribute('data-action') === 'delete-analysis') dashDeleteAnalysis(btn.getAttribute('data-id'));
+      var action = btn.getAttribute('data-action');
+      if (action === 'delete-analysis') dashDeleteAnalysis(btn.getAttribute('data-id'));
+      else if (action === 'open-analysis') dashOpenAnalysis(btn.getAttribute('data-instance'), btn.getAttribute('data-kml-id'));
+      else if (action === 'export-analysis') dashExportAnalysis(btn.getAttribute('data-instance'), btn.getAttribute('data-format'));
     });
 
     /* Account actions */

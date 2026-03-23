@@ -283,7 +283,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .dash-item-name{font-size:.85rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dash-item-meta{font-size:.72rem;color:var(--c-muted);margin-top:2px}
 .dash-item-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
-.dash-action{background:var(--c-bg);border:1px solid var(--c-border);color:var(--c-muted);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.dash-action{background:var(--c-bg);border:1px solid var(--c-border);color:var(--c-muted);min-width:28px;height:28px;padding:0 6px;border-radius:4px;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;transition:all .15s;white-space:nowrap}
 .dash-action:hover{border-color:var(--c-accent);color:var(--c-accent)}
 .dash-action.danger:hover{border-color:var(--c-red);color:var(--c-red)}
 .dash-status{font-size:.7rem;padding:2px 8px;border-radius:4px;white-space:nowrap}
