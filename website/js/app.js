@@ -240,7 +240,9 @@
       el.className = 'pipeline-step';
       if (p === phase) {
         el.classList.add(state === 'failed' ? 'failed' : 'active');
-        icon.innerHTML = state === 'done' ? '✓' : state === 'failed' ? '✗' : '<span class="spinner"></span>';
+        if (state === 'done') { icon.textContent = '✓'; }
+        else if (state === 'failed') { icon.textContent = '✗'; }
+        else { icon.replaceChildren(); var sp = document.createElement('span'); sp.className = 'spinner'; icon.appendChild(sp); }
       } else {
         var pi = PIPELINE_PHASES.indexOf(p);
         var ci = PIPELINE_PHASES.indexOf(phase);
@@ -1691,13 +1693,48 @@
     var hasNdvi = ndviStatsReady && ndviStats.some(function(s){ return s != null; });
     if (!hasWeather && !hasNdvi) return;
 
-    var html = '';
     var findings = [];
+
+    function addMetric(label, value, deltaText, deltaCls) {
+      var div = document.createElement('div');
+      div.className = 'summary-metric';
+      var lbl = document.createElement('span');
+      lbl.className = 'label';
+      lbl.textContent = label;
+      var val = document.createElement('span');
+      val.className = 'value';
+      val.textContent = value;
+      div.appendChild(lbl);
+      div.appendChild(document.createTextNode(' '));
+      div.appendChild(val);
+      if (deltaText) {
+        var d = document.createElement('span');
+        d.className = 'delta ' + deltaCls;
+        d.textContent = deltaText;
+        div.appendChild(document.createTextNode(' '));
+        div.appendChild(d);
+      }
+      grid.appendChild(div);
+    }
+
+    grid.replaceChildren();
 
     /* Time span */
     var firstYear = framePlan[0].start.substring(0, 4);
     var lastYear = framePlan[framePlan.length - 1].end.substring(0, 4);
-    html += '<div class="summary-metric" style="grid-column:1/-1"><span class="label">Period:</span> <span class="value">' + firstYear + ' — ' + lastYear + ' (' + framePlan.length + ' frames)</span></div>';
+    var periodDiv = document.createElement('div');
+    periodDiv.className = 'summary-metric';
+    periodDiv.style.gridColumn = '1/-1';
+    var pLbl = document.createElement('span');
+    pLbl.className = 'label';
+    pLbl.textContent = 'Period:';
+    var pVal = document.createElement('span');
+    pVal.className = 'value';
+    pVal.textContent = firstYear + ' \u2014 ' + lastYear + ' (' + framePlan.length + ' frames)';
+    periodDiv.appendChild(pLbl);
+    periodDiv.appendChild(document.createTextNode(' '));
+    periodDiv.appendChild(pVal);
+    grid.appendChild(periodDiv);
 
     /* NDVI comparison: average of first 3 vs last 3 S2 frames */
     if (hasNdvi) {
@@ -1712,9 +1749,9 @@
         var ndviDelta = lateAvg - earlyAvg;
         var ndviPct = earlyAvg ? ((ndviDelta / earlyAvg) * 100).toFixed(1) : 0;
         var cls = ndviDelta > 0.02 ? 'delta-up' : ndviDelta < -0.02 ? 'delta-down' : 'delta-flat';
-        var arrow = ndviDelta > 0.02 ? '↑' : ndviDelta < -0.02 ? '↓' : '→';
-        html += '<div class="summary-metric"><span class="label">NDVI (early):</span> <span class="value">' + earlyAvg.toFixed(3) + '</span></div>';
-        html += '<div class="summary-metric"><span class="label">NDVI (recent):</span> <span class="value">' + lateAvg.toFixed(3) + '</span> <span class="delta ' + cls + '">' + arrow + ' ' + (ndviDelta >= 0 ? '+' : '') + ndviDelta.toFixed(3) + ' (' + (ndviPct >= 0 ? '+' : '') + ndviPct + '%)</span></div>';
+        var arrow = ndviDelta > 0.02 ? '\u2191' : ndviDelta < -0.02 ? '\u2193' : '\u2192';
+        addMetric('NDVI (early):', earlyAvg.toFixed(3));
+        addMetric('NDVI (recent):', lateAvg.toFixed(3), arrow + ' ' + (ndviDelta >= 0 ? '+' : '') + ndviDelta.toFixed(3) + ' (' + (ndviPct >= 0 ? '+' : '') + ndviPct + '%)', cls);
         if (ndviDelta < -0.05) findings.push('Vegetation health has declined (' + ndviPct + '%)');
         else if (ndviDelta > 0.05) findings.push('Vegetation health has improved (+' + ndviPct + '%)');
         else findings.push('Vegetation health is broadly stable');
@@ -1730,10 +1767,10 @@
       var lateTAvg = lateT.reduce(function(a,b){return a+b},0) / lateT.length;
       var tDelta = lateTAvg - earlyTAvg;
       var tCls = tDelta > 0.3 ? 'delta-up' : tDelta < -0.3 ? 'delta-down' : 'delta-flat';
-      var tArrow = tDelta > 0.3 ? '↑' : tDelta < -0.3 ? '↓' : '→';
-      html += '<div class="summary-metric"><span class="label">Temp (early):</span> <span class="value">' + earlyTAvg.toFixed(1) + '°C</span></div>';
-      html += '<div class="summary-metric"><span class="label">Temp (recent):</span> <span class="value">' + lateTAvg.toFixed(1) + '°C</span> <span class="delta ' + tCls + '">' + tArrow + ' ' + (tDelta >= 0 ? '+' : '') + tDelta.toFixed(1) + '°C</span></div>';
-      if (Math.abs(tDelta) > 0.5) findings.push('Average temperature shifted ' + (tDelta > 0 ? 'warmer' : 'cooler') + ' by ' + Math.abs(tDelta).toFixed(1) + '°C');
+      var tArrow = tDelta > 0.3 ? '\u2191' : tDelta < -0.3 ? '\u2193' : '\u2192';
+      addMetric('Temp (early):', earlyTAvg.toFixed(1) + '\u00B0C');
+      addMetric('Temp (recent):', lateTAvg.toFixed(1) + '\u00B0C', tArrow + ' ' + (tDelta >= 0 ? '+' : '') + tDelta.toFixed(1) + '\u00B0C', tCls);
+      if (Math.abs(tDelta) > 0.5) findings.push('Average temperature shifted ' + (tDelta > 0 ? 'warmer' : 'cooler') + ' by ' + Math.abs(tDelta).toFixed(1) + '\u00B0C');
     }
 
     /* Precipitation comparison */
@@ -1744,9 +1781,9 @@
       var pDelta = lateP - earlyP;
       var pPct = earlyP ? ((pDelta / earlyP) * 100).toFixed(0) : 0;
       var pCls = pDelta > 10 ? 'delta-up' : pDelta < -10 ? 'delta-down' : 'delta-flat';
-      var pArrow = pDelta > 10 ? '↑' : pDelta < -10 ? '↓' : '→';
-      html += '<div class="summary-metric"><span class="label">Precip (early yr):</span> <span class="value">' + earlyP.toFixed(0) + ' mm</span></div>';
-      html += '<div class="summary-metric"><span class="label">Precip (recent yr):</span> <span class="value">' + lateP.toFixed(0) + ' mm</span> <span class="delta ' + pCls + '">' + pArrow + ' ' + (pPct >= 0 ? '+' : '') + pPct + '%</span></div>';
+      var pArrow = pDelta > 10 ? '\u2191' : pDelta < -10 ? '\u2193' : '\u2192';
+      addMetric('Precip (early yr):', earlyP.toFixed(0) + ' mm');
+      addMetric('Precip (recent yr):', lateP.toFixed(0) + ' mm', pArrow + ' ' + (pPct >= 0 ? '+' : '') + pPct + '%', pCls);
       if (Math.abs(+pPct) > 20) findings.push('Annual precipitation changed by ' + pPct + '%');
     }
 
@@ -1758,7 +1795,6 @@
       assessText = 'Insufficient data for period comparison.';
     }
 
-    grid.innerHTML = html; // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all values are numeric (.toFixed), no user input
     assess.textContent = assessText;
     panel.style.display = 'block';
   }
@@ -2334,24 +2370,36 @@
     var summary = document.getElementById('ai-insights-summary');
     var example = document.getElementById('ai-insights-example');
     if (example) example.style.display = 'none';
-    var obsHtml = '';
+    content.replaceChildren();
     if (analysis.observations && Array.isArray(analysis.observations)) {
       analysis.observations.forEach(function(obs) {
-        var severity = escapeHtml(obs.severity || 'normal');
-        obsHtml += '<div class="observation">' +
-          '<div class="obs-category">' + escapeHtml(obs.category || 'Analysis') +
-            ' <span class="obs-severity severity-' + severity + '">' + severity.toUpperCase() + '</span>' +
-          '</div>';
+        var severity = obs.severity || 'normal';
+        var obsDiv = document.createElement('div');
+        obsDiv.className = 'observation';
+        var catDiv = document.createElement('div');
+        catDiv.className = 'obs-category';
+        catDiv.appendChild(document.createTextNode(obs.category || 'Analysis'));
+        var sevSpan = document.createElement('span');
+        sevSpan.className = 'obs-severity severity-' + severity;
+        sevSpan.textContent = severity.toUpperCase();
+        catDiv.appendChild(document.createTextNode(' '));
+        catDiv.appendChild(sevSpan);
+        obsDiv.appendChild(catDiv);
         if (obs.description) {
-          obsHtml += '<div class="obs-description">' + escapeHtml(obs.description) + '</div>';
+          var descDiv = document.createElement('div');
+          descDiv.className = 'obs-description';
+          descDiv.textContent = obs.description;
+          obsDiv.appendChild(descDiv);
         }
         if (obs.recommendation) {
-          obsHtml += '<div class="obs-recommendation">💡 ' + escapeHtml(obs.recommendation) + '</div>';
+          var recDiv = document.createElement('div');
+          recDiv.className = 'obs-recommendation';
+          recDiv.textContent = '\uD83D\uDCA1 ' + obs.recommendation;
+          obsDiv.appendChild(recDiv);
         }
-        obsHtml += '</div>';
+        content.appendChild(obsDiv);
       });
     }
-    content.innerHTML = obsHtml; // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all dynamic values passed through escapeHtml()
     content.style.display = 'block';
     if (analysis.summary) {
       summary.textContent = analysis.summary;
