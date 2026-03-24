@@ -106,3 +106,45 @@ class BlobStorageClient:
         """Return a ``StorageStreamDownloader`` for streaming responses."""
         blob = self._client.get_blob_client(container, blob_path)
         return blob.download_blob()
+
+    # --- ETag-aware operations for optimistic concurrency ---
+
+    def download_json_with_etag(self, container: str, blob_path: str) -> tuple[dict[str, Any], str]:
+        """Download a JSON blob and return ``(data, etag)``."""
+        import json
+
+        blob = self._client.get_blob_client(container, blob_path)
+        dl = blob.download_blob()
+        raw = json.loads(dl.readall())
+        etag = dl.properties.etag
+        if not isinstance(raw, dict):
+            msg = f"Expected JSON object in {container}/{blob_path}, got {type(raw).__name__}"
+            raise TypeError(msg)
+        return cast(dict[str, Any], raw), etag
+
+    def upload_json_if_match(
+        self, container: str, blob_path: str, data: dict[str, Any], etag: str
+    ) -> None:
+        """Upload JSON only if the blob's current ETag matches *etag*.
+
+        Raises ``azure.core.exceptions.ResourceModifiedError`` on conflict.
+        """
+        import json
+
+        from azure.core import MatchConditions
+        from azure.core.exceptions import ResourceModifiedError
+        from azure.storage.blob import BlobClient
+
+        payload = json.dumps(data, indent=2, default=str).encode("utf-8")
+        self.ensure_container(container)
+        blob: BlobClient = self._client.get_blob_client(container, blob_path)
+        try:
+            blob.upload_blob(
+                payload,
+                overwrite=True,
+                etag=etag,
+                match_condition=MatchConditions.IfNotModified,
+                content_settings=ContentSettings(content_type="application/json"),
+            )
+        except ResourceModifiedError:
+            raise

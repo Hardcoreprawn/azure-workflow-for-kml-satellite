@@ -67,7 +67,7 @@ async def orchestrator_status(
         return cors_preflight(req)
 
     try:
-        check_auth(req)
+        _claims, user_id = check_auth(req)
     except ValueError as exc:
         return _error_response(401, str(exc))
 
@@ -84,6 +84,14 @@ async def orchestrator_status(
 
     status = await client.get_status(instance_id)
     if not status:
+        return func.HttpResponse(
+            json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"
+        )
+
+    # Ownership check: verify calling user owns this pipeline instance
+    input_data = status.input if isinstance(status.input, dict) else {}
+    owner = input_data.get("user_id", "")
+    if owner and user_id != "anonymous" and owner != user_id:
         return func.HttpResponse(
             json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"
         )
@@ -868,6 +876,7 @@ async def demo_process(
         "correlation_id": submission_id,
         "composite_search": True,
         "provider_name": "planetary_computer",
+        "user_id": user_id,
     }
 
     await client.start_new(
@@ -881,6 +890,7 @@ async def demo_process(
         json.dumps({"instance_id": submission_id}),
         status_code=202,
         mimetype="application/json",
+        headers=cors_headers(req),
     )
 
 

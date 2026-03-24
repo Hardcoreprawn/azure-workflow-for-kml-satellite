@@ -33,7 +33,7 @@ async def _fetch_manifest(
 ) -> tuple[dict[str, Any] | None, func.HttpResponse | None]:
     """Return (manifest_dict, None) on success or (None, error_response) on failure."""
     try:
-        check_auth(req)
+        _claims, user_id = check_auth(req)
     except ValueError as exc:
         return None, error_response(401, str(exc), req=req)
 
@@ -43,6 +43,12 @@ async def _fetch_manifest(
 
     status = await client.get_status(instance_id)
     if not status or not status.output:
+        return None, error_response(404, "Pipeline not found or not complete", req=req)
+
+    # Ownership check: verify calling user owns this pipeline instance
+    input_data = status.input if isinstance(status.input, dict) else {}
+    owner = input_data.get("user_id", "")
+    if owner and user_id != "anonymous" and owner != user_id:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
     output = status.output if isinstance(status.output, dict) else {}

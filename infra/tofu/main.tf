@@ -325,6 +325,14 @@ resource "azapi_resource" "function_app" {
           {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
+          },
+          {
+            name  = "REQUIRE_AUTH"
+            value = "true"
+          },
+          {
+            name  = "DEMO_VALET_TOKEN_SECRET"
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault.main.vault_uri}secrets/demo-valet-token-secret)"
           }
         ], var.enable_azure_ai ? [
           {
