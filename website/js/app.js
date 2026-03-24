@@ -132,22 +132,10 @@
   }
 
   /* --- API discovery: resolve backend hostname --- */
-  var backendVerified = null; /* deploy-time ISO timestamp, if available */
   async function discoverApiBase() {
     var badge = document.getElementById('status-badge');
 
-    /* 1. Try SWA linked backend proxy (ideal — no CORS needed) */
-    try {
-      var res = await fetch('/api/health');
-      if (res.ok) {
-        apiBase = '';
-        badge.textContent = 'Online';
-        badge.className = 'online';
-        return;
-      }
-    } catch { /* network error */ }
-
-    /* 2. Load deploy-time config for direct Function App hostname (#282) */
+    /* 1. Load deploy-time config first (fast, no cold-start penalty) */
     try {
       var cfgRes = await fetch('/api-config.json');
       if (cfgRes.ok) {
@@ -156,13 +144,17 @@
           apiBase = cfg.apiBase;
           /* Trust deploy-time verification — don't probe a cold backend */
           if (cfg.lastVerified) {
-            backendVerified = cfg.lastVerified;
+            badge.textContent = 'Verified';
+            badge.className = 'verified';
+            badge.title = 'Deploy-time verified: ' + cfg.lastVerified;
+          } else {
+            /* Older/manual configs may lack lastVerified — still treat as configured */
             badge.textContent = 'Verified';
             badge.className = 'verified';
           }
           /* Opportunistic background probe — upgrade to Online if awake */
           fetch(cfg.apiBase + '/api/health').then(function(r) {
-            if (r.ok) { badge.textContent = 'Online'; badge.className = 'online'; }
+            if (r.ok) { badge.textContent = 'Online'; badge.className = 'online'; badge.title = ''; }
           }).catch(function() { /* cold start — verified status stands */ });
           return;
         }
@@ -180,6 +172,17 @@
         }
       }
     } catch { /* config not available */ }
+
+    /* 2. Fallback: try SWA linked backend proxy */
+    try {
+      var res = await fetch('/api/health');
+      if (res.ok) {
+        apiBase = '';
+        badge.textContent = 'Online';
+        badge.className = 'online';
+        return;
+      }
+    } catch { /* network error */ }
 
     badge.textContent = 'Unavailable';
     badge.className = 'offline';
@@ -493,7 +496,7 @@
     } catch(err) {
       showPipelineError('Pipeline error: ' + err.message);
       /* Downgrade status badge on real interaction failure */
-      if (!navigator.onLine || (err.message && err.message.includes('HTTP ?'))) {
+      if (!navigator.onLine || (err.message && err.message.includes('HTTP '))) {
         var badge = document.getElementById('status-badge');
         badge.textContent = 'Issue Detected';
         badge.className = 'offline';
