@@ -83,12 +83,18 @@
     }
   }
 
+  /* Marketing sections to hide when logged in */
+  var MARKETING_SECTIONS = ['problem', 'social-proof', 'pricing', 'faq', 'early-access'];
+
   function updateAuthUI() {
     var loginBtn = document.getElementById('auth-login-btn');
     var logoutBtn = document.getElementById('auth-logout-btn');
     var userSpan = document.getElementById('auth-user');
     var loginPrompt = document.getElementById('login-prompt');
     var submitBtn = document.getElementById('demo-submit');
+    var dashboard = document.getElementById('dashboard');
+    var hero = document.querySelector('.hero');
+    var navLibrary = document.getElementById('nav-library');
 
     if (!authEnabled()) {
       /* Auth not configured — hide auth controls, anonymous access */
@@ -108,12 +114,38 @@
       logoutBtn.style.display = 'inline';
       loginPrompt.style.display = 'none';
       if (submitBtn) submitBtn.textContent = 'Process KML';
+
+      /* Logged in: show dashboard, hide marketing fluff */
+      if (dashboard) dashboard.style.display = '';
+      if (hero) hero.style.display = 'none';
+      if (navLibrary) navLibrary.style.display = '';
+      MARKETING_SECTIONS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      });
+      document.querySelectorAll('.nav-marketing').forEach(function(li) { li.style.display = 'none'; });
+      var demoLink = document.getElementById('nav-demo-link');
+      if (demoLink) demoLink.textContent = 'New Analysis';
+      /* Load library data */
+      if (!dashboardLoaded) loadDashboard();
     } else {
       userSpan.style.display = 'none';
       loginBtn.style.display = 'inline';
       logoutBtn.style.display = 'none';
       loginPrompt.style.display = 'block';
       if (submitBtn) submitBtn.textContent = 'Sign In to Process KML';
+
+      /* Logged out: show marketing, hide dashboard */
+      if (dashboard) dashboard.style.display = 'none';
+      if (hero) hero.style.display = '';
+      if (navLibrary) navLibrary.style.display = 'none';
+      MARKETING_SECTIONS.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = '';
+      });
+      document.querySelectorAll('.nav-marketing').forEach(function(li) { li.style.display = ''; });
+      var demoLink2 = document.getElementById('nav-demo-link');
+      if (demoLink2) demoLink2.textContent = 'Demo';
     }
   }
 
@@ -447,6 +479,9 @@
       /* Step 6: Launch timelapse with pipeline-produced data */
       document.getElementById('frame-info').textContent = 'Loading satellite imagery timelapse…';
       launchTimelapse(coords, polygons);
+
+      /* Auto-save KML + analysis to user's library */
+      autoSaveToLibrary(kml, instanceId, output);
 
     } catch(err) {
       showPipelineError('Pipeline error: ' + err.message);
@@ -2752,12 +2787,562 @@
   document.getElementById('frame-label').textContent = 'Load KML and click Process to begin';
   document.getElementById('frame-info').textContent = 'Pipeline will parse, search, download, clip and reproject imagery for your AOI';
 
+  /* =====================================================================
+     Dashboard — User Library, GDPR account management (M4.4)
+     ===================================================================== */
+
+  var dashboardLoaded = false;
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    var diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  /* DOM helper — create element with class, text, and attributes */
+  function el(tag, className, text, attrs) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    if (attrs) { for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) node.setAttribute(k, attrs[k]); } }
+    return node;
+  }
+
+  function clearChildren(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  function renderKmlList(kmls) {
+    var list = document.getElementById('dash-kml-list');
+    var count = document.getElementById('dash-kml-count');
+    count.textContent = kmls.length;
+    clearChildren(list);
+    if (!kmls.length) {
+      list.appendChild(el('div', 'dash-empty', 'No KML files yet. Upload one to get started.'));
+      return;
+    }
+    kmls.forEach(function(k) {
+      var row = el('div', 'dash-item', null, { 'data-kml-id': k.id });
+
+      var info = el('div', 'dash-item-info');
+      info.appendChild(el('div', 'dash-item-name', k.name));
+      info.appendChild(el('div', 'dash-item-meta', (k.polygon_count || 0) + ' polygon' + (k.polygon_count !== 1 ? 's' : '') + ' · ' + timeAgo(k.uploaded_at)));
+      row.appendChild(info);
+
+      var actions = el('div', 'dash-item-actions');
+      actions.appendChild(el('button', 'dash-action', '▶ Analyse', { title: 'Run analysis', 'data-action': 'analyse-kml', 'data-id': k.id, 'data-name': k.name }));
+      actions.appendChild(el('button', 'dash-action', '⬇', { title: 'Download', 'data-action': 'download-kml', 'data-id': k.id, 'data-name': k.name }));
+      actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-kml', 'data-id': k.id }));
+      row.appendChild(actions);
+
+      list.appendChild(row);
+    });
+  }
+
+  function renderAnalysisList(analyses) {
+    var list = document.getElementById('dash-analysis-list');
+    var count = document.getElementById('dash-analysis-count');
+    count.textContent = analyses.length;
+    clearChildren(list);
+    if (!analyses.length) {
+      list.appendChild(el('div', 'dash-empty', 'No analyses yet. Process a KML to create one.'));
+      return;
+    }
+    analyses.forEach(function(a) {
+      var statusClass = a.status || 'completed';
+      var statusLabel = statusClass === 'completed' ? '✓ Complete' : statusClass === 'running' ? '⟳ Running' : '✕ Failed';
+      var nameText = a.aoi_name || a.kml_name || 'Analysis';
+
+      var card = el('div', 'dash-analysis-card', null, { 'data-analysis-id': a.id });
+
+      /* Header: title + time */
+      var header = el('div', 'dash-card-header');
+      header.appendChild(el('div', 'dash-card-title', nameText));
+      header.appendChild(el('span', 'dash-card-time', timeAgo(a.created_at)));
+      card.appendChild(header);
+
+      /* Meta badges: status, NDVI trend, fire alerts, frame count */
+      var meta = el('div', 'dash-card-meta');
+      meta.appendChild(el('span', 'dash-card-badge ' + statusClass, statusLabel));
+
+      var summary = a.summary || {};
+      if (summary.ndvi_trajectory) {
+        var ndviClass = summary.ndvi_trajectory === 'declining' ? 'ndvi-down'
+          : summary.ndvi_trajectory === 'improving' ? 'ndvi-up' : 'ndvi-stable';
+        var ndviIcon = summary.ndvi_trajectory === 'declining' ? '↓' : summary.ndvi_trajectory === 'improving' ? '↑' : '—';
+        var ndviText = ndviIcon + ' NDVI ' + summary.ndvi_trajectory;
+        if (typeof summary.ndvi_delta === 'number') {
+          ndviText += ' (' + (summary.ndvi_delta > 0 ? '+' : '') + summary.ndvi_delta.toFixed(2) + ')';
+        }
+        meta.appendChild(el('span', 'dash-card-badge ' + ndviClass, ndviText));
+        if (summary.ndvi_trajectory === 'declining') card.classList.add('has-alert');
+      }
+
+      if (summary.fire_count && summary.fire_count > 0) {
+        meta.appendChild(el('span', 'dash-card-badge fire', '🔥 ' + summary.fire_count + ' fire alert' + (summary.fire_count > 1 ? 's' : '')));
+        card.classList.add('has-alert');
+      }
+
+      var fc = a.frame_count || (summary.frame_count || 0);
+      if (fc > 0) meta.appendChild(el('span', 'dash-card-badge frames', fc + ' frames'));
+      card.appendChild(meta);
+
+      /* Summary text (from AI or period assessment) */
+      if (summary.assessment) {
+        card.appendChild(el('div', 'dash-card-summary', summary.assessment));
+      }
+
+      /* Action buttons */
+      var actions = el('div', 'dash-card-actions');
+      if (statusClass === 'completed' && a.instance_id) {
+        actions.appendChild(el('button', 'dash-action primary-action', '▶ Open', { title: 'Open analysis viewer', 'data-action': 'open-analysis', 'data-id': a.id, 'data-instance': a.instance_id, 'data-kml-id': a.kml_id || '' }));
+        actions.appendChild(el('button', 'dash-action', '⬇ GeoJSON', { title: 'Export GeoJSON', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'geojson' }));
+        actions.appendChild(el('button', 'dash-action', '⬇ CSV', { title: 'Export CSV', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'csv' }));
+      }
+      actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-analysis', 'data-id': a.id }));
+      card.appendChild(actions);
+
+      list.appendChild(card);
+    });
+  }
+
+  async function loadDashboard() {
+    var analysisList = document.getElementById('dash-analysis-list');
+    var kmlList = document.getElementById('dash-kml-list');
+    clearChildren(analysisList);
+    analysisList.appendChild(el('div', 'dash-loading', 'Loading…'));
+    clearChildren(kmlList);
+    kmlList.appendChild(el('div', 'dash-loading', 'Loading library…'));
+
+    var res = await apiFetch('/api/library');
+    if (!res || !res.ok) {
+      clearChildren(analysisList);
+      analysisList.appendChild(el('div', 'dash-empty', 'Could not load library.'));
+      return;
+    }
+    var data = await res.json();
+    var analyses = data.analyses || [];
+    var kmls = data.kmls || [];
+
+    /* Parse summary JSON strings back into objects */
+    analyses.forEach(function(a) {
+      if (typeof a.summary === 'string') {
+        try { a.summary = JSON.parse(a.summary); } catch { a.summary = null; }
+      }
+    });
+
+    renderKmlList(kmls);
+    renderAnalysisList(analyses);
+
+    /* Toggle onboarding vs command bar */
+    var onboarding = document.getElementById('dash-onboarding');
+    var command = document.getElementById('dash-command');
+    var analysesSection = document.getElementById('dash-analyses-section');
+    var kmlSection = document.getElementById('dash-kml-section');
+
+    if (analyses.length === 0 && kmls.length === 0) {
+      /* First-run experience */
+      if (onboarding) onboarding.style.display = '';
+      if (command) command.style.display = 'none';
+      if (analysesSection) analysesSection.style.display = 'none';
+      if (kmlSection) kmlSection.style.display = 'none';
+    } else {
+      /* Returning user — show monitoring command centre */
+      if (onboarding) onboarding.style.display = 'none';
+      if (command) command.style.display = '';
+      if (analysesSection) analysesSection.style.display = '';
+      if (kmlSection) kmlSection.style.display = '';
+
+      /* Subtitle with stats */
+      var subtitle = document.getElementById('dash-subtitle');
+      if (subtitle) {
+        var parts = [];
+        if (analyses.length) parts.push(analyses.length + ' analys' + (analyses.length === 1 ? 'is' : 'es'));
+        if (kmls.length) parts.push(kmls.length + ' area' + (kmls.length === 1 ? '' : 's'));
+        subtitle.textContent = parts.join(' · ');
+      }
+    }
+
+    /* Alert banner — flag analyses with concerning NDVI trends or fire alerts */
+    var alertsBanner = document.getElementById('dash-alerts');
+    var alertsText = document.getElementById('dash-alerts-text');
+    if (alertsBanner && alertsText) {
+      var alertItems = [];
+      analyses.forEach(function(a) {
+        var s = a.summary || {};
+        if (s.ndvi_trajectory === 'declining') {
+          alertItems.push((a.aoi_name || a.kml_name || 'An area') + ': NDVI declining');
+        }
+        if (s.fire_count && s.fire_count > 0) {
+          alertItems.push((a.aoi_name || a.kml_name || 'An area') + ': ' + s.fire_count + ' fire alert' + (s.fire_count > 1 ? 's' : ''));
+        }
+      });
+      if (alertItems.length > 0) {
+        alertsText.textContent = alertItems.slice(0, 3).join(' · ') + (alertItems.length > 3 ? ' + ' + (alertItems.length - 3) + ' more' : '');
+        alertsBanner.style.display = '';
+      } else {
+        alertsBanner.style.display = 'none';
+      }
+    }
+
+    dashboardLoaded = true;
+  }
+
+  async function dashUploadKml() {
+    var nameEl = document.getElementById('dash-kml-name');
+    var contentEl = document.getElementById('dash-kml-content');
+    var statusEl = document.getElementById('dash-upload-status');
+    var content = contentEl.value.trim();
+
+    if (!content) {
+      statusEl.textContent = 'Paste KML content or drop a file first.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Uploading…';
+    statusEl.className = 'demo-status show';
+
+    var res = await apiFetch('/api/library/kmls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: nameEl.value.trim(), kml_content: content })
+    });
+
+    if (!res || !res.ok) {
+      var err = res ? await res.json().catch(function() { return {}; }) : {};
+      statusEl.textContent = err.error || 'Upload failed';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Saved to library!';
+    statusEl.className = 'demo-status show success';
+    nameEl.value = '';
+    contentEl.value = '';
+    document.getElementById('dash-drop-file-name').textContent = '';
+    setTimeout(function() {
+      document.getElementById('dash-upload-form').style.display = 'none';
+      statusEl.className = 'demo-status';
+    }, 1200);
+    loadDashboard();
+  }
+
+  async function dashDeleteKml(kmlId) {
+    if (!confirm('Delete this KML and all linked analyses? This cannot be undone.')) return;
+    var res = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId), { method: 'DELETE' });
+    if (res && res.ok) loadDashboard();
+  }
+
+  async function dashDownloadKml(kmlId, name) {
+    var res = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+    if (!res || !res.ok) return;
+    var blob = await res.blob();
+    var a = document.createElement('a');
+    var url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = (name || 'download') + '.kml';
+    a.click();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  async function dashDeleteAnalysis(analysisId) {
+    if (!confirm('Delete this analysis? This cannot be undone.')) return;
+    var res = await apiFetch('/api/library/analyses/' + encodeURIComponent(analysisId), { method: 'DELETE' });
+    if (res && res.ok) loadDashboard();
+  }
+
+  async function dashOpenAnalysis(instanceId, kmlId) {
+    if (!instanceId) return;
+    /* Scroll to the demo section and show loading state */
+    document.getElementById('demo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    /* Fetch enrichment data from the pipeline run */
+    enrichmentPayload = null;
+    try {
+      var enrichRes = await apiFetch('/api/timelapse-data/' + encodeURIComponent(instanceId));
+      if (!enrichRes || !enrichRes.ok) {
+        alert('Could not load analysis data. The pipeline output may have expired.');
+        return;
+      }
+      enrichmentPayload = await enrichRes.json();
+    } catch (e) {
+      alert('Failed to load analysis: ' + e.message);
+      return;
+    }
+
+    /* Get coordinates — prefer enrichment payload, fall back to KML library */
+    var coords = null;
+    var polygons = null;
+    if (enrichmentPayload.coords && enrichmentPayload.coords.length >= 3) {
+      coords = enrichmentPayload.coords;
+    }
+    if (!coords && kmlId) {
+      try {
+        var kmlRes = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+        if (kmlRes && kmlRes.ok) {
+          var kmlText = await kmlRes.text();
+          var parsed = parseKmlCoords(kmlText);
+          if (parsed && parsed.length) {
+            polygons = parsed;
+            coords = parsed.length === 1 ? parsed[0].coords : parsed.reduce(function(all, p) { return all.concat(p.coords); }, []);
+          }
+        }
+      } catch (e) { console.warn('Could not fetch KML for coordinates:', e); }
+    }
+    if (!coords) {
+      alert('Could not determine AOI coordinates for this analysis.');
+      return;
+    }
+
+    pipelineInstanceId = instanceId;
+    launchTimelapse(coords, polygons);
+  }
+
+  function dashExportAnalysis(instanceId, format) {
+    if (!instanceId || !format) return;
+    /* Fetch with auth header then trigger browser download */
+    apiFetch('/api/export/' + encodeURIComponent(instanceId) + '/' + encodeURIComponent(format))
+      .then(function(res) {
+        if (!res || !res.ok) { alert('Export failed. The pipeline data may have expired.'); return; }
+        return res.blob().then(function(blob) {
+          var ext = format === 'geojson' ? '.geojson' : '.csv';
+          var a = document.createElement('a');
+          var objectUrl = URL.createObjectURL(blob);
+          a.href = objectUrl;
+          a.download = 'treesight_' + instanceId.slice(0, 8) + ext;
+          a.click();
+          setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 1000);
+        });
+      })
+      .catch(function(e) { alert('Export error: ' + e.message); });
+  }
+
+  async function dashAnalyseKml(kmlId) {
+    if (!kmlId) return;
+    /* Fetch KML content from library */
+    var kmlRes = await apiFetch('/api/library/kmls/' + encodeURIComponent(kmlId));
+    if (!kmlRes || !kmlRes.ok) {
+      alert('Could not load KML file.');
+      return;
+    }
+    var kmlText = await kmlRes.text();
+
+    /* Put KML content into the demo textarea and trigger processing */
+    document.getElementById('demo-kml').value = kmlText;
+    document.getElementById('demo').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    /* Trigger the submit button (reuses existing pipeline flow) */
+    document.getElementById('demo-submit').click();
+  }
+
+  async function dashExportData() {
+    var statusEl = document.getElementById('dash-account-status');
+    statusEl.textContent = 'Preparing export…';
+    statusEl.className = 'demo-status show';
+    var res = await apiFetch('/api/account/export');
+    if (!res || !res.ok) {
+      statusEl.textContent = 'Export failed. Please try again.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+    var blob = await res.blob();
+    var a = document.createElement('a');
+    var exportUrl = URL.createObjectURL(blob);
+    a.href = exportUrl;
+    a.download = 'treesight-data-export.json';
+    a.click();
+    setTimeout(function() { URL.revokeObjectURL(exportUrl); }, 1000);
+    statusEl.textContent = 'Export downloaded.';
+    statusEl.className = 'demo-status show success';
+    setTimeout(function() { statusEl.className = 'demo-status'; }, 3000);
+  }
+
+  async function dashDeleteAccount() {
+    var statusEl = document.getElementById('dash-account-status');
+    if (!confirm('PERMANENTLY delete your account and ALL data?\n\nThis cannot be undone. All KML files, analyses, and settings will be erased.')) return;
+    var confirmText = prompt('Type "DELETE" to confirm permanent account deletion:');
+    if (confirmText !== 'DELETE') {
+      statusEl.textContent = 'Deletion cancelled.';
+      statusEl.className = 'demo-status show';
+      setTimeout(function() { statusEl.className = 'demo-status'; }, 3000);
+      return;
+    }
+
+    statusEl.textContent = 'Deleting all data…';
+    statusEl.className = 'demo-status show';
+
+    var res = await apiFetch('/api/account', {
+      method: 'DELETE',
+      headers: { 'X-Confirm-Delete': 'permanently-delete-all-my-data' }
+    });
+
+    if (!res || !res.ok) {
+      statusEl.textContent = 'Deletion failed. Please try again or contact support.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    statusEl.textContent = 'Account deleted. Signing out…';
+    statusEl.className = 'demo-status show success';
+    setTimeout(function() { logout(); }, 2000);
+  }
+
+  /* Auto-save KML + analysis to library after pipeline completes */
+  async function autoSaveToLibrary(kmlContent, instanceId, output) {
+    if (!isLoggedIn() || !authEnabled()) return;
+    try {
+      /* Save KML to library */
+      var kmlRes = await apiFetch('/api/library/kmls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kml_content: kmlContent })
+      });
+      if (!kmlRes || !kmlRes.ok) return;
+      var kmlRecord = await kmlRes.json();
+
+      /* Save analysis record */
+      var frameCount = 0;
+      if (output && output.timelapse_frames) frameCount = output.timelapse_frames.length || 0;
+      else if (output && output.frame_count) frameCount = output.frame_count;
+      var analysisRes = await apiFetch('/api/library/analyses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kml_id: kmlRecord.id,
+          kml_name: kmlRecord.name,
+          instance_id: instanceId,
+          status: 'completed',
+          frame_count: frameCount
+        })
+      });
+
+      /* Save analysis summary (NDVI trends, fire alerts) to the record */
+      if (analysisRes && analysisRes.ok) {
+        var analysisRecord = await analysisRes.json();
+        var summary = buildAnalysisSummary(output);
+        if (summary && analysisRecord.id) {
+          await apiFetch('/api/library/analyses/' + encodeURIComponent(analysisRecord.id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: JSON.stringify(summary) })
+          });
+        }
+      }
+
+      /* Refresh dashboard if visible */
+      if (document.getElementById('dashboard').style.display !== 'none') loadDashboard();
+    } catch (e) {
+      console.warn('Auto-save to library failed:', e);
+    }
+  }
+
+  /* Build a compact summary object from pipeline enrichment output */
+  function buildAnalysisSummary(output) {
+    if (!output) return null;
+    var summary = {};
+    /* NDVI metrics from the enrichment data */
+    var frames = output.timelapse_frames || [];
+    if (frames.length >= 2) {
+      summary.frame_count = frames.length;
+      var ndviValues = frames.map(function(f) { return f.ndvi_mean; }).filter(function(v) { return typeof v === 'number' && !isNaN(v); });
+      if (ndviValues.length >= 2) {
+        var earlyAvg = ndviValues.slice(0, Math.ceil(ndviValues.length / 3)).reduce(function(a, b) { return a + b; }, 0) / Math.ceil(ndviValues.length / 3);
+        var lateAvg = ndviValues.slice(-Math.ceil(ndviValues.length / 3)).reduce(function(a, b) { return a + b; }, 0) / Math.ceil(ndviValues.length / 3);
+        summary.ndvi_early = Math.round(earlyAvg * 1000) / 1000;
+        summary.ndvi_late = Math.round(lateAvg * 1000) / 1000;
+        summary.ndvi_delta = Math.round((lateAvg - earlyAvg) * 1000) / 1000;
+        if (summary.ndvi_delta <= -0.05) summary.ndvi_trajectory = 'declining';
+        else if (summary.ndvi_delta >= 0.05) summary.ndvi_trajectory = 'improving';
+        else summary.ndvi_trajectory = 'stable';
+      }
+    }
+    /* Fire hotspots */
+    if (output.fire_hotspots && output.fire_hotspots.length) {
+      summary.fire_count = output.fire_hotspots.length;
+    }
+    /* Period assessment text */
+    var assessment = document.getElementById('period-assessment');
+    if (assessment && assessment.textContent.trim()) {
+      summary.assessment = assessment.textContent.trim().substring(0, 300);
+    }
+    return Object.keys(summary).length ? summary : null;
+  }
+
+  function initDashboard() {
+    /* Upload button toggle */
+    document.getElementById('dash-upload-btn').addEventListener('click', function() {
+      var form = document.getElementById('dash-upload-form');
+      form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('dash-upload-cancel').addEventListener('click', function() {
+      document.getElementById('dash-upload-form').style.display = 'none';
+    });
+    document.getElementById('dash-upload-submit').addEventListener('click', dashUploadKml);
+
+    /* Upload drop zone */
+    var dropZone = document.getElementById('dash-drop-zone');
+    var fileInput = document.getElementById('dash-file-input');
+    if (dropZone && fileInput) {
+      dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+      dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('dragover'); });
+      dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        var file = e.dataTransfer.files[0];
+        if (file) readDashKmlFile(file);
+      });
+      fileInput.addEventListener('change', function() {
+        if (fileInput.files[0]) readDashKmlFile(fileInput.files[0]);
+      });
+    }
+
+    /* Delegated click handlers for KML and analysis lists */
+    document.getElementById('dash-kml-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'delete-kml') dashDeleteKml(btn.getAttribute('data-id'));
+      else if (action === 'download-kml') dashDownloadKml(btn.getAttribute('data-id'), btn.getAttribute('data-name'));
+      else if (action === 'analyse-kml') dashAnalyseKml(btn.getAttribute('data-id'));
+    });
+    document.getElementById('dash-analysis-list').addEventListener('click', function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      if (action === 'delete-analysis') dashDeleteAnalysis(btn.getAttribute('data-id'));
+      else if (action === 'open-analysis') dashOpenAnalysis(btn.getAttribute('data-instance'), btn.getAttribute('data-kml-id'));
+      else if (action === 'export-analysis') dashExportAnalysis(btn.getAttribute('data-instance'), btn.getAttribute('data-format'));
+    });
+
+    /* Account actions */
+    document.getElementById('dash-export-btn').addEventListener('click', dashExportData);
+    document.getElementById('dash-delete-account-btn').addEventListener('click', dashDeleteAccount);
+  }
+
+  function readDashKmlFile(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      document.getElementById('dash-kml-content').value = e.target.result;
+      document.getElementById('dash-drop-file-name').textContent = file.name;
+      if (!document.getElementById('dash-kml-name').value) {
+        document.getElementById('dash-kml-name').value = file.name.replace(/\.kml$/i, '');
+      }
+    };
+    reader.readAsText(file);
+  }
+
   /* --- Init --- */
   initAuth();
   document.getElementById('auth-login-btn').addEventListener('click', login);
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   var loginPromptLink = document.getElementById('login-prompt-link');
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
+
+  /* --- Dashboard --- */
+  initDashboard();
 
   discoverApiBase().then(function() {
     checkContract();

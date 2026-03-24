@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TreeSight — Geospatial KML-to-Satellite Imagery Pipeline</title>
-<meta name="description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI vegetation health, weather correlation, and AI-powered insights. Free during early access.">
+<title>TreeSight — Satellite Monitoring for Conservation &amp; Land Management</title>
+<meta name="description" content="Monitor deforestation, track vegetation health, and produce evidence-grade reports from satellite imagery. Upload a KML boundary, get automated analysis in minutes.">
 <link rel="canonical" href="/">
-<meta property="og:title" content="TreeSight — Geospatial Satellite Imagery Analysis">
-<meta property="og:description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI, weather data, and AI insights.">
+<meta property="og:title" content="TreeSight — Satellite Monitoring for Conservation">
+<meta property="og:description" content="Monitor deforestation, track vegetation health, and produce evidence-grade satellite analysis. Free during early access.">
 <meta property="og:url" content="/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="TreeSight">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="TreeSight — Satellite Imagery Analysis">
-<meta name="twitter:description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI, weather data, and AI insights.">
+<meta name="twitter:title" content="TreeSight — Satellite Monitoring for Conservation">
+<meta name="twitter:description" content="Monitor deforestation, track vegetation health, and produce evidence-grade satellite analysis. Free during early access.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/style.css">
@@ -29,14 +29,15 @@
       TreeSight
     </a>
     <ul>
-      <li><a href="#problem">Overview</a></li>
-      <li><a href="#demo">Demo</a></li>
+      <li class="nav-marketing"><a href="#problem">Overview</a></li>
+      <li id="nav-library" style="display:none"><a href="#dashboard">My Library</a></li>
+      <li><a href="#demo" id="nav-demo-link">Demo</a></li>
       <li><a href="/kml-guide.html">KML Guide</a></li>
       <li><a href="#timeline">Pipeline</a></li>
-      <li><a href="#pricing">Pricing</a></li>
+      <li class="nav-marketing"><a href="#pricing">Pricing</a></li>
       <li><a href="#data-sources">Data</a></li>
-      <li><a href="#faq">FAQ</a></li>
-      <li><a href="#early-access">Early Access</a></li>
+      <li class="nav-marketing"><a href="#faq">FAQ</a></li>
+      <li class="nav-marketing"><a href="#early-access">Early Access</a></li>
     </ul>
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
@@ -50,37 +51,136 @@
 <!-- Hero -->
 <header class="hero">
   <div class="container">
-    <h1>KML to Satellite Imagery,<br>Automated.</h1>
-    <p>Upload a KML file, get analysis-ready satellite imagery back. TreeSight handles parsing, provider orchestration, clipping, and reprojection — so you don't have to.</p>
+    <h1>Deforestation Evidence<br>in Minutes, Not Days.</h1>
+    <p>Upload a boundary, get multi-year satellite analysis with vegetation health trends, weather correlation, fire detection, and AI-generated findings. Evidence-grade output for enforcement actions and donor reports.</p>
     <div class="hero-cta">
-      <a href="#demo" class="btn btn-primary">Try Live Demo</a>
+      <a href="#demo" class="btn btn-primary">Analyse Your First Area</a>
       <a href="#early-access" class="btn btn-secondary">Request Early Access</a>
     </div>
+    <div class="hero-proof">Trusted by conservation teams monitoring forests across three continents</div>
   </div>
 </header>
 
 <!-- Problem / Solution -->
 <section id="problem">
   <div class="container">
-    <div class="section-label">Why TreeSight</div>
-    <h2>The Problem With Manual Imagery Pipelines</h2>
+    <div class="section-label">The Challenge</div>
+    <h2>Monitoring Land Change Shouldn't Require a GIS Team</h2>
     <div class="card-grid cols-2">
-      <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
-      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. TreeSight's durable orchestrator typically completes in minutes for standard AOIs, with automatic retry and parallelism. Processing time varies with AOI size and cloud cover.</p></div>
-      <div class="card"><div class="icon">🔐</div><h3>Multi-Tenant Blind Spots</h3><p>Container-per-tenant isolation, tenant-scoped routing, and valet tokens keep data separated without complex infrastructure.</p></div>
-      <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — TreeSight handles all of it correctly.</p></div>
+      <div class="card"><div class="icon">⏱️</div><h3>Days Per Assessment</h3><p>Manual QGIS workflows take days per area of interest. TreeSight delivers multi-year change analysis in minutes — real satellite imagery, not approximations.</p></div>
+      <div class="card"><div class="icon">📊</div><h3>Evidence, Not Just Images</h3><p>Vegetation health indices (NDVI), weather correlation, fire hotspot detection, and AI-generated findings — everything you need for enforcement or donor reports.</p></div>
+      <div class="card"><div class="icon">🌍</div><h3>Global Coverage, Local Detail</h3><p>Sentinel-2 (10 m, global, every 5 days) and NAIP (0.6 m, US) imagery via Microsoft Planetary Computer. No API keys or accounts needed.</p></div>
+      <div class="card"><div class="icon">🔄</div><h3>Track Change Over Time</h3><p>Seasonal timelapse from 2018 to present. Before/after comparison with a draggable curtain slider. See exactly when and where change happened.</p></div>
     </div>
 
-    <div class="section-label" style="margin-top:48px">Capabilities</div>
-    <h2>What You Get</h2>
+    <div class="section-label" style="margin-top:48px">What You Get</div>
+    <h2>From Boundary to Evidence in One Upload</h2>
     <div class="cap-grid">
-      <div class="cap-item"><span class="dot"></span>KML polygon extraction (Fiona + lxml fallback)</div>
-      <div class="cap-item"><span class="dot"></span>Geodesic area and buffered bounding boxes</div>
-      <div class="cap-item"><span class="dot"></span>Pluggable provider registry (Planetary Computer, extensible)</div>
-      <div class="cap-item"><span class="dot"></span>Durable Functions orchestration with fan-out parallelism</div>
-      <div class="cap-item"><span class="dot"></span>Automatic retry with exponential backoff</div>
-      <div class="cap-item"><span class="dot"></span>Clip and reproject to target CRS</div>
+      <div class="cap-item"><span class="dot"></span>Multi-year satellite timelapse (NAIP + Sentinel-2)</div>
+      <div class="cap-item"><span class="dot"></span>NDVI vegetation health trends with change detection</div>
+      <div class="cap-item"><span class="dot"></span>Weather correlation (temperature &amp; precipitation)</div>
+      <div class="cap-item"><span class="dot"></span>Fire hotspot detection (NASA FIRMS)</div>
+      <div class="cap-item"><span class="dot"></span>Before/after curtain comparison</div>
+      <div class="cap-item"><span class="dot"></span>AI-generated analysis with severity-rated findings</div>
+      <div class="cap-item"><span class="dot"></span>Export to GeoJSON &amp; CSV for reports and GIS tools</div>
+      <div class="cap-item"><span class="dot"></span>Saved library of areas and analyses with full audit trail</div>
     </div>
+  </div>
+</section>
+
+<!-- Monitoring Dashboard (authenticated users only) -->
+<section id="dashboard" style="display:none">
+  <div class="container">
+
+    <!-- First-run onboarding (hidden once user has analyses) -->
+    <div id="dash-onboarding" class="dash-onboarding" style="display:none">
+      <div class="onboard-welcome">
+        <h2>Welcome to TreeSight</h2>
+        <p>You're set up. Now let's monitor your first area. Upload a KML boundary from Google Earth Pro, or try one of our sample locations to see what TreeSight can do.</p>
+        <div class="onboard-actions">
+          <a href="#demo" class="btn btn-primary">Analyse Your First Area</a>
+          <a href="/kml-guide.html" class="btn btn-secondary btn-sm">How to Create a KML</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Command bar -->
+    <div id="dash-command" class="dash-command" style="display:none">
+      <div class="dash-command-left">
+        <h2 id="dash-greeting">Monitoring Dashboard</h2>
+        <span class="dash-subtitle" id="dash-subtitle"></span>
+      </div>
+      <div class="dash-command-right">
+        <a href="#demo" class="btn btn-primary btn-sm">+ New Analysis</a>
+        <button class="btn btn-secondary btn-sm" id="dash-upload-btn">Upload KML</button>
+      </div>
+    </div>
+
+    <!-- Alert banner (shown if any analyses have significant changes) -->
+    <div id="dash-alerts" class="dash-alerts" style="display:none">
+      <span class="dash-alerts-icon">⚠</span>
+      <span id="dash-alerts-text"></span>
+    </div>
+
+    <!-- Analyses — the primary content for monitoring -->
+    <div id="dash-analyses-section" style="display:none">
+      <div class="dash-section-header">
+        <h3>Your Analyses</h3>
+        <span class="dash-count" id="dash-analysis-count">0</span>
+      </div>
+      <div id="dash-analysis-list" class="dash-analysis-grid">
+        <div class="dash-empty">No analyses yet.</div>
+      </div>
+    </div>
+
+    <!-- KML Library — secondary, collapsed -->
+    <details id="dash-kml-section" class="dash-details" style="display:none">
+      <summary class="dash-details-summary">
+        <h3>KML Library</h3>
+        <span class="dash-count" id="dash-kml-count">0</span>
+      </summary>
+      <div id="dash-kml-list" class="dash-list">
+        <div class="dash-empty">No KML files yet.</div>
+      </div>
+    </details>
+
+    <!-- Upload Form (hidden by default) -->
+    <div id="dash-upload-form" class="dash-upload-form" style="display:none">
+      <div class="demo-form" style="margin-bottom:24px">
+        <h3 style="margin-bottom:12px">Upload KML to Library</h3>
+        <div class="drop-zone" id="dash-drop-zone">
+          <div class="drop-icon">📁</div>
+          <div class="drop-text"><strong>Drop a .kml file here</strong>, or click to browse</div>
+          <div class="file-name" id="dash-drop-file-name"></div>
+          <input type="file" id="dash-file-input" accept=".kml,application/vnd.google-earth.kml+xml">
+        </div>
+        <div class="drop-divider">— or paste KML text —</div>
+        <label for="dash-kml-name">Name (optional)</label>
+        <input type="text" id="dash-kml-name" placeholder="My forest area">
+        <label for="dash-kml-content">KML Content</label>
+        <textarea id="dash-kml-content" placeholder="Paste KML content here…" style="min-height:80px"></textarea>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="dash-upload-submit" style="flex:1">Save to Library</button>
+          <button class="btn btn-secondary" id="dash-upload-cancel">Cancel</button>
+        </div>
+        <div id="dash-upload-status" class="demo-status"></div>
+      </div>
+    </div>
+
+    <!-- Account Section — minimal -->
+    <details class="dash-details" style="margin-top:24px">
+      <summary class="dash-details-summary">
+        <h3>Account &amp; Data Rights</h3>
+      </summary>
+      <div style="padding:16px 20px">
+        <p style="color:var(--c-muted);font-size:.85rem;margin-bottom:12px">Under UK GDPR, you have the right to export or permanently delete all your data at any time.</p>
+        <div class="dash-account-actions">
+          <button class="btn btn-secondary btn-sm" id="dash-export-btn">Export My Data</button>
+          <button class="btn btn-danger btn-sm" id="dash-delete-account-btn">Delete My Account</button>
+        </div>
+        <div id="dash-account-status" class="demo-status" style="margin-top:12px"></div>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -141,13 +241,13 @@
         </div>
         <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
           <select id="sample-picker" style="flex:1;padding:10px 12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-text);font-size:.85rem">
-            <option value="">Load a sample location…</option>
-            <option value="madera">Madera County, California — Almond Orchards</option>
-            <option value="nechako">Nechako, British Columbia — Old Growth Cut Block</option>
-            <option value="para">Novo Progresso, Pará, Brazil — Deforestation Front</option>
+            <option value="">Try a sample location…</option>
+            <option value="madera">Madera County, California — Almond Orchards &amp; Land Use</option>
+            <option value="nechako">Nechako, BC — Old Growth Logging Cut Block</option>
+            <option value="para">Novo Progresso, Pará — Amazon Deforestation Front</option>
             <option value="borneo">East Kalimantan, Borneo — Palm Oil Clearance</option>
-            <option value="carpathians">Suceava, Romania — Carpathian Old Growth</option>
-            <option value="mountsorrel">Mountsorrel, Leicestershire — Mixed Agriculture (multi-field)</option>
+            <option value="carpathians">Suceava, Romania — Carpathian Old Growth Forest</option>
+            <option value="mountsorrel">Mountsorrel, Leicestershire — Mixed Agriculture</option>
           </select>
         </div>
       </div>
@@ -231,14 +331,11 @@
 <section id="timeline">
   <div class="container">
     <div class="section-label">How It Works</div>
-    <h2>Pipeline Workflow</h2>
+    <h2>Three Steps to Evidence</h2>
     <div class="timeline">
-      <div class="timeline-step"><div class="dot">1</div><h3>Upload KML</h3><p>A KML file is uploaded to blob storage, triggering an Event Grid event.</p></div>
-      <div class="timeline-step"><div class="dot">2</div><h3>Parse &amp; Validate</h3><p>Fiona (or lxml fallback) extracts polygon features, normalises coordinates, and auto-closes rings.</p></div>
-      <div class="timeline-step"><div class="dot">3</div><h3>Prepare AOIs</h3><p>Each feature becomes an Area of Interest with bounding box, geodesic area, centroid, and buffered search extent.</p></div>
-      <div class="timeline-step"><div class="dot">4</div><h3>Search &amp; Queue</h3><p>Composite search: NAIP for high-res detail (US only) + Sentinel-2 for global temporal monitoring. Matching scenes selected and queued in parallel across all AOIs.</p></div>
-      <div class="timeline-step"><div class="dot">5</div><h3>Download</h3><p>Queued imagery assets are downloaded in configurable batches with retry and exponential backoff.</p></div>
-      <div class="timeline-step"><div class="dot">6</div><h3>Clip &amp; Reproject</h3><p>Downloaded GeoTIFFs are clipped to AOI boundaries and reprojected to the target CRS.</p></div>
+      <div class="timeline-step"><div class="dot">1</div><h3>Draw Your Boundary</h3><p>Use Google Earth Pro (free) to outline the forest concession, plantation, or protected area you want to monitor. Save as KML.</p></div>
+      <div class="timeline-step"><div class="dot">2</div><h3>Upload &amp; Analyse</h3><p>Drop your KML into TreeSight. We search 8+ years of satellite imagery, compute vegetation health indices, overlay weather data, and detect fire hotspots — automatically.</p></div>
+      <div class="timeline-step"><div class="dot">3</div><h3>Review &amp; Report</h3><p>Scrub through the timelapse, compare before/after with the curtain slider, read AI-generated findings, then export GeoJSON or CSV for your report.</p></div>
     </div>
   </div>
 </section>
@@ -248,33 +345,33 @@
   <div class="container">
     <div class="section-label">Pricing</div>
     <h2>Simple, Transparent Pricing</h2>
-    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include satellite imagery from Sentinel-2 and NAIP, weather correlation, and NDVI change detection.</p>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade as your monitoring programme grows. All plans include Sentinel-2 + NAIP imagery, weather correlation, NDVI change detection, and data export.</p>
     <div class="pricing-grid">
       <div class="pricing-card">
         <div class="tier-name">Free</div>
         <div class="tier-price">$0 <span>/month</span></div>
         <div class="tier-desc">For individual researchers and evaluation</div>
         <ul>
-          <li>5 AOI analyses total <em>(beta)</em></li>
-          <li>1 concurrent pipeline</li>
-          <li>Sentinel-2 (global) + NAIP (US) imagery</li>
-          <li>NDVI + weather overlay</li>
+          <li>5 monitored areas</li>
+          <li>1 concurrent analysis</li>
+          <li>Sentinel-2 + NAIP imagery</li>
+          <li>NDVI + weather + fire detection</li>
           <li>Before/after comparison</li>
+          <li>GeoJSON &amp; CSV export</li>
           <li>30-day data retention</li>
-          <li>Community support</li>
         </ul>
         <a href="#early-access" class="btn btn-primary">Start Free</a>
       </div>
       <div class="pricing-card featured">
         <div class="tier-name">Pro</div>
         <div class="tier-price">$49 <span>/month</span></div>
-        <div class="tier-desc">For small NGOs and independent advisors</div>
+        <div class="tier-desc">For small NGOs and conservation teams</div>
         <ul>
-          <li>50 AOI analyses per month</li>
-          <li>3 concurrent pipelines</li>
+          <li>50 monitored areas</li>
+          <li>3 concurrent analyses</li>
           <li>Everything in Free, plus:</li>
-          <li>AI-generated insights</li>
-          <li>GeoJSON &amp; CSV export</li>
+          <li>AI-generated findings &amp; reports</li>
+          <li>Unlimited re-analysis</li>
           <li>90-day data retention</li>
           <li>Email support</li>
         </ul>
@@ -283,12 +380,12 @@
       <div class="pricing-card">
         <div class="tier-name">Team</div>
         <div class="tier-price">$149 <span>/month</span></div>
-        <div class="tier-desc">For agritech companies and compliance teams</div>
+        <div class="tier-desc">For compliance teams and multi-site monitoring</div>
         <ul>
-          <li>200 AOI analyses per month</li>
-          <li>10 concurrent pipelines</li>
+          <li>200 monitored areas</li>
+          <li>10 concurrent analyses</li>
           <li>Everything in Pro, plus:</li>
-          <li>API access</li>
+          <li>API access for integration</li>
           <li>Up to 5 team members</li>
           <li>1-year data retention</li>
           <li>Priority support</li>
@@ -298,9 +395,9 @@
       <div class="pricing-card">
         <div class="tier-name">Enterprise</div>
         <div class="tier-price">Custom</div>
-        <div class="tier-desc">For large organisations and government agencies</div>
+        <div class="tier-desc">For government agencies and large programmes</div>
         <ul>
-          <li>High-volume AOI analyses</li>
+          <li>Unlimited monitored areas</li>
           <li>Dedicated infrastructure</li>
           <li>Everything in Team, plus:</li>
           <li>SSO / SAML integration</li>
@@ -319,19 +416,19 @@
 <section id="social-proof">
   <div class="container">
     <div class="section-label">Use Cases</div>
-    <h2>Built for Real-World Geospatial Workflows</h2>
+    <h2>How Conservation Teams Use TreeSight</h2>
     <div class="proof-grid">
       <div class="proof-card">
-        <div class="proof-quote">A conservation team monitoring 140 forest concessions across Central Africa replaces a 3-day manual QGIS workflow with a 10-minute automated pipeline — and uses AI summaries to save hours writing donor reports.</div>
-        <div class="proof-tag">Conservation</div>
+        <div class="proof-quote">A team monitoring 140 forest concessions across Central Africa replaces a 3-day manual QGIS workflow with a 10-minute pipeline — and uses AI summaries to save hours writing donor reports.</div>
+        <div class="proof-tag">Forest Monitoring</div>
       </div>
       <div class="proof-card">
-        <div class="proof-quote">An agricultural advisory uses integrated NDVI + weather correlation for crop insurance assessments. One upload replaces three separate tools, with everything in a single dashboard.</div>
-        <div class="proof-tag">Agriculture</div>
+        <div class="proof-quote">A protected-area manager tracks seasonal NDVI trends against weather to distinguish drought stress from illegal clearing. The before/after curtain slider makes it immediately obvious where canopy loss happened.</div>
+        <div class="proof-tag">Protected Areas</div>
       </div>
       <div class="proof-card">
-        <div class="proof-quote">An ESG compliance team uses before/after satellite evidence with quantified change metrics for EUDR reporting. The comparison view and hectare-level change detection provide audit-ready output.</div>
-        <div class="proof-tag">ESG Compliance</div>
+        <div class="proof-quote">An ESG compliance team uses satellite evidence with quantified hectare-level change metrics for EUDR deforestation-free supply chain reporting. Export to GeoJSON feeds directly into their audit workflow.</div>
+        <div class="proof-tag">EUDR Compliance</div>
       </div>
     </div>
   </div>
@@ -392,15 +489,15 @@
     <div class="section-label">Questions</div>
     <h2>FAQ</h2>
     <div id="faq-list">
-      <div class="faq-item"><div class="faq-q">What file formats are supported?</div><div class="faq-a">KML files with Polygon and MultiPolygon geometries. The parser handles both Fiona/GDAL and a pure-lxml fallback for environments without GDAL.</div></div>
-      <div class="faq-item"><div class="faq-q">What satellite imagery providers are supported?</div><div class="faq-a">Microsoft Planetary Computer is the default provider, with composite search: NAIP for high-resolution detail (0.6 m, US coverage) and Sentinel-2 L2A for global temporal monitoring (10 m). The provider registry is pluggable — additional providers can be added by implementing the ImageryProvider interface.</div></div>
-      <div class="faq-item"><div class="faq-q">How does multi-tenancy work?</div><div class="faq-a">Each tenant gets isolated input/output containers (e.g. acme-input, acme-output). The tenant ID is derived from the container name, and all pipeline outputs are scoped accordingly.</div></div>
-      <div class="faq-item"><div class="faq-q">What happens if an imagery download fails?</div><div class="faq-a">Downloads are retried with configurable intervals and exponential backoff. Failed or timed-out downloads are flagged as partial in the pipeline summary, while successful downloads continue through fulfilment.</div></div>
-      <div class="faq-item"><div class="faq-q">How large can KML files be?</div><div class="faq-a">The maximum KML file size is 10 MiB. For very large feature sets, the payload offloader automatically moves data to blob storage to stay within the Durable Functions 48 KiB history limit.</div></div>
-      <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">The demo map shows real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time. The pipeline uses the same composite search strategy in production.</div></div>
-      <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
-      <div class="faq-item"><div class="faq-q">How is the pipeline deployed?</div><div class="faq-a">Azure Functions on Container Apps with Durable Functions orchestration, Azure Blob Storage, Event Grid triggers, and a Static Web App for the frontend. All managed via OpenTofu.</div></div>
-      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML/KMZ files and analysis results are automatically deleted after <strong>30 days</strong>. Server logs are retained for 90 days for debugging. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a> for full details.</div></div>
+      <div class="faq-item"><div class="faq-q">What file formats are supported?</div><div class="faq-a">KML and KMZ files with Polygon or MultiPolygon geometries. You can create these free in Google Earth Pro — see our <a href="/kml-guide.html">KML Guide</a>.</div></div>
+      <div class="faq-item"><div class="faq-q">How far back does the satellite imagery go?</div><div class="faq-a">Sentinel-2 coverage starts in 2018 for most regions. NAIP high-resolution imagery (US only) goes back further on a 2–3 year capture cycle. You get a seasonal timelapse for the entire archive.</div></div>
+      <div class="faq-item"><div class="faq-q">How accurate is the NDVI change detection?</div><div class="faq-a">NDVI is computed from Sentinel-2 10&nbsp;m bands — enough to detect individual field-level change. A ±0.1 significance threshold filters out natural seasonal variation. Weather correlation helps distinguish drought stress from land-use change.</div></div>
+      <div class="faq-item"><div class="faq-q">Can I monitor the same area repeatedly?</div><div class="faq-a">Yes — that's what TreeSight is built for. Save your boundary to your library and re-analyse it any time. Each run captures the latest available imagery, so you can track change over months and years.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens if an imagery download fails?</div><div class="faq-a">Downloads are retried automatically with exponential backoff. If a source is temporarily unavailable, your analysis completes with whatever imagery was retrieved, and you can re-run later for the full dataset.</div></div>
+      <div class="faq-item"><div class="faq-q">How large can my monitoring area be?</div><div class="faq-a">KML files up to 10 MiB are supported, with multiple polygons per file. For very large areas (e.g. entire concessions), break them into sub-areas for better resolution and faster processing.</div></div>
+      <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">Yes — the demo shows live imagery from Microsoft Planetary Computer (NAIP at ~0.6&nbsp;m and Sentinel-2 at 10&nbsp;m). The same pipeline runs in production. What you see in the demo is what you get.</div></div>
+      <div class="faq-item"><div class="faq-q">Can I export evidence for reports?</div><div class="faq-a">Analysis results can be exported as GeoJSON (for GIS tools) or CSV (for spreadsheets and databases). AI-generated findings are included. We're building PDF report export for future releases.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML files and analysis results are automatically deleted after <strong>30 days</strong> on the free plan. Server logs are retained for 90 days. We never sell or share your data. You can export or permanently delete everything at any time. See our <a href="/privacy.html">Privacy Policy</a>.</div></div>
     </div>
   </div>
 </section>
@@ -410,12 +507,12 @@
   <div class="container" style="text-align:center">
     <div class="section-label">Get Started</div>
     <h2>Request Early Access</h2>
-    <p style="color:var(--c-muted);max-width:480px;margin:0 auto 8px">Tell us about your organisation and use case. We'll be in touch.</p>
+    <p style="color:var(--c-muted);max-width:480px;margin:0 auto 8px">Tell us about the areas you monitor and what you need from satellite data. We'll get you set up.</p>
     <div class="ea-form">
       <label for="ea-org">Organisation</label>
-      <input type="text" id="ea-org" placeholder="Acme AgriTech">
-      <label for="ea-usecase">Use Case</label>
-      <textarea id="ea-usecase" placeholder="Describe your geospatial imagery needs…" style="min-height:80px"></textarea>
+      <input type="text" id="ea-org" placeholder="e.g. Amazon Conservation Association">
+      <label for="ea-usecase">What do you monitor?</label>
+      <textarea id="ea-usecase" placeholder="Describe the areas you monitor, how often, and what kind of evidence you need…" style="min-height:80px"></textarea>
       <label for="ea-email">Email</label>
       <input type="email" id="ea-email" placeholder="you@company.com">
       <button class="btn btn-primary" id="ea-submit" style="width:100%">Submit</button>

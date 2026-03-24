@@ -76,16 +76,28 @@ main .container{max-width:780px}
       </thead>
       <tbody>
         <tr>
+          <td><strong>Account identity</strong></td>
+          <td>Display name, email (via Microsoft Entra External ID)</td>
+          <td>Authentication and account management</td>
+          <td>Until you delete your account</td>
+        </tr>
+        <tr>
           <td><strong>KML/KMZ files</strong></td>
           <td>Polygon geometries you upload</td>
           <td>To run satellite imagery analysis</td>
-          <td>Automatically deleted after 30 days</td>
+          <td>Until you delete them, or 30 days for unlinked demo uploads</td>
+        </tr>
+        <tr>
+          <td><strong>Library manifest</strong></td>
+          <td>List of your saved KMLs and analyses</td>
+          <td>To provide your personal library dashboard</td>
+          <td>Until you delete your account</td>
         </tr>
         <tr>
           <td><strong>Analysis results</strong></td>
           <td>NDVI, weather data, AI insights</td>
           <td>To display results to you</td>
-          <td>Automatically deleted after 30 days</td>
+          <td>Until you delete them, or 30 days for unauthenticated use</td>
         </tr>
         <tr>
           <td><strong>Early access form</strong></td>
@@ -123,7 +135,8 @@ main .container{max-width:780px}
     <p>Each provider processes data under their own privacy policies. We select providers with strong data protection practices.</p>
 
     <h2>5. Data Retention</h2>
-    <p>Uploaded files and analysis results are automatically deleted after <strong>30 days</strong>. This retention period is designed to give you time to retrieve results while minimising unnecessary data storage.</p>
+    <p>When you have an account, your KML files and analysis records are stored in your personal library until <strong>you choose to delete them</strong>. You can delete individual items or your entire account at any time from the Account &amp; Data Rights section of your dashboard.</p>
+    <p>For unauthenticated demo usage, uploaded files and results are automatically deleted after <strong>30 days</strong>.</p>
     <p>Server logs are retained for <strong>90 days</strong> in Azure Application Insights for operational and debugging purposes, then automatically purged.</p>
 
     <h2>6. Data Security</h2>
@@ -136,15 +149,21 @@ main .container{max-width:780px}
     </ul>
 
     <h2>7. Your Rights</h2>
-    <p>Under applicable data protection laws (including UK GDPR), you have the right to:</p>
+    <p>Under applicable data protection laws (including UK GDPR / Data Protection Act 2018), you have the right to:</p>
     <ul>
       <li><strong>Access</strong> — request a copy of the data we hold about you</li>
       <li><strong>Rectification</strong> — correct inaccurate data</li>
-      <li><strong>Erasure</strong> — request deletion of your data</li>
-      <li><strong>Portability</strong> — receive your data in a structured format</li>
+      <li><strong>Erasure</strong> — request deletion of your data ("right to be forgotten")</li>
+      <li><strong>Portability</strong> — receive your data in a structured, machine-readable format</li>
       <li><strong>Object</strong> — object to processing for certain purposes</li>
     </ul>
-    <p>To exercise any of these rights, contact us via the <a href="/#early-access">Early Access form</a> or our GitHub repository.</p>
+    <h3 style="font-size:1rem;margin:16px 0 8px">Self-Service Data Rights</h3>
+    <p>When signed in, you can exercise these rights immediately from your dashboard:</p>
+    <ul>
+      <li><strong>Export My Data</strong> — downloads all your KML files, analysis records, and account data as a single JSON file (Article 20 — data portability)</li>
+      <li><strong>Delete My Account</strong> — permanently erases all your data including KML files, analyses, quota records, and library manifest (Article 17 — right to erasure)</li>
+    </ul>
+    <p>These actions take effect immediately and cannot be undone. You can also contact us via <a href="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite">GitHub</a> to exercise any data right manually.</p>
 
     <h2>8. Cookies</h2>
     <p>TreeSight does <strong>not</strong> use cookies or tracking scripts. We do not use any analytics services that track individual users across the web.</p>
