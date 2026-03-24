@@ -77,3 +77,13 @@ class ProviderDownloadError(ProviderError):
 
     def __init__(self, message: str, *, retryable: bool = False) -> None:
         super().__init__(message, retryable=retryable)
+
+
+# --- Billing errors ---
+
+
+class BillingError(PipelineError):
+    """Billing / subscription failure."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, stage="billing", code="BILLING_ERROR", retryable=False)

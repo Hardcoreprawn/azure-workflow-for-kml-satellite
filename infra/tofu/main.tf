@@ -233,6 +233,24 @@ resource "azurerm_key_vault" "main" {
   tags                          = local.tags
 }
 
+# --- Stripe secrets in Key Vault (M4) ---
+
+resource "azurerm_key_vault_secret" "stripe_api_key" {
+  count        = var.stripe_api_key != "" ? 1 : 0
+  name         = "stripe-api-key"
+  value        = var.stripe_api_key
+  key_vault_id = azurerm_key_vault.main.id
+  tags         = local.tags
+}
+
+resource "azurerm_key_vault_secret" "stripe_webhook_secret" {
+  count        = var.stripe_webhook_secret != "" ? 1 : 0
+  name         = "stripe-webhook-secret"
+  value        = var.stripe_webhook_secret
+  key_vault_id = azurerm_key_vault.main.id
+  tags         = local.tags
+}
+
 # --- Azure OpenAI for AI analysis (M1.6) ---
 
 resource "azurerm_cognitive_account" "openai" {
@@ -376,6 +394,19 @@ resource "azapi_resource" "function_app" {
           {
             name  = "CIAM_AUDIENCE"
             value = var.ciam_client_id
+          }
+        ] : [], var.stripe_api_key != "" ? [
+          {
+            name  = "STRIPE_API_KEY"
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_api_key[0].versionless_id})"
+          },
+          {
+            name  = "STRIPE_WEBHOOK_SECRET"
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_webhook_secret[0].versionless_id})"
+          },
+          {
+            name  = "STRIPE_PRICE_ID_PRO"
+            value = var.stripe_price_id_pro
           }
         ] : [])
       }

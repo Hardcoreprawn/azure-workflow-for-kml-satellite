@@ -5,6 +5,7 @@ import logging
 import azure.functions as func
 
 from blueprints.analysis import bp as analysis_bp
+from blueprints.billing import bp as billing_bp
 from blueprints.contact import bp as contact_bp
 from blueprints.demo import bp as demo_bp
 from blueprints.export import bp as export_bp
@@ -31,6 +32,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Register HTTP blueprints
 app.register_functions(health_bp)
+app.register_functions(billing_bp)
 app.register_functions(contact_bp)
 app.register_functions(demo_bp)
 app.register_functions(analysis_bp)

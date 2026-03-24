@@ -106,3 +106,8 @@ class BlobStorageClient:
         """Return a ``StorageStreamDownloader`` for streaming responses."""
         blob = self._client.get_blob_client(container, blob_path)
         return blob.download_blob()
+
+    def list_blobs(self, container: str, prefix: str = "") -> list[str]:
+        """Return blob names in *container* matching the optional *prefix*."""
+        cc = self._client.get_container_client(container)
+        return [b.name for b in cc.list_blobs(name_starts_with=prefix or None)]

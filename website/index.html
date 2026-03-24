@@ -248,11 +248,11 @@
   <div class="container">
     <div class="section-label">Pricing</div>
     <h2>Simple, Transparent Pricing</h2>
-    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include satellite imagery from Sentinel-2 and NAIP, weather correlation, and NDVI change detection.</p>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include satellite imagery from Sentinel-2 and NAIP, weather correlation, and NDVI change detection. Prices shown exclude VAT where applicable.</p>
     <div class="pricing-grid">
       <div class="pricing-card">
         <div class="tier-name">Free</div>
-        <div class="tier-price">$0 <span>/month</span></div>
+        <div class="tier-price">&pound;0 <span>/month</span></div>
         <div class="tier-desc">For individual researchers and evaluation</div>
         <ul>
           <li>5 AOI analyses total <em>(beta)</em></li>
@@ -267,7 +267,7 @@
       </div>
       <div class="pricing-card featured">
         <div class="tier-name">Pro</div>
-        <div class="tier-price">$49 <span>/month</span></div>
+        <div class="tier-price">&pound;39 <span>/month</span></div>
         <div class="tier-desc">For small NGOs and independent advisors</div>
         <ul>
           <li>50 AOI analyses per month</li>
@@ -278,11 +278,11 @@
           <li>90-day data retention</li>
           <li>Email support</li>
         </ul>
-        <a href="#early-access" class="btn btn-primary">Get Pro</a>
+        <button class="btn btn-primary" id="btn-upgrade-pro" onclick="window.treesightBilling && window.treesightBilling.checkout()">Get Pro</button>
       </div>
       <div class="pricing-card">
         <div class="tier-name">Team</div>
-        <div class="tier-price">$149 <span>/month</span></div>
+        <div class="tier-price">&pound;119 <span>/month</span></div>
         <div class="tier-desc">For agritech companies and compliance teams</div>
         <ul>
           <li>200 AOI analyses per month</li>
@@ -311,7 +311,7 @@
         <a href="#early-access" class="btn btn-secondary">Talk to Sales</a>
       </div>
     </div>
-    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. Enterprise pricing scales with compute usage. Need more AOIs? <a href="#early-access">Contact us</a> to discuss high-volume pricing.</p>
+    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. VAT is calculated at checkout based on your location. You can cancel any time from your <a href="#" id="manage-billing-link" style="display:none">billing dashboard</a>. 14-day cancellation right applies under UK Consumer Contracts Regulations 2013. Enterprise pricing scales with compute usage. Need more AOIs? <a href="#early-access">Contact us</a>.</p>
   </div>
 </section>
 

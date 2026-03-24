@@ -108,6 +108,8 @@
       logoutBtn.style.display = 'inline';
       loginPrompt.style.display = 'none';
       if (submitBtn) submitBtn.textContent = 'Process KML';
+      /* Load billing status for logged-in users */
+      if (window.treesightBilling) window.treesightBilling.loadStatus();
     } else {
       userSpan.style.display = 'none';
       loginBtn.style.display = 'inline';
@@ -2811,5 +2813,74 @@
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
 
   discoverApiBase();
+
+  /* --- Billing self-service (M4) --- */
+  window.treesightBilling = {
+    checkout: async function() {
+      if (!isLoggedIn()) { login(); return; }
+      try {
+        var res = await apiFetch('/api/billing/checkout', {method: 'POST'});
+        if (!res || !res.ok) {
+          var err = res ? await res.json().catch(function(){return {};}) : {};
+          alert(err.error || 'Could not start checkout. Please try again.');
+          return;
+        }
+        var data = await res.json();
+        if (data.checkout_url) { window.location.href = data.checkout_url; }
+      } catch(e) {
+        console.error('Checkout error:', e);
+        alert('Could not connect to billing. Please try again later.');
+      }
+    },
+    portal: async function() {
+      if (!isLoggedIn()) { login(); return; }
+      try {
+        var res = await apiFetch('/api/billing/portal', {method: 'POST'});
+        if (!res || !res.ok) {
+          var err = res ? await res.json().catch(function(){return {};}) : {};
+          alert(err.error || 'Could not open billing portal. Please try again.');
+          return;
+        }
+        var data = await res.json();
+        if (data.portal_url) { window.location.href = data.portal_url; }
+      } catch(e) {
+        console.error('Portal error:', e);
+        alert('Could not connect to billing. Please try again later.');
+      }
+    },
+    loadStatus: async function() {
+      if (!isLoggedIn()) return;
+      try {
+        var res = await apiFetch('/api/billing/status');
+        if (!res || !res.ok) return;
+        var data = await res.json();
+
+        /* Update Pro button text based on subscription state */
+        var proBtn = document.getElementById('btn-upgrade-pro');
+        var manageLink = document.getElementById('manage-billing-link');
+        if (data.tier === 'pro' && data.status === 'active') {
+          if (proBtn) { proBtn.textContent = 'Current Plan'; proBtn.disabled = true; proBtn.style.opacity = '0.6'; }
+          if (manageLink) {
+            manageLink.style.display = 'inline';
+            manageLink.onclick = function(e) { e.preventDefault(); window.treesightBilling.portal(); };
+          }
+        } else if (data.status === 'past_due' && proBtn) {
+          proBtn.textContent = 'Payment Issue — Update';
+          proBtn.onclick = function() { window.treesightBilling.portal(); };
+        }
+      } catch(e) {
+        console.debug('Billing status check skipped:', e);
+      }
+    }
+  };
+
+  /* Handle billing return query params */
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('billing') === 'success') {
+    setTimeout(function() { alert('Welcome to Pro! Your subscription is now active.'); }, 500);
+    history.replaceState(null, '', window.location.pathname);
+  } else if (params.get('billing') === 'cancel') {
+    history.replaceState(null, '', window.location.pathname);
+  }
 
 })();

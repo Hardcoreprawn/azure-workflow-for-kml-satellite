@@ -114,3 +114,25 @@ variable "ciam_client_id" {
   type        = string
   default     = ""
 }
+
+# --- Stripe billing (M4) ---
+
+variable "stripe_api_key" {
+  description = "Stripe secret API key. Stored in Key Vault, never in app settings."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "stripe_webhook_secret" {
+  description = "Stripe webhook signing secret. Stored in Key Vault."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "stripe_price_id_pro" {
+  description = "Stripe Price ID for the Pro subscription plan."
+  type        = string
+  default     = ""
+}

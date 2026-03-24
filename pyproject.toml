@@ -20,6 +20,7 @@ dependencies = [
     "planetary-computer>=1.0.0",
     "httpx>=0.28.0",
     "PyJWT[crypto]>=2.9.0",
+    "stripe>=11.0.0",
 ]
 
 [project.optional-dependencies]
