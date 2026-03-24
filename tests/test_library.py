@@ -414,3 +414,21 @@ class TestDeleteAllData:
 
         # Should have tried to delete the quota blob
         storage.delete_blob.assert_called_with("pipeline-payloads", "quotas/user-123.json")
+
+    def test_partial_failure_counts_only_successes(self) -> None:
+        from treesight.storage.library import UserLibrary
+
+        storage = _mock_storage()
+        storage.list_blobs.return_value = [
+            "users/user-123/library.json",
+            "users/user-123/kmls/k1.kml",
+            "users/user-123/kmls/k2.kml",
+        ]
+        # First delete succeeds, second fails, third succeeds, quota succeeds
+        storage.delete_blob.side_effect = [True, False, True, True]
+
+        lib = UserLibrary("user-123", storage=storage)
+        result = lib.delete_all_data()
+
+        # Only 3 succeeded out of 4 attempts
+        assert result["blobs_deleted"] == 3

@@ -38,7 +38,7 @@ class UserLibrary:
         self._container = PIPELINE_PAYLOADS_CONTAINER
 
     def get_library(self) -> dict[str, Any]:
-        """Return the full library manifest, creating it if absent."""
+        """Return the full library manifest, or an empty one if absent."""
         path = _library_path(self._user_id)
         if not self._storage.blob_exists(self._container, path):
             return _empty_library()
@@ -228,8 +228,8 @@ class UserLibrary:
         user_prefix = f"users/{self._user_id}/"
         blobs = self._storage.list_blobs(self._container, user_prefix)
         for blob_name in blobs:
-            self._storage.delete_blob(self._container, blob_name)
-            deleted_count += 1
+            if self._storage.delete_blob(self._container, blob_name):
+                deleted_count += 1
 
         # Delete quota record
         quota_path = f"quotas/{self._user_id}.json"

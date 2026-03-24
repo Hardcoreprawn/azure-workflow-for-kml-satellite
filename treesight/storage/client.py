@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
 
 from treesight.config import STORAGE_CONNECTION_STRING
@@ -109,7 +110,10 @@ class BlobStorageClient:
             blob.delete_blob()
             log_phase("storage", "delete", blob_path=blob_path, container=container)
             return True
+        except ResourceNotFoundError:
+            return False
         except Exception:
+            log_phase("storage", "delete_error", blob_path=blob_path, container=container)
             return False
 
     def list_blobs(self, container: str, prefix: str) -> list[str]:

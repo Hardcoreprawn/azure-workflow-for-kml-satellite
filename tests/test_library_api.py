@@ -17,7 +17,7 @@ _SWA_ORIGIN = "https://polite-glacier-0d6885003.4.azurestaticapps.net"
 def _req(
     method: str = "GET",
     url: str = "https://func.test/api/library",
-    body: dict | None = None,
+    body: dict | list | None = None,
     route_params: dict | None = None,
     headers: dict | None = None,
 ) -> func.HttpRequest:
@@ -28,7 +28,7 @@ def _req(
         method=method,
         url=url,
         headers=h,
-        body=json.dumps(body).encode() if body else b"",
+        body=json.dumps(body).encode() if body is not None else b"",
         route_params=route_params or {},
     )
 
@@ -300,6 +300,77 @@ class TestUpdateAnalysis:
             )
 
         assert resp.status_code == 400
+
+    def test_patch_non_dict_body_rejected(self) -> None:
+        from blueprints.library import update_analysis
+
+        with _auth_disabled():
+            resp = update_analysis(
+                _req(method="PATCH", body=["list"], route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 400
+
+    def test_patch_invalid_frame_count_rejected(self) -> None:
+        from blueprints.library import update_analysis
+
+        with _auth_disabled():
+            resp = update_analysis(
+                _req(
+                    method="PATCH",
+                    body={"frame_count": "not-a-number"},
+                    route_params={"analysis_id": "a1"},
+                )
+            )
+
+        assert resp.status_code == 400
+
+    def test_patch_negative_frame_count_rejected(self) -> None:
+        from blueprints.library import update_analysis
+
+        with _auth_disabled():
+            resp = update_analysis(
+                _req(
+                    method="PATCH",
+                    body={"frame_count": -5},
+                    route_params={"analysis_id": "a1"},
+                )
+            )
+
+        assert resp.status_code == 400
+
+    def test_patch_summary_preserves_json_structure(self) -> None:
+        from blueprints.library import update_analysis
+
+        lib_patch, mock_lib = _mock_library()
+        mock_lib.update_analysis_extra.return_value = True
+
+        summary = json.dumps({"ndvi_delta": -0.08, "assessment": "Moderate decline"})
+        body = {"summary": summary}
+
+        with _auth_disabled(), lib_patch:
+            resp = update_analysis(
+                _req(method="PATCH", body=body, route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 200
+        call_kwargs = mock_lib.update_analysis_extra.call_args
+        saved = json.loads(call_kwargs.kwargs["summary"])
+        assert saved["ndvi_delta"] == -0.08
+
+
+# ---------------------------------------------------------------------------
+# CORS — X-Confirm-Delete header allowed
+# ---------------------------------------------------------------------------
+
+
+class TestCorsCustomHeaders:
+    def test_cors_allows_x_confirm_delete(self) -> None:
+        from blueprints._helpers import cors_headers
+
+        req = _req()
+        headers = cors_headers(req)
+        assert "X-Confirm-Delete" in headers.get("Access-Control-Allow-Headers", "")
 
 
 # ---------------------------------------------------------------------------

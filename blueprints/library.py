@@ -53,9 +53,7 @@ def get_library(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> fu
 def upload_kml(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Upload a KML to the user's library.
 
-    Accepts either:
-    - JSON body: {"name": "...", "kml_content": "<kml>..."}
-    - Multipart form: file=<kml file>, name=<optional>
+    Accepts JSON body: {"name": "...", "kml_content": "<kml>..."}
     """
     try:
         body = req.get_json()
@@ -217,6 +215,28 @@ def save_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> 
     )
 
 
+def _sanitise_summary(raw: str) -> str:
+    """Sanitise a summary field, preserving JSON structure when possible."""
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and "assessment" in parsed:
+            assessment = parsed["assessment"]
+            if isinstance(assessment, str):
+                parsed["assessment"] = sanitise(assessment)[:500]
+        return json.dumps(parsed)
+    except (TypeError, json.JSONDecodeError):
+        return sanitise(raw)[:500]
+
+
+def _parse_frame_count(value: object) -> int | None:
+    """Validate and return a non-negative integer, or ``None`` on failure."""
+    try:
+        n = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+
 # --- PATCH /api/library/analyses/{analysis_id} ---
 
 
@@ -237,15 +257,21 @@ def update_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -
     except ValueError:
         return error_response(400, "Invalid JSON body", req=req)
 
+    if not isinstance(body, dict):
+        return error_response(400, "Expected JSON object", req=req)
+
     status = body.get("status", "")
     if status and status not in ("running", "completed", "failed"):
         return error_response(400, "Invalid status", req=req)
 
     extra = {}
     if body.get("frame_count"):
-        extra["frame_count"] = int(body["frame_count"])
+        frame_count = _parse_frame_count(body["frame_count"])
+        if frame_count is None:
+            return error_response(400, "Invalid frame_count", req=req)
+        extra["frame_count"] = frame_count
     if body.get("summary"):
-        extra["summary"] = sanitise(body["summary"])[:500]
+        extra["summary"] = _sanitise_summary(body["summary"])
 
     if not status and not extra:
         return error_response(400, "Nothing to update", req=req)

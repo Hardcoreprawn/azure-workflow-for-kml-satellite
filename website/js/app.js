@@ -3041,10 +3041,11 @@
     if (!res || !res.ok) return;
     var blob = await res.blob();
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    var url = URL.createObjectURL(blob);
+    a.href = url;
     a.download = (name || 'download') + '.kml';
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
   }
 
   async function dashDeleteAnalysis(analysisId) {
@@ -3109,10 +3110,11 @@
         return res.blob().then(function(blob) {
           var ext = format === 'geojson' ? '.geojson' : '.csv';
           var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
+          var objectUrl = URL.createObjectURL(blob);
+          a.href = objectUrl;
           a.download = 'treesight_' + instanceId.slice(0, 8) + ext;
           a.click();
-          URL.revokeObjectURL(a.href);
+          setTimeout(function() { URL.revokeObjectURL(objectUrl); }, 1000);
         });
       })
       .catch(function(e) { alert('Export error: ' + e.message); });
@@ -3148,10 +3150,11 @@
     }
     var blob = await res.blob();
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    var exportUrl = URL.createObjectURL(blob);
+    a.href = exportUrl;
     a.download = 'treesight-data-export.json';
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(function() { URL.revokeObjectURL(exportUrl); }, 1000);
     statusEl.textContent = 'Export downloaded.';
     statusEl.className = 'demo-status show success';
     setTimeout(function() { statusEl.className = 'demo-status'; }, 3000);
