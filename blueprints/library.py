@@ -247,9 +247,16 @@ def update_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -
     if body.get("summary"):
         extra["summary"] = sanitise(body["summary"])[:500]
 
+    if not status and not extra:
+        return error_response(400, "Nothing to update", req=req)
+
     try:
         lib = UserLibrary(user_id)
-        found = lib.update_analysis_status(analysis_id, status, **extra) if status else False
+        if status:
+            found = lib.update_analysis_status(analysis_id, status, **extra)
+        else:
+            # Summary-only update (no status change)
+            found = lib.update_analysis_extra(analysis_id, **extra)
     except ValueError as exc:
         return error_response(403, str(exc), req=req)
 

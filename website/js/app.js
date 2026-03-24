@@ -2852,51 +2852,141 @@
     }
     analyses.forEach(function(a) {
       var statusClass = a.status || 'completed';
-      var statusLabel = statusClass === 'completed' ? '✓ Completed' : statusClass === 'running' ? '⟳ Running' : '✕ Failed';
-      var nameText = (a.kml_name || 'Analysis') + (a.aoi_name ? ' — ' + a.aoi_name : '');
-      var metaParts = [a.kml_name || 'Untitled'];
-      if (a.aoi_name) metaParts.push(a.aoi_name);
-      if (a.frame_count) metaParts.push(a.frame_count + ' frames');
-      metaParts.push(timeAgo(a.created_at));
+      var statusLabel = statusClass === 'completed' ? '✓ Complete' : statusClass === 'running' ? '⟳ Running' : '✕ Failed';
+      var nameText = a.aoi_name || a.kml_name || 'Analysis';
 
-      var row = el('div', 'dash-item', null, { 'data-analysis-id': a.id });
+      var card = el('div', 'dash-analysis-card', null, { 'data-analysis-id': a.id });
 
-      var info = el('div', 'dash-item-info');
-      info.appendChild(el('div', 'dash-item-name', nameText));
-      info.appendChild(el('div', 'dash-item-meta', metaParts.join(' · ')));
-      row.appendChild(info);
+      /* Header: title + time */
+      var header = el('div', 'dash-card-header');
+      header.appendChild(el('div', 'dash-card-title', nameText));
+      header.appendChild(el('span', 'dash-card-time', timeAgo(a.created_at)));
+      card.appendChild(header);
 
-      var actions = el('div', 'dash-item-actions');
-      actions.appendChild(el('span', 'dash-status ' + statusClass, statusLabel));
+      /* Meta badges: status, NDVI trend, fire alerts, frame count */
+      var meta = el('div', 'dash-card-meta');
+      meta.appendChild(el('span', 'dash-card-badge ' + statusClass, statusLabel));
+
+      var summary = a.summary || {};
+      if (summary.ndvi_trajectory) {
+        var ndviClass = summary.ndvi_trajectory === 'declining' ? 'ndvi-down'
+          : summary.ndvi_trajectory === 'improving' ? 'ndvi-up' : 'ndvi-stable';
+        var ndviIcon = summary.ndvi_trajectory === 'declining' ? '↓' : summary.ndvi_trajectory === 'improving' ? '↑' : '—';
+        var ndviText = ndviIcon + ' NDVI ' + summary.ndvi_trajectory;
+        if (typeof summary.ndvi_delta === 'number') {
+          ndviText += ' (' + (summary.ndvi_delta > 0 ? '+' : '') + summary.ndvi_delta.toFixed(2) + ')';
+        }
+        meta.appendChild(el('span', 'dash-card-badge ' + ndviClass, ndviText));
+        if (summary.ndvi_trajectory === 'declining') card.classList.add('has-alert');
+      }
+
+      if (summary.fire_count && summary.fire_count > 0) {
+        meta.appendChild(el('span', 'dash-card-badge fire', '🔥 ' + summary.fire_count + ' fire alert' + (summary.fire_count > 1 ? 's' : '')));
+        card.classList.add('has-alert');
+      }
+
+      var fc = a.frame_count || (summary.frame_count || 0);
+      if (fc > 0) meta.appendChild(el('span', 'dash-card-badge frames', fc + ' frames'));
+      card.appendChild(meta);
+
+      /* Summary text (from AI or period assessment) */
+      if (summary.assessment) {
+        card.appendChild(el('div', 'dash-card-summary', summary.assessment));
+      }
+
+      /* Action buttons */
+      var actions = el('div', 'dash-card-actions');
       if (statusClass === 'completed' && a.instance_id) {
-        actions.appendChild(el('button', 'dash-action', '▶', { title: 'Open analysis', 'data-action': 'open-analysis', 'data-id': a.id, 'data-instance': a.instance_id, 'data-kml-id': a.kml_id || '' }));
+        actions.appendChild(el('button', 'dash-action primary-action', '▶ Open', { title: 'Open analysis viewer', 'data-action': 'open-analysis', 'data-id': a.id, 'data-instance': a.instance_id, 'data-kml-id': a.kml_id || '' }));
         actions.appendChild(el('button', 'dash-action', '⬇ GeoJSON', { title: 'Export GeoJSON', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'geojson' }));
         actions.appendChild(el('button', 'dash-action', '⬇ CSV', { title: 'Export CSV', 'data-action': 'export-analysis', 'data-instance': a.instance_id, 'data-format': 'csv' }));
       }
       actions.appendChild(el('button', 'dash-action danger', '✕', { title: 'Delete', 'data-action': 'delete-analysis', 'data-id': a.id }));
-      row.appendChild(actions);
+      card.appendChild(actions);
 
-      list.appendChild(row);
+      list.appendChild(card);
     });
   }
 
   async function loadDashboard() {
-    var list = document.getElementById('dash-kml-list');
     var analysisList = document.getElementById('dash-analysis-list');
-    clearChildren(list);
-    list.appendChild(el('div', 'dash-loading', 'Loading library…'));
+    var kmlList = document.getElementById('dash-kml-list');
     clearChildren(analysisList);
     analysisList.appendChild(el('div', 'dash-loading', 'Loading…'));
+    clearChildren(kmlList);
+    kmlList.appendChild(el('div', 'dash-loading', 'Loading library…'));
 
     var res = await apiFetch('/api/library');
     if (!res || !res.ok) {
-      clearChildren(list);
-      list.appendChild(el('div', 'dash-empty', 'Could not load library.'));
+      clearChildren(analysisList);
+      analysisList.appendChild(el('div', 'dash-empty', 'Could not load library.'));
       return;
     }
     var data = await res.json();
-    renderKmlList(data.kmls || []);
-    renderAnalysisList(data.analyses || []);
+    var analyses = data.analyses || [];
+    var kmls = data.kmls || [];
+
+    /* Parse summary JSON strings back into objects */
+    analyses.forEach(function(a) {
+      if (typeof a.summary === 'string') {
+        try { a.summary = JSON.parse(a.summary); } catch { a.summary = null; }
+      }
+    });
+
+    renderKmlList(kmls);
+    renderAnalysisList(analyses);
+
+    /* Toggle onboarding vs command bar */
+    var onboarding = document.getElementById('dash-onboarding');
+    var command = document.getElementById('dash-command');
+    var analysesSection = document.getElementById('dash-analyses-section');
+    var kmlSection = document.getElementById('dash-kml-section');
+
+    if (analyses.length === 0 && kmls.length === 0) {
+      /* First-run experience */
+      if (onboarding) onboarding.style.display = '';
+      if (command) command.style.display = 'none';
+      if (analysesSection) analysesSection.style.display = 'none';
+      if (kmlSection) kmlSection.style.display = 'none';
+    } else {
+      /* Returning user — show monitoring command centre */
+      if (onboarding) onboarding.style.display = 'none';
+      if (command) command.style.display = '';
+      if (analysesSection) analysesSection.style.display = '';
+      if (kmlSection) kmlSection.style.display = '';
+
+      /* Subtitle with stats */
+      var subtitle = document.getElementById('dash-subtitle');
+      if (subtitle) {
+        var parts = [];
+        if (analyses.length) parts.push(analyses.length + ' analys' + (analyses.length === 1 ? 'is' : 'es'));
+        if (kmls.length) parts.push(kmls.length + ' area' + (kmls.length === 1 ? '' : 's'));
+        subtitle.textContent = parts.join(' · ');
+      }
+    }
+
+    /* Alert banner — flag analyses with concerning NDVI trends or fire alerts */
+    var alertsBanner = document.getElementById('dash-alerts');
+    var alertsText = document.getElementById('dash-alerts-text');
+    if (alertsBanner && alertsText) {
+      var alertItems = [];
+      analyses.forEach(function(a) {
+        var s = a.summary || {};
+        if (s.ndvi_trajectory === 'declining') {
+          alertItems.push((a.aoi_name || a.kml_name || 'An area') + ': NDVI declining');
+        }
+        if (s.fire_count && s.fire_count > 0) {
+          alertItems.push((a.aoi_name || a.kml_name || 'An area') + ': ' + s.fire_count + ' fire alert' + (s.fire_count > 1 ? 's' : ''));
+        }
+      });
+      if (alertItems.length > 0) {
+        alertsText.textContent = alertItems.slice(0, 3).join(' · ') + (alertItems.length > 3 ? ' + ' + (alertItems.length - 3) + ' more' : '');
+        alertsBanner.style.display = '';
+      } else {
+        alertsBanner.style.display = 'none';
+      }
+    }
+
     dashboardLoaded = true;
   }
 
@@ -3114,7 +3204,7 @@
       var frameCount = 0;
       if (output && output.timelapse_frames) frameCount = output.timelapse_frames.length || 0;
       else if (output && output.frame_count) frameCount = output.frame_count;
-      await apiFetch('/api/library/analyses', {
+      var analysisRes = await apiFetch('/api/library/analyses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3126,11 +3216,56 @@
         })
       });
 
+      /* Save analysis summary (NDVI trends, fire alerts) to the record */
+      if (analysisRes && analysisRes.ok) {
+        var analysisRecord = await analysisRes.json();
+        var summary = buildAnalysisSummary(output);
+        if (summary && analysisRecord.id) {
+          await apiFetch('/api/library/analyses/' + encodeURIComponent(analysisRecord.id), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: JSON.stringify(summary) })
+          });
+        }
+      }
+
       /* Refresh dashboard if visible */
       if (document.getElementById('dashboard').style.display !== 'none') loadDashboard();
     } catch (e) {
       console.warn('Auto-save to library failed:', e);
     }
+  }
+
+  /* Build a compact summary object from pipeline enrichment output */
+  function buildAnalysisSummary(output) {
+    if (!output) return null;
+    var summary = {};
+    /* NDVI metrics from the enrichment data */
+    var frames = output.timelapse_frames || [];
+    if (frames.length >= 2) {
+      summary.frame_count = frames.length;
+      var ndviValues = frames.map(function(f) { return f.ndvi_mean; }).filter(function(v) { return typeof v === 'number' && !isNaN(v); });
+      if (ndviValues.length >= 2) {
+        var earlyAvg = ndviValues.slice(0, Math.ceil(ndviValues.length / 3)).reduce(function(a, b) { return a + b; }, 0) / Math.ceil(ndviValues.length / 3);
+        var lateAvg = ndviValues.slice(-Math.ceil(ndviValues.length / 3)).reduce(function(a, b) { return a + b; }, 0) / Math.ceil(ndviValues.length / 3);
+        summary.ndvi_early = Math.round(earlyAvg * 1000) / 1000;
+        summary.ndvi_late = Math.round(lateAvg * 1000) / 1000;
+        summary.ndvi_delta = Math.round((lateAvg - earlyAvg) * 1000) / 1000;
+        if (summary.ndvi_delta <= -0.05) summary.ndvi_trajectory = 'declining';
+        else if (summary.ndvi_delta >= 0.05) summary.ndvi_trajectory = 'improving';
+        else summary.ndvi_trajectory = 'stable';
+      }
+    }
+    /* Fire hotspots */
+    if (output.fire_hotspots && output.fire_hotspots.length) {
+      summary.fire_count = output.fire_hotspots.length;
+    }
+    /* Period assessment text */
+    var assessment = document.getElementById('period-assessment');
+    if (assessment && assessment.textContent.trim()) {
+      summary.assessment = assessment.textContent.trim().substring(0, 300);
+    }
+    return Object.keys(summary).length ? summary : null;
   }
 
   function initDashboard() {

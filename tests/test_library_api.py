@@ -244,6 +244,65 @@ class TestSaveAnalysis:
 
 
 # ---------------------------------------------------------------------------
+# PATCH /api/library/analyses/{analysis_id}
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateAnalysis:
+    def test_patch_with_status_updates(self) -> None:
+        from blueprints.library import update_analysis
+
+        lib_patch, mock_lib = _mock_library()
+        mock_lib.update_analysis_status.return_value = True
+
+        body = {"status": "completed", "frame_count": 24}
+
+        with _auth_disabled(), lib_patch:
+            resp = update_analysis(
+                _req(method="PATCH", body=body, route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 200
+        mock_lib.update_analysis_status.assert_called_once()
+
+    def test_patch_summary_only(self) -> None:
+        from blueprints.library import update_analysis
+
+        lib_patch, mock_lib = _mock_library()
+        mock_lib.update_analysis_extra.return_value = True
+
+        body = {"summary": '{"ndvi_delta":-0.08}'}
+
+        with _auth_disabled(), lib_patch:
+            resp = update_analysis(
+                _req(method="PATCH", body=body, route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 200
+        mock_lib.update_analysis_extra.assert_called_once()
+
+    def test_patch_empty_body_rejected(self) -> None:
+        from blueprints.library import update_analysis
+
+        with _auth_disabled():
+            resp = update_analysis(
+                _req(method="PATCH", body={}, route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 400
+
+    def test_patch_invalid_status_rejected(self) -> None:
+        from blueprints.library import update_analysis
+
+        with _auth_disabled():
+            resp = update_analysis(
+                _req(method="PATCH", body={"status": "evil"}, route_params={"analysis_id": "a1"})
+            )
+
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # GDPR — GET /api/account/export (Article 20)
 # ---------------------------------------------------------------------------
 

@@ -240,6 +240,31 @@ class TestAnalysisOperations:
 
         assert lib.update_analysis_status("nonexistent", "completed") is False
 
+    def test_update_analysis_extra_without_status(self) -> None:
+        from treesight.storage.library import UserLibrary
+
+        lib_data = {
+            "kmls": [],
+            "analyses": [{"id": "a1", "status": "completed"}],
+        }
+        storage = _mock_storage(lib_data)
+        lib = UserLibrary("user-123", storage=storage)
+
+        assert lib.update_analysis_extra("a1", summary='{"ndvi_delta":-0.08}') is True
+
+        saved = storage.upload_json.call_args[0][2]
+        assert saved["analyses"][0]["status"] == "completed"  # unchanged
+        assert saved["analyses"][0]["summary"] == '{"ndvi_delta":-0.08}'
+
+    def test_update_analysis_extra_returns_false_when_missing(self) -> None:
+        from treesight.storage.library import UserLibrary
+
+        lib_data = {"kmls": [], "analyses": []}
+        storage = _mock_storage(lib_data)
+        lib = UserLibrary("user-123", storage=storage)
+
+        assert lib.update_analysis_extra("nonexistent", summary="test") is False
+
     def test_delete_analysis(self) -> None:
         from treesight.storage.library import UserLibrary
 

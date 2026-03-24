@@ -156,6 +156,16 @@ class UserLibrary:
                 return True
         return False
 
+    def update_analysis_extra(self, analysis_id: str, **extra: Any) -> bool:
+        """Update extra fields on an analysis without changing status."""
+        library = self.get_library()
+        for analysis in library["analyses"]:
+            if analysis["id"] == analysis_id:
+                analysis.update(extra)
+                self._save_library(library)
+                return True
+        return False
+
     def delete_analysis(self, analysis_id: str) -> bool:
         """Remove an analysis from the library. Returns True if found."""
         library = self.get_library()
