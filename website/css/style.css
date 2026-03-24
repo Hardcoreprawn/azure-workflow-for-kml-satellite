@@ -6,6 +6,7 @@ h3{font-size:1.125rem;font-weight:600}
 /* --- Nav (index.html additions — base nav styles are in shared.css) --- */
 #status-badge{font-size:.75rem;padding:3px 10px;border-radius:12px;font-weight:600;background:var(--c-surface);color:var(--c-muted);border:1px solid var(--c-border);transition:all .3s}
 #status-badge.online{background:rgba(63,185,80,.15);color:var(--c-green);border-color:var(--c-green)}
+#status-badge.verified{background:rgba(63,185,80,.08);color:var(--c-green);border-color:var(--c-border)}
 #status-badge.offline{background:rgba(248,81,73,.15);color:var(--c-red);border-color:var(--c-red)}
 
 /* --- Hero --- */

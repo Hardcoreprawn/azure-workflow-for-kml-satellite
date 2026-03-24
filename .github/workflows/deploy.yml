@@ -274,7 +274,7 @@ jobs:
       - name: Inject API config
         run: |
           cat > website/api-config.json <<EOF
-          {"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_hostname }}"}
+          {"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_hostname }}", "lastVerified": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
           EOF
 
       - name: Deploy to Azure Static Web Apps
