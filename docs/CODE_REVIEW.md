@@ -16,11 +16,13 @@ TreeSight demonstrates **mature software engineering practices** grounded in fun
 - **Safety:** Comprehensive input validation, graceful degradation, and error recovery
 
 **Dijkstra Alignment:**
+
 - ✅ Structured programming principles (clear control flow, no hidden state)
 - ✅ Defensive design (fail-fast validation, assumption visibility)
 - ✅ Clarity as a goal (readable, well-documented code)
 
 **Hamilton Alignment:**
+
 - ✅ Correctness by construction (explicit error types, typed inputs)
 - ✅ Traceable decision-making (comments explain *why*, not just *what*)
 - ✅ Redundancy where it matters (fallback implementations, retry logic)
@@ -31,7 +33,7 @@ TreeSight demonstrates **mature software engineering practices** grounded in fun
 
 ### 1.1 Module Organization
 
-```
+```text
 treesight/                  # Core library (business logic)
 ├── config.py              # Configuration validation (fail-fast)
 ├── constants.py           # Domain constants
@@ -71,6 +73,7 @@ function_app.py           # Entry point (registers blueprints)
 ### 1.2 Dependency Injection Pattern
 
 **Example (blueprints/analysis.py):**
+
 ```python
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
@@ -79,6 +82,7 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
 **Pattern:** Configuration injected via environment variables with defaults
 
 **Assessment:** ✅ **GOOD**
+
 - Enables environment-specific behavior without code changes
 - Defaults allow local development
 - Could benefit from centralized DI container (minor)
@@ -90,6 +94,7 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
 ### 2.1 Exception Hierarchy
 
 **Structure (treesight/errors.py):**
+
 ```python
 PipelineError
 ├── ContractError (input validation, non-retryable)
@@ -105,18 +110,21 @@ PipelineError
 **Assessment:** ✅ **EXCELLENT**
 
 **Why this matters (Margaret Hamilton principle):**
+
 - Each exception type conveys recovery strategy
 - `retryable` flag enables intelligent retry logic (critical in distributed systems)
 - `stage` attribute provides operational context
 - `code` attribute supports monitoring/alerting
 
 **Dijkstra alignment:**
+
 - Explicit error classification increases program clarity
 - Constraints (retryable, stage, code) prevent hidden assumptions
 
 ### 2.2 Fail-Fast Validation
 
 **Example (treesight/config.py):**
+
 ```python
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""
@@ -139,6 +147,7 @@ def validate_config() -> None:
 ### 2.3 Defensive Type Coercion
 
 **Example (treesight/config.py):**
+
 ```python
 def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
     """Defensive integer coercion (§8.7)."""
@@ -165,6 +174,7 @@ def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
 ### 2.4 HTTP Error Handling
 
 **Example (blueprints/analysis.py):**
+
 ```python
 try:
     body = req.get_json()
@@ -190,6 +200,7 @@ if not context or not context.get("ndvi_timeseries"):
 ### 3.1 Boundary Conditions
 
 **Example (treesight/geo.py):**
+
 ```python
 def _compute_bbox(coords: list[list[float]]) -> list[float]:
     if not coords:
@@ -208,6 +219,7 @@ def _compute_bbox(coords: list[list[float]]) -> list[float]:
 ### 3.2 Fallback Implementations
 
 **Example (treesight/geo.py):**
+
 ```python
 def _geodesic_area_ha(coords: list[list[float]]) -> float:
     """Compute geodesic area... using the Shoelace formula on a sphere."""
@@ -239,6 +251,7 @@ def _geodesic_area_ha(coords: list[list[float]]) -> float:
 ### 4.1 Structural Validation
 
 **Example (blueprints/analysis.py - timelapse-analysis):**
+
 ```python
 try:
     body = req.get_json()
@@ -251,6 +264,7 @@ if not context or not context.get("ndvi_timeseries"):
 ```
 
 **Assessment:** ✅ **GOOD**
+
 - Validates presence of required fields
 - Checks structure before processing
 - Could benefit from JSON schema validation (minor enhancement)
@@ -258,6 +272,7 @@ if not context or not context.get("ndvi_timeseries"):
 ### 4.2 Type Safety
 
 **Example (treesight/models/feature.py):**
+
 ```python
 from dataclasses import dataclass
 
@@ -284,6 +299,7 @@ class Feature:
 ### 5.1 Safe Array Indexing
 
 **Example (blueprints/analysis.py - _calculate_trends):**
+
 ```python
 if len(ndvi_means) >= 2:
     trends["ndvi_start"] = ndvi_means[0]
@@ -307,6 +323,7 @@ if len(ndvi_means) >= 2:
 ### 5.2 Inflection Point Detection
 
 **Example:**
+
 ```python
 events = []
 for i in range(1, len(ndvi_means)):
@@ -330,6 +347,7 @@ trends["significant_events"] = events[:3]  # Top 3 events
 ### 6.1 LLM Timeout Configuration
 
 **Example (blueprints/analysis.py):**
+
 ```python
 http_client = httpx.Client(timeout=150.0)
 response = http_client.post(
@@ -351,6 +369,7 @@ response.raise_for_status()
 ### 6.2 Error Recovery
 
 **Example (blueprints/analysis.py):**
+
 ```python
 try:
     http_client = httpx.Client(timeout=150.0)
@@ -374,6 +393,7 @@ except Exception as e:
 ## 7. JSON Parsing Robustness
 
 **Example (blueprints/analysis.py):**
+
 ```python
 try:
     json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
@@ -421,6 +441,7 @@ def _default_analysis(response_text: str) -> dict:
 ### 8.1 Range Constraints
 
 **Example (treesight/config.py):**
+
 ```python
 def validate_config() -> None:
     errors: list[str] = []
@@ -448,6 +469,7 @@ def validate_config() -> None:
 ## 9. Type Annotations
 
 **Example (blueprints/analysis.py):**
+
 ```python
 def _calculate_trends(ndvi_series: list, weather_series: list) -> dict:
 ```
@@ -457,6 +479,7 @@ def _calculate_trends(ndvi_series: list, weather_series: list) -> dict:
 **Assessment:** GOOD but could be more specific
 
 **Recommendation:**
+
 ```python
 from typing import Any
 
@@ -467,6 +490,7 @@ def _calculate_trends(
 ```
 
 **Impact:**
+
 - Enables mypy/pyright type checking
 - Prevents subtle dict key errors
 - **Dijkstra principle:** Type specificity reduces conceptual complexity
@@ -503,21 +527,25 @@ def _calculate_trends(
 ## 12. Dijkstra Principles Evaluation
 
 ### ✅ Structured Programming
+
 - **Criterion:** No GOTOs, clear control flow
 - **Evidence:** All functions use high-level control structures (if/for/while)
 - **Grade:** ✅ EXCELLENT
 
 ### ✅ Defensive Design  
+
 - **Criterion:** Assumptions made explicit, defensive checks in place
 - **Evidence:** Input validation, boundary checks, fallback implementations
 - **Grade:** ✅ EXCELLENT
 
 ### ✅ Clarity
+
 - **Criterion:** Code is comprehensible on first read
 - **Evidence:** Descriptive names, comments on non-obvious decisions, clear module structure
 - **Grade:** ✅ EXCELLENT
 
 ### ⚠️ Separation of Concerns
+
 - **Criterion:** Logic separated from IO, pure functions
 - **Evidence:** `_calculate_trends()` is pure; `_error()` helper centralizes HTTP responses
 - **Grade:** ✅ GOOD
@@ -527,26 +555,31 @@ def _calculate_trends(
 ## 13. Margaret Hamilton Principles Evaluation
 
 ### ✅ Correctness by Construction
+
 - **Criterion:** Errors prevented, not just handled
 - **Evidence:** Type hints, dataclasses, explicit bounds checks
 - **Grade:** ✅ GOOD
 
 ### ✅ Redundancy in Critical Paths
+
 - **Criterion:** Mission-critical logic has multiple implementations
 - **Evidence:** Geospatial area calculation has pyproj primary + spherical fallback
 - **Grade:** ✅ EXCELLENT
 
 ### ✅ Explicit Error Classification  
+
 - **Criterion:** Each error type conveys recovery strategy
 - **Evidence:** `retryable` flag on exceptions, stage/code attributes
 - **Grade:** ✅ EXCELLENT
 
 ### ✅ Traceable Decision-Making
+
 - **Criterion:** Why decisions are documented, not just what
 - **Evidence:** Comments reference specification sections (e.g., "§8.6")
 - **Grade:** ✅ GOOD
 
 ### ✅ Testing & Verification
+
 - **Criterion:** Code enables testing, has bounds that can be verified
 - **Evidence:** Pure functions, testable components, clear error paths
 - **Grade:** ✅ GOOD
@@ -597,12 +630,14 @@ TreeSight demonstrates **professional-grade software engineering** aligned with 
 - **Smart defaults and graceful degradation** throughout
 
 **Ready for:**
+
 - ✅ Production deployment
 - ✅ Scaling to multiple users
 - ✅ Integration with external imagery providers
 - ✅ Extension with additional analysis capabilities
 
 **Future Improvements:**
+
 - 📋 Type hints → Pydantic models (medium complexity, high benefit)
 - 📋 JSON schema validation (low complexity, medium benefit)
 - 📋 Circuit breaker pattern for LLM integration (medium complexity, high benefit)
@@ -624,12 +659,14 @@ TreeSight demonstrates **professional-grade software engineering** aligned with 
 ## Appendix B: Dijkstra & Hamilton Alignment Summary
 
 ### Dijkstra's Core Principles
+
 - ✅ **Structured Programming** — No hidden control flow, clear conditionals/loops
 - ✅ **Clarity Over Cleverness** — Explicit type coercion, defensive range checks
 - ✅ **Design by Contract** — Preconditions (input validation), postconditions (valid output)
 - ✅ **Program Families** — Modular design allows swapping providers, parsers
 
 ### Hamilton's Apollo Philosophy
+
 - ✅ **Correctness by Construction** — Fail-fast validation, no silent failures
 - ✅ **Explicit Assumptions** — Bounds documented, fallback implementations codified
 - ✅ **Redundancy/Diversity** — Multiple implementations (pyproj + spherical), multiple error recovery paths
