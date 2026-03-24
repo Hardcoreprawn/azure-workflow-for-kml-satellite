@@ -420,6 +420,8 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 5.5 | **Pydantic models for request/response validation** | Medium | — | Operational safety as API surface grows; catches bad inputs before they hit the pipeline |
 | 5.6 | **Load testing** (10+ concurrent pipelines) | Medium | 1.2 | Must validate scaling before growth marketing pushes traffic |
 | 5.7 | **Test coverage measurement** (target >70%) | Low | — | Confidence to ship fast without regressions |
+| 5.8 | **MODIS Burned Area enrichment** (PC collection `modis-64A1-061`, global 500 m monthly, 2000–present) | Low | 5.4 | Complements FIRMS hotspot data (5.4) with validated burned-extent polygons and detection dates. **Already on Planetary Computer as COGs** — add collection to existing STAC provider, same auth/download path as Sentinel-2. No new infra. Free & open. |
+| 5.9 | **ESA CCI Land Cover enrichment** (PC collection `esa-cci-lc`, 300 m annual, 1992–2020, 22 LCCS classes) | Low | 3.8 | Adds 28-year historical land-cover baseline — detect transitions (forest → cropland → urban). **Already on Planetary Computer as COGs** — same STAC query pattern. Pairs with 6.4 (Landsat baselines) for long-term trend context. Free & open. |
 
 **Exit criteria:** 30+ paid users. Net revenue retention > 100% (expansion > churn). At least 5 users on monitoring subscriptions.
 
@@ -444,6 +446,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 6.5 | **Regional climate & land-use history** (NOAA/ECMWF/MODIS) | High | — | Contextualises recent changes within historical meteorology; premium feature |
 | 6.6 | **Security audit / pen test** | Medium | 1.2 | Required before onboarding enterprise or handling sensitive data |
 | 6.7 | **Blueprint activity decorator** (reduce orchestrator boilerplate) | Low | — | Velocity — adding new pipeline activities is currently boilerplate-heavy |
+| 6.8 | **ESA CCI Biomass integration** (global above-ground biomass, 100 m, 2007–2022) | High | 5.9 | Quantifies carbon / biomass loss in Mg/ha — essential for ESG (EUDR, TNFD) and carbon-credit MRV. Multi-epoch differencing enables "this AOI lost X Mg C between 2017–2022". **Not on Planetary Computer** — bulk GeoTIFF from ESA ODP → self-hosted COGs in blob storage → clip-to-AOI. Only ESA CCI dataset requiring custom infra. Free & open. |
 
 **Exit criteria:** 5+ Team subscriptions. At least 1 customer using the API programmatically. ARR > $30K.
 
@@ -488,6 +491,8 @@ These items don't have their own milestone. They ride alongside feature work to 
 | **Test coverage** | M5 (5.7) | Low | Shipping faster; need confidence |
 | **Blueprint activity decorator** | M6 (6.7) | Low | Adding new activities is boilerplate-heavy |
 | **Extract provider stubs** | M7 (7.6) | Low | Clean up before more providers are added |
+| **STAC enrichment collections** (add `modis-64A1-061` + `esa-cci-lc` to provider) | M5 (5.8, 5.9) | Low | Both already on Planetary Computer — just wire new collections into existing STAC provider + enrichment pipeline |
+| **Self-hosted COG pipeline** (ESA CCI Biomass → blob → TiTiler or direct clip) | M6 (6.8) | Medium | Only Biomass needs custom hosting; Land Cover and Burned Area are free via PC |
 
 ---
 

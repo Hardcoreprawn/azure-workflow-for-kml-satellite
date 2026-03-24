@@ -114,6 +114,23 @@ resource "azurerm_application_insights" "main" {
   tags                = local.tags
 }
 
+resource "azurerm_monitor_action_group" "ops" {
+  name                = "ag-${local.name_suffix}-ops"
+  resource_group_name = azurerm_resource_group.main.name
+  short_name          = "ops"
+  enabled             = true
+  tags                = local.tags
+
+  dynamic "email_receiver" {
+    for_each = var.budget_contact_emails
+    content {
+      name                    = "ops-email-${email_receiver.key}"
+      email_address           = email_receiver.value
+      use_common_alert_schema = true
+    }
+  }
+}
+
 resource "azurerm_monitor_metric_alert" "failed_requests" {
   name                = "alert-${local.name_suffix}-failed-requests"
   resource_group_name = azurerm_resource_group.main.name
@@ -130,6 +147,10 @@ resource "azurerm_monitor_metric_alert" "failed_requests" {
     aggregation      = "Count"
     operator         = "GreaterThan"
     threshold        = 5
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.ops.id
   }
 
   tags = local.tags
@@ -151,6 +172,10 @@ resource "azurerm_monitor_metric_alert" "high_latency" {
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 5000
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.ops.id
   }
 
   tags = local.tags
@@ -326,7 +351,7 @@ resource "azapi_resource" "function_app" {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
           }
-        ], var.enable_azure_ai ? [
+          ], var.enable_azure_ai ? [
           {
             name  = "AZURE_AI_ENDPOINT"
             value = azurerm_cognitive_account.openai[0].endpoint
@@ -339,7 +364,7 @@ resource "azapi_resource" "function_app" {
             name  = "AZURE_AI_DEPLOYMENT"
             value = "gpt-4o-mini"
           }
-        ] : [], var.ciam_tenant_name != "" ? [
+          ] : [], var.ciam_tenant_name != "" ? [
           {
             name  = "CIAM_TENANT_NAME"
             value = var.ciam_tenant_name

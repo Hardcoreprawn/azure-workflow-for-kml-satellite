@@ -131,12 +131,20 @@
     try { return await fetch(apiBase + path, opts); } catch { return null; }
   }
 
-  /* --- API discovery: verify backend is reachable via SWA proxy --- */
+  /* --- API discovery: resolve backend hostname --- */
+  var backendVerified = null; /* deploy-time ISO timestamp, if available */
   async function discoverApiBase() {
+    var badge = document.getElementById('status-badge');
+
     /* 1. Try SWA linked backend proxy (ideal — no CORS needed) */
     try {
       var res = await fetch('/api/health');
-      if (res.ok) { apiBase = ''; return; }
+      if (res.ok) {
+        apiBase = '';
+        badge.textContent = 'Online';
+        badge.className = 'online';
+        return;
+      }
     } catch { /* network error */ }
 
     /* 2. Load deploy-time config for direct Function App hostname (#282) */
@@ -144,44 +152,60 @@
       var cfgRes = await fetch('/api-config.json');
       if (cfgRes.ok) {
         var cfg = await cfgRes.json();
+        if (cfg.apiBase && cfg.apiBase !== 'http://localhost:7071') {
+          apiBase = cfg.apiBase;
+          /* Trust deploy-time verification — don't probe a cold backend */
+          if (cfg.lastVerified) {
+            backendVerified = cfg.lastVerified;
+            badge.textContent = 'Verified';
+            badge.className = 'verified';
+          }
+          /* Opportunistic background probe — upgrade to Online if awake */
+          fetch(cfg.apiBase + '/api/health').then(function(r) {
+            if (r.ok) { badge.textContent = 'Online'; badge.className = 'online'; }
+          }).catch(function() { /* cold start — verified status stands */ });
+          return;
+        }
+        /* Local dev: probe directly */
         if (cfg.apiBase) {
-          var probe = await fetch(cfg.apiBase + '/api/health');
-          if (probe.ok) { apiBase = cfg.apiBase; return; }
+          try {
+            var probe = await fetch(cfg.apiBase + '/api/health');
+            if (probe.ok) {
+              apiBase = cfg.apiBase;
+              badge.textContent = 'Online';
+              badge.className = 'online';
+              return;
+            }
+          } catch { /* dev server not running */ }
         }
       }
-    } catch { /* config not available or backend unreachable */ }
+    } catch { /* config not available */ }
 
+    badge.textContent = 'Unavailable';
+    badge.className = 'offline';
     console.warn('Backend not reachable — check SWA backend configuration or api-config.json');
   }
 
-  /* --- Contract check (§12.3) --- */
+  /* --- Contract check (§12.3) — deferred to submit time for cold-start backends --- */
+  var contractOk = null; /* null = unchecked, true = match, false = mismatch */
   async function checkContract() {
     try {
       const res = await apiFetch('/api/contract');
-      if (!res || !res.ok) return;
+      if (!res || !res.ok) return null;
       const data = await res.json();
       document.getElementById('contract-version').textContent = data.api_version || '—';
       if (data.api_version !== EXPECTED_CONTRACT) {
         document.getElementById('contract-warning').classList.add('show');
-        document.getElementById('demo-submit').disabled = true;
-        document.getElementById('demo-submit').style.opacity = '0.5';
+        contractOk = false;
+        return false;
       }
-    } catch { /* offline */ }
-  }
-
-  /* --- Status badge (§12.3) --- */
-  async function checkStatus() {
-    const badge = document.getElementById('status-badge');
-    try {
-      const res = await apiFetch('/api/readiness');
-      if (res && res.ok) {
-        badge.textContent = 'Online';
-        badge.className = 'online';
-      } else { throw new Error(); }
-    } catch {
-      badge.textContent = 'Offline';
-      badge.className = 'offline';
-    }
+      contractOk = true;
+      /* Upgrade badge — we got a live response */
+      var badge = document.getElementById('status-badge');
+      badge.textContent = 'Online';
+      badge.className = 'online';
+      return true;
+    } catch { return null; /* offline — don't block */ }
   }
 
   /* --- Demo form: parse KML and launch pipeline --- */
@@ -370,6 +394,24 @@
       return;
     }
 
+    /* Deferred contract check — verify on first submit, not on cold page load */
+    if (contractOk === null) {
+      statusEl.textContent = 'Waking up backend…';
+      statusEl.className = 'demo-status show';
+      var ok = await checkContract();
+      if (ok === false) {
+        statusEl.textContent = 'API version mismatch — please refresh or try later.';
+        statusEl.className = 'demo-status show error';
+        return;
+      }
+      statusEl.textContent = '';
+      statusEl.className = 'demo-status';
+    } else if (contractOk === false) {
+      statusEl.textContent = 'API version mismatch — please refresh or try later.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
     var kml = document.getElementById('demo-kml').value.trim();
 
     if (!kml) {
@@ -450,6 +492,12 @@
 
     } catch(err) {
       showPipelineError('Pipeline error: ' + err.message);
+      /* Downgrade status badge on real interaction failure */
+      if (!navigator.onLine || (err.message && err.message.includes('HTTP ?'))) {
+        var badge = document.getElementById('status-badge');
+        badge.textContent = 'Issue Detected';
+        badge.className = 'offline';
+      }
       /* Still launch timelapse so the demo remains functional */
       enrichmentPayload = null;
       document.getElementById('frame-info').textContent = 'Loading imagery directly — some features may be limited.';
@@ -2759,10 +2807,6 @@
   var loginPromptLink = document.getElementById('login-prompt-link');
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
 
-  discoverApiBase().then(function() {
-    checkContract();
-    checkStatus();
-    setInterval(checkStatus, 30000);
-  });
+  discoverApiBase();
 
 })();
