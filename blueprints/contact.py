@@ -49,7 +49,7 @@ def contact_form(req: func.HttpRequest) -> func.HttpResponse:
         "use_case": use_case,
         "submitted_at": datetime.now(UTC).isoformat(),
         "source": "marketing_website",
-        "ip_forwarded_for": req.headers.get("X-Forwarded-For", ""),
+        "ip_forwarded_for": get_client_ip(req),
     }
 
     storage = BlobStorageClient()

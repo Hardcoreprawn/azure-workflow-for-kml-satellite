@@ -11,18 +11,41 @@ from treesight.security.quota import FREE_TIER_LIMIT, check_quota, consume_quota
 def _mock_storage():
     """Patch BlobStorageClient so quota tests never hit real storage."""
     store: dict[str, dict] = {}
+    etags: dict[str, str] = {}
+    _etag_counter = [0]
     mock_cls = MagicMock()
+
+    def _next_etag() -> str:
+        _etag_counter[0] += 1
+        return f"etag-{_etag_counter[0]}"
 
     def _download_json(_container, path):
         if path not in store:
             raise FileNotFoundError(path)
         return store[path]
 
+    def _download_json_with_etag(_container, path):
+        if path not in store:
+            raise FileNotFoundError(path)
+        return store[path], etags.get(path, "etag-0")
+
     def _upload_json(_container, path, data):
         store[path] = data
+        etags[path] = _next_etag()
+
+    def _upload_json_if_match(_container, path, data, etag):
+        current_etag = etags.get(path)
+        if current_etag and current_etag != etag:
+            from azure.core.exceptions import ResourceModifiedError
+
+            raise ResourceModifiedError("ETag mismatch")
+        store[path] = data
+        etags[path] = _next_etag()
 
     mock_cls.return_value.download_json = _download_json
+    mock_cls.return_value.download_json_with_etag = _download_json_with_etag
     mock_cls.return_value.upload_json = _upload_json
+    mock_cls.return_value.upload_json_if_match = _upload_json_if_match
 
     with patch("treesight.storage.client.BlobStorageClient", mock_cls):
         yield store

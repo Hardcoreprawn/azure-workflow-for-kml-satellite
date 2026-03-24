@@ -1,6 +1,7 @@
 """Entra External ID (CIAM) JWT validation for API endpoints."""
 
 import logging
+import re
 import threading
 import time
 from typing import Any
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 # JWKS cache: thread-safe, refreshes every 24 hours
 _jwks_cache: dict[str, Any] = {}
 _jwks_lock = threading.Lock()
-_JWKS_TTL = 86400  # 24 hours
+_JWKS_TTL = 21600  # 6 hours
 
 
 def _oidc_config_url() -> str:
@@ -149,6 +150,16 @@ def validate_token(auth_header: str) -> dict[str, Any]:
     return claims
 
 
+#: Safe pattern for user identifiers (CIAM sub / oid values).
+_USER_ID_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+
 def get_user_id(claims: dict[str, Any]) -> str:
-    """Extract the user identifier (subject) from validated claims."""
-    return claims.get("sub", claims.get("oid", ""))
+    """Extract and validate the user identifier from claims.
+
+    Raises ``ValueError`` if the identifier contains unexpected characters.
+    """
+    uid = claims.get("sub", claims.get("oid", ""))
+    if uid and not _USER_ID_RE.match(uid):
+        raise ValueError("Invalid user identifier format")
+    return uid

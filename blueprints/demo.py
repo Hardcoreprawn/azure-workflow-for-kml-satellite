@@ -41,7 +41,7 @@ bp = func.Blueprint()
 @bp.route(route="demo-submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
-        return func.HttpResponse(status_code=204)
+        return cors_preflight(req)
 
     try:
         _claims, user_id = check_auth(req)
@@ -105,6 +105,7 @@ def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
         json.dumps({"status": "submitted", "submission_id": submission_id}),
         status_code=200,
         mimetype="application/json",
+        headers=cors_headers(req),
     )
 
 
@@ -256,10 +257,19 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
             return error_response(502, "Upstream response too large", req=req)
         hdrs = cors_headers(req)
         hdrs["Cache-Control"] = "max-age=3600"
+        # Force safe content-type — never reflect upstream HTML/JS directly
+        upstream_ct = resp.headers.get("Content-Type", "application/json")
+        safe_ct = (
+            upstream_ct
+            if upstream_ct.startswith(
+                ("application/json", "text/plain", "text/csv", "application/geo")
+            )
+            else "application/octet-stream"
+        )
         return func.HttpResponse(
             body,
             status_code=resp.status_code,
-            mimetype=resp.headers.get("Content-Type", "application/json"),
+            mimetype=safe_ct,
             headers=hdrs,
         )
     except requests.Timeout:
