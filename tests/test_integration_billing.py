@@ -17,7 +17,6 @@ import pytest
 # ---------------------------------------------------------------------------
 # Skip unless a test-mode Stripe key is available
 # ---------------------------------------------------------------------------
-_STRIPE_KEY = os.environ.get("STRIPE_API_KEY", "")
 
 
 def _load_stripe_key() -> str:
@@ -134,7 +133,7 @@ class TestCheckoutSession:
         )
         assert session.id.startswith("cs_test_")
         assert session.url is not None
-        assert "checkout.stripe.com" in session.url
+        assert session.url.startswith("https://checkout.stripe.com")
         assert session.status == "open"
         assert session.mode == "subscription"
 
@@ -296,7 +295,7 @@ class TestBillingEndpointIntegration:
         assert resp.status_code == 200
         body = json.loads(resp.get_body())
         assert "checkout_url" in body
-        assert "checkout.stripe.com" in body["checkout_url"]
+        assert body["checkout_url"].startswith("https://checkout.stripe.com")
 
     @patch("treesight.security.auth.auth_enabled", return_value=False)
     @patch("treesight.storage.client.BlobStorageClient")

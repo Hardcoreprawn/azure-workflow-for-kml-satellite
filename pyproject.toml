@@ -21,6 +21,7 @@ dependencies = [
     "httpx>=0.28.0",
     "PyJWT[crypto]>=2.9.0",
     "stripe>=11.0.0",
+    "requests>=2.33.0",  # CVE-2026-25645: predictable temp filename
 ]
 
 [project.optional-dependencies]

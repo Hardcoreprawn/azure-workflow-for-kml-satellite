@@ -87,8 +87,7 @@ def main() -> None:
         print("ERROR: 'stripe-api-key' secret is empty in Key Vault.")
         sys.exit(1)
 
-    key_prefix = api_key[:8] + "..." + api_key[-4:]
-    print(f"  Stripe API key: {key_prefix}")
+    print(f"  Stripe API key: {api_key[:8]}...{api_key[-4:]}")
 
     if not api_key.startswith("sk_test_"):
         print("WARNING: This does not look like a test-mode key.")
@@ -173,9 +172,9 @@ def main() -> None:
     if webhook_secret:
         secrets_to_store["stripe-webhook-secret"] = webhook_secret
 
-    for name, value in secrets_to_store.items():
-        kv_client.set_secret(name, value)
-        print(f"  ✓ {name}")
+    for secret_name in list(secrets_to_store):
+        kv_client.set_secret(secret_name, secrets_to_store[secret_name])
+        print(f"  ✓ {secret_name}")
 
     print("\n=== Done ===")
     if not webhook_secret:
@@ -219,7 +218,7 @@ def _derive_webhook_url(vault_name: str) -> str:
             hostname = json.loads(result.stdout.strip())
             return f"https://{hostname}/api/billing/webhook"
     except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-        pass
+        pass  # Fall through to return empty — caller will prompt for manual URL
     return ""
 
 

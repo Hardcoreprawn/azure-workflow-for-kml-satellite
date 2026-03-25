@@ -82,7 +82,7 @@ def billing_checkout(
             body = json.loads(req.get_body())
             currency = body.get("currency", "").upper()
         except (ValueError, UnicodeDecodeError):
-            pass
+            pass  # Malformed body — fall through to default currency
     if currency not in SUPPORTED_CURRENCIES:
         currency = DEFAULT_CURRENCY
     if currency == "USD":
