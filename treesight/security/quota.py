@@ -30,7 +30,11 @@ def _run_limit(user_id: str) -> int:
         from treesight.security.billing import get_run_limit
 
         return get_run_limit(user_id)
+    except ImportError:
+        logger.debug("Billing module not available, using free tier limit")
+        return FREE_TIER_LIMIT
     except Exception:
+        logger.exception("Error checking subscription tier for user=%s", user_id)
         return FREE_TIER_LIMIT
 
 

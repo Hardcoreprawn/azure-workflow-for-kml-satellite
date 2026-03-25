@@ -20,15 +20,17 @@ import pytest
 
 
 def _load_stripe_key() -> str:
-    """Try env var first, then Key Vault."""
+    """Try env var first, then Key Vault (only if VAULT_NAME is set)."""
     key = os.environ.get("STRIPE_API_KEY", "")
     if key:
         return key
+    vault = os.environ.get("VAULT_NAME", "")
+    if not vault:
+        return ""
     try:
         from azure.identity import DefaultAzureCredential
         from azure.keyvault.secrets import SecretClient
 
-        vault = os.environ.get("VAULT_NAME", "kv-kmlsat-dev")
         client = SecretClient(
             vault_url=f"https://{vault}.vault.azure.net",
             credential=DefaultAzureCredential(),

@@ -19,10 +19,14 @@ import azure.functions as func
 
 _ALLOWED_ORIGIN = "https://treesight.hrdcrprwn.com"
 _AUTH_DISABLED = patch("treesight.security.auth.auth_enabled", return_value=False)
+_AUTH_TEST_USER = [
+    patch("blueprints._helpers.auth_enabled", return_value=True),
+    patch("blueprints._helpers.validate_token", return_value={"sub": "test-user"}),
+]
 
 
 def _make_req(method="POST", body=b"", headers=None, url="/api/billing/webhook"):
-    h = {"Origin": _ALLOWED_ORIGIN}
+    h = {"Origin": _ALLOWED_ORIGIN, "Authorization": "Bearer fake-token"}
     if headers:
         h.update(headers)
     return func.HttpRequest(method=method, url=url, headers=h, body=body)
@@ -36,6 +40,7 @@ def _make_req(method="POST", body=b"", headers=None, url="/api/billing/webhook")
 class TestBillingWebhook:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
+    @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
     def test_invalid_signature_returns_400(self):
         from blueprints.billing import billing_webhook
 
@@ -45,6 +50,7 @@ class TestBillingWebhook:
 
     @patch("blueprints.billing.STRIPE_API_KEY", "")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "")
+    @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "")
     def test_not_configured_returns_503(self):
         from blueprints.billing import billing_webhook
 
@@ -148,8 +154,10 @@ class TestHandleEvent:
 class TestBillingCheckout:
     @patch("blueprints.billing.STRIPE_API_KEY", "")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "")
-    @_AUTH_DISABLED
-    def test_not_configured_returns_503(self, _auth):
+    @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "")
+    @_AUTH_TEST_USER[1]
+    @_AUTH_TEST_USER[0]
+    def test_not_configured_returns_503(self, _auth, _token):
         from blueprints.billing import billing_checkout
 
         req = _make_req(url="/api/billing/checkout")
@@ -164,6 +172,14 @@ class TestBillingCheckout:
         resp = billing_checkout(req)
         assert resp.status_code == 204
 
+    @_AUTH_DISABLED
+    def test_anonymous_returns_401(self, _auth):
+        from blueprints.billing import billing_checkout
+
+        req = _make_req(url="/api/billing/checkout")
+        resp = billing_checkout(req)
+        assert resp.status_code == 401
+
 
 # ---------------------------------------------------------------------------
 # Portal endpoint tests
@@ -173,9 +189,11 @@ class TestBillingCheckout:
 class TestBillingPortal:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
+    @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
     @patch("treesight.storage.client.BlobStorageClient")
-    @_AUTH_DISABLED
-    def test_no_subscription_returns_404(self, _auth, mock_cls):
+    @_AUTH_TEST_USER[1]
+    @_AUTH_TEST_USER[0]
+    def test_no_subscription_returns_404(self, _auth, _token, mock_cls):
         from blueprints.billing import billing_portal
 
         mock_cls.return_value.download_json.side_effect = FileNotFoundError

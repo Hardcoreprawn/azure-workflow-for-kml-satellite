@@ -24,7 +24,11 @@ bp = func.Blueprint()
 
 
 def _stripe_configured() -> bool:
-    return bool(STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET)
+    return bool(
+        STRIPE_API_KEY
+        and STRIPE_WEBHOOK_SECRET
+        and (STRIPE_PRICE_ID_PRO_EUR or STRIPE_PRICE_ID_PRO_GBP or STRIPE_PRICE_ID_PRO_USD)
+    )
 
 
 def _get_stripe():
@@ -66,6 +70,9 @@ def billing_checkout(
 ) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if user_id == "anonymous":
+        return error_response(401, "Authentication required for billing", req=req)
 
     if not _stripe_configured():
         return error_response(503, "Billing not configured", req=req)
@@ -141,6 +148,9 @@ def billing_checkout(
 def billing_portal(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if user_id == "anonymous":
+        return error_response(401, "Authentication required for billing", req=req)
 
     if not _stripe_configured():
         return error_response(503, "Billing not configured", req=req)

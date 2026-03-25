@@ -108,8 +108,8 @@
       logoutBtn.style.display = 'inline';
       loginPrompt.style.display = 'none';
       if (submitBtn) submitBtn.textContent = 'Process KML';
-      /* Load billing status for logged-in users */
-      if (window.treesightBilling) window.treesightBilling.loadStatus();
+      /* Load billing status for logged-in users (after API base discovered) */
+      if (window.treesightBilling && apiDiscoveryReady) apiDiscoveryReady.then(function() { window.treesightBilling.loadStatus(); });
     } else {
       userSpan.style.display = 'none';
       loginBtn.style.display = 'inline';
@@ -2812,7 +2812,7 @@
   var loginPromptLink = document.getElementById('login-prompt-link');
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
 
-  discoverApiBase();
+  var apiDiscoveryReady = discoverApiBase();
 
   /* --- Billing self-service (M4) --- */
   window.treesightBilling = {

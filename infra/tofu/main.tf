@@ -500,6 +500,7 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
 
 # Allow the deployer (tofu apply / setup scripts) to manage secrets
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
+  count                = var.enable_stripe ? 1 : 0
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
