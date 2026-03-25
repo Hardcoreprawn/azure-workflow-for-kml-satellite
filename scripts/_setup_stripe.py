@@ -87,9 +87,10 @@ def main() -> None:
         print("ERROR: 'stripe-api-key' secret is empty in Key Vault.")
         sys.exit(1)
 
-    print(f"  Stripe API key: {api_key[:8]}...{api_key[-4:]}")
+    key_mode = "test" if api_key.startswith("sk_test_") else "live"
+    print(f"  Stripe API key: {key_mode}-mode key loaded from Key Vault")
 
-    if not api_key.startswith("sk_test_"):
+    if key_mode == "live":
         print("WARNING: This does not look like a test-mode key.")
         resp = input("Continue with live key? [y/N] ").strip().lower()
         if resp != "y":
@@ -164,17 +165,15 @@ def main() -> None:
     # 6. Store results in Key Vault
     # ------------------------------------------------------------------
     print("\n=== Storing secrets in Key Vault ===")
-    secrets_to_store: dict[str, str] = {
-        "stripe-price-id-pro-gbp": price_ids["GBP"],
-        "stripe-price-id-pro-usd": price_ids["USD"],
-        "stripe-price-id-pro-eur": price_ids["EUR"],
-    }
+    secret_names = ["stripe-price-id-pro-gbp", "stripe-price-id-pro-usd", "stripe-price-id-pro-eur"]
+    secret_values = [price_ids["GBP"], price_ids["USD"], price_ids["EUR"]]
     if webhook_secret:
-        secrets_to_store["stripe-webhook-secret"] = webhook_secret
+        secret_names.append("stripe-webhook-secret")
+        secret_values.append(webhook_secret)
 
-    for secret_name in list(secrets_to_store):
-        kv_client.set_secret(secret_name, secrets_to_store[secret_name])
-        print(f"  ✓ {secret_name}")
+    for name, val in zip(secret_names, secret_values, strict=True):
+        kv_client.set_secret(name, val)
+        print(f"  ✓ {name}")
 
     print("\n=== Done ===")
     if not webhook_secret:

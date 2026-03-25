@@ -134,8 +134,10 @@ class TestCheckoutSession:
             metadata={"user_id": "test-user-001"},
         )
         assert session.id.startswith("cs_test_")
+        from urllib.parse import urlparse
+
         assert session.url is not None
-        assert session.url.startswith("https://checkout.stripe.com")
+        assert urlparse(session.url).hostname == "checkout.stripe.com"
         assert session.status == "open"
         assert session.mode == "subscription"
 
@@ -296,8 +298,10 @@ class TestBillingEndpointIntegration:
 
         assert resp.status_code == 200
         body = json.loads(resp.get_body())
+        from urllib.parse import urlparse
+
         assert "checkout_url" in body
-        assert body["checkout_url"].startswith("https://checkout.stripe.com")
+        assert urlparse(body["checkout_url"]).hostname == "checkout.stripe.com"
 
     @patch("treesight.security.auth.auth_enabled", return_value=False)
     @patch("treesight.storage.client.BlobStorageClient")
