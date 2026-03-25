@@ -98,6 +98,11 @@ def require_auth(fn):
 
         return fn(req, auth_claims=claims, user_id=get_user_id(claims))
 
+    # @wraps copies __wrapped__, which makes inspect.signature() expose
+    # the inner function's extra parameters (auth_claims, user_id).
+    # The Azure Functions worker treats every parameter as a binding;
+    # these are not bindings, so we remove __wrapped__ to hide them.
+    del wrapper.__wrapped__
     return wrapper
 
 
