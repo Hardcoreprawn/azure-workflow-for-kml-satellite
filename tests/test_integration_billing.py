@@ -49,12 +49,10 @@ skip_no_stripe = pytest.mark.skipif(
 
 pytestmark = [pytest.mark.integration, skip_no_stripe]
 
-# Test card that always succeeds
-TEST_CARD_SUCCESS = "4242424242424242"
-# Test card that requires authentication (3D Secure)
-TEST_CARD_3DS = "4000002500003155"
-# Test card that always declines
-TEST_CARD_DECLINE = "4000000000000002"
+# Stripe test-mode tokens (never pass raw card numbers to the API)
+# See: https://docs.stripe.com/testing#tokens
+TOK_VISA = "tok_visa"
+TOK_DECLINE = "tok_chargeDeclined"
 
 
 @pytest.fixture(scope="module")
@@ -184,7 +182,7 @@ class TestSubscriptionLifecycle:
         # 1. Create customer with test card token
         customer = stripe_mod.Customer.create(
             email="lifecycle@treesight-integration.test",
-            source="tok_visa",
+            source=TOK_VISA,
             metadata={"user_id": "test-user-sub", "test": "true"},
         )
 
@@ -214,7 +212,7 @@ class TestSubscriptionLifecycle:
         with pytest.raises(stripe_mod.CardError) as exc_info:
             stripe_mod.Customer.create(
                 email="decline@treesight-integration.test",
-                source="tok_chargeDeclined",
+                source=TOK_DECLINE,
                 metadata={"test": "true"},
             )
         assert exc_info.value.code == "card_declined"
