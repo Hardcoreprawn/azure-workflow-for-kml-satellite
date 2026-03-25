@@ -251,6 +251,30 @@ resource "azurerm_key_vault_secret" "stripe_webhook_secret" {
   tags         = local.tags
 }
 
+resource "azurerm_key_vault_secret" "stripe_price_id_pro_gbp" {
+  count        = var.stripe_price_id_pro_gbp != "" ? 1 : 0
+  name         = "stripe-price-id-pro-gbp"
+  value        = var.stripe_price_id_pro_gbp
+  key_vault_id = azurerm_key_vault.main.id
+  tags         = local.tags
+}
+
+resource "azurerm_key_vault_secret" "stripe_price_id_pro_usd" {
+  count        = var.stripe_price_id_pro_usd != "" ? 1 : 0
+  name         = "stripe-price-id-pro-usd"
+  value        = var.stripe_price_id_pro_usd
+  key_vault_id = azurerm_key_vault.main.id
+  tags         = local.tags
+}
+
+resource "azurerm_key_vault_secret" "stripe_price_id_pro_eur" {
+  count        = var.stripe_price_id_pro_eur != "" ? 1 : 0
+  name         = "stripe-price-id-pro-eur"
+  value        = var.stripe_price_id_pro_eur
+  key_vault_id = azurerm_key_vault.main.id
+  tags         = local.tags
+}
+
 # --- Azure OpenAI for AI analysis (M1.6) ---
 
 resource "azurerm_cognitive_account" "openai" {
@@ -405,8 +429,16 @@ resource "azapi_resource" "function_app" {
             value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_webhook_secret[0].versionless_id})"
           },
           {
-            name  = "STRIPE_PRICE_ID_PRO"
-            value = var.stripe_price_id_pro
+            name  = "STRIPE_PRICE_ID_PRO_GBP"
+            value = var.stripe_price_id_pro_gbp
+          },
+          {
+            name  = "STRIPE_PRICE_ID_PRO_USD"
+            value = var.stripe_price_id_pro_usd
+          },
+          {
+            name  = "STRIPE_PRICE_ID_PRO_EUR"
+            value = var.stripe_price_id_pro_eur
           }
         ] : [])
       }

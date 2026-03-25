@@ -10,7 +10,13 @@ import logging
 import azure.functions as func
 
 from blueprints._helpers import cors_headers, cors_preflight, error_response, require_auth
-from treesight.config import STRIPE_API_KEY, STRIPE_PRICE_ID_PRO, STRIPE_WEBHOOK_SECRET
+from treesight.config import (
+    STRIPE_API_KEY,
+    STRIPE_PRICE_ID_PRO_EUR,
+    STRIPE_PRICE_ID_PRO_GBP,
+    STRIPE_PRICE_ID_PRO_USD,
+    STRIPE_WEBHOOK_SECRET,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +40,13 @@ def _safe_origin(req: func.HttpRequest) -> str:
     from blueprints._helpers import _ALLOWED_ORIGINS
 
     origin = req.headers.get("Origin", "")
-    return origin if origin in _ALLOWED_ORIGINS else "https://treesight.hrdcrprwn.com"
+    if origin in _ALLOWED_ORIGINS:
+        return origin
+    # Fall back to the first production origin in the allowlist
+    return next(
+        (o for o in _ALLOWED_ORIGINS if o.startswith("https://")),
+        "https://treesight.hrdcrprwn.com",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,14 +73,33 @@ def billing_checkout(
     stripe = _get_stripe()
     origin = _safe_origin(req)
 
+    from treesight.constants import DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
+
+    # Determine currency (default GBP, allow override via ?currency= or JSON body)
+    currency = req.params.get("currency", "").upper()
+    if not currency and req.get_body():
+        try:
+            body = json.loads(req.get_body())
+            currency = body.get("currency", "").upper()
+        except (ValueError, UnicodeDecodeError):
+            pass
+    if currency not in SUPPORTED_CURRENCIES:
+        currency = DEFAULT_CURRENCY
+    if currency == "USD":
+        price_id = STRIPE_PRICE_ID_PRO_USD
+    elif currency == "EUR":
+        price_id = STRIPE_PRICE_ID_PRO_EUR
+    else:
+        price_id = STRIPE_PRICE_ID_PRO_GBP
+
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
-            line_items=[{"price": STRIPE_PRICE_ID_PRO, "quantity": 1}],
+            line_items=[{"price": price_id, "quantity": 1}],
             success_url=f"{origin}?billing=success",
             cancel_url=f"{origin}?billing=cancel",
             client_reference_id=user_id,
-            metadata={"user_id": user_id},
+            metadata={"user_id": user_id, "currency": currency},
             # UK compliance: collect billing address for VAT
             billing_address_collection="required",
             # Let Stripe Tax handle VAT automatically
@@ -243,13 +274,15 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
 
     storage = BlobStorageClient()
     try:
-        blobs = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix="subscriptions/")
+        from treesight.constants import SUBSCRIPTIONS_PREFIX
+
+        prefix = f"{SUBSCRIPTIONS_PREFIX}/"
+        blobs = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix=prefix)
         for blob_name in blobs:
             try:
                 record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
                 if record.get("stripe_customer_id") == customer_id:
-                    # Extract user_id from blob path: subscriptions/{user_id}.json
-                    return blob_name.removeprefix("subscriptions/").removesuffix(".json")
+                    return blob_name.removeprefix(prefix).removesuffix(".json")
             except Exception:
                 logger.debug("Skipping unreadable blob %s", blob_name)
                 continue

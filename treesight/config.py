@@ -87,7 +87,9 @@ REQUIRE_AUTH = _env("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 # NEVER commit real Stripe keys — they live in Key Vault only.
 STRIPE_API_KEY = _env("STRIPE_API_KEY")
 STRIPE_WEBHOOK_SECRET = _env("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRICE_ID_PRO = _env("STRIPE_PRICE_ID_PRO")
+STRIPE_PRICE_ID_PRO_GBP = _env("STRIPE_PRICE_ID_PRO_GBP")
+STRIPE_PRICE_ID_PRO_USD = _env("STRIPE_PRICE_ID_PRO_USD")
+STRIPE_PRICE_ID_PRO_EUR = _env("STRIPE_PRICE_ID_PRO_EUR")
 
 
 def validate_config() -> None:

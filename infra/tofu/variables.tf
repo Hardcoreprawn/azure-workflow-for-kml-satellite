@@ -131,8 +131,20 @@ variable "stripe_webhook_secret" {
   default     = ""
 }
 
-variable "stripe_price_id_pro" {
-  description = "Stripe Price ID for the Pro subscription plan."
+variable "stripe_price_id_pro_gbp" {
+  description = "Stripe Price ID for the Pro subscription plan (GBP)."
+  type        = string
+  default     = ""
+}
+
+variable "stripe_price_id_pro_usd" {
+  description = "Stripe Price ID for the Pro subscription plan (USD)."
+  type        = string
+  default     = ""
+}
+
+variable "stripe_price_id_pro_eur" {
+  description = "Stripe Price ID for the Pro subscription plan (EUR)."
   type        = string
   default     = ""
 }

@@ -20,6 +20,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from treesight.config import OUTPUT_CONTAINER
 from treesight.log import log_phase
 from treesight.models.aoi import AOI
 from treesight.models.imagery import ImageryFilters, SearchResult
@@ -214,7 +215,7 @@ class PlanetaryComputerProvider(ImageryProvider):
             return self._stub_download(order_id)
 
         return BlobReference(
-            container="kml-output",
+            container=OUTPUT_CONTAINER,
             blob_path=f"imagery/raw/{order_id}.tif",
             size_bytes=0,
             content_type="image/tiff",
@@ -405,7 +406,7 @@ class PlanetaryComputerProvider(ImageryProvider):
     def _stub_download(self, order_id: str) -> BlobReference:
         """Return a synthetic blob reference."""
         return BlobReference(
-            container="kml-output",
+            container=OUTPUT_CONTAINER,
             blob_path=f"imagery/raw/stub/{order_id}.tif",
             size_bytes=1024,
             content_type="image/tiff",

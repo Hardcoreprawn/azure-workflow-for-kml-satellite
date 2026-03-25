@@ -11,15 +11,18 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from treesight.constants import FREE_TIER_RUN_LIMIT, PIPELINE_PAYLOADS_CONTAINER, PRO_TIER_RUN_LIMIT
+from treesight.constants import (
+    FREE_TIER_RUN_LIMIT,
+    PIPELINE_PAYLOADS_CONTAINER,
+    PRO_TIER_RUN_LIMIT,
+    SUBSCRIPTIONS_PREFIX,
+)
 
 logger = logging.getLogger(__name__)
 
-_SUBSCRIPTIONS_PREFIX = "subscriptions"
-
 
 def _blob_path(user_id: str) -> str:
-    return f"{_SUBSCRIPTIONS_PREFIX}/{user_id}.json"
+    return f"{SUBSCRIPTIONS_PREFIX}/{user_id}.json"
 
 
 def get_subscription(user_id: str) -> dict[str, Any]:
