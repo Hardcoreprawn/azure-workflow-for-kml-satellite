@@ -54,7 +54,7 @@ class TestConsumeQuota:
     def test_exhaustion_raises(self):
         for _ in range(FREE_TIER_LIMIT):
             consume_quota("user-exhaust")
-        with pytest.raises(ValueError, match="Free quota exhausted"):
+        with pytest.raises(ValueError, match="Quota exhausted"):
             consume_quota("user-exhaust")
 
     def test_different_users_independent(self):

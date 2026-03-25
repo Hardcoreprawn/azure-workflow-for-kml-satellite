@@ -23,7 +23,13 @@ from typing import Any
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import (
+    AI_AZURE_TIMEOUT_SECONDS,
+    AI_MAX_TOKENS,
+    AI_OLLAMA_TIMEOUT_SECONDS,
+    DEFAULT_HTTP_TIMEOUT_SECONDS,
+    DEFAULT_OUTPUT_CONTAINER,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral")
 
 # Cache
-AI_CACHE_CONTAINER = os.environ.get("AI_CACHE_CONTAINER", "kml-output")
+AI_CACHE_CONTAINER = os.environ.get("AI_CACHE_CONTAINER", DEFAULT_OUTPUT_CONTAINER)
 AI_CACHE_PREFIX = "ai-cache/"
 AI_CACHE_ENABLED = os.environ.get("AI_CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
 
@@ -176,11 +182,11 @@ def _call_azure_ai(prompt: str) -> str | None:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.3,
-        "max_tokens": 1000,
+        "max_tokens": AI_MAX_TOKENS,
     }
 
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=AI_AZURE_TIMEOUT_SECONDS) as client:
             resp = client.post(url, json=body, headers=headers)
             resp.raise_for_status()
             data = resp.json()
@@ -208,7 +214,7 @@ def _call_ollama(prompt: str) -> str | None:
                     "stream": False,
                     "temperature": 0.3,
                 },
-                timeout=150.0,
+                timeout=AI_OLLAMA_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
             _ollama_circuit.record_success()

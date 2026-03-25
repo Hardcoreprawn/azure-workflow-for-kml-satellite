@@ -10,6 +10,15 @@ from __future__ import annotations
 import threading
 import time
 
+from treesight.constants import (
+    RATE_LIMIT_FORM_MAX,
+    RATE_LIMIT_FORM_WINDOW,
+    RATE_LIMIT_PIPELINE_MAX,
+    RATE_LIMIT_PIPELINE_WINDOW,
+    RATE_LIMIT_PROXY_MAX,
+    RATE_LIMIT_PROXY_WINDOW,
+)
+
 
 class RateLimiter:
     """Thread-safe sliding-window rate limiter keyed by arbitrary string (e.g. IP)."""
@@ -42,14 +51,13 @@ class RateLimiter:
 
 
 # Pre-configured limiters for different endpoint tiers
-# Form submission endpoints: 5 requests per 60 seconds per IP
-form_limiter = RateLimiter(max_requests=5, window_seconds=60)
-
-# Pipeline status polling: 30 requests per 60 seconds per IP
-pipeline_limiter = RateLimiter(max_requests=30, window_seconds=60)
-
-# CORS proxy: 60 requests per 60 seconds per IP
-proxy_limiter = RateLimiter(max_requests=60, window_seconds=60)
+form_limiter = RateLimiter(max_requests=RATE_LIMIT_FORM_MAX, window_seconds=RATE_LIMIT_FORM_WINDOW)
+pipeline_limiter = RateLimiter(
+    max_requests=RATE_LIMIT_PIPELINE_MAX, window_seconds=RATE_LIMIT_PIPELINE_WINDOW
+)
+proxy_limiter = RateLimiter(
+    max_requests=RATE_LIMIT_PROXY_MAX, window_seconds=RATE_LIMIT_PROXY_WINDOW
+)
 
 
 def get_client_ip(req) -> str:

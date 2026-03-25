@@ -81,6 +81,16 @@ CIAM_CLIENT_ID = _env("CIAM_CLIENT_ID")
 CIAM_AUDIENCE = _env("CIAM_AUDIENCE")  # defaults to CIAM_CLIENT_ID if empty
 REQUIRE_AUTH = _env("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 
+# Stripe billing (M4)
+# In production, these resolve via @Microsoft.KeyVault() app setting references.
+# Locally, leave empty to disable Stripe or set in local.settings.json for testing.
+# NEVER commit real Stripe keys — they live in Key Vault only.
+STRIPE_API_KEY = _env("STRIPE_API_KEY")
+STRIPE_WEBHOOK_SECRET = _env("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_ID_PRO_GBP = _env("STRIPE_PRICE_ID_PRO_GBP")
+STRIPE_PRICE_ID_PRO_USD = _env("STRIPE_PRICE_ID_PRO_USD")
+STRIPE_PRICE_ID_PRO_EUR = _env("STRIPE_PRICE_ID_PRO_EUR")
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""
