@@ -236,43 +236,53 @@ resource "azurerm_key_vault" "main" {
 # --- Stripe secrets in Key Vault (M4) ---
 
 resource "azurerm_key_vault_secret" "stripe_api_key" {
-  count        = var.stripe_api_key != "" ? 1 : 0
+  count        = var.enable_stripe ? 1 : 0
   name         = "stripe-api-key"
-  value        = var.stripe_api_key
+  value        = coalesce(var.stripe_api_key, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+
+  lifecycle { ignore_changes = [value] }
 }
 
 resource "azurerm_key_vault_secret" "stripe_webhook_secret" {
-  count        = var.stripe_webhook_secret != "" ? 1 : 0
+  count        = var.enable_stripe ? 1 : 0
   name         = "stripe-webhook-secret"
-  value        = var.stripe_webhook_secret
+  value        = coalesce(var.stripe_webhook_secret, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+
+  lifecycle { ignore_changes = [value] }
 }
 
 resource "azurerm_key_vault_secret" "stripe_price_id_pro_gbp" {
-  count        = var.stripe_price_id_pro_gbp != "" ? 1 : 0
+  count        = var.enable_stripe ? 1 : 0
   name         = "stripe-price-id-pro-gbp"
-  value        = var.stripe_price_id_pro_gbp
+  value        = coalesce(var.stripe_price_id_pro_gbp, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+
+  lifecycle { ignore_changes = [value] }
 }
 
 resource "azurerm_key_vault_secret" "stripe_price_id_pro_usd" {
-  count        = var.stripe_price_id_pro_usd != "" ? 1 : 0
+  count        = var.enable_stripe ? 1 : 0
   name         = "stripe-price-id-pro-usd"
-  value        = var.stripe_price_id_pro_usd
+  value        = coalesce(var.stripe_price_id_pro_usd, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+
+  lifecycle { ignore_changes = [value] }
 }
 
 resource "azurerm_key_vault_secret" "stripe_price_id_pro_eur" {
-  count        = var.stripe_price_id_pro_eur != "" ? 1 : 0
+  count        = var.enable_stripe ? 1 : 0
   name         = "stripe-price-id-pro-eur"
-  value        = var.stripe_price_id_pro_eur
+  value        = coalesce(var.stripe_price_id_pro_eur, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+
+  lifecycle { ignore_changes = [value] }
 }
 
 # --- Azure OpenAI for AI analysis (M1.6) ---
@@ -419,7 +429,7 @@ resource "azapi_resource" "function_app" {
             name  = "CIAM_AUDIENCE"
             value = var.ciam_client_id
           }
-        ] : [], var.stripe_api_key != "" ? [
+          ] : [], var.enable_stripe ? [
           {
             name  = "STRIPE_API_KEY"
             value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_api_key[0].versionless_id})"
@@ -430,15 +440,15 @@ resource "azapi_resource" "function_app" {
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_GBP"
-            value = var.stripe_price_id_pro_gbp
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_gbp[0].versionless_id})"
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_USD"
-            value = var.stripe_price_id_pro_usd
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_usd[0].versionless_id})"
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_EUR"
-            value = var.stripe_price_id_pro_eur
+            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_eur[0].versionless_id})"
           }
         ] : [])
       }
@@ -486,6 +496,13 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azapi_resource.function_app.identity[0].principal_id
+}
+
+# Allow the deployer (tofu apply / setup scripts) to manage secrets
+resource "azurerm_role_assignment" "key_vault_secrets_officer" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 resource "azapi_resource" "event_grid_system_topic" {

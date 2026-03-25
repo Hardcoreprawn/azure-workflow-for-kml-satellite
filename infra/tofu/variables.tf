@@ -117,6 +117,12 @@ variable "ciam_client_id" {
 
 # --- Stripe billing (M4) ---
 
+variable "enable_stripe" {
+  description = "Enable Stripe billing infrastructure (Key Vault secrets, app settings)."
+  type        = bool
+  default     = false
+}
+
 variable "stripe_api_key" {
   description = "Stripe secret API key. Stored in Key Vault, never in app settings."
   type        = string

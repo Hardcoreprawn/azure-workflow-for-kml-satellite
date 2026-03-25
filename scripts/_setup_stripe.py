@@ -1,34 +1,94 @@
 """One-time: Provision Stripe product, prices, webhook, and customer portal.
 
 Usage:
-    STRIPE_API_KEY=sk_test_xxx \
-    WEBHOOK_URL=https://<func-app>/api/billing/webhook \
-    python scripts/_setup_stripe.py
+    # First, store your Stripe test API key in Key Vault:
+    #   az keyvault secret set --vault-name kv-kmlsat-dev \
+    #       --name stripe-api-key --value "sk_test_..."
+    #
+    # Then run:
+    python scripts/_setup_stripe.py --vault-name kv-kmlsat-dev
 
-What it creates:
+What it creates (in Stripe):
     1. Product: "TreeSight Pro" (monthly subscription)
     2. Three Prices: GBP £39, USD $49, EUR €45
     3. Webhook endpoint listening for billing events
     4. Customer Portal configuration (cancel, invoices, payment update)
 
-Output:
-    Prints the env vars to set in Key Vault / local.settings.json.
-    These values are NOT written anywhere automatically — copy them yourself.
+What it writes (back to Key Vault):
+    stripe-webhook-secret, stripe-price-id-pro-gbp, -usd, -eur
 
 Idempotent: if a product named "TreeSight Pro" already exists, it reuses it.
 """
 
+import argparse
 import os
+import subprocess
 import sys
+from typing import Any
+
+_REQUIRED_PACKAGES = {
+    "stripe": "stripe",
+    "azure.identity": "azure-identity",
+    "azure.keyvault.secrets": "azure-keyvault-secrets",  # pragma: allowlist secret
+}
+
+
+def _ensure_deps() -> None:
+    """Auto-install missing Python packages."""
+    missing = []
+    for module, pkg in _REQUIRED_PACKAGES.items():
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print(f"Installing missing packages: {', '.join(missing)}")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--quiet", *missing],
+        )
 
 
 def main() -> None:
-    api_key = os.environ.get("STRIPE_API_KEY", "")
-    webhook_url = os.environ.get("WEBHOOK_URL", "")
+    parser = argparse.ArgumentParser(description="Provision Stripe for TreeSight")
+    parser.add_argument(
+        "--vault-name",
+        default=os.environ.get("VAULT_NAME", "kv-kmlsat-dev"),
+        help="Azure Key Vault name (default: kv-kmlsat-dev)",
+    )
+    parser.add_argument(
+        "--webhook-url",
+        default=os.environ.get("WEBHOOK_URL", ""),
+        help="Stripe webhook URL. Auto-derived from Key Vault tags if omitted.",
+    )
+    args = parser.parse_args()
+
+    # --- Prerequisites ---
+    _ensure_deps()
+    from azure.identity import DefaultAzureCredential
+    from azure.keyvault.secrets import SecretClient
+
+    vault_url = f"https://{args.vault_name}.vault.azure.net"
+    credential = DefaultAzureCredential()
+    kv_client = SecretClient(vault_url=vault_url, credential=credential)
+
+    # --- Read Stripe API key from Key Vault ---
+    print(f"\n=== Key Vault: {args.vault_name} ===")
+    try:
+        api_key = kv_client.get_secret("stripe-api-key").value or ""
+    except Exception:
+        print("ERROR: Could not read 'stripe-api-key' from Key Vault.")
+        print(
+            "  Store it first:  az keyvault secret set --vault-name "
+            f"{args.vault_name} --name stripe-api-key --value 'sk_test_...'"
+        )
+        sys.exit(1)
 
     if not api_key:
-        print("ERROR: Set STRIPE_API_KEY env var (use sk_test_... for test mode)")
+        print("ERROR: 'stripe-api-key' secret is empty in Key Vault.")
         sys.exit(1)
+
+    key_prefix = api_key[:8] + "..." + api_key[-4:]
+    print(f"  Stripe API key: {key_prefix}")
 
     if not api_key.startswith("sk_test_"):
         print("WARNING: This does not look like a test-mode key.")
@@ -37,15 +97,16 @@ def main() -> None:
             print("Aborted.")
             sys.exit(1)
 
+    # --- Derive webhook URL from Function App hostname ---
+    webhook_url = args.webhook_url
     if not webhook_url:
-        print("ERROR: Set WEBHOOK_URL env var (e.g. https://<func-app>/api/billing/webhook)")
+        webhook_url = _derive_webhook_url(args.vault_name)
+    if not webhook_url:
+        print("ERROR: Could not derive webhook URL. Pass --webhook-url explicitly.")
         sys.exit(1)
+    print(f"  Webhook URL: {webhook_url}")
 
-    try:
-        import stripe
-    except ImportError:
-        print("ERROR: stripe SDK not installed. Run: pip install stripe")
-        sys.exit(1)
+    import stripe
 
     stripe.api_key = api_key
 
@@ -79,12 +140,11 @@ def main() -> None:
     webhook = _find_or_create_webhook(stripe, webhook_url)
     print(f"  Webhook ID: {webhook.id}")
     print(f"  URL: {webhook.url}")
-    # The signing secret is only returned on creation
     webhook_secret = getattr(webhook, "secret", None)
     if webhook_secret:
-        print(f"  Signing secret: {webhook_secret}")
+        print("  Signing secret: (captured, will store in Key Vault)")
     else:
-        print("  Signing secret: <already created — check Stripe Dashboard if you need it>")
+        print("  Signing secret: <already created — retrieve from Stripe Dashboard>")
 
     # ------------------------------------------------------------------
     # 4. Customer Portal
@@ -94,31 +154,76 @@ def main() -> None:
     print(f"  Portal config ID: {portal.id}")
 
     # ------------------------------------------------------------------
-    # 5. Enable Stripe Tax
+    # 5. Tax note
     # ------------------------------------------------------------------
     print("\n=== Tax ===")
     print("  Stripe Tax is activated per-session via automatic_tax={'enabled': True}.")
-    print("  Ensure tax registration is set in Stripe Dashboard → Tax → Registrations")
-    print("  for each country you operate in (at minimum: GB for UK VAT).")
+    print("  No tax registration needed until turnover exceeds the VAT threshold (£90k).")
+    print("  When you register: Stripe Dashboard → Tax → Registrations → add GB.")
 
     # ------------------------------------------------------------------
-    # Output
+    # 6. Store results in Key Vault
     # ------------------------------------------------------------------
-    print("\n" + "=" * 60)
-    print("Add these to Key Vault / local.settings.json / GitHub Secrets:")
-    print("=" * 60)
-    print(f"  STRIPE_API_KEY           = {api_key}")
+    print("\n=== Storing secrets in Key Vault ===")
+    secrets_to_store: dict[str, str] = {
+        "stripe-price-id-pro-gbp": price_ids["GBP"],
+        "stripe-price-id-pro-usd": price_ids["USD"],
+        "stripe-price-id-pro-eur": price_ids["EUR"],
+    }
     if webhook_secret:
-        print(f"  STRIPE_WEBHOOK_SECRET    = {webhook_secret}")
-    else:
-        print("  STRIPE_WEBHOOK_SECRET    = <retrieve from Stripe Dashboard → Webhooks>")
-    print(f"  STRIPE_PRICE_ID_PRO_GBP  = {price_ids['GBP']}")
-    print(f"  STRIPE_PRICE_ID_PRO_USD  = {price_ids['USD']}")
-    print(f"  STRIPE_PRICE_ID_PRO_EUR  = {price_ids['EUR']}")
-    print()
+        secrets_to_store["stripe-webhook-secret"] = webhook_secret
+
+    for name, value in secrets_to_store.items():
+        kv_client.set_secret(name, value)
+        print(f"  ✓ {name}")
+
+    print("\n=== Done ===")
+    if not webhook_secret:
+        print("  NOTE: webhook signing secret was not returned (already exists).")
+        print("  If 'stripe-webhook-secret' is not yet in Key Vault, copy it from")
+        print("  Stripe Dashboard → Developers → Webhooks → Signing secret.")
+    print("  All other secrets stored in Key Vault. No manual steps needed.")
 
 
-def _find_or_create_product(stripe) -> object:
+def _derive_webhook_url(vault_name: str) -> str:
+    """Derive the webhook URL from the Function App in the same resource group."""
+    import json
+    import subprocess
+
+    # Key Vault name follows kv-{project}-{env}, Function App is func-{project}-{env}
+    suffix = vault_name.removeprefix("kv-")  # e.g. "kmlsat-dev"
+    func_name = f"func-{suffix}"
+    rg_name = f"rg-{suffix}"
+
+    try:
+        result = subprocess.run(
+            [
+                "az",
+                "functionapp",
+                "show",
+                "--name",
+                func_name,
+                "--resource-group",
+                rg_name,
+                "--query",
+                "defaultHostName",
+                "-o",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode == 0:
+            hostname = json.loads(result.stdout.strip())
+            return f"https://{hostname}/api/billing/webhook"
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        pass
+    return ""
+
+
+def _find_or_create_product(stripe: Any) -> Any:
     """Find existing 'TreeSight Pro' product or create one."""
     products = stripe.Product.list(limit=100, active=True)
     for p in products.auto_paging_iter():
@@ -135,7 +240,7 @@ def _find_or_create_product(stripe) -> object:
     )
 
 
-def _find_or_create_price(stripe, product_id: str, currency: str, unit_amount: int) -> object:
+def _find_or_create_price(stripe: Any, product_id: str, currency: str, unit_amount: int) -> Any:
     """Find existing monthly price for this product+currency, or create one."""
     prices = stripe.Price.list(product=product_id, currency=currency, active=True, limit=20)
     for p in prices.auto_paging_iter():
@@ -160,7 +265,7 @@ WEBHOOK_EVENTS = [
 ]
 
 
-def _find_or_create_webhook(stripe, url: str) -> object:
+def _find_or_create_webhook(stripe: Any, url: str) -> Any:
     """Find existing webhook for this URL, or create one."""
     endpoints = stripe.WebhookEndpoint.list(limit=20)
     for ep in endpoints.auto_paging_iter():
@@ -177,7 +282,7 @@ def _find_or_create_webhook(stripe, url: str) -> object:
     )
 
 
-def _create_portal_config(stripe, product_id: str) -> object:
+def _create_portal_config(stripe: Any, product_id: str) -> Any:
     """Create (or update) the billing portal configuration.
 
     Stripe only allows one active portal config per account, so we always
