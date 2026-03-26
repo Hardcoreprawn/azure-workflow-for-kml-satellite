@@ -22,6 +22,7 @@ dependencies = [
     "PyJWT[crypto]>=2.9.0",
     "stripe>=11.0.0",
     "requests>=2.33.0",  # CVE-2026-25645: predictable temp filename
+    "fpdf2>=2.8.0",
 ]
 
 [project.optional-dependencies]
