@@ -85,31 +85,40 @@
 
 ## 3. Pricing Model
 
-### 3.1 Tiers
+### 3.1 Tiers (Dual-Entry Model)
 
-| Tier | Price | Included | Target |
-|------|-------|----------|--------|
-| **Free** | $0/month | 5 AOI analyses/month, 1 concurrent pipeline, community support, no AI insights, 30-day data retention | Individual researchers, evaluation |
-| **Pro** | $49/month | 50 AOI analyses/month, 3 concurrent pipelines, AI insights, email support, 90-day data retention, PDF export | Small NGOs, independent advisors |
-| **Team** | $149/month | 200 AOI analyses/month, 10 concurrent pipelines, AI insights, priority support, 1-year retention, API access, team members (up to 5) | Agritech companies, compliance teams |
-| **Enterprise** | Custom | Unlimited AOIs, dedicated infrastructure, SLA, SSO, audit logs, custom integrations | Large corporates, government agencies |
+See [PERSONA_DEEP_DIVE.md §10](PERSONA_DEEP_DIVE.md#10-dual-pricing-model) for full analysis, graduation economics, and competitive pricing rationale.
+
+| Tier | Price | Included AOIs | Overage | Concurrency | AI Insights | Data Retention | Target |
+|------|-------|--------------|---------|-------------|-------------|----------------|--------|
+| **Free** | £0/month | 3/month | Hard cap | 1 pipeline | No | 30 days | Evaluation, students, individual researchers |
+| **Starter** | £19/month | 15/month | £1.50/AOI | 2 pipelines | Yes | 60 days | Independent consultants, small NGOs |
+| **Pro** | £49/month | 45/month | £0.80/AOI | 5 pipelines | Yes | 180 days | Active NGOs, ESG compliance, regular users |
+| **Team** | £149/month | 200/month | £0.50/AOI | 10 pipelines | Yes | 1 year | Multi-user orgs, agritech, large compliance |
+| **Enterprise** | Custom | Negotiated | Volume-discounted | Dedicated | Yes + custom | Custom | Large compliance programmes, government |
+
+Key design decisions:
+
+- **Dual entry:** both Starter (£19) and Pro (£49) available simultaneously — different buyer psychologies
+- **AI insights included at all paid tiers** — the differentiator that sells the product
+- **Free tier at 3 AOIs** (not 5) — drives faster conversion
+- **Starter→Pro crossover at ~35 AOIs/month** — natural graduation
+- **Pro→Team crossover at ~175 AOIs/month** — or when multi-user features needed
 
 ### 3.2 Usage-Based Add-Ons
 
 | Add-On | Price | Notes |
 |--------|-------|-------|
-| Additional AOI analyses | $1/AOI | Beyond tier limit |
-| AI insight credits | $0.50/analysis | Azure AI Foundry token cost pass-through |
-| Extended retention | $5/month per 100 GB | Blob storage cost + margin |
-| Historical baseline report (Landsat 40-yr) | $10/AOI | Compute-intensive, one-time |
+| Historical baseline report (Landsat 40-yr) | £10/AOI | Compute-intensive, one-time |
+| Extended retention | £5/month per 100 GB | Blob storage cost + margin |
 
 ### 3.3 Unit Economics (Target)
 
 | Metric | Target |
 |--------|--------|
-| AOI pipeline cost (compute + storage) | ~$0.08–$0.15 per run |
-| AI insight cost (Azure AI Foundry) | ~$0.01–$0.05 per analysis |
-| Gross margin | 70–80% at Pro tier |
+| AOI pipeline cost (compute + storage) | ~£0.08–£0.15 per run |
+| AI insight cost (Azure AI Foundry) | ~£0.01–£0.05 per analysis |
+| Gross margin | 80%+ at all paid tiers |
 | CAC payback | < 3 months |
 | LTV:CAC | > 3:1 |
 
@@ -394,12 +403,17 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 4.2 | **Usage metering & quota enforcement** | Medium | 2.1 | Free: 5 AOIs/mo. Pro: 50. Can't bill without counting. |
 | 4.3 | **Billing integration** (Stripe Checkout + webhook for subscription status) | Medium | 2.1, 4.2 | Revenue starts flowing |
 | 4.4 | **User dashboard** (saved analyses, history, usage stats) | High | 2.1 | Stickiness — users invest in their analysis history; churn barrier |
-| 4.5 | **Export: PDF report** (summary + charts + key frames) | Medium | 3.3 | Pro feature — NGOs need reports for donors; ESG teams need audit evidence |
+| 4.5 | **Export: PDF report** (summary + charts + key frames) | Medium | 3.3 | Pro feature — NGOs need reports for donors; ESG teams need audit evidence. **#1 revenue gate for ESG persona — see §13 of PERSONA_DEEP_DIVE.md** |
 | 4.6 | **Export: GeoJSON / CSV** (NDVI timeseries, weather data) | Low | 3.3 | Pro feature — programmatic users feed data into their own systems |
 | 4.7 | **Social proof section** (case study cards from free-tier users) | Low | — | Reduces trust barrier for new visitors → higher sign-up rate |
 | 4.8 | **Circuit breaker for AI** (Azure AI Foundry) | Low | 1.6 | If AI Foundry has an outage, pipeline still completes; AI gracefully degrades |
+| 4.9 | **EUDR compliance mode** (post-2020 date filter + deforestation-free statement) | Low | 3.3 | One toggle constrains analysis to EUDR-relevant timeframe. Leads AI narrative with yes/no conclusion. ~½ day effort, unlocks entire EUDR market. |
+| 4.10 | **Coordinate-to-KML converter** (CSV lat/lon → KML → pipeline) | Low | — | EUDR suppliers provide coordinates, not KML. Removes the biggest adoption friction for non-GIS users. ~1-2 days. |
+| 4.11 | **ESA WorldCover overlay** (PC `esa-worldcover`, 10m land cover) | Low | — | "This plot is classified as Tree Cover in 2021." EUDR baseline evidence. Same STAC path as Sentinel-2. ~1-2 days. |
+| 4.12 | **WDPA protected area check** (protectedplanet.net API) | Low | — | "This plot overlaps/does not overlap a protected area." Auto-enrichment, high audit value. |
+| 4.13 | **Methodology documentation page** | Low | — | Static content: satellites, indices, resolution, data sources, analysis steps. Auditors need this to trust output. |
 
-**Exit criteria:** 10+ paying Pro users. MRR > $400. Churn < 10%/month.
+**Exit criteria:** 10+ paying Pro users. MRR > $400. Churn < 10%/month. EUDR mode functional.
 
 **Key metric:** Free → Pro conversion rate > 5%.
 
@@ -422,6 +436,10 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 5.7 | **Test coverage measurement** (target >70%) | Low | — | Confidence to ship fast without regressions |
 | 5.8 | **MODIS Burned Area enrichment** (PC collection `modis-64A1-061`, global 500 m monthly, 2000–present) | Low | 5.4 | Complements FIRMS hotspot data (5.4) with validated burned-extent polygons and detection dates. **Already on Planetary Computer as COGs** — add collection to existing STAC provider, same auth/download path as Sentinel-2. No new infra. Free & open. |
 | 5.9 | **ESA CCI Land Cover enrichment** (PC collection `esa-cci-lc`, 300 m annual, 1992–2020, 22 LCCS classes) | Low | 3.8 | Adds 28-year historical land-cover baseline — detect transitions (forest → cropland → urban). **Already on Planetary Computer as COGs** — same STAC query pattern. Pairs with 6.4 (Landsat baselines) for long-term trend context. Free & open. |
+| 5.10 | **IO LULC Annual V2** (PC collection `io-lulc-annual-v02`, 10m, 2017–2023, 9-class) | Low | — | Multi-year land use change at Sentinel-2 resolution: "forest in 2019, cropland in 2022." Same STAC path. Free. |
+| 5.11 | **Planet-NICFI tropical mosaics** (PC collections `planet-nicfi-visual/analytic`, 4.77m, monthly, tropics) | Medium | — | 4x resolution improvement for tropical EUDR areas (Amazon, Congo, SE Asia). FREE via Norwegian government funding. Legal review needed on commercial use terms. **Game-changer for EUDR if terms allow.** |
+| 5.12 | **ALOS Forest/Non-Forest** (PC collection `alos-fnf-mosaic`, 25m, global, annual) | Low | — | Independent SAR-based forest classification from JAXA. Cross-validates optical NDVI-based forest detection. Works through clouds. Free & open. |
+| 5.13 | **GFW deforestation alerts** (GFW REST API, GLAD + RADD alerts) | Medium | 5.4 | Cross-reference our analysis with WRI's alert system. "GFW detected 3 deforestation alerts in this AOI in the past 6 months." Adds authority. Free API. |
 
 **Exit criteria:** 30+ paid users. Net revenue retention > 100% (expansion > churn). At least 5 users on monitoring subscriptions.
 
