@@ -365,7 +365,9 @@ def _pdf_vegetation_section(
     pdf.cell(0, 8, "Frame Details", new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "B", 8)
-    col_widths = [35, 22, 22, 30, 30, 22, 30]
+    col_ratios = [0.18, 0.11, 0.11, 0.16, 0.16, 0.12, 0.16]
+    page_w = pdf.epw  # effective page width (inside margins)
+    col_widths = [round(r * page_w, 1) for r in col_ratios]
     headers_row = ["Label", "Year", "Season", "Start", "End", "NDVI Mean", "Collection"]
     for i, h in enumerate(headers_row):
         pdf.cell(col_widths[i], 6, h, border=1)

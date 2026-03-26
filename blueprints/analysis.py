@@ -14,6 +14,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
+from treesight.constants import EUDR_CUTOFF_DATE
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -594,7 +595,7 @@ def _calculate_trends(
 # EUDR compliance assessment (M4 §4.9)
 # ---------------------------------------------------------------------------
 
-_EUDR_CUTOFF = "2020-12-31"
+_EUDR_CUTOFF = EUDR_CUTOFF_DATE
 
 
 @bp.route(
@@ -642,9 +643,12 @@ def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     try:
-        # Filter to post-2020 data only
+        # Filter to post-2020 data only — require a valid date or year
         post_cutoff = [
-            s for s in ndvi_ts if s.get("date", "9999") > _EUDR_CUTOFF or s.get("year", 0) > 2020
+            s
+            for s in ndvi_ts
+            if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
+            or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
         ]
         if not post_cutoff:
             return error_response(
@@ -660,8 +664,19 @@ def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
             aoi_name = _sanitise_for_prompt(context["aoi_name"])
             if aoi_name:
                 context_lines.append(f"Area of Interest: {aoi_name}")
-        if context.get("latitude") and context.get("longitude"):
-            context_lines.append(f"Location: {context['latitude']:.4f}, {context['longitude']:.4f}")
+        lat_raw = context.get("latitude")
+        lon_raw = context.get("longitude")
+        if lat_raw is not None and lon_raw is not None:
+            try:
+                latitude = float(lat_raw)
+                longitude = float(lon_raw)
+            except (TypeError, ValueError):
+                return error_response(
+                    400,
+                    "Invalid latitude/longitude; values must be numeric.",
+                    req=req,
+                )
+            context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
         context_lines.append(
             f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)"
         )

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, EUDR_CUTOFF_DATE
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.aoi_metrics import (
     compute_aoi_metrics,
@@ -67,7 +67,8 @@ def run_enrichment(
 
     # EUDR mode: default to post-cutoff baseline
     if eudr_mode and not date_start:
-        date_start = "2021-01-01"  # day after EUDR_CUTOFF_DATE
+        cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
+        date_start = (cutoff + timedelta(days=1)).isoformat()
 
     frame_plan = build_frame_plan(coords, date_start=date_start, date_end=date_end)
 
@@ -83,6 +84,14 @@ def run_enrichment(
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
+
+    if not frame_plan:
+        logger.warning("No frames matched date filters — returning partial manifest")
+        results["enriched_at"] = datetime.now(UTC).isoformat()
+        if eudr_mode:
+            results["eudr_mode"] = True
+            results["eudr_date_start"] = date_start
+        return results
 
     # 1. Weather data
     log_phase("enrichment", "weather_start", lat=center_lat, lon=center_lon)

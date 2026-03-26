@@ -107,12 +107,23 @@ def coords_to_kml(
 
 def _point_buffer(lon: float, lat: float, radius_m: float, segments: int = 32) -> list[list[float]]:
     """Generate a circular polygon around a point (approximation on WGS84)."""
+    if radius_m <= 0:
+        raise ValueError(f"radius_m must be positive, got {radius_m!r}")
+    if segments < 3:
+        raise ValueError(f"segments must be >= 3, got {segments!r}")
+
     lat_r = math.radians(lat)
+    # Clamp latitude away from the poles to avoid division by zero in cos(lat).
+    pole_epsilon = 1e-6
+    max_lat_r = (math.pi / 2) - pole_epsilon
+    safe_lat_r = max(min(lat_r, max_lat_r), -max_lat_r)
+    cos_safe_lat = math.cos(safe_lat_r)
+
     ring: list[list[float]] = []
     for i in range(segments + 1):
         angle = 2 * math.pi * i / segments
         dlat = (radius_m / _EARTH_RADIUS_M) * math.cos(angle)
-        dlon = (radius_m / (_EARTH_RADIUS_M * math.cos(lat_r))) * math.sin(angle)
+        dlon = (radius_m / (_EARTH_RADIUS_M * cos_safe_lat)) * math.sin(angle)
         ring.append([lon + math.degrees(dlon), lat + math.degrees(dlat)])
     return ring
 
@@ -162,11 +173,11 @@ def check_wdpa_overlap(
         resp = httpx.get(
             f"{_WDPA_API_BASE}/protected_areas/search",
             params={
-                "token": api_token,
                 "latitude": lat,
                 "longitude": lon,
                 "per_page": 5,
             },
+            headers={"Authorization": f"Bearer {api_token}"},
             timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
         )
         resp.raise_for_status()
@@ -234,60 +245,63 @@ def query_worldcover(
     """Query ESA WorldCover 2021 via Planetary Computer STAC for land-cover at a bbox.
 
     Uses the ``esa-worldcover`` collection on the Planetary Computer.
-    Returns the dominant land-cover class and distribution.
+    Returns STAC item metadata indicating WorldCover data availability for the
+    AOI.  Full raster sampling/classification is deferred to a later milestone.
 
     Parameters
     ----------
     bbox : list[float]
         ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
     """
-    client = http_client or httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
     stac_url = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
-    try:
-        # Search for WorldCover items overlapping the AOI
-        search_resp = client.post(
-            f"{stac_url}/search",
-            json={
-                "collections": ["esa-worldcover"],
-                "bbox": bbox,
-                "limit": 1,
-                "sortby": [{"field": "datetime", "direction": "desc"}],
-            },
-        )
-        search_resp.raise_for_status()
-        items = search_resp.json().get("features", [])
+    def _do_query(client: httpx.Client) -> dict[str, Any]:
+        try:
+            search_resp = client.post(
+                f"{stac_url}/search",
+                json={
+                    "collections": ["esa-worldcover"],
+                    "bbox": bbox,
+                    "limit": 1,
+                    "sortby": [{"field": "datetime", "direction": "desc"}],
+                },
+            )
+            search_resp.raise_for_status()
+            items = search_resp.json().get("features", [])
 
-        if not items:
+            if not items:
+                return {
+                    "available": False,
+                    "reason": "no_worldcover_data",
+                    "bbox": bbox,
+                }
+
+            item = items[0]
+            item_id = item.get("id", "")
+            item_datetime = item.get("properties", {}).get("datetime", "")
+
+            center_lon = (bbox[0] + bbox[2]) / 2
+            center_lat = (bbox[1] + bbox[3]) / 2
+
+            return {
+                "available": True,
+                "item_id": item_id,
+                "datetime": item_datetime,
+                "collection": "esa-worldcover",
+                "center": {"lon": center_lon, "lat": center_lat},
+                "bbox": bbox,
+                "classes": WORLDCOVER_CLASSES,
+            }
+
+        except Exception:
+            logger.warning("WorldCover query failed", exc_info=True)
             return {
                 "available": False,
-                "reason": "no_worldcover_data",
+                "reason": "query_error",
                 "bbox": bbox,
             }
 
-        item = items[0]
-        item_id = item.get("id", "")
-        item_datetime = item.get("properties", {}).get("datetime", "")
-
-        # Get the rendered tile from PC tile server for a quick classification
-        # Use the centroid of the bbox for a point query
-        center_lon = (bbox[0] + bbox[2]) / 2
-        center_lat = (bbox[1] + bbox[3]) / 2
-
-        return {
-            "available": True,
-            "item_id": item_id,
-            "datetime": item_datetime,
-            "collection": "esa-worldcover",
-            "center": {"lon": center_lon, "lat": center_lat},
-            "bbox": bbox,
-            "classes": WORLDCOVER_CLASSES,
-        }
-
-    except Exception:
-        logger.warning("WorldCover query failed", exc_info=True)
-        return {
-            "available": False,
-            "reason": "query_error",
-            "bbox": bbox,
-        }
+    if http_client is None:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
+            return _do_query(client)
+    return _do_query(http_client)

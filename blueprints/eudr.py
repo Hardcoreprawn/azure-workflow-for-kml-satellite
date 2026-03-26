@@ -5,6 +5,7 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import contextlib
+import math
 import re
 
 import azure.functions as func
@@ -41,6 +42,13 @@ def _validate_plot(i: int, p: dict) -> dict | str:
         for j, c in enumerate(coords):
             if not isinstance(c, list) or len(c) < 2:
                 return f"Plot {i} coordinate {j} must be [lon, lat]"
+            try:
+                clon = float(c[0])
+                clat = float(c[1])
+            except (TypeError, ValueError):
+                return f"Plot {i} coordinate {j} lon/lat must be numbers"
+            if not (-180 <= clon <= 180 and -90 <= clat <= 90):
+                return f"Plot {i} coordinate {j} out of range"
         entry["coordinates"] = [[float(c[0]), float(c[1])] for c in coords]
     elif "lon" in p and "lat" in p:
         try:
@@ -123,7 +131,12 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
     from treesight.pipeline.eudr import coords_to_kml
 
     doc_name = _sanitise_name(body.get("doc_name", "EUDR Plots")) or "EUDR Plots"
-    buffer_m = float(body.get("buffer_m", 100.0))
+    try:
+        buffer_m = float(body.get("buffer_m", 100.0))
+    except (TypeError, ValueError):
+        return error_response(400, "'buffer_m' must be a number", req=req)
+    if buffer_m <= 0 or not math.isfinite(buffer_m):
+        return error_response(400, "'buffer_m' must be a positive finite number", req=req)
 
     kml_str = coords_to_kml(validated, doc_name=doc_name, buffer_m=buffer_m)
 
