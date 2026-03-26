@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, EUDR_CUTOFF_DATE
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.aoi_metrics import (
     compute_aoi_metrics,
@@ -37,6 +37,10 @@ def run_enrichment(
     output_container: str,
     storage: BlobStorageClient,
     aoi_list: list[dict[str, Any]] | None = None,
+    *,
+    eudr_mode: bool = False,
+    date_start: str | None = None,
+    date_end: str | None = None,
 ) -> dict[str, Any]:
     """Run full enrichment pipeline — the main entry point.
 
@@ -49,12 +53,24 @@ def run_enrichment(
         Per-AOI data dicts (from AOI.model_dump()).  When supplied the
         manifest will include ``per_aoi_metrics`` with quantitative
         statistics for each AOI individually.
+    eudr_mode : bool
+        When True, constrains frame plan to post-2020 (EUDR cutoff) and
+        adds ``eudr`` metadata to the manifest.
+    date_start, date_end : str, optional
+        ISO date strings to filter the frame plan.  ``eudr_mode`` sets
+        ``date_start`` to ``2021-01-01`` if not already supplied.
 
     Returns the enrichment results dict.
     """
     start = time.monotonic()
     bbox = _coords_to_bbox(coords)
-    frame_plan = build_frame_plan(coords)
+
+    # EUDR mode: default to post-cutoff baseline
+    if eudr_mode and not date_start:
+        cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
+        date_start = (cutoff + timedelta(days=1)).isoformat()
+
+    frame_plan = build_frame_plan(coords, date_start=date_start, date_end=date_end)
 
     # Centroid for weather
     lons = [c[0] for c in coords]
@@ -68,6 +84,14 @@ def run_enrichment(
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
+
+    if not frame_plan:
+        logger.warning("No frames matched date filters — returning partial manifest")
+        results["enriched_at"] = datetime.now(UTC).isoformat()
+        if eudr_mode:
+            results["eudr_mode"] = True
+            results["eudr_date_start"] = date_start
+        return results
 
     # 1. Weather data
     log_phase("enrichment", "weather_start", lat=center_lat, lon=center_lon)
@@ -101,6 +125,31 @@ def run_enrichment(
     fire_data = fetch_fire_hotspots(bbox)
     results["fire_hotspots"] = fire_data
     log_phase("enrichment", "fire_done", source=fire_data["source"], count=fire_data["count"])
+
+    # 1d. EUDR-specific enrichments (WorldCover + WDPA)
+    if eudr_mode:
+        from treesight.pipeline.eudr import check_wdpa_overlap, query_worldcover
+
+        flat_bbox_eudr = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
+
+        log_phase("enrichment", "worldcover_start")
+        worldcover = query_worldcover(flat_bbox_eudr)
+        results["worldcover"] = worldcover
+        log_phase(
+            "enrichment",
+            "worldcover_done",
+            available=worldcover.get("available", False),
+        )
+
+        log_phase("enrichment", "wdpa_start")
+        wdpa = check_wdpa_overlap(center_lon, center_lat)
+        results["wdpa"] = wdpa
+        log_phase(
+            "enrichment",
+            "wdpa_done",
+            checked=wdpa.get("checked", False),
+            protected=wdpa.get("is_protected", False),
+        )
 
     # 2. Mosaic registration
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
@@ -265,6 +314,9 @@ def run_enrichment(
     duration = time.monotonic() - start
     results["enrichment_duration_seconds"] = round(duration, 1)
     results["enriched_at"] = datetime.now(UTC).isoformat()
+    if eudr_mode:
+        results["eudr_mode"] = True
+        results["eudr_date_start"] = date_start
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     storage.upload_json(output_container, manifest_path, results)

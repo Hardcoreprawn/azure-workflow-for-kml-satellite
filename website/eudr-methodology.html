@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUDR Methodology — TreeSight</title>
+<meta name="description" content="How TreeSight's satellite analysis supports EU Deforestation Regulation (EUDR) due diligence — data sources, methodology, and limitations.">
+<link rel="canonical" href="/eudr-methodology.html">
+<meta property="og:title" content="EUDR Methodology — TreeSight">
+<meta property="og:description" content="Satellite analysis methodology for EUDR compliance due diligence.">
+<meta property="og:url" content="/eudr-methodology.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="TreeSight">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="EUDR Methodology — TreeSight">
+<meta name="twitter:description" content="Satellite analysis methodology for EUDR compliance due diligence.">
+<link rel="stylesheet" href="/css/shared.css">
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.method-section{padding:40px 0}
+.method-section + .method-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+.source-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.85rem}
+.source-table th,.source-table td{text-align:left;padding:10px 14px;border:1px solid var(--c-border)}
+.source-table th{background:var(--c-surface);font-weight:600;color:var(--c-text)}
+.source-table td{color:var(--c-muted)}
+.disclaimer{background:#fef3c7;border:1px solid #f59e0b;border-radius:var(--radius);padding:20px 24px;margin:24px 0}
+.disclaimer h4{color:#92400e;font-size:.95rem;font-weight:600;margin-bottom:8px}
+.disclaimer p{color:#78350f;margin:0}
+</style>
+</head>
+<body>
+<header>
+  <nav class="container">
+    <a href="/" class="logo">TreeSight</a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/kml-guide.html">KML Guide</a>
+      <a href="/eudr-methodology.html" class="active">EUDR</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <section class="hero-sm">
+    <div class="container" style="text-align:center;padding:48px 0 32px">
+      <h1>EUDR Assessment Methodology</h1>
+      <p>How TreeSight uses satellite imagery to support EU Deforestation Regulation due diligence</p>
+    </div>
+  </section>
+
+  <div class="container">
+
+    <!-- §1 Regulatory Context -->
+    <section class="method-section">
+      <h2>1. Regulatory Context</h2>
+      <p>The <strong>EU Deforestation Regulation</strong> (Regulation 2023/1115, "EUDR") requires operators placing certain commodities on the EU market to demonstrate that those products were not produced on land subject to deforestation or forest degradation after <strong>31 December 2020</strong>.</p>
+      <p>Article 10 of the EUDR requires a due-diligence statement with geolocation data confirming the origin of products. TreeSight provides satellite-based evidence to support — but not replace — that due-diligence obligation.</p>
+
+      <div class="info-card">
+        <h4>Key EUDR Dates</h4>
+        <ul>
+          <li><strong>Cutoff date:</strong> 31 December 2020 — land must have been non-deforested after this date</li>
+          <li><strong>Large operators:</strong> Obligations apply from 30 December 2025</li>
+          <li><strong>SMEs:</strong> Extended to 30 June 2026</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- §2 Data Sources -->
+    <section class="method-section">
+      <h2>2. Data Sources</h2>
+      <p>TreeSight analyses multiple Earth observation datasets to build a comprehensive vegetation history for each parcel:</p>
+
+      <table class="source-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Resolution</th>
+            <th>Coverage</th>
+            <th>Role in Assessment</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Sentinel-2 L2A</strong></td>
+            <td>10 m/px</td>
+            <td>Global, 5-day revisit (since 2017)</td>
+            <td>Primary NDVI time series for vegetation change detection</td>
+          </tr>
+          <tr>
+            <td><strong>NAIP</strong></td>
+            <td>0.6 m/px</td>
+            <td>Continental US only</td>
+            <td>High-resolution visual confirmation (summer seasons)</td>
+          </tr>
+          <tr>
+            <td><strong>ESA WorldCover</strong></td>
+            <td>10 m/px</td>
+            <td>Global (2020 & 2021 epochs)</td>
+            <td>Land-cover classification baseline — confirms tree cover at cutoff date</td>
+          </tr>
+          <tr>
+            <td><strong>Open-Meteo</strong></td>
+            <td>~25 km</td>
+            <td>Global</td>
+            <td>Weather context — distinguishes drought stress from land-use change</td>
+          </tr>
+          <tr>
+            <td><strong>FIRMS / MODIS</strong></td>
+            <td>1 km</td>
+            <td>Global</td>
+            <td>Fire hotspot detection — identifies burn events</td>
+          </tr>
+          <tr>
+            <td><strong>WDPA</strong></td>
+            <td>Vector</td>
+            <td>Global</td>
+            <td>Protected area overlap — additional risk indicator</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- §3 Analysis Method -->
+    <section class="method-section">
+      <h2>3. Analysis Method</h2>
+
+      <h3>3.1 Seasonal Frame Plan</h3>
+      <p>For EUDR assessments, TreeSight builds a time series starting from <strong>January 2021</strong> (immediately after the EUDR cutoff). Four seasonal observations per year (winter, spring, summer, autumn) capture the vegetation cycle. This avoids false positives from natural seasonal leaf-fall.</p>
+
+      <h3>3.2 NDVI Computation</h3>
+      <p>The <strong>Normalised Difference Vegetation Index</strong> (NDVI) is computed for each seasonal frame using Sentinel-2 bands B08 (near-infrared) and B04 (red):</p>
+      <p style="text-align:center;font-size:1.1rem;font-weight:600;margin:16px 0">NDVI = (B08 − B04) / (B08 + B04)</p>
+      <p>NDVI ranges from −1 to +1. Healthy vegetation typically yields 0.3–0.8. Values below 0.2 may indicate bare soil, impervious surfaces, or water.</p>
+
+      <h3>3.3 Year-over-Year Comparison</h3>
+      <p>TreeSight compares the <strong>same season across different years</strong> to detect genuine vegetation loss. A decline of &gt;0.15 in same-season NDVI between consecutive years is flagged as a significant event requiring attention. This approach avoids false alarms from comparing winter (low NDVI) with summer (high NDVI).</p>
+
+      <h3>3.4 Change Detection</h3>
+      <p>Where NDVI rasters are available, pixel-level change detection identifies the spatial extent and magnitude of vegetation changes. The system reports:</p>
+      <ul>
+        <li><strong>Mean NDVI delta</strong> — average change across the AOI</li>
+        <li><strong>Trajectory</strong> — Improving, Stable, or Declining</li>
+        <li><strong>Significant events</strong> — individual year-over-year declines above the threshold</li>
+      </ul>
+
+      <h3>3.5 AI-Assisted Interpretation</h3>
+      <p>An AI model (Azure AI Foundry) analyses the aggregated data and produces a structured assessment with a clear deforestation-free conclusion, confidence level, supporting evidence, and identified risk factors.</p>
+    </section>
+
+    <!-- §4 Output & Statement -->
+    <section class="method-section">
+      <h2>4. Assessment Output</h2>
+      <p>The EUDR assessment produces:</p>
+      <ol>
+        <li><strong>Binary conclusion:</strong> "Deforestation-free" (yes/no) with confidence level (high/medium/low)</li>
+        <li><strong>Supporting evidence:</strong> Specific NDVI values, trends, and observations</li>
+        <li><strong>Risk factors:</strong> Any caveats (data gaps, border seasons, cloud cover)</li>
+        <li><strong>Contextual data:</strong> Weather patterns, fire events, flood events, land-cover class, protected-area status</li>
+        <li><strong>Exportable report:</strong> GeoJSON, CSV, or PDF for audit records</li>
+      </ol>
+
+      <div class="info-card">
+        <h4>Confidence Levels</h4>
+        <ul>
+          <li><strong>High:</strong> 8+ seasonal observations, all showing stable or improving vegetation, no significant decline events</li>
+          <li><strong>Medium:</strong> 4–7 observations, minor fluctuations within normal ranges</li>
+          <li><strong>Low:</strong> Fewer than 4 observations, or one or more significant decline events requiring investigation</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- §5 Limitations -->
+    <section class="method-section">
+      <h2>5. Limitations &amp; Caveats</h2>
+      <ul>
+        <li><strong>Resolution:</strong> Sentinel-2 at 10m cannot distinguish individual trees — suitable for parcel-level assessment, not single-tree monitoring</li>
+        <li><strong>Cloud cover:</strong> Persistent cloud cover in tropical regions may reduce the number of valid observations</li>
+        <li><strong>Degradation vs. deforestation:</strong> Gradual degradation may not trigger NDVI thresholds in a single season comparison</li>
+        <li><strong>Time lag:</strong> Sentinel-2 has a 5-day revisit but usable cloud-free data may be less frequent</li>
+        <li><strong>Baseline assumption:</strong> The analysis compares post-2020 trends — it does not independently verify land cover as of 31 December 2020 (ESA WorldCover 2020/21 provides the closest proxy)</li>
+      </ul>
+
+      <div class="disclaimer">
+        <h4>Important Disclaimer</h4>
+        <p>TreeSight's satellite analysis provides supporting evidence for EUDR due diligence but does <strong>not</strong> constitute a complete due-diligence assessment under Regulation 2023/1115. Operators remain responsible for fulfilling all EUDR obligations, including in-country verification, supply-chain traceability, and declaration submission. This tool is intended to augment — not replace — professional judgement and on-the-ground verification.</p>
+      </div>
+    </section>
+
+    <!-- §6 References -->
+    <section class="method-section">
+      <h2>6. References</h2>
+      <ul>
+        <li><a href="https://eur-lex.europa.eu/eli/reg/2023/1115/oj" target="_blank" rel="noopener">Regulation (EU) 2023/1115</a> — EU Deforestation Regulation full text</li>
+        <li><a href="https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-2" target="_blank" rel="noopener">Copernicus Sentinel-2</a> — mission overview</li>
+        <li><a href="https://esa-worldcover.org/" target="_blank" rel="noopener">ESA WorldCover</a> — global land-cover maps at 10m</li>
+        <li><a href="https://www.protectedplanet.net/" target="_blank" rel="noopener">Protected Planet / WDPA</a> — World Database on Protected Areas</li>
+        <li><a href="https://planetarycomputer.microsoft.com/" target="_blank" rel="noopener">Microsoft Planetary Computer</a> — data catalogue and APIs</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2025 TreeSight &mdash; <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a> · <a href="/eudr-methodology.html">EUDR Methodology</a></p>
+  </div>
+</footer>
+</body>
+</html>

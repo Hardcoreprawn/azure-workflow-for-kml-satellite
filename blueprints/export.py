@@ -19,7 +19,7 @@ from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FORMATS = {"geojson", "csv"}
+_ALLOWED_FORMATS = {"geojson", "csv", "pdf"}
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +241,225 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# PDF export (EUDR audit report)
+# ---------------------------------------------------------------------------
+
+
+def _pdf_header(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
+    """Write title and metadata section of the PDF."""
+    eudr_mode = manifest.get("eudr_mode", False)
+    center = manifest.get("center", {})
+
+    pdf.set_font("Helvetica", "B", 18)
+    title = "EUDR Due-Diligence Report" if eudr_mode else "TreeSight Analysis Report"
+    pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 6, f"Report ID: {instance_id}", new_x="LMARGIN", new_y="NEXT")
+    enriched_at = manifest.get("enriched_at", "")
+    if enriched_at:
+        pdf.cell(0, 6, f"Generated: {enriched_at[:19]}", new_x="LMARGIN", new_y="NEXT")
+    if center:
+        pdf.cell(
+            0,
+            6,
+            f"Location: {center.get('lat', 0):.4f}, {center.get('lon', 0):.4f}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+    pdf.ln(6)
+
+
+def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
+    """Write EUDR compliance summary section."""
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "EUDR Compliance Summary", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    cutoff = manifest.get("eudr_date_start", "2021-01-01")
+    pdf.cell(0, 6, "EUDR cutoff date: 31 December 2020", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        0,
+        6,
+        f"Analysis period: {cutoff} to present",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+
+    wc = manifest.get("worldcover", {})
+    if wc.get("available"):
+        pdf.cell(
+            0,
+            6,
+            f"ESA WorldCover: data available (item: {wc.get('item_id', 'N/A')})",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+
+    wdpa = manifest.get("wdpa", {})
+    if wdpa.get("checked"):
+        status = "Yes — protected area overlap detected" if wdpa.get("is_protected") else "No"
+        pdf.cell(
+            0,
+            6,
+            f"Protected area (WDPA): {status}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        for pa in wdpa.get("protected_areas", []):
+            pdf.cell(
+                0,
+                6,
+                f"  - {pa.get('name', '')} ({pa.get('designation', '')})",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+    pdf.ln(4)
+
+
+def _pdf_vegetation_section(
+    pdf: Any,
+    manifest: dict[str, Any],
+) -> None:
+    """Write vegetation analysis and frame detail table."""
+    frame_plan = manifest.get("frame_plan", [])
+    ndvi_stats = manifest.get("ndvi_stats", [])
+    change_detection = manifest.get("change_detection", {})
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Vegetation Analysis", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+
+    summary = change_detection.get("summary", {})
+    if summary:
+        trajectory = summary.get("trajectory", "Unknown")
+        comparisons = summary.get("comparisons", 0)
+        pdf.cell(
+            0,
+            6,
+            f"Trajectory: {trajectory} ({comparisons} year-over-year comparisons)",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+
+    valid_ndvi = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    if valid_ndvi:
+        means = [s["mean"] for s in valid_ndvi]
+        overall_avg = sum(means) / len(means)
+        pdf.cell(
+            0,
+            6,
+            f"NDVI observations: {len(valid_ndvi)} frames, "
+            f"average: {overall_avg:.3f}, "
+            f"range: {min(means):.3f} to {max(means):.3f}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+    pdf.ln(4)
+
+    # Frame detail table
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Frame Details", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 8)
+    col_ratios = [0.18, 0.11, 0.11, 0.16, 0.16, 0.12, 0.16]
+    page_w = pdf.epw  # effective page width (inside margins)
+    col_widths = [round(r * page_w, 1) for r in col_ratios]
+    headers_row = ["Label", "Year", "Season", "Start", "End", "NDVI Mean", "Collection"]
+    for i, h in enumerate(headers_row):
+        pdf.cell(col_widths[i], 6, h, border=1)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    for idx, frame in enumerate(frame_plan):
+        ndvi = ndvi_stats[idx] if idx < len(ndvi_stats) else None
+        ndvi_val = f"{ndvi['mean']:.3f}" if ndvi and ndvi.get("mean") is not None else "\u2014"
+        row_data = [
+            frame.get("label", "")[:18],
+            str(frame.get("year", "")),
+            frame.get("season", ""),
+            frame.get("start", ""),
+            frame.get("end", ""),
+            ndvi_val,
+            frame.get("collection", ""),
+        ]
+        for i, val in enumerate(row_data):
+            pdf.cell(col_widths[i], 5, val, border=1)
+        pdf.ln()
+
+    pdf.ln(6)
+
+
+def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
+    """Build an audit-quality PDF report from the enrichment manifest.
+
+    Uses fpdf2 (pure Python, no system dependencies).
+    """
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    _pdf_header(pdf, manifest, instance_id)
+
+    if manifest.get("eudr_mode", False):
+        _pdf_eudr_section(pdf, manifest)
+
+    _pdf_vegetation_section(pdf, manifest)
+
+    # Weather summary
+    weather_monthly = manifest.get("weather_monthly")
+    if weather_monthly:
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Weather Context", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        months = weather_monthly.get("months", [])
+        temps = weather_monthly.get("avg_temp", [])
+        precips = weather_monthly.get("total_precip", [])
+        if months:
+            pdf.cell(
+                0,
+                6,
+                f"Weather period: {months[0]} to {months[-1]} ({len(months)} months)",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+        if temps:
+            avg_t = sum(t for t in temps if t is not None) / max(
+                1, len([t for t in temps if t is not None])
+            )
+            pdf.cell(0, 6, f"Mean temperature: {avg_t:.1f} C", new_x="LMARGIN", new_y="NEXT")
+        if precips:
+            total_p = sum(p for p in precips if p is not None)
+            pdf.cell(
+                0,
+                6,
+                f"Total precipitation: {total_p:.0f} mm",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+        pdf.ln(4)
+
+    # Disclaimer
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.multi_cell(
+        0,
+        4,
+        "Disclaimer: This report is generated from satellite imagery analysis and "
+        "provides supporting evidence only. It does not constitute a complete EUDR "
+        "due-diligence assessment under Regulation (EU) 2023/1115. Operators remain "
+        "responsible for fulfilling all regulatory obligations.",
+    )
+
+    return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
 # Export endpoint
 # ---------------------------------------------------------------------------
 
@@ -257,7 +476,7 @@ async def export_data(
 ) -> func.HttpResponse:
     """GET /api/export/{instance_id}/{format} — download enrichment data.
 
-    Supported formats: ``geojson``, ``csv``.
+    Supported formats: ``geojson``, ``csv``, ``pdf``.
     Returns the file as a downloadable attachment.
     """
     if req.method == "OPTIONS":
@@ -290,12 +509,22 @@ async def export_data(
             headers=headers,
         )
 
-    # CSV
-    csv_body = _build_csv(manifest)
-    headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}.csv"'
+    if fmt == "csv":
+        csv_body = _build_csv(manifest)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}.csv"'
+        return func.HttpResponse(
+            csv_body,
+            status_code=200,
+            mimetype="text/csv",
+            headers=headers,
+        )
+
+    # PDF
+    pdf_bytes = _build_pdf(manifest, instance_id)
+    headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}.pdf"'
     return func.HttpResponse(
-        csv_body,
+        pdf_bytes,
         status_code=200,
-        mimetype="text/csv",
+        mimetype="application/pdf",
         headers=headers,
     )

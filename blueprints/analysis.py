@@ -14,6 +14,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
+from treesight.constants import EUDR_CUTOFF_DATE
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -588,3 +589,193 @@ def _calculate_trends(
                 trends["wet_months"] = wet_months[:6]
 
     return trends
+
+
+# ---------------------------------------------------------------------------
+# EUDR compliance assessment (M4 §4.9)
+# ---------------------------------------------------------------------------
+
+_EUDR_CUTOFF = EUDR_CUTOFF_DATE
+
+
+@bp.route(
+    route="eudr-assessment",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
+    """AI-generated EUDR deforestation-free due-diligence statement.
+
+    Analyses post-2020 NDVI timeseries data and produces a structured
+    compliance assessment leading with a clear yes/no conclusion.
+
+    Request body mirrors ``timelapse-analysis`` but adds ``eudr_mode: true``.
+    """
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    raw_body = req.get_body()
+    if len(raw_body) > _MAX_AI_BODY_BYTES:
+        return error_response(
+            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
+        )
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return error_response(400, "Invalid JSON body", req=req)
+
+    context = body.get("context", {})
+    if not context or not context.get("ndvi_timeseries"):
+        return error_response(400, "Missing 'context' with ndvi_timeseries", req=req)
+
+    ndvi_ts = context.get("ndvi_timeseries", [])
+    if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
+        return error_response(
+            400,
+            f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries",
+            req=req,
+        )
+
+    try:
+        # Filter to post-2020 data only — require a valid date or year
+        post_cutoff = [
+            s
+            for s in ndvi_ts
+            if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
+            or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
+        ]
+        if not post_cutoff:
+            return error_response(
+                400, "No post-2020 NDVI data available for EUDR assessment", req=req
+            )
+
+        weather_series = context.get("weather_timeseries", [])
+        trend_info = _calculate_trends(post_cutoff, weather_series)
+
+        # Build EUDR-specific prompt
+        context_lines: list[str] = []
+        if context.get("aoi_name"):
+            aoi_name = _sanitise_for_prompt(context["aoi_name"])
+            if aoi_name:
+                context_lines.append(f"Area of Interest: {aoi_name}")
+        lat_raw = context.get("latitude")
+        lon_raw = context.get("longitude")
+        if lat_raw is not None and lon_raw is not None:
+            try:
+                latitude = float(lat_raw)
+                longitude = float(lon_raw)
+            except (TypeError, ValueError):
+                return error_response(
+                    400,
+                    "Invalid latitude/longitude; values must be numeric.",
+                    req=req,
+                )
+            context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+        context_lines.append(
+            f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)"
+        )
+        context_lines.append(
+            f"Analysis Period: post-{_EUDR_CUTOFF} ({len(post_cutoff)} observations)"
+        )
+
+        context_lines.append("\n=== Post-2020 Vegetation Data ===")
+        if trend_info.get("ndvi_avg") is not None:
+            context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
+        if trend_info.get("ndvi_min_val") is not None:
+            context_lines.append(
+                f"NDVI Range: {trend_info['ndvi_min_val']:.3f} to {trend_info['ndvi_max_val']:.3f}"
+            )
+        if trend_info.get("ndvi_trajectory"):
+            context_lines.append(f"Trajectory: {trend_info['ndvi_trajectory']}")
+        if trend_info.get("ndvi_yoy_avg_change") is not None:
+            context_lines.append(
+                f"Avg Year-over-Year Change: {trend_info['ndvi_yoy_avg_change']:+.4f}"
+            )
+
+        if trend_info.get("ndvi_by_season"):
+            context_lines.append("\n  Per-season post-2020 NDVI:")
+            for skey, sdata in trend_info["ndvi_by_season"].items():
+                context_lines.append(
+                    f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
+                    f"(range {sdata['min']:.3f}–{sdata['max']:.3f})"
+                )
+
+        context_lines.append("\n=== Significant Events (post-2020) ===")
+        if trend_info.get("significant_events"):
+            for event in trend_info["significant_events"]:
+                context_lines.append(f"• {event}")
+        else:
+            context_lines.append("• No significant deviations detected")
+
+        context_str = "\n".join(context_lines)
+
+        prompt = f"""You are an expert geospatial analyst conducting an EU \
+Deforestation Regulation (EUDR) due-diligence assessment. The EUDR \
+(Regulation 2023/1115) requires operators to demonstrate that commodities \
+were produced on land not subject to deforestation after 31 December 2020.
+
+{context_str}
+
+Provide a structured EUDR compliance assessment as JSON (respond ONLY \
+with valid JSON, no markdown):
+{{
+  "deforestation_free": true,
+  "confidence": "high|medium|low",
+  "conclusion": "Clear 1-sentence conclusion starting with the site name",
+  "evidence": [
+    {{
+      "indicator": "Specific data point or observation",
+      "interpretation": "What this means for EUDR compliance"
+    }}
+  ],
+  "risk_factors": ["Any identified risks or caveats"],
+  "methodology": "Brief description of assessment methodology",
+  "recommendation": "Next steps for the operator",
+  "disclaimer": "Regulatory disclaimer"
+}}
+
+CRITICAL RULES:
+- Lead with the BINARY conclusion: deforestation_free = true or false.
+- Set confidence to "high" only when ALL seasons show stable or improving \
+vegetation with no significant year-over-year declines.
+- Set confidence to "low" if data is sparse (<4 observations) or if \
+any significant decline events were detected.
+- "deforestation_free" should be false if ANY same-season NDVI decline \
+exceeds 0.15 (indicating possible canopy loss).
+- Always include a disclaimer that satellite analysis alone does not \
+constitute full EUDR due diligence.
+- Cite actual NDVI values from the data as evidence.
+- Compare SAME SEASONS across years — seasonal variation is NOT deforestation."""
+
+        analysis = generate_analysis(prompt)
+        if analysis is None:
+            analysis = {
+                "deforestation_free": None,
+                "confidence": "unavailable",
+                "conclusion": "AI analysis unavailable — all providers failed",
+                "evidence": [],
+                "risk_factors": ["Automated assessment could not be completed"],
+                "methodology": "N/A",
+                "recommendation": "Manual review required",
+                "disclaimer": "This is an automated preliminary assessment only.",
+            }
+
+        analysis["trend_data"] = trend_info
+        analysis["eudr_cutoff_date"] = _EUDR_CUTOFF
+        analysis["observations_analysed"] = len(post_cutoff)
+
+        return func.HttpResponse(
+            json.dumps(analysis),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+
+    except Exception:
+        return error_response(500, "EUDR assessment failed", req=req)
