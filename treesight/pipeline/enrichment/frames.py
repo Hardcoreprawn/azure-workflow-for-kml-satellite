@@ -54,8 +54,21 @@ def _season_window(year: int, season: dict[str, Any]) -> dict[str, str]:
     return {"start": start, "end": end}
 
 
-def build_frame_plan(coords: list[list[float]]) -> list[dict[str, Any]]:
-    """Build the ordered frame list — mirrors frontend buildFramePlan()."""
+def build_frame_plan(
+    coords: list[list[float]],
+    *,
+    date_start: str | None = None,
+    date_end: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build the ordered frame list — mirrors frontend buildFramePlan().
+
+    Parameters
+    ----------
+    date_start : str, optional
+        ISO date (``YYYY-MM-DD``).  Frames ending before this date are excluded.
+    date_end : str, optional
+        ISO date (``YYYY-MM-DD``).  Frames starting after this date are excluded.
+    """
     frames: list[dict[str, Any]] = []
     has_naip = _aoi_has_naip(coords)
     summer = SEASONS[2]
@@ -91,5 +104,16 @@ def build_frame_plan(coords: list[list[float]]) -> list[dict[str, Any]]:
                     "is_naip": use_naip,
                 }
             )
+
+    # Apply date range filter
+    if date_start or date_end:
+        filtered: list[dict[str, Any]] = []
+        for f in frames:
+            if date_start and f["end"] < date_start:
+                continue
+            if date_end and f["start"] > date_end:
+                continue
+            filtered.append(f)
+        frames = filtered
 
     return frames

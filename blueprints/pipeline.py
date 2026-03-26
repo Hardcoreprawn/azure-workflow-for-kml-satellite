@@ -434,6 +434,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
                         "project_name": ctx["project_name"],
                         "timestamp": ctx["timestamp"],
                         "output_container": output_container,
+                        "eudr_mode": inp.get("eudr_mode", False),
+                        "date_start": inp.get("date_start"),
+                        "date_end": inp.get("date_end"),
                     },
                 )
             ),
@@ -660,6 +663,9 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
         timestamp=payload["timestamp"],
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
+        eudr_mode=payload.get("eudr_mode", False),
+        date_start=payload.get("date_start"),
+        date_end=payload.get("date_end"),
     )
 
 
