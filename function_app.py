@@ -8,6 +8,7 @@ from blueprints.analysis import bp as analysis_bp
 from blueprints.billing import bp as billing_bp
 from blueprints.contact import bp as contact_bp
 from blueprints.demo import bp as demo_bp
+from blueprints.eudr import bp as eudr_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.pipeline import bp as pipeline_bp
@@ -35,6 +36,7 @@ app.register_functions(health_bp)
 app.register_functions(billing_bp)
 app.register_functions(contact_bp)
 app.register_functions(demo_bp)
+app.register_functions(eudr_bp)
 app.register_functions(analysis_bp)
 app.register_functions(export_bp)
 
