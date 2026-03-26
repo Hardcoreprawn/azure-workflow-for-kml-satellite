@@ -7,6 +7,12 @@ import pytest
 from treesight.models.aoi import AOI
 from treesight.models.imagery import ImageryFilters
 from treesight.providers.base import BlobReference, OrderStatus
+from treesight.providers.geo_router import (
+    GLOBAL_FALLBACK,
+    GeoRoutingProvider,
+    Region,
+    classify_region,
+)
 from treesight.providers.planetary_computer import PlanetaryComputerProvider
 from treesight.providers.registry import clear_provider_cache, get_provider
 
@@ -109,3 +115,191 @@ class TestProviderRegistry:
     def test_unknown_provider_raises(self):
         with pytest.raises(ValueError, match="Unknown imagery provider"):
             get_provider("nonexistent_provider")
+
+    def test_get_geo_routing(self):
+        p = get_provider("geo_routing", {"stub_mode": True})
+        assert p.name == "geo_routing"
+
+
+# ---------------------------------------------------------------------------
+# Helpers — AOI factories for specific regions
+# ---------------------------------------------------------------------------
+
+
+def _make_aoi(centroid: list[float], name: str = "Test AOI") -> AOI:
+    """Build a minimal AOI at the given centroid [lon, lat]."""
+    lon, lat = centroid
+    return AOI(
+        feature_name=name,
+        source_file="test.kml",
+        centroid=centroid,
+        bbox=[lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01],
+        buffered_bbox=[lon - 0.02, lat - 0.02, lon + 0.02, lat + 0.02],
+        area_ha=5.0,
+    )
+
+
+# AOIs in different regions
+US_AOI = _make_aoi([-96.0, 40.0], "Kansas Farm")  # US CONUS
+UK_AOI = _make_aoi([-1.5, 51.5], "Wiltshire Field")  # Europe (UK)
+BRAZIL_AOI = _make_aoi([-47.9, -15.8], "Brasilia Plot")  # Tropics Americas
+CONGO_AOI = _make_aoi([25.0, 0.0], "Congo Basin")  # Tropics Africa
+ALASKA_AOI = _make_aoi([-150.0, 64.0], "Alaska Plot")  # US Alaska
+HAWAII_AOI = _make_aoi([-155.5, 19.5], "Hawaii Plot")  # US Hawaii
+PATAGONIA_AOI = _make_aoi([-70.0, -50.0], "Patagonia Plot")  # Global fallback
+
+
+# ---------------------------------------------------------------------------
+# Region classification
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyRegion:
+    def test_us_conus(self):
+        region = classify_region(40.0, -96.0)
+        assert region.name == "us_conus"
+        assert "naip" in region.collections
+        assert "landsat-c2-l2" in region.collections
+
+    def test_europe(self):
+        region = classify_region(51.5, -1.5)
+        assert region.name == "europe"
+        assert "sentinel-2-l2a" in region.collections
+        assert "landsat-c2-l2" in region.collections
+        assert "naip" not in region.collections
+
+    def test_tropics_americas(self):
+        region = classify_region(-15.8, -47.9)
+        assert region.name == "tropics_americas"
+        assert "sentinel-2-l2a" in region.collections
+        assert "landsat-c2-l2" in region.collections
+
+    def test_tropics_africa(self):
+        region = classify_region(0.0, 25.0)
+        assert region.name == "tropics_africa"
+        assert "sentinel-2-l2a" in region.collections
+
+    def test_tropics_asia(self):
+        region = classify_region(5.0, 110.0)
+        assert region.name == "tropics_asia"
+        assert "sentinel-2-l2a" in region.collections
+
+    def test_global_fallback(self):
+        region = classify_region(-50.0, -70.0)
+        assert region.name == "global"
+        assert region is GLOBAL_FALLBACK
+        assert "landsat-c2-l2" in region.collections
+
+    def test_us_alaska(self):
+        region = classify_region(64.0, -150.0)
+        assert region.name == "us_alaska"
+        assert "landsat-c2-l2" in region.collections
+
+    def test_us_hawaii(self):
+        region = classify_region(19.5, -155.5)
+        assert region.name == "us_hawaii"
+        assert "landsat-c2-l2" in region.collections
+
+    def test_region_contains(self):
+        r = Region("test", 10.0, 20.0, 30.0, 40.0, ("sentinel-2-l2a",), 10.0)
+        assert r.contains(20.0, 30.0) is True
+        assert r.contains(5.0, 30.0) is False
+
+
+# ---------------------------------------------------------------------------
+# GeoRoutingProvider
+# ---------------------------------------------------------------------------
+
+
+class TestGeoRoutingProvider:
+    def test_name(self):
+        p = GeoRoutingProvider({"stub_mode": True})
+        assert p.name == "geo_routing"
+
+    def test_us_search_uses_naip(self):
+        """US CONUS AOI should route to NAIP first and get sub-meter results."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(US_AOI, ImageryFilters())
+        assert len(results) >= 1
+        r = results[0]
+        assert r.extra.get("region") == "us_conus"
+        assert r.extra.get("routed_by") == "geo_routing"
+        assert r.extra.get("collection") == "naip"
+        assert r.spatial_resolution_m < 1.0
+
+    def test_europe_search_skips_naip(self):
+        """European AOI should get Sentinel-2 directly, not NAIP."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(UK_AOI, ImageryFilters())
+        assert len(results) >= 1
+        r = results[0]
+        assert r.extra.get("region") == "europe"
+        assert r.extra.get("collection") == "sentinel-2-l2a"
+
+    def test_tropics_search_uses_sentinel2(self):
+        """Tropical AOI should route to Sentinel-2 (best free commercial-use source)."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(BRAZIL_AOI, ImageryFilters())
+        assert len(results) >= 1
+        r = results[0]
+        assert r.extra.get("region") == "tropics_americas"
+        assert r.extra.get("collection") == "sentinel-2-l2a"
+
+    def test_tropics_africa_search(self):
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(CONGO_AOI, ImageryFilters())
+        assert len(results) >= 1
+        assert results[0].extra.get("region") == "tropics_africa"
+        assert results[0].extra.get("collection") == "sentinel-2-l2a"
+
+    def test_global_fallback_search(self):
+        """Non-regional AOI falls back to global (Sentinel-2 + Landsat)."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(PATAGONIA_AOI, ImageryFilters())
+        assert len(results) >= 1
+        assert results[0].extra.get("region") == "global"
+        assert results[0].extra.get("collection") == "sentinel-2-l2a"
+
+    def test_order_delegates_to_pc(self):
+        p = GeoRoutingProvider({"stub_mode": True})
+        oid = p.order("test-scene-123")
+        assert oid.startswith("pc-order-test-scene-123-")
+
+    def test_poll_delegates_to_pc(self):
+        p = GeoRoutingProvider({"stub_mode": True})
+        status = p.poll("any")
+        assert isinstance(status, OrderStatus)
+        assert status.state == "ready"
+
+    def test_download_delegates_to_pc(self):
+        p = GeoRoutingProvider({"stub_mode": True})
+        ref = p.download("ord-123")
+        assert isinstance(ref, BlobReference)
+        assert ref.content_type == "image/tiff"
+
+    def test_composite_search_us(self):
+        """Composite search on US CONUS includes NAIP detail."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.composite_search(US_AOI, ImageryFilters(), temporal_count=3)
+        assert len(results) == 4  # 1 NAIP detail + 3 S2 temporal
+        detail = [r for r in results if r.extra.get("role") == "detail"]
+        assert len(detail) == 1
+        assert detail[0].extra.get("region") == "us_conus"
+        assert detail[0].extra.get("routed_by") == "geo_routing"
+
+    def test_explicit_collections_override_routing(self):
+        """Caller-specified collections override geo-routing."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        filters = ImageryFilters(collections=["sentinel-2-l2a"])
+        results = p.search(US_AOI, filters)
+        assert len(results) >= 1
+        # Even though it's a US AOI, explicit S2 filter should be honoured
+        assert results[0].extra.get("collection") == "sentinel-2-l2a"
+
+    def test_results_tagged_with_routing_metadata(self):
+        """All results include region and routed_by metadata."""
+        p = GeoRoutingProvider({"stub_mode": True})
+        results = p.search(UK_AOI, ImageryFilters())
+        for r in results:
+            assert "region" in r.extra
+            assert r.extra["routed_by"] == "geo_routing"
