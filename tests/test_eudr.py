@@ -14,6 +14,7 @@ from treesight.pipeline.eudr import (
     _xml_escape,
     check_wdpa_overlap,
     coords_to_kml,
+    query_worldcover,
 )
 
 # ---------------------------------------------------------------------------
@@ -196,6 +197,52 @@ class TestWorldCoverClasses:
             assert isinstance(code, int)
             assert isinstance(label, str)
             assert len(label) > 0
+
+
+# ---------------------------------------------------------------------------
+# §4b — WorldCover raster sampling (stub mode)
+# ---------------------------------------------------------------------------
+
+
+class TestWorldCoverQuery:
+    """Test query_worldcover with stub_mode=True (no network)."""
+
+    def test_stub_returns_available(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        assert result["available"] is True
+        assert result["collection"] == "esa-worldcover"
+        assert "land_cover" in result
+
+    def test_stub_has_land_cover_breakdown(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        lc = result["land_cover"]
+        assert lc["total_pixels"] > 0
+        assert len(lc["classes"]) > 0
+        assert lc["dominant_class"] == "Tree cover"
+
+    def test_stub_classes_have_required_fields(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        for cls in result["land_cover"]["classes"]:
+            assert "code" in cls
+            assert "label" in cls
+            assert "pixel_count" in cls
+            assert "area_pct" in cls
+            assert cls["code"] in WORLDCOVER_CLASSES
+
+    def test_stub_area_pct_sums_to_100(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        total_pct = sum(c["area_pct"] for c in result["land_cover"]["classes"])
+        assert total_pct == pytest.approx(100.0, abs=0.1)
+
+    def test_stub_center_coordinates(self):
+        result = query_worldcover([10.0, 50.0, 11.0, 51.0], stub_mode=True)
+        assert result["center"]["lon"] == pytest.approx(10.5)
+        assert result["center"]["lat"] == pytest.approx(50.5)
+
+    def test_stub_bbox_preserved(self):
+        bbox = [2.0, 48.0, 3.0, 49.0]
+        result = query_worldcover(bbox, stub_mode=True)
+        assert result["bbox"] == bbox
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +481,22 @@ class TestPdfExport:
             "change_detection": {
                 "summary": {"trajectory": "Stable", "comparisons": 1},
             },
-            "worldcover": {"available": True, "item_id": "ESA_WC_2021"},
+            "worldcover": {
+                "available": True,
+                "item_id": "ESA_WC_2021",
+                "collection": "esa-worldcover",
+                "center": {"lon": -0.115, "lat": 51.505},
+                "bbox": [-0.12, 51.50, -0.11, 51.51],
+                "land_cover": {
+                    "total_pixels": 10000,
+                    "classes": [
+                        {"code": 50, "label": "Built-up", "pixel_count": 7000, "area_pct": 70.0},
+                        {"code": 10, "label": "Tree cover", "pixel_count": 2000, "area_pct": 20.0},
+                        {"code": 30, "label": "Grassland", "pixel_count": 1000, "area_pct": 10.0},
+                    ],
+                    "dominant_class": "Built-up",
+                },
+            },
             "wdpa": {"checked": True, "is_protected": False, "protected_areas": []},
         }
 
