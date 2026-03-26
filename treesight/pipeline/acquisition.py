@@ -74,10 +74,8 @@ def acquire_composite(
     Uses ``composite_search`` on providers that support it.  Falls back to
     a single ``search`` call otherwise.
     """
-    from treesight.providers.planetary_computer import PlanetaryComputerProvider
-
-    if isinstance(provider, PlanetaryComputerProvider):
-        results = provider.composite_search(aoi, filters, temporal_count=temporal_count)
+    if hasattr(provider, "composite_search"):
+        results = provider.composite_search(aoi, filters, temporal_count=temporal_count)  # type: ignore[attr-defined]
     else:
         results = provider.search(aoi, filters)
 

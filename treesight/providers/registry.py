@@ -34,6 +34,10 @@ def get_provider(name: str, config: ProviderConfig | None = None) -> ImageryProv
             from treesight.providers.planetary_computer import PlanetaryComputerProvider
 
             register_provider("planetary_computer", PlanetaryComputerProvider)
+        elif name == "geo_routing":
+            from treesight.providers.geo_router import GeoRoutingProvider
+
+            register_provider("geo_routing", GeoRoutingProvider)
         else:
             raise ValueError(f"Unknown imagery provider: {name}")
 

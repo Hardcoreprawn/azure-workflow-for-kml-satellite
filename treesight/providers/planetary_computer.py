@@ -37,6 +37,7 @@ DEFAULT_COLLECTIONS: list[str] = ["naip", "sentinel-2-l2a"]
 COLLECTION_ASSET_KEYS: dict[str, str] = {
     "naip": "image",
     "sentinel-2-l2a": "visual",
+    "landsat-c2-l2": "red",  # Individual bands; red is most universal
 }
 DEFAULT_ASSET_KEY = "visual"  # fallback for unknown collections
 
@@ -44,7 +45,11 @@ DEFAULT_ASSET_KEY = "visual"  # fallback for unknown collections
 COLLECTION_DEFAULT_GSD: dict[str, float] = {
     "naip": 0.6,
     "sentinel-2-l2a": 10.0,
+    "landsat-c2-l2": 30.0,
 }
+
+# Collections where eo:cloud_cover is absent (aerial photography).
+_NO_CLOUD_FILTER_COLLECTIONS: frozenset[str] = frozenset({"naip"})
 
 DEFAULT_MAX_ITEMS = 5
 
@@ -329,12 +334,11 @@ class PlanetaryComputerProvider(ImageryProvider):
     ) -> dict[str, Any]:
         """Build a STAC query dict from imagery filters.
 
-        NAIP items have no ``eo:cloud_cover`` property (clear-sky aerial
-        photography), so the cloud filter is omitted when searching only
-        NAIP.
+        Collections in ``_NO_CLOUD_FILTER_COLLECTIONS`` (aerial / mosaic
+        products) have no ``eo:cloud_cover`` property, so the cloud filter
+        is omitted when searching only those collections.
         """
-        naip_only = collections is not None and collections == ["naip"]
-        if naip_only:
+        if collections and all(c in _NO_CLOUD_FILTER_COLLECTIONS for c in collections):
             return {}
         return {"eo:cloud_cover": {"lt": filters.max_cloud_cover_pct}}
 
@@ -368,40 +372,51 @@ class PlanetaryComputerProvider(ImageryProvider):
         """
         now = datetime.now(UTC)
         collections = filters.collections or self._collections
-        use_naip = "naip" in collections
 
-        if use_naip:
-            scene_id = f"naip_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-            return [
-                SearchResult(
-                    scene_id=scene_id,
-                    provider=self.name,
-                    acquisition_date=now,
-                    cloud_cover_pct=0.0,
-                    spatial_resolution_m=0.6,
-                    off_nadir_deg=0.0,
-                    crs="EPSG:26911",
-                    bbox=aoi.buffered_bbox,
-                    asset_url=f"https://stub.blob.core.windows.net/imagery/{scene_id}.tif",
-                    extra={"collection": "naip", "asset_key": "image", "stub": True},
-                )
-            ]
+        # Return a stub for the *first* collection in priority order.
+        first = collections[0] if collections else "sentinel-2-l2a"
+        return [self._stub_result_for_collection(first, aoi, now)]
 
-        scene_id = f"S2B_MSIL2A_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-        return [
-            SearchResult(
-                scene_id=scene_id,
-                provider=self.name,
-                acquisition_date=now,
-                cloud_cover_pct=8.5,
-                spatial_resolution_m=10.0,
-                off_nadir_deg=5.2,
-                crs="EPSG:32637",
-                bbox=aoi.buffered_bbox,
-                asset_url=f"https://stub.blob.core.windows.net/imagery/{scene_id}.tif",
-                extra={"collection": "sentinel-2-l2a", "asset_key": "visual", "stub": True},
-            )
-        ]
+    def _stub_result_for_collection(self, collection: str, aoi: AOI, now: datetime) -> SearchResult:
+        """Return a single realistic stub result for *collection*."""
+        gsd = COLLECTION_DEFAULT_GSD.get(collection, 10.0)
+        asset_key = COLLECTION_ASSET_KEYS.get(collection, DEFAULT_ASSET_KEY)
+
+        _stub_profiles: dict[str, dict[str, object]] = {
+            "naip": {
+                "prefix": "naip",
+                "cloud": 0.0,
+                "crs": "EPSG:26911",
+                "off_nadir": 0.0,
+            },
+            "sentinel-2-l2a": {
+                "prefix": "S2B_MSIL2A",
+                "cloud": 8.5,
+                "crs": "EPSG:32637",
+                "off_nadir": 5.2,
+            },
+            "landsat-c2-l2": {
+                "prefix": "LC09_L2SP",
+                "cloud": 12.0,
+                "crs": "EPSG:32614",
+                "off_nadir": 0.0,
+            },
+        }
+        profile = _stub_profiles.get(collection, _stub_profiles["sentinel-2-l2a"])
+        scene_id = f"{profile['prefix']}_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
+
+        return SearchResult(
+            scene_id=scene_id,
+            provider=self.name,
+            acquisition_date=now,
+            cloud_cover_pct=float(profile["cloud"]),  # type: ignore[arg-type]
+            spatial_resolution_m=gsd,
+            off_nadir_deg=float(profile["off_nadir"]),  # type: ignore[arg-type]
+            crs=str(profile["crs"]),
+            bbox=aoi.buffered_bbox,
+            asset_url=f"https://stub.blob.core.windows.net/imagery/{scene_id}.tif",
+            extra={"collection": collection, "asset_key": asset_key, "stub": True},
+        )
 
     def _stub_download(self, order_id: str) -> BlobReference:
         """Return a synthetic blob reference."""
