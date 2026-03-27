@@ -191,15 +191,21 @@ jobs:
 
       - name: Scan for secrets
         run: |
+          # Snapshot current results for comparison (ignore generated_at)
+          python3 -c "import json; print(json.dumps(json.load(open('.secrets.baseline'))['results'], sort_keys=True))" > /tmp/before.json
+
           detect-secrets scan \
             --baseline .secrets.baseline \
             --exclude-files '\.lock$' \
             --exclude-files 'uv\.lock$' \
             --exclude-files '\.tfstate' \
             --exclude-secrets 'sha384-'
-          # Fail if scan found new secrets not in the committed baseline
-          if ! git diff --quiet .secrets.baseline; then
+
+          # Compare results only (generated_at timestamp always changes)
+          python3 -c "import json; print(json.dumps(json.load(open('.secrets.baseline'))['results'], sort_keys=True))" > /tmp/after.json
+
+          if ! diff -q /tmp/before.json /tmp/after.json > /dev/null 2>&1; then
             echo "::error::New potential secrets detected. Run 'detect-secrets scan --baseline .secrets.baseline' locally, audit with 'detect-secrets audit .secrets.baseline', and commit the updated baseline."
-            git diff .secrets.baseline
+            diff /tmp/before.json /tmp/after.json || true
             exit 1
           fi
