@@ -359,6 +359,14 @@ def _sample_worldcover_cog(
         return {"total_pixels": 0, "classes": [], "dominant_class": None}
 
     unique, counts = np.unique(data, return_counts=True)
+
+    # Exclude nodata (code 0) from the denominator so percentages sum to 100%.
+    nodata_mask = unique == 0
+    nodata_count = int(counts[nodata_mask].sum()) if nodata_mask.any() else 0
+    valid_total = total - nodata_count
+    if valid_total == 0:
+        return {"total_pixels": total, "classes": [], "dominant_class": None}
+
     classes: list[dict[str, Any]] = []
     for code, count in zip(unique, counts, strict=True):
         code_int = int(code)
@@ -370,7 +378,7 @@ def _sample_worldcover_cog(
                 "code": code_int,
                 "label": label,
                 "pixel_count": int(count),
-                "area_pct": round(100.0 * int(count) / total, 2),
+                "area_pct": round(100.0 * int(count) / valid_total, 2),
             }
         )
 

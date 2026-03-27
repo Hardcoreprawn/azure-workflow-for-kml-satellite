@@ -299,10 +299,16 @@ def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
             new_y="NEXT",
         )
         for cls in lc.get("classes", [])[:5]:
+            label = cls.get("label") or "Unknown"
+            area_pct = cls.get("area_pct")
+            try:
+                area_pct_str = f"{float(area_pct):.1f}%" if area_pct is not None else "N/A"
+            except (TypeError, ValueError):
+                area_pct_str = "N/A"
             pdf.cell(
                 0,
                 5,
-                f"  {cls['label']}: {cls['area_pct']}%",
+                f"  {label}: {area_pct_str}",
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
