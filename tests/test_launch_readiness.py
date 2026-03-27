@@ -31,6 +31,7 @@ INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
+DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 
 HTML_PAGES = [
@@ -233,6 +234,19 @@ class TestDetectSecretsCi:
             "detect-secrets must be a named job in security.yml"
         )
 
+    def test_detect_secrets_uses_committed_baseline(self):
+        yml = SECURITY_YML.read_text()
+        assert "--baseline" in yml, (
+            "detect-secrets CI must use a committed .secrets.baseline "
+            "so new secrets are caught (not a fresh baseline each run)"
+        )
+
+    def test_secrets_baseline_file_exists(self):
+        baseline = ROOT / ".secrets.baseline"
+        assert baseline.exists(), (
+            ".secrets.baseline must be committed for the detect-secrets CI job"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 7. App Insights availability test
@@ -280,3 +294,40 @@ class TestCspAppInsights:
         assert (
             "applicationinsights.azure.com" in connect_src or "visualstudio.com" in connect_src
         ), "CSP connect-src must allow App Insights telemetry ingestion endpoint"
+
+
+# ---------------------------------------------------------------------------
+# 9. Deploy workflow applies CLI-managed settings
+# ---------------------------------------------------------------------------
+
+
+class TestDeployWorkflowSettings:
+    """Ensure the deploy workflow applies settings that bypass tofu ignore_changes."""
+
+    @pytest.fixture()
+    def deploy_yml(self):
+        return DEPLOY_YML.read_text()
+
+    def test_deploy_sets_require_auth_via_cli(self, deploy_yml):
+        assert "REQUIRE_AUTH" in deploy_yml, (
+            "deploy.yml must set REQUIRE_AUTH via az CLI because body is ignore_changes in tofu"
+        )
+
+    def test_deploy_sets_max_instances_via_cli(self, deploy_yml):
+        assert "maximumInstanceCount" in deploy_yml, (
+            "deploy.yml must apply maximumInstanceCount via az CLI because "
+            "body is ignore_changes in tofu"
+        )
+
+    def test_deploy_injects_analytics_connection_string(self, deploy_yml):
+        assert "ai-connection-string" in deploy_yml, (
+            "deploy.yml must inject the App Insights connection string into "
+            "HTML meta tags before SWA upload"
+        )
+
+    def test_appinsights_connection_string_output_exists(self):
+        tf = (INFRA / "outputs.tf").read_text()
+        assert "appinsights_connection_string" in tf, (
+            "outputs.tf must export appinsights_connection_string for the "
+            "deploy workflow to inject into the static site"
+        )

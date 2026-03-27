@@ -187,20 +187,19 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Install detect-secrets
-        run: pip install detect-secrets
+        run: pip install 'detect-secrets==1.5.0'
 
       - name: Scan for secrets
         run: |
           detect-secrets scan \
+            --baseline .secrets.baseline \
             --exclude-files '\.lock$' \
             --exclude-files 'uv\.lock$' \
             --exclude-files '\.tfstate' \
-            --exclude-secrets 'sha384-' \
-            > .secrets-baseline.json
-          detect-secrets audit --report --json .secrets-baseline.json | tee audit.json
-          # Fail if any real secrets detected (non-false-positives)
-          REAL=$(python3 -c "import json,sys; d=json.load(open('audit.json')); print(len(d.get('real_secrets',{}).get('results',{})))" 2>/dev/null || echo 0)
-          if [ "$REAL" != "0" ]; then
-            echo "::error::detect-secrets found $REAL potential secret(s) in the codebase"
+            --exclude-secrets 'sha384-'
+          # Fail if scan found new secrets not in the committed baseline
+          if ! git diff --quiet .secrets.baseline; then
+            echo "::error::New potential secrets detected. Run 'detect-secrets scan --baseline .secrets.baseline' locally, audit with 'detect-secrets audit .secrets.baseline', and commit the updated baseline."
+            git diff .secrets.baseline
             exit 1
           fi

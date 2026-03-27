@@ -93,6 +93,7 @@ jobs:
     environment: dev
     outputs:
       function_app_hostname: ${{ steps.hostname.outputs.hostname }}
+      appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -186,6 +187,11 @@ jobs:
           CIAM_TENANT=$(grep 'ciam_tenant_name' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
           CIAM_CLIENT=$(grep 'ciam_client_id' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
 
+          # Set REQUIRE_AUTH based on environment (body is ignore_changes)
+          ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' environments/dev.tfvars || echo "dev")
+          REQUIRE_AUTH=""
+          if [ "$ENV_NAME" = "prd" ]; then REQUIRE_AUTH="true"; fi
+
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
@@ -193,7 +199,16 @@ jobs:
               WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
               CIAM_TENANT_NAME="$CIAM_TENANT" \
               CIAM_CLIENT_ID="$CIAM_CLIENT" \
-              CIAM_AUDIENCE="$CIAM_CLIENT"
+              CIAM_AUDIENCE="$CIAM_CLIENT" \
+              REQUIRE_AUTH="$REQUIRE_AUTH"
+
+          # Apply scaling cap (body is ignore_changes in tofu)
+          MAX_INSTANCES=$(grep -oP '(?<=function_max_instances\s{0,10}=\s{0,10})\d+' environments/dev.tfvars 2>/dev/null || echo "3")
+          : "${MAX_INSTANCES:=3}"
+          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          az rest --method PATCH \
+            --url "${FUNC_ID}?api-version=2024-04-01" \
+            --body "{\"properties\":{\"functionAppConfig\":{\"scaleAndConcurrency\":{\"maximumInstanceCount\":${MAX_INSTANCES}}}}}"
 
       - name: Export Function App hostname
         id: hostname
@@ -206,6 +221,17 @@ jobs:
         run: |
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Export App Insights connection string
+        id: appinsights
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          echo "connection_string=$(tofu output -raw appinsights_connection_string)" >> "$GITHUB_OUTPUT"
 
       - name: Verify runtime readiness
         working-directory: infra/tofu
@@ -276,6 +302,15 @@ jobs:
           cat > website/api-config.json <<EOF
           {"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_hostname }}", "lastVerified": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
           EOF
+
+      - name: Inject analytics config
+        env:
+          AI_CONNECTION_STRING: ${{ needs.deploy-infra.outputs.appinsights_connection_string }}
+        run: |
+          if [ -n "$AI_CONNECTION_STRING" ]; then
+            find website -name '*.html' -exec sed -i \
+              's|name="ai-connection-string" content=""|name="ai-connection-string" content="'"$AI_CONNECTION_STRING"'"|' {} +
+          fi
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
