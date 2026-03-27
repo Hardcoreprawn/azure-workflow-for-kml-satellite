@@ -289,13 +289,29 @@ def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
 
     wc = manifest.get("worldcover", {})
     if wc.get("available"):
+        lc = wc.get("land_cover", {})
+        dominant = lc.get("dominant_class", "N/A")
         pdf.cell(
             0,
             6,
-            f"ESA WorldCover: data available (item: {wc.get('item_id', 'N/A')})",
+            f"ESA WorldCover: {dominant} (dominant)",
             new_x="LMARGIN",
             new_y="NEXT",
         )
+        for cls in lc.get("classes", [])[:5]:
+            label = cls.get("label") or "Unknown"
+            area_pct = cls.get("area_pct")
+            try:
+                area_pct_str = f"{float(area_pct):.1f}%" if area_pct is not None else "N/A"
+            except (TypeError, ValueError):
+                area_pct_str = "N/A"
+            pdf.cell(
+                0,
+                5,
+                f"  {label}: {area_pct_str}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
 
     wdpa = manifest.get("wdpa", {})
     if wdpa.get("checked"):

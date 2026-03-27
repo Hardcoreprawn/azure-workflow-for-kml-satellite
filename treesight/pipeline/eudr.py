@@ -240,23 +240,32 @@ WORLDCOVER_CLASSES: dict[int, str] = {
 def query_worldcover(
     bbox: list[float],
     *,
+    stub_mode: bool = False,
     http_client: httpx.Client | None = None,
 ) -> dict[str, Any]:
-    """Query ESA WorldCover 2021 via Planetary Computer STAC for land-cover at a bbox.
+    """Query ESA WorldCover 2021 and sample land-cover classes within a bbox.
 
-    Uses the ``esa-worldcover`` collection on the Planetary Computer.
-    Returns STAC item metadata indicating WorldCover data availability for the
-    AOI.  Full raster sampling/classification is deferred to a later milestone.
+    Searches the ``esa-worldcover`` collection on Planetary Computer,
+    then reads the ``map`` asset (a COG of uint8 class codes at 10 m)
+    windowed to *bbox* and computes per-class pixel counts and
+    area percentages.
 
     Parameters
     ----------
     bbox : list[float]
         ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
+    stub_mode : bool
+        When ``True``, return a synthetic result without network calls
+        (used in unit tests).
     """
+    if stub_mode:
+        return _stub_worldcover(bbox)
+
     stac_url = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
     def _do_query(client: httpx.Client) -> dict[str, Any]:
         try:
+            # 1. Find the WorldCover STAC item covering this bbox.
             search_resp = client.post(
                 f"{stac_url}/search",
                 json={
@@ -278,7 +287,16 @@ def query_worldcover(
 
             item = items[0]
             item_id = item.get("id", "")
-            item_datetime = item.get("properties", {}).get("datetime", "")
+            map_asset = item.get("assets", {}).get("map")
+            if not map_asset:
+                return {
+                    "available": False,
+                    "reason": "no_map_asset",
+                    "bbox": bbox,
+                }
+
+            # 2. Sign the COG URL and read the bbox window.
+            breakdown = _sample_worldcover_cog(map_asset["href"], bbox)
 
             center_lon = (bbox[0] + bbox[2]) / 2
             center_lat = (bbox[1] + bbox[3]) / 2
@@ -286,11 +304,10 @@ def query_worldcover(
             return {
                 "available": True,
                 "item_id": item_id,
-                "datetime": item_datetime,
                 "collection": "esa-worldcover",
                 "center": {"lon": center_lon, "lat": center_lat},
                 "bbox": bbox,
-                "classes": WORLDCOVER_CLASSES,
+                "land_cover": breakdown,
             }
 
         except Exception:
@@ -305,3 +322,95 @@ def query_worldcover(
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
             return _do_query(client)
     return _do_query(http_client)
+
+
+def _sample_worldcover_cog(
+    href: str,
+    bbox: list[float],
+) -> dict[str, Any]:
+    """Read the WorldCover COG windowed to *bbox* and return class breakdown.
+
+    Returns a dict with ``total_pixels``, ``classes`` (list of per-class
+    dicts with ``code``, ``label``, ``pixel_count``, ``area_pct``), and
+    ``dominant_class``.
+    """
+    import numpy as np
+    import planetary_computer
+    import rasterio
+    from rasterio.windows import from_bounds as window_from_bounds
+
+    signed_href = planetary_computer.sign_url(href)
+
+    with rasterio.open(signed_href) as src:
+        window = window_from_bounds(
+            bbox[0],
+            bbox[1],
+            bbox[2],
+            bbox[3],
+            transform=src.transform,
+        )
+        window = window.intersection(
+            rasterio.windows.Window(0, 0, src.width, src.height),
+        )
+        data = src.read(1, window=window)
+
+    total = int(data.size)
+    if total == 0:
+        return {"total_pixels": 0, "classes": [], "dominant_class": None}
+
+    unique, counts = np.unique(data, return_counts=True)
+
+    # Exclude nodata (code 0) from the denominator so percentages sum to 100%.
+    nodata_mask = unique == 0
+    nodata_count = int(counts[nodata_mask].sum()) if nodata_mask.any() else 0
+    valid_total = total - nodata_count
+    if valid_total == 0:
+        return {"total_pixels": total, "classes": [], "dominant_class": None}
+
+    classes: list[dict[str, Any]] = []
+    for code, count in zip(unique, counts, strict=True):
+        code_int = int(code)
+        if code_int == 0:
+            continue  # nodata
+        label = WORLDCOVER_CLASSES.get(code_int, f"Unknown ({code_int})")
+        classes.append(
+            {
+                "code": code_int,
+                "label": label,
+                "pixel_count": int(count),
+                "area_pct": round(100.0 * int(count) / valid_total, 2),
+            }
+        )
+
+    # Sort by pixel count descending.
+    classes.sort(key=lambda c: c["pixel_count"], reverse=True)
+    dominant = classes[0]["label"] if classes else None
+
+    return {
+        "total_pixels": total,
+        "classes": classes,
+        "dominant_class": dominant,
+    }
+
+
+def _stub_worldcover(bbox: list[float]) -> dict[str, Any]:
+    """Return a synthetic WorldCover result for unit tests."""
+    center_lon = (bbox[0] + bbox[2]) / 2
+    center_lat = (bbox[1] + bbox[3]) / 2
+    return {
+        "available": True,
+        "item_id": "ESA_WorldCover_10m_2021_v200_STUB",
+        "collection": "esa-worldcover",
+        "center": {"lon": center_lon, "lat": center_lat},
+        "bbox": bbox,
+        "land_cover": {
+            "total_pixels": 10000,
+            "classes": [
+                {"code": 10, "label": "Tree cover", "pixel_count": 6500, "area_pct": 65.0},
+                {"code": 40, "label": "Cropland", "pixel_count": 2000, "area_pct": 20.0},
+                {"code": 30, "label": "Grassland", "pixel_count": 1000, "area_pct": 10.0},
+                {"code": 50, "label": "Built-up", "pixel_count": 500, "area_pct": 5.0},
+            ],
+            "dominant_class": "Tree cover",
+        },
+    }

@@ -11,9 +11,11 @@ from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.eudr import (
     WORLDCOVER_CLASSES,
     _point_buffer,
+    _sample_worldcover_cog,
     _xml_escape,
     check_wdpa_overlap,
     coords_to_kml,
+    query_worldcover,
 )
 
 # ---------------------------------------------------------------------------
@@ -199,7 +201,145 @@ class TestWorldCoverClasses:
 
 
 # ---------------------------------------------------------------------------
-# §5 — EUDR constant
+# §4b — WorldCover raster sampling (stub mode)
+# ---------------------------------------------------------------------------
+
+
+class TestWorldCoverQuery:
+    """Test query_worldcover with stub_mode=True (no network)."""
+
+    def test_stub_returns_available(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        assert result["available"] is True
+        assert result["collection"] == "esa-worldcover"
+        assert "land_cover" in result
+
+    def test_stub_has_land_cover_breakdown(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        lc = result["land_cover"]
+        assert lc["total_pixels"] > 0
+        assert len(lc["classes"]) > 0
+        assert lc["dominant_class"] == "Tree cover"
+
+    def test_stub_classes_have_required_fields(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        for cls in result["land_cover"]["classes"]:
+            assert "code" in cls
+            assert "label" in cls
+            assert "pixel_count" in cls
+            assert "area_pct" in cls
+            assert cls["code"] in WORLDCOVER_CLASSES
+
+    def test_stub_area_pct_sums_to_100(self):
+        result = query_worldcover([-1.5, 51.4, -1.4, 51.5], stub_mode=True)
+        total_pct = sum(c["area_pct"] for c in result["land_cover"]["classes"])
+        assert total_pct == pytest.approx(100.0, abs=0.1)
+
+    def test_stub_center_coordinates(self):
+        result = query_worldcover([10.0, 50.0, 11.0, 51.0], stub_mode=True)
+        assert result["center"]["lon"] == pytest.approx(10.5)
+        assert result["center"]["lat"] == pytest.approx(50.5)
+
+    def test_stub_bbox_preserved(self):
+        bbox = [2.0, 48.0, 3.0, 49.0]
+        result = query_worldcover(bbox, stub_mode=True)
+        assert result["bbox"] == bbox
+
+
+# ---------------------------------------------------------------------------
+# §4c — WorldCover COG sampling (in-memory raster, no network)
+# ---------------------------------------------------------------------------
+
+
+class TestSampleWorldcoverCog:
+    """Test _sample_worldcover_cog with a synthetic in-memory raster."""
+
+    @staticmethod
+    def _make_cog(classes: dict[int, int], width: int = 10, height: int = 10) -> bytes:
+        """Create a minimal single-band GeoTIFF in memory.
+
+        *classes* maps WorldCover code → pixel count.  Remaining pixels are
+        filled with nodata (0).
+        """
+        import numpy as np
+        from rasterio.io import MemoryFile
+        from rasterio.transform import from_bounds
+
+        data = np.zeros((height, width), dtype=np.uint8)
+        offset = 0
+        for code, count in classes.items():
+            flat = data.ravel()
+            flat[offset : offset + count] = code
+            offset += count
+
+        transform = from_bounds(10.0, 50.0, 11.0, 51.0, width, height)
+        memfile = MemoryFile()
+        with memfile.open(
+            driver="GTiff",
+            height=height,
+            width=width,
+            count=1,
+            dtype="uint8",
+            crs="EPSG:4326",
+            transform=transform,
+        ) as dst:
+            dst.write(data, 1)
+        return memfile.read()
+
+    def test_basic_class_breakdown(self, monkeypatch, tmp_path):
+        """Dominant class and percentages are correct for a known raster."""
+        import planetary_computer
+
+        raster_bytes = self._make_cog({10: 60, 40: 30, 50: 10})
+        raster_path = tmp_path / "wc.tif"
+        raster_path.write_bytes(raster_bytes)
+
+        monkeypatch.setattr(planetary_computer, "sign_url", lambda href: href)
+
+        result = _sample_worldcover_cog(str(raster_path), [10.0, 50.0, 11.0, 51.0])
+
+        assert result["dominant_class"] == "Tree cover"
+        assert result["total_pixels"] == 100
+        codes = {c["code"]: c for c in result["classes"]}
+        assert codes[10]["area_pct"] == pytest.approx(60.0, abs=0.1)
+        assert codes[40]["area_pct"] == pytest.approx(30.0, abs=0.1)
+        assert codes[50]["area_pct"] == pytest.approx(10.0, abs=0.1)
+
+    def test_nodata_excluded_from_percentage(self, monkeypatch, tmp_path):
+        """Nodata pixels (code 0) are excluded so percentages sum to 100%."""
+        import planetary_computer
+
+        # 40 tree, 20 crop, 40 nodata → valid_total = 60
+        raster_bytes = self._make_cog({10: 40, 40: 20})
+        raster_path = tmp_path / "wc_nodata.tif"
+        raster_path.write_bytes(raster_bytes)
+
+        monkeypatch.setattr(planetary_computer, "sign_url", lambda href: href)
+
+        result = _sample_worldcover_cog(str(raster_path), [10.0, 50.0, 11.0, 51.0])
+
+        total_pct = sum(c["area_pct"] for c in result["classes"])
+        assert total_pct == pytest.approx(100.0, abs=0.1)
+        codes = {c["code"]: c for c in result["classes"]}
+        assert codes[10]["area_pct"] == pytest.approx(66.67, abs=0.1)
+        assert codes[40]["area_pct"] == pytest.approx(33.33, abs=0.1)
+
+    def test_all_nodata_returns_empty(self, monkeypatch, tmp_path):
+        """A raster with only nodata returns empty classes."""
+        import planetary_computer
+
+        raster_bytes = self._make_cog({})  # all zeros = nodata
+        raster_path = tmp_path / "wc_empty.tif"
+        raster_path.write_bytes(raster_bytes)
+
+        monkeypatch.setattr(planetary_computer, "sign_url", lambda href: href)
+
+        result = _sample_worldcover_cog(str(raster_path), [10.0, 50.0, 11.0, 51.0])
+
+        assert result["classes"] == []
+        assert result["dominant_class"] is None
+
+
 # ---------------------------------------------------------------------------
 
 
@@ -434,7 +574,22 @@ class TestPdfExport:
             "change_detection": {
                 "summary": {"trajectory": "Stable", "comparisons": 1},
             },
-            "worldcover": {"available": True, "item_id": "ESA_WC_2021"},
+            "worldcover": {
+                "available": True,
+                "item_id": "ESA_WC_2021",
+                "collection": "esa-worldcover",
+                "center": {"lon": -0.115, "lat": 51.505},
+                "bbox": [-0.12, 51.50, -0.11, 51.51],
+                "land_cover": {
+                    "total_pixels": 10000,
+                    "classes": [
+                        {"code": 50, "label": "Built-up", "pixel_count": 7000, "area_pct": 70.0},
+                        {"code": 10, "label": "Tree cover", "pixel_count": 2000, "area_pct": 20.0},
+                        {"code": 30, "label": "Grassland", "pixel_count": 1000, "area_pct": 10.0},
+                    ],
+                    "dominant_class": "Built-up",
+                },
+            },
             "wdpa": {"checked": True, "is_protected": False, "protected_areas": []},
         }
 
