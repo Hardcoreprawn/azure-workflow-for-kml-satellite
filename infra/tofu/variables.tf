@@ -166,3 +166,17 @@ variable "stripe_price_id_pro_eur" {
   type        = string
   default     = ""
 }
+
+# --- Email notifications (Azure Communication Services) ---
+
+variable "enable_email" {
+  description = "Deploy Azure Communication Services for email notifications."
+  type        = bool
+  default     = false
+}
+
+variable "notification_email" {
+  description = "Email address to receive contact-form and system notifications."
+  type        = string
+  default     = ""
+}
