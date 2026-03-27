@@ -1,13 +1,19 @@
 """Internal email notifications via Azure Communication Services.
 
-Provides ``send_email`` for operator-only messages and
+Provides ``send_email`` for operator and verified-user messages, and
 ``send_contact_notification`` for forwarding contact-form submissions.
 Both gracefully degrade (log + return False) when ACS is not configured.
 
-SECURITY: ``send_email`` enforces a recipient allowlist derived from
-``NOTIFICATION_EMAIL`` to prevent the system from being used as a spam
-relay.  Never pass user-supplied addresses to ``send_email`` — if user-
-facing email is needed in future, add a proper verification flow first.
+SECURITY: ``send_email`` enforces a recipient allowlist to prevent the
+system from being used as a spam relay.  The allowlist is the union of:
+
+1. ``NOTIFICATION_EMAIL`` (operator inbox, set via env var)
+2. An optional *verified_recipients* set passed by the caller — intended
+   for addresses extracted from **verified JWT claims** (Azure Entra
+   External ID validates the email before issuing tokens).
+
+Never pass user-**supplied** (unverified) addresses.  Only pass
+addresses that the IdP has already confirmed.
 """
 
 from __future__ import annotations
@@ -20,10 +26,11 @@ logger = logging.getLogger(__name__)
 
 
 def _allowed_recipients() -> set[str]:
-    """Return the set of email addresses we are permitted to send to.
+    """Return the baseline set of email addresses we are permitted to send to.
 
-    Currently this is just NOTIFICATION_EMAIL.  Expand when (and only
-    when) a verified-address store is introduced.
+    Currently this is just ``NOTIFICATION_EMAIL``.  Callers that hold
+    verified user addresses (e.g. from JWT claims) extend the effective
+    allowlist via the *verified_recipients* parameter on ``send_email``.
     """
     notify = os.environ.get("NOTIFICATION_EMAIL", "").strip().lower()
     if notify:
@@ -36,12 +43,20 @@ def send_email(
     subject: str,
     body_html: str,
     body_text: str | None = None,
+    *,
+    verified_recipients: set[str] | None = None,
 ) -> bool:
     """Send an email via Azure Communication Services.
 
-    The *to* address **must** appear in the operator allowlist
-    (currently just ``NOTIFICATION_EMAIL``).  Any other recipient is
-    rejected to prevent accidental use as a spam relay.
+    The *to* address **must** appear in the effective allowlist, which is
+    the union of:
+
+    * ``NOTIFICATION_EMAIL`` (always checked)
+    * *verified_recipients* — addresses the **caller** vouches for,
+      typically extracted from a verified JWT ``email`` claim.
+
+    Any other recipient is rejected to prevent accidental use as a spam
+    relay.
 
     Returns True on success, False on failure.  Never raises — callers
     can treat email as best-effort.
@@ -56,7 +71,11 @@ def send_email(
         )
         return False
 
-    if to.strip().lower() not in _allowed_recipients():
+    effective_allowlist = _allowed_recipients()
+    if verified_recipients:
+        effective_allowlist = effective_allowlist | {v.strip().lower() for v in verified_recipients}
+
+    if to.strip().lower() not in effective_allowlist:
         logger.warning("Recipient %r not in allowlist — email blocked", to)
         return False
 

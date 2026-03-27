@@ -65,6 +65,80 @@ class TestSendEmail:
             result = send_email("attacker-victim@evil.com", "Hi", "<p>spam</p>")
         assert result is False
 
+    def test_rejects_recipient_not_in_verified_set(self):
+        """verified_recipients doesn't open the door to arbitrary addresses."""
+        with patch.dict(
+            os.environ,
+            {
+                "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
+                "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "admin@example.com",
+            },
+        ):
+            result = send_email(
+                "stranger@evil.com",
+                "Hi",
+                "<p>spam</p>",
+                verified_recipients={"legit-user@example.com"},
+            )
+        assert result is False
+
+    def test_allows_verified_recipient_from_jwt(self):
+        """Addresses vouched for by the caller (e.g. JWT email claim) are accepted."""
+        mock_client = MagicMock()
+        mock_poller = MagicMock()
+        mock_poller.result.return_value = {"id": "msg-2", "status": "Succeeded"}
+        mock_client.begin_send.return_value = mock_poller
+
+        mock_module = MagicMock()
+        mock_module.EmailClient.from_connection_string.return_value = mock_client
+
+        with patch.dict(
+            os.environ,
+            {
+                "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
+                "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "admin@example.com",
+            },
+        ):
+            with patch.dict(sys.modules, {"azure.communication.email": mock_module}):
+                result = send_email(
+                    "jwt-user@example.com",
+                    "AOI Alert",
+                    "<p>NDVI dropped</p>",
+                    verified_recipients={"jwt-user@example.com"},
+                )
+
+        assert result is True
+        mock_client.begin_send.assert_called_once()
+
+    def test_verified_recipients_case_insensitive(self):
+        """Case mismatch between JWT claim and send target still works."""
+        mock_client = MagicMock()
+        mock_poller = MagicMock()
+        mock_poller.result.return_value = {"id": "msg-3", "status": "Succeeded"}
+        mock_client.begin_send.return_value = mock_poller
+
+        mock_module = MagicMock()
+        mock_module.EmailClient.from_connection_string.return_value = mock_client
+
+        with patch.dict(
+            os.environ,
+            {
+                "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
+                "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+            },
+        ):
+            with patch.dict(sys.modules, {"azure.communication.email": mock_module}):
+                result = send_email(
+                    "User@Example.COM",
+                    "Alert",
+                    "<p>hi</p>",
+                    verified_recipients={"user@example.com"},
+                )
+
+        assert result is True
+
     def test_allows_notification_email_case_insensitive(self):
         """Allowlist comparison is case-insensitive."""
         mock_client = MagicMock()
