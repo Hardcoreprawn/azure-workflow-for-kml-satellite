@@ -1,7 +1,7 @@
 # TreeSight — Product Roadmap & Business Strategy
 
-**Date:** 22 March 2026
-**Status:** Draft v2 — updated to reflect M1–M3 completion
+**Date:** 27 March 2026
+**Status:** Draft v3 — updated to reflect M4 near-completion (12/13 items done)
 
 ---
 
@@ -234,13 +234,13 @@ Timer Trigger (1st of each month)
 |---|-----------|--------|-------|
 | H1 | **Authentication provider** (Azure Entra External ID CIAM) | ✅ Done | JWT auth with RS256 JWKS validation, graceful degradation |
 | H2 | **Rate limiting** (per-user, per-IP) | ✅ Done | Per-IP sliding window (contact, pipeline poll, proxy), per-user quota (5 runs) |
-| H3 | **Application Insights / monitoring** | Not started | Must have before taking real traffic |
-| H4 | **Error alerting** (PagerDuty / Teams webhook) | Not started | Catch failures before users report them |
-| H5 | **Cost budget alerts** (Azure Cost Management) | Not started | Prevent runaway GPU costs |
+| H3 | **Application Insights / monitoring** | ✅ Done | Wired in host.json, config.py, and OpenTofu |
+| H4 | **Error alerting** (PagerDuty / Teams webhook) | ✅ Done | Azure Monitor metric alerts (failed requests, high latency) via OpenTofu |
+| H5 | **Cost budget alerts** (Azure Cost Management) | ✅ Done | 50/80/100% threshold alerts via OpenTofu |
 | H6 | **CI/CD pipeline** | ✅ Done | GitHub Actions: CI (lint, test, build), Deploy (infra, container, SWA), Security (Semgrep, Trivy, pip-audit, CodeQL) |
-| H7 | **HTTPS + custom domain** | Partial | Static Web App has HTTPS; need custom domain |
+| H7 | **HTTPS + custom domain** | Partial | Static Web App has HTTPS; OpenTofu ready, needs Cloudflare CNAME |
 | H8 | **Terms of service & privacy policy** | ✅ Done | terms.html and privacy.html deployed |
-| H9 | **Database for user records** | Not started | Azure Cosmos DB (serverless) or PostgreSQL Flexible |
+| H9 | **Database for user records** | Not started | Azure Cosmos DB (serverless, <$10/mo) — unblocks 4.4 dashboard |
 | H10 | **Secrets rotation / Key Vault wiring** | Partial | Config references Key Vault; needs production wiring |
 
 ### 5.2 Should-Have (Within 30 Days of Launch)
@@ -399,19 +399,21 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 | # | Item | Effort | Depends On | Value Driver |
 |---|------|--------|------------|-------------|
-| 4.1 | **Pricing page** on website | Low | — | Visitors can self-qualify; conversion path beyond "Early Access" |
-| 4.2 | **Usage metering & quota enforcement** | Medium | 2.1 | Free: 5 AOIs/mo. Pro: 50. Can't bill without counting. |
-| 4.3 | **Billing integration** (Stripe Checkout + webhook for subscription status) | Medium | 2.1, 4.2 | Revenue starts flowing |
-| 4.4 | **User dashboard** (saved analyses, history, usage stats) | High | 2.1 | Stickiness — users invest in their analysis history; churn barrier |
-| 4.5 | **Export: PDF report** (summary + charts + key frames) | Medium | 3.3 | Pro feature — NGOs need reports for donors; ESG teams need audit evidence. **#1 revenue gate for ESG persona — see §13 of PERSONA_DEEP_DIVE.md** |
-| 4.6 | **Export: GeoJSON / CSV** (NDVI timeseries, weather data) | Low | 3.3 | Pro feature — programmatic users feed data into their own systems |
-| 4.7 | **Social proof section** (case study cards from free-tier users) | Low | — | Reduces trust barrier for new visitors → higher sign-up rate |
-| 4.8 | **Circuit breaker for AI** (Azure AI Foundry) | Low | 1.6 | If AI Foundry has an outage, pipeline still completes; AI gracefully degrades |
-| 4.9 | **EUDR compliance mode** (post-2020 date filter + deforestation-free statement) | Low | 3.3 | One toggle constrains analysis to EUDR-relevant timeframe. Leads AI narrative with yes/no conclusion. ~½ day effort, unlocks entire EUDR market. |
-| 4.10 | **Coordinate-to-KML converter** (CSV lat/lon → KML → pipeline) | Low | — | EUDR suppliers provide coordinates, not KML. Removes the biggest adoption friction for non-GIS users. ~1-2 days. |
-| 4.11 | **ESA WorldCover overlay** (PC `esa-worldcover`, 10m land cover) | Low | — | "This plot is classified as Tree Cover in 2021." EUDR baseline evidence. Same STAC path as Sentinel-2. ~1-2 days. |
-| 4.12 | **WDPA protected area check** (protectedplanet.net API) | Low | — | "This plot overlaps/does not overlap a protected area." Auto-enrichment, high audit value. |
-| 4.13 | **Methodology documentation page** | Low | — | Static content: satellites, indices, resolution, data sources, analysis steps. Auditors need this to trust output. |
+| 4.1 | **Pricing page** on website | Low | — | ✅ Done (PR #297) — Free/Starter/Pro/Team cards with VAT note, 14-day cancellation right |
+| 4.2 | **Usage metering & quota enforcement** | Medium | 2.1 | ✅ Done (PR #223) — per-user pipeline quota, 7 tests |
+| 4.3 | **Billing integration** (Stripe Checkout + webhook for subscription status) | Medium | 2.1, 4.2 | ✅ Done (PR #299) — Stripe Checkout, webhooks, multi-currency (GBP/EUR/USD), UK Consumer Contracts compliance, 25 tests |
+| 4.4 | **User dashboard** (saved analyses, history, usage stats) | High | 2.1 | ❌ Not started — needs persistent database (Cosmos DB or PostgreSQL) |
+| 4.5 | **Export: PDF report** (summary + charts + key frames) | Medium | 3.3 | ✅ Done (PR #303) — EUDR audit PDF with land-cover breakdown, 19 export tests |
+| 4.6 | **Export: GeoJSON / CSV** (NDVI timeseries, weather data) | Low | 3.3 | ✅ Done (PR #303) — GeoJSON FeatureCollection + CSV writer |
+| 4.7 | **Social proof section** (case study cards from free-tier users) | Low | — | ✅ Done (PR #297) — social-proof section on website |
+| 4.8 | **Circuit breaker for AI** (Azure AI Foundry) | Low | 1.6 | ✅ Done — per-provider circuit breakers (azure-ai, ollama), 9 tests |
+| 4.9 | **EUDR compliance mode** (post-2020 date filter + deforestation-free statement) | Low | 3.3 | ✅ Done (PR #303) — EUDR assessment endpoint, post-2020 date filtering, AI deforestation-free statement |
+| 4.10 | **Coordinate-to-KML converter** (CSV lat/lon → KML → pipeline) | Low | — | ✅ Done (PR #303) — `coords_to_kml()` + `convert-coordinates` API endpoint |
+| 4.11 | **ESA WorldCover overlay** (PC `esa-worldcover`, 10m land cover) | Low | — | ✅ Done (PR #305) — COG raster sampling, per-class pixel breakdown, dominant class detection |
+| 4.12 | **WDPA protected area check** (protectedplanet.net API) | Low | — | ✅ Done (PR #303) — `check_wdpa_overlap()` with Protected Planet API |
+| 4.13 | **Methodology documentation page** | Low | — | ✅ Done (PR #274) — `website/eudr-methodology.html` |
+
+**Status: 12 of 13 items complete.** Only 4.4 (user dashboard) remains — blocked on database provisioning.
 
 **Exit criteria:** 10+ paying Pro users. MRR > $400. Churn < 10%/month. EUDR mode functional.
 
@@ -437,7 +439,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 5.8 | **MODIS Burned Area enrichment** (PC collection `modis-64A1-061`, global 500 m monthly, 2000–present) | Low | 5.4 | Complements FIRMS hotspot data (5.4) with validated burned-extent polygons and detection dates. **Already on Planetary Computer as COGs** — add collection to existing STAC provider, same auth/download path as Sentinel-2. No new infra. Free & open. |
 | 5.9 | **ESA CCI Land Cover enrichment** (PC collection `esa-cci-lc`, 300 m annual, 1992–2020, 22 LCCS classes) | Low | 3.8 | Adds 28-year historical land-cover baseline — detect transitions (forest → cropland → urban). **Already on Planetary Computer as COGs** — same STAC query pattern. Pairs with 6.4 (Landsat baselines) for long-term trend context. Free & open. |
 | 5.10 | **IO LULC Annual V2** (PC collection `io-lulc-annual-v02`, 10m, 2017–2023, 9-class) | Low | — | Multi-year land use change at Sentinel-2 resolution: "forest in 2019, cropland in 2022." Same STAC path. Free. |
-| 5.11 | **Planet-NICFI tropical mosaics** (PC collections `planet-nicfi-visual/analytic`, 4.77m, monthly, tropics) | Medium | — | 4x resolution improvement for tropical EUDR areas (Amazon, Congo, SE Asia). FREE via Norwegian government funding. Legal review needed on commercial use terms. **Game-changer for EUDR if terms allow.** |
+| 5.11 | ~~**Planet-NICFI tropical mosaics**~~ | Medium | — | **Removed** — NICFI licence is non-commercial only; TreeSight is a commercial product. Tropics coverage uses Sentinel-2 + Landsat C2 L2 fallback via geo-routing (PR #304). |
 | 5.12 | **ALOS Forest/Non-Forest** (PC collection `alos-fnf-mosaic`, 25m, global, annual) | Low | — | Independent SAR-based forest classification from JAXA. Cross-validates optical NDVI-based forest detection. Works through clouds. Free & open. |
 | 5.13 | **GFW deforestation alerts** (GFW REST API, GLAD + RADD alerts) | Medium | 5.4 | Cross-reference our analysis with WRI's alert system. "GFW detected 3 deforestation alerts in this AOI in the past 6 months." Adds authority. Free API. |
 
@@ -457,7 +459,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 | # | Item | Effort | Depends On | Value Driver |
 |---|------|--------|------------|-------------|
-| 6.1 | **API documentation** (OpenAPI spec, auth tokens, rate limits) | Medium | 2.1 | Programmatic users can integrate; prerequisite for Team tier |
+| 6.1 | **API documentation** (OpenAPI spec, auth tokens, rate limits) | Medium | 2.1 | Partial — OpenAPI spec exists (`docs/openapi.yaml`); needs interactive docs page and developer onboarding |
 | 6.2 | **Team / org management** (invite members, shared analyses) | Medium | 2.1, 4.4 | Enterprise can't adopt without multi-user; Team tier becomes sellable |
 | 6.3 | **Webhook / Slack notifications** | Low | 5.1 | Enterprise integration pattern; low effort, high signal of seriousness |
 | 6.4 | **Long-term historical baselines** (Landsat 1985–present via USGS/EE) | High | — | Unlocks 40-year trend context; ESG persona needs this for deforestation timelines |
@@ -520,7 +522,7 @@ These items don't have their own milestone. They ride alongside feature work to 
 M1  Deployable Product          Wk 1–4   ████████████  ✅
 M2  Free Tier Launch            Wk 3–6       ██████████  ✅
 M3  Core Analysis Value         Wk 4–8         ████████████  ✅
-M4  Revenue                     Wk 6–10            ░░░░░░░░░░░░  ← CURRENT
+M4  Revenue                     Wk 6–10            ██████████░░  12/13 done
 M5  Growth & Retention          Wk 8–14               ░░░░░░░░░░░░░░░░
 M6  Team & API                  Wk 12–18                     ░░░░░░░░░░░░░░░░
 M7  Enterprise & Differentiation Wk 16–24+                          ░░░░░░░░░░░░░░░░░░
@@ -574,7 +576,7 @@ Revenue milestones:
 
 ---
 
-**Next action:** Begin Milestone 4 items — pricing page, usage metering, Stripe billing, and user dashboard. OpenAPI spec created (docs/openapi.yaml). See GitHub Issues for current backlog.
+**Next action:** Complete M4.4 (user dashboard) once Cosmos DB is provisioned. Then begin M5 items — monthly NDVI monitoring, shareable analysis links, and external data joins. See GitHub Issues for current backlog.
 
 ---
 
