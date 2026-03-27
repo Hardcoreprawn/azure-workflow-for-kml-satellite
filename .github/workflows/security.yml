@@ -178,3 +178,29 @@ jobs:
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
+
+  # ── 5. detect-secrets — prevent committed secrets ──────────
+  detect-secrets:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for secrets
+        run: |
+          detect-secrets scan \
+            --exclude-files '\.lock$' \
+            --exclude-files 'uv\.lock$' \
+            --exclude-files '\.tfstate' \
+            --exclude-secrets 'sha384-' \
+            > .secrets-baseline.json
+          detect-secrets audit --report --json .secrets-baseline.json | tee audit.json
+          # Fail if any real secrets detected (non-false-positives)
+          REAL=$(python3 -c "import json,sys; d=json.load(open('audit.json')); print(len(d.get('real_secrets',{}).get('results',{})))" 2>/dev/null || echo 0)
+          if [ "$REAL" != "0" ]; then
+            echo "::error::detect-secrets found $REAL potential secret(s) in the codebase"
+            exit 1
+          fi

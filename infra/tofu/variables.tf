@@ -83,6 +83,18 @@ variable "budget_contact_emails" {
   type        = list(string)
 }
 
+variable "function_max_instances" {
+  description = "Maximum number of Container Apps replicas for the Function App."
+  type        = number
+  default     = 3
+}
+
+variable "log_daily_cap_gb" {
+  description = "Log Analytics daily ingestion cap in GB. -1 for unlimited."
+  type        = number
+  default     = 1
+}
+
 variable "custom_domain" {
   description = "Full custom domain for the Static Web App (e.g. treesight.jablab.dev). Empty to skip."
   type        = string

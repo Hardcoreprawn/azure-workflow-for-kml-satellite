@@ -209,7 +209,7 @@ KMZ is a ZIP archive containing a `doc.kml` file (and optionally embedded images
 
 ```text
 Timer Trigger (1st of each month)
-  → Query subscribed AOIs from Cosmos DB
+  → Query subscribed AOIs from blob storage (JSON)
   → For each AOI: run pipeline (acquisition → enrichment) for latest Sentinel-2 scene
   → Diff NDVI against previous month's stored value
   → If delta exceeds user-defined threshold (e.g. ≥10% drop):
@@ -240,8 +240,8 @@ Timer Trigger (1st of each month)
 | H6 | **CI/CD pipeline** | ✅ Done | GitHub Actions: CI (lint, test, build), Deploy (infra, container, SWA), Security (Semgrep, Trivy, pip-audit, CodeQL) |
 | H7 | **HTTPS + custom domain** | Partial | Static Web App has HTTPS; OpenTofu ready, needs Cloudflare CNAME |
 | H8 | **Terms of service & privacy policy** | ✅ Done | terms.html and privacy.html deployed |
-| H9 | **Database for user records** | Not started | Azure Cosmos DB (serverless, <$10/mo) — unblocks 4.4 dashboard |
-| H10 | **Secrets rotation / Key Vault wiring** | Partial | Config references Key Vault; needs production wiring |
+| H9 | **Persistent user storage** | ✅ Done (JSON blobs) | Quotas, subscriptions, AI cache all stored as JSON in Azure Blob Storage. Cosmos DB deferred — JSON blobs sufficient for v1 |
+| H10 | **Secrets rotation / Key Vault wiring** | ✅ Done | Key Vault provisioned, Managed Identity RBAC, Stripe secrets wired via `@Microsoft.KeyVault(SecretUri=...)` in OpenTofu |
 
 ### 5.2 Should-Have (Within 30 Days of Launch)
 
@@ -267,7 +267,7 @@ Timer Trigger (1st of each month)
 | **Planetary Computer** | Free API | $0 | Microsoft-funded; no per-query cost |
 | **Open-Meteo** | Free API | $0 | No key required |
 | **Azure AI Foundry** | Pay-per-token | **$1–$10** | Scales to zero; no idle cost — see §6.2 |
-| **Azure Cosmos DB** | Serverless | $1–$5 | User records, analysis history (future) |
+| ~~Azure Cosmos DB~~ | ~~Serverless~~ | ~~$1–$5~~ | Deferred — JSON blobs in Blob Storage sufficient for v1 |
 | **Key Vault** | Standard | $0.50 | Minimal secret operations |
 | **Total (demo, no AI)** | — | **~$5–$20/month** | Extremely cost-effective |
 | **Total (demo, with AI)** | — | **~$6–$30/month** | AI cost is negligible at demo scale |
@@ -402,7 +402,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 4.1 | **Pricing page** on website | Low | — | ✅ Done (PR #297) — Free/Starter/Pro/Team cards with VAT note, 14-day cancellation right |
 | 4.2 | **Usage metering & quota enforcement** | Medium | 2.1 | ✅ Done (PR #223) — per-user pipeline quota, 7 tests |
 | 4.3 | **Billing integration** (Stripe Checkout + webhook for subscription status) | Medium | 2.1, 4.2 | ✅ Done (PR #299) — Stripe Checkout, webhooks, multi-currency (GBP/EUR/USD), UK Consumer Contracts compliance, 25 tests |
-| 4.4 | **User dashboard** (saved analyses, history, usage stats) | High | 2.1 | ❌ Not started — needs persistent database (Cosmos DB or PostgreSQL) |
+| 4.4 | **User dashboard** (saved analyses, history, usage stats) | High | 2.1 | ❌ Not started — will use JSON blobs in Azure Blob Storage (same as quota/billing) |
 | 4.5 | **Export: PDF report** (summary + charts + key frames) | Medium | 3.3 | ✅ Done (PR #303) — EUDR audit PDF with land-cover breakdown, 19 export tests |
 | 4.6 | **Export: GeoJSON / CSV** (NDVI timeseries, weather data) | Low | 3.3 | ✅ Done (PR #303) — GeoJSON FeatureCollection + CSV writer |
 | 4.7 | **Social proof section** (case study cards from free-tier users) | Low | — | ✅ Done (PR #297) — social-proof section on website |
@@ -576,7 +576,7 @@ Revenue milestones:
 
 ---
 
-**Next action:** Complete M4.4 (user dashboard) once Cosmos DB is provisioned. Then begin M5 items — monthly NDVI monitoring, shareable analysis links, and external data joins. See GitHub Issues for current backlog.
+**Next action:** Complete M4.4 (user dashboard) using JSON blobs in Azure Blob Storage. Then begin M5 items — monthly NDVI monitoring, shareable analysis links, and external data joins. See GitHub Issues for current backlog.
 
 ---
 
