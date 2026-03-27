@@ -6,7 +6,26 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
-from treesight.email import send_contact_notification, send_email
+from treesight.email import _allowed_recipients, send_contact_notification, send_email
+
+# ---------------------------------------------------------------------------
+# Recipient allowlist
+# ---------------------------------------------------------------------------
+
+
+class TestAllowedRecipients:
+    def test_empty_when_not_set(self):
+        with patch.dict(os.environ, {}, clear=True):
+            assert _allowed_recipients() == set()
+
+    def test_returns_notification_email(self):
+        with patch.dict(os.environ, {"NOTIFICATION_EMAIL": "Admin@Example.COM"}):
+            assert _allowed_recipients() == {"admin@example.com"}
+
+
+# ---------------------------------------------------------------------------
+# send_email
+# ---------------------------------------------------------------------------
 
 
 class TestSendEmail:
@@ -33,6 +52,42 @@ class TestSendEmail:
         ):
             assert send_email("a@b.com", "Hi", "<p>body</p>") is False
 
+    def test_rejects_recipient_not_in_allowlist(self):
+        """Prevents the system from being used as a spam relay."""
+        with patch.dict(
+            os.environ,
+            {
+                "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
+                "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "admin@example.com",
+            },
+        ):
+            result = send_email("attacker-victim@evil.com", "Hi", "<p>spam</p>")
+        assert result is False
+
+    def test_allows_notification_email_case_insensitive(self):
+        """Allowlist comparison is case-insensitive."""
+        mock_client = MagicMock()
+        mock_poller = MagicMock()
+        mock_poller.result.return_value = {"id": "msg-1", "status": "Succeeded"}
+        mock_client.begin_send.return_value = mock_poller
+
+        mock_module = MagicMock()
+        mock_module.EmailClient.from_connection_string.return_value = mock_client
+
+        with patch.dict(
+            os.environ,
+            {
+                "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
+                "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "Admin@Example.COM",
+            },
+        ):
+            with patch.dict(sys.modules, {"azure.communication.email": mock_module}):
+                result = send_email("admin@example.com", "Subject", "<p>Hi</p>")
+
+        assert result is True
+
     def test_sends_email_successfully(self):
         """Verifies SDK is called correctly when configured."""
         mock_client = MagicMock()
@@ -48,6 +103,7 @@ class TestSendEmail:
             {
                 "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
                 "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "user@example.com",
             },
         ):
             with patch.dict(sys.modules, {"azure.communication.email": mock_module}):
@@ -71,6 +127,7 @@ class TestSendEmail:
             {
                 "COMMUNICATION_SERVICES_CONNECTION_STRING": "endpoint=https://x;accesskey=y",
                 "EMAIL_SENDER_ADDRESS": "DoNotReply@abc.azurecomm.net",
+                "NOTIFICATION_EMAIL": "a@b.com",
             },
         ):
             with patch.dict(sys.modules, {"azure.communication.email": mock_module}):

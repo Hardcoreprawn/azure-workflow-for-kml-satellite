@@ -1,8 +1,13 @@
-"""Email notifications via Azure Communication Services.
+"""Internal email notifications via Azure Communication Services.
 
-Provides ``send_email`` for arbitrary messages and
+Provides ``send_email`` for operator-only messages and
 ``send_contact_notification`` for forwarding contact-form submissions.
 Both gracefully degrade (log + return False) when ACS is not configured.
+
+SECURITY: ``send_email`` enforces a recipient allowlist derived from
+``NOTIFICATION_EMAIL`` to prevent the system from being used as a spam
+relay.  Never pass user-supplied addresses to ``send_email`` — if user-
+facing email is needed in future, add a proper verification flow first.
 """
 
 from __future__ import annotations
@@ -14,6 +19,18 @@ import os
 logger = logging.getLogger(__name__)
 
 
+def _allowed_recipients() -> set[str]:
+    """Return the set of email addresses we are permitted to send to.
+
+    Currently this is just NOTIFICATION_EMAIL.  Expand when (and only
+    when) a verified-address store is introduced.
+    """
+    notify = os.environ.get("NOTIFICATION_EMAIL", "").strip().lower()
+    if notify:
+        return {notify}
+    return set()
+
+
 def send_email(
     to: str,
     subject: str,
@@ -21,6 +38,10 @@ def send_email(
     body_text: str | None = None,
 ) -> bool:
     """Send an email via Azure Communication Services.
+
+    The *to* address **must** appear in the operator allowlist
+    (currently just ``NOTIFICATION_EMAIL``).  Any other recipient is
+    rejected to prevent accidental use as a spam relay.
 
     Returns True on success, False on failure.  Never raises — callers
     can treat email as best-effort.
@@ -33,6 +54,10 @@ def send_email(
             "Email not configured — set COMMUNICATION_SERVICES_CONNECTION_STRING "
             "and EMAIL_SENDER_ADDRESS"
         )
+        return False
+
+    if to.strip().lower() not in _allowed_recipients():
+        logger.warning("Recipient %r not in allowlist — email blocked", to)
         return False
 
     try:
