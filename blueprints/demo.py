@@ -28,7 +28,7 @@ from treesight.constants import (
     PIPELINE_PAYLOADS_CONTAINER,
 )
 from treesight.security.quota import consume_quota
-from treesight.security.rate_limit import get_client_ip, proxy_limiter
+from treesight.security.rate_limit import get_client_ip, pipeline_limiter, proxy_limiter
 from treesight.security.valet import mint_valet_token, verify_valet_token
 from treesight.storage.client import BlobStorageClient
 
@@ -42,6 +42,9 @@ bp = func.Blueprint()
 def demo_submit(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=204)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before submitting again")
 
     try:
         _claims, user_id = check_auth(req)

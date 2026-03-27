@@ -37,3 +37,8 @@ output "site_url" {
   value       = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
   description = "Primary site URL (custom domain if configured, otherwise default)."
 }
+
+output "appinsights_connection_string" {
+  value       = azurerm_application_insights.main.connection_string
+  description = "Application Insights connection string for browser SDK."
+}

@@ -102,6 +102,7 @@ resource "azurerm_log_analytics_workspace" "main" {
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "PerGB2018"
   retention_in_days   = var.log_retention_days
+  daily_quota_gb      = var.log_daily_cap_gb
   tags                = local.tags
 }
 
@@ -179,6 +180,27 @@ resource "azurerm_monitor_metric_alert" "high_latency" {
   }
 
   tags = local.tags
+}
+
+# --- Availability test: ping the site every 5 minutes from 5 regions ---
+resource "azurerm_application_insights_standard_web_test" "site_ping" {
+  name                    = "webtest-${local.name_suffix}-site-ping"
+  resource_group_name     = azurerm_resource_group.main.name
+  location                = azurerm_resource_group.main.location
+  application_insights_id = azurerm_application_insights.main.id
+  frequency               = 300 # seconds (5 minutes)
+  timeout                 = 30
+  enabled                 = true
+  geo_locations           = ["emea-nl-ams-azr", "emea-gb-db3-azr", "us-va-ash-azr", "us-il-ch1-azr", "apac-sg-sin-azr"]
+  tags                    = local.tags
+
+  request {
+    url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
+  }
+
+  validation_rules {
+    expected_status_code = 200
+  }
 }
 
 resource "azurerm_consumption_budget_resource_group" "main" {
@@ -349,6 +371,11 @@ resource "azapi_resource" "function_app" {
     properties = {
       managedEnvironmentId = azurerm_container_app_environment.main.id
       httpsOnly            = true
+      functionAppConfig = {
+        scaleAndConcurrency = {
+          maximumInstanceCount = var.function_max_instances
+        }
+      }
       siteConfig = {
         linuxFxVersion = "DOCKER|${var.container_image}"
         cors = {
@@ -402,6 +429,10 @@ resource "azapi_resource" "function_app" {
           {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
+          },
+          {
+            name  = "REQUIRE_AUTH"
+            value = var.environment == "prd" ? "true" : ""
           }
           ], var.enable_azure_ai ? [
           {
