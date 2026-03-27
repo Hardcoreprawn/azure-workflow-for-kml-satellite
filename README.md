@@ -1,10 +1,10 @@
-# Azure Workflow for KML Satellite Imagery Acquisition
+# TreeSight — Automated Satellite Analysis Platform
 
-Automated Azure pipeline that ingests KML files containing agricultural field
-boundaries, extracts polygon geometry, acquires high-resolution satellite
-imagery, and stores outputs in Azure Blob Storage.
+Azure-hosted pipeline that ingests KML/KMZ boundaries, acquires
+multi-provider satellite imagery, and delivers enriched analysis
+(NDVI, weather, fire, flood, EUDR compliance) with AI-generated narratives.
 
-> **Status:** Phase 3 — v1 Hardening (see [ROADMAP.md](ROADMAP.md) for delivery plan)
+> **Status:** Milestone 4 — Revenue (12/13 items complete). See [PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md) for delivery plan.
 
 ## Architecture
 
@@ -26,23 +26,39 @@ KML Upload → Blob Storage → Event Grid → Durable Functions Orchestrator
 
 **Compute:** Azure Functions on Azure Container Apps (custom Docker with GDAL)
 **Orchestration:** Azure Durable Functions — fan-out/fan-in, async polling with zero-cost timers
-**Providers:** Planetary Computer (free STAC API, all tiers). Commercial adapters (Phase 5+).
+**Providers:** Planetary Computer (Sentinel-2, Landsat C2 L2, NAIP, ESA WorldCover) via geo-routing provider with region-based collection selection
+**Billing:** Stripe Checkout with multi-currency (GBP/EUR/USD) and UK Consumer Contracts compliance
+**AI:** Azure AI Foundry (pay-per-token) with circuit breaker and result caching
 
-See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITECTURE_REVIEW.md](docs/reviews/ARCHITECTURE_REVIEW.md) for implementation-level architecture notes.
+See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md) for the deployed component guide.
+
+## Features
+
+- **KML/KMZ ingestion** — upload or paste boundaries, multi-polygon support
+- **Multi-provider imagery** — geo-routing selects optimal collection per region (NAIP 0.6m US, Sentinel-2 10m global, Landsat 30m historical)
+- **NDVI analysis** — vegetation index computation, change detection, canopy loss quantification
+- **Weather integration** — Open-Meteo historical weather synced to imagery timeline
+- **Event detection** — fire hotspots (FIRMS) and flood extent overlay
+- **EUDR compliance** — post-2020 date filtering, WorldCover land-cover sampling, WDPA protected area check, coordinate-to-KML converter, AI deforestation-free assessment
+- **AI narratives** — Azure AI Foundry generates plain-English analysis summaries
+- **Export** — PDF audit reports, GeoJSON FeatureCollections, CSV timeseries
+- **Billing** — Stripe-powered tiered subscriptions (Free / Starter / Pro / Team)
+- **Auth** — Azure Entra External ID (CIAM) with JWT validation and per-user quotas
 
 ## Architecture Reference
 
 - **System architecture:** [PID.md §7](docs/PID.md)
 - **Deployed component/data-flow guide:** [docs/ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
-- **Codebase architecture review:** [docs/reviews/ARCHITECTURE_REVIEW.md](docs/reviews/ARCHITECTURE_REVIEW.md)
-- **Execution plan and phase gates:** [ROADMAP.md](ROADMAP.md)
+- **Product roadmap & business strategy:** [docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)
+- **OpenAPI specification:** [docs/openapi.yaml](docs/openapi.yaml)
 
 ## Documentation Index
 
 - **Operations runbook:** [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)
 - **API and interfaces:** [docs/API_INTERFACE_REFERENCE.md](docs/API_INTERFACE_REFERENCE.md)
 - **Metadata JSON schema:** [docs/schemas/aoi-metadata-v2.schema.json](docs/schemas/aoi-metadata-v2.schema.json)
-- **UAT execution plan:** [docs/reviews/UAT_VALIDATION.md](docs/reviews/UAT_VALIDATION.md)
+- **EUDR methodology:** [website/eudr-methodology.html](website/eudr-methodology.html)
+- **Infrastructure naming standard:** [docs/INFRA_NAMING_STANDARD.md](docs/INFRA_NAMING_STANDARD.md)
 
 ## Operations Runbook
 
@@ -169,6 +185,12 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET | `/api/orchestrator/{instance_id}` | Durable instance status + output artifact diagnostics | 200 | 400 / 404 |
 | GET | `/api/demo-results?token=...` | Validate valet token and reveal one authorized demo artifact | 200 | 401 / 403 |
 | GET | `/api/demo-results/download?token=...` | Proxy a single authorized demo artifact download | 200 | 401 / 403 / 404 |
+| POST | `/api/eudr-assessment` | EUDR compliance assessment (NDVI + WorldCover + WDPA) | 200 | 400 |
+| POST | `/api/convert-coordinates` | Convert lat/lon coordinates to KML | 200 | 400 |
+| POST | `/api/export` | Export analysis results (GeoJSON, CSV, PDF) | 200 | 400 |
+| POST | `/api/create-checkout-session` | Create Stripe Checkout session | 200 | 400 |
+| POST | `/api/stripe-webhook` | Handle Stripe webhook events | 200 | 400 |
+| POST | `/api/create-portal-session` | Create Stripe customer portal session | 200 | 400 |
 
 Protected/internal endpoint:
 
@@ -198,23 +220,38 @@ Protected/internal endpoint:
 ## Project Structure
 
 ```text
-├── .github/workflows/ci.yml    CI pipeline (lint, type check, test)
-├── infra/                       OpenTofu IaC modules and environments
-├── kml_satellite/               Application package
-│   ├── activities/              Durable Functions activity functions
-│   ├── orchestrators/           Durable Functions orchestrators
-│   ├── models/                  Data models and schemas
-│   ├── providers/               Imagery provider adapters
-│   └── core/                    Config, constants, logging, geometry utils
-├── tests/
-│   ├── data/                    17 test KML files (valid + edge cases)
-│   ├── unit/                    Unit tests
-│   └── integration/             Integration tests
+├── .github/workflows/          CI, deploy, base-image-refresh, security
+├── blueprints/                  Azure Functions HTTP blueprints
+│   ├── analysis.py              EUDR assessment, AI insights
+│   ├── billing.py               Stripe Checkout, webhooks, customer portal
+│   ├── contact.py               Contact form endpoint
+│   ├── demo.py                  Demo valet token + artifact download
+│   ├── eudr.py                  Coordinate conversion endpoint
+│   ├── export.py                GeoJSON, CSV, PDF export
+│   ├── health.py                Liveness + readiness probes
+│   └── pipeline.py              Orchestrator status + pipeline trigger
+├── infra/tofu/                  OpenTofu IaC (Azure resources)
+├── treesight/                   Application package
+│   ├── ai/                      Azure AI Foundry client + circuit breaker
+│   ├── models/                  Data models (AOI metadata, pipeline state)
+│   ├── parsers/                 KML/KMZ parsing (Fiona + lxml fallback)
+│   ├── pipeline/                Orchestration, enrichment, EUDR, acquisition
+│   ├── providers/               Imagery providers (Planetary Computer, geo-routing)
+│   ├── security/                Auth (JWT), rate limiting, replay protection, valet tokens
+│   ├── storage/                 Blob storage helpers
+│   ├── config.py                App configuration (Key Vault, env vars)
+│   ├── constants.py             EUDR cutoff, API contract version, limits
+│   ├── errors.py                Custom exception hierarchy
+│   ├── geo.py                   Geometry utilities (Shapely, pyproj)
+│   └── log.py                   Structured JSON logging
+├── tests/                       595 tests (unit + integration)
+│   ├── fixtures/                KML test files (valid + edge cases)
+│   └── conftest.py              Shared fixtures and mocks
+├── website/                     Static Web App (HTML/CSS/JS)
 ├── function_app.py              Azure Functions entry point (v2 model)
 ├── host.json                    Functions host configuration
 ├── Dockerfile                   Custom container (Python 3.12 + GDAL)
-├── pyproject.toml               Dependencies and tool configuration
-└── PID.md                       Project Initiation Document (v1.1)
+└── pyproject.toml               Dependencies and tool configuration
 ```
 
 ## Tech Stack
@@ -226,13 +263,18 @@ Protected/internal endpoint:
 | Orchestration | Azure Durable Functions (Python v2 model) |
 | KML Parsing | Fiona (OGR) + lxml (fallback) |
 | Geometry | Shapely, pyproj |
-| Raster | Rasterio, GDAL |
-| STAC | pystac-client |
+| Raster | Rasterio, GDAL, NumPy |
+| STAC | pystac-client, planetary-computer |
+| AI | Azure AI Foundry (pay-per-token, circuit breaker) |
+| Billing | Stripe (Checkout, webhooks, customer portal) |
+| Auth | Azure Entra External ID (CIAM), JWT RS256 |
+| Export | fpdf2 (PDF), GeoJSON, CSV |
 | Linting | ruff |
 | Type Checking | pyright |
-| Testing | pytest |
+| Testing | pytest (595 tests) |
 | IaC | OpenTofu (Terraform-compatible) |
 | CI/CD | GitHub Actions |
+| Security | Semgrep, Trivy, pip-audit, CodeQL, detect-secrets |
 
 ## CI Lanes (Issue #150)
 
@@ -387,19 +429,21 @@ HTTP requests to function endpoints return 404.
 **Solution:**
 
 1. Keep a clean multi-stage image with required runtime dependencies
-2. Copy application code (`function_app.py`, `host.json`, `kml_satellite/`) into `/home/site/wwwroot`
+2. Copy application code (`function_app.py`, `host.json`, `treesight/`, `blueprints/`) into `/home/site/wwwroot`
 3. Verify startup via `/api/health` and container logs
 
 ```dockerfile
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS builder
 WORKDIR /build
 COPY host.json function_app.py ./
-COPY kml_satellite/ ./kml_satellite/
+COPY treesight/ ./treesight/
+COPY blueprints/ ./blueprints/
 
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12
 COPY --from=builder /build/host.json /home/site/wwwroot/
 COPY --from=builder /build/function_app.py /home/site/wwwroot/
-COPY --from=builder /build/kml_satellite/ /home/site/wwwroot/kml_satellite/
+COPY --from=builder /build/treesight/ /home/site/wwwroot/treesight/
+COPY --from=builder /build/blueprints/ /home/site/wwwroot/blueprints/
 ```
 
 **Verification:**
