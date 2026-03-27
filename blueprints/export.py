@@ -15,6 +15,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
@@ -497,6 +498,9 @@ async def export_data(
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     fmt = (req.route_params.get("format") or "").lower()
     if fmt not in _ALLOWED_FORMATS:

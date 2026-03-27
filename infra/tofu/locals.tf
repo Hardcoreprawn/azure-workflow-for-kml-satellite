@@ -11,6 +11,8 @@ locals {
     event_grid_system_topic    = "evgt-${local.name_suffix}"
     event_grid_subscription    = "evgs-kml-upload"
     static_web_app             = "stapp-${local.name_suffix}-site"
+    communication_service      = "acs-${local.name_suffix}"
+    email_service              = "ecs-${local.name_suffix}"
   }
 
   required_tags = {

@@ -11,6 +11,7 @@ import re
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 bp = func.Blueprint()
 
@@ -74,7 +75,7 @@ def _validate_plot(i: int, p: dict) -> dict | str:
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
+def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:  # noqa: C901
     """POST /api/convert-coordinates — convert coordinate plots to KML.
 
     Accepts a JSON body with an array of plots (points or polygons) and
@@ -96,6 +97,9 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     try:
         check_auth(req)
