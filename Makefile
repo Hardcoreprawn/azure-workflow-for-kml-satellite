@@ -1,6 +1,7 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
-       test-upload test test-int lint fmt check clean _free-ports
+	test-upload test test-int lint fmt check clean \
+	_free-ports _free-func-port _free-web-ports
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -25,7 +26,32 @@ setup: ## Install Python deps + Azure Functions Core Tools
 
 # ───────────────────── Port cleanup ─────────────────────
 
-DEV_PORTS := 7071 1111 10000 10001 10002
+DEV_FUNC_PORT := 7071
+DEV_WEB_PORT := 4280
+DEV_WEB_LEGACY_PORT := 1111
+DEV_STORAGE_PORTS := 10000 10001 10002
+DEV_WEB_PORTS := $(DEV_WEB_PORT) $(DEV_WEB_LEGACY_PORT)
+DEV_PORTS := $(DEV_FUNC_PORT) $(DEV_WEB_PORTS) $(DEV_STORAGE_PORTS)
+
+_free-func-port: ## Kill local processes holding the Functions port
+	@for p in $(DEV_FUNC_PORT); do \
+		pids=$$(fuser $$p/tcp 2>/dev/null); \
+		if [ -n "$$pids" ]; then \
+			echo "Killing pid(s) $$pids on port $$p"; \
+			fuser -k $$p/tcp 2>/dev/null || true; \
+		fi; \
+	done
+	@sleep 1
+
+_free-web-ports: ## Kill local processes holding the website dev ports
+	@for p in $(DEV_WEB_PORTS); do \
+		pids=$$(fuser $$p/tcp 2>/dev/null); \
+		if [ -n "$$pids" ]; then \
+			echo "Killing pid(s) $$pids on port $$p"; \
+			fuser -k $$p/tcp 2>/dev/null || true; \
+		fi; \
+	done
+	@sleep 1
 
 _free-ports: ## Kill local processes holding dev ports
 	@for p in $(DEV_PORTS); do \
@@ -51,13 +77,13 @@ dev-init: dev-up ## Start Azurite + create storage containers
 
 # ───────────────────── Function Host ─────────────────────
 
-dev-func: _free-ports ## Start Azure Functions host (port 7071)
+dev-func: _free-func-port ## Start Azure Functions host (port 7071)
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
 	func start --python
 
 # ───────────────────── Website ─────────────────────
 
-dev-web: _free-ports ## Start website dev server with API proxy (port 1111)
+dev-web: _free-web-ports ## Start website dev server with API proxy (port 4280)
 	uv run python scripts/dev_server.py
 
 # ───────────────────── Full Stack ─────────────────────
@@ -72,7 +98,7 @@ dev-start: dev-init ## Print instructions to start all services
 	@echo "║  Terminal 2:  make dev-web                   ║"
 	@echo "║                                              ║"
 	@echo "║  Then test:   make test-upload               ║"
-	@echo "║  Website:     http://localhost:1111           ║"
+	@echo "║  Website:     http://localhost:4280           ║"
 	@echo "║  Functions:   http://localhost:7071/api/health║"
 	@echo "╚══════════════════════════════════════════════╝"
 
@@ -83,7 +109,7 @@ dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web)
 	@echo "╔══════════════════════════════════════════════════════╗"
 	@echo "║  All services starting via docker-compose:           ║"
 	@echo "║                                                      ║"
-	@echo "║  Website:    http://localhost:1111                    ║"
+	@echo "║  Website:    http://localhost:4280                    ║"
 	@echo "║  Functions:  http://localhost:7071/api/health         ║"
 	@echo "║  Azurite:    localhost:10000 (blob)                   ║"
 	@echo "║                                                      ║"

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Hawke's Bay Vineyard Blocks</name>
+    <description>Multi-feature vineyard/orchard test — realistic field outlines</description>
+    <Placemark>
+      <name>SB-1 Sauvignon Blanc</name>
+      <description>North block — vine rows following gentle E-W contour</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8652,-39.6339,0
+              176.8668,-39.6336,0
+              176.8690,-39.6338,0
+              176.8710,-39.6342,0
+              176.8735,-39.6341,0
+              176.8738,-39.6355,0
+              176.8730,-39.6370,0
+              176.8712,-39.6375,0
+              176.8688,-39.6378,0
+              176.8665,-39.6374,0
+              176.8650,-39.6365,0
+              176.8648,-39.6350,0
+              176.8652,-39.6339,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>PN-2 Pinot Noir</name>
+      <description>Central block — angled rows on NE-facing slope</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8750,-39.6350,0
+              176.8768,-39.6348,0
+              176.8785,-39.6352,0
+              176.8810,-39.6355,0
+              176.8825,-39.6360,0
+              176.8828,-39.6372,0
+              176.8820,-39.6385,0
+              176.8800,-39.6390,0
+              176.8778,-39.6388,0
+              176.8758,-39.6382,0
+              176.8748,-39.6370,0
+              176.8750,-39.6350,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>A-3 Braeburn Apple</name>
+      <description>South orchard block — irregular border following tree line and road</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8660,-39.6400,0
+              176.8678,-39.6398,0
+              176.8700,-39.6395,0
+              176.8720,-39.6400,0
+              176.8742,-39.6405,0
+              176.8755,-39.6412,0
+              176.8750,-39.6428,0
+              176.8735,-39.6438,0
+              176.8710,-39.6442,0
+              176.8688,-39.6440,0
+              176.8668,-39.6435,0
+              176.8655,-39.6425,0
+              176.8658,-39.6410,0
+              176.8660,-39.6400,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AV-4 Hass Avocado</name>
+      <description>East grove — follows stream bank and shelter belt</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              176.8835,-39.6365,0
+              176.8852,-39.6360,0
+              176.8870,-39.6362,0
+              176.8880,-39.6370,0
+              176.8882,-39.6385,0
+              176.8875,-39.6398,0
+              176.8860,-39.6405,0
+              176.8845,-39.6410,0
+              176.8832,-39.6402,0
+              176.8830,-39.6388,0
+              176.8835,-39.6365,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

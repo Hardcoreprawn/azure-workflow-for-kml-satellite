@@ -1,9 +1,10 @@
 """One-time: Create CIAM user flow and link app."""
+
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 TOKEN = os.environ.get("CIAM_TOKEN")
 APP_ID = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
@@ -43,75 +44,79 @@ def main():
 
     # 1) Create external users self-service sign up flow
     print("=== Creating User Flow ===")
-    flow = graph("POST", "/identity/authenticationEventsFlows", {
-        "@odata.type": "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow",
-        "displayName": "TreeSight Sign Up/In",
-        "onInteractiveAuthFlowStart": {
-            "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",
-            "isSignUpAllowed": True,
-        },
-        "onAuthenticationMethodLoadStart": {
-            "@odata.type": "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp",
-            "identityProviders": [
-                {
-                    "@odata.type": "#microsoft.graph.builtInIdentityProvider",
-                    "id": "EmailPassword-OAUTH",
-                }
-            ],
-        },
-        "onAttributeCollection": {
-            "@odata.type": "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp",
-            "attributes": [
-                {
-                    "id": "email",
-                    "displayName": "Email Address",
-                    "description": "Email address of the user",
-                    "userFlowAttributeType": "builtIn",
-                    "dataType": "string",
-                },
-                {
-                    "id": "displayName",
-                    "displayName": "Display Name",
-                    "description": "Display Name of the User.",
-                    "userFlowAttributeType": "builtIn",
-                    "dataType": "string",
-                },
-            ],
-            "attributeCollectionPage": {
-                "customStringsFileId": None,
-                "views": [
+    flow = graph(
+        "POST",
+        "/identity/authenticationEventsFlows",
+        {
+            "@odata.type": "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow",
+            "displayName": "TreeSight Sign Up/In",
+            "onInteractiveAuthFlowStart": {
+                "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",  # noqa: E501
+                "isSignUpAllowed": True,
+            },
+            "onAuthenticationMethodLoadStart": {
+                "@odata.type": "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp",  # noqa: E501
+                "identityProviders": [
                     {
-                        "title": None,
-                        "description": None,
-                        "inputs": [
-                            {
-                                "attribute": "email",
-                                "label": "Email Address",
-                                "inputType": "text",
-                                "defaultValue": None,
-                                "hidden": True,
-                                "editable": False,
-                                "writeToDirectory": True,
-                                "required": True,
-                                "validationRegEx": "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$",
-                            },
-                            {
-                                "attribute": "displayName",
-                                "label": "Display Name",
-                                "inputType": "text",
-                                "defaultValue": None,
-                                "hidden": False,
-                                "editable": True,
-                                "writeToDirectory": True,
-                                "required": True,
-                                "validationRegEx": "^.*",
-                            },
-                        ],
+                        "@odata.type": "#microsoft.graph.builtInIdentityProvider",
+                        "id": "EmailPassword-OAUTH",
                     }
                 ],
             },
+            "onAttributeCollection": {
+                "@odata.type": "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp",  # noqa: E501
+                "attributes": [
+                    {
+                        "id": "email",
+                        "displayName": "Email Address",
+                        "description": "Email address of the user",
+                        "userFlowAttributeType": "builtIn",
+                        "dataType": "string",
+                    },
+                    {
+                        "id": "displayName",
+                        "displayName": "Display Name",
+                        "description": "Display Name of the User.",
+                        "userFlowAttributeType": "builtIn",
+                        "dataType": "string",
+                    },
+                ],
+                "attributeCollectionPage": {
+                    "customStringsFileId": None,
+                    "views": [
+                        {
+                            "title": None,
+                            "description": None,
+                            "inputs": [
+                                {
+                                    "attribute": "email",
+                                    "label": "Email Address",
+                                    "inputType": "text",
+                                    "defaultValue": None,
+                                    "hidden": True,
+                                    "editable": False,
+                                    "writeToDirectory": True,
+                                    "required": True,
+                                    "validationRegEx": "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$",  # noqa: E501
+                                },
+                                {
+                                    "attribute": "displayName",
+                                    "label": "Display Name",
+                                    "inputType": "text",
+                                    "defaultValue": None,
+                                    "hidden": False,
+                                    "editable": True,
+                                    "writeToDirectory": True,
+                                    "required": True,
+                                    "validationRegEx": "^.*",
+                                },
+                            ],
+                        }
+                    ],
+                },
+            },
         },
-    })
+    )
 
     if not flow:
         print("Failed to create user flow")
@@ -133,12 +138,14 @@ def main():
         print("Failed to link app to user flow")
 
     print("\n=== Summary ===")
-    print(f"Tenant: treesightauth.onmicrosoft.com")
-    print(f"Tenant ID: 92001438-8b42-4bd7-950f-0ed1775f87b7")
+    print("Tenant: treesightauth.onmicrosoft.com")
+    print("Tenant ID: 92001438-8b42-4bd7-950f-0ed1775f87b7")
     print(f"App client ID: {APP_ID}")
     print(f"User flow ID: {flow_id}")
-    print(f"Authority: https://treesightauth.ciamlogin.com/")
-    print(f"OIDC config: https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0/.well-known/openid-configuration")
+    print("Authority: https://treesightauth.ciamlogin.com/")
+    print(
+        "OIDC config: https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0/.well-known/openid-configuration"
+    )
 
 
 if __name__ == "__main__":

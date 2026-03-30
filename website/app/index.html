@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — TreeSight</title>
+<meta name="description" content="TreeSight signed-in workspace for analyses, usage, and billing.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
+<link rel="stylesheet" href="/css/shared.css">
+<link rel="stylesheet" href="/css/app.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<script src="/js/msal-browser.min.js" defer></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
+<script src="/js/app-shell.js" defer></script>
+</head>
+<body>
+<noscript><div class="noscript-banner">TreeSight requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<nav>
+  <div class="container">
+    <a href="/app/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      TreeSight
+    </a>
+    <ul>
+      <li><a href="/app/" aria-current="page">Dashboard</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/kml-guide.html">KML Guide</a></li>
+      <li><a href="/">Marketing Site</a></li>
+    </ul>
+    <div class="auth-area" id="auth-area">
+      <span id="status-badge">Checking…</span>
+      <span class="auth-user" id="auth-user" style="display:none"></span>
+      <button class="auth-btn primary" id="auth-login-btn">Sign In</button>
+      <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
+    </div>
+  </div>
+</nav>
+
+<main class="app-main">
+  <section id="app-unauthenticated" class="app-gate">
+    <div class="container">
+      <div class="app-panel">
+        <h2>Sign in to access your workspace</h2>
+        <p>Use your TreeSight identity to view usage, billing, and run history as the dashboard rolls out.</p>
+        <div class="app-gate-actions">
+          <button class="btn btn-primary" id="app-sign-in-btn" type="button">Sign In</button>
+          <a class="btn btn-secondary" href="/">Back to site</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="app-dashboard" class="app-dashboard" hidden>
+    <div class="container">
+
+      <!-- ── Compact welcome bar ── -->
+      <div class="app-welcome-bar">
+        <div class="app-welcome-identity">
+          <h2>Welcome back, <span id="app-user-name">there</span></h2>
+          <p id="app-account-note" class="app-welcome-note">Signed-in workspace</p>
+        </div>
+        <div class="app-welcome-stats">
+          <div class="app-stat-pill"><span class="app-utility-label">Plan</span><strong id="app-hero-plan">Loading…</strong><span class="app-utility-note" id="app-hero-plan-note">Checking entitlement…</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Runs Left</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">Quota refreshes with your plan.</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">Analysis workspace</strong><span class="app-utility-note" id="app-hero-mode-note">Capability summary loading…</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Restoring signed-in history and active run state.</span></div>
+        </div>
+        <div class="app-welcome-actions">
+          <a class="btn btn-primary" id="app-new-analysis-btn" href="#app-analysis-card">New Analysis</a>
+          <button class="btn btn-secondary" id="app-manage-billing-btn" type="button">Billing</button>
+        </div>
+      </div>
+
+      <!-- ── First-run hero (shown when analysis history is empty) ── -->
+      <div class="app-first-run-hero" id="app-first-run-hero" hidden>
+        <article class="app-card app-first-run-card">
+          <div class="app-first-run-content">
+            <div class="section-label">Get Started</div>
+            <h3>Welcome to Your Workspace</h3>
+            <p class="app-first-run-note">You have no analysis runs yet. Upload a KML file describing your area of interest, and TreeSight will search satellite imagery, compute vegetation health, and assemble a time-series evidence pack.</p>
+            <div class="app-first-run-actions">
+              <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Analysis</a>
+              <a class="btn btn-secondary" href="/kml-guide.html">KML Guide</a>
+              <a class="btn btn-secondary" href="/#demo">Try the Public Demo</a>
+            </div>
+          </div>
+          <div class="app-first-run-checklist">
+            <div class="section-label">Quick Checklist</div>
+            <ol>
+              <li>Prepare a KML or KMZ file with polygon boundaries</li>
+              <li>Upload it in the New Analysis panel below</li>
+              <li>Queue the pipeline and watch each phase complete</li>
+              <li>Review satellite imagery, NDVI, and AI findings on this dashboard</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+
+      <!-- ── Evidence hero (full-width, prominent) ── -->
+      <div class="app-evidence-hero" id="app-evidence-hero">
+        <article class="app-card app-evidence-hero-card" id="app-content-card" data-focus-target="content">
+          <div class="app-evidence-hero-header">
+            <div>
+              <div class="section-label">Evidence</div>
+              <h3 id="app-content-title">Satellite Imagery &amp; Analysis</h3>
+            </div>
+            <p class="app-evidence-hero-note" id="app-content-copy">Select a completed run to review satellite imagery, vegetation health, weather context, and AI-powered findings.</p>
+          </div>
+
+          <!-- Phase status (shown during active runs) -->
+          <div class="app-content-stack" id="app-content-phase-status">
+            <div class="app-evidence-status-row">
+              <div class="app-content-block">
+                <span class="app-content-label">Imagery stack</span>
+                <strong id="app-content-imagery">Waiting for a run</strong>
+                <p id="app-content-imagery-note">Before/after imagery and NDVI layers will appear here as the evidence stack forms.</p>
+              </div>
+              <div class="app-content-block">
+                <span class="app-content-label">Enrichment</span>
+                <strong id="app-content-enrichment">Context pending</strong>
+                <p id="app-content-enrichment-note">Weather and narrative context will follow once the imagery pipeline is stable.</p>
+              </div>
+              <div class="app-content-block">
+                <span class="app-content-label">Exports</span>
+                <strong id="app-content-exports">Evidence pack next</strong>
+                <p id="app-content-exports-note">Saved maps, narrative, and donor-ready exports will land here once run detail is wired.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Evidence surface (shown for completed runs) -->
+          <div class="app-evidence-surface" id="app-evidence-surface" hidden>
+            <div class="app-evidence-two-col">
+              <!-- Left: large map -->
+              <div class="app-evidence-primary">
+                <div class="app-evidence-block app-evidence-map-block">
+                  <div class="app-evidence-map-header">
+                    <span class="app-content-label">Satellite imagery</span>
+                    <div class="app-evidence-map-controls">
+                      <button class="app-evidence-layer-btn active" id="app-map-btn-rgb" type="button">RGB</button>
+                      <button class="app-evidence-layer-btn" id="app-map-btn-ndvi" type="button">NDVI</button>
+                      <button class="app-evidence-layer-btn" id="app-map-expand-btn" type="button" title="Expand viewer">&#x26F6;</button>
+                    </div>
+                  </div>
+                  <div class="app-evidence-map-wrap" id="app-evidence-map-wrap">
+                    <div id="app-evidence-map"></div>
+                    <div class="app-evidence-map-overlay" id="app-evidence-map-overlay">Loading map&hellip;</div>
+                  </div>
+                  <div class="app-evidence-frame-controls" id="app-evidence-frame-controls" hidden>
+                    <button class="btn btn-secondary app-evidence-play-btn" id="app-map-play-btn" type="button">&#9654; Play</button>
+                    <input type="range" id="app-map-frame-slider" min="0" max="0" value="0">
+                    <span id="app-map-frame-counter">0/0</span>
+                  </div>
+                  <div class="app-evidence-frame-label" id="app-map-frame-label"></div>
+                </div>
+              </div>
+
+              <!-- Right: data panels -->
+              <div class="app-evidence-sidebar">
+                <!-- NDVI summary -->
+                <div class="app-evidence-block" id="app-evidence-ndvi-block">
+                  <span class="app-content-label">Vegetation health</span>
+                  <div class="app-evidence-ndvi-grid" id="app-evidence-ndvi-grid"></div>
+                  <canvas id="app-evidence-ndvi-canvas" width="320" height="80"></canvas>
+                  <p class="app-evidence-note" id="app-evidence-ndvi-note"></p>
+                </div>
+
+                <!-- Weather summary -->
+                <div class="app-evidence-block" id="app-evidence-weather-block">
+                  <span class="app-content-label">Climate context</span>
+                  <div class="app-evidence-weather-grid" id="app-evidence-weather-grid"></div>
+                  <canvas id="app-evidence-weather-canvas" width="320" height="80"></canvas>
+                </div>
+
+                <!-- Change detection -->
+                <div class="app-evidence-block" id="app-evidence-change-block" hidden>
+                  <span class="app-content-label">Change detection</span>
+                  <div id="app-evidence-change-list"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AI & EUDR — full-width action row below the two-col layout -->
+            <div class="app-evidence-actions-row">
+              <!-- AI observations -->
+              <div class="app-evidence-block app-evidence-action-card" id="app-evidence-ai-block" hidden>
+                <div class="app-evidence-ai-header">
+                  <div>
+                    <span class="app-content-label">AI analysis</span>
+                    <p class="app-evidence-action-hint">Get AI-powered observations about vegetation change, land use, and risk signals from the imagery stack.</p>
+                  </div>
+                  <button class="btn btn-primary" id="app-evidence-ai-btn" type="button">Analyze with AI</button>
+                </div>
+                <div id="app-evidence-ai-content"></div>
+                <div class="app-evidence-ai-loading" id="app-evidence-ai-loading" hidden>Analyzing with AI&hellip;</div>
+              </div>
+
+              <!-- EUDR compliance (role-dependent) -->
+              <div class="app-evidence-block app-evidence-action-card" id="app-evidence-eudr-block" hidden>
+                <div class="app-evidence-ai-header">
+                  <div>
+                    <span class="app-content-label">EUDR compliance</span>
+                    <p class="app-evidence-action-hint">Run a deforestation-risk assessment against EU Deforestation Regulation thresholds.</p>
+                  </div>
+                  <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button">Assess EUDR</button>
+                </div>
+                <div id="app-evidence-eudr-content"></div>
+                <div class="app-evidence-ai-loading" id="app-evidence-eudr-loading" hidden>Running EUDR assessment&hellip;</div>
+              </div>
+            </div>
+
+            <!-- Export bar — always-visible download row for completed runs -->
+            <div class="app-evidence-export-bar" id="app-evidence-export-bar">
+              <span class="app-content-label">Exports</span>
+              <div class="app-evidence-export-actions">
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="geojson" disabled>GeoJSON</button>
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="csv" disabled>CSV</button>
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="pdf" disabled>PDF</button>
+              </div>
+              <span class="app-evidence-export-note" id="app-evidence-export-note">Select a completed run to enable exports.</span>
+            </div>
+          </div>
+
+          <div class="app-rail-footer" id="app-content-footer">Select a completed run from history to view evidence.</div>
+        </article>
+      </div>
+
+      <!-- ── Two-column workflow: history + run ── -->
+      <div class="app-workflow-stage" id="app-workflow-stage" data-focus="run">
+        <article class="app-workflow-rail app-rail-history" id="app-history-card" data-focus-target="history">
+          <div class="app-rail-header">
+            <div>
+              <div class="section-label">History</div>
+              <h3>History &amp; Resume</h3>
+            </div>
+          </div>
+          <p class="app-rail-copy" id="app-history-copy">Reopen a previous run or resume an active one.</p>
+          <div class="app-run-snapshot">
+            <span class="app-run-label">Selected status</span>
+            <strong id="app-history-latest-status">Loading recent runs</strong>
+            <span id="app-history-latest-note">Restoring signed-in history and checking for an active run to resume.</span>
+          </div>
+          <div class="app-mini-list">
+            <div class="app-mini-item"><span>Instance</span><strong id="app-history-latest-instance">…</strong></div>
+            <div class="app-mini-item"><span>Phase</span><strong id="app-history-latest-phase">loading</strong></div>
+            <div class="app-mini-item"><span>Next surface</span><strong id="app-history-latest-path">Checking workspace</strong></div>
+          </div>
+          <div class="app-history-list" id="app-history-list" aria-live="polite">Restoring signed-in history…</div>
+          <div class="app-rail-footer">Select a run to reopen this workspace state.</div>
+        </article>
+
+        <article class="app-workflow-rail app-rail-run" id="app-analysis-card" data-focus-target="run">
+          <div class="app-rail-header">
+            <div>
+              <div class="section-label">New Analysis</div>
+              <h3>Launch and Track</h3>
+            </div>
+          </div>
+          <p class="app-rail-copy" id="app-run-copy">Upload KML, queue the pipeline, and monitor progress.</p>
+          <div class="app-mode-card">
+            <span class="app-run-label">Workspace lens</span>
+            <strong id="app-analysis-lens-title">Conservation evidence run</strong>
+            <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
+          </div>
+          <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
+          <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
+          <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
+          <label class="app-field-label" for="app-analysis-kml">KML Content</label>
+          <textarea id="app-analysis-kml" placeholder="Paste KML content for a signed-in analysis request…"></textarea>
+          <div class="app-preflight-card" id="app-analysis-preflight">
+            <div class="app-preflight-header">
+              <div>
+                <div class="section-label">Preflight</div>
+                <h4 id="app-preflight-headline">Awaiting KML</h4>
+              </div>
+              <span class="app-preflight-badge" id="app-preflight-mode">No file yet</span>
+            </div>
+            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, AOI spread, and signed-in product guidance before queueing.</p>
+            <div class="app-preflight-grid">
+              <div><span>Features</span><strong id="app-preflight-features">0</strong></div>
+              <div><span>AOIs</span><strong id="app-preflight-aois">0</strong></div>
+              <div><span>Spread</span><strong id="app-preflight-spread">—</strong></div>
+              <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
+            </div>
+            <div class="app-preflight-list" id="app-preflight-warnings">
+              <div class="app-preflight-item" data-tone="info">Signed-in preflight will surface warnings here instead of inheriting demo-only rejections.</div>
+            </div>
+          </div>
+          <div class="app-select-row app-analysis-actions">
+            <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
+            <a class="btn btn-secondary" href="/#demo">View Public Demo</a>
+          </div>
+          <div class="app-callout" id="app-analysis-status" hidden></div>
+          <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
+            <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
+            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing AOIs and validating geometry</div>
+            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching NAIP and Sentinel-2 imagery</div>
+            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, weather, and cache layers</div>
+            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
+          </div>
+          <dl class="app-stats compact" id="app-analysis-run" hidden>
+            <div><dt>Instance</dt><dd id="app-analysis-instance">—</dd></div>
+            <div><dt>Status</dt><dd id="app-analysis-runtime">—</dd></div>
+            <div><dt>Phase</dt><dd id="app-analysis-phase">—</dd></div>
+          </dl>
+          <div class="app-run-detail-grid" id="app-run-detail-grid">
+            <div class="app-detail-card">
+              <span class="app-content-label">Submitted</span>
+              <strong id="app-run-submitted">—</strong>
+              <p id="app-run-submitted-note">Signed-in run detail restores here after reload.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Scope</span>
+              <strong id="app-run-scope">—</strong>
+              <p id="app-run-scope-note">Feature and AOI counts appear when known.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Delivery</span>
+              <strong id="app-run-delivery">—</strong>
+              <p id="app-run-delivery-note">Failure counts and tracked artifacts will appear here.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Run Link</span>
+              <strong id="app-run-link-label">Dashboard state</strong>
+              <a class="app-inline-link" id="app-run-link" href="/app/">Open durable run state</a>
+              <div class="app-run-action-row" id="app-run-export-actions">
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-geojson" type="button" data-export-format="geojson" disabled>GeoJSON</button>
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-csv" type="button" data-export-format="csv" disabled>CSV</button>
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-pdf" type="button" data-export-format="pdf" disabled>PDF</button>
+              </div>
+              <p class="app-note" id="app-run-export-note">Completed runs can download GeoJSON, CSV, and PDF exports here.</p>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- ── Workspace settings (collapsible) ── -->
+      <details class="app-settings-disclosure" id="app-settings-disclosure">
+        <summary class="app-settings-toggle">Workspace Settings <span class="app-settings-hint">Role, preference, and account</span></summary>
+        <div class="app-settings-body">
+          <div class="app-lens-board">
+            <article class="app-card app-lens-card">
+              <div class="app-lens-header">
+                <div>
+                  <div class="section-label">Role View</div>
+                  <h3 id="app-role-title">Conservation monitoring</h3>
+                </div>
+                <span class="app-lens-tag" id="app-role-tag">Field evidence</span>
+              </div>
+              <div class="app-chip-row" id="app-role-switcher">
+                <button class="app-lens-chip" type="button" data-role-choice="conservation" aria-pressed="true">Conservation</button>
+                <button class="app-lens-chip" type="button" data-role-choice="eudr" aria-pressed="false">EUDR</button>
+                <button class="app-lens-chip" type="button" data-role-choice="portfolio" aria-pressed="false">Portfolio Ops</button>
+              </div>
+              <p class="app-lens-copy" id="app-role-summary">Built for protected-area coordinators who need rapid, plain-English evidence they can take to rangers, directors, or donors.</p>
+              <div class="app-brief-grid">
+                <div class="app-brief-item"><span>Primary outcome</span><strong id="app-role-outcome">Evidence packs</strong></div>
+                <div class="app-brief-item"><span>Operator stance</span><strong id="app-role-risk">No silent fallback</strong></div>
+                <div class="app-brief-item"><span>Default rhythm</span><strong id="app-role-rhythm">Monthly watchlist</strong></div>
+              </div>
+            </article>
+
+            <article class="app-card app-lens-card app-preference-card">
+              <div class="app-lens-header">
+                <div>
+                  <div class="section-label">Work Preference</div>
+                  <h3 id="app-preference-title">Investigate suspicious change</h3>
+                </div>
+                <span class="app-lens-tag" id="app-preference-tag">Run-first</span>
+              </div>
+              <div class="app-chip-row" id="app-preference-switcher">
+                <button class="app-lens-chip" type="button" data-preference-choice="investigate" aria-pressed="true">Investigate</button>
+                <button class="app-lens-chip" type="button" data-preference-choice="monitor" aria-pressed="false">Monitor</button>
+                <button class="app-lens-chip" type="button" data-preference-choice="report" aria-pressed="false">Report</button>
+              </div>
+              <p class="app-lens-copy" id="app-preference-summary">Stay centered on the live run while you prove what changed, why it changed, and what to do next.</p>
+              <div class="app-action-stack">
+                <button class="btn btn-primary" id="app-guided-primary-btn" type="button">Start evidence run</button>
+                <button class="btn btn-secondary" id="app-guided-secondary-btn" type="button">Review latest incident</button>
+              </div>
+              <div class="app-mini-list app-mini-list-tight">
+                <div class="app-mini-item"><span>Deliverable</span><strong id="app-guided-deliverable">Operator brief</strong></div>
+                <div class="app-mini-item"><span>Operator stance</span><strong id="app-guided-stance">Prove the change before escalation</strong></div>
+                <div class="app-mini-item"><span>Suggested focus</span><strong id="app-guided-focus">Run rail</strong></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="app-support-grid">
+            <article class="app-card app-support-card">
+              <h3>Account &amp; Access</h3>
+              <dl class="app-stats compact">
+                <div><dt>Signed in as</dt><dd id="app-account-identifier">Loading…</dd></div>
+                <div><dt>Billing</dt><dd id="app-billing-note">Checking configuration…</dd></div>
+                <div><dt>Plan</dt><dd id="app-tier">Loading…</dd></div>
+                <div><dt>Status</dt><dd id="app-subscription-status">Loading…</dd></div>
+                <div><dt>Runs Remaining</dt><dd id="app-runs-remaining">Loading…</dd></div>
+                <div><dt>Concurrency</dt><dd id="app-concurrency">Loading…</dd></div>
+                <div><dt>AI Insights</dt><dd id="app-ai-access">Loading…</dd></div>
+                <div><dt>API Access</dt><dd id="app-api-access">Loading…</dd></div>
+                <div><dt>Retention</dt><dd id="app-retention">Loading…</dd></div>
+              </dl>
+            </article>
+
+            <article class="app-card app-support-card" id="app-tier-emulation-card" hidden>
+              <h3>Plan Emulation</h3>
+              <p>Local development only. Override this signed-in account to test plan-gated behavior without changing the billing record.</p>
+              <label class="app-field-label" for="app-tier-emulation-select">Effective plan</label>
+              <div class="app-select-row">
+                <select id="app-tier-emulation-select">
+                  <option value="actual">Actual billing state</option>
+                </select>
+                <button class="btn btn-secondary" id="app-apply-tier-emulation-btn" type="button">Apply</button>
+              </div>
+              <p class="app-note" id="app-tier-emulation-note">Using actual billing state.</p>
+            </article>
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="container">TreeSight App — authenticated workspace for analyses, usage, and billing.</div>
+</footer>
+<!-- Expanded map viewer modal (must be direct child of body to avoid transform containment) -->
+<div class="app-map-expanded-backdrop" id="app-map-expanded-backdrop" hidden>
+  <div class="app-map-expanded-panel">
+    <div class="app-map-expanded-header">
+      <span class="app-content-label">Satellite imagery</span>
+      <div class="app-evidence-map-controls">
+        <button class="app-evidence-layer-btn" id="app-map-expanded-btn-rgb" type="button">RGB</button>
+        <button class="app-evidence-layer-btn" id="app-map-expanded-btn-ndvi" type="button">NDVI</button>
+        <button class="app-evidence-layer-btn" id="app-map-collapse-btn" type="button" title="Close expanded view">&times;</button>
+      </div>
+    </div>
+    <div class="app-map-expanded-body" id="app-map-expanded-body"></div>
+    <div class="app-map-expanded-controls" id="app-map-expanded-controls">
+      <button class="btn btn-secondary app-evidence-play-btn" id="app-map-expanded-play-btn" type="button">&#9654; Play</button>
+      <input type="range" id="app-map-expanded-slider" min="0" max="0" value="0">
+      <span id="app-map-expanded-counter">0/0</span>
+    </div>
+    <div class="app-evidence-frame-label" id="app-map-expanded-label"></div>
+  </div>
+</div>
+</body>
+</html>

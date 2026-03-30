@@ -26,19 +26,28 @@ website/
 
 ## Local Development
 
-No build step required. Serve locally with any HTTP server:
+No build step required. For full local behavior, run the proxy dev server from
+the repository root so `/api/*` stays same-origin and CIAM sign-in uses the
+registered localhost redirect URI:
 
 ```bash
-# Python 3
-cd website && python -m http.server 8000
+# In one terminal
+func start
 
-# Node.js
-cd website && npx http-server
-
-# Or use VS Code Live Server extension
+# In another terminal, from the repo root
+uv run python scripts/dev_server.py --port 4280 --func-port 7071
 ```
 
-Then open `http://localhost:8000` in your browser.
+Then open `http://localhost:4280` in your browser.
+
+For static-only layout work, any simple HTTP server is still fine:
+
+```bash
+cd website && python -m http.server 8000
+```
+
+That static-only setup will not proxy `/api/*` and will not match the CIAM app
+registration used for local sign-in.
 
 ## Deployment to Azure Static Web Apps
 

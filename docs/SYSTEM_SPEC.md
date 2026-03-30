@@ -26,7 +26,7 @@ of this document is functionally equivalent to the current system.
 11. [Security](#11-security)
 12. [Website](#12-website)
 13. [Deployment Topology](#13-deployment-topology)
-14. [Data Contracts (JSON Schemas)](#14-data-contracts)
+14. [Data Contracts (JSON Schemas)](#14-data-contracts-json-schemas)
 
 ---
 
@@ -48,7 +48,7 @@ TreeSight is a geospatial pipeline that:
 
 The pipeline is a **three-phase sequential workflow** with **fan-out parallelism** within each phase:
 
-```
+```text
 KML Upload
   │
   ▼
@@ -168,7 +168,7 @@ A scene returned by a provider search.
 
 ### 2.6 OrderState (Enum)
 
-```
+```text
 PENDING    = "pending"     — Order submitted, fulfilment in progress
 READY      = "ready"       — Imagery available for download
 FAILED     = "failed"      — Provider permanently rejected the order
@@ -177,7 +177,7 @@ CANCELLED  = "cancelled"   — Cancelled by timeout or user
 
 ### 2.7 WorkflowState (Enum)
 
-```
+```text
 READY       = "ready"
 COMPLETED   = "completed"
 SUCCESS     = "success"
@@ -204,7 +204,7 @@ UNKNOWN     = "unknown"
 **Input:** BlobEvent dict  
 **Output:** `IngestionResult`
 
-```
+```text
 IngestionResult {
     feature_count: int
     offloaded: bool
@@ -240,7 +240,7 @@ IngestionResult {
 **Input:** AOI list, BlobEvent (for provider config + polling overrides)  
 **Output:** `AcquisitionResult`
 
-```
+```text
 AcquisitionResult {
     imagery_outcomes: ImageryOutcome[]
     ready_count: int
@@ -267,7 +267,7 @@ AcquisitionResult {
      - Overall deadline: `poll_timeout` seconds (default 1800 = 30 min)
    - Output per order: `ImageryOutcome`
 
-```
+```text
 ImageryOutcome {
     state: string          — "ready" | "failed" | "cancelled" | "acquisition_timeout"
     order_id: string
@@ -285,7 +285,7 @@ ImageryOutcome {
 **Input:** Ready outcomes (state == "ready"), AOI list, config  
 **Output:** `FulfillmentResult`
 
-```
+```text
 FulfillmentResult {
     download_results: DownloadResult[]
     downloads_completed: int
@@ -317,7 +317,7 @@ FulfillmentResult {
 
 The final output aggregates all three phases:
 
-```
+```text
 PipelineSummary {
     status: "completed" | "partial_imagery"
     instance_id: string
@@ -347,7 +347,7 @@ PipelineSummary {
 
 **Message format:**
 
-```
+```text
 "Parsed {feature_count} feature(s), prepared {aoi_count} AOI(s), wrote {metadata_count} metadata record(s), imagery ready={ready_count} failed={failed_count}, downloaded={downloads_completed}, clipped={pp_clipped} reprojected={pp_reprojected}."
 ```
 
@@ -552,7 +552,7 @@ Secure, time-limited access tokens for demo artifact downloads.
 
 Every imagery provider implements a four-step lifecycle:
 
-```
+```text
 search(aoi: AOI, filters: ImageryFilters) → SearchResult[]
 order(scene_id: string) → order_id: string
 poll(order_id: string) → OrderStatus { state, message, progress_pct, is_terminal }
@@ -561,7 +561,7 @@ download(order_id: string) → BlobReference { container, blob_path, size_bytes,
 
 ### 5.2 Provider Error Hierarchy
 
-```
+```text
 ProviderError (base)
 ├── retryable: bool (default false)
 ├── ProviderAuthError (non-retryable)
@@ -613,7 +613,7 @@ The current (and only) implemented provider.
 
 ### 6.2 Output Paths
 
-```
+```text
 {output_container}/
 ├── imagery/
 │   ├── raw/{project_name}/{timestamp}/{feature_name}/          ← raw GeoTIFF downloads
@@ -626,7 +626,7 @@ The current (and only) implemented provider.
 
 ### 6.3 Pipeline Payloads Paths
 
-```
+```text
 pipeline-payloads/
 ├── payloads/{instance_id}/{hash}.json                          ← offloaded large payloads
 ├── contact-submissions/{submission_id}.json                    ← marketing contact forms
@@ -761,7 +761,7 @@ The `config_get_int(dict, key, default)` helper handles mixed types from JSON:
 
 ### 9.1 Exception Hierarchy
 
-```
+```text
 PipelineError (base)
 ├── stage: string          — which pipeline stage
 ├── code: string           — machine-readable error code
@@ -829,7 +829,7 @@ When a download fails, the error dict has 13 fields:
 
 All log messages use structured format:
 
-```
+```text
 phase={phase} step={step} | instance={id} | {key}={value} | blob={name}
 ```
 
@@ -901,7 +901,7 @@ Every pipeline run carries a `correlation_id` (sourced from Event Grid event ID)
 - Key Vault: RBAC-enabled, purge protection (prod), 90-day soft delete
 - Function App → Storage: Managed Identity with Storage Blob Data Contributor role
 - Function App → Key Vault: Managed Identity with Key Vault Secrets User role
-- CORS: restricted to Static Web App hostname + localhost:1111
+- CORS: restricted to Static Web App hostname + localhost:4280
 
 ---
 

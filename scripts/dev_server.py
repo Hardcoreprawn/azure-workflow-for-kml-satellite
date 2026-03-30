@@ -3,7 +3,7 @@
 Provides same-origin browsing so the website JavaScript can use relative
 ``/api/...`` paths exactly as in production.
 
-Usage: uv run python scripts/dev_server.py [--port 1111] [--func-port 7071]
+Usage: uv run python scripts/dev_server.py [--port 4280] [--func-port 7071]
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import http.server
 import os
+import socketserver
 import urllib.error
 import urllib.request
 
@@ -101,9 +102,14 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         super().log_message(f"[{tag}] {format}", *args)
 
 
+class ThreadingDevServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="TreeSight local dev server")
-    parser.add_argument("--port", type=int, default=1111, help="Dev server port (default: 1111)")
+    parser.add_argument("--port", type=int, default=4280, help="Dev server port (default: 4280)")
     parser.add_argument(
         "--func-port",
         type=int,
@@ -123,7 +129,7 @@ def main() -> None:
     web_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "website")
     os.chdir(web_dir)
 
-    server = http.server.HTTPServer(("0.0.0.0", args.port), DevProxyHandler)
+    server = ThreadingDevServer(("0.0.0.0", args.port), DevProxyHandler)
     print(f"TreeSight dev server on http://localhost:{args.port}")
     print(f"  Static files: {web_dir}")
     print(f"  API proxy:    /api/* -> {DevProxyHandler.func_origin}")

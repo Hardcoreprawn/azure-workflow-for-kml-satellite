@@ -57,6 +57,7 @@ See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITEC
 - **Operations runbook:** [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)
 - **API and interfaces:** [docs/API_INTERFACE_REFERENCE.md](docs/API_INTERFACE_REFERENCE.md)
 - **Metadata JSON schema:** [docs/schemas/aoi-metadata-v2.schema.json](docs/schemas/aoi-metadata-v2.schema.json)
+- **Signed-in UX spec:** [docs/SIGNED_IN_EXPERIENCE_SPEC.md](docs/SIGNED_IN_EXPERIENCE_SPEC.md)
 - **EUDR methodology:** [website/eudr-methodology.html](website/eudr-methodology.html)
 - **Infrastructure naming standard:** [docs/INFRA_NAMING_STANDARD.md](docs/INFRA_NAMING_STANDARD.md)
 
@@ -347,6 +348,20 @@ uv run pytest tests/unit -v
 uv run pre-commit run --all-files
 ```
 
+For the full local product surface, run the Functions host and the website proxy
+in separate terminals so `/api/*` stays same-origin and the signed-in app uses
+the CIAM localhost redirect URI:
+
+```bash
+# Terminal 1
+make dev-func
+
+# Terminal 2
+make dev-web
+```
+
+Then open `http://localhost:4280`.
+
 ### Pre-commit Hooks
 
 The following hooks run automatically on every `git commit`:
@@ -372,6 +387,44 @@ To bypass hooks for exceptional cases: `git commit --no-verify`
 ```bash
 func start
 ```
+
+### CIAM Sign-In Setup
+
+TreeSight uses Azure Entra External ID (CIAM) for hosted SPA sign-in. The
+CIAM bootstrap flow in `scripts/_create_user_flow.py` now defaults to
+social/passwordless sign-in rather than dedicated TreeSight passwords.
+
+```bash
+# Graph token with permission to manage CIAM flows and identity providers
+export CIAM_TOKEN=<entra-graph-token>
+
+# Optional social providers
+export CIAM_GOOGLE_CLIENT_ID=<google-client-id>
+export CIAM_GOOGLE_CLIENT_SECRET=<google-client-secret>
+export CIAM_FACEBOOK_CLIENT_ID=<facebook-client-id>
+export CIAM_FACEBOOK_CLIENT_SECRET=<facebook-client-secret>
+
+# Optional: disable the built-in email OTP fallback and allow only social sign-in
+export CIAM_SOCIAL_ONLY=true
+
+uv run python scripts/_create_user_flow.py
+```
+
+Behavior:
+
+- If Google and/or Facebook credentials are present, those providers are created in the tenant (if needed) and linked to the TreeSight self-service flow.
+- `EmailOtpSignup-OAUTH` stays enabled as the default fallback unless `CIAM_SOCIAL_ONLY=true`.
+- Dedicated local passwords are off by default. Re-enable them only with an explicit override such as `CIAM_USER_FLOW_IDENTITY_PROVIDERS=EmailPassword-OAUTH`.
+- `CIAM_USER_FLOW_IDENTITY_PROVIDERS` fully overrides the defaults, for example `Google-OAUTH,EmailOtpSignup-OAUTH`.
+
+Local auth testing:
+
+- Serve the website from `http://localhost:4280` so the SPA redirect URI matches the CIAM app registration.
+- Use `uv run python scripts/dev_server.py --port 4280 --func-port 7071` when testing sign-in locally.
+
+Limitation:
+
+- External CIAM self-service flows support Google/Facebook social providers and email-based methods. Microsoft personal-account federation is not exposed as a self-service provider in this tenant model.
 
 ### Building the Docker Image
 

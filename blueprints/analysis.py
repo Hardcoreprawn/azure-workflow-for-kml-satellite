@@ -15,6 +15,7 @@ import azure.functions as func
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
 from treesight.constants import EUDR_CUTOFF_DATE
+from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -80,6 +81,9 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     try:
         check_auth(req)
@@ -243,6 +247,9 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     try:
         check_auth(req)

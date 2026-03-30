@@ -15,6 +15,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
@@ -163,7 +164,7 @@ def _build_csv(manifest: dict[str, Any]) -> str:
     # Build a lookup of change-detection results keyed by (season, year)
     change_lookup: dict[tuple[str, int], dict[str, Any]] = {}
     for sc in season_changes:
-        key = (sc.get("season", ""), sc.get("year_b", 0))
+        key = (sc.get("season", ""), sc.get("year_to", 0))
         change_lookup[key] = sc
 
     fieldnames = [
@@ -190,8 +191,8 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
     # Pre-compute average weather per frame date range
     daily_dates = weather_daily.get("dates", []) if weather_daily else []
-    daily_temps = weather_daily.get("temperature_2m_mean", []) if weather_daily else []
-    daily_precip = weather_daily.get("precipitation_sum", []) if weather_daily else []
+    daily_temps = weather_daily.get("temp", []) if weather_daily else []
+    daily_precip = weather_daily.get("precip", []) if weather_daily else []
 
     for i, frame in enumerate(frame_plan):
         ndvi = ndvi_stats[i] if i < len(ndvi_stats) else None
@@ -216,7 +217,7 @@ def _build_csv(manifest: dict[str, Any]) -> str:
 
         # Change detection delta
         change = change_lookup.get((frame.get("season", ""), frame.get("year", 0)))
-        ndvi_delta = change.get("ndvi_mean_delta") if change else None
+        ndvi_delta = change.get("mean_delta") if change else None
 
         row = {
             "frame_index": i,
@@ -271,6 +272,21 @@ def _pdf_header(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
     pdf.ln(6)
 
 
+def _safe_text(text: str) -> str:
+    """Normalise unicode punctuation to latin-1 safe equivalents for core PDF fonts."""
+    return (
+        text.replace("\u2014", "--")
+        .replace("\u2013", "-")
+        .replace("\u2026", "...")
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+        .replace("\u2192", "->")
+        .replace("\u2190", "<-")
+    )
+
+
 def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
     """Write EUDR compliance summary section."""
     pdf.set_text_color(0, 0, 0)
@@ -315,7 +331,7 @@ def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
 
     wdpa = manifest.get("wdpa", {})
     if wdpa.get("checked"):
-        status = "Yes — protected area overlap detected" if wdpa.get("is_protected") else "No"
+        status = "Yes -- protected area overlap detected" if wdpa.get("is_protected") else "No"
         pdf.cell(
             0,
             6,
@@ -327,7 +343,7 @@ def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
             pdf.cell(
                 0,
                 6,
-                f"  - {pa.get('name', '')} ({pa.get('designation', '')})",
+                _safe_text(f"  - {pa.get('name', '')} ({pa.get('designation', '')})"),
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
@@ -392,9 +408,9 @@ def _pdf_vegetation_section(
     pdf.set_font("Helvetica", "", 8)
     for idx, frame in enumerate(frame_plan):
         ndvi = ndvi_stats[idx] if idx < len(ndvi_stats) else None
-        ndvi_val = f"{ndvi['mean']:.3f}" if ndvi and ndvi.get("mean") is not None else "\u2014"
+        ndvi_val = f"{ndvi['mean']:.3f}" if ndvi and ndvi.get("mean") is not None else "--"
         row_data = [
-            frame.get("label", "")[:18],
+            _safe_text(frame.get("label", ""))[:18],
             str(frame.get("year", "")),
             frame.get("season", ""),
             frame.get("start", ""),
@@ -433,9 +449,14 @@ def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
         pdf.set_font("Helvetica", "B", 12)
         pdf.cell(0, 8, "Weather Context", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 10)
-        months = weather_monthly.get("months", [])
-        temps = weather_monthly.get("avg_temp", [])
-        precips = weather_monthly.get("total_precip", [])
+        if isinstance(weather_monthly, list):
+            months = [m.get("month", "") for m in weather_monthly]
+            temps = [m.get("mean_temp") for m in weather_monthly]
+            precips = [m.get("total_precip") for m in weather_monthly]
+        else:
+            months = weather_monthly.get("months", []) or weather_monthly.get("labels", [])
+            temps = weather_monthly.get("avg_temp", []) or weather_monthly.get("temp", [])
+            precips = weather_monthly.get("total_precip", []) or weather_monthly.get("precip", [])
         if months:
             pdf.cell(
                 0,
@@ -497,6 +518,9 @@ async def export_data(
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     fmt = (req.route_params.get("format") or "").lower()
     if fmt not in _ALLOWED_FORMATS:

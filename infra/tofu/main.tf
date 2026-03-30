@@ -307,6 +307,45 @@ resource "azurerm_key_vault_secret" "stripe_price_id_pro_eur" {
   lifecycle { ignore_changes = [value] }
 }
 
+# --- Azure Communication Services Email ---
+
+resource "azurerm_communication_service" "main" {
+  count               = var.enable_email ? 1 : 0
+  name                = local.names.communication_service
+  resource_group_name = azurerm_resource_group.main.name
+  data_location       = "Europe"
+  tags                = local.tags
+}
+
+resource "azurerm_email_communication_service" "main" {
+  count               = var.enable_email ? 1 : 0
+  name                = local.names.email_service
+  resource_group_name = azurerm_resource_group.main.name
+  data_location       = "Europe"
+  tags                = local.tags
+}
+
+resource "azurerm_email_communication_service_domain" "azure_managed" {
+  count             = var.enable_email ? 1 : 0
+  name              = "AzureManagedDomain"
+  email_service_id  = azurerm_email_communication_service.main[0].id
+  domain_management = "AzureManagedDomain"
+  tags              = local.tags
+}
+
+# Link the email domain to the communication service so the SDK can send mail
+resource "azapi_update_resource" "acs_link_email" {
+  count       = var.enable_email ? 1 : 0
+  type        = "Microsoft.Communication/communicationServices@2023-04-01"
+  resource_id = azurerm_communication_service.main[0].id
+
+  body = {
+    properties = {
+      linkedDomains = [azurerm_email_communication_service_domain.azure_managed[0].id]
+    }
+  }
+}
+
 # --- Azure OpenAI for AI analysis (M1.6) ---
 
 resource "azurerm_cognitive_account" "openai" {
@@ -480,6 +519,19 @@ resource "azapi_resource" "function_app" {
           {
             name  = "STRIPE_PRICE_ID_PRO_EUR"
             value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_eur[0].versionless_id})"
+          }
+        ] : [], var.enable_email ? [
+          {
+            name  = "COMMUNICATION_SERVICES_CONNECTION_STRING"
+            value = azurerm_communication_service.main[0].primary_connection_string
+          },
+          {
+            name  = "EMAIL_SENDER_ADDRESS"
+            value = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
+          },
+          {
+            name  = "NOTIFICATION_EMAIL"
+            value = var.notification_email
           }
         ] : [])
       }

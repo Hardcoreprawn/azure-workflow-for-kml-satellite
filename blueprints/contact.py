@@ -12,6 +12,7 @@ import azure.functions as func
 
 from blueprints._helpers import EMAIL_RE, error_response, sanitise
 from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
+from treesight.email import send_contact_notification
 from treesight.security.rate_limit import form_limiter, get_client_ip
 from treesight.storage.client import BlobStorageClient
 
@@ -58,6 +59,9 @@ def contact_form(req: func.HttpRequest) -> func.HttpResponse:
         f"contact-submissions/{submission_id}.json",
         record,
     )
+
+    # Best-effort email notification (failure does not affect the response)
+    send_contact_notification(record)
 
     return func.HttpResponse(
         json.dumps({"status": "received", "submission_id": submission_id}),
