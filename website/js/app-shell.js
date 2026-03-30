@@ -1040,7 +1040,7 @@
 
   function clearEvidencePanels() {
     var ids = ['app-evidence-ndvi-grid', 'app-evidence-weather-grid', 'app-evidence-change-list', 'app-evidence-ai-content', 'app-evidence-eudr-content'];
-    ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.innerHTML = ''; });
+    ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.textContent = ''; });
     var noteEl = document.getElementById('app-evidence-ndvi-note');
     if (noteEl) noteEl.textContent = '';
     var canvases = ['app-evidence-ndvi-canvas', 'app-evidence-weather-canvas'];
@@ -1051,9 +1051,31 @@
     if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
   }
 
-  function evidenceStatHtml(label, value, tone) {
+  function createStatEl(label, value, tone) {
     var cls = tone === 'positive' ? ' positive' : tone === 'negative' ? ' negative' : ' neutral';
-    return '<div class="app-evidence-stat"><span>' + escHtml(label) + '</span><strong class="' + cls + '">' + escHtml(value) + '</strong></div>';
+    var div = document.createElement('div');
+    div.className = 'app-evidence-stat';
+    var span = document.createElement('span');
+    span.textContent = label;
+    var strong = document.createElement('strong');
+    strong.className = cls;
+    strong.textContent = value;
+    div.appendChild(span);
+    div.appendChild(strong);
+    return div;
+  }
+
+  function setStatGrid(grid, stats) {
+    grid.textContent = '';
+    stats.forEach(function(s) { grid.appendChild(createStatEl(s[0], s[1], s[2])); });
+  }
+
+  function createCallout(tone, message) {
+    var div = document.createElement('div');
+    div.className = 'app-callout';
+    div.setAttribute('data-tone', tone);
+    div.textContent = message;
+    return div;
   }
 
   function escHtml(s) {
@@ -1070,7 +1092,7 @@
 
     var ndvi = (manifest.ndvi_stats || []).filter(function(f) { return f != null; });
     if (!ndvi.length) {
-      grid.innerHTML = evidenceStatHtml('Status', 'No NDVI data', '');
+      setStatGrid(grid, [['Status', 'No NDVI data', '']]);
       return;
     }
 
@@ -1098,10 +1120,11 @@
       else if (delta < -0.05) { trajectory = 'Declining ↓'; trajectoryTone = 'negative'; }
     }
 
-    grid.innerHTML =
-      evidenceStatHtml('Mean NDVI', overallMean != null ? overallMean.toFixed(3) : '—', overallMean > 0.4 ? 'positive' : overallMean < 0.2 ? 'negative' : '') +
-      evidenceStatHtml('Range', overallMin != null ? overallMin.toFixed(2) + ' – ' + overallMax.toFixed(2) : '—', '') +
-      evidenceStatHtml('Trajectory', trajectory, trajectoryTone);
+    setStatGrid(grid, [
+      ['Mean NDVI', overallMean != null ? overallMean.toFixed(3) : '\u2014', overallMean > 0.4 ? 'positive' : overallMean < 0.2 ? 'negative' : ''],
+      ['Range', overallMin != null ? overallMin.toFixed(2) + ' \u2013 ' + overallMax.toFixed(2) : '\u2014', ''],
+      ['Trajectory', trajectory, trajectoryTone]
+    ]);
 
     if (note) note.textContent = means.length + ' frames sampled across the analysis period.';
 
@@ -1170,7 +1193,7 @@
     var monthly = manifest.weather_monthly;
     var daily = manifest.weather_daily;
     if (!monthly && !daily) {
-      grid.innerHTML = evidenceStatHtml('Status', 'No weather data', '');
+      setStatGrid(grid, [['Status', 'No weather data', '']]);
       return;
     }
 
@@ -1221,10 +1244,11 @@
     var avgTemp = temps.length ? (temps.reduce(function(a, b) { return a + b; }, 0) / temps.length) : null;
     var totalPrecip = precips.reduce(function(a, b) { return a + b; }, 0);
 
-    grid.innerHTML =
-      evidenceStatHtml('Avg temp', avgTemp != null ? avgTemp.toFixed(1) + '°C' : '—', '') +
-      evidenceStatHtml('Total precip', totalPrecip ? Math.round(totalPrecip) + ' mm' : '—', '') +
-      evidenceStatHtml('Months', source.length + ' months', '');
+    setStatGrid(grid, [
+      ['Avg temp', avgTemp != null ? avgTemp.toFixed(1) + '\u00B0C' : '\u2014', ''],
+      ['Total precip', totalPrecip ? Math.round(totalPrecip) + ' mm' : '\u2014', ''],
+      ['Months', source.length + ' months', '']
+    ]);
 
     if (canvas && source.length > 1) drawWeatherSparkline(canvas, source);
   }
@@ -1295,10 +1319,13 @@
     if (cd.summary) {
       var s = cd.summary;
       var summaryText = typeof s === 'string' ? s :
-        (s.trajectory || 'Stable') + ' — ' + (s.comparisons || 0) + ' comparisons, ' +
-        'net loss ' + (s.total_loss_ha ? s.total_loss_ha.toFixed(0) + ' ha' : '—') +
-        ', net gain ' + (s.total_gain_ha ? s.total_gain_ha.toFixed(0) + ' ha' : '—');
-      list.innerHTML = '<div class="app-evidence-change-item positive">' + escHtml(summaryText) + '</div>';
+        (s.trajectory || 'Stable') + ' \u2014 ' + (s.comparisons || 0) + ' comparisons, ' +
+        'net loss ' + (s.total_loss_ha ? s.total_loss_ha.toFixed(0) + ' ha' : '\u2014') +
+        ', net gain ' + (s.total_gain_ha ? s.total_gain_ha.toFixed(0) + ' ha' : '\u2014');
+      var summaryDiv = document.createElement('div');
+      summaryDiv.className = 'app-evidence-change-item positive';
+      summaryDiv.textContent = summaryText;
+      list.appendChild(summaryDiv);
     }
 
     // Show notable season changes (loss_pct > 20% or gain_pct > 20%)
@@ -1520,7 +1547,7 @@
     var originalLabel = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Analyzing…'; }
     loading.hidden = false;
-    content.innerHTML = '';
+    content.textContent = '';
 
     try {
       await apiDiscoveryReady;
@@ -1582,7 +1609,8 @@
         body: JSON.stringify({ instance_id: evidenceInstanceId, analysis: evidenceAnalysis })
       }).catch(function() {});
     } catch (err) {
-      content.innerHTML = '<div class="app-callout" data-tone="error">' + escHtml((err && err.message) || 'Could not run AI analysis.') + '</div>';
+      content.textContent = '';
+      content.appendChild(createCallout('error', (err && err.message) || 'Could not run AI analysis.'));
     } finally {
       loading.hidden = true;
       if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
@@ -1592,7 +1620,7 @@
   function renderEvidenceAnalysis(analysis) {
     var content = document.getElementById('app-evidence-ai-content');
     if (!content) return;
-    content.innerHTML = '';
+    content.textContent = '';
 
     if (analysis.summary) {
       var summaryEl = document.createElement('div');
@@ -1645,7 +1673,7 @@
 
     if (btn) btn.disabled = true;
     loading.hidden = false;
-    content.innerHTML = '';
+    content.textContent = '';
 
     try {
       await apiDiscoveryReady;
@@ -1680,13 +1708,22 @@
 
       var result = await res.json();
       var cls = (result.compliant || result.deforestation_free) ? 'compliant' : 'non-compliant';
-      var label = cls === 'compliant' ? '✓ No deforestation detected since Dec 2020' : '⚠ Potential deforestation detected';
-      content.innerHTML = '<div class="app-evidence-eudr-result ' + cls + '">' +
-        '<strong>' + escHtml(label) + '</strong>' +
-        (result.summary ? '<p>' + escHtml(result.summary) + '</p>' : '') +
-        '</div>';
+      var label = cls === 'compliant' ? '\u2713 No deforestation detected since Dec 2020' : '\u26A0 Potential deforestation detected';
+      content.textContent = '';
+      var resultDiv = document.createElement('div');
+      resultDiv.className = 'app-evidence-eudr-result ' + cls;
+      var strong = document.createElement('strong');
+      strong.textContent = label;
+      resultDiv.appendChild(strong);
+      if (result.summary) {
+        var p = document.createElement('p');
+        p.textContent = result.summary;
+        resultDiv.appendChild(p);
+      }
+      content.appendChild(resultDiv);
     } catch (err) {
-      content.innerHTML = '<div class="app-callout" data-tone="error">' + escHtml((err && err.message) || 'Could not run EUDR assessment.') + '</div>';
+      content.textContent = '';
+      content.appendChild(createCallout('error', (err && err.message) || 'Could not run EUDR assessment.'));
     } finally {
       loading.hidden = true;
       if (btn) btn.disabled = false;
