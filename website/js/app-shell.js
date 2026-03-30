@@ -854,7 +854,11 @@
 
       header.className = 'app-history-item-header';
       title.className = 'app-history-item-title';
-      title.textContent = (historyRunIsActive(run) ? 'Resume run ' : 'Open run ') + shortInstanceId(instanceId);
+      var titleParts = [];
+      if (run.aoiCount) titleParts.push(formatCountLabel(run.aoiCount, 'AOI'));
+      if (run.totalAreaHa) titleParts.push(Number(run.totalAreaHa).toFixed(1) + ' ha');
+      var titleLabel = titleParts.length ? titleParts.join(' · ') : shortInstanceId(instanceId);
+      title.textContent = (historyRunIsActive(run) ? 'Resume: ' : '') + titleLabel;
       status.className = 'app-history-item-status';
       status.textContent = runtimeStatus;
       header.appendChild(title);

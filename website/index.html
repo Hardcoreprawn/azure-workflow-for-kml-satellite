@@ -33,7 +33,7 @@
     <ul>
       <li><a href="#problem">Overview</a></li>
       <li><a href="#demo">Demo</a></li>
-      <li><a href="/kml-guide.html">KML Guide</a></li>
+      <li><a href="/docs/">Docs</a></li>
       <li><a href="#timeline">Pipeline</a></li>
       <li><a href="#pricing">Pricing</a></li>
       <li><a href="#data-sources">Data</a></li>
@@ -97,7 +97,7 @@
         <strong>New to KML files?</strong>
         <p>Learn how to draw an area of interest in Google Earth Pro and export it as KML — no GIS experience needed.</p>
       </div>
-      <a href="/kml-guide.html" class="btn btn-secondary btn-sm">Read the Guide</a>
+      <a href="/docs/kml-guide.html" class="btn btn-secondary btn-sm">Read the Guide</a>
     </div>
     <div id="contract-warning" class="contract-warning">
       API contract version mismatch. Demo submissions are disabled until the backend is updated.
@@ -250,7 +250,7 @@
   <div class="container">
     <div class="section-label">Pricing</div>
     <h2>Simple, Transparent Pricing</h2>
-    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include satellite imagery from Sentinel-2 and NAIP, weather correlation, and NDVI change detection. Prices shown exclude VAT where applicable.</p>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include Sentinel-2 and NAIP satellite imagery, weather correlation, and NDVI change detection. Prices shown exclude VAT where applicable.</p>
     <div class="pricing-grid">
       <div class="pricing-card">
         <div class="tier-name">Free</div>
@@ -259,7 +259,6 @@
         <ul>
           <li>5 AOI analyses total <em>(beta)</em></li>
           <li>1 concurrent pipeline</li>
-          <li>Sentinel-2 (global) + NAIP (US) imagery</li>
           <li>NDVI + weather overlay</li>
           <li>Before/after comparison</li>
           <li>30-day data retention</li>
@@ -267,18 +266,32 @@
         </ul>
         <a href="#early-access" class="btn btn-primary">Start Free</a>
       </div>
+      <div class="pricing-card">
+        <div class="tier-name">Starter</div>
+        <div class="tier-price">&pound;19 <span>/month</span></div>
+        <div class="tier-desc">For freelancers and solo consultants</div>
+        <ul>
+          <li>15 AOI analyses per month</li>
+          <li>2 concurrent pipelines</li>
+          <li>Everything in Free, plus:</li>
+          <li>AI-generated insights</li>
+          <li>GeoJSON &amp; CSV export</li>
+          <li>60-day data retention</li>
+          <li>Email support</li>
+        </ul>
+        <a href="#early-access" class="btn btn-secondary">Get Starter</a>
+      </div>
       <div class="pricing-card featured">
         <div class="tier-name">Pro</div>
         <div class="tier-price">&pound;39 <span>/month</span></div>
         <div class="tier-desc">For small NGOs and independent advisors</div>
         <ul>
           <li>50 AOI analyses per month</li>
-          <li>3 concurrent pipelines</li>
-          <li>Everything in Free, plus:</li>
-          <li>AI-generated insights</li>
-          <li>GeoJSON &amp; CSV export</li>
+          <li>5 concurrent pipelines</li>
+          <li>Everything in Starter, plus:</li>
+          <li>PDF evidence reports</li>
           <li>90-day data retention</li>
-          <li>Email support</li>
+          <li>Priority email support</li>
         </ul>
         <button class="btn btn-primary" id="btn-upgrade-pro" onclick="window.treesightBilling && window.treesightBilling.checkout()">Get Pro</button>
       </div>

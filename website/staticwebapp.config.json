@@ -1,9 +1,19 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/kml-guide.html", "/terms.html", "/privacy.html", "/eudr-methodology.html"]
+    "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html"]
   },
   "routes": [
+    {
+      "route": "/kml-guide.html",
+      "redirect": "/docs/kml-guide.html",
+      "statusCode": 301
+    },
+    {
+      "route": "/eudr-methodology.html",
+      "redirect": "/docs/eudr-methodology.html",
+      "statusCode": 301
+    },
     {
       "route": "/api/*",
       "allowedRoles": ["anonymous"]
