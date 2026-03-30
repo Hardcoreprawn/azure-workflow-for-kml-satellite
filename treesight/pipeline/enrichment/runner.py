@@ -41,6 +41,8 @@ def run_enrichment(
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
+    cadence: str = "maximum",
+    max_history_years: int | None = None,
 ) -> dict[str, Any]:
     """Run full enrichment pipeline — the main entry point.
 
@@ -70,7 +72,13 @@ def run_enrichment(
         cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
         date_start = (cutoff + timedelta(days=1)).isoformat()
 
-    frame_plan = build_frame_plan(coords, date_start=date_start, date_end=date_end)
+    frame_plan = build_frame_plan(
+        coords,
+        date_start=date_start,
+        date_end=date_end,
+        cadence=cadence,
+        max_history_years=max_history_years,
+    )
 
     # Centroid for weather
     lons = [c[0] for c in coords]
