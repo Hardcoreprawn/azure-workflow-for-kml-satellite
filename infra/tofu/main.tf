@@ -329,7 +329,7 @@ resource "azurerm_email_communication_service_domain" "azure_managed" {
   count             = var.enable_email ? 1 : 0
   name              = "AzureManagedDomain"
   email_service_id  = azurerm_email_communication_service.main[0].id
-  domain_management = "AzureManagedDomain"
+  domain_management = "AzureManaged"
   tags              = local.tags
 }
 
