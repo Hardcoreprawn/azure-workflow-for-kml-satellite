@@ -36,10 +36,11 @@ SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 
 HTML_PAGES = [
     WEBSITE / "index.html",
-    WEBSITE / "kml-guide.html",
+    WEBSITE / "docs" / "index.html",
+    WEBSITE / "docs" / "kml-guide.html",
     WEBSITE / "privacy.html",
     WEBSITE / "terms.html",
-    WEBSITE / "eudr-methodology.html",
+    WEBSITE / "docs" / "eudr-methodology.html",
 ]
 
 
