@@ -266,3 +266,15 @@
   .app-preflight-grid{grid-template-columns:1fr}
   .app-select-row{flex-direction:column;align-items:stretch}
 }
+
+/* --- Demo mode --- */
+.app-demo-banner{background:linear-gradient(90deg,#1a3d22,#2d5a3d);color:#e0f0e0;padding:10px 0;font-size:.9rem;position:relative}
+.app-demo-banner .container{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.app-demo-banner-icon{font-size:1.2rem}
+.app-demo-banner-text{flex:1;min-width:200px}
+.app-demo-banner .btn-sm{padding:4px 12px;font-size:.8rem;border-radius:4px}
+.app-demo-banner-close{background:none;border:none;color:#e0f0e0;font-size:1rem;cursor:pointer;padding:4px 8px;margin-left:auto}
+.app-demo-banner-close:hover{color:#fff}
+.app-demo-sample-picker{background:rgba(45,90,61,.12);border:1px solid rgba(45,90,61,.25);border-radius:8px;padding:12px 14px;margin-bottom:12px}
+.app-demo-sample-picker .app-select{width:100%;padding:8px 10px;border-radius:6px;border:1px solid rgba(139,148,158,.3);background:rgba(13,17,23,.6);color:inherit;font-size:.9rem}
+.app-demo-sample-picker .app-note{margin-top:6px;font-size:.82rem;opacity:.7}
