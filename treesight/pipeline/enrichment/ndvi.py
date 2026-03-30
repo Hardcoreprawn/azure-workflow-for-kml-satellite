@@ -211,6 +211,9 @@ def compute_ndvi(
         }
 
         # Write NDVI raster as single-band float32 GeoTIFF
+        # Apply valid_mask so change detection only compares clean surface pixels
+        # (cloud/shadow/snow/nodata pixels are set to NaN)
+        ndvi_masked = np.where(valid_mask, ndvi, np.nan)
         buf = io.BytesIO()
         profile = b04_profile.copy()
         profile.update(
@@ -222,7 +225,7 @@ def compute_ndvi(
             compress="deflate",
         )
         with rasterio.open(buf, "w", **profile) as dst:
-            dst.write(ndvi[np.newaxis, :, :])
+            dst.write(ndvi_masked[np.newaxis, :, :])
 
         stats["geotiff_bytes"] = buf.getvalue()
 

@@ -6,6 +6,7 @@ cancellation (Consumer Contracts Regulations 2013 — 14-day cooling-off).
 
 import json
 import logging
+from urllib.parse import urlparse
 
 import azure.functions as func
 
@@ -21,6 +22,13 @@ from treesight.config import (
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
+
+_LOCAL_EMULATION_ORIGINS = {
+    "http://localhost:4280",
+    "http://127.0.0.1:4280",
+    "http://localhost:1111",
+    "http://127.0.0.1:1111",
+}
 
 
 def _stripe_configured() -> bool:
@@ -51,6 +59,53 @@ def _safe_origin(req: func.HttpRequest) -> str:
         (o for o in _ALLOWED_ORIGINS if o.startswith("https://")),
         "https://treesight.hrdcrprwn.com",
     )
+
+
+def _tier_emulation_allowed(req: func.HttpRequest) -> bool:
+    """Allow plan emulation only from local development origins."""
+    origin = req.headers.get("Origin", "")
+    if origin in _LOCAL_EMULATION_ORIGINS:
+        return True
+    try:
+        hostname = urlparse(req.url).hostname or ""
+    except Exception:
+        return False
+    return hostname in {"localhost", "127.0.0.1"}
+
+
+def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
+    from treesight.security.billing import (
+        get_effective_subscription,
+        get_subscription,
+        get_subscription_emulation,
+        plan_capabilities,
+        supported_tiers,
+    )
+    from treesight.security.quota import check_quota
+
+    subscription = get_subscription(user_id)
+    effective = get_effective_subscription(user_id)
+    emulation = get_subscription_emulation(user_id)
+    capabilities = plan_capabilities(effective.get("tier"))
+
+    return {
+        "tier": effective.get("tier", "free"),
+        "status": effective.get("status", "none"),
+        "runs_remaining": check_quota(user_id),
+        "billing_configured": _stripe_configured(),
+        "tier_source": "emulated" if effective.get("emulated") else "billing",
+        "capabilities": capabilities,
+        "subscription": {
+            "tier": subscription.get("tier", "free"),
+            "status": subscription.get("status", "none"),
+        },
+        "emulation": {
+            "available": _tier_emulation_allowed(req),
+            "active": bool(emulation),
+            "tier": emulation.get("tier") if emulation else None,
+            "tiers": list(supported_tiers()),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -310,21 +365,50 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    from treesight.security.billing import get_subscription
-    from treesight.security.quota import check_quota
+    return func.HttpResponse(
+        json.dumps(_billing_status_payload(user_id, req)),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
-    sub = get_subscription(user_id)
-    remaining = check_quota(user_id)
+
+@bp.route(
+    route="billing/emulation", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS
+)
+@require_auth
+def billing_emulation(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    if not _tier_emulation_allowed(req):
+        if user_id == "anonymous":
+            return error_response(401, "Authentication required for billing", req=req)
+        return error_response(
+            403, "Tier emulation is only available from local development origins", req=req
+        )
+
+    try:
+        body = json.loads(req.get_body() or b"{}")
+    except ValueError:
+        return error_response(400, "Invalid JSON body", req=req)
+
+    requested_tier = str(body.get("tier", "")).strip().lower()
+
+    from treesight.security.billing import clear_subscription_emulation, save_subscription_emulation
+
+    try:
+        if requested_tier in {"", "actual", "clear", "none"}:
+            clear_subscription_emulation(user_id)
+        else:
+            save_subscription_emulation(user_id, requested_tier)
+    except ValueError as exc:
+        return error_response(400, str(exc), req=req)
 
     return func.HttpResponse(
-        json.dumps(
-            {
-                "tier": sub.get("tier", "free"),
-                "status": sub.get("status", "none"),
-                "runs_remaining": remaining,
-                "billing_configured": _stripe_configured(),
-            }
-        ),
+        json.dumps(_billing_status_payload(user_id, req)),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),

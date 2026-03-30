@@ -465,3 +465,37 @@ class TestComputeNdviWithScl:
         result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
 
         assert result is None  # no valid pixels after masking
+
+    @patch("treesight.pipeline.enrichment.ndvi._cog_band_read")
+    @patch("treesight.pipeline.enrichment.ndvi._find_best_s2_scene")
+    def test_geotiff_nans_out_scl_masked_pixels(self, mock_find, mock_read):
+        """GeoTIFF raster must NaN out cloud/shadow/invalid pixels so that
+        downstream change detection only compares clean surface pixels."""
+        import numpy as np
+        import rasterio
+
+        from treesight.pipeline.enrichment.ndvi import compute_ndvi
+
+        mock_find.return_value = _s2_scene_fixture(with_scl=True)
+
+        b04 = np.full((4, 4), 1000, dtype=np.uint16)
+        b08 = np.full((4, 4), 3000, dtype=np.uint16)
+        # SCL 2x2 → resampled to 4x4: top-right quadrant is cloud (9)
+        scl = np.array([[4, 9], [4, 4]], dtype=np.uint8)
+        profile = _band_profile(4, 4)
+        scl_profile = _band_profile(2, 2)
+        mock_read.side_effect = [(b04, profile), (b08, profile), (scl, scl_profile)]
+
+        result = compute_ndvi([-0.5, 51.4, -0.4, 51.5], "2024-06-01", "2024-08-31")
+        assert result is not None
+
+        with rasterio.open(io.BytesIO(result["geotiff_bytes"])) as src:
+            data = src.read(1)
+            # Cloud-masked pixels should be NaN in the GeoTIFF
+            nan_count = int(np.isnan(data).sum())
+            valid_count = int(np.isfinite(data).sum())
+            assert nan_count == 4, f"Expected 4 NaN (cloud) pixels, got {nan_count}"
+            assert valid_count == 12, f"Expected 12 valid pixels, got {valid_count}"
+            # Valid pixels should have NDVI = 0.5
+            valid_vals = data[np.isfinite(data)]
+            assert np.allclose(valid_vals, 0.5, atol=0.01)

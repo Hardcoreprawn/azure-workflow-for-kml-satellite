@@ -1,0 +1,506 @@
+<?xml version="1.0" ?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Monster_KML_50_AOIs</name>
+    <Placemark>
+      <name>AOI_0</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-10.0,0 -60.0,-9.98,0 -59.98,-9.98,0 -59.98,-10.0,0 -60.0,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_1</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.95,0 -60.0,-9.93,0 -59.98,-9.93,0 -59.98,-9.95,0 -60.0,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_2</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.9,0 -60.0,-9.88,0 -59.98,-9.88,0 -59.98,-9.9,0 -60.0,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_3</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.85,0 -60.0,-9.83,0 -59.98,-9.83,0 -59.98,-9.85,0 -60.0,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_4</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.8,0 -60.0,-9.780000000000001,0 -59.98,-9.780000000000001,0 -59.98,-9.8,0 -60.0,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_5</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.75,0 -60.0,-9.73,0 -59.98,-9.73,0 -59.98,-9.75,0 -60.0,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_6</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.7,0 -60.0,-9.68,0 -59.98,-9.68,0 -59.98,-9.7,0 -60.0,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_7</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-60.0,-9.65,0 -60.0,-9.63,0 -59.98,-9.63,0 -59.98,-9.65,0 -60.0,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_8</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-10.0,0 -59.95,-9.98,0 -59.93,-9.98,0 -59.93,-10.0,0 -59.95,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_9</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.95,0 -59.95,-9.93,0 -59.93,-9.93,0 -59.93,-9.95,0 -59.95,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_10</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.9,0 -59.95,-9.88,0 -59.93,-9.88,0 -59.93,-9.9,0 -59.95,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_11</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.85,0 -59.95,-9.83,0 -59.93,-9.83,0 -59.93,-9.85,0 -59.95,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_12</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.8,0 -59.95,-9.780000000000001,0 -59.93,-9.780000000000001,0 -59.93,-9.8,0 -59.95,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_13</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.75,0 -59.95,-9.73,0 -59.93,-9.73,0 -59.93,-9.75,0 -59.95,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_14</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.7,0 -59.95,-9.68,0 -59.93,-9.68,0 -59.93,-9.7,0 -59.95,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_15</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.95,-9.65,0 -59.95,-9.63,0 -59.93,-9.63,0 -59.93,-9.65,0 -59.95,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_16</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-10.0,0 -59.9,-9.98,0 -59.879999999999995,-9.98,0 -59.879999999999995,-10.0,0 -59.9,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_17</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.95,0 -59.9,-9.93,0 -59.879999999999995,-9.93,0 -59.879999999999995,-9.95,0 -59.9,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_18</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.9,0 -59.9,-9.88,0 -59.879999999999995,-9.88,0 -59.879999999999995,-9.9,0 -59.9,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_19</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.85,0 -59.9,-9.83,0 -59.879999999999995,-9.83,0 -59.879999999999995,-9.85,0 -59.9,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_20</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.8,0 -59.9,-9.780000000000001,0 -59.879999999999995,-9.780000000000001,0 -59.879999999999995,-9.8,0 -59.9,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_21</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.75,0 -59.9,-9.73,0 -59.879999999999995,-9.73,0 -59.879999999999995,-9.75,0 -59.9,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_22</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.7,0 -59.9,-9.68,0 -59.879999999999995,-9.68,0 -59.879999999999995,-9.7,0 -59.9,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_23</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.9,-9.65,0 -59.9,-9.63,0 -59.879999999999995,-9.63,0 -59.879999999999995,-9.65,0 -59.9,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_24</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-10.0,0 -59.85,-9.98,0 -59.83,-9.98,0 -59.83,-10.0,0 -59.85,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_25</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.95,0 -59.85,-9.93,0 -59.83,-9.93,0 -59.83,-9.95,0 -59.85,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_26</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.9,0 -59.85,-9.88,0 -59.83,-9.88,0 -59.83,-9.9,0 -59.85,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_27</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.85,0 -59.85,-9.83,0 -59.83,-9.83,0 -59.83,-9.85,0 -59.85,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_28</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.8,0 -59.85,-9.780000000000001,0 -59.83,-9.780000000000001,0 -59.83,-9.8,0 -59.85,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_29</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.75,0 -59.85,-9.73,0 -59.83,-9.73,0 -59.83,-9.75,0 -59.85,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_30</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.7,0 -59.85,-9.68,0 -59.83,-9.68,0 -59.83,-9.7,0 -59.85,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_31</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.85,-9.65,0 -59.85,-9.63,0 -59.83,-9.63,0 -59.83,-9.65,0 -59.85,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_32</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-10.0,0 -59.8,-9.98,0 -59.779999999999994,-9.98,0 -59.779999999999994,-10.0,0 -59.8,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_33</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.95,0 -59.8,-9.93,0 -59.779999999999994,-9.93,0 -59.779999999999994,-9.95,0 -59.8,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_34</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.9,0 -59.8,-9.88,0 -59.779999999999994,-9.88,0 -59.779999999999994,-9.9,0 -59.8,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_35</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.85,0 -59.8,-9.83,0 -59.779999999999994,-9.83,0 -59.779999999999994,-9.85,0 -59.8,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_36</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.8,0 -59.8,-9.780000000000001,0 -59.779999999999994,-9.780000000000001,0 -59.779999999999994,-9.8,0 -59.8,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_37</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.75,0 -59.8,-9.73,0 -59.779999999999994,-9.73,0 -59.779999999999994,-9.75,0 -59.8,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_38</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.7,0 -59.8,-9.68,0 -59.779999999999994,-9.68,0 -59.779999999999994,-9.7,0 -59.8,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_39</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.8,-9.65,0 -59.8,-9.63,0 -59.779999999999994,-9.63,0 -59.779999999999994,-9.65,0 -59.8,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_40</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-10.0,0 -59.75,-9.98,0 -59.73,-9.98,0 -59.73,-10.0,0 -59.75,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_41</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.95,0 -59.75,-9.93,0 -59.73,-9.93,0 -59.73,-9.95,0 -59.75,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_42</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.9,0 -59.75,-9.88,0 -59.73,-9.88,0 -59.73,-9.9,0 -59.75,-9.9,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_43</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.85,0 -59.75,-9.83,0 -59.73,-9.83,0 -59.73,-9.85,0 -59.75,-9.85,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_44</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.8,0 -59.75,-9.780000000000001,0 -59.73,-9.780000000000001,0 -59.73,-9.8,0 -59.75,-9.8,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_45</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.75,0 -59.75,-9.73,0 -59.73,-9.73,0 -59.73,-9.75,0 -59.75,-9.75,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_46</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.7,0 -59.75,-9.68,0 -59.73,-9.68,0 -59.73,-9.7,0 -59.75,-9.7,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_47</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.75,-9.65,0 -59.75,-9.63,0 -59.73,-9.63,0 -59.73,-9.65,0 -59.75,-9.65,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_48</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.7,-10.0,0 -59.7,-9.98,0 -59.68,-9.98,0 -59.68,-10.0,0 -59.7,-10.0,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>AOI_49</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>-59.7,-9.95,0 -59.7,-9.93,0 -59.68,-9.93,0 -59.68,-9.95,0 -59.7,-9.95,0</coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

@@ -1,4 +1,4 @@
-"""Tests for export endpoints — GeoJSON and CSV (M4 §4.6)."""
+"""Tests for export endpoints — GeoJSON, CSV, and PDF (M4 §4.6)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from blueprints.export import _build_csv, _build_geojson
+from blueprints.export import _build_csv, _build_geojson, _build_pdf
 
 
 @pytest.fixture()
@@ -59,20 +59,21 @@ def enrichment_manifest():
         ],
         "weather_daily": {
             "dates": ["2023-03-15", "2023-06-15", "2024-03-15"],
-            "temperature_2m_mean": [12.5, 22.3, 13.1],
-            "precipitation_sum": [5.2, 1.0, 4.8],
+            "temp": [12.5, 22.3, 13.1],
+            "precip": [5.2, 1.0, 4.8],
         },
-        "weather_monthly": [
-            {"month": "2023-03", "mean_temp": 12.5, "total_precip": 45.0},
-            {"month": "2023-06", "mean_temp": 22.3, "total_precip": 12.0},
-        ],
+        "weather_monthly": {
+            "labels": ["2023-03", "2023-06"],
+            "temp": [12.5, 22.3],
+            "precip": [45.0, 12.0],
+        },
         "change_detection": {
             "season_changes": [
                 {
                     "season": "spring",
-                    "year_a": 2023,
-                    "year_b": 2024,
-                    "ndvi_mean_delta": 0.03,
+                    "year_from": 2023,
+                    "year_to": 2024,
+                    "mean_delta": 0.03,
                 },
             ],
             "summary": {
@@ -141,7 +142,7 @@ class TestBuildGeoJSON:
     def test_summary_includes_weather_monthly(self, enrichment_manifest):
         result = _build_geojson(enrichment_manifest)
         summary = result["features"][-1]["properties"]
-        assert len(summary["weather_monthly"]) == 2
+        assert summary["weather_monthly"]["labels"] == ["2023-03", "2023-06"]
 
     def test_empty_manifest_produces_empty_collection(self):
         result = _build_geojson({})
@@ -226,3 +227,37 @@ class TestBuildCSV:
         rows = list(reader)
         assert rows[0]["ndvi_mean"] == ""
         assert rows[0]["ndvi_min"] == ""
+
+
+class TestBuildPDF:
+    def test_returns_pdf_bytes(self, enrichment_manifest):
+        result = _build_pdf(enrichment_manifest, "run-123")
+        assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+    def test_normalises_unicode_punctuation_for_core_font(self, enrichment_manifest):
+        manifest = dict(enrichment_manifest)
+        manifest["ndvi_stats"] = [None, *enrichment_manifest["ndvi_stats"][1:]]
+        manifest["wdpa"] = {
+            "checked": True,
+            "is_protected": True,
+            "protected_areas": [
+                {
+                    "name": "Reserve d’Ivoire — North",
+                    "designation": "Community preserve…",
+                }
+            ],
+        }
+
+        result = _build_pdf(manifest, "run-unicode")
+        assert result.startswith(b"%PDF")
+
+    def test_supports_legacy_monthly_weather_list(self, enrichment_manifest):
+        manifest = dict(enrichment_manifest)
+        manifest["weather_monthly"] = [
+            {"month": "2023-03", "mean_temp": 12.5, "total_precip": 45.0},
+            {"month": "2023-06", "mean_temp": 22.3, "total_precip": 12.0},
+        ]
+
+        result = _build_pdf(manifest, "run-legacy")
+        assert result.startswith(b"%PDF")

@@ -44,7 +44,7 @@ services:
       azurite:
         condition: service_healthy
     environment:
-      AzureWebJobsStorage: >-
+      AzureWebJobsStorage: >-  # pragma: allowlist secret
         DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
       AzureWebJobsFeatureFlags: EnableWorkerIndexing
       FUNCTIONS_WORKER_RUNTIME: python
@@ -54,7 +54,7 @@ services:
       IMAGERY_MAX_CLOUD_COVER_PCT: "20.0"
       AOI_BUFFER_M: "100.0"
       AOI_MAX_AREA_HA: "10000.0"
-      DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me
+      DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me  # pragma: allowlist secret
       DEMO_VALET_TOKEN_TTL_SECONDS: "86400"
       DEMO_VALET_TOKEN_MAX_USES: "3"
       OLLAMA_URL: "http://ollama:11434"
@@ -70,7 +70,7 @@ services:
     image: python:3.12-slim
     container_name: treesight-web
     ports:
-      - "1111:1111"
+      - "4280:4280"
     depends_on:
       func:
         condition: service_healthy
@@ -79,7 +79,7 @@ services:
       - ./scripts/dev_server.py:/app/scripts/dev_server.py:ro
     working_dir: /app
     command: >-
-      python scripts/dev_server.py --port 1111 --func-host func --func-port 80
+      python scripts/dev_server.py --port 4280 --func-host func --func-port 80
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
 

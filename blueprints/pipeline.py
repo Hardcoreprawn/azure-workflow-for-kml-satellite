@@ -15,6 +15,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import quote
 
 import azure.durable_functions as df
 import azure.functions as func
@@ -27,6 +28,7 @@ from treesight.constants import (
     DEFAULT_OUTPUT_CONTAINER,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
     MAX_KML_FILE_SIZE_BYTES,
+    PIPELINE_PAYLOADS_CONTAINER,
 )
 from treesight.errors import ContractError
 from treesight.models.blob_event import BlobEvent
@@ -45,6 +47,9 @@ bp = df.Blueprint()
 
 # Maximum body size for analysis save endpoint (128 KiB)
 _MAX_ANALYSIS_BODY_BYTES = 131_072
+_SIGNED_IN_SUBMISSIONS_PREFIX = "analysis-submissions"
+_DEFAULT_HISTORY_LIMIT = 8
+_MAX_HISTORY_LIMIT = 20
 
 
 # ---------------------------------------------------------------------------
@@ -88,17 +93,77 @@ async def orchestrator_status(
             json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"
         )
 
-    result: dict[str, Any] = {
-        "instanceId": status.instance_id,
-        "name": status.name,
-        "runtimeStatus": status.runtime_status.value if status.runtime_status else None,
-        "createdTime": str(status.created_time),
-        "lastUpdatedTime": str(status.last_updated_time),
-        "customStatus": status.custom_status,
-        "output": _reshape_output(status.output) if status.output else None,
-    }
+    result = _durable_status_payload(status)
     return func.HttpResponse(
         json.dumps(result, default=str),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
+@bp.route(
+    route="analysis/history",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@bp.durable_client_input(client_name="client")
+async def analysis_history(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """GET /api/analysis/history — recent signed-in runs for the current user."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return _error_response(401, str(exc))
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return _error_response(429, "Rate limit exceeded — try again later")
+
+    return await _build_analysis_history_response(req, client, user_id)
+
+
+async def _build_analysis_history_response(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+    user_id: str,
+) -> func.HttpResponse:
+    """Build the signed-in history response for a single authenticated user."""
+
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    limit = _parse_history_limit(req.params.get("limit", ""))
+    blob_names = []
+    prefix = _analysis_submission_prefix(user_id)
+
+    try:
+        blob_names = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix=prefix)
+    except Exception:
+        logging.info("No analysis history found for user=%s prefix=%s", user_id, prefix)
+
+    records: list[dict[str, Any]] = []
+    for blob_name in blob_names:
+        try:
+            record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
+        except Exception:
+            logging.warning("Skipping unreadable analysis history blob=%s", blob_name)
+            continue
+        if record.get("user_id") != user_id:
+            continue
+        records.append(record)
+
+    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+
+    runs = [await _build_analysis_history_entry(record, client) for record in records[:limit]]
+    active_run = next((run for run in runs if _history_run_is_active(run)), None)
+
+    return func.HttpResponse(
+        json.dumps({"runs": runs, "activeRun": active_run}, default=str),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
@@ -828,6 +893,30 @@ async def demo_process(
     Accepts ``{"kml_content": "..."}`` and returns ``{"instance_id": "..."}``
     which can be polled via ``GET /api/orchestrator/{instance_id}``.
     """
+    return await _submit_analysis_request(req, client, blob_prefix="demo")
+
+
+@bp.route(route="analysis/submit", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+@bp.durable_client_input(client_name="client")
+async def analysis_submit(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """POST /api/analysis/submit — production-named analysis submission route.
+
+    Accepts ``{"kml_content": "..."}`` and returns ``{"instance_id": "..."}``
+    which can be polled via ``GET /api/orchestrator/{instance_id}``.
+    """
+    return await _submit_analysis_request(req, client, blob_prefix="analysis")
+
+
+async def _submit_analysis_request(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+    *,
+    blob_prefix: str,
+) -> func.HttpResponse:
+    """Validate, persist, and enqueue a KML analysis submission."""
     try:
         _claims, user_id = check_auth(req)
     except ValueError as exc:
@@ -843,6 +932,8 @@ async def demo_process(
     except ValueError:
         return _error_response(400, "Invalid JSON body")
 
+    submission_context = _extract_submission_context(body)
+
     kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
     if not isinstance(kml_content, str) or not kml_content.strip():
         return _error_response(400, "kml_content is required")
@@ -852,7 +943,8 @@ async def demo_process(
         return _error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes")
 
     submission_id = str(uuid.uuid4())
-    kml_blob_name = f"demo/{submission_id}.kml"
+    safe_prefix = blob_prefix.strip("/") or "analysis"
+    kml_blob_name = f"{safe_prefix}/{submission_id}.kml"
 
     from treesight.storage.client import BlobStorageClient
 
@@ -881,10 +973,40 @@ async def demo_process(
         instance_id=submission_id,
         client_input=orchestrator_input,
     )
-    logging.info("Demo process started instance=%s", submission_id)
+
+    if safe_prefix == "analysis":
+        record = {
+            "submission_id": submission_id,
+            "instance_id": submission_id,
+            "user_id": user_id,
+            "submitted_at": orchestrator_input["event_time"],
+            "kml_blob_name": kml_blob_name,
+            "kml_size_bytes": len(kml_bytes),
+            "submission_prefix": safe_prefix,
+            "provider_name": submission_context.get(
+                "provider_name", orchestrator_input["provider_name"]
+            ),
+            "status": "submitted",
+        }
+        record.update(submission_context)
+        try:
+            storage.upload_json(
+                PIPELINE_PAYLOADS_CONTAINER,
+                _analysis_submission_blob_name(user_id, submission_id),
+                record,
+            )
+        except Exception:
+            logging.warning(
+                "Unable to persist analysis history record instance=%s user=%s",
+                submission_id,
+                user_id,
+                exc_info=True,
+            )
+
+    logging.info("Analysis process started instance=%s prefix=%s", submission_id, safe_prefix)
 
     return func.HttpResponse(
-        json.dumps({"instance_id": submission_id}),
+        json.dumps({"instance_id": submission_id, "submission_prefix": safe_prefix}),
         status_code=202,
         mimetype="application/json",
     )
@@ -937,6 +1059,125 @@ def _extract_blob_name(blob_url: str) -> str:
     return ""
 
 
+def _durable_status_payload(status: Any) -> dict[str, Any]:
+    return {
+        "instanceId": status.instance_id,
+        "name": status.name,
+        "runtimeStatus": status.runtime_status.value if status.runtime_status else None,
+        "createdTime": str(status.created_time),
+        "lastUpdatedTime": str(status.last_updated_time),
+        "customStatus": status.custom_status,
+        "output": _reshape_output(status.output) if status.output else None,
+    }
+
+
+def _analysis_submission_prefix(user_id: str) -> str:
+    return f"{_SIGNED_IN_SUBMISSIONS_PREFIX}/{quote(user_id, safe='')}/"
+
+
+def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
+    return f"{_analysis_submission_prefix(user_id)}{submission_id}.json"
+
+
+def _extract_submission_context(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
+        return {}
+
+    raw_context = body.get("submission_context")
+    if not isinstance(raw_context, dict):
+        return {}
+
+    context: dict[str, Any] = {}
+    int_fields = ("feature_count", "aoi_count")
+    float_fields = ("max_spread_km", "total_area_ha", "largest_area_ha")
+    text_fields = ("processing_mode", "provider_name", "workspace_role", "workspace_preference")
+
+    for field in int_fields:
+        value = raw_context.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            context[field] = int(value)
+
+    for field in float_fields:
+        value = raw_context.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            context[field] = round(float(value), 2)
+
+    for field in text_fields:
+        value = raw_context.get(field)
+        if isinstance(value, str) and value.strip():
+            context[field] = value.strip()[:80]
+
+    return context
+
+
+def _parse_history_limit(raw_limit: str) -> int:
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return _DEFAULT_HISTORY_LIMIT
+    return max(1, min(limit, _MAX_HISTORY_LIMIT))
+
+
+async def _build_analysis_history_entry(
+    record: dict[str, Any],
+    client: df.DurableOrchestrationClient,
+) -> dict[str, Any]:
+    instance_id = str(record.get("instance_id") or record.get("submission_id") or "")
+    status_payload: dict[str, Any] | None = None
+    if instance_id:
+        with contextlib.suppress(Exception):
+            status = await client.get_status(instance_id)
+            if status:
+                status_payload = _durable_status_payload(status)
+
+    runtime_status = record.get("status", "submitted")
+    if status_payload and status_payload.get("runtimeStatus"):
+        runtime_status = status_payload["runtimeStatus"]
+
+    output = status_payload.get("output") if status_payload else None
+    feature_count = output.get("featureCount") if output else record.get("feature_count")
+    aoi_count = output.get("aoiCount") if output else record.get("aoi_count")
+    artifacts = output.get("artifacts") if output else None
+
+    return {
+        "submissionId": record.get("submission_id", instance_id),
+        "instanceId": instance_id,
+        "submittedAt": record.get("submitted_at", ""),
+        "submissionPrefix": record.get("submission_prefix", "analysis"),
+        "providerName": record.get("provider_name", "planetary_computer"),
+        "featureCount": feature_count,
+        "aoiCount": aoi_count,
+        "processingMode": record.get("processing_mode"),
+        "maxSpreadKm": record.get("max_spread_km"),
+        "totalAreaHa": record.get("total_area_ha"),
+        "largestAreaHa": record.get("largest_area_ha"),
+        "workspaceRole": record.get("workspace_role"),
+        "workspacePreference": record.get("workspace_preference"),
+        "runtimeStatus": runtime_status,
+        "createdTime": status_payload.get("createdTime")
+        if status_payload
+        else record.get("submitted_at", ""),
+        "lastUpdatedTime": status_payload.get("lastUpdatedTime")
+        if status_payload
+        else record.get("submitted_at", ""),
+        "customStatus": status_payload.get("customStatus") if status_payload else None,
+        "output": output,
+        "artifactCount": len(artifacts) if isinstance(artifacts, dict) else 0,
+        "partialFailures": {
+            "imagery": output.get("imageryFailed", 0) if output else 0,
+            "downloads": output.get("downloadsFailed", 0) if output else 0,
+            "postProcess": output.get("postProcessFailed", 0) if output else 0,
+        },
+        "kmlBlobName": record.get("kml_blob_name", ""),
+        "kmlSizeBytes": record.get("kml_size_bytes", 0),
+    }
+
+
+def _history_run_is_active(run: dict[str, Any]) -> bool:
+    runtime_status = str(run.get("runtimeStatus") or "").strip().lower()
+    return runtime_status not in {"", "completed", "failed", "terminated", "canceled"}
+
+
 def _reshape_output(output: dict[str, Any]) -> dict[str, Any]:
     """Reshape PipelineSummary to the diagnostics contract (§4.3)."""
     result = {
@@ -944,11 +1185,14 @@ def _reshape_output(output: dict[str, Any]) -> dict[str, Any]:
         "message": output.get("message", ""),
         "blobName": output.get("blob_name", ""),
         "featureCount": output.get("feature_count", 0),
+        "aoiCount": output.get("aoi_count", 0),
         "metadataCount": output.get("metadata_count", 0),
         "imageryReady": output.get("imagery_ready", 0),
         "imageryFailed": output.get("imagery_failed", 0),
         "downloadsCompleted": output.get("downloads_completed", 0),
+        "downloadsFailed": output.get("downloads_failed", 0),
         "postProcessCompleted": output.get("post_process_completed", 0),
+        "postProcessFailed": output.get("post_process_failed", 0),
         "artifacts": output.get("artifacts", {}),
     }
     # Pass through enrichment manifest path if present

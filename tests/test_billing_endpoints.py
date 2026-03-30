@@ -229,6 +229,8 @@ class TestBillingStatus:
         data = json.loads(resp.get_body())
         assert data["tier"] == "free"
         assert data["runs_remaining"] >= 0
+        assert data["capabilities"]["run_limit"] >= 0
+        assert data["emulation"]["available"] is False
 
     def test_options_returns_204(self):
         from blueprints.billing import billing_status
@@ -241,6 +243,88 @@ class TestBillingStatus:
         )
         resp = billing_status(req)
         assert resp.status_code == 204
+
+    @patch("treesight.storage.client.BlobStorageClient")
+    @_AUTH_TEST_USER[1]
+    @_AUTH_TEST_USER[0]
+    def test_local_origin_can_enable_tier_emulation(self, _auth, _token, mock_cls):
+        from blueprints.billing import billing_emulation, billing_status
+
+        store = {}
+
+        def _download_json(_container, path):
+            if path not in store:
+                raise FileNotFoundError(path)
+            return store[path]
+
+        def _upload_json(_container, path, data):
+            store[path] = data
+
+        mock_cls.return_value.download_json.side_effect = _download_json
+        mock_cls.return_value.upload_json.side_effect = _upload_json
+
+        emulate_req = _make_req(
+            body=json.dumps({"tier": "team"}).encode("utf-8"),
+            headers={"Origin": "http://localhost:4280"},
+            url="/api/billing/emulation",
+        )
+        emulate_resp = billing_emulation(emulate_req)
+        assert emulate_resp.status_code == 200
+        emulate_data = json.loads(emulate_resp.get_body())
+        assert emulate_data["tier"] == "team"
+        assert emulate_data["tier_source"] == "emulated"
+        assert emulate_data["emulation"]["active"] is True
+
+        status_req = _make_req(
+            method="GET", headers={"Origin": "http://localhost:4280"}, url="/api/billing/status"
+        )
+        status_resp = billing_status(status_req)
+        assert status_resp.status_code == 200
+        status_data = json.loads(status_resp.get_body())
+        assert status_data["tier"] == "team"
+        assert status_data["capabilities"]["api_access"] is True
+
+    @patch("treesight.storage.client.BlobStorageClient")
+    @_AUTH_TEST_USER[1]
+    @_AUTH_TEST_USER[0]
+    def test_non_local_origin_rejects_tier_emulation(self, _auth, _token, mock_cls):
+        from blueprints.billing import billing_emulation
+
+        req = _make_req(
+            body=json.dumps({"tier": "team"}).encode("utf-8"),
+            url="/api/billing/emulation",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 403
+
+    @patch("treesight.storage.client.BlobStorageClient")
+    @_AUTH_DISABLED
+    def test_local_origin_allows_anonymous_tier_emulation(self, _auth, mock_cls):
+        from blueprints.billing import billing_emulation
+
+        store = {}
+
+        def _download_json(_container, path):
+            if path not in store:
+                raise FileNotFoundError(path)
+            return store[path]
+
+        def _upload_json(_container, path, data):
+            store[path] = data
+
+        mock_cls.return_value.download_json.side_effect = _download_json
+        mock_cls.return_value.upload_json.side_effect = _upload_json
+
+        req = _make_req(
+            body=json.dumps({"tier": "starter"}).encode("utf-8"),
+            headers={"Origin": "http://localhost:4280"},
+            url="/api/billing/emulation",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["tier"] == "starter"
+        assert data["tier_source"] == "emulated"
 
 
 # ---------------------------------------------------------------------------
