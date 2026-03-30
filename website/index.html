@@ -123,7 +123,16 @@
           <div class="drop-divider">— or paste KML text —</div>
           <label for="demo-kml">KML Content</label>
           <textarea id="demo-kml" placeholder="Paste your KML content here, or use the sample below…"></textarea>
-          <div class="login-prompt" id="login-prompt">� <a id="login-prompt-link">Sign in</a> to process your KML and get satellite imagery, NDVI analysis, and weather data — free.</div>
+          <div class="demo-bounds" id="demo-bounds">
+            <div class="demo-bounds-label">Public Demo Limits</div>
+            <ul>
+              <li>Max 3 AOIs per run</li>
+              <li>Max 10,000 hectares per AOI</li>
+              <li>No saved history, exports, or bulk workflow</li>
+              <li>AI timelapse analysis is reserved for paid plans in the signed-in app</li>
+            </ul>
+          </div>
+          <div class="login-prompt" id="login-prompt"><button type="button" class="login-prompt-link" id="login-prompt-link">Sign in</button> to run the public demo. Paid plans unlock AI analysis, higher limits, and the dedicated app workspace.</div>
           <button class="btn btn-primary" id="demo-submit" style="width:100%">Process KML</button>
           <p style="font-size:.7rem;color:var(--c-muted);text-align:center;margin-top:8px">Your data is automatically deleted after 30 days. <a href="/privacy.html">Privacy Policy</a></p>
           <div id="demo-status" class="demo-status"></div>
@@ -213,16 +222,28 @@
         </div>
         <div id="ai-insights-panel" style="display:none">
           <h3>🤖 AI Analysis</h3>
+          <p class="ai-plan-note" id="ai-insights-plan-note">AI analysis is disabled on the public demo and free accounts. Starter and above unlock it in the signed-in workspace.</p>
           <div id="ai-insights-example" style="font-size:.8rem;margin-bottom:12px;padding:10px;background:rgba(100,200,255,.07);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-muted)">
             <p style="margin-bottom:6px;color:var(--c-text);font-weight:600">Example AI Analysis Output</p>
             <p style="margin-bottom:6px">"NDVI declined steadily from 0.72 to 0.58 between March–August 2024. This coincides with a 34% below-average rainfall period (Open-Meteo). The vegetation stress pattern is consistent with drought-induced canopy thinning rather than land-use change, as the decline is gradual and spatially uniform across the AOI."</p>
             <p style="font-size:.75rem;color:var(--c-muted);font-style:italic">Powered by LLM analysis of NDVI trends + weather data. Not a trained computer vision model.</p>
           </div>
-          <button id="btn-get-ai-insights" type="button" style="margin-bottom:12px;padding:8px 14px;background:var(--c-accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-size:.8rem;width:100%;">Get AI Analysis for Timelapse</button>
+          <button id="btn-get-ai-insights" type="button" style="margin-bottom:12px;padding:8px 14px;background:var(--c-accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-size:.8rem;width:100%;" disabled aria-disabled="true">AI Analysis Available on Paid Plans</button>
           <div id="ai-insights-summary" style="display:none;font-size:.8rem;margin-bottom:12px;padding:8px;background:rgba(100,200,255,.1);border-radius:var(--radius)"></div>
           <div id="ai-insights-content" style="display:none;font-size:.8rem"></div>
           <div id="ai-insights-loading" style="display:none;font-size:.8rem;color:var(--c-muted)">Analyzing timelapse with AI...</div>
           <div id="ai-insights-error" style="display:none;font-size:.8rem;color:var(--c-red);background:rgba(248,81,73,.1);padding:8px;border-radius:var(--radius)"></div>
+        </div>
+        <div id="demo-conversion-prompt" class="demo-conversion-prompt" hidden>
+          <div class="demo-conversion-inner">
+            <h4>Ready for more?</h4>
+            <p>The public demo shows what TreeSight can do with a single run. Upgrade to unlock AI analysis, higher limits, saved history, and GeoJSON/CSV/PDF exports in your dedicated workspace.</p>
+            <div class="demo-conversion-actions">
+              <a class="btn btn-primary" href="#pricing">View Plans</a>
+              <a class="btn btn-secondary" href="/app/">Go to Workspace</a>
+              <button class="btn btn-secondary" id="demo-conversion-dismiss" type="button">Dismiss</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

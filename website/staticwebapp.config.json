@@ -5,6 +5,10 @@
   },
   "routes": [
     {
+      "route": "/app",
+      "rewrite": "/app/index.html"
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["anonymous"]
     }

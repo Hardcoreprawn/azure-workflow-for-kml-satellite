@@ -48,6 +48,10 @@ section:nth-child(even){background:var(--c-surface)}
 #timelapse-header .layer-toggle{margin-left:auto;flex-shrink:0}
 .demo-layout.timelapse-active #map{height:520px}
 .demo-form{background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--radius);padding:24px}
+.demo-bounds{margin-bottom:16px;padding:12px 14px;border:1px solid rgba(240,136,62,.28);border-radius:var(--radius);background:rgba(240,136,62,.08)}
+.demo-bounds-label{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--c-orange);margin-bottom:6px}
+.demo-bounds ul{list-style:disc;padding-left:18px;color:var(--c-muted);font-size:.76rem;line-height:1.55}
+.demo-bounds li+li{margin-top:4px}
 label{display:block;font-size:.875rem;font-weight:500;margin-bottom:4px}
 input[type=email],textarea,input[type=text],select{width:100%;padding:10px 12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-text);font-size:.875rem;font-family:inherit;margin-bottom:16px;resize:vertical}
 input:focus,textarea:focus,select:focus{outline:none;border-color:var(--c-accent)}
@@ -133,6 +137,16 @@ textarea{min-height:120px;font-family:monospace;font-size:.8rem}
 /* --- AI Insights panel --- */
 #ai-insights-panel{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 16px;display:none}
 #ai-insights-panel h4{font-size:.8rem;margin-bottom:8px;color:var(--c-text)}
+.ai-plan-note{font-size:.72rem;color:var(--c-muted);margin-bottom:12px;line-height:1.5}
+
+/* --- Demo conversion prompt --- */
+.demo-conversion-prompt[hidden]{display:none}
+.demo-conversion-prompt{margin-top:16px}
+.demo-conversion-inner{padding:16px 18px;background:linear-gradient(135deg,rgba(63,185,80,.08),rgba(88,166,255,.06));border:1px solid rgba(63,185,80,.22);border-radius:var(--radius)}
+.demo-conversion-inner h4{font-size:.92rem;margin-bottom:6px;color:var(--c-text)}
+.demo-conversion-inner p{font-size:.8rem;color:var(--c-muted);line-height:1.6;margin-bottom:12px}
+.demo-conversion-actions{display:flex;gap:8px;flex-wrap:wrap}
+
 #ai-insights-content{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:4px;padding:10px;font-size:.75rem;line-height:1.5;color:var(--c-text)}
 #ai-insights-content .observation{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(88,166,255,.1)}
 #ai-insights-content .observation:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
@@ -147,6 +161,7 @@ textarea{min-height:120px;font-family:monospace;font-size:.8rem}
 #ai-insights-content .obs-recommendation{font-size:.7rem;color:var(--c-muted);font-style:italic}
 #ai-insights-summary{font-size:.75rem;color:var(--c-muted);margin:8px 0;padding:8px;background:rgba(139,148,158,.05);border-radius:4px}
 #btn-get-ai-insights:hover{background:#79c0ff;text-decoration:none}
+#btn-get-ai-insights[disabled]{background:rgba(139,148,158,.35)!important;color:var(--c-muted)!important;cursor:not-allowed}
 
 /* --- NDVI trend chart --- */
 #ndvi-trend-panel{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 16px;display:none}
@@ -264,4 +279,6 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 /* --- Auth UI (base in shared.css, modifiers here) --- */
 .auth-user{font-size:.8rem;color:var(--c-muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .login-prompt{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.2);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:.85rem;color:var(--c-muted);text-align:center;display:none}
-.login-prompt a{cursor:pointer;font-weight:600}
+.login-prompt .login-prompt-link{appearance:none;background:none;border:none;color:var(--c-accent);cursor:pointer;font:inherit;font-weight:600;padding:0;text-decoration:underline;text-underline-offset:2px}
+.login-prompt .login-prompt-link:hover{color:#79c0ff}
+.login-prompt .login-prompt-link:focus-visible{outline:2px solid rgba(88,166,255,.55);outline-offset:2px;border-radius:2px}

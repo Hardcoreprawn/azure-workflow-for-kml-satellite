@@ -4,6 +4,10 @@
   function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(String(s))); return d.innerHTML; }
 
   const EXPECTED_CONTRACT = '2026-03-15.1';
+  const APP_HOME_PATH = '/app/';
+  const POST_LOGIN_DESTINATION_KEY = 'treesight-post-login';
+  const DEMO_MAX_POLYGONS = 3;
+  const DEMO_MAX_AREA_HA = 10000;
   let apiBase = '';
   var pipelineInstanceId = null;   /* current pipeline run — for data retrieval */
   var enrichmentPayload = null;    /* cached enrichment manifest from pipeline */
@@ -12,18 +16,34 @@
   /* These are populated once the CIAM tenant is provisioned.
      When CIAM_CLIENT_ID is empty, auth is disabled and the app works anonymously. */
   const CIAM_TENANT_NAME = 'treesightauth';
+  const CIAM_TENANT_DOMAIN = CIAM_TENANT_NAME ? CIAM_TENANT_NAME + '.onmicrosoft.com' : '';
   const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
   const CIAM_AUTHORITY = CIAM_TENANT_NAME
-    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/'
+    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/' + CIAM_TENANT_DOMAIN + '/'
     : '';
-  const CIAM_KNOWN_AUTHORITY = CIAM_AUTHORITY;
+  const CIAM_KNOWN_AUTHORITY = CIAM_TENANT_NAME
+    ? CIAM_TENANT_NAME + '.ciamlogin.com'
+    : '';
   const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
+  const IDENTITY_ONLY_SCOPES = ['openid', 'profile', 'email', 'offline_access'];
 
   var msalInstance = null;
   var currentAccount = null;
   var accessToken = null;
 
   function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
+
+  function rememberPostLoginDestination() {
+    try { sessionStorage.setItem(POST_LOGIN_DESTINATION_KEY, 'app'); } catch { /* ignore */ }
+  }
+
+  function shouldRedirectToAppAfterLogin() {
+    try { return sessionStorage.getItem(POST_LOGIN_DESTINATION_KEY) === 'app'; } catch { return false; }
+  }
+
+  function clearPostLoginDestination() {
+    try { sessionStorage.removeItem(POST_LOGIN_DESTINATION_KEY); } catch { /* ignore */ }
+  }
 
   /* Initialise MSAL */
   function initAuth() {
@@ -32,13 +52,14 @@
       updateAuthUI();
       return;
     }
+    var redirectOrigin = ciamRedirectOrigin();
     var msalConfig = {
       auth: {
         clientId: CIAM_CLIENT_ID,
         authority: CIAM_AUTHORITY,
         knownAuthorities: [CIAM_KNOWN_AUTHORITY],
-        redirectUri: window.location.origin,
-        postLogoutRedirectUri: window.location.origin,
+        redirectUri: redirectOrigin,
+        postLogoutRedirectUri: redirectOrigin,
       },
       cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
     };
@@ -51,28 +72,81 @@
       }
       currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
       if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
+      if (!currentAccount && consumeLocalLoginRequest()) {
+        login();
+        return;
+      }
+      if (currentAccount && shouldRedirectToAppAfterLogin()) {
+        clearPostLoginDestination();
+        window.location.replace(APP_HOME_PATH);
+        return;
+      }
       updateAuthUI();
     }).catch(function(err) {
       console.warn('MSAL redirect error:', err);
+      clearPostLoginDestination();
       updateAuthUI();
     });
   }
 
   function login() {
+    if (window.location.hostname === '127.0.0.1') {
+      window.location.replace(localLoginTransitionUrl());
+      return;
+    }
     if (!msalInstance) return;
+    rememberPostLoginDestination();
     msalInstance.loginRedirect({ scopes: CIAM_SCOPES });
   }
 
   function logout() {
     if (!msalInstance) return;
+    clearPostLoginDestination();
     msalInstance.logoutRedirect({ account: currentAccount });
+  }
+
+  function parseJwtPayload(token) {
+    if (!token) return null;
+    try {
+      var parts = token.split('.');
+      if (parts.length < 2) return null;
+      return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    } catch {
+      return null;
+    }
+  }
+
+  function tokenExpired(token, skewSeconds) {
+    var payload = parseJwtPayload(token);
+    if (!payload || !payload.exp) return false;
+    return payload.exp <= Math.floor(Date.now() / 1000) + (skewSeconds || 0);
+  }
+
+  function shouldUseIdTokenForApi(resp) {
+    if (!resp || !resp.accessToken || !resp.idToken) return false;
+    var payload = parseJwtPayload(resp.accessToken);
+    if (!payload) return false;
+    var scopes = String(payload.scp || '').split(/\s+/).filter(Boolean);
+    if (String(payload.aud || '') === '00000003-0000-0000-c000-000000000000') return true;
+    return scopes.length > 0 && scopes.every(function(scope) {
+      return IDENTITY_ONLY_SCOPES.indexOf(scope) > -1;
+    });
+  }
+
+  function selectApiBearerToken(resp) {
+    if (!resp) return null;
+    if (shouldUseIdTokenForApi(resp)) return resp.idToken;
+    return resp.accessToken || resp.idToken || null;
   }
 
   async function acquireToken() {
     if (!msalInstance || !currentAccount) return null;
     try {
       var resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount });
-      accessToken = resp.accessToken || resp.idToken;
+      if (shouldUseIdTokenForApi(resp) && tokenExpired(resp.idToken, 60)) {
+        resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount, forceRefresh: true });
+      }
+      accessToken = selectApiBearerToken(resp);
       return accessToken;
     } catch {
       /* Silent failed — trigger interactive */
@@ -96,6 +170,7 @@
       logoutBtn.style.display = 'none';
       userSpan.style.display = 'none';
       loginPrompt.style.display = 'none';
+      updateDemoAiControls(null);
       if (submitBtn) submitBtn.textContent = 'Process KML';
       return;
     }
@@ -115,7 +190,30 @@
       loginBtn.style.display = 'inline';
       logoutBtn.style.display = 'none';
       loginPrompt.style.display = 'block';
+      updateDemoAiControls(null);
       if (submitBtn) submitBtn.textContent = 'Sign In to Process KML';
+    }
+  }
+
+  function updateDemoAiControls(data) {
+    var btn = document.getElementById('btn-get-ai-insights');
+    var note = document.getElementById('ai-insights-plan-note');
+    if (!btn || !note) return;
+
+    var enabled = !!(data && data.capabilities && data.capabilities.ai_insights);
+    btn.disabled = !enabled;
+    btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+
+    if (enabled) {
+      btn.textContent = 'Get AI Analysis for Timelapse';
+      if (data.tier_source === 'emulated') {
+        note.textContent = 'AI analysis is enabled for this local tier emulation.';
+      } else {
+        note.textContent = 'Your current plan includes AI timelapse analysis.';
+      }
+    } else {
+      btn.textContent = 'AI Analysis Available on Paid Plans';
+      note.textContent = 'AI analysis is disabled on the public demo and free accounts. Starter and above unlock it in the signed-in workspace.';
     }
   }
 
@@ -127,15 +225,59 @@
     opts.headers = opts.headers || {};
     /* Attach bearer token if authenticated */
     if (currentAccount && authEnabled()) {
-      var token = accessToken || await acquireToken();
+      var token = accessToken;
+      if (!token || tokenExpired(token, 60)) token = await acquireToken();
       if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
     }
     try { return await fetch(apiBase + path, opts); } catch { return null; }
   }
 
+  function runningOnLocalDevOrigin() {
+    return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  }
+
+  function ciamRedirectOrigin() {
+    return runningOnLocalDevOrigin() ? 'http://localhost:4280' : window.location.origin;
+  }
+
+  function localLoginTransitionUrl() {
+    var url = new URL(window.location.href);
+    url.protocol = 'http:';
+    url.hostname = 'localhost';
+    url.port = '4280';
+    url.searchParams.set('localLogin', '1');
+    return url.toString();
+  }
+
+  function consumeLocalLoginRequest() {
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get('localLogin') !== '1') return false;
+      url.searchParams.delete('localLogin');
+      var nextUrl = url.pathname + (url.search || '') + (url.hash || '');
+      window.history.replaceState({}, '', nextUrl || '/');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /* --- API discovery: resolve backend hostname --- */
   async function discoverApiBase() {
     var badge = document.getElementById('status-badge');
+
+    if (runningOnLocalDevOrigin()) {
+      try {
+        var localRes = await fetch('/api/health');
+        if (localRes.ok) {
+          apiBase = '';
+          badge.textContent = 'Online';
+          badge.className = 'online';
+          badge.title = '';
+          return;
+        }
+      } catch { /* local proxy unavailable */ }
+    }
 
     /* 1. Load deploy-time config first (fast, no cold-start penalty) */
     try {
@@ -427,6 +569,13 @@
     var polygons = parseKmlCoords(kml);
     if (!polygons) {
       statusEl.textContent = 'Could not find valid coordinates in the KML.';
+      statusEl.className = 'demo-status show error';
+      return;
+    }
+
+    var demoBoundsError = checkDemoBounds(polygons);
+    if (demoBoundsError) {
+      statusEl.textContent = demoBoundsError;
       statusEl.className = 'demo-status show error';
       return;
     }
@@ -818,6 +967,36 @@
     var latS = 0, lonS = 0, n = coords.length - 1; /* skip closing vertex */
     for (var i = 0; i < n; i++) { latS += coords[i][0]; lonS += coords[i][1]; }
     return [latS/n, lonS/n];
+  }
+
+  function polygonAreaHa(coords) {
+    if (!coords || coords.length < 4) return 0;
+    var usable = coords.slice(0, -1);
+    var meanLat = usable.reduce(function(sum, coord) { return sum + coord[0]; }, 0) / usable.length;
+    var metresPerDegreeLat = 111320;
+    var metresPerDegreeLon = Math.cos(meanLat * Math.PI / 180) * metresPerDegreeLat;
+    var areaM2 = 0;
+    for (var i = 0; i < coords.length - 1; i++) {
+      var x1 = coords[i][1] * metresPerDegreeLon;
+      var y1 = coords[i][0] * metresPerDegreeLat;
+      var x2 = coords[i + 1][1] * metresPerDegreeLon;
+      var y2 = coords[i + 1][0] * metresPerDegreeLat;
+      areaM2 += (x1 * y2) - (x2 * y1);
+    }
+    return Math.abs(areaM2) / 2 / 10000;
+  }
+
+  function checkDemoBounds(polygons) {
+    if (polygons.length > DEMO_MAX_POLYGONS) {
+      return 'Public demo is limited to ' + DEMO_MAX_POLYGONS + ' AOIs per run. Use the signed-in app for larger workloads.';
+    }
+    for (var i = 0; i < polygons.length; i++) {
+      var areaHa = polygonAreaHa(polygons[i].coords);
+      if (areaHa > DEMO_MAX_AREA_HA) {
+        return 'Public demo is limited to AOIs up to ' + DEMO_MAX_AREA_HA.toLocaleString() + ' ha. "' + polygons[i].name + '" is approximately ' + Math.round(areaHa).toLocaleString() + ' ha.';
+      }
+    }
+    return null;
   }
 
   /* Check all polygons are within maxKm of their group centroid */
@@ -2463,6 +2642,7 @@
   /* AI Insights button handler - analyze entire timelapse, not just current frame */
   document.getElementById('btn-get-ai-insights').addEventListener('click', async function() {
     var btn = this;
+    if (btn.disabled) return;
     var loading = document.getElementById('ai-insights-loading');
     var content = document.getElementById('ai-insights-content');
     var error = document.getElementById('ai-insights-error');
@@ -2740,6 +2920,11 @@
         document.getElementById('insights-panel').style.display = 'block';
         document.getElementById('ai-insights-panel').style.display = 'block';
         buildInsights(currentFrame);
+        /* Show post-demo conversion prompt after a short delay */
+        var conversionPrompt = document.getElementById('demo-conversion-prompt');
+        if (conversionPrompt && conversionPrompt.hidden) {
+          setTimeout(function() { conversionPrompt.hidden = false; }, 4000);
+        }
       }
 
       /* Kick off scope-aware analytics (collective by default; click polygon to focus) */
@@ -2811,6 +2996,11 @@
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   var loginPromptLink = document.getElementById('login-prompt-link');
   if (loginPromptLink) loginPromptLink.addEventListener('click', login);
+  var conversionDismiss = document.getElementById('demo-conversion-dismiss');
+  if (conversionDismiss) conversionDismiss.addEventListener('click', function() {
+    var prompt = document.getElementById('demo-conversion-prompt');
+    if (prompt) prompt.hidden = true;
+  });
 
   var apiDiscoveryReady = discoverApiBase();
 
@@ -2854,6 +3044,7 @@
         var res = await apiFetch('/api/billing/status');
         if (!res || !res.ok) return;
         var data = await res.json();
+        updateDemoAiControls(data);
 
         /* Update Pro button text based on subscription state */
         var proBtn = document.getElementById('btn-upgrade-pro');
@@ -2870,9 +3061,15 @@
         }
       } catch(e) {
         console.debug('Billing status check skipped:', e);
+        updateDemoAiControls(null);
       }
     }
   };
+
+  updateDemoAiControls(null);
+  if (currentAccount && apiDiscoveryReady) {
+    apiDiscoveryReady.then(function() { window.treesightBilling.loadStatus(); });
+  }
 
   /* Handle billing return query params */
   var params = new URLSearchParams(window.location.search);
