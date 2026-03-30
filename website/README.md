@@ -6,8 +6,12 @@ Minimal marketing landing page for TreeSight. Deployed to Azure Static Web Apps.
 
 ```text
 website/
-├── index.html                 # Main landing page (all-inline CSS/JS)
-├── kml-guide.html             # KML creation guide
+├── index.html                 # Main landing page
+├── app/index.html             # Signed-in dashboard
+├── docs/
+│   ├── index.html             # Documentation hub
+│   ├── kml-guide.html         # KML creation guide
+│   └── eudr-methodology.html  # EUDR assessment methodology
 ├── terms.html                 # Terms of service
 ├── privacy.html               # Privacy policy
 └── staticwebapp.config.json   # Azure Static Web Apps configuration
