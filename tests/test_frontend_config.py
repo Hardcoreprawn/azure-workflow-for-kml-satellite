@@ -16,7 +16,7 @@ import pytest
 
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
-APP_JS = WEBSITE / "js" / "app.js"
+LANDING_JS = WEBSITE / "js" / "landing.js"
 MSAL_BUNDLE = WEBSITE / "js" / "msal-browser.min.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_CONFIG = WEBSITE / "api-config.json"
@@ -29,8 +29,8 @@ def index_html():
 
 
 @pytest.fixture()
-def app_js():
-    return APP_JS.read_text()
+def landing_js():
+    return LANDING_JS.read_text()
 
 
 @pytest.fixture()
@@ -114,26 +114,26 @@ class TestCsp:
 
 
 class TestAuthConfig:
-    def test_redirect_uri_no_trailing_slash(self, app_js):
+    def test_redirect_uri_no_trailing_slash(self, landing_js):
         """MSAL redirectUri must use window.location.origin without trailing slash.
 
         The CIAM app registration has URIs without trailing slash.
         A mismatch causes AADSTS50011.
         """
-        assert "window.location.origin + '/'" not in app_js, (
+        assert "window.location.origin + '/'" not in landing_js, (
             "redirectUri has trailing slash — will cause AADSTS50011 mismatch with app registration"
         )
 
-    def test_ciam_tenant_configured(self, app_js):
-        """CIAM tenant name must be set in app.js."""
-        match = re.search(r"CIAM_TENANT_NAME\s*=\s*'(\w+)'", app_js)
-        assert match, "CIAM_TENANT_NAME not found in app.js"
+    def test_ciam_tenant_configured(self, landing_js):
+        """CIAM tenant name must be set in landing.js."""
+        match = re.search(r"CIAM_TENANT_NAME\s*=\s*'(\w+)'", landing_js)
+        assert match, "CIAM_TENANT_NAME not found in landing.js"
         assert match.group(1) != "", "CIAM_TENANT_NAME is empty"
 
-    def test_ciam_client_id_configured(self, app_js):
-        """CIAM client ID must be set in app.js."""
-        match = re.search(r"CIAM_CLIENT_ID\s*=\s*'([^']+)'", app_js)
-        assert match, "CIAM_CLIENT_ID not found in app.js"
+    def test_ciam_client_id_configured(self, landing_js):
+        """CIAM client ID must be set in landing.js."""
+        match = re.search(r"CIAM_CLIENT_ID\s*=\s*'([^']+)'", landing_js)
+        assert match, "CIAM_CLIENT_ID not found in landing.js"
         assert len(match.group(1)) > 10, "CIAM_CLIENT_ID looks too short"
 
 
