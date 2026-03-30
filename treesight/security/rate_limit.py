@@ -11,6 +11,8 @@ import threading
 import time
 
 from treesight.constants import (
+    RATE_LIMIT_DEMO_MAX,
+    RATE_LIMIT_DEMO_WINDOW,
     RATE_LIMIT_FORM_MAX,
     RATE_LIMIT_FORM_WINDOW,
     RATE_LIMIT_PIPELINE_MAX,
@@ -58,6 +60,7 @@ pipeline_limiter = RateLimiter(
 proxy_limiter = RateLimiter(
     max_requests=RATE_LIMIT_PROXY_MAX, window_seconds=RATE_LIMIT_PROXY_WINDOW
 )
+demo_limiter = RateLimiter(max_requests=RATE_LIMIT_DEMO_MAX, window_seconds=RATE_LIMIT_DEMO_WINDOW)
 
 
 def get_client_ip(req) -> str:

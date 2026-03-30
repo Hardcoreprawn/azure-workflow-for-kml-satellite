@@ -34,7 +34,7 @@ from treesight.errors import ContractError
 from treesight.models.blob_event import BlobEvent
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 from treesight.security.quota import consume_quota
-from treesight.security.rate_limit import get_client_ip, pipeline_limiter
+from treesight.security.rate_limit import demo_limiter, get_client_ip, pipeline_limiter
 
 # At runtime resolves to bare ``dict`` (Azure Functions binding requirement);
 # Pylance sees ``dict[str, Any]`` for full type-checking.
@@ -502,6 +502,8 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
                         "eudr_mode": inp.get("eudr_mode", False),
                         "date_start": inp.get("date_start"),
                         "date_end": inp.get("date_end"),
+                        "cadence": inp.get("cadence", "maximum"),
+                        "max_history_years": inp.get("max_history_years"),
                     },
                 )
             ),
@@ -878,7 +880,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
-# Demo processing endpoint — submits KML and starts orchestration directly
+# Demo processing endpoint — anonymous, rate-limited, demo-tier constraints
 # ---------------------------------------------------------------------------
 
 
@@ -888,12 +890,12 @@ async def demo_process(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
-    """POST /api/demo-process — upload KML and start pipeline orchestration.
+    """POST /api/demo-process — anonymous demo submission with tier limits.
 
-    Accepts ``{"kml_content": "..."}`` and returns ``{"instance_id": "..."}``
-    which can be polled via ``GET /api/orchestrator/{instance_id}``.
+    No authentication required.  Rate-limited by IP.  Enforces demo tier
+    constraints: 1 AOI, seasonal cadence, 2-year history window.
     """
-    return await _submit_analysis_request(req, client, blob_prefix="demo")
+    return await _submit_demo_request(req, client)
 
 
 @bp.route(route="analysis/submit", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -908,6 +910,82 @@ async def analysis_submit(
     which can be polled via ``GET /api/orchestrator/{instance_id}``.
     """
     return await _submit_analysis_request(req, client, blob_prefix="analysis")
+
+
+async def _submit_demo_request(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """Validate, persist, and enqueue an anonymous demo KML submission."""
+    import hashlib
+
+    client_ip = get_client_ip(req)
+
+    if not demo_limiter.is_allowed(client_ip):
+        return _error_response(429, "Demo rate limit exceeded — try again later")
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _error_response(400, "Invalid JSON body")
+
+    kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
+    if not isinstance(kml_content, str) or not kml_content.strip():
+        return _error_response(400, "kml_content is required")
+
+    kml_bytes = kml_content.encode("utf-8")
+    if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
+        return _error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes")
+
+    ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()[:12]
+    demo_user_id = f"demo:{ip_hash}"
+    submission_id = str(uuid.uuid4())
+    kml_blob_name = f"demo/{submission_id}.kml"
+
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    storage.upload_bytes(
+        DEFAULT_INPUT_CONTAINER,
+        kml_blob_name,
+        kml_bytes,
+        content_type="application/vnd.google-earth.kml+xml",
+    )
+
+    orchestrator_input = {
+        "blob_url": f"https://devstoreaccount1.blob.core.windows.net/{DEFAULT_INPUT_CONTAINER}/{kml_blob_name}",
+        "container_name": DEFAULT_INPUT_CONTAINER,
+        "blob_name": kml_blob_name,
+        "content_length": len(kml_bytes),
+        "content_type": "application/vnd.google-earth.kml+xml",
+        "event_time": datetime.now(UTC).isoformat(),
+        "correlation_id": submission_id,
+        "composite_search": True,
+        "provider_name": "planetary_computer",
+        "cadence": "seasonal",
+        "max_history_years": 2,
+        "user_id": demo_user_id,
+        "tier": "demo",
+    }
+
+    await client.start_new(
+        "treesight_orchestrator",
+        instance_id=submission_id,
+        client_input=orchestrator_input,
+    )
+
+    logging.info(
+        "Demo process started instance=%s user=%s",
+        submission_id,
+        demo_user_id,
+    )
+
+    return func.HttpResponse(
+        json.dumps({"instance_id": submission_id, "submission_prefix": "demo"}),
+        status_code=202,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
 
 async def _submit_analysis_request(

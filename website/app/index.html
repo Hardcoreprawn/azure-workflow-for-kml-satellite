@@ -48,6 +48,17 @@
 </nav>
 
 <main class="app-main">
+  <!-- ── Demo banner (hidden by default, shown in demo mode) ── -->
+  <div id="app-demo-banner" class="app-demo-banner" hidden>
+    <div class="container">
+      <span class="app-demo-banner-icon">&#127919;</span>
+      <span class="app-demo-banner-text">You're using the free demo &mdash; 1 AOI, seasonal snapshots, no exports.</span>
+      <a class="btn btn-sm btn-primary" href="/app/" onclick="event.preventDefault(); document.getElementById('auth-login-btn').click();">Sign In</a>
+      <a class="btn btn-sm btn-secondary" href="/#pricing">View Plans</a>
+      <button class="app-demo-banner-close" onclick="this.parentElement.parentElement.hidden=true" aria-label="Dismiss">&#10005;</button>
+    </div>
+  </div>
+
   <section id="app-unauthenticated" class="app-gate">
     <div class="container">
       <div class="app-panel">
@@ -272,6 +283,14 @@
             <span class="app-run-label">Workspace lens</span>
             <strong id="app-analysis-lens-title">Conservation evidence run</strong>
             <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
+          </div>
+          <!-- ── Demo sample picker (hidden by default, shown in demo mode) ── -->
+          <div id="app-demo-sample-picker" class="app-demo-sample-picker" hidden>
+            <label class="app-field-label" for="app-demo-sample-select">Quick start &mdash; pick a sample location</label>
+            <select id="app-demo-sample-select" class="app-select">
+              <option value="">Choose a location…</option>
+            </select>
+            <p class="app-note">Select a pre-loaded location to populate the KML field, or paste your own KML below.</p>
           </div>
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
