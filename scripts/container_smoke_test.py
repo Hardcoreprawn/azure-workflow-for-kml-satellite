@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Container smoke tests — validates the runtime image has all required components.
 
-Run inside the built container (no pytest needed):
-    docker run --rm <image> python scripts/container_smoke_test.py
+Run via bind-mount of the local scripts directory (no pytest needed):
+    docker run --rm -v "$PWD/scripts:/scripts:ro" <image> python3 /scripts/container_smoke_test.py
 
-Or from the host against a running container:
-    docker run --rm <image> python /home/site/wwwroot/scripts/container_smoke_test.py
+Or against an already running container (with /scripts mounted):
+    docker exec <container> python3 /scripts/container_smoke_test.py
 
 Exit code 0 = all checks pass; non-zero = at least one failure.
 """
@@ -201,6 +201,9 @@ def main() -> int:
                 check(f"{pkg} importable", False, "missing in app image")
             else:
                 print(f"  — {pkg} not present (base image — expected)")
+        except Exception as e:
+            # Native-extension or other unexpected import failure
+            check(f"{pkg} importable", False, f"import failed: {e}")
 
     # ── 9. No dev dependencies leaked ──
     print("\n[Security]")

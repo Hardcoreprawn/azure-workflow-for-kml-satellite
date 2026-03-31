@@ -60,9 +60,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build app image
-        env:
-          BASE_IMAGE: ghcr.io/${{ github.repository }}/treesight-base:latest
         run: |
+          BASE_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/treesight-base:latest"
           docker build \
             --build-arg BASE_IMAGE="${BASE_IMAGE}" \
             -t treesight:ci-check .

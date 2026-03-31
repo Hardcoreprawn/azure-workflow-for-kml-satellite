@@ -44,8 +44,7 @@ RUN set -e && \
     rm -f Microsoft.CodeAnalysis.CSharp.dll \
           Microsoft.CodeAnalysis.dll && \
     # SnapshotCollector — App Insights profiler, optional (saves 5 MB)
-    rm -f SnapshotCollector/ 2>/dev/null; \
-    rm -rf SnapshotCollector/ 2>/dev/null; true && \
+    rm -rf SnapshotCollector/ 2>/dev/null || true && \
     # Diagnostics — crash dump tools (saves ~5 MB)
     rm -f createdump \
           libmscordaccore.so \
@@ -54,9 +53,8 @@ RUN set -e && \
     # NuGet DLLs — package management, not needed at runtime (saves 2 MB)
     rm -f NuGet.*.dll && \
     # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
-    rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll \
-          ProxyLibrary/ 2>/dev/null; true && \
-    rm -rf ProxyLibrary/ 2>/dev/null; true && \
+    rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll 2>/dev/null || true && \
+    rm -rf ProxyLibrary/ 2>/dev/null || true && \
     # MonoPosixHelper — Mono compatibility layer (saves ~1 MB)
     rm -f libMonoPosixHelper.so && \
     # PDB debug symbols
@@ -67,6 +65,10 @@ RUN set -e && \
 # ── Bundle optimisations (~329 MB saved) ─────────────────────
 RUN set -e && \
     BUNDLE_DIR=$(find /FuncExtensionBundles -maxdepth 2 -type d -name "4.*" | head -1) && \
+    if [ -z "${BUNDLE_DIR}" ] || [ ! -d "${BUNDLE_DIR}" ]; then \
+        echo "Error: extension bundle directory not found under /FuncExtensionBundles (pattern: 4.*)" >&2; \
+        exit 1; \
+    fi && \
     # bin_v3/ — .NET isolated worker mode; we use Python worker (saves 167 MB)
     rm -rf "${BUNDLE_DIR}/bin_v3" && \
     # StaticContent — dashboard UI assets (saves 6 MB)
