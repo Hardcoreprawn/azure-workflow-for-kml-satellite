@@ -207,15 +207,15 @@ class TestCorsOriginHardening:
     def _reload_with_env(monkeypatch, value=None):
         """Reload _helpers with CORS_ALLOWED_ORIGINS set (or cleared) and return the origins set."""
         import importlib
+        import sys
 
-        import blueprints._helpers
-
+        helpers_mod = sys.modules["blueprints._helpers"]
         if value is not None:
             monkeypatch.setenv("CORS_ALLOWED_ORIGINS", value)
         else:
             monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
-        importlib.reload(blueprints._helpers)
-        return set(blueprints._helpers._ALLOWED_ORIGINS)
+        importlib.reload(helpers_mod)
+        return set(helpers_mod._ALLOWED_ORIGINS)
 
     def test_rejects_http_origin_from_env(self, monkeypatch):
         """An attacker-controlled http:// origin must be rejected."""
