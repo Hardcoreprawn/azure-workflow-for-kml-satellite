@@ -33,3 +33,18 @@ This repository uses the following free GitHub security features:
 - **CodeQL analysis** — static analysis for security vulnerabilities on every PR
 - **Private vulnerability reporting** — responsible disclosure channel
 - **Branch protection** — PRs required, CI must pass, stale reviews dismissed
+
+## Trivy Triage Policy
+
+To keep findings actionable while staying cost-conscious in dev environments:
+
+- Trivy image/filesystem scans are configured with `ignore-unfixed: true`.
+ This suppresses vulnerabilities that currently have no upstream fix version.
+- Temporary low-cost infra exceptions are tracked in `.trivyignore` with
+ explicit rationale. These are not blanket suppressions and must be revisited
+ when a paid hardening change is approved.
+
+Current temporary exceptions:
+
+- `AZU-0012` (Storage account network default deny policy)
+- `AZU-0013` (Key Vault network ACL strictness)
