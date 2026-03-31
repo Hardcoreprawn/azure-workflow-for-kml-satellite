@@ -205,29 +205,29 @@ class TestCorsOriginHardening:
 
     def test_rejects_http_origin_from_env(self, monkeypatch):
         """An attacker-controlled http:// origin must be rejected."""
-        from importlib import reload
+        import importlib
 
-        import blueprints._helpers as helpers_mod
+        import blueprints._helpers
 
         monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://evil.example.com")
-        reload(helpers_mod)
-        assert "http://evil.example.com" not in helpers_mod._ALLOWED_ORIGINS
+        importlib.reload(blueprints._helpers)
+        assert "http://evil.example.com" not in blueprints._helpers._ALLOWED_ORIGINS
         # Restore
         monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
-        reload(helpers_mod)
+        importlib.reload(blueprints._helpers)
 
     def test_accepts_https_origin_from_env(self, monkeypatch):
         """Legitimate https:// origins must be accepted."""
-        from importlib import reload
+        import importlib
 
-        import blueprints._helpers as helpers_mod
+        import blueprints._helpers
 
         monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://custom.treesight.com")
-        reload(helpers_mod)
-        assert "https://custom.treesight.com" in helpers_mod._ALLOWED_ORIGINS
+        importlib.reload(blueprints._helpers)
+        assert "https://custom.treesight.com" in blueprints._helpers._ALLOWED_ORIGINS
         # Restore
         monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
-        reload(helpers_mod)
+        importlib.reload(blueprints._helpers)
 
 
 # ---------------------------------------------------------------------------
