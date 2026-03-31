@@ -32,9 +32,9 @@ class TestGetClientIp:
         req = self._make_req({"X-Forwarded-For": "192.168.1.1"})
         assert get_client_ip(req) == "192.168.1.1"
 
-    def test_falls_back_to_real_ip(self):
+    def test_ignores_spoofable_real_ip_header(self):
         req = self._make_req({"X-Real-IP": "10.0.0.3"})
-        assert get_client_ip(req) == "10.0.0.3"
+        assert get_client_ip(req) == "unknown"
 
     def test_returns_unknown_when_no_headers(self):
         req = self._make_req({})

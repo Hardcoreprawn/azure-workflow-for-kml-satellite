@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Any, cast
 
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
@@ -10,6 +11,18 @@ from treesight.config import STORAGE_CONNECTION_STRING
 from treesight.log import log_phase
 
 _client: BlobServiceClient | None = None
+
+
+def _safe_blob_path(blob_path: str) -> str:
+    """Canonicalise a blob path and reject path-traversal attempts.
+
+    Raises ``ValueError`` if the path contains ``..`` segments or is
+    absolute — preventing directory traversal attacks.
+    """
+    normalised = str(PurePosixPath(blob_path))
+    if ".." in normalised.split("/") or normalised.startswith("/"):
+        raise ValueError(f"Invalid blob path: {blob_path!r}")
+    return normalised
 
 
 def get_blob_service_client() -> BlobServiceClient:
@@ -44,6 +57,7 @@ class BlobStorageClient:
         overwrite: bool = True,
     ) -> str:
         """Upload raw bytes and return the blob URL."""
+        blob_path = _safe_blob_path(blob_path)
         self.ensure_container(container)
         blob = self._client.get_blob_client(container, blob_path)
         blob.upload_blob(
@@ -63,6 +77,7 @@ class BlobStorageClient:
 
     def download_bytes(self, container: str, blob_path: str) -> bytes:
         """Download a blob and return its raw bytes."""
+        blob_path = _safe_blob_path(blob_path)
         blob = self._client.get_blob_client(container, blob_path)
         return blob.download_blob().readall()
 

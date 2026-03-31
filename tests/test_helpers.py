@@ -193,3 +193,75 @@ class TestEmailRegex:
     )
     def test_invalid_emails(self, email: str):
         assert not EMAIL_RE.match(email)
+
+
+# ---------------------------------------------------------------------------
+# CORS origin validation (#295 — Finding 4.1)
+# ---------------------------------------------------------------------------
+
+
+class TestCorsOriginHardening:
+    """Ensure only https:// origins are accepted from CORS_ALLOWED_ORIGINS env var."""
+
+    def test_rejects_http_origin_from_env(self, monkeypatch):
+        """An attacker-controlled http:// origin must be rejected."""
+        from importlib import reload
+
+        import blueprints._helpers as helpers_mod
+
+        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://evil.example.com")
+        reload(helpers_mod)
+        assert "http://evil.example.com" not in helpers_mod._ALLOWED_ORIGINS
+        # Restore
+        monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+        reload(helpers_mod)
+
+    def test_accepts_https_origin_from_env(self, monkeypatch):
+        """Legitimate https:// origins must be accepted."""
+        from importlib import reload
+
+        import blueprints._helpers as helpers_mod
+
+        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://custom.treesight.com")
+        reload(helpers_mod)
+        assert "https://custom.treesight.com" in helpers_mod._ALLOWED_ORIGINS
+        # Restore
+        monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+        reload(helpers_mod)
+
+
+# ---------------------------------------------------------------------------
+# Blob path traversal protection (#295 — Finding 3.1)
+# ---------------------------------------------------------------------------
+
+
+class TestSafeBlobPath:
+    """Ensure _safe_blob_path rejects directory traversal attempts."""
+
+    def test_rejects_dot_dot(self):
+        from treesight.storage.client import _safe_blob_path
+
+        with pytest.raises(ValueError, match="Invalid blob path"):
+            _safe_blob_path("../secrets/admin.json")
+
+    def test_rejects_embedded_dot_dot(self):
+        from treesight.storage.client import _safe_blob_path
+
+        with pytest.raises(ValueError, match="Invalid blob path"):
+            _safe_blob_path("analysis/../../secrets/admin.json")
+
+    def test_rejects_absolute_path(self):
+        from treesight.storage.client import _safe_blob_path
+
+        with pytest.raises(ValueError, match="Invalid blob path"):
+            _safe_blob_path("/etc/passwd")
+
+    def test_allows_normal_path(self):
+        from treesight.storage.client import _safe_blob_path
+
+        assert _safe_blob_path("analysis/user-abc/result.json") == "analysis/user-abc/result.json"
+
+    def test_allows_nested_path(self):
+        from treesight.storage.client import _safe_blob_path
+
+        assert _safe_blob_path("demo-submissions/abc123.json") == "demo-submissions/abc123.json"

@@ -121,6 +121,9 @@ async def analysis_history(
     except ValueError as exc:
         return _error_response(401, str(exc))
 
+    if user_id == "anonymous":
+        return _error_response(401, "Authentication required for analysis history")
+
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
         return _error_response(429, "Rate limit exceeded — try again later")
 
@@ -197,10 +200,12 @@ async def blob_trigger(
 
     orchestrator_input = blob_event.model_dump()
 
-    # Merge optional pipeline configuration from event data (local dev / testing)
-    pipeline_keys = ("provider_config", "provider_name", "imagery_filters", "target_crs")
-    for key in pipeline_keys:
-        if key in data:
+    # Merge optional pipeline configuration from event data (local dev / testing).
+    # Only safe, known scalar/list keys are accepted — never arbitrary dicts
+    # that could redirect provider URLs or inject credentials.
+    safe_pipeline_keys = {"provider_name", "imagery_filters", "target_crs"}
+    for key in safe_pipeline_keys:
+        if key in data and isinstance(data[key], (str, list)):
             orchestrator_input[key] = data[key]
 
     instance_id = blob_event.correlation_id
