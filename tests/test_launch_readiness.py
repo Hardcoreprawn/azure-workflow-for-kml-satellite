@@ -332,3 +332,25 @@ class TestDeployWorkflowSettings:
             "outputs.tf must export appinsights_connection_string for the "
             "deploy workflow to inject into the static site"
         )
+
+
+# ---------------------------------------------------------------------------
+# 10. Event Grid webhook wiring must match runtime function index
+# ---------------------------------------------------------------------------
+
+
+class TestEventGridWebhookWiring:
+    """Ensure Event Grid subscription targets the indexed function name with auth key."""
+
+    def test_event_grid_webhook_uses_blob_trigger_name(self):
+        tf = MAIN_TF.read_text()
+        assert "functionName=blob_trigger" in tf, (
+            "Event Grid subscription endpointUrl must target functionName=blob_trigger "
+            "to match the indexed Event Grid trigger function"
+        )
+
+    def test_event_grid_webhook_includes_code_query_param(self):
+        tf = MAIN_TF.read_text()
+        assert "&code=${local.eventgrid_key}" in tf, (
+            "Event Grid webhook endpointUrl must include the system key query param"
+        )

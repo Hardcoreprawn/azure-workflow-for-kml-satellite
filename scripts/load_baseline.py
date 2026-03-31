@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import statistics
 import tempfile
@@ -33,7 +34,13 @@ from typing import Any
 
 import httpx
 from generate_monster_kml import generate_kml
-from simulate_upload import FUNC_BASE, check_func_host, fire_event_grid, upload_kml
+from simulate_upload import (
+    DEFAULT_EVENT_GRID_FUNCTION_NAME,
+    FUNC_BASE,
+    check_func_host,
+    fire_event_grid,
+    upload_kml,
+)
 
 TERMINAL_STATUSES = {"Completed", "Failed", "Canceled", "Terminated"}
 
@@ -145,14 +152,41 @@ def _run_one(
     timeout_s: int,
     poll_interval_s: float,
     container: str,
+    function_name: str,
+    function_key: str | None,
 ) -> RunResult:
     run_file = source_kml.parent / f"{source_kml.stem}-run{run_id}.kml"
     shutil.copy2(source_kml, run_file)
 
     start = time.monotonic()
     blob_name, blob_url, content_length = upload_kml(run_file, container)
-    instance_id = fire_event_grid(blob_url, blob_name, content_length, container)
-    status, payload, timed_out = _poll_status(instance_id, timeout_s, poll_interval_s)
+    try:
+        instance_id = fire_event_grid(
+            blob_url,
+            blob_name,
+            content_length,
+            container,
+            function_name=function_name,
+            function_key=function_key,
+            strict=True,
+        )
+        status, payload, timed_out = _poll_status(instance_id, timeout_s, poll_interval_s)
+    except RuntimeError as exc:
+        duration_s = time.monotonic() - start
+        return RunResult(
+            scenario=scenario,
+            run_id=run_id,
+            aoi_count=aoi_count,
+            instance_id="",
+            runtime_status="TriggerRejected",
+            duration_s=duration_s,
+            timed_out=False,
+            had_throttle_signal=False,
+            had_timeout_signal=False,
+            had_memory_signal=False,
+            raw_status={"error": str(exc)},
+        )
+
     duration_s = time.monotonic() - start
 
     had_throttle_signal = _contains_signal(payload, "429", "throttle", "too many requests")
@@ -185,7 +219,11 @@ def _p95(values: list[float]) -> float:
 def _summarize(scenario: str, aoi_count: int, runs: list[RunResult]) -> ScenarioSummary:
     durations = [r.duration_s for r in runs]
     success_count = sum(1 for r in runs if r.runtime_status == "Completed")
-    failure_count = sum(1 for r in runs if r.runtime_status in {"Failed", "Canceled", "Terminated"})
+    failure_count = sum(
+        1
+        for r in runs
+        if r.runtime_status in {"Failed", "Canceled", "Terminated", "TriggerRejected"}
+    )
     timeout_count = sum(1 for r in runs if r.timed_out)
 
     return ScenarioSummary(
@@ -287,6 +325,16 @@ def main() -> None:
     )
     parser.add_argument("--container", default="kml-input", help="Target blob container")
     parser.add_argument(
+        "--event-grid-function-name",
+        default=DEFAULT_EVENT_GRID_FUNCTION_NAME,
+        help="Function name for Event Grid webhook (default: blob_trigger)",
+    )
+    parser.add_argument(
+        "--event-grid-function-key",
+        default=os.getenv("EVENT_GRID_FUNCTION_KEY"),
+        help="Event Grid system key (or set EVENT_GRID_FUNCTION_KEY env var)",
+    )
+    parser.add_argument(
         "--out-dir",
         default="docs/baselines",
         help="Directory for JSON/Markdown baseline artifacts",
@@ -344,6 +392,8 @@ def main() -> None:
                         args.timeout,
                         args.poll_interval,
                         args.container,
+                        args.event_grid_function_name,
+                        args.event_grid_function_key,
                     )
                     for run_id in range(1, args.runs_per_scenario + 1)
                 ]

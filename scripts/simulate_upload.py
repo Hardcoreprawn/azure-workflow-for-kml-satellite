@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import uuid
@@ -24,6 +25,7 @@ from azure.storage.blob import BlobServiceClient, ContentSettings
 FUNC_BASE = "http://localhost:7071"
 DEFAULT_KML = "tests/fixtures/sample.kml"
 DEFAULT_CONTAINER = "kml-input"
+DEFAULT_EVENT_GRID_FUNCTION_NAME = "blob_trigger"
 
 
 def upload_kml(kml_path: Path, container: str) -> tuple[str, str, int]:
@@ -54,6 +56,9 @@ def fire_event_grid(
     content_length: int,
     container: str,
     provider_config: dict[str, Any] | None = None,
+    function_name: str = DEFAULT_EVENT_GRID_FUNCTION_NAME,
+    function_key: str | None = None,
+    strict: bool = True,
 ) -> str:
     """Send a mock Event Grid BlobCreated event to the local func host."""
     event_id = str(uuid.uuid4())
@@ -83,7 +88,9 @@ def fire_event_grid(
         }
     ]
 
-    url = f"{FUNC_BASE}/runtime/webhooks/EventGrid?functionName=blob_trigger"
+    url = f"{FUNC_BASE}/runtime/webhooks/EventGrid?functionName={function_name}"
+    if function_key:
+        url += f"&code={function_key}"
     print(f"  Firing Event Grid event -> {url}")
     print(f"  Event ID (= orchestration instance ID): {event_id}")
 
@@ -97,7 +104,10 @@ def fire_event_grid(
     if resp.status_code in (200, 202):
         print(f"  Event accepted (HTTP {resp.status_code}).")
     else:
-        print(f"  WARNING: Event response HTTP {resp.status_code}: {resp.text}")
+        msg = f"Event Grid webhook rejected with HTTP {resp.status_code}: {resp.text}"
+        print(f"  WARNING: {msg}")
+        if strict:
+            raise RuntimeError(msg)
 
     return event_id
 
@@ -158,6 +168,16 @@ def main() -> None:
     parser.add_argument("--no-poll", action="store_true", help="Skip orchestrator polling")
     parser.add_argument("--timeout", type=int, default=600, help="Polling timeout in seconds")
     parser.add_argument(
+        "--event-grid-function-name",
+        default=DEFAULT_EVENT_GRID_FUNCTION_NAME,
+        help="Function name for Event Grid webhook (default: blob_trigger)",
+    )
+    parser.add_argument(
+        "--event-grid-function-key",
+        default=os.getenv("EVENT_GRID_FUNCTION_KEY"),
+        help="Event Grid system key (or set EVENT_GRID_FUNCTION_KEY env var)",
+    )
+    parser.add_argument(
         "--asset-key",
         default=None,
         help="Planetary Computer asset key (e.g. visual, SCL, B04). Injected as provider_config.",
@@ -195,6 +215,8 @@ def main() -> None:
         content_length,
         args.container,
         provider_config=provider_config,
+        function_name=args.event_grid_function_name,
+        function_key=args.event_grid_function_key,
     )
 
     # Step 4: Poll (optional)

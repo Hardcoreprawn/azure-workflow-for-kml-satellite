@@ -431,6 +431,13 @@ for threshold analysis:
 uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
 ```
 
+If your local Event Grid webhook requires auth, provide the system key:
+
+```bash
+export EVENT_GRID_FUNCTION_KEY=<local-eventgrid-system-key>
+uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
+```
+
 Scenarios covered:
 
 - `baseline` (1 AOI)
