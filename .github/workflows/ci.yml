@@ -51,5 +51,25 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Build image (smoke test)
-        run: docker build -t treesight:ci-check .
+
+      - name: Log in to GHCR (pull base image)
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build app image
+        env:
+          BASE_IMAGE: ghcr.io/${{ github.repository }}/treesight-base:latest
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+            -t treesight:ci-check .
+
+      - name: Run container smoke tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/scripts:/scripts:ro" \
+            treesight:ci-check \
+            python3 /scripts/container_smoke_test.py

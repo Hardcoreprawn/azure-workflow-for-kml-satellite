@@ -64,10 +64,23 @@ jobs:
       - name: Build & push
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
+          BASE_IMAGE: ghcr.io/${{ github.repository }}/treesight-base:latest
         run: |
-          docker build -t "${IMAGE_NAME}:${{ github.sha }}" -t "${IMAGE_NAME}:latest" .
+          docker build \
+            --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+            -t "${IMAGE_NAME}:${{ github.sha }}" \
+            -t "${IMAGE_NAME}:latest" .
           docker push "${IMAGE_NAME}:${{ github.sha }}"
           docker push "${IMAGE_NAME}:latest"
+
+      - name: Run container smoke tests
+        env:
+          IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/scripts:/scripts:ro" \
+            "${IMAGE_NAME}:${{ github.sha }}" \
+            python3 /scripts/container_smoke_test.py
 
       - name: Trivy container scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0

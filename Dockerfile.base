@@ -1,0 +1,145 @@
+# ─────────────────────────────────────────────────────────────
+# TreeSight Functions Base Image  (EXTREME SLIM)
+#
+# Slim, security-hardened base for Azure Functions on Python 3.12.
+# Extracts only the essential runtime components from Microsoft's
+# image, strips ~530 MB of dead weight, and rebuilds on
+# python:3.12-slim-bookworm with minimal Debian packages.
+#
+# Rebuilt weekly via .github/workflows/base-image.yml.
+# Hosted on GHCR as: ghcr.io/<owner>/treesight-base:<tag>
+#
+# Components sourced from Microsoft image:
+#   - Azure Functions host (.NET 8 app, /azure-functions-host/)
+#   - Extension bundles (/FuncExtensionBundles/)
+#   - Python worker (gRPC bridge to .NET host)
+#   - Startup scripts (/opt/startup/)
+#
+# What we strip (savings per category):
+#   - bin_v3 (.NET isolated worker)        ~167 MB  (Python worker only)
+#   - Kafka native libs (all variants)      ~94 MB  (not using Kafka)
+#   - Windows/OSX/ARM64 runtimes            ~54 MB  (wrong platform)
+#   - Roslyn C# compiler                     ~7 MB  (C# scripts, not Python)
+#   - StaticContent (dashboard UI)            ~6 MB  (API-only container)
+#   - SnapshotCollector (profiling)           ~5 MB  (optional)
+#   - Diagnostics (createdump, DAC, DBI)      ~5 MB  (crash dump tools)
+#   - NuGet, Proxy DLLs, MonoPosix           ~4 MB  (deprecated/unused)
+#
+# What we KEEP:
+#   - R2R precompiled DLL + map + PreJIT   ~242 MB  (critical for scale-to-zero cold start)
+#
+# What we control:
+#   - Python version (latest 3.12.x from official image)
+#   - .NET ASP.NET runtime (latest 8.0.x from Microsoft packages)
+#   - Debian packages (minimal — only what's actually needed)
+# ─────────────────────────────────────────────────────────────
+
+# ── Stage 1: Extract & strip Functions runtime from MS image ─
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS functions-host
+
+# ── Host optimisations (~21 MB saved; R2R kept for cold start) ─
+RUN set -e && \
+    cd /azure-functions-host && \
+    # Roslyn C# compiler — for C# script functions, not Python (saves 7 MB)
+    rm -f Microsoft.CodeAnalysis.CSharp.dll \
+          Microsoft.CodeAnalysis.dll && \
+    # SnapshotCollector — App Insights profiler, optional (saves 5 MB)
+    rm -f SnapshotCollector/ 2>/dev/null; \
+    rm -rf SnapshotCollector/ 2>/dev/null; true && \
+    # Diagnostics — crash dump tools (saves ~5 MB)
+    rm -f createdump \
+          libmscordaccore.so \
+          libmscordbi.so \
+          libcoreclrtraceptprovider.so && \
+    # NuGet DLLs — package management, not needed at runtime (saves 2 MB)
+    rm -f NuGet.*.dll && \
+    # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
+    rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll \
+          ProxyLibrary/ 2>/dev/null; true && \
+    rm -rf ProxyLibrary/ 2>/dev/null; true && \
+    # MonoPosixHelper — Mono compatibility layer (saves ~1 MB)
+    rm -f libMonoPosixHelper.so && \
+    # PDB debug symbols
+    find . -name '*.pdb' -delete && \
+    # XML documentation
+    find . -name '*.xml' -delete
+
+# ── Bundle optimisations (~329 MB saved) ─────────────────────
+RUN set -e && \
+    BUNDLE_DIR=$(find /FuncExtensionBundles -maxdepth 2 -type d -name "4.*" | head -1) && \
+    # bin_v3/ — .NET isolated worker mode; we use Python worker (saves 167 MB)
+    rm -rf "${BUNDLE_DIR}/bin_v3" && \
+    # StaticContent — dashboard UI assets (saves 6 MB)
+    rm -rf "${BUNDLE_DIR}/StaticContent" && \
+    # Windows runtimes — wrong platform (saves 32 MB)
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/win-*" -type f -delete && \
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/win-*" -type d -empty -delete && \
+    # OSX runtimes — wrong platform (saves 14 MB)
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/osx*" -type f -delete && \
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/osx*" -type d -empty -delete && \
+    # ARM64 runtimes — we target x64 only (saves 8 MB)
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/linux-arm64*" -type f -delete && \
+    find "${BUNDLE_DIR}/bin/runtimes" -path "*/linux-arm64*" -type d -empty -delete && \
+    # Kafka native libraries — all 5 variants, not using Kafka (saves 94 MB)
+    find "${BUNDLE_DIR}/bin" -name "*rdkafka*" -delete && \
+    find "${BUNDLE_DIR}/bin" -name "*Kafka*" -delete && \
+    # Unused extension DLLs — triggers we don't use (saves ~8 MB)
+    cd "${BUNDLE_DIR}/bin" && \
+    rm -f *CosmosDB* *ServiceBus* *EventHub* *SignalR* \
+          *Kafka* *RabbitMQ* *SQL* *Redis* *SendGrid* \
+          *Twilio* *NotificationHub* *PushNotification* *MobileApps* \
+          StackExchange.Redis.dll Confluent.Kafka.dll RabbitMQ.Client.dll \
+          Twilio.dll SendGrid.dll
+
+
+# ── Stage 2: Build slim runtime image ────────────────────────
+FROM python:3.12-slim-bookworm
+
+LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
+      org.opencontainers.image.description="TreeSight – Azure Functions Python 3.12 base image" \
+      org.opencontainers.image.title="treesight-base"
+
+# Install .NET 8 ASP.NET runtime — required by the Functions host.
+# Uses Microsoft's official install script for latest 8.0.x.
+# libexpat1 — required by GDAL native libs (rasterio, fiona)
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends ca-certificates curl libexpat1 && \
+    curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
+    bash /tmp/dotnet-install.sh \
+      --runtime aspnetcore \
+      --channel 8.0 \
+      --install-dir /usr/share/dotnet \
+      --no-path && \
+    ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet && \
+    rm /tmp/dotnet-install.sh && \
+    apt-get purge -y curl && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Functions host (stripped from ~347 MB to ~326 MB; R2R kept)
+COPY --from=functions-host /azure-functions-host /azure-functions-host
+
+# Copy extension bundles (stripped from ~325 MB to ~55 MB)
+COPY --from=functions-host /FuncExtensionBundles /FuncExtensionBundles
+
+# Copy startup scripts (CA certificate installer)
+COPY --from=functions-host /opt/startup /opt/startup
+RUN chmod +x /opt/startup/*.sh
+
+# Environment variables — match Microsoft image for compatibility
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
+    FUNCTIONS_WORKER_RUNTIME=python \
+    FUNCTIONS_WORKER_RUNTIME_VERSION=3.12 \
+    ASPNETCORE_URLS=http://+:80 \
+    ASPNETCORE_CONTENTROOT=/azure-functions-host \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    DOTNET_USE_POLLING_FILE_WATCHER=true \
+    PYTHONPATH=/home/site/wwwroot/.python_packages/lib/site-packages \
+    HOME=/home
+
+WORKDIR /home/site/wwwroot
+
+EXPOSE 80
+
+CMD ["/opt/startup/start_nonappservice.sh"]

@@ -1,20 +1,49 @@
+# ── Build context exclusions ──────────────────────────────────
+# Only pyproject.toml, uv.lock, host.json, function_app.py,
+# treesight/, and blueprints/ need to enter the build.
+
+# VCS / CI
+.git/
+.gitignore
+.github/
+
+# Development
 .venv/
+tests/
+scripts/
+docs/
+typings/
+website/
+
+# Build artifacts
 __pycache__/
 *.pyc
-.git/
-.github/
+*.pyo
+*.egg-info/
+dist/
+build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-azurite-data/
-docs/
+htmlcov/
+coverage.xml
+.coverage
+
+# Infrastructure
 infra/
-scripts/
-tests/
-typings/
-website/
+azurite-data/
+
+# Docker / security
+docker-compose.yml
+Dockerfile.base
+.dockerignore
+.secrets.baseline
+.trivyignore
+
+# Other
 *.md
 LICENSE
 Makefile
-docker-compose.yml
 local.settings.json
+*.swp
+*~

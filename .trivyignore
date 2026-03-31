@@ -6,3 +6,11 @@
 # endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
 AZU-0012
 AZU-0013
+
+# Go stdlib CVEs in the .NET Functions host binary (compiled into the host by Microsoft).
+# We cannot patch these — they require a rebuilt host from Microsoft.
+# Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
+# Review: remove these entries once Microsoft ships a patched Functions host image.
+CVE-2026-25679
+CVE-2026-27139
+CVE-2026-27142
