@@ -88,14 +88,22 @@ def fire_event_grid(
         }
     ]
 
-    url = f"{FUNC_BASE}/runtime/webhooks/EventGrid?functionName={function_name}"
+    endpoint = httpx.URL(FUNC_BASE).join("/runtime/webhooks/eventgrid")
+    query_params: dict[str, str] = {"functionName": function_name}
     if function_key:
-        url += f"&code={function_key}"
-    print(f"  Firing Event Grid event -> {url}")
+        query_params["code"] = function_key
+
+    if function_key:
+        display_url = f"{endpoint}?functionName={function_name}&code=***REDACTED***"
+    else:
+        display_url = f"{endpoint}?functionName={function_name}"
+
+    print(f"  Firing Event Grid event -> {display_url}")
     print(f"  Event ID (= orchestration instance ID): {event_id}")
 
     resp = httpx.post(
-        url,
+        str(endpoint),
+        params=query_params,
         json=event,
         headers={"aeg-event-type": "Notification", "Content-Type": "application/json"},
         timeout=30.0,
