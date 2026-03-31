@@ -41,6 +41,7 @@ output "site_url" {
 output "appinsights_connection_string" {
   value       = azurerm_application_insights.main.connection_string
   description = "Application Insights connection string for browser SDK."
+  sensitive   = true
 }
 
 output "email_sender_address" {
