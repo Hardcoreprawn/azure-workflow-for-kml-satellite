@@ -82,13 +82,13 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Too many requests — please wait before trying again", req=req)
-
     try:
         check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
@@ -248,13 +248,13 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Too many requests — please wait before trying again", req=req)
-
     try:
         check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+
+    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:

@@ -68,7 +68,8 @@ def get_client_ip(req) -> str:
 
     Prefers Azure-specific headers, then uses the rightmost
     X-Forwarded-For entry (set by the last trusted proxy) to
-    resist header spoofing.
+    resist header spoofing.  Falls back to ``unknown`` if no
+    trusted header is available.
     """
     # Azure-specific header (set by SWA / Container Apps)
     azure_ip = req.headers.get("X-Azure-ClientIP", "")
@@ -85,4 +86,4 @@ def get_client_ip(req) -> str:
         if parts:
             return parts[-1]
 
-    return (req.headers.get("X-Real-IP") or "unknown").strip()
+    return "unknown"

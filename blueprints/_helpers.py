@@ -20,10 +20,14 @@ _ALLOWED_ORIGINS: set[str] = {
     "http://localhost:1111",
 }
 
-# Allow override via env var (comma-separated) for custom domains
+# Allow override via env var (comma-separated) for custom domains.
+# Only https:// origins are accepted to prevent open CORS misconfiguration.
 _extra = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if _extra:
-    _ALLOWED_ORIGINS.update(o.strip() for o in _extra.split(",") if o.strip())
+    for origin in _extra.split(","):
+        origin = origin.strip()
+        if origin and origin.startswith("https://"):
+            _ALLOWED_ORIGINS.add(origin)
 
 
 def _cors_origin(req: func.HttpRequest) -> str:

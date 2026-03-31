@@ -126,14 +126,15 @@ def validate_token(auth_header: str) -> dict[str, Any]:
 
     audience = CIAM_AUDIENCE or CIAM_CLIENT_ID
     issuer = _get_issuer()
+    if not issuer:
+        raise ValueError("Cannot validate token — OIDC issuer unavailable")
 
     decode_opts: dict[str, Any] = {
         "algorithms": ["RS256"],
         "audience": audience,
+        "issuer": issuer,
         "options": {"require": ["exp", "iss", "aud"]},
     }
-    if issuer:
-        decode_opts["issuer"] = issuer
 
     try:
         claims = jwt.decode(token, public_key, **decode_opts)

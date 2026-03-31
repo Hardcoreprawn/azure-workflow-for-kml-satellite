@@ -198,6 +198,33 @@ class TestCheckAuth:
             with pytest.raises(ValueError, match="Invalid token"):
                 check_auth(mock_req)
 
+
+# ---------------------------------------------------------------------------
+# JWT issuer validation — must fail closed
+# ---------------------------------------------------------------------------
+
+
+class TestIssuerValidation:
+    """Ensure JWT validation always requires issuer (Finding 1.2)."""
+
+    def test_raises_when_issuer_unavailable(self):
+        """If OIDC issuer is empty (cache miss), validation must fail closed."""
+        with (
+            patch("treesight.security.auth.auth_enabled", return_value=True),
+            patch(
+                "treesight.security.auth._fetch_jwks",
+                return_value={"keys": [{"kid": "k1", "kty": "RSA"}]},
+            ),
+            patch("treesight.security.auth._get_issuer", return_value=""),
+            patch("treesight.security.auth.jwt.get_unverified_header", return_value={"kid": "k1"}),
+            patch(
+                "treesight.security.auth.jwt.algorithms.RSAAlgorithm.from_jwk",
+                return_value="fake-key",
+            ),
+        ):
+            with pytest.raises(ValueError, match="issuer unavailable"):
+                validate_token("Bearer fake.jwt.token")
+
     def test_passes_valid_token(self):
         from blueprints._helpers import check_auth
 
