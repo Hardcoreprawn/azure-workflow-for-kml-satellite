@@ -1,0 +1,8 @@
+# Temporary accepted-risk findings to keep the stack low-cost in dev.
+# Do not remove without replacing with an equivalent security control.
+#
+# AZU-0012 / AZU-0013 are tied to strict network ACL posture for Storage/Key Vault.
+# The low-cost dev setup currently keeps public endpoints enabled to avoid private
+# endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
+AZU-0012
+AZU-0013

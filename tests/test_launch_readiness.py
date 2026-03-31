@@ -11,6 +11,9 @@ accidentally removed or misconfigured.  They cover:
 6. detect-secrets in CI security workflow
 7. App Insights availability test (URL ping)
 8. CSP allows App Insights SDK
+9. Deploy workflow settings (sensitive outputs)
+10. Event Grid wiring (trigger name and webhook key)
+11. Trivy signal quality and exception discipline
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
+TRIVY_IGNORE = ROOT / ".trivyignore"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 
 HTML_PAGES = [
@@ -366,4 +370,38 @@ class TestEventGridWebhookWiring:
         tf = MAIN_TF.read_text()
         assert "&code=${local.eventgrid_key}" in tf, (
             "Event Grid webhook endpointUrl must include the system key query param"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 11. Trivy signal quality and exception discipline
+# ---------------------------------------------------------------------------
+
+
+class TestTrivySignalQuality:
+    """Ensure Trivy scans stay actionable and exceptions remain explicit."""
+
+    def test_security_trivy_fs_ignores_unfixed(self):
+        yml = SECURITY_YML.read_text()
+        assert "ignore-unfixed: true" in yml, (
+            "security.yml Trivy filesystem scan should ignore unfixed CVEs "
+            "to reduce non-actionable alert noise"
+        )
+
+    def test_deploy_trivy_image_ignores_unfixed(self):
+        yml = DEPLOY_YML.read_text()
+        assert "ignore-unfixed: true" in yml, (
+            "deploy.yml Trivy image scan should ignore unfixed CVEs "
+            "to focus on actionable vulnerabilities"
+        )
+
+    def test_trivy_ignore_file_exists(self):
+        assert TRIVY_IGNORE.exists(), (
+            ".trivyignore must exist for temporary, documented risk exceptions"
+        )
+
+    def test_trivy_ignore_tracks_low_cost_network_acl_exceptions(self):
+        ignore = TRIVY_IGNORE.read_text()
+        assert "AZU-0012" in ignore and "AZU-0013" in ignore, (
+            ".trivyignore must explicitly track current low-cost network ACL exceptions"
         )
