@@ -422,6 +422,28 @@ Local auth testing:
 - Serve the website from `http://localhost:4280` so the SPA redirect URI matches the CIAM app registration.
 - Use `uv run python scripts/dev_server.py --port 4280 --func-port 7071` when testing sign-in locally.
 
+### Load Testing Baseline (#320)
+
+Use the baseline runner to execute four scenarios and produce JSON/Markdown artifacts
+for threshold analysis:
+
+```bash
+uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
+```
+
+Scenarios covered:
+
+- `baseline` (1 AOI)
+- `moderate_bulk` (50 AOIs)
+- `stress_bulk` (200 AOIs)
+- `massive_polygon` (single large polygon)
+
+Artifacts are written to `docs/baselines/` and include:
+
+- scenario-level success/failure rates and p50/p95 durations
+- per-run orchestration instance IDs and terminal states
+- heuristic signals for throttling (`429`), timeout, and memory pressure
+
 Limitation:
 
 - External CIAM self-service flows support Google/Facebook social providers and email-based methods. Microsoft personal-account federation is not exposed as a self-service provider in this tenant model.
