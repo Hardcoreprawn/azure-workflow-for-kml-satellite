@@ -50,6 +50,13 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
     # --- proxy logic ---
 
     def _proxy(self) -> None:
+        from urllib.parse import urlparse
+
+        # Validate the path is a safe relative path (no host/scheme injection)
+        parsed = urlparse(self.path)
+        if parsed.scheme or parsed.netloc:
+            self.send_error(400, "Invalid path")
+            return
         target = f"{self.func_origin}{self.path}"
 
         # Read request body (for POST)
