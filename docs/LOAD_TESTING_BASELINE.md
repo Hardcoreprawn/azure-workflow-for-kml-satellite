@@ -33,11 +33,20 @@ make dev-func
 uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
 ```
 
+If your local Event Grid webhook returns `401`, provide the function system key:
+
+```bash
+export EVENT_GRID_FUNCTION_KEY=<local-eventgrid-system-key>
+uv run python scripts/load_baseline.py --runs-per-scenario 3 --concurrency 2
+```
+
 Options:
 
 - `--timeout`: per-run timeout seconds (default `600`)
 - `--poll-interval`: orchestrator polling interval in seconds (default `3.0`)
 - `--container`: target blob container (default `kml-input`)
+- `--event-grid-function-name`: Event Grid trigger function name (default `blob_trigger`)
+- `--event-grid-function-key`: Event Grid system key (or use `EVENT_GRID_FUNCTION_KEY`)
 - `--out-dir`: report output directory (default `docs/baselines`)
 
 ## Outputs
