@@ -39,10 +39,10 @@ This repository uses the following free GitHub security features:
 To keep findings actionable while staying cost-conscious in dev environments:
 
 - Trivy image/filesystem scans are configured with `ignore-unfixed: true`.
- This suppresses vulnerabilities that currently have no upstream fix version.
+  This suppresses vulnerabilities that currently have no upstream fix version.
 - Temporary low-cost infra exceptions are tracked in `.trivyignore` with
- explicit rationale. These are not blanket suppressions and must be revisited
- when a paid hardening change is approved.
+  explicit rationale. These are not blanket suppressions and must be revisited
+  when a paid hardening change is approved.
 
 Current temporary exceptions:
 

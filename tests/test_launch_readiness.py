@@ -11,6 +11,9 @@ accidentally removed or misconfigured.  They cover:
 6. detect-secrets in CI security workflow
 7. App Insights availability test (URL ping)
 8. CSP allows App Insights SDK
+9. Deploy workflow settings (sensitive outputs)
+10. Event Grid wiring (trigger name and webhook key)
+11. Trivy signal quality and exception discipline
 """
 
 from __future__ import annotations
