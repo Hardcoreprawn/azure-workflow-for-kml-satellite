@@ -203,9 +203,9 @@ async def blob_trigger(
     # Merge optional pipeline configuration from event data (local dev / testing).
     # Only safe, known scalar/list keys are accepted — never arbitrary dicts
     # that could redirect provider URLs or inject credentials.
-    safe_pipeline_keys = {"provider_name", "imagery_filters", "target_crs"}
+    safe_pipeline_keys = {"provider_name", "target_crs"}
     for key in safe_pipeline_keys:
-        if key in data and isinstance(data[key], (str, list)):
+        if key in data and isinstance(data[key], str):
             orchestrator_input[key] = data[key]
 
     instance_id = blob_event.correlation_id

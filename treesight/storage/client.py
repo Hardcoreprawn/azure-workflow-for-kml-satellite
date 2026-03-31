@@ -103,11 +103,13 @@ class BlobStorageClient:
 
     def blob_exists(self, container: str, blob_path: str) -> bool:
         """Return ``True`` if the blob exists."""
+        blob_path = _safe_blob_path(blob_path)
         blob = self._client.get_blob_client(container, blob_path)
         return blob.exists()
 
     def get_blob_properties(self, container: str, blob_path: str) -> dict[str, Any]:
         """Return a dict of basic blob metadata."""
+        blob_path = _safe_blob_path(blob_path)
         blob = self._client.get_blob_client(container, blob_path)
         props = blob.get_blob_properties()
         return {
@@ -119,10 +121,13 @@ class BlobStorageClient:
 
     def stream_blob(self, container: str, blob_path: str) -> StorageStreamDownloader[bytes]:
         """Return a ``StorageStreamDownloader`` for streaming responses."""
+        blob_path = _safe_blob_path(blob_path)
         blob = self._client.get_blob_client(container, blob_path)
         return blob.download_blob()
 
     def list_blobs(self, container: str, prefix: str = "") -> list[str]:
         """Return blob names in *container* matching the optional *prefix*."""
+        if prefix:
+            prefix = _safe_blob_path(prefix)
         cc = self._client.get_container_client(container)
         return [b.name for b in cc.list_blobs(name_starts_with=prefix or None)]
