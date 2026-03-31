@@ -203,31 +203,34 @@ class TestEmailRegex:
 class TestCorsOriginHardening:
     """Ensure only https:// origins are accepted from CORS_ALLOWED_ORIGINS env var."""
 
-    def test_rejects_http_origin_from_env(self, monkeypatch):
-        """An attacker-controlled http:// origin must be rejected."""
+    @staticmethod
+    def _reload_with_env(monkeypatch, value=None):
+        """Reload _helpers with CORS_ALLOWED_ORIGINS set (or cleared) and return the origins set."""
         import importlib
 
         import blueprints._helpers
 
-        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://evil.example.com")
+        if value is not None:
+            monkeypatch.setenv("CORS_ALLOWED_ORIGINS", value)
+        else:
+            monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
         importlib.reload(blueprints._helpers)
-        assert "http://evil.example.com" not in blueprints._helpers._ALLOWED_ORIGINS
+        return set(blueprints._helpers._ALLOWED_ORIGINS)
+
+    def test_rejects_http_origin_from_env(self, monkeypatch):
+        """An attacker-controlled http:// origin must be rejected."""
+        origins = self._reload_with_env(monkeypatch, "http://evil.example.com")
+        assert not any(o.startswith("http://evil") for o in origins)
         # Restore
-        monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
-        importlib.reload(blueprints._helpers)
+        self._reload_with_env(monkeypatch)
 
     def test_accepts_https_origin_from_env(self, monkeypatch):
         """Legitimate https:// origins must be accepted."""
-        import importlib
-
-        import blueprints._helpers
-
-        monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://custom.treesight.com")
-        importlib.reload(blueprints._helpers)
-        assert "https://custom.treesight.com" in blueprints._helpers._ALLOWED_ORIGINS
+        test_origin = "https://custom.treesight.com"
+        origins = self._reload_with_env(monkeypatch, test_origin)
+        assert test_origin in origins, f"Expected {test_origin} in CORS origins"
         # Restore
-        monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
-        importlib.reload(blueprints._helpers)
+        self._reload_with_env(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
