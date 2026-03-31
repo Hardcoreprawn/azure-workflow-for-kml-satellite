@@ -14,10 +14,11 @@ class _DummyResponse:
 
 
 def test_fire_event_grid_includes_function_name_and_code(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
-    def _fake_post(url: str, **_: object) -> _DummyResponse:
+    def _fake_post(url: str, **kwargs: object) -> _DummyResponse:
         captured["url"] = url
+        captured["params"] = kwargs.get("params")
         return _DummyResponse(202, "accepted")
 
     monkeypatch.setattr(simulate_upload.httpx, "post", _fake_post)
@@ -33,8 +34,31 @@ def test_fire_event_grid_includes_function_name_and_code(monkeypatch: pytest.Mon
     )
 
     assert instance_id == "test-id"
-    assert "functionName=blob_trigger" in captured["url"]
-    assert "code=abc123" in captured["url"]
+    assert captured["url"] == "http://localhost:7071/runtime/webhooks/eventgrid"
+    assert captured["params"] == {"functionName": "blob_trigger", "code": "abc123"}
+
+
+def test_fire_event_grid_redacts_key_in_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def _fake_post(*_: object, **__: object) -> _DummyResponse:
+        return _DummyResponse(202, "accepted")
+
+    monkeypatch.setattr(simulate_upload.httpx, "post", _fake_post)
+
+    simulate_upload.fire_event_grid(
+        blob_url="http://127.0.0.1:10000/devstoreaccount1/kml-input/file.kml",
+        blob_name="file.kml",
+        content_length=123,
+        container="kml-input",
+        function_name="blob_trigger",
+        function_key="secret-key",
+    )
+
+    output = capsys.readouterr().out
+    assert "secret-key" not in output
+    assert "***REDACTED***" in output
 
 
 def test_fire_event_grid_raises_on_rejected_webhook(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -199,7 +199,7 @@ Protected/internal endpoint:
 
 ### Event-driven entrypoint
 
-- Event Grid trigger function: `kml_blob_trigger`
+- Event Grid trigger function: `blob_trigger`
 - Expected event source: blob-created events for input containers ending in `-input`
 - Expected payload contract: canonical blob event fields (`blob_url`, `container_name`, `blob_name`, `content_length`, `content_type`, `event_time`, `correlation_id`)
 
@@ -579,14 +579,14 @@ Webhook validation handshake failed for 'https://func-app.azurewebsites.net/...'
 Destination endpoint not found or did not respond within expected timeout.
 ```
 
-**Cause:** For Azure Functions hosted on Azure Container Apps, using `endpointType: AzureFunction` with ARM resource ID (`.../functions/kml_blob_trigger`) can fail because the function child resource is not reliably discoverable by Event Grid during subscription creation.
+**Cause:** For Azure Functions hosted on Azure Container Apps, using `endpointType: AzureFunction` with ARM resource ID (`.../functions/blob_trigger`) can fail because the function child resource is not reliably discoverable by Event Grid during subscription creation.
 
 **Solution:** Use webhook destination wiring to the Functions runtime endpoint and keep two-pass deployment:
 
 1. **First pass:** Deploy infrastructure + Function App with `enableEventGridSubscription=false`
 2. **Poll readiness:** Wait for `/api/health` to return 200 (functions loaded)
 3. **Second pass:** Deploy with `enableEventGridSubscription=true` (with retry/backoff), where Event Grid points to:
-  `https://<function-host>/runtime/webhooks/eventgrid?functionName=kml_blob_trigger&code=<eventgrid-system-key>`
+  `https://<function-host>/runtime/webhooks/eventgrid?functionName=blob_trigger&code=<eventgrid-system-key>`
 
 This sequence is enforced in [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
