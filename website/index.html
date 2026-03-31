@@ -32,7 +32,7 @@
     </a>
     <ul>
       <li><a href="#problem">Overview</a></li>
-      <li><a href="#demo">Demo</a></li>
+      <li><a href="/app/?mode=demo">Try Demo</a></li>
       <li><a href="/docs/">Docs</a></li>
       <li><a href="#timeline">Pipeline</a></li>
       <li><a href="#pricing">Pricing</a></li>
@@ -55,13 +55,25 @@
     <h1>KML to Satellite Imagery,<br>Automated.</h1>
     <p>Upload a KML file, get analysis-ready satellite imagery back. TreeSight handles parsing, provider orchestration, clipping, and reprojection — so you don't have to.</p>
     <div class="hero-cta">
-      <a href="#demo" class="btn btn-primary">Try Live Demo</a>
+      <a href="/app/?mode=demo" class="btn btn-primary">Try Live Demo</a>
       <a href="#early-access" class="btn btn-secondary">Request Early Access</a>
     </div>
   </div>
 </header>
 
-<!-- Problem / Solution -->
+<!-- See It In Action -->
+<section id="see-it-action">
+  <div class="container">
+    <div class="section-label">Experience</div>
+    <h2>Try the Live Demo</h2>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:24px">Upload a KML file or use one of our sample locations to explore satellite imagery, NDVI analysis, and historical change detection. No sign-up required.</p>
+    <div style="text-align:center">
+      <a href="/app/?mode=demo" class="btn btn-primary" style="padding:14px 32px;font-size:1rem">Open Free Demo</a>
+    </div>
+    <p style="font-size:.8rem;color:var(--c-muted);text-align:center;margin-top:24px;max-width:640px;margin-left:auto;margin-right:auto">Demo includes 3 free analysis runs. Analysed data is retained for 30 days. <a href="/docs/kml-guide.html">Learn how to create KML files.</a></p>
+  </div>
+</section>
+
 <section id="problem">
   <div class="container">
     <div class="section-label">Why TreeSight</div>
@@ -86,150 +98,6 @@
   </div>
 </section>
 
-<!-- Live Demo -->
-<section id="demo">
-  <div class="container">
-    <div class="section-label">Try It</div>
-    <h2>Live Demo</h2>
-    <div class="onboard-banner" id="onboard-banner">
-      <span class="onboard-icon">🗺️</span>
-      <div class="onboard-text">
-        <strong>New to KML files?</strong>
-        <p>Learn how to draw an area of interest in Google Earth Pro and export it as KML — no GIS experience needed.</p>
-      </div>
-      <a href="/docs/kml-guide.html" class="btn btn-secondary btn-sm">Read the Guide</a>
-    </div>
-    <div id="contract-warning" class="contract-warning">
-      API contract version mismatch. Demo submissions are disabled until the backend is updated.
-    </div>
-    <div id="timelapse-header">
-      <button id="back-to-kml">← Edit KML</button>
-      <span id="header-frame-label"></span>
-      <div class="layer-toggle" id="header-layer-toggle">
-        <button id="header-btn-rgb" class="active">RGB</button>
-        <button id="header-btn-ndvi">NDVI</button>
-      </div>
-    </div>
-    <div class="demo-layout" id="demo-layout">
-      <div id="demo-input-col">
-        <div class="demo-form">
-          <div class="drop-zone" id="drop-zone">
-            <div class="drop-icon">📁</div>
-            <div class="drop-text"><strong>Drop a .kml or .kmz file here</strong>, or click to browse</div>
-            <div class="drop-hint">Supports KML and KMZ files up to 5 MB</div>
-            <div class="file-name" id="drop-file-name"></div>
-            <input type="file" id="file-input" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
-          </div>
-          <div class="drop-divider">— or paste KML text —</div>
-          <label for="demo-kml">KML Content</label>
-          <textarea id="demo-kml" placeholder="Paste your KML content here, or use the sample below…"></textarea>
-          <div class="login-prompt" id="login-prompt">� <a id="login-prompt-link">Sign in</a> to process your KML and get satellite imagery, NDVI analysis, and weather data — free.</div>
-          <button class="btn btn-primary" id="demo-submit" style="width:100%">Process KML</button>
-          <p style="font-size:.7rem;color:var(--c-muted);text-align:center;margin-top:8px">Your data is automatically deleted after 30 days. <a href="/privacy.html">Privacy Policy</a></p>
-          <div id="demo-status" class="demo-status"></div>
-          <div id="pipeline-progress">
-            <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML…</div>
-            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing &amp; preparing AOIs</div>
-            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching imagery (NAIP + Sentinel-2)</div>
-            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading, clipping &amp; reprojecting</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Weather, NDVI &amp; mosaic caching</div>
-            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
-          </div>
-          <div id="pipeline-results">
-            <h3>Pipeline Results</h3>
-            <div class="stat-grid" id="pipeline-stats"></div>
-          </div>
-          <div id="pipeline-error"></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
-          <select id="sample-picker" style="flex:1;padding:10px 12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-text);font-size:.85rem">
-            <option value="">Load a sample location…</option>
-            <option value="madera">Madera County, California — Almond Orchards</option>
-            <option value="nechako">Nechako, British Columbia — Old Growth Cut Block</option>
-            <option value="para">Novo Progresso, Pará, Brazil — Deforestation Front</option>
-            <option value="borneo">East Kalimantan, Borneo — Palm Oil Clearance</option>
-            <option value="carpathians">Suceava, Romania — Carpathian Old Growth</option>
-            <option value="mountsorrel">Mountsorrel, Leicestershire — Mixed Agriculture (multi-field)</option>
-          </select>
-        </div>
-      </div>
-      <div id="demo-viewer-col">
-        <div id="map-wrapper">
-          <div id="map"></div>
-          <div id="compare-divider"></div>
-          <div class="compare-tag" id="compare-tag-left">Before</div>
-          <div class="compare-tag" id="compare-tag-right">After</div>
-        </div>
-        <div class="map-controls">
-          <div class="controls-row">
-            <button id="play-btn" disabled>▶ Play</button>
-            <input type="range" id="frame-slider" min="0" max="0" value="0">
-            <span id="frame-counter"></span>
-            <button id="compare-btn" disabled title="Compare two frames side by side">⇔ Compare</button>
-          </div>
-          <div class="label-row">
-            <span id="frame-label">Loading imagery…</span>
-            <div class="layer-toggle">
-              <button id="btn-rgb" class="active">RGB</button>
-              <button id="btn-ndvi">NDVI</button>
-            </div>
-          </div>
-        </div>
-        <div class="compare-controls" id="compare-controls">
-          <span class="compare-label">Left:</span>
-          <select id="compare-left"></select>
-          <span class="compare-label">Right:</span>
-          <select id="compare-right"></select>
-        </div>
-        <div id="frame-info">Registering mosaics with Planetary Computer…</div>
-        <div id="cache-progress"><div class="bar"><div class="fill" id="cache-fill" style="width:0%"></div></div><div class="text" id="cache-text">Caching tiles…</div></div>
-      </div>
-      <div id="demo-analysis-col">
-        <div id="insights-panel">
-          <h3>🔍 Analysis</h3>
-          <div id="analytics-scope">
-            <span>Scope:</span>
-            <span id="analytics-scope-swatch"></span>
-            <span id="analytics-scope-label">All areas (collective)</span>
-            <button id="analytics-scope-reset" type="button">Show collective</button>
-          </div>
-          <div id="insights-content"></div>
-        </div>
-        <div id="weather-panel">
-          <h3>🌡 Climate Context</h3>
-          <div id="weather-chart"><canvas id="weather-canvas"></canvas><div class="weather-marker" id="weather-marker"></div></div>
-          <div class="weather-legend"><span class="leg-temp">Temperature (°C)</span><span class="leg-precip">Precipitation (mm)</span></div>
-        </div>
-        <div id="ndvi-trend-panel">
-          <h3>🌿 Vegetation Health Trend</h3>
-          <div id="ndvi-trend-chart"><canvas id="ndvi-trend-canvas"></canvas><div class="ndvi-trend-marker" id="ndvi-trend-marker"></div></div>
-          <div class="ndvi-trend-legend"><span class="leg-ndvi">Mean NDVI</span><span class="leg-change">Δ drop ≥ 0.1</span></div>
-          <div id="ndvi-trend-summary" style="font-size:.7rem;color:var(--c-muted);margin-top:6px"></div>
-        </div>
-        <div id="period-summary">
-          <h3>📊 Period Summary</h3>
-          <div class="summary-grid" id="summary-grid"></div>
-          <div id="period-assessment"></div>
-        </div>
-        <div id="ai-insights-panel" style="display:none">
-          <h3>🤖 AI Analysis</h3>
-          <div id="ai-insights-example" style="font-size:.8rem;margin-bottom:12px;padding:10px;background:rgba(100,200,255,.07);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-muted)">
-            <p style="margin-bottom:6px;color:var(--c-text);font-weight:600">Example AI Analysis Output</p>
-            <p style="margin-bottom:6px">"NDVI declined steadily from 0.72 to 0.58 between March–August 2024. This coincides with a 34% below-average rainfall period (Open-Meteo). The vegetation stress pattern is consistent with drought-induced canopy thinning rather than land-use change, as the decline is gradual and spatially uniform across the AOI."</p>
-            <p style="font-size:.75rem;color:var(--c-muted);font-style:italic">Powered by LLM analysis of NDVI trends + weather data. Not a trained computer vision model.</p>
-          </div>
-          <button id="btn-get-ai-insights" type="button" style="margin-bottom:12px;padding:8px 14px;background:var(--c-accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-size:.8rem;width:100%;">Get AI Analysis for Timelapse</button>
-          <div id="ai-insights-summary" style="display:none;font-size:.8rem;margin-bottom:12px;padding:8px;background:rgba(100,200,255,.1);border-radius:var(--radius)"></div>
-          <div id="ai-insights-content" style="display:none;font-size:.8rem"></div>
-          <div id="ai-insights-loading" style="display:none;font-size:.8rem;color:var(--c-muted)">Analyzing timelapse with AI...</div>
-          <div id="ai-insights-error" style="display:none;font-size:.8rem;color:var(--c-red);background:rgba(248,81,73,.1);padding:8px;border-radius:var(--radius)"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Timeline -->
 <section id="timeline">
   <div class="container">
     <div class="section-label">How It Works</div>
@@ -450,6 +318,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
 <!-- Self-hosted MSAL v2.39.0 — Microsoft CDN deprecated from v3, see cdn-usage.md -->
 <script src="/js/msal-browser.min.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/landing.js"></script>
 </body>
 </html>
+
+<!-- Timeline -->
+<section id="timeline">
