@@ -333,6 +333,19 @@ class TestDeployWorkflowSettings:
             "deploy workflow to inject into the static site"
         )
 
+    def test_appinsights_connection_string_output_is_sensitive(self):
+        tf = (INFRA / "outputs.tf").read_text()
+        match = re.search(
+            r'output\s+"appinsights_connection_string"\s*\{[^}]*\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "outputs.tf must define appinsights_connection_string output"
+        assert "sensitive   = true" in match.group(0) or "sensitive = true" in match.group(0), (
+            "appinsights_connection_string output must be marked sensitive=true "
+            "to avoid OpenTofu plan failures"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 10. Event Grid webhook wiring must match runtime function index

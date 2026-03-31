@@ -266,7 +266,7 @@ def _write_markdown(
         "## Scenario Summary",
         "",
         "| Scenario | AOIs | Runs | Success | Failures | Timeouts | P50 (s) | P95 (s) | "
-        "Throttle Signals |",
+        + "Throttle Signals |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
@@ -287,7 +287,7 @@ def _write_markdown(
             "## Run Details",
             "",
             "| Scenario | Run | Instance ID | Status | Duration (s) | Timed Out | 429/Throttle | "
-            "Timeout Signal | Memory Signal |",
+            + "Timeout Signal | Memory Signal |",
             "| --- | ---: | --- | --- | ---: | --- | --- | --- | --- |",
         ]
     )
