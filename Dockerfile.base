@@ -105,6 +105,7 @@ LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-wo
 # Uses Microsoft's official install script for latest 8.0.x.
 # libexpat1 — required by GDAL native libs (rasterio, fiona)
 RUN apt-get update -qq && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends ca-certificates curl libexpat1 && \
     curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
     bash /tmp/dotnet-install.sh \

@@ -61,7 +61,8 @@ jobs:
 
       - name: Build app image
         run: |
-          BASE_IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/treesight-base:latest"
+          source .github/image-config.env
+          BASE_IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}:latest"
           docker build \
             --build-arg BASE_IMAGE="${BASE_IMAGE}" \
             -t treesight:ci-check .
