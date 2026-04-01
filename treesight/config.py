@@ -91,6 +91,11 @@ STRIPE_PRICE_ID_PRO_GBP = _env("STRIPE_PRICE_ID_PRO_GBP")
 STRIPE_PRICE_ID_PRO_USD = _env("STRIPE_PRICE_ID_PRO_USD")
 STRIPE_PRICE_ID_PRO_EUR = _env("STRIPE_PRICE_ID_PRO_EUR")
 
+# Cosmos DB for NoSQL (M4 state persistence)
+# Auth via Managed Identity (DefaultAzureCredential) — no key needed.
+COSMOS_ENDPOINT = _env("COSMOS_ENDPOINT")
+COSMOS_DATABASE_NAME = _env("COSMOS_DATABASE_NAME", "treesight")
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""

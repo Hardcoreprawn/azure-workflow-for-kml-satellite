@@ -198,6 +198,19 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-cosmos"
+version = "4.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c8/a3/0474e622bf9676e3206d61269461ed16a05958363c254ea3b15af16219b2/azure_cosmos-4.15.0.tar.gz", hash = "sha256:be1cf49837c197d9da880ec47fe020a24d679075b89e0e1e2aca8d376b3a5a24", size = 2100744, upload-time = "2026-02-23T16:01:52.293Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/5f/b6e3d3ae16fa121fdc17e62447800d378b7e716cd6103c3650977a6c4618/azure_cosmos-4.15.0-py3-none-any.whl", hash = "sha256:83c1da7386bcd0df9a15c52116cc35012225d8a72d4f1379938b83ea5eb19fff", size = 424870, upload-time = "2026-02-23T16:01:54.514Z" },
+]
+
+[[package]]
 name = "azure-data-tables"
 version = "12.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2836,6 +2849,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "azure-communication-email" },
+    { name = "azure-cosmos" },
     { name = "azure-data-tables" },
     { name = "azure-functions" },
     { name = "azure-functions-durable" },
@@ -2878,6 +2892,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "azure-communication-email", specifier = ">=1.0.0" },
+    { name = "azure-cosmos", specifier = ">=4.9.0" },
     { name = "azure-data-tables", specifier = ">=12.5.0" },
     { name = "azure-functions", specifier = ">=1.21.0" },
     { name = "azure-functions-durable", specifier = ">=1.2.9" },

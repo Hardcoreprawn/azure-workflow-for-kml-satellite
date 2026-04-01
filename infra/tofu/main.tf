@@ -376,6 +376,144 @@ resource "azurerm_cognitive_deployment" "gpt4o_mini" {
   }
 }
 
+# --- Cosmos DB for NoSQL — Serverless (M4 state persistence) ---
+# Security posture:
+#   - Public network access disabled (access via Azure backbone only)
+#   - Local (key-based) authentication disabled — Entra ID RBAC only
+#   - TLS 1.2 enforced
+#   - Function App uses Managed Identity with Cosmos DB Built-in Data Contributor role
+
+resource "azurerm_cosmosdb_account" "main" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = local.names.cosmos_account
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  offer_type          = "Standard"
+  kind                = "GlobalDocumentDB"
+  tags                = local.tags
+
+  # Serverless capacity mode — zero cost when idle
+  capabilities {
+    name = "EnableServerless"
+  }
+
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
+  geo_location {
+    location          = azurerm_resource_group.main.location
+    failover_priority = 0
+  }
+
+  # --- Security hardening ---
+  local_authentication_disabled = true            # Disable key-based auth; RBAC only
+  public_network_access_enabled = false           # No public internet access
+  minimal_tls_version           = "Tls12"
+  network_acl_bypass_for_azure_services = true    # Allow Azure services (Functions, Portal diagnostics)
+  ip_range_filter                       = []      # No IP allowlist needed — private access only
+}
+
+resource "azurerm_cosmosdb_sql_database" "main" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "treesight"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+}
+
+resource "azurerm_cosmosdb_sql_container" "runs" {
+  count                = var.enable_cosmos_db ? 1 : 0
+  name                 = "runs"
+  resource_group_name  = azurerm_resource_group.main.name
+  account_name         = azurerm_cosmosdb_account.main[0].name
+  database_name        = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths  = ["/user_id"]
+  default_ttl          = -1 # per-item TTL enabled (set ttl field on docs to expire)
+
+  # Queries served:
+  #   R1: SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC (LIMIT)
+  #   R5: ... AND c.status = @status ORDER BY c.submitted_at DESC
+  # Partition key (/user_id) is always auto-indexed — do not re-include it.
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/submitted_at/?"
+    }
+
+    included_path {
+      path = "/status/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+
+    composite_index {
+      index {
+        path  = "/submitted_at"
+        order = "descending"
+      }
+      index {
+        path  = "/status"
+        order = "ascending"
+      }
+    }
+  }
+}
+
+resource "azurerm_cosmosdb_sql_container" "subscriptions" {
+  count                = var.enable_cosmos_db ? 1 : 0
+  name                 = "subscriptions"
+  resource_group_name  = azurerm_resource_group.main.name
+  account_name         = azurerm_cosmosdb_account.main[0].name
+  database_name        = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths  = ["/user_id"]
+
+  # Queries served:
+  #   S1: Point read by (user_id, user_id) — hot path, every page load
+  #   S5: Cross-partition reverse lookup by stripe_customer_id (webhook)
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/status/?"
+    }
+
+    included_path {
+      path = "/stripe_customer_id/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+  }
+}
+
+resource "azurerm_cosmosdb_sql_container" "users" {
+  count                = var.enable_cosmos_db ? 1 : 0
+  name                 = "users"
+  resource_group_name  = azurerm_resource_group.main.name
+  account_name         = azurerm_cosmosdb_account.main[0].name
+  database_name        = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths  = ["/user_id"]
+
+  # Queries served:
+  #   U1: Point read by (user_id, user_id)
+  #   U3: Cross-partition lookup by email (admin, team invites)
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/email/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location
@@ -533,6 +671,15 @@ resource "azapi_resource" "function_app" {
             name  = "NOTIFICATION_EMAIL"
             value = var.notification_email
           }
+        ] : [], var.enable_cosmos_db ? [
+          {
+            name  = "COSMOS_ENDPOINT"
+            value = azurerm_cosmosdb_account.main[0].endpoint
+          },
+          {
+            name  = "COSMOS_DATABASE_NAME"
+            value = "treesight"
+          }
         ] : [])
       }
     }
@@ -587,6 +734,16 @@ resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# Cosmos DB data-plane RBAC: Built-in Data Contributor (read/write all items)
+resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  principal_id        = azapi_resource.function_app.identity[0].principal_id
+  scope               = azurerm_cosmosdb_account.main[0].id
 }
 
 resource "azapi_resource" "event_grid_system_topic" {
