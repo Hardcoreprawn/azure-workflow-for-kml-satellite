@@ -33,10 +33,13 @@ def graph(method, path, body=None):
         method=method,
     )
     try:
-        resp = urllib.request.urlopen(req)
-        if resp.status == 204:
-            return {"_status": 204}
-        return json.loads(resp.read())
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if resp.status == 204:
+                return {"_status": 204}
+            return json.loads(resp.read())
+    except urllib.error.URLError as e:
+        print(f"Network error on {method} {path}: {e}")
+        return None
     except urllib.error.HTTPError as e:
         body_text = e.read().decode()
         print(f"ERROR {e.code} on {method} {path}:")
