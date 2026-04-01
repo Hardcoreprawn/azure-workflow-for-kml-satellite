@@ -1,6 +1,6 @@
 """Tests for treesight.security.billing — subscription management."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from treesight.constants import FREE_TIER_RUN_LIMIT, PRO_TIER_RUN_LIMIT
 from treesight.security.billing import (
@@ -143,3 +143,76 @@ class TestTierEmulation:
         assert effective["tier"] == "starter"
         assert effective["status"] == "active"
         assert effective["emulated"] is True
+
+
+# --- Cosmos path ---
+
+
+class TestGetSubscriptionCosmos:
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item")
+    def test_reads_from_cosmos(self, mock_read, _mock_cosmos):
+        mock_read.return_value = {
+            "id": "u1",
+            "user_id": "u1",
+            "tier": "pro",
+            "status": "active",
+            "_ts": 123,
+        }
+        sub = get_subscription("u1")
+        mock_read.assert_called_once_with("subscriptions", "u1", "u1")
+        assert sub["tier"] == "pro"
+        assert "_ts" not in sub  # internal fields stripped
+
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_returns_default_when_cosmos_doc_missing(self, _mock_read, _mock_cosmos):
+        sub = get_subscription("u-new")
+        assert sub == {"tier": "free", "status": "none"}
+
+    @patch("treesight.storage.client.BlobStorageClient")
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("unavailable"))
+    def test_falls_back_to_blob_on_cosmos_error(self, _mock_read, _mock_cosmos, mock_cls):
+        mock_cls.return_value.download_json.side_effect = FileNotFoundError
+        sub = get_subscription("u-fallback")
+        assert sub == {"tier": "free", "status": "none"}
+
+
+class TestSaveSubscriptionCosmos:
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item")
+    def test_writes_to_cosmos(self, mock_upsert, _mock_cosmos):
+        save_subscription("u1", {"tier": "pro", "status": "active"})
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["id"] == "u1"
+        assert doc["tier"] == "pro"
+
+    @patch("treesight.storage.client.BlobStorageClient")
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("unavailable"))
+    def test_falls_back_to_blob_on_cosmos_write_error(self, _mock_upsert, _mock_cosmos, mock_cls):
+        mock_upload = MagicMock()
+        mock_cls.return_value.upload_json = mock_upload
+        save_subscription("u-fallback", {"tier": "pro", "status": "active"})
+        mock_upload.assert_called_once()
+
+
+class TestEmulationCosmos:
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item")
+    def test_save_emulation_writes_to_cosmos(self, mock_upsert, _mock_cosmos):
+        save_subscription_emulation("u1", "starter")
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["id"] == "u1:emulation"
+        assert doc["tier"] == "starter"
+
+    @patch("treesight.security.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item")
+    def test_clear_emulation_writes_to_cosmos(self, mock_upsert, _mock_cosmos):
+        clear_subscription_emulation("u1")
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["enabled"] is False

@@ -147,12 +147,17 @@ def plan_capabilities(tier: str | None) -> dict[str, Any]:
 def get_subscription(user_id: str) -> dict[str, Any]:
     """Return cached subscription record, or a free-tier default."""
     if _cosmos_available():
-        from treesight.storage.cosmos import read_item
+        try:
+            from treesight.storage.cosmos import read_item
 
-        doc = read_item("subscriptions", user_id, user_id)
-        if doc:
-            return {k: v for k, v in doc.items() if not k.startswith("_")}
-        return {"tier": "free", "status": "none"}
+            doc = read_item("subscriptions", user_id, user_id)
+            if doc:
+                return {k: v for k, v in doc.items() if not k.startswith("_")}
+            return {"tier": "free", "status": "none"}
+        except Exception:
+            logger.warning(
+                "Cosmos read failed for subscription user=%s, falling back to blob", user_id
+            )
 
     from treesight.storage.client import BlobStorageClient
 
@@ -166,18 +171,23 @@ def get_subscription(user_id: str) -> dict[str, Any]:
 def get_subscription_emulation(user_id: str) -> dict[str, Any] | None:
     """Return a local tier-emulation record for *user_id*, if present."""
     if _cosmos_available():
-        from treesight.storage.cosmos import read_item
+        try:
+            from treesight.storage.cosmos import read_item
 
-        doc = read_item("subscriptions", f"{user_id}:emulation", user_id)
-        if not doc or not doc.get("enabled"):
-            return None
-        tier = normalize_tier(doc.get("tier"))
-        return {
-            "tier": tier,
-            "status": "active",
-            "enabled": True,
-            "updated_at": doc.get("updated_at"),
-        }
+            doc = read_item("subscriptions", f"{user_id}:emulation", user_id)
+            if not doc or not doc.get("enabled"):
+                return None
+            tier = normalize_tier(doc.get("tier"))
+            return {
+                "tier": tier,
+                "status": "active",
+                "enabled": True,
+                "updated_at": doc.get("updated_at"),
+            }
+        except Exception:
+            logger.warning(
+                "Cosmos read failed for emulation user=%s, falling back to blob", user_id
+            )
 
     from treesight.storage.client import BlobStorageClient
 
@@ -216,13 +226,18 @@ def save_subscription_emulation(user_id: str, tier: str) -> None:
     }
 
     if _cosmos_available():
-        from treesight.storage.cosmos import upsert_item
+        try:
+            from treesight.storage.cosmos import upsert_item
 
-        upsert_item(
-            "subscriptions",
-            {"id": f"{user_id}:emulation", "user_id": user_id, **record},
-        )
-        return
+            upsert_item(
+                "subscriptions",
+                {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+            )
+            return
+        except Exception:
+            logger.warning(
+                "Cosmos write failed for emulation user=%s, falling back to blob", user_id
+            )
 
     from treesight.storage.client import BlobStorageClient
 
@@ -239,13 +254,18 @@ def clear_subscription_emulation(user_id: str) -> None:
     }
 
     if _cosmos_available():
-        from treesight.storage.cosmos import upsert_item
+        try:
+            from treesight.storage.cosmos import upsert_item
 
-        upsert_item(
-            "subscriptions",
-            {"id": f"{user_id}:emulation", "user_id": user_id, **record},
-        )
-        return
+            upsert_item(
+                "subscriptions",
+                {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+            )
+            return
+        except Exception:
+            logger.warning(
+                "Cosmos write failed for clear_emulation user=%s, falling back to blob", user_id
+            )
 
     from treesight.storage.client import BlobStorageClient
 
@@ -279,14 +299,22 @@ def save_subscription(user_id: str, record: dict[str, Any]) -> None:
     """Persist subscription record."""
     record["updated_at"] = datetime.now(UTC).isoformat()
 
+    saved_to_cosmos = False
     if _cosmos_available():
-        from treesight.storage.cosmos import upsert_item
+        try:
+            from treesight.storage.cosmos import upsert_item
 
-        upsert_item(
-            "subscriptions",
-            {"id": user_id, "user_id": user_id, **record},
-        )
-    else:
+            upsert_item(
+                "subscriptions",
+                {"id": user_id, "user_id": user_id, **record},
+            )
+            saved_to_cosmos = True
+        except Exception:
+            logger.warning(
+                "Cosmos write failed for subscription user=%s, falling back to blob", user_id
+            )
+
+    if not saved_to_cosmos:
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()

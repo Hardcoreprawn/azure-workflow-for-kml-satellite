@@ -48,12 +48,15 @@ def _run_limit(user_id: str) -> int:
 def _get_quota_record(user_id: str) -> dict[str, Any]:
     """Load the quota record from Cosmos (users container) or blob storage."""
     if _cosmos_available():
-        from treesight.storage.cosmos import read_item
+        try:
+            from treesight.storage.cosmos import read_item
 
-        doc = read_item("users", user_id, user_id)
-        if doc:
-            return doc.get("quota", {"used": 0, "runs": []})
-        return {"used": 0, "runs": []}
+            doc = read_item("users", user_id, user_id)
+            if doc:
+                return doc.get("quota", {"used": 0, "runs": []})
+            return {"used": 0, "runs": []}
+        except Exception:
+            logger.warning("Cosmos read failed for quota user=%s, falling back to blob", user_id)
 
     from treesight.storage.client import BlobStorageClient
 
@@ -67,12 +70,15 @@ def _get_quota_record(user_id: str) -> dict[str, Any]:
 def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
     """Persist the quota record to Cosmos (users container) or blob storage."""
     if _cosmos_available():
-        from treesight.storage.cosmos import read_item, upsert_item
+        try:
+            from treesight.storage.cosmos import read_item, upsert_item
 
-        existing = read_item("users", user_id, user_id) or {}
-        existing.update({"id": user_id, "user_id": user_id, "quota": record})
-        upsert_item("users", existing)
-        return
+            existing = read_item("users", user_id, user_id) or {}
+            existing.update({"id": user_id, "user_id": user_id, "quota": record})
+            upsert_item("users", existing)
+            return
+        except Exception:
+            logger.warning("Cosmos write failed for quota user=%s, falling back to blob", user_id)
 
     from treesight.storage.client import BlobStorageClient
 
