@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from blueprints.pipeline import _parse_history_limit, _parse_history_offset
+from blueprints.pipeline._helpers import _parse_history_limit, _parse_history_offset
 from treesight.pipeline.orchestrator import (
     build_pipeline_summary,
     derive_project_context,
