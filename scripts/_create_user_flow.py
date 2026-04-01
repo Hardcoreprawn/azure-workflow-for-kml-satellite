@@ -1,4 +1,8 @@
-"""One-time: Create CIAM user flow and link app."""
+"""One-time: Create CIAM user flow and link app.
+
+Supports email/password, Google, and Microsoft Account identity providers.
+Run _setup_sso_providers.py first to register social providers in the tenant.
+"""
 
 import json
 import os
@@ -60,7 +64,15 @@ def main():
                     {
                         "@odata.type": "#microsoft.graph.builtInIdentityProvider",
                         "id": "EmailPassword-OAUTH",
-                    }
+                    },
+                    {
+                        "@odata.type": "#microsoft.graph.builtInIdentityProvider",
+                        "id": "MicrosoftAccount",
+                    },
+                    {
+                        "@odata.type": "#microsoft.graph.socialIdentityProvider",
+                        "id": "Google-OAUTH",
+                    },
                 ],
             },
             "onAttributeCollection": {
