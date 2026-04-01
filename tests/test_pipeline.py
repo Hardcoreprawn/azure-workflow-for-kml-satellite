@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from blueprints.pipeline import _parse_history_limit, _parse_history_offset
 from treesight.pipeline.orchestrator import (
     build_pipeline_summary,
     derive_project_context,
@@ -98,3 +99,37 @@ class TestBuildPipelineSummary:
             },
         )
         assert result["status"] == "partial_imagery"
+
+
+class TestParseHistoryLimit:
+    def test_valid_limit(self):
+        assert _parse_history_limit("5") == 5
+
+    def test_empty_returns_default(self):
+        assert _parse_history_limit("") == 8
+
+    def test_clamps_to_max(self):
+        assert _parse_history_limit("100") == 20
+
+    def test_clamps_to_min(self):
+        assert _parse_history_limit("0") == 1
+
+    def test_non_numeric(self):
+        assert _parse_history_limit("abc") == 8
+
+
+class TestParseHistoryOffset:
+    def test_valid_offset(self):
+        assert _parse_history_offset("10") == 10
+
+    def test_empty_returns_zero(self):
+        assert _parse_history_offset("") == 0
+
+    def test_negative_clamps_to_zero(self):
+        assert _parse_history_offset("-5") == 0
+
+    def test_clamps_to_max(self):
+        assert _parse_history_offset("9999") == 200
+
+    def test_non_numeric(self):
+        assert _parse_history_offset("abc") == 0

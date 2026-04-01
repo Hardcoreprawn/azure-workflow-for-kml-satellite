@@ -97,6 +97,17 @@ def check_quota(user_id: str) -> int:
     return max(limit - used, 0)
 
 
+def get_usage(user_id: str) -> dict[str, Any]:
+    """Return usage stats for *user_id*.
+
+    Returns a dict with ``used`` (int) and ``limit`` (int).
+    """
+    limit = _run_limit(user_id)
+    record = _get_quota_record(user_id)
+    used = record.get("used", 0)
+    return {"used": used, "limit": limit}
+
+
 def consume_quota(user_id: str) -> int:
     """Increment usage and return remaining runs (after this one).
 

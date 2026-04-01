@@ -37,6 +37,9 @@
     msalInstance.handleRedirectPromise().then(function(resp) {
       if (resp && resp.account) {
         msalInstance.setActiveAccount(resp.account);
+        // User just completed auth redirect — send them to the dashboard
+        window.location.href = '/app/';
+        return;
       }
       currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
       if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
@@ -77,11 +80,13 @@
     const loginBtn = document.getElementById('auth-login-btn');
     const logoutBtn = document.getElementById('auth-logout-btn');
     const userSpan = document.getElementById('auth-user');
+    const dashLink = document.getElementById('auth-dashboard-link');
 
     if (!authEnabled()) {
       if (loginBtn) loginBtn.style.display = 'none';
       if (logoutBtn) logoutBtn.style.display = 'none';
       if (userSpan) userSpan.style.display = 'none';
+      if (dashLink) dashLink.style.display = 'none';
       return;
     }
 
@@ -91,10 +96,12 @@
       if (userSpan) userSpan.style.display = 'inline';
       if (loginBtn) loginBtn.style.display = 'none';
       if (logoutBtn) logoutBtn.style.display = 'inline';
+      if (dashLink) dashLink.style.display = 'inline';
     } else {
       if (userSpan) userSpan.style.display = 'none';
       if (loginBtn) loginBtn.style.display = 'inline';
       if (logoutBtn) logoutBtn.style.display = 'none';
+      if (dashLink) dashLink.style.display = 'none';
     }
   }
 

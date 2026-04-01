@@ -144,20 +144,27 @@ async def _build_analysis_history_response(
 ) -> func.HttpResponse:
     """Build the signed-in history response for a single authenticated user."""
     limit = _parse_history_limit(req.params.get("limit", ""))
-    records = _fetch_submission_records(user_id, limit)
+    offset = _parse_history_offset(req.params.get("offset", ""))
+    records = _fetch_submission_records(user_id, limit, offset=offset)
 
-    runs = [await _build_analysis_history_entry(record, client) for record in records[:limit]]
+    runs = [await _build_analysis_history_entry(record, client) for record in records]
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 
+    payload = {
+        "runs": runs,
+        "activeRun": active_run,
+        "offset": offset,
+        "limit": limit,
+    }
     return func.HttpResponse(
-        json.dumps({"runs": runs, "activeRun": active_run}, default=str),
+        json.dumps(payload, default=str),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
     )
 
 
-def _fetch_submission_records(user_id: str, limit: int) -> list:
+def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> list:
     """Retrieve submission records from Cosmos (preferred) or blob storage."""
     if _cosmos_available():
         try:
@@ -165,13 +172,14 @@ def _fetch_submission_records(user_id: str, limit: int) -> list:
 
             query = (
                 "SELECT * FROM c WHERE c.user_id = @uid"
-                " ORDER BY c.submitted_at DESC OFFSET 0 LIMIT @lim"
+                " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
             )
             return cosmos.query_items(
                 "runs",
                 query,
                 parameters=[
                     {"name": "@uid", "value": user_id},
+                    {"name": "@off", "value": offset},
                     {"name": "@lim", "value": limit},
                 ],
                 partition_key=user_id,
@@ -206,7 +214,7 @@ def _fetch_submission_records(user_id: str, limit: int) -> list:
         records.append(record)
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-    return records
+    return records[offset : offset + limit]
 
 
 @bp.event_grid_trigger(arg_name="event")
@@ -1259,6 +1267,17 @@ def _parse_history_limit(raw_limit: str) -> int:
     except (TypeError, ValueError):
         return _DEFAULT_HISTORY_LIMIT
     return max(1, min(limit, _MAX_HISTORY_LIMIT))
+
+
+_MAX_HISTORY_OFFSET = 200
+
+
+def _parse_history_offset(raw_offset: str) -> int:
+    try:
+        offset = int(raw_offset)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(offset, _MAX_HISTORY_OFFSET))
 
 
 async def _build_analysis_history_entry(
