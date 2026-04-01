@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 from typing import Any
 
 from azure.cosmos import CosmosClient
@@ -20,6 +21,7 @@ from treesight import config
 
 logger = logging.getLogger("treesight.storage.cosmos")
 
+_lock = threading.Lock()
 _client: CosmosClient | None = None
 _database: Any = None
 _credential: DefaultAzureCredential | None = None
@@ -29,11 +31,13 @@ def _get_client() -> CosmosClient:
     """Lazily initialise a singleton CosmosClient with AAD auth."""
     global _client, _credential
     if _client is None:
-        endpoint = config.COSMOS_ENDPOINT
-        if not endpoint:
-            raise RuntimeError("COSMOS_ENDPOINT is not configured")
-        _credential = DefaultAzureCredential()
-        _client = CosmosClient(endpoint, credential=_credential)
+        with _lock:
+            if _client is None:
+                endpoint = config.COSMOS_ENDPOINT
+                if not endpoint:
+                    raise RuntimeError("COSMOS_ENDPOINT is not configured")
+                _credential = DefaultAzureCredential()
+                _client = CosmosClient(endpoint, credential=_credential)
     return _client
 
 
@@ -41,8 +45,10 @@ def _get_database() -> Any:
     """Return the default database proxy."""
     global _database
     if _database is None:
-        db_name = config.COSMOS_DATABASE_NAME
-        _database = _get_client().get_database_client(db_name)
+        with _lock:
+            if _database is None:
+                db_name = config.COSMOS_DATABASE_NAME
+                _database = _get_client().get_database_client(db_name)
     return _database
 
 
@@ -95,6 +101,13 @@ def delete_item(container_name: str, item_id: str, partition_key: str) -> None:
 def reset_client() -> None:
     """Reset singleton state (for testing)."""
     global _client, _database, _credential
-    _client = None
-    _database = None
-    _credential = None
+    with _lock:
+        if _client is not None:
+            with contextlib.suppress(Exception):
+                _client.__exit__(None, None, None)
+        if _credential is not None:
+            with contextlib.suppress(Exception):
+                _credential.close()
+        _client = None
+        _database = None
+        _credential = None

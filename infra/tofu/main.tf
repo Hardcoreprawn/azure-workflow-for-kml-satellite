@@ -678,7 +678,7 @@ resource "azapi_resource" "function_app" {
           },
           {
             name  = "COSMOS_DATABASE_NAME"
-            value = "treesight"
+            value = azurerm_cosmosdb_sql_database.main[0].name
           }
         ] : [])
       }
