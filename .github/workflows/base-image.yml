@@ -83,6 +83,7 @@ jobs:
           output: trivy-base.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore
           exit-code: "1"        # block on findings — base must be clean
 
       - name: Upload Trivy SARIF

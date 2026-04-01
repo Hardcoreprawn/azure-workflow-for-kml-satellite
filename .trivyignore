@@ -14,3 +14,9 @@ AZU-0013
 CVE-2026-25679
 CVE-2026-27139
 CVE-2026-27142
+
+# libpng16-16: fix version 1.6.39-2+deb12u4 not yet in Debian bookworm mirrors.
+# apt-get upgrade cannot pull what the mirror doesn't have yet.
+# Expires 2026-05-01 — re-check monthly; tracked in #355.
+CVE-2026-33416 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
+CVE-2026-33636 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
