@@ -242,7 +242,7 @@
       var priceEl = card.querySelector('.tier-price');
       var cta = card.querySelector('.pricing-cta');
       _originalCardState[tier] = {
-        priceHTML: priceEl ? priceEl.innerHTML : '',
+        priceNode: priceEl ? priceEl.cloneNode(true) : null,
         ctaText: cta ? cta.textContent : '',
         ctaHref: cta ? cta.getAttribute('href') : null,
         ctaOnclick: cta ? cta.getAttribute('onclick') : null
@@ -262,9 +262,12 @@
       if (gated && priceLabels && priceLabels[tier]) {
         priceEl.textContent = priceLabels[tier];
       } else {
-        // Restore original price HTML from captured state
+        // Restore original price DOM from captured clone (avoids innerHTML)
         var orig = _originalCardState[tier];
-        if (orig) priceEl.innerHTML = orig.priceHTML;
+        if (orig && orig.priceNode) {
+          var restored = orig.priceNode.cloneNode(true);
+          priceEl.parentNode.replaceChild(restored, priceEl);
+        }
       }
     });
 
