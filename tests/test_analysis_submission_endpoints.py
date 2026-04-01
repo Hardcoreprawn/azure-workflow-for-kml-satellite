@@ -271,3 +271,109 @@ class TestAnalysisSubmissionRoutes:
             "postProcess": 1,
         }
         assert data["runs"][1]["artifactCount"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Cosmos DB paths — _fetch_submission_records / _persist_submission_record
+# ---------------------------------------------------------------------------
+
+
+class TestFetchSubmissionRecordsCosmos:
+    def test_queries_cosmos_when_available(self):
+        from blueprints.pipeline import _fetch_submission_records
+
+        records = [
+            {"submission_id": "r1", "user_id": "u1", "submitted_at": "2026-04-01T12:00:00Z"},
+        ]
+
+        with (
+            patch("blueprints.pipeline._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.query_items", return_value=records) as mock_q,
+        ):
+            result = _fetch_submission_records("u1", 8)
+
+        assert result == records
+        mock_q.assert_called_once()
+        args, kwargs = mock_q.call_args
+        assert args[0] == "runs"
+        assert kwargs["partition_key"] == "u1"
+
+    def test_falls_back_to_blob_when_cosmos_not_available(self):
+        from blueprints.pipeline import _fetch_submission_records
+
+        with (
+            patch("blueprints.pipeline._cosmos_available", return_value=False),
+            patch("treesight.storage.client.BlobStorageClient") as mock_cls,
+        ):
+            mock_cls.return_value.list_blobs.return_value = [
+                "analysis-submissions/u1/s1.json",
+            ]
+            mock_cls.return_value.download_json.return_value = {
+                "submission_id": "s1",
+                "user_id": "u1",
+                "submitted_at": "2026-04-01T12:00:00Z",
+            }
+            result = _fetch_submission_records("u1", 8)
+
+        assert len(result) == 1
+        assert result[0]["submission_id"] == "s1"
+
+    def test_falls_back_to_blob_on_cosmos_error(self):
+        from blueprints.pipeline import _fetch_submission_records
+
+        with (
+            patch("blueprints.pipeline._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
+            patch("treesight.storage.client.BlobStorageClient") as mock_cls,
+        ):
+            mock_cls.return_value.list_blobs.return_value = []
+            result = _fetch_submission_records("u1", 8)
+
+        assert result == []
+
+
+class TestPersistSubmissionRecordCosmos:
+    def test_upserts_to_cosmos_when_available(self):
+        from blueprints.pipeline import _persist_submission_record
+
+        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+
+        with (
+            patch("blueprints.pipeline._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
+        ):
+            _persist_submission_record(None, record, "u1", "s1")
+
+        mock_upsert.assert_called_once()
+        args = mock_upsert.call_args[0]
+        assert args[0] == "runs"
+        assert args[1]["id"] == "s1"
+
+    def test_falls_back_to_blob_when_cosmos_unavailable(self):
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline import _persist_submission_record
+
+        storage = MagicMock()
+        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+
+        with patch("blueprints.pipeline._cosmos_available", return_value=False):
+            _persist_submission_record(storage, record, "u1", "s1")
+
+        storage.upload_json.assert_called_once()
+
+    def test_falls_back_to_blob_on_cosmos_error(self):
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline import _persist_submission_record
+
+        storage = MagicMock()
+        record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
+
+        with (
+            patch("blueprints.pipeline._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("boom")),
+        ):
+            _persist_submission_record(storage, record, "u1", "s1")
+
+        storage.upload_json.assert_called_once()

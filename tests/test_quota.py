@@ -62,3 +62,45 @@ class TestConsumeQuota:
         consume_quota("alice")
         remaining_bob = consume_quota("bob")
         assert remaining_bob == FREE_TIER_LIMIT - 1
+
+
+# --- Cosmos path ---
+
+
+class TestGetQuotaRecordCosmos:
+    @patch("treesight.security.quota._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item")
+    def test_reads_from_cosmos(self, mock_read, _mock_cosmos):
+        mock_read.return_value = {"id": "u1", "quota": {"used": 3, "runs": []}}
+        assert check_quota("u1") == FREE_TIER_LIMIT - 3
+        mock_read.assert_called_once_with("users", "u1", "u1")
+
+    @patch("treesight.security.quota._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_returns_default_when_cosmos_doc_missing(self, _mock_read, _mock_cosmos):
+        assert check_quota("u-new") == FREE_TIER_LIMIT
+
+    @patch("treesight.security.quota._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("unavailable"))
+    def test_falls_back_to_blob_on_cosmos_error(self, _mock_read, _mock_cosmos):
+        # Blob storage also empty → default quota
+        assert check_quota("u-fallback") == FREE_TIER_LIMIT
+
+
+class TestSaveQuotaRecordCosmos:
+    @patch("treesight.security.quota._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_writes_to_cosmos(self, _mock_read, mock_upsert, _mock_cosmos):
+        consume_quota("u1")
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["id"] == "u1"
+        assert doc["quota"]["used"] == 1
+
+    @patch("treesight.security.quota._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("unavailable"))
+    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("unavailable"))
+    def test_falls_back_to_blob_on_cosmos_write_error(self, _mock_read, _mock_upsert, _mock_cosmos):
+        remaining = consume_quota("u-fallback")
+        assert remaining == FREE_TIER_LIMIT - 1

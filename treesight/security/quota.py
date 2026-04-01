@@ -1,8 +1,9 @@
-"""Per-user pipeline run quota backed by blob storage.
+"""Per-user pipeline run quota.
 
 Each user gets a fixed number of pipeline runs based on their subscription tier.
-Usage is tracked in a JSON blob ``quotas/{user_id}.json`` inside the
-pipeline-payloads container.  Paid tiers are resolved via the billing module.
+When Cosmos DB is configured, quota is stored in the ``users`` container.
+Falls back to blob storage at ``quotas/{user_id}.json`` inside
+pipeline-payloads.
 """
 
 from __future__ import annotations
@@ -24,6 +25,12 @@ def _blob_path(user_id: str) -> str:
     return f"{_QUOTA_PREFIX}/{user_id}.json"
 
 
+def _cosmos_available() -> bool:
+    from treesight import config
+
+    return bool(config.COSMOS_ENDPOINT)
+
+
 def _run_limit(user_id: str) -> int:
     """Return the run limit for a user, checking subscription tier."""
     try:
@@ -38,20 +45,55 @@ def _run_limit(user_id: str) -> int:
         return FREE_TIER_LIMIT
 
 
+def _get_quota_record(user_id: str) -> dict[str, Any]:
+    """Load the quota record from Cosmos (users container) or blob storage."""
+    if _cosmos_available():
+        try:
+            from treesight.storage.cosmos import read_item
+
+            doc = read_item("users", user_id, user_id)
+            if doc:
+                return doc.get("quota", {"used": 0, "runs": []})
+            return {"used": 0, "runs": []}
+        except Exception:
+            logger.warning("Cosmos read failed for quota user=%s, falling back to blob", user_id)
+
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    try:
+        return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
+    except Exception:
+        return {"used": 0, "runs": []}
+
+
+def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
+    """Persist the quota record to Cosmos (users container) or blob storage."""
+    if _cosmos_available():
+        try:
+            from treesight.storage.cosmos import read_item, upsert_item
+
+            existing = read_item("users", user_id, user_id) or {}
+            existing.update({"id": user_id, "user_id": user_id, "quota": record})
+            upsert_item("users", existing)
+            return
+        except Exception:
+            logger.warning("Cosmos write failed for quota user=%s, falling back to blob", user_id)
+
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id), record)
+
+
 def check_quota(user_id: str) -> int:
     """Return remaining pipeline runs for *user_id*.
 
     Returns the tier-appropriate limit if no usage record exists yet.
     """
-    from treesight.storage.client import BlobStorageClient
-
     limit = _run_limit(user_id)
-    storage = BlobStorageClient()
-    try:
-        record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
-        used = record.get("used", 0)
-    except Exception:
-        used = 0
+    record = _get_quota_record(user_id)
+    used = record.get("used", 0)
     return max(limit - used, 0)
 
 
@@ -60,16 +102,8 @@ def consume_quota(user_id: str) -> int:
 
     Raises ``ValueError`` if the user has exhausted their quota.
     """
-    from treesight.storage.client import BlobStorageClient
-
     limit = _run_limit(user_id)
-    storage = BlobStorageClient()
-    path = _blob_path(user_id)
-
-    try:
-        record: dict[str, Any] = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, path)
-    except Exception:
-        record = {"used": 0, "runs": []}
+    record = _get_quota_record(user_id)
 
     used: int = record.get("used", 0)
     if used >= limit:
@@ -77,7 +111,7 @@ def consume_quota(user_id: str) -> int:
 
     record["used"] = used + 1
     record.setdefault("runs", [])
-    storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, path, record)
+    _save_quota_record(user_id, record)
     remaining = limit - record["used"]
     logger.info(
         "Quota consumed user=%s used=%d remaining=%d limit=%d",

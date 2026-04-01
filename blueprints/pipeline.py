@@ -52,6 +52,13 @@ _DEFAULT_HISTORY_LIMIT = 8
 _MAX_HISTORY_LIMIT = 20
 
 
+def _cosmos_available() -> bool:
+    """Return True if Cosmos DB is configured for run storage."""
+    from treesight import config
+
+    return bool(config.COSMOS_ENDPOINT)
+
+
 # ---------------------------------------------------------------------------
 # Blob trigger → start orchestration (§4.2)
 # ---------------------------------------------------------------------------
@@ -136,11 +143,49 @@ async def _build_analysis_history_response(
     user_id: str,
 ) -> func.HttpResponse:
     """Build the signed-in history response for a single authenticated user."""
+    limit = _parse_history_limit(req.params.get("limit", ""))
+    records = _fetch_submission_records(user_id, limit)
+
+    runs = [await _build_analysis_history_entry(record, client) for record in records[:limit]]
+    active_run = next((run for run in runs if _history_run_is_active(run)), None)
+
+    return func.HttpResponse(
+        json.dumps({"runs": runs, "activeRun": active_run}, default=str),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
+def _fetch_submission_records(user_id: str, limit: int) -> list:
+    """Retrieve submission records from Cosmos (preferred) or blob storage."""
+    if _cosmos_available():
+        try:
+            from treesight.storage import cosmos
+
+            query = (
+                "SELECT * FROM c WHERE c.user_id = @uid"
+                " ORDER BY c.submitted_at DESC OFFSET 0 LIMIT @lim"
+            )
+            return cosmos.query_items(
+                "runs",
+                query,
+                parameters=[
+                    {"name": "@uid", "value": user_id},
+                    {"name": "@lim", "value": limit},
+                ],
+                partition_key=user_id,
+            )
+        except Exception:
+            logging.warning(
+                "Cosmos query failed for user=%s, falling back to blob",
+                user_id,
+                exc_info=True,
+            )
 
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    limit = _parse_history_limit(req.params.get("limit", ""))
     blob_names = []
     prefix = _analysis_submission_prefix(user_id)
 
@@ -161,16 +206,7 @@ async def _build_analysis_history_response(
         records.append(record)
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-
-    runs = [await _build_analysis_history_entry(record, client) for record in records[:limit]]
-    active_run = next((run for run in runs if _history_run_is_active(run)), None)
-
-    return func.HttpResponse(
-        json.dumps({"runs": runs, "activeRun": active_run}, default=str),
-        status_code=200,
-        mimetype="application/json",
-        headers=cors_headers(req),
-    )
+    return records
 
 
 @bp.event_grid_trigger(arg_name="event")
@@ -1072,19 +1108,7 @@ async def _submit_analysis_request(
             "status": "submitted",
         }
         record.update(submission_context)
-        try:
-            storage.upload_json(
-                PIPELINE_PAYLOADS_CONTAINER,
-                _analysis_submission_blob_name(user_id, submission_id),
-                record,
-            )
-        except Exception:
-            logging.warning(
-                "Unable to persist analysis history record instance=%s user=%s",
-                submission_id,
-                user_id,
-                exc_info=True,
-            )
+        _persist_submission_record(storage, record, user_id, submission_id)
 
     logging.info("Analysis process started instance=%s prefix=%s", submission_id, safe_prefix)
 
@@ -1093,6 +1117,42 @@ async def _submit_analysis_request(
         status_code=202,
         mimetype="application/json",
     )
+
+
+def _persist_submission_record(
+    storage: Any,
+    record: dict,
+    user_id: str,
+    submission_id: str,
+) -> None:
+    """Write a submission record to Cosmos (preferred) or blob storage."""
+    if _cosmos_available():
+        try:
+            from treesight.storage import cosmos
+
+            cosmos.upsert_item("runs", {"id": submission_id, **record})
+            return
+        except Exception:
+            logging.warning(
+                "Cosmos upsert failed for instance=%s user=%s, falling back to blob",
+                submission_id,
+                user_id,
+                exc_info=True,
+            )
+
+    try:
+        storage.upload_json(
+            PIPELINE_PAYLOADS_CONTAINER,
+            _analysis_submission_blob_name(user_id, submission_id),
+            record,
+        )
+    except Exception:
+        logging.warning(
+            "Unable to persist analysis history record instance=%s user=%s",
+            submission_id,
+            user_id,
+            exc_info=True,
+        )
 
 
 def _error_response(status: int, message: str) -> func.HttpResponse:
