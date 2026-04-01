@@ -362,3 +362,42 @@ class TestUserIdFromCustomer:
             "stripe_customer_id": "cus_different",
         }
         assert _user_id_from_customer("cus_unknown") is None
+
+
+class TestUserIdFromCustomerCosmos:
+    @patch("blueprints.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.query_items")
+    def test_finds_user_via_cosmos_query(self, mock_query, _mock_cosmos):
+        from blueprints.billing import _user_id_from_customer
+
+        mock_query.return_value = [{"user_id": "user-abc"}]
+        assert _user_id_from_customer("cus_123") == "user-abc"
+        mock_query.assert_called_once_with(
+            "subscriptions",
+            "SELECT c.user_id FROM c WHERE c.stripe_customer_id = @cid",
+            parameters=[{"name": "@cid", "value": "cus_123"}],
+        )
+
+    @patch("blueprints.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.query_items")
+    def test_returns_none_when_no_cosmos_match(self, mock_query, _mock_cosmos):
+        from blueprints.billing import _user_id_from_customer
+
+        mock_query.return_value = []
+        with patch("treesight.storage.client.BlobStorageClient") as mock_cls:
+            mock_cls.return_value.list_blobs.return_value = []
+            assert _user_id_from_customer("cus_ghost") is None
+
+    @patch("blueprints.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("down"))
+    @patch("treesight.storage.client.BlobStorageClient")
+    def test_falls_back_to_blob_on_cosmos_error(self, mock_cls, _mock_query, _mock_cosmos):
+        from blueprints.billing import _user_id_from_customer
+
+        mock_cls.return_value.list_blobs.return_value = [
+            "subscriptions/user-fallback.json",
+        ]
+        mock_cls.return_value.download_json.return_value = {
+            "stripe_customer_id": "cus_err",
+        }
+        assert _user_id_from_customer("cus_err") == "user-fallback"

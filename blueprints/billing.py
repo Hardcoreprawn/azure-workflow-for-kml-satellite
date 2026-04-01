@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
 
+
+def _cosmos_available() -> bool:
+    """Return True if Cosmos DB is configured."""
+    from treesight import config
+
+    return bool(config.COSMOS_ENDPOINT)
+
+
 _LOCAL_EMULATION_ORIGINS = {
     "http://localhost:4280",
     "http://127.0.0.1:4280",
@@ -328,11 +336,29 @@ def _handle_event(event: dict) -> None:
 def _user_id_from_customer(customer_id: str | None) -> str | None:
     """Reverse-lookup user_id from Stripe customer ID.
 
-    This scans subscription blobs — acceptable at webhook scale.
-    For high volume, add a customer→user index blob.
+    Queries the Cosmos subscriptions container (indexed on stripe_customer_id)
+    when available; falls back to scanning subscription blobs.
     """
     if not customer_id:
         return None
+
+    if _cosmos_available():
+        try:
+            from treesight.storage import cosmos
+
+            results = cosmos.query_items(
+                "subscriptions",
+                "SELECT c.user_id FROM c WHERE c.stripe_customer_id = @cid",
+                parameters=[{"name": "@cid", "value": customer_id}],
+            )
+            if results:
+                return results[0].get("user_id")
+        except Exception:
+            logger.warning(
+                "Cosmos reverse lookup failed for customer=%s, falling back to blob",
+                customer_id,
+                exc_info=True,
+            )
 
     from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
     from treesight.storage.client import BlobStorageClient
