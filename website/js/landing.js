@@ -41,6 +41,10 @@
       currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
       if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
       updateAuthUI();
+      // Load billing status after auth — ungates pricing for allowed users
+      if (window.treesightBilling && window.treesightBilling.loadStatus) {
+        window.treesightBilling.loadStatus();
+      }
     }).catch(function(err) {
       console.warn('MSAL redirect error:', err);
       updateAuthUI();
@@ -228,6 +232,24 @@
 
   /* --- Billing integration --- */
   /* --- Apply gated pricing (hide real prices when billing is restricted) --- */
+
+  // Capture original pricing card state at init for safe restoration
+  var _originalCardState = {};
+  document.addEventListener('DOMContentLoaded', function() {
+    var cards = document.querySelectorAll('.pricing-card[data-tier]');
+    cards.forEach(function(card) {
+      var tier = card.getAttribute('data-tier');
+      var priceEl = card.querySelector('.tier-price');
+      var cta = card.querySelector('.pricing-cta');
+      _originalCardState[tier] = {
+        priceHTML: priceEl ? priceEl.innerHTML : '',
+        ctaText: cta ? cta.textContent : '',
+        ctaHref: cta ? cta.getAttribute('href') : null,
+        ctaOnclick: cta ? cta.getAttribute('onclick') : null
+      };
+    });
+  });
+
   function applyGatedPricing(gated, priceLabels) {
     var cards = document.querySelectorAll('.pricing-card[data-tier]');
     var subtitle = document.getElementById('pricing-subtitle');
@@ -240,9 +262,9 @@
       if (gated && priceLabels && priceLabels[tier]) {
         priceEl.textContent = priceLabels[tier];
       } else {
-        // Restore real price from data attribute
-        var real = priceEl.getAttribute('data-real-price');
-        if (real) priceEl.innerHTML = real;
+        // Restore original price HTML from captured state
+        var orig = _originalCardState[tier];
+        if (orig) priceEl.innerHTML = orig.priceHTML;
       }
     });
 
@@ -251,6 +273,11 @@
     if (proBtn && gated) {
       proBtn.textContent = 'Express Interest';
       proBtn.onclick = function() { window.treesightBilling.expressInterest(); };
+    } else if (proBtn && !gated) {
+      proBtn.textContent = 'Get Pro';
+      proBtn.disabled = false;
+      proBtn.style.opacity = '';
+      proBtn.onclick = function() { window.treesightBilling.checkout(); };
     }
 
     // Update subtitle
@@ -258,18 +285,24 @@
       subtitle.textContent = 'Start free, express interest to unlock paid tiers. All plans include Sentinel-2 and NAIP satellite imagery, weather correlation, and NDVI change detection.';
     }
 
-    // Swap paid tier CTAs to "Express Interest" when gated
-    if (gated) {
-      cards.forEach(function(card) {
-        var tier = card.getAttribute('data-tier');
-        if (tier === 'free' || tier === 'enterprise') return;
-        var cta = card.querySelector('.pricing-cta');
-        if (cta && cta.id !== 'btn-upgrade-pro') {
-          cta.textContent = 'Express Interest';
-          cta.href = '#early-access';
+    // Swap paid tier CTAs to "Express Interest" when gated, restore when ungated
+    cards.forEach(function(card) {
+      var tier = card.getAttribute('data-tier');
+      if (tier === 'free' || tier === 'enterprise') return;
+      var cta = card.querySelector('.pricing-cta');
+      if (!cta || cta.id === 'btn-upgrade-pro') return;
+
+      if (gated) {
+        cta.textContent = 'Express Interest';
+        cta.href = '#early-access';
+      } else {
+        var orig = _originalCardState[tier];
+        if (orig) {
+          cta.textContent = orig.ctaText;
+          if (orig.ctaHref) cta.href = orig.ctaHref;
         }
-      });
-    }
+      }
+    });
   }
 
   window.treesightBilling = {

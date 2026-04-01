@@ -2598,6 +2598,12 @@
   }
 
   async function manageBilling() {
+    // If billing is gated for this user, redirect to express interest
+    if (latestBillingStatus && latestBillingStatus.billing_gated) {
+      window.location.href = '/#early-access';
+      return;
+    }
+
     if (!currentAccount) {
       login();
       return;
@@ -2689,7 +2695,6 @@
       billingNoteEl.textContent = 'Billing is not yet available for your account. Contact us to express interest.';
       billingBtn.textContent = 'Express Interest';
       billingBtn.style.display = 'inline-block';
-      billingBtn.onclick = function() { window.location.href = '/#early-access'; };
       accountNote.textContent = 'You are on the free plan. Express interest to unlock paid tiers when billing becomes available.';
     } else if (data.billing_configured) {
       billingNoteEl.textContent = 'Stripe customer portal available';
