@@ -2686,7 +2686,7 @@
     statusEl.textContent = data.status || 'none';
     remainingEl.textContent = data.runs_remaining == null ? '—' : String(data.runs_remaining);
     var usedEl = document.getElementById('app-runs-used');
-    if (usedEl) usedEl.textContent = data.runs_used == null ? '0' : String(data.runs_used);
+    if (usedEl) usedEl.textContent = data.runs_used == null ? '—' : String(data.runs_used);
     updateCapabilityFields(caps);
 
     if (data.tier_source === 'emulated') {

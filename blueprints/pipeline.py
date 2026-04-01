@@ -147,7 +147,7 @@ async def _build_analysis_history_response(
     offset = _parse_history_offset(req.params.get("offset", ""))
     records = _fetch_submission_records(user_id, limit, offset=offset)
 
-    runs = [await _build_analysis_history_entry(record, client) for record in records[:limit]]
+    runs = [await _build_analysis_history_entry(record, client) for record in records]
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 
     payload = {
@@ -214,7 +214,7 @@ def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> l
         records.append(record)
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-    return records
+    return records[offset : offset + limit]
 
 
 @bp.event_grid_trigger(arg_name="event")
@@ -1269,12 +1269,15 @@ def _parse_history_limit(raw_limit: str) -> int:
     return max(1, min(limit, _MAX_HISTORY_LIMIT))
 
 
+_MAX_HISTORY_OFFSET = 200
+
+
 def _parse_history_offset(raw_offset: str) -> int:
     try:
         offset = int(raw_offset)
     except (TypeError, ValueError):
         return 0
-    return max(0, offset)
+    return max(0, min(offset, _MAX_HISTORY_OFFSET))
 
 
 async def _build_analysis_history_entry(

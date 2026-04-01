@@ -128,5 +128,8 @@ class TestParseHistoryOffset:
     def test_negative_clamps_to_zero(self):
         assert _parse_history_offset("-5") == 0
 
+    def test_clamps_to_max(self):
+        assert _parse_history_offset("9999") == 200
+
     def test_non_numeric(self):
         assert _parse_history_offset("abc") == 0
