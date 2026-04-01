@@ -55,7 +55,11 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         # Validate the path is a safe relative path (no host/scheme injection)
         parsed = urlparse(self.path)
         if parsed.scheme or parsed.netloc:
-            self.send_error(400, "Invalid path")
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self._cors_headers()
+            self.end_headers()
+            self.wfile.write(b'{"error":"Invalid path"}')
             return
         target = f"{self.func_origin}{self.path}"
 
