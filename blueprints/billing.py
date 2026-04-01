@@ -89,6 +89,7 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
         plan_capabilities,
         supported_tiers,
     )
+    from treesight.security.feature_gate import GATED_PRICE_LABELS, billing_allowed
     from treesight.security.quota import check_quota
 
     subscription = get_subscription(user_id)
@@ -96,11 +97,14 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
     emulation = get_subscription_emulation(user_id)
     capabilities = plan_capabilities(effective.get("tier"))
 
-    return {
+    gated = not billing_allowed(user_id)
+
+    payload = {
         "tier": effective.get("tier", "free"),
         "status": effective.get("status", "none"),
         "runs_remaining": check_quota(user_id),
         "billing_configured": _stripe_configured(),
+        "billing_gated": gated,
         "tier_source": "emulated" if effective.get("emulated") else "billing",
         "capabilities": capabilities,
         "subscription": {
@@ -114,6 +118,11 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
             "tiers": list(supported_tiers()),
         },
     }
+
+    if gated:
+        payload["price_labels"] = GATED_PRICE_LABELS
+
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +145,16 @@ def billing_checkout(
 
     if user_id == "anonymous":
         return error_response(401, "Authentication required for billing", req=req)
+
+    from treesight.security.feature_gate import billing_allowed
+
+    if not billing_allowed(user_id):
+        return error_response(
+            403,
+            "Billing is not yet available for your account. "
+            "Use the contact form to express interest and we'll be in touch.",
+            req=req,
+        )
 
     if not _stripe_configured():
         return error_response(503, "Billing not configured", req=req)
@@ -214,6 +233,11 @@ def billing_portal(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
 
     if user_id == "anonymous":
         return error_response(401, "Authentication required for billing", req=req)
+
+    from treesight.security.feature_gate import billing_allowed
+
+    if not billing_allowed(user_id):
+        return error_response(403, "Billing is not available for your account", req=req)
 
     if not _stripe_configured():
         return error_response(503, "Billing not configured", req=req)
@@ -435,6 +459,78 @@ def billing_emulation(
 
     return func.HttpResponse(
         json.dumps(_billing_status_payload(user_id, req)),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/interest  — express interest in billing / upgrading
+# ---------------------------------------------------------------------------
+@bp.route(
+    route="billing/interest",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@require_auth
+def billing_interest(
+    req: func.HttpRequest,
+    *,
+    auth_claims: dict,
+    user_id: str,
+) -> func.HttpResponse:
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    import uuid
+    from datetime import UTC, datetime
+
+    from blueprints._helpers import EMAIL_RE, sanitise
+    from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
+    from treesight.email import send_contact_notification
+    from treesight.security.rate_limit import form_limiter, get_client_ip
+    from treesight.storage.client import BlobStorageClient
+
+    if not form_limiter.is_allowed(get_client_ip(req)):
+        return error_response(429, "Rate limit exceeded — try again later", req=req)
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+
+    email = sanitise(body.get("email", ""))
+    if not email or not EMAIL_RE.match(email):
+        return error_response(400, "Valid email is required", req=req)
+
+    organization = sanitise(body.get("organization", ""))
+    message = sanitise(body.get("message", ""))
+
+    submission_id = str(uuid.uuid4())
+    record = {
+        "submission_id": submission_id,
+        "source": "billing_interest",
+        "user_id": user_id,
+        "email": email,
+        "organization": organization,
+        "message": message,
+        "submitted_at": datetime.now(UTC).isoformat(),
+    }
+
+    storage = BlobStorageClient()
+    storage.upload_json(
+        PIPELINE_PAYLOADS_CONTAINER,
+        f"contact-submissions/{submission_id}.json",
+        record,
+    )
+
+    send_contact_notification(record)
+
+    return func.HttpResponse(
+        json.dumps({"status": "received", "submission_id": submission_id}),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
