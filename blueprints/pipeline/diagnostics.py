@@ -13,11 +13,8 @@ from blueprints._helpers import check_auth, cors_headers, cors_preflight
 from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 from . import bp
-from ._helpers import (
-    _build_analysis_history_response,
-    _durable_status_payload,
-    _error_response,
-)
+from ._helpers import _durable_status_payload, _error_response
+from .history import _build_analysis_history_response
 
 
 @bp.route(

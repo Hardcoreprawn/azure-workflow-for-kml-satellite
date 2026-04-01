@@ -20,11 +20,8 @@ from treesight.security.quota import consume_quota
 from treesight.security.rate_limit import demo_limiter, get_client_ip
 
 from . import bp
-from ._helpers import (
-    _error_response,
-    _extract_submission_context,
-    _persist_submission_record,
-)
+from ._helpers import _error_response
+from .history import _extract_submission_context, _persist_submission_record
 
 
 @bp.route(route="demo-process", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)

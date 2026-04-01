@@ -18,11 +18,15 @@ from treesight.constants import (
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
 from . import bp
+from ._helpers import _build_order_lookups, _collect_enrichment_coords
 
 
 @bp.orchestration_trigger(context_name="context")
-def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]  # noqa: C901
-    """Three-phase sequential orchestrator with fan-out parallelism."""
+def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]
+    """Four-phase sequential orchestrator with fan-out parallelism.
+
+    Phases: Ingestion, Acquisition, Fulfilment, Enrichment.
+    """
     inp = cast("dict[str, Any]", context.get_input() or {})
     instance_id: str = context.instance_id
     blob_name = inp.get("blob_name", "")
@@ -147,15 +151,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 
     ready: list[dict[str, Any]] = [r for r in poll_results if r.get("state") == "ready"]
     failed: list[dict[str, Any]] = [r for r in poll_results if r.get("state") != "ready"]
-
-    asset_urls: dict[str, str] = {o.get("order_id", ""): o.get("asset_url", "") for o in orders}
-    order_meta: dict[str, dict[str, str]] = {
-        o.get("order_id", ""): {
-            "role": o.get("role", ""),
-            "collection": o.get("collection", ""),
-        }
-        for o in orders
-    }
+    asset_urls, order_meta = _build_order_lookups(orders)
 
     acquisition: dict[str, Any] = {
         "imagery_outcomes": poll_results,
@@ -263,25 +259,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     # --- Phase 4: Enrichment (weather, mosaics, NDVI, manifest) ---
     context.set_custom_status({"phase": "enrichment", "step": "fetching_data"})
 
-    all_coords: list[list[float]] = []
-    for aoi in aois:
-        ext = aoi.get("exterior_coords", [])
-        if ext:
-            all_coords.extend(ext)
-
-    if not all_coords:
-        for aoi in aois:
-            bb = aoi.get("bbox") or aoi.get("buffered_bbox")
-            if bb and len(bb) == 4:
-                min_lat, min_lon, max_lat, max_lon = bb
-                all_coords = [
-                    [min_lat, min_lon],
-                    [min_lat, max_lon],
-                    [max_lat, max_lon],
-                    [max_lat, min_lon],
-                    [min_lat, min_lon],
-                ]
-                break
+    all_coords = _collect_enrichment_coords(aois)
 
     enrichment: dict[str, Any] = {}
     if all_coords:

@@ -164,7 +164,7 @@ class TestAnalysisSubmissionRoutes:
         mock_storage_cls.return_value.upload_json.assert_not_called()
 
     def test_analysis_history_returns_recent_runs_and_active_run(self):
-        from blueprints.pipeline._helpers import _build_analysis_history_response
+        from blueprints.pipeline.history import _build_analysis_history_response
 
         client = _HistoryDurableClient(
             {
@@ -280,14 +280,14 @@ class TestAnalysisSubmissionRoutes:
 
 class TestFetchSubmissionRecordsCosmos:
     def test_queries_cosmos_when_available(self):
-        from blueprints.pipeline._helpers import _fetch_submission_records
+        from blueprints.pipeline.history import _fetch_submission_records
 
         records = [
             {"submission_id": "r1", "user_id": "u1", "submitted_at": "2026-04-01T12:00:00Z"},
         ]
 
         with (
-            patch("blueprints.pipeline._helpers._cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", return_value=records) as mock_q,
         ):
             result = _fetch_submission_records("u1", 8)
@@ -299,10 +299,10 @@ class TestFetchSubmissionRecordsCosmos:
         assert kwargs["partition_key"] == "u1"
 
     def test_falls_back_to_blob_when_cosmos_not_available(self):
-        from blueprints.pipeline._helpers import _fetch_submission_records
+        from blueprints.pipeline.history import _fetch_submission_records
 
         with (
-            patch("blueprints.pipeline._helpers._cosmos_available", return_value=False),
+            patch("blueprints.pipeline.history._cosmos_available", return_value=False),
             patch("treesight.storage.client.BlobStorageClient") as mock_cls,
         ):
             mock_cls.return_value.list_blobs.return_value = [
@@ -319,10 +319,10 @@ class TestFetchSubmissionRecordsCosmos:
         assert result[0]["submission_id"] == "s1"
 
     def test_falls_back_to_blob_on_cosmos_error(self):
-        from blueprints.pipeline._helpers import _fetch_submission_records
+        from blueprints.pipeline.history import _fetch_submission_records
 
         with (
-            patch("blueprints.pipeline._helpers._cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
             patch("treesight.storage.client.BlobStorageClient") as mock_cls,
         ):
@@ -334,12 +334,12 @@ class TestFetchSubmissionRecordsCosmos:
 
 class TestPersistSubmissionRecordCosmos:
     def test_upserts_to_cosmos_when_available(self):
-        from blueprints.pipeline._helpers import _persist_submission_record
+        from blueprints.pipeline.history import _persist_submission_record
 
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
         with (
-            patch("blueprints.pipeline._helpers._cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
         ):
             _persist_submission_record(None, record, "u1", "s1")
@@ -352,12 +352,12 @@ class TestPersistSubmissionRecordCosmos:
     def test_falls_back_to_blob_when_cosmos_unavailable(self):
         from unittest.mock import MagicMock
 
-        from blueprints.pipeline._helpers import _persist_submission_record
+        from blueprints.pipeline.history import _persist_submission_record
 
         storage = MagicMock()
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
-        with patch("blueprints.pipeline._helpers._cosmos_available", return_value=False):
+        with patch("blueprints.pipeline.history._cosmos_available", return_value=False):
             _persist_submission_record(storage, record, "u1", "s1")
 
         storage.upload_json.assert_called_once()
@@ -365,13 +365,13 @@ class TestPersistSubmissionRecordCosmos:
     def test_falls_back_to_blob_on_cosmos_error(self):
         from unittest.mock import MagicMock
 
-        from blueprints.pipeline._helpers import _persist_submission_record
+        from blueprints.pipeline.history import _persist_submission_record
 
         storage = MagicMock()
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
         with (
-            patch("blueprints.pipeline._helpers._cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("boom")),
         ):
             _persist_submission_record(storage, record, "u1", "s1")
