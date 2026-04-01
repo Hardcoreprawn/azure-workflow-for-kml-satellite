@@ -1,0 +1,110 @@
+# ─────────────────────────────────────────────────────────────
+# Base Image — Build, test, scan, and publish treesight-base
+#
+# Rebuilds weekly on Monday 05:00 UTC (before CI/security runs)
+# and on any push that changes Dockerfile.base.
+#
+# Flow:
+#   1. Build Dockerfile.base
+#   2. Run container smoke tests (validates runtime components)
+#   3. Trivy scan (CRITICAL + HIGH, blocks on findings)
+#   4. Push to GHCR with :latest + :YYYYMMDD-<sha> tags
+# ─────────────────────────────────────────────────────────────
+name: Base Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.base"
+      - "scripts/container_smoke_test.py"
+  schedule:
+    # Weekly Monday 05:00 UTC — picks up MS image updates and new .NET patches
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write          # push to GHCR
+  security-events: write   # upload Trivy SARIF
+
+jobs:
+  build-test-push:
+    name: Build, Test & Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # ── Build ──────────────────────────────────────────────
+      - name: Set image tags
+        id: meta
+        run: |
+          # Lowercase repo owner for GHCR compatibility
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/treesight-base"
+          DATE_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
+          echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+          echo "image_dated=${IMAGE_NAME}:${DATE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build base image
+        run: |
+          docker build \
+            -f Dockerfile.base \
+            -t "${{ steps.meta.outputs.image_latest }}" \
+            -t "${{ steps.meta.outputs.image_dated }}" \
+            .
+
+      # ── Smoke tests ───────────────────────────────────────
+      - name: Run container smoke tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/scripts:/scripts:ro" \
+            "${{ steps.meta.outputs.image_latest }}" \
+            python3 /scripts/container_smoke_test.py
+
+      # ── Size gate ──────────────────────────────────────────
+      - name: Check image size
+        run: |
+          SIZE_MB=$(docker image inspect "${{ steps.meta.outputs.image_latest }}" \
+            --format '{{ .Size }}' | awk '{printf "%.0f", $1/1024/1024}')
+          echo "Image size: ${SIZE_MB} MB"
+          # Fail if image exceeds 1.2 GB — something went wrong with stripping
+          if [ "$SIZE_MB" -gt 1200 ]; then
+            echo "::error::Base image is ${SIZE_MB} MB — exceeds 1200 MB limit. Check Dockerfile.base stripping."
+            exit 1
+          fi
+
+      # ── Security scan ──────────────────────────────────────
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image_latest }}
+          format: sarif
+          output: trivy-base.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"        # block on findings — base must be clean
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@480db559a14342288b67e54bd959dd52dc3ee68f # v3
+        with:
+          sarif_file: trivy-base.sarif
+          category: trivy-base-image
+
+      # ── Push to GHCR ───────────────────────────────────────
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push base image
+        run: |
+          docker push "${{ steps.meta.outputs.image_latest }}"
+          docker push "${{ steps.meta.outputs.image_dated }}"
+          echo "### Base Image Published :package:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ steps.meta.outputs.image_latest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ steps.meta.outputs.image_dated }}\`" >> "$GITHUB_STEP_SUMMARY"
