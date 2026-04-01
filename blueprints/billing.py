@@ -90,7 +90,7 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
         supported_tiers,
     )
     from treesight.security.feature_gate import GATED_PRICE_LABELS, billing_allowed
-    from treesight.security.quota import check_quota
+    from treesight.security.quota import check_quota, get_usage
 
     subscription = get_subscription(user_id)
     effective = get_effective_subscription(user_id)
@@ -98,11 +98,13 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
     capabilities = plan_capabilities(effective.get("tier"))
 
     gated = not billing_allowed(user_id)
+    usage = get_usage(user_id)
 
     payload = {
         "tier": effective.get("tier", "free"),
         "status": effective.get("status", "none"),
         "runs_remaining": check_quota(user_id),
+        "runs_used": usage.get("used", 0),
         "billing_configured": _stripe_configured(),
         "billing_gated": gated,
         "tier_source": "emulated" if effective.get("emulated") else "billing",

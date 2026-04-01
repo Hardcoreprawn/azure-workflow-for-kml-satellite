@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from treesight.security.quota import FREE_TIER_LIMIT, check_quota, consume_quota
+from treesight.security.quota import FREE_TIER_LIMIT, check_quota, consume_quota, get_usage
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +62,26 @@ class TestConsumeQuota:
         consume_quota("alice")
         remaining_bob = consume_quota("bob")
         assert remaining_bob == FREE_TIER_LIMIT - 1
+
+
+class TestGetUsage:
+    def test_new_user_zero_used(self):
+        usage = get_usage("user-brand-new")
+        assert usage["used"] == 0
+        assert usage["limit"] == FREE_TIER_LIMIT
+
+    def test_after_consumption(self):
+        consume_quota("user-usage")
+        consume_quota("user-usage")
+        usage = get_usage("user-usage")
+        assert usage["used"] == 2
+        assert usage["limit"] == FREE_TIER_LIMIT
+
+    def test_partial_usage_from_store(self, _mock_storage):
+        _mock_storage["quotas/user-stored.json"] = {"used": 5, "runs": []}
+        usage = get_usage("user-stored")
+        assert usage["used"] == 5
+        assert usage["limit"] == FREE_TIER_LIMIT
 
 
 # --- Cosmos path ---
