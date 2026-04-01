@@ -2685,8 +2685,15 @@
       billingNoteEl.textContent = 'Local tier override active. Real billing is ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
       billingBtn.style.display = data.billing_configured ? 'inline-block' : 'none';
       accountNote.textContent = 'Use the role view and work preference controls to tune this workspace for the job at hand. Local plan emulation stays separate from the public demo and real billing.';
+    } else if (data.billing_gated) {
+      billingNoteEl.textContent = 'Billing is not yet available for your account. Contact us to express interest.';
+      billingBtn.textContent = 'Express Interest';
+      billingBtn.style.display = 'inline-block';
+      billingBtn.onclick = function() { window.location.href = '/#early-access'; };
+      accountNote.textContent = 'You are on the free plan. Express interest to unlock paid tiers when billing becomes available.';
     } else if (data.billing_configured) {
       billingNoteEl.textContent = 'Stripe customer portal available';
+      billingBtn.textContent = 'Billing';
       billingBtn.style.display = 'inline-block';
       accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting. This surface is the product, not the marketing demo.';
     } else {

@@ -23,6 +23,10 @@ _AUTH_TEST_USER = [
     patch("blueprints._helpers.auth_enabled", return_value=True),
     patch("blueprints._helpers.validate_token", return_value={"sub": "test-user"}),
 ]
+_BILLING_UNGATED = patch(
+    "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
+    frozenset({"test-user"}),
+)
 
 
 def _make_req(method="POST", body=b"", headers=None, url="/api/billing/webhook"):
@@ -155,6 +159,7 @@ class TestBillingCheckout:
     @patch("blueprints.billing.STRIPE_API_KEY", "")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "")
+    @_BILLING_UNGATED
     @_AUTH_TEST_USER[1]
     @_AUTH_TEST_USER[0]
     def test_not_configured_returns_503(self, _auth, _token):
@@ -191,6 +196,7 @@ class TestBillingPortal:
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
     @patch("treesight.storage.client.BlobStorageClient")
+    @_BILLING_UNGATED
     @_AUTH_TEST_USER[1]
     @_AUTH_TEST_USER[0]
     def test_no_subscription_returns_404(self, _auth, _token, mock_cls):

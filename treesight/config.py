@@ -96,6 +96,13 @@ STRIPE_PRICE_ID_PRO_EUR = _env("STRIPE_PRICE_ID_PRO_EUR")
 COSMOS_ENDPOINT = _env("COSMOS_ENDPOINT")
 COSMOS_DATABASE_NAME = _env("COSMOS_DATABASE_NAME", "treesight")
 
+# Feature gating — restrict billing to named users while Stripe is in test mode.
+# Comma-separated user IDs (sub/oid claims) that may use real billing.
+# When empty, billing is gated for ALL users (everyone sees demo pricing).
+BILLING_ALLOWED_USERS: frozenset[str] = frozenset(
+    uid.strip() for uid in _env("BILLING_ALLOWED_USERS", "").split(",") if uid.strip()
+)
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""

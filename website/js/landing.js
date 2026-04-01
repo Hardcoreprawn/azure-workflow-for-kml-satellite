@@ -227,6 +227,51 @@
   }
 
   /* --- Billing integration --- */
+  /* --- Apply gated pricing (hide real prices when billing is restricted) --- */
+  function applyGatedPricing(gated, priceLabels) {
+    var cards = document.querySelectorAll('.pricing-card[data-tier]');
+    var subtitle = document.getElementById('pricing-subtitle');
+
+    cards.forEach(function(card) {
+      var tier = card.getAttribute('data-tier');
+      var priceEl = card.querySelector('.tier-price');
+      if (!priceEl) return;
+
+      if (gated && priceLabels && priceLabels[tier]) {
+        priceEl.textContent = priceLabels[tier];
+      } else {
+        // Restore real price from data attribute
+        var real = priceEl.getAttribute('data-real-price');
+        if (real) priceEl.innerHTML = real;
+      }
+    });
+
+    // Swap "Get Pro" checkout button with "Express Interest" when gated
+    var proBtn = document.getElementById('btn-upgrade-pro');
+    if (proBtn && gated) {
+      proBtn.textContent = 'Express Interest';
+      proBtn.onclick = function() { window.treesightBilling.expressInterest(); };
+    }
+
+    // Update subtitle
+    if (subtitle && gated) {
+      subtitle.textContent = 'Start free, express interest to unlock paid tiers. All plans include Sentinel-2 and NAIP satellite imagery, weather correlation, and NDVI change detection.';
+    }
+
+    // Swap paid tier CTAs to "Express Interest" when gated
+    if (gated) {
+      cards.forEach(function(card) {
+        var tier = card.getAttribute('data-tier');
+        if (tier === 'free' || tier === 'enterprise') return;
+        var cta = card.querySelector('.pricing-cta');
+        if (cta && cta.id !== 'btn-upgrade-pro') {
+          cta.textContent = 'Express Interest';
+          cta.href = '#early-access';
+        }
+      });
+    }
+  }
+
   window.treesightBilling = {
     checkout: async function() {
       if (!currentAccount && authEnabled()) { login(); return; }
@@ -266,23 +311,44 @@
       }
     },
 
+    expressInterest: function() {
+      // Scroll to the early-access / contact form section
+      var section = document.getElementById('early-access');
+      if (section) {
+        section.scrollIntoView({ behavior: 'smooth' });
+        var emailInput = document.getElementById('ea-email');
+        if (emailInput) setTimeout(function() { emailInput.focus(); }, 400);
+      }
+    },
+
     loadStatus: async function() {
-      if (!currentAccount || !authEnabled()) return;
+      if (!currentAccount || !authEnabled()) {
+        // Not signed in — show gated pricing by default
+        applyGatedPricing(true, { free: 'Free', starter: '$', pro: '$$', team: '$$$', enterprise: 'Price on Enquiry' });
+        return;
+      }
       try {
         const res = await apiFetch('/api/billing/status');
         if (!res || !res.ok) return;
         const data = await res.json();
 
+        // Apply gated pricing if billing is restricted for this user
+        if (data.billing_gated) {
+          applyGatedPricing(true, data.price_labels || {});
+        } else {
+          applyGatedPricing(false, null);
+        }
+
         const proBtn = document.getElementById('btn-upgrade-pro');
         const manageLink = document.getElementById('manage-billing-link');
 
-        if (data.tier === 'pro' && data.status === 'active') {
+        if (!data.billing_gated && data.tier === 'pro' && data.status === 'active') {
           if (proBtn) { proBtn.textContent = 'Current Plan'; proBtn.disabled = true; proBtn.style.opacity = '0.6'; }
           if (manageLink) {
             manageLink.style.display = 'inline';
             manageLink.onclick = function(e) { e.preventDefault(); window.treesightBilling.portal(); };
           }
-        } else if (data.status === 'past_due' && proBtn) {
+        } else if (!data.billing_gated && data.status === 'past_due' && proBtn) {
           proBtn.textContent = 'Payment Issue — Update';
           proBtn.onclick = function() { window.treesightBilling.portal(); };
         }
@@ -302,6 +368,9 @@
 
     initEarlyAccessForm();
     initFAQ();
+
+    // Apply gated pricing on load (will be overwritten by loadStatus if signed in)
+    applyGatedPricing(true, { free: 'Free', starter: '$', pro: '$$', team: '$$$', enterprise: 'Price on Enquiry' });
   });
 
   /* Handle billing return query params */
