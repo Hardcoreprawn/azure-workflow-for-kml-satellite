@@ -236,12 +236,12 @@ class TestDemoSubmitEndpoint:
             req.get_json.side_effect = ValueError("no json")
         return req
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
     async def test_valid_submission_returns_202(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = True
 
@@ -259,11 +259,11 @@ class TestDemoSubmitEndpoint:
         assert orch_input["tier"] == "demo"
         assert orch_input["user_id"].startswith("demo:")
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
     @pytest.mark.asyncio
     async def test_rate_limited_returns_429(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = False
 
@@ -274,11 +274,11 @@ class TestDemoSubmitEndpoint:
 
         assert resp.status_code == 429
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
     @pytest.mark.asyncio
     async def test_invalid_json_returns_400(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = True
 
@@ -289,11 +289,11 @@ class TestDemoSubmitEndpoint:
 
         assert resp.status_code == 400
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
     @pytest.mark.asyncio
     async def test_empty_kml_returns_400(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = True
 
@@ -304,12 +304,12 @@ class TestDemoSubmitEndpoint:
 
         assert resp.status_code == 400
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="10.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="10.0.0.1")
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
     async def test_user_id_is_ip_hash(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = True
 
@@ -326,12 +326,12 @@ class TestDemoSubmitEndpoint:
         # Hash portion should be 12 hex chars
         assert len(user_id.split(":")[1]) == 12
 
-    @patch("blueprints.pipeline.demo_limiter")
-    @patch("blueprints.pipeline.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.demo_limiter")
+    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
     async def test_blob_uploaded_to_demo_prefix(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline import _submit_demo_request
+        from blueprints.pipeline.submission import _submit_demo_request
 
         mock_limiter.is_allowed.return_value = True
         mock_storage = mock_storage_cls.return_value
