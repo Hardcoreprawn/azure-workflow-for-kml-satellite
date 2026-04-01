@@ -24,6 +24,7 @@ dependencies = [
     "requests>=2.33.0",  # CVE-2026-25645: predictable temp filename
     "fpdf2>=2.8.0",
     "azure-communication-email>=1.0.0",
+    "azure-cosmos>=4.9.0",
     "orjson>=3.11.6",  # CVE-2025-67221: override vulnerable base image version
 ]
 

@@ -113,6 +113,14 @@ variable "azure_ai_location" {
   default     = "swedencentral"
 }
 
+# --- Cosmos DB (M4 state persistence) ---
+
+variable "enable_cosmos_db" {
+  description = "Deploy Azure Cosmos DB for NoSQL (Serverless) for state persistence."
+  type        = bool
+  default     = false
+}
+
 # --- Entra External ID (CIAM) authentication (M2.1) ---
 
 variable "ciam_tenant_name" {

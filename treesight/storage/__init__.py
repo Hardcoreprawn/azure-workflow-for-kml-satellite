@@ -1,4 +1,4 @@
-"""Blob storage abstraction (§6)."""
+"""Blob storage and Cosmos DB abstraction (§6)."""
 
 from treesight.storage.client import BlobStorageClient
 from treesight.storage.offload import PayloadOffloader

@@ -48,3 +48,13 @@ output "email_sender_address" {
   value       = var.enable_email ? "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}" : ""
   description = "Azure-managed sender address for email notifications."
 }
+
+output "cosmos_endpoint" {
+  value       = var.enable_cosmos_db ? azurerm_cosmosdb_account.main[0].endpoint : ""
+  description = "Cosmos DB for NoSQL endpoint URI."
+}
+
+output "cosmos_database_name" {
+  value       = var.enable_cosmos_db ? azurerm_cosmosdb_sql_database.main[0].name : ""
+  description = "Cosmos DB database name."
+}
