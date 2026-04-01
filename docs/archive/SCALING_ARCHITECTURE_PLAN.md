@@ -47,6 +47,7 @@ Before we can fan out compute or build dashboards, we need our proper data layer
 * **[#319] Cosmos DB Infrastructure:** Provision Cosmos DB Serverless via OpenTofu in `infra/tofu/`.
 * **[#314] DB Migration & Refactor:** Update `blueprints/` and `treesight/storage/` to write Runs, AOIs, and User State to Cosmos DB instead of Blob prefixes. Ensure the schema supports a `tenant_id` for future team segregation.
 * **Data Modeling (Pydantic V2):** Because Cosmos DB is a schemaless NoSQL store, aggressively use **Pydantic V2** to define strict schemas (`AOIModel`, `RunState`, etc.). *Note: Pydantic V2's core validation engine is written in Rust, giving us compiled-level performance for JSON hydration without writing custom Rust code.*
+* **Modular Pipeline** Factor the pipeline into a workflow, and dedicated module files, to make the whole thing more modular, and easier to work in. This should reduce change blast radius, make sure we don;t repeat, and that we can use different modules for different reasons, increasing the flexibility of the pipeline.
 * **GeoJSON Serialization:** Use Rust-backed Python libraries like `orjson` to parse the massive KML/GeoJSON text blobs coming in and out of the database, as the standard Python `json` library is too slow for high-concurrency payloads.
 
 ### Phase 2: Compute & Orchestration Refactor
