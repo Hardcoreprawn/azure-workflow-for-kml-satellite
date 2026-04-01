@@ -39,8 +39,8 @@ jobs:
       - name: Set image tags
         id: meta
         run: |
-          # Lowercase repo owner for GHCR compatibility
-          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/treesight-base"
+          source .github/image-config.env
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}"
           DATE_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
           echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
