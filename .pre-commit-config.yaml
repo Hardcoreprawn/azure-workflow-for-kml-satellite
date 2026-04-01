@@ -99,4 +99,4 @@ repos:
     hooks:
       - id: markdownlint-cli2
         args: [--fix]
-        exclude: 'docs/20260322-sitereview\.md'
+        exclude: 'docs/archive/'
