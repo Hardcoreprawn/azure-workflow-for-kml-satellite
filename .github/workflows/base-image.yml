@@ -48,7 +48,7 @@ jobs:
 
       - name: Build base image
         run: |
-          docker build \
+          docker build --no-cache \
             -f Dockerfile.base \
             -t "${{ steps.meta.outputs.image_latest }}" \
             -t "${{ steps.meta.outputs.image_dated }}" \
