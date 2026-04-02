@@ -55,11 +55,11 @@ def main():
             "@odata.type": "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow",
             "displayName": "TreeSight Sign Up/In",
             "onInteractiveAuthFlowStart": {
-                "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",  # noqa: E501
+                "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",
                 "isSignUpAllowed": True,
             },
             "onAuthenticationMethodLoadStart": {
-                "@odata.type": "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp",  # noqa: E501
+                "@odata.type": "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp",
                 "identityProviders": [
                     {
                         "@odata.type": "#microsoft.graph.builtInIdentityProvider",
@@ -76,7 +76,7 @@ def main():
                 ],
             },
             "onAttributeCollection": {
-                "@odata.type": "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp",  # noqa: E501
+                "@odata.type": "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp",
                 "attributes": [
                     {
                         "id": "email",
@@ -109,7 +109,7 @@ def main():
                                     "editable": False,
                                     "writeToDirectory": True,
                                     "required": True,
-                                    "validationRegEx": "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$",  # noqa: E501
+                                    "validationRegEx": "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$",
                                 },
                                 {
                                     "attribute": "displayName",

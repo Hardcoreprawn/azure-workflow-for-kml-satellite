@@ -47,6 +47,10 @@ def main() -> int:
     if host_bin.exists():
         check("Functions host is executable", os.access(host_bin, os.X_OK))
 
+    # NuGet.Versioning is required by ScriptConstants at startup
+    nuget_ver = host_dir / "NuGet.Versioning.dll"
+    check("NuGet.Versioning.dll present (required by host)", nuget_ver.exists())
+
     # Verify JIT fallback DLL present
     jit_dll = host_dir / "Microsoft.Azure.WebJobs.Script.WebHost.dll"
     check("JIT host DLL present (non-R2R fallback)", jit_dll.exists())
@@ -60,7 +64,10 @@ def main() -> int:
     check(
         "Roslyn C# compiler removed", not (host_dir / "Microsoft.CodeAnalysis.CSharp.dll").exists()
     )
-    check("NuGet DLLs removed", not any(host_dir.glob("NuGet.*.dll")))
+    check(
+        "NuGet bloat DLLs removed",
+        not any(f for f in host_dir.glob("NuGet.*.dll") if f.name != "NuGet.Versioning.dll"),
+    )
     check("No PDB files remain", not any(host_dir.rglob("*.pdb")))
 
     # ── 2. Extension bundles ──
@@ -134,6 +141,41 @@ def main() -> int:
         )
     except FileNotFoundError:
         check("dotnet CLI available", False, "dotnet not found in PATH")
+
+    # ── 4b. ICU / globalization support ──
+    print("\n[ICU / Globalization]")
+    icu_found = any(Path("/usr/lib").rglob("libicuuc.so*")) or any(
+        Path("/usr/lib/x86_64-linux-gnu").rglob("libicuuc.so*")
+    )
+    check("libicu installed (required by .NET)", icu_found, "missing libicu — .NET host will crash")
+    # Verify the Functions host binary can at least start without an ICU crash.
+    # The host doesn't support --version, so we just check it doesn't abort
+    # with the 'Couldn't find a valid ICU package' error within a few seconds.
+    host_bin = Path("/azure-functions-host/Microsoft.Azure.WebJobs.Script.WebHost")
+    if host_bin.exists():
+        try:
+            probe = subprocess.run(
+                [str(host_bin)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                env={**os.environ, "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "0"},
+            )
+            stderr = probe.stderr or ""
+            stderr_lower = stderr.lower()
+            icu_crash = "couldn't find a valid icu package" in stderr_lower or (
+                "icu" in stderr_lower and "libicu" in stderr_lower
+            )
+            check(
+                "Functions host starts without ICU crash",
+                probe.returncode == 0 and not icu_crash,
+                stderr.strip()[:200] if icu_crash or probe.returncode != 0 else "",
+            )
+        except subprocess.TimeoutExpired:
+            # Timeout is GOOD — it means the host started running (no ICU crash)
+            check("Functions host starts without ICU crash", True)
+        except Exception as e:
+            check("Functions host starts without ICU crash", False, str(e)[:200])
 
     # ── 5. Startup scripts ──
     print("\n[Startup]")

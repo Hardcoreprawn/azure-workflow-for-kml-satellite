@@ -17,7 +17,7 @@ CONTAINERS = ["kml-input", "kml-output", "pipeline-payloads"]
 CONN_STR = (
     f"DefaultEndpointsProtocol=http;"
     f"AccountName=devstoreaccount1;"
-    f"AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq"
+    f"AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq"  # pragma: allowlist secret
     f"/K1SZFPTOtr/KBHBeksoGMGw==;"
     f"BlobEndpoint=http://{HOST}:{PORT}/devstoreaccount1;"
 )

@@ -82,7 +82,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "T20", "SIM117"]
-"scripts/**" = ["T20", "S", "C901"]
+"scripts/**" = ["T20", "S", "C901", "E501"]
 "blueprints/analysis.py" = ["C901"]
 "blueprints/pipeline.py" = ["C901"]
 "blueprints/pipeline/orchestrator.py" = ["C901"]
