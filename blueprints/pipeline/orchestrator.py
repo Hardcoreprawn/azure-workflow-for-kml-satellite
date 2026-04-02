@@ -1,5 +1,9 @@
 """Durable orchestrator: four-phase sequential pipeline with fan-out parallelism.
 
+Uses claim-check pattern to keep orchestrator history entries below 48 KiB
+regardless of AOI count.  AOI geometry is stored in blob storage after
+ingestion; subsequent phases receive only lightweight ``{ref, key}`` refs.
+
 NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
@@ -10,6 +14,7 @@ import azure.durable_functions as df
 
 from treesight.config import config_get_int
 from treesight.constants import (
+    DEFAULT_ACQUISITION_BATCH_SIZE,
     DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
@@ -18,7 +23,14 @@ from treesight.constants import (
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
 from . import bp
-from ._helpers import _build_order_lookups, _collect_enrichment_coords
+from ._helpers import (
+    _acq_payload,
+    _build_order_lookups,
+    _collect_enrichment_coords,
+    _download_payload,
+    _poll_payload,
+    _post_process_payload,
+)
 
 
 @bp.orchestration_trigger(context_name="context")
@@ -26,6 +38,10 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     """Four-phase sequential orchestrator with fan-out parallelism.
 
     Phases: Ingestion, Acquisition, Fulfilment, Enrichment.
+
+    Claim-check: AOIs are stored in blob storage after ingestion.
+    All subsequent phases receive lightweight refs instead of full AOI dicts,
+    keeping orchestrator history under the 48 KiB limit for 200+ AOIs.
     """
     inp = cast("dict[str, Any]", context.get_input() or {})
     instance_id: str = context.instance_id
@@ -57,12 +73,27 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     ]
     aois = cast("list[dict[str, Any]]", (yield context.task_all(aoi_tasks)))
 
-    # Fan-out: write metadata
+    # Claim-check: extract enrichment coords before offloading AOIs
+    all_coords = _collect_enrichment_coords(aois)
+
+    # Claim-check: store full AOI dicts in blob storage, get lightweight refs
+    context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
+    aoi_refs = cast(
+        "list[dict[str, str]]",
+        (
+            yield context.call_activity(
+                "store_aoi_claims",
+                {"instance_id": instance_id, "aois": aois},
+            )
+        ),
+    )
+
+    # Fan-out: write metadata (activities retrieve AOI from claim check)
     meta_tasks = [
         context.call_activity(
             "write_metadata",
             {
-                "aoi": aoi,
+                "aoi_ref": ref["ref"],
                 "processing_id": instance_id,
                 "timestamp": ctx["timestamp"],
                 "tenant_id": inp.get("tenant_id", ""),
@@ -71,7 +102,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
                 "input_container": inp.get("container_name", DEFAULT_INPUT_CONTAINER),
             },
         )
-        for aoi in aois
+        for ref in aoi_refs
     ]
     metadata_results = cast(
         "list[dict[str, Any]]",
@@ -81,66 +112,40 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     ingestion: dict[str, Any] = {
         "feature_count": len(feature_list),
         "offloaded": offloaded,
-        "aois": aois,
-        "aoi_count": len(aois),
+        "aoi_refs": aoi_refs,
+        "aoi_count": len(aoi_refs),
         "metadata_results": metadata_results,
         "metadata_count": len(metadata_results),
     }
 
-    # --- Phase 2: Acquisition ---
-    context.set_custom_status({"phase": "acquisition", "step": "searching", "aois": len(aois)})
+    # --- Phase 2: Acquisition (batched) ---
+    context.set_custom_status({"phase": "acquisition", "step": "searching", "aois": len(aoi_refs)})
     composite = bool(inp.get("composite_search", True))
+    acq_batch_size = max(
+        1, config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE)
+    )
 
-    if composite:
+    orders: list[dict[str, Any]] = []
+    for i in range(0, len(aoi_refs), acq_batch_size):
+        batch_refs = aoi_refs[i : i + acq_batch_size]
+        activity = "acquire_composite" if composite else "acquire_imagery"
         acq_tasks = [
-            context.call_activity(
-                "acquire_composite",
-                {
-                    "aoi": aoi,
-                    "provider_name": inp.get("provider_name", "planetary_computer"),
-                    "provider_config": inp.get("provider_config"),
-                    "imagery_filters": inp.get("imagery_filters"),
-                    "temporal_count": config_get_int(inp, "temporal_count", 6),
-                },
-            )
-            for aoi in aois
+            context.call_activity(activity, _acq_payload(ref, inp, composite)) for ref in batch_refs
         ]
-        all_order_lists = cast(
-            "list[list[dict[str, Any]]]",
+        batch_results = cast(
+            "list[Any]",
             (yield context.task_all(acq_tasks)),
         )
-        orders: list[dict[str, Any]] = []
-        for order_list in all_order_lists:
-            orders.extend(order_list)
-    else:
-        acq_tasks = [
-            context.call_activity(
-                "acquire_imagery",
-                {
-                    "aoi": aoi,
-                    "provider_name": inp.get("provider_name", "planetary_computer"),
-                    "provider_config": inp.get("provider_config"),
-                    "imagery_filters": inp.get("imagery_filters"),
-                },
-            )
-            for aoi in aois
-        ]
-        orders = cast("list[dict[str, Any]]", (yield context.task_all(acq_tasks)))
+        if composite:
+            for order_list in batch_results:
+                orders.extend(order_list)
+        else:
+            orders.extend(batch_results)
 
     # Poll orders
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
     poll_tasks = [
-        context.call_activity(
-            "poll_order",
-            {
-                "order_id": o.get("order_id", ""),
-                "scene_id": o.get("scene_id", ""),
-                "aoi_feature_name": o.get("aoi_feature_name", ""),
-                "provider_name": inp.get("provider_name", "planetary_computer"),
-                "provider_config": inp.get("provider_config"),
-                "overrides": inp,
-            },
-        )
+        context.call_activity("poll_order", _poll_payload(o, inp))
         for o in orders
         if o.get("order_id")
     ]
@@ -153,6 +158,13 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     failed: list[dict[str, Any]] = [r for r in poll_results if r.get("state") != "ready"]
     asset_urls, order_meta = _build_order_lookups(orders)
 
+    # Build AOI ref lookup for fulfilment (key → ref)
+    aoi_ref_lookup: dict[str, str] = {}
+    for r in aoi_refs:
+        if r["key"] in aoi_ref_lookup:
+            raise ValueError(f"Duplicate AOI key: {r['key']}")
+        aoi_ref_lookup[r["key"]] = r["ref"]
+
     acquisition: dict[str, Any] = {
         "imagery_outcomes": poll_results,
         "ready_count": len(ready),
@@ -163,9 +175,6 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     context.set_custom_status({"phase": "fulfilment", "step": "downloading", "ready": len(ready)})
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
     batch_size = config_get_int(inp, "download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)
-    aoi_lookup: dict[str, dict[str, Any]] = (
-        {a.get("feature_name", ""): a for a in aois} if aois else {}
-    )
 
     # Download in batches
     download_results: list[dict[str, Any]] = []
@@ -174,27 +183,15 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         dl_tasks = [
             context.call_activity(
                 "download_imagery",
-                {
-                    "outcome": outcome,
-                    "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
-                    "aoi_bbox": aoi_lookup.get(
-                        outcome.get("aoi_feature_name", ""),
-                        {},
-                    ).get("buffered_bbox"),
-                    "role": order_meta.get(
-                        outcome.get("order_id", ""),
-                        {},
-                    ).get("role", ""),
-                    "collection": order_meta.get(
-                        outcome.get("order_id", ""),
-                        {},
-                    ).get("collection", ""),
-                    "provider_name": inp.get("provider_name", "planetary_computer"),
-                    "provider_config": inp.get("provider_config"),
-                    "project_name": ctx["project_name"],
-                    "timestamp": ctx["timestamp"],
-                    "output_container": output_container,
-                },
+                _download_payload(
+                    outcome,
+                    inp,
+                    ctx,
+                    asset_urls,
+                    order_meta,
+                    aoi_ref_lookup,
+                    output_container,
+                ),
             )
             for outcome in batch
         ]
@@ -223,18 +220,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         pp_tasks = [
             context.call_activity(
                 "post_process_imagery",
-                {
-                    "download_result": dl,
-                    "aoi": aoi_lookup.get(dl.get("aoi_feature_name", ""), {}),
-                    "project_name": ctx["project_name"],
-                    "timestamp": ctx["timestamp"],
-                    "target_crs": inp.get("target_crs", "EPSG:4326"),
-                    "enable_clipping": inp.get("enable_clipping", True),
-                    "enable_reprojection": inp.get("enable_reprojection", True),
-                    "output_container": output_container,
-                    "square_frame": inp.get("square_frame", True),
-                    "frame_padding_pct": inp.get("frame_padding_pct", 10.0),
-                },
+                _post_process_payload(dl, inp, ctx, aoi_ref_lookup, output_container),
             )
             for dl in batch
         ]
@@ -258,8 +244,6 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 
     # --- Phase 4: Enrichment (weather, mosaics, NDVI, manifest) ---
     context.set_custom_status({"phase": "enrichment", "step": "fetching_data"})
-
-    all_coords = _collect_enrichment_coords(aois)
 
     enrichment: dict[str, Any] = {}
     if all_coords:

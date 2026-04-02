@@ -49,6 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: read         # pull base image from GHCR
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -59,12 +62,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build app image
+      - name: Resolve base image
+        id: base
         run: |
           source .github/image-config.env
-          BASE_IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}:latest"
+          GHCR_IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}:latest"
+
+          # Try to pull prebuilt base from GHCR; build locally on failure
+          if docker pull "${GHCR_IMAGE}" 2>/dev/null; then
+            echo "image=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
+            echo "### Base image: pulled from GHCR :package:" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Base image not found on GHCR — building from Dockerfile.base"
+            LOCAL_TAG="treesight-base:ci-local"
+            docker build -f Dockerfile.base -t "${LOCAL_TAG}" .
+            echo "image=${LOCAL_TAG}" >> "$GITHUB_OUTPUT"
+            echo "### Base image: built locally from Dockerfile.base :hammer:" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build app image
+        run: |
           docker build \
-            --build-arg BASE_IMAGE="${BASE_IMAGE}" \
+            --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
             -t treesight:ci-check .
 
       - name: Run container smoke tests
