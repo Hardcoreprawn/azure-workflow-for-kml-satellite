@@ -129,7 +129,7 @@ def load_aoi_claim(payload: _Payload) -> dict[str, Any]:
     from treesight.storage.offload import PayloadOffloader
 
     offloader = PayloadOffloader(BlobStorageClient())
-    return offloader.load_claim(payload["ref"])
+    return offloader.load_claim(payload.get("aoi_ref") or payload["ref"])
 
 
 # ---------------------------------------------------------------------------

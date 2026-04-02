@@ -96,7 +96,8 @@ class PayloadOffloader:
         """
         refs: list[dict[str, str]] = []
         for idx, item in enumerate(items):
-            key = item.get(key_field, f"item_{idx}")
+            raw_key = item.get(key_field)
+            key = str(raw_key) if raw_key is not None else f"item_{idx}"
             claim_id = f"{key_field}_{idx}_{_short_hash(key)}"
             blob_ref = self.store_claim(instance_id, claim_id, item)
             refs.append({"claim_id": claim_id, "ref": blob_ref, "key": key})

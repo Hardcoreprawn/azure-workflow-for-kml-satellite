@@ -121,7 +121,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     # --- Phase 2: Acquisition (batched) ---
     context.set_custom_status({"phase": "acquisition", "step": "searching", "aois": len(aoi_refs)})
     composite = bool(inp.get("composite_search", True))
-    acq_batch_size = config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE)
+    acq_batch_size = max(
+        1, config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE)
+    )
 
     orders: list[dict[str, Any]] = []
     for i in range(0, len(aoi_refs), acq_batch_size):
@@ -157,7 +159,11 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     asset_urls, order_meta = _build_order_lookups(orders)
 
     # Build AOI ref lookup for fulfilment (key → ref)
-    aoi_ref_lookup: dict[str, str] = {r["key"]: r["ref"] for r in aoi_refs}
+    aoi_ref_lookup: dict[str, str] = {}
+    for r in aoi_refs:
+        if r["key"] in aoi_ref_lookup:
+            raise ValueError(f"Duplicate AOI key: {r['key']}")
+        aoi_ref_lookup[r["key"]] = r["ref"]
 
     acquisition: dict[str, Any] = {
         "imagery_outcomes": poll_results,

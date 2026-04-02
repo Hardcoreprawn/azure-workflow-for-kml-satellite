@@ -136,13 +136,13 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
         for aoi in aois:
             bb = aoi.get("bbox") or aoi.get("buffered_bbox")
             if bb and len(bb) == 4:
-                min_lat, min_lon, max_lat, max_lon = bb
+                min_lon, min_lat, max_lon, max_lat = bb
                 all_coords = [
-                    [min_lat, min_lon],
-                    [min_lat, max_lon],
-                    [max_lat, max_lon],
-                    [max_lat, min_lon],
-                    [min_lat, min_lon],
+                    [min_lon, min_lat],
+                    [max_lon, min_lat],
+                    [max_lon, max_lat],
+                    [min_lon, max_lat],
+                    [min_lon, min_lat],
                 ]
                 break
     return all_coords
