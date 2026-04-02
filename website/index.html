@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TreeSight — Satellite Imagery Analysis</title>
-<meta name="description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI vegetation health, weather correlation, and AI-powered insights. Free during early access.">
+<title>Canopex — Automated Satellite Evidence</title>
+<meta name="description" content="Automated satellite evidence for conservation and compliance. Upload a land boundary, get NDVI analysis, weather correlation, and AI-powered evidence reports in minutes.">
 <link rel="canonical" href="/">
-<meta property="og:title" content="TreeSight — Satellite Imagery Analysis">
-<meta property="og:description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI, weather data, and AI insights.">
+<meta property="og:title" content="Canopex — Automated Satellite Evidence">
+<meta property="og:description" content="From boundary to evidence in 5 minutes. Satellite NDVI analysis, weather correlation, and AI-powered reports for EUDR compliance and conservation.">
 <meta property="og:url" content="/">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="TreeSight">
+<meta property="og:site_name" content="Canopex">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="TreeSight — Satellite Imagery Analysis">
-<meta name="twitter:description" content="Upload a KML file and get multi-year satellite imagery analysis with NDVI, weather data, and AI insights.">
+<meta name="twitter:title" content="Canopex — Automated Satellite Evidence">
+<meta name="twitter:description" content="From boundary to evidence in 5 minutes. Satellite NDVI analysis, weather correlation, and AI-powered reports for EUDR compliance and conservation.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/style.css">
@@ -21,24 +21,21 @@
 <script src="/js/analytics.js" defer></script>
 </head>
 <body>
-<noscript><div class="noscript-banner">TreeSight requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
 
 <!-- Nav -->
 <nav>
   <div class="container">
     <a href="/" class="logo">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-      TreeSight
+      Canopex
     </a>
     <ul>
-      <li><a href="#problem">Overview</a></li>
       <li><a href="/app/?mode=demo">Try Demo</a></li>
-      <li><a href="/docs/">Docs</a></li>
-      <li><a href="#timeline">Pipeline</a></li>
+      <li><a href="#timeline">How It Works</a></li>
       <li><a href="#pricing">Pricing</a></li>
-      <li><a href="#data-sources">Data</a></li>
+      <li><a href="/docs/">Docs</a></li>
       <li><a href="#faq">FAQ</a></li>
-      <li><a href="#early-access">Early Access</a></li>
     </ul>
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
@@ -53,11 +50,11 @@
 <!-- Hero -->
 <header class="hero">
   <div class="container">
-    <h1>KML to Satellite Imagery,<br>Automated.</h1>
-    <p>Upload a KML file, get analysis-ready satellite imagery back. TreeSight handles parsing, provider orchestration, clipping, and reprojection — so you don't have to.</p>
+    <h1>From Boundary to Evidence<br>in 5 Minutes.</h1>
+    <p>Upload a land boundary, get automated satellite evidence back — NDVI vegetation health, weather correlation, and AI-powered insights for EUDR compliance and conservation monitoring.</p>
     <div class="hero-cta">
       <a href="/app/?mode=demo" class="btn btn-primary">Try Live Demo</a>
-      <a href="#early-access" class="btn btn-secondary">Request Early Access</a>
+      <a href="#pricing" class="btn btn-secondary">View Pricing</a>
     </div>
   </div>
 </header>
@@ -77,13 +74,13 @@
 
 <section id="problem">
   <div class="container">
-    <div class="section-label">Why TreeSight</div>
+    <div class="section-label">Why Canopex</div>
     <h2>The Problem With Manual Imagery Pipelines</h2>
     <div class="card-grid cols-2">
       <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
-      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. TreeSight's durable orchestrator typically completes in minutes for standard AOIs, with automatic retry and parallelism. Processing time varies with AOI size and cloud cover.</p></div>
+      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. Canopex's durable orchestrator typically completes in minutes for standard AOIs, with automatic retry and parallelism. Processing time varies with AOI size and cloud cover.</p></div>
       <div class="card"><div class="icon">🔐</div><h3>Multi-Tenant Blind Spots</h3><p>Container-per-tenant isolation, tenant-scoped routing, and valet tokens keep data separated without complex infrastructure.</p></div>
-      <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — TreeSight handles all of it correctly.</p></div>
+      <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — Canopex handles all of it correctly.</p></div>
     </div>
 
     <div class="section-label" style="margin-top:48px">Capabilities</div>
@@ -162,7 +159,7 @@
           <li>90-day data retention</li>
           <li>Priority email support</li>
         </ul>
-        <button class="btn btn-primary pricing-cta" id="btn-upgrade-pro" onclick="window.treesightBilling && window.treesightBilling.checkout()">Get Pro</button>
+        <button class="btn btn-primary pricing-cta" id="btn-upgrade-pro" onclick="window.canopexBilling && window.canopexBilling.checkout()">Get Pro</button>
       </div>
       <div class="pricing-card" data-tier="team">
         <div class="tier-name">Team</div>
@@ -226,7 +223,7 @@
   <div class="container">
     <div class="section-label">Transparency</div>
     <h2>Data Sources &amp; Methodology</h2>
-    <p style="color:var(--c-muted);max-width:640px;margin-bottom:20px">TreeSight uses publicly available satellite imagery and environmental data. Here's exactly where the data comes from and how we process it.</p>
+    <p style="color:var(--c-muted);max-width:640px;margin-bottom:20px">Canopex uses publicly available satellite imagery and environmental data. Here's exactly where the data comes from and how we process it.</p>
 
     <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">Sources</h3>
     <div style="overflow-x:auto;margin-bottom:24px">
@@ -311,7 +308,7 @@
 <!-- Footer -->
 <footer>
   <div class="container">
-    <p>&copy; 2026 TreeSight. API contract version: <span id="contract-version">—</span>
+    <p>&copy; 2026 Canopex. API contract version: <span id="contract-version">—</span>
     <br><a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
   </div>
 </footer>

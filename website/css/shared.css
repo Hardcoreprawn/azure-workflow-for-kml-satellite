@@ -1,4 +1,4 @@
-/* === TreeSight — Shared Styles ===
+/* === Canopex — Shared Styles ===
    Single source of truth for variables, nav, footer, buttons, and base styles.
    Referenced by all pages. Page-specific styles remain in inline <style> blocks. */
 
@@ -7,12 +7,12 @@
 
 /* --- Design Tokens --- */
 :root{
-  --c-bg:#0c1117;
-  --c-surface:#161b22;
-  --c-border:#30363d;
-  --c-text:#e6edf3;
-  --c-muted:#8b949e;
-  --c-accent:#58a6ff;
+  --c-bg:#0b1411;
+  --c-surface:#131f1b;
+  --c-border:#243832;
+  --c-text:#e4ede8;
+  --c-muted:#7d9a8d;
+  --c-accent:#5eecc4;
   --c-green:#3fb950;
   --c-red:#f85149;
   --c-orange:#d29922;
@@ -34,7 +34,7 @@ a:hover{text-decoration:underline}
 .container{max-width:1120px;margin:0 auto;padding:0 24px}
 
 /* --- Nav --- */
-nav{position:sticky;top:0;z-index:1000;background:rgba(12,17,23,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--c-border);padding:12px 0}
+nav{position:sticky;top:0;z-index:1000;background:rgba(11,20,17,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--c-border);padding:12px 0}
 nav .container{display:flex;align-items:center;gap:16px}
 nav .logo{font-weight:700;font-size:1.25rem;display:flex;align-items:center;gap:8px;flex-shrink:0;text-decoration:none;color:var(--c-text)}
 nav .logo:hover{text-decoration:none}
@@ -54,10 +54,10 @@ nav ul a:hover{color:var(--c-text);text-decoration:none}
 
 /* --- Buttons --- */
 .btn{display:inline-block;padding:10px 24px;border-radius:var(--radius);font-weight:600;font-size:.875rem;cursor:pointer;border:none;transition:all .15s}
-.btn-primary{background:var(--c-accent);color:#fff}
-.btn-primary:hover{background:#79c0ff;text-decoration:none}
+.btn-primary{background:var(--c-accent);color:#0b1411}
+.btn-primary:hover{background:#a8f5e0;box-shadow:0 0 14px rgba(94,236,196,.45);text-decoration:none}
 .btn-secondary{background:transparent;color:var(--c-accent);border:1px solid var(--c-accent)}
-.btn-secondary:hover{background:rgba(88,166,255,.1);text-decoration:none}
+.btn-secondary:hover{background:rgba(94,236,196,.1);text-decoration:none}
 
 /* --- Common Components --- */
 .section-label{text-transform:uppercase;font-size:.75rem;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:8px}
@@ -73,9 +73,9 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 /* --- Auth Area (nav) --- */
 .auth-area{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .auth-btn{padding:6px 16px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:1px solid var(--c-accent);background:transparent;color:var(--c-accent);transition:all .15s;white-space:nowrap;text-decoration:none;display:inline-block}
-.auth-btn:hover{background:rgba(88,166,255,.15);text-decoration:none}
-.auth-btn.primary{background:var(--c-accent);color:#fff;border-color:var(--c-accent)}
-.auth-btn.primary:hover{background:#79c0ff}
+.auth-btn:hover{background:rgba(94,236,196,.12);text-decoration:none}
+.auth-btn.primary{background:var(--c-accent);color:#0b1411;border-color:var(--c-accent)}
+.auth-btn.primary:hover{background:#a8f5e0;box-shadow:0 0 14px rgba(94,236,196,.45)}
 .auth-btn.logout{border-color:var(--c-border);color:var(--c-muted)}
 .auth-btn.logout:hover{border-color:var(--c-red);color:var(--c-red)}
 

@@ -45,8 +45,8 @@
       if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
       updateAuthUI();
       // Load billing status after auth — ungates pricing for allowed users
-      if (window.treesightBilling && window.treesightBilling.loadStatus) {
-        window.treesightBilling.loadStatus();
+      if (window.canopexBilling && window.canopexBilling.loadStatus) {
+        window.canopexBilling.loadStatus();
       }
     }).catch(function(err) {
       console.warn('MSAL redirect error:', err);
@@ -282,12 +282,12 @@
     var proBtn = document.getElementById('btn-upgrade-pro');
     if (proBtn && gated) {
       proBtn.textContent = 'Express Interest';
-      proBtn.onclick = function() { window.treesightBilling.expressInterest(); };
+      proBtn.onclick = function() { window.canopexBilling.expressInterest(); };
     } else if (proBtn && !gated) {
       proBtn.textContent = 'Get Pro';
       proBtn.disabled = false;
       proBtn.style.opacity = '';
-      proBtn.onclick = function() { window.treesightBilling.checkout(); };
+      proBtn.onclick = function() { window.canopexBilling.checkout(); };
     }
 
     // Update subtitle
@@ -315,7 +315,7 @@
     });
   }
 
-  window.treesightBilling = {
+  window.canopexBilling = {
     checkout: async function() {
       if (!currentAccount && authEnabled()) { login(); return; }
       try {
@@ -389,11 +389,11 @@
           if (proBtn) { proBtn.textContent = 'Current Plan'; proBtn.disabled = true; proBtn.style.opacity = '0.6'; }
           if (manageLink) {
             manageLink.style.display = 'inline';
-            manageLink.onclick = function(e) { e.preventDefault(); window.treesightBilling.portal(); };
+            manageLink.onclick = function(e) { e.preventDefault(); window.canopexBilling.portal(); };
           }
         } else if (!data.billing_gated && data.status === 'past_due' && proBtn) {
           proBtn.textContent = 'Payment Issue — Update';
-          proBtn.onclick = function() { window.treesightBilling.portal(); };
+          proBtn.onclick = function() { window.canopexBilling.portal(); };
         }
       } catch(e) {
         console.debug('Billing status check skipped:', e);

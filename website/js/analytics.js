@@ -1,4 +1,4 @@
-/* TreeSight — lightweight page analytics via Application Insights SDK.
+/* Canopex — lightweight page analytics via Application Insights SDK.
  *
  * Loaded on every page.  The connection string is injected at deploy time
  * into the Static Web App environment.  When missing (local dev), the

@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KML Guide — TreeSight</title>
-<meta name="description" content="Step-by-step guide to creating KML files for use with TreeSight's satellite imagery analysis pipeline.">
+<title>KML Guide — Canopex</title>
+<meta name="description" content="Step-by-step guide to creating KML files for use with Canopex's satellite imagery analysis pipeline.">
 <link rel="canonical" href="/docs/kml-guide.html">
-<meta property="og:title" content="KML Guide — TreeSight">
+<meta property="og:title" content="KML Guide — Canopex">
 <meta property="og:description" content="Step-by-step guide to creating KML files for satellite imagery analysis.">
 <meta property="og:url" content="/docs/kml-guide.html">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="TreeSight">
+<meta property="og:site_name" content="Canopex">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="KML Guide — TreeSight">
+<meta name="twitter:title" content="KML Guide — Canopex">
 <meta name="twitter:description" content="Step-by-step guide to creating KML files for satellite imagery analysis.">
 <link rel="stylesheet" href="/css/shared.css">
 <meta name="ai-connection-string" content="">
@@ -48,29 +48,27 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
   <div class="container">
     <a href="/" class="logo">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-      TreeSight
+      Canopex
     </a>
     <ul>
-      <li><a href="/#problem">Overview</a></li>
-      <li><a href="/#demo">Demo</a></li>
-      <li><a href="/docs/" aria-current="page">Docs</a></li>
-      <li><a href="/#timeline">Pipeline</a></li>
+      <li><a href="/app/?mode=demo">Try Demo</a></li>
+      <li><a href="/#timeline">How It Works</a></li>
       <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
       <li><a href="/#faq">FAQ</a></li>
-      <li><a href="/#early-access">Early Access</a></li>
     </ul>
     <div class="auth-area">
       <a href="/" class="auth-btn">Sign In</a>
     </div>
   </div>
 </nav>
-<noscript><div class="noscript-banner">TreeSight requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
 
 <!-- Hero -->
 <header class="hero-sm">
   <div class="container">
     <h1>How to Create a KML File</h1>
-    <p>A step-by-step guide to drawing your area of interest and exporting it as KML for use with TreeSight.</p>
+    <p>A step-by-step guide to drawing your area of interest and exporting it as KML for use with Canopex.</p>
   </div>
 </header>
 
@@ -81,8 +79,8 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
   <div class="container">
     <div class="section-label">Background</div>
     <h2>What is KML?</h2>
-    <p><strong style="color:var(--c-text)">KML (Keyhole Markup Language)</strong> is an XML-based format for geographic data. It's the standard format used by Google Earth, and it's what TreeSight uses to define your area of interest.</p>
-    <p>A KML file contains one or more <strong style="color:var(--c-text)">polygons</strong> — shapes drawn on the map that define exactly where you want satellite imagery analysed. TreeSight also supports <strong style="color:var(--c-text)">KMZ</strong> files, which are compressed archives containing KML.</p>
+    <p><strong style="color:var(--c-text)">KML (Keyhole Markup Language)</strong> is an XML-based format for geographic data. It's the standard format used by Google Earth, and it's what Canopex uses to define your area of interest.</p>
+    <p>A KML file contains one or more <strong style="color:var(--c-text)">polygons</strong> — shapes drawn on the map that define exactly where you want satellite imagery analysed. Canopex also supports <strong style="color:var(--c-text)">KMZ</strong> files, which are compressed archives containing KML.</p>
     <div class="tip">You don't need any GIS experience. If you can draw a shape on Google Maps, you can create a KML file.</div>
   </div>
 </section>
@@ -98,7 +96,7 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
       <li>Install and open the application</li>
       <li>Sign in with a Google account (or skip — it's optional)</li>
     </ol>
-    <div class="tip">Already have QGIS, ArcGIS, or another GIS tool? Any software that exports standard KML polygons will work with TreeSight.</div>
+    <div class="tip">Already have QGIS, ArcGIS, or another GIS tool? Any software that exports standard KML polygons will work with Canopex.</div>
   </div>
 </section>
 
@@ -136,9 +134,9 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
     </div>
 
     <div class="step-card">
-      <h3><span class="step-number">5</span> Upload to TreeSight</h3>
-      <p>Go to the <a href="/#demo">Live Demo</a> section, drag your KML/KMZ file onto the upload area (or paste the KML text), and click <strong style="color:var(--c-text)">Run Pipeline</strong>.</p>
-      <p>TreeSight will extract the polygons, find matching satellite imagery, and deliver your analysis in minutes.</p>
+      <h3><span class="step-number">5</span> Upload to Canopex</h3>
+      <p>Go to the <a href="/app/?mode=demo">Live Demo</a> section, drag your KML/KMZ file onto the upload area (or paste the KML text), and click <strong style="color:var(--c-text)">Run Pipeline</strong>.</p>
+      <p>Canopex will extract the polygons, find matching satellite imagery, and deliver your analysis in minutes.</p>
     </div>
   </div>
 </section>
@@ -150,18 +148,18 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
     <h2>Getting the Best Results</h2>
 
     <h3>Polygon size</h3>
-    <p>TreeSight works best with areas between <strong style="color:var(--c-text)">1 hectare and 10,000 hectares</strong>. Very small polygons may not intersect enough satellite tiles; very large ones may take longer to process.</p>
+    <p>Canopex works best with areas between <strong style="color:var(--c-text)">1 hectare and 10,000 hectares</strong>. Very small polygons may not intersect enough satellite tiles; very large ones may take longer to process.</p>
 
     <h3>Multiple polygons</h3>
-    <p>You can include multiple polygons in a single KML file. TreeSight will process each one individually and return results for all of them.</p>
+    <p>You can include multiple polygons in a single KML file. Canopex will process each one individually and return results for all of them.</p>
 
     <h3>Coordinate system</h3>
     <p>KML files always use <strong style="color:var(--c-text)">WGS 84 (EPSG:4326)</strong> coordinates. Google Earth Pro handles this automatically — no manual CRS configuration needed.</p>
 
-    <div class="warning">Avoid self-intersecting polygons (figure-eight shapes). TreeSight validates geometry and will reject invalid shapes with a clear error message.</div>
+    <div class="warning">Avoid self-intersecting polygons (figure-eight shapes). Canopex validates geometry and will reject invalid shapes with a clear error message.</div>
 
     <h3>KML vs KMZ</h3>
-    <p><strong style="color:var(--c-text)">KML</strong> is plain XML text — you can open it in any text editor. <strong style="color:var(--c-text)">KMZ</strong> is a compressed ZIP archive containing KML and optional assets. TreeSight supports both.</p>
+    <p><strong style="color:var(--c-text)">KML</strong> is plain XML text — you can open it in any text editor. <strong style="color:var(--c-text)">KMZ</strong> is a compressed ZIP archive containing KML and optional assets. Canopex supports both.</p>
 
     <h3>Alternative tools</h3>
     <ul>
@@ -178,7 +176,7 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
     <h2>Ready to try it?</h2>
     <p>Upload your KML file and see satellite analysis in minutes.</p>
     <div class="cta-row">
-      <a href="/#demo" class="btn btn-primary">Try the Demo</a>
+      <a href="/app/?mode=demo" class="btn btn-primary">Try the Demo</a>
       <a href="/#early-access" class="btn btn-secondary">Request Early Access</a>
     </div>
   </div>
@@ -188,7 +186,7 @@ code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:
 
 <footer>
   <div class="container">
-    <p>&copy; 2026 TreeSight. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
   </div>
 </footer>
 

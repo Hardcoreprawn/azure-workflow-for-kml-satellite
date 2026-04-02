@@ -1,7 +1,7 @@
 (function(){
   'use strict';
 
-  const POST_LOGIN_DESTINATION_KEY = 'treesight-post-login';
+  const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const CIAM_TENANT_NAME = 'treesightauth';
   const CIAM_TENANT_DOMAIN = CIAM_TENANT_NAME ? CIAM_TENANT_NAME + '.onmicrosoft.com' : '';
   const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
@@ -13,8 +13,8 @@
     : '';
   const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
   const IDENTITY_ONLY_SCOPES = ['openid', 'profile', 'email', 'offline_access'];
-  const WORKSPACE_ROLE_STORAGE_KEY = 'treesight-workspace-role';
-  const WORKSPACE_PREFERENCE_STORAGE_KEY = 'treesight-workspace-preference';
+  const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
+  const WORKSPACE_PREFERENCE_STORAGE_KEY = 'canopex-workspace-preference';
   const WORKSPACE_ROLES = {
     conservation: {
       label: 'Conservation',
@@ -2014,7 +2014,7 @@
       var blobUrl = URL.createObjectURL(blob);
       var link = document.createElement('a');
       link.href = blobUrl;
-      link.download = parseDownloadFilename(res, 'treesight_' + instanceId + '.' + format);
+      link.download = parseDownloadFilename(res, 'canopex_' + instanceId + '.' + format);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -2292,7 +2292,7 @@
     var parsed = parseKmlGeometry(trimmed);
     if (parsed.error) return { error: parsed.error };
     if (!parsed.polygons || !parsed.polygons.length) {
-      return { error: 'No polygon boundaries were detected. TreeSight expects polygon AOIs in the signed-in workflow.' };
+      return { error: 'No polygon boundaries were detected. Canopex expects polygon AOIs in the signed-in workflow.' };
     }
 
     var centroids = parsed.polygons.map(function(polygon) { return polygonCentroid(polygon.coords); });
@@ -2836,7 +2836,7 @@
       dashboard.hidden = false;
       userName.textContent = displayName;
       accountIdentifier.textContent = identifier;
-      accountNote.textContent = 'This is now the dedicated signed-in home for TreeSight. Choose the role view and work preference that match the job at hand.';
+      accountNote.textContent = 'This is now the dedicated signed-in home for Canopex. Choose the role view and work preference that match the job at hand.';
       if (!analysisHistoryLoaded && !latestAnalysisRun) {
         setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
         updateHistorySummary(null);
