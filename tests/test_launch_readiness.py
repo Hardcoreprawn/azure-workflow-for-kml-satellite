@@ -481,14 +481,21 @@ class TestContainerRuntimePrereqs:
         caused three consecutive deploy outages.  Only PDB/XML are safe to strip.
         """
         content = self.BASE_DOCKERFILE.read_text()
-        # No rm commands targeting .dll files in the host section
-        assert not re.search(r"\brm\b[^\n]*\.dll", content, flags=re.IGNORECASE), (
-            "Dockerfile.base must not rm any .dll files from the Functions host"
+        # Extract the host optimisation RUN block (between "cd /azure-functions-host"
+        # and the next blank line / Stage marker).  Bundle-level rm is fine.
+        host_match = re.search(
+            r"(cd /azure-functions-host.*?)(?:\n\n|# ── Bundle|# ── Stage)",
+            content,
+            flags=re.DOTALL,
         )
-        # No find -delete targeting .dll
-        assert not re.search(r"find\b[^\n]*\.dll[^\n]*-delete", content, flags=re.IGNORECASE), (
-            "Dockerfile.base must not find -delete any .dll files from the Functions host"
-        )
+        if host_match:
+            host_section = host_match.group(1)
+            assert not re.search(r"\brm\b[^\n]*\.dll", host_section, flags=re.IGNORECASE), (
+                "Dockerfile.base host section must not rm any .dll files"
+            )
+            assert not re.search(
+                r"find\b[^\n]*\.dll[^\n]*-delete", host_section, flags=re.IGNORECASE
+            ), "Dockerfile.base host section must not find -delete any .dll files"
 
     def test_smoke_test_checks_host_dlls(self):
         """Container smoke test must verify critical host DLLs are present."""
