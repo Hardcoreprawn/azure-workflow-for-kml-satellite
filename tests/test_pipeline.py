@@ -393,6 +393,8 @@ class TestDedupOrdersByScene:
         unique, scene_map = _dedup_orders_by_scene(orders)
         assert len(unique) == 2
         assert len(scene_map) == 2
+
+    def test_empty_list(self):
         from blueprints.pipeline._helpers import _dedup_orders_by_scene
 
         unique, scene_map = _dedup_orders_by_scene([])

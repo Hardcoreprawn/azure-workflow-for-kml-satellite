@@ -51,10 +51,10 @@ def _group_per_aoi(
         name = d.get("aoi_feature_name", "")
         if not name:
             continue
-        if d.get("state") == "completed":
-            buckets[name]["downloads_succeeded"] += 1
-        else:
+        if d.get("state") == "failed":
             buckets[name]["downloads_failed"] += 1
+        else:
+            buckets[name]["downloads_succeeded"] += 1
 
     for p in fulfilment.get("post_process_results", []):
         name = p.get("aoi_feature_name", "")

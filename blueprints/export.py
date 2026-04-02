@@ -577,7 +577,10 @@ async def export_data(
 ) -> func.HttpResponse:
     """GET /api/export/{instance_id}/{format} — download enrichment data.
 
-    Supported formats: ``geojson``, ``csv``, ``pdf``.
+    Supported formats: ``geojson``, ``csv``, ``csv-bulk``, ``pdf``.
+
+    The ``csv-bulk`` format produces one row per AOI with aggregated metrics.
+    Falls back to the regular temporal CSV when ``per_aoi_metrics`` is absent.
     Returns the file as a downloadable attachment.
     """
     if req.method == "OPTIONS":
