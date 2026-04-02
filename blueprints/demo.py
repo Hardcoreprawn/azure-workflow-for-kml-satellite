@@ -209,9 +209,16 @@ _PROXY_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB
 
 def _is_domain_allowed(domain: str) -> bool:
     """Exact match or subdomain match against the allowlist."""
-    return domain in PROXY_ALLOWED_DOMAINS or any(
-        domain.endswith("." + allowed) for allowed in PROXY_ALLOWED_DOMAINS
-    )
+    if not domain or "@" in domain:
+        return False
+    for allowed in PROXY_ALLOWED_DOMAINS:
+        if domain == allowed:
+            return True
+        # Subdomain check: must be exactly `<sub>.<allowed>` — the dot
+        # prefix prevents `evil-environment.data.gov.uk` from matching.
+        if domain.endswith(f".{allowed}") and len(domain) > len(allowed) + 1:
+            return True
+    return False
 
 
 @bp.route(route="proxy", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -241,7 +248,7 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
         parsed = urlparse(target_url)
         if parsed.scheme not in ("http", "https"):
             return error_response(400, "Only http/https URLs are allowed", req=req)
-        domain = parsed.netloc.lower().split(":")[0]  # strip port
+        domain = (parsed.hostname or "").lower()
         if not _is_domain_allowed(domain):
             return error_response(403, "Domain not whitelisted", req=req)
     except Exception:
