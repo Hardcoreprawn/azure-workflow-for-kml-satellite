@@ -473,3 +473,11 @@ class TestContainerRuntimePrereqs:
         """Container smoke test must verify ICU is present."""
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
+
+    def test_smoke_test_checks_nuget_versioning(self):
+        """Container smoke test must verify NuGet.Versioning.dll is preserved."""
+        smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
+        assert "nuget.versioning.dll" in smoke.lower(), (
+            "container_smoke_test.py must check for NuGet.Versioning.dll presence to "
+            "prevent regressions where it is removed from the .NET host image"
+        )

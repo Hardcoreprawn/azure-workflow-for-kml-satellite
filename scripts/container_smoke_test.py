@@ -161,11 +161,15 @@ def main() -> int:
                 timeout=5,
                 env={**os.environ, "DOTNET_SYSTEM_GLOBALIZATION_INVARIANT": "0"},
             )
-            icu_crash = "ICU" in probe.stderr and "libicu" in probe.stderr
+            stderr = probe.stderr or ""
+            stderr_lower = stderr.lower()
+            icu_crash = "couldn't find a valid icu package" in stderr_lower or (
+                "icu" in stderr_lower and "libicu" in stderr_lower
+            )
             check(
                 "Functions host starts without ICU crash",
-                not icu_crash,
-                probe.stderr.strip()[:200] if icu_crash else "",
+                probe.returncode == 0 and not icu_crash,
+                stderr.strip()[:200] if icu_crash or probe.returncode != 0 else "",
             )
         except subprocess.TimeoutExpired:
             # Timeout is GOOD — it means the host started running (no ICU crash)
