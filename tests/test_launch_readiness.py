@@ -474,23 +474,24 @@ class TestContainerRuntimePrereqs:
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
 
-    def test_nuget_dlls_not_deleted_in_dockerfile(self):
-        """NuGet DLLs must NOT be deleted — host loads them lazily at startup."""
+    def test_no_host_dll_deletion_in_dockerfile(self):
+        """Host DLLs must NOT be deleted — host lazily loads them at startup.
+
+        Deleting CodeAnalysis, NuGet.Packaging, NuGet.Versioning etc. has
+        caused three consecutive deploy outages.  Only PDB/XML are safe to strip.
+        """
         content = self.BASE_DOCKERFILE.read_text()
-        no_find_delete = not re.search(
-            r"find\b[^\n]*NuGet[^\n]*\b-delete\b", content, flags=re.IGNORECASE
+        # No rm commands targeting .dll files in the host section
+        assert not re.search(r"\brm\b[^\n]*\.dll", content, flags=re.IGNORECASE), (
+            "Dockerfile.base must not rm any .dll files from the Functions host"
         )
-        no_rm_nuget = not re.search(r"\brm\b[^\n]*NuGet[^\n]*\.dll", content, flags=re.IGNORECASE)
-        assert no_find_delete and no_rm_nuget, (
-            "Dockerfile.base must not delete NuGet DLLs — "
-            "the Functions host lazily loads Versioning, Packaging, etc. at startup"
+        # No find -delete targeting .dll
+        assert not re.search(r"find\b[^\n]*\.dll[^\n]*-delete", content, flags=re.IGNORECASE), (
+            "Dockerfile.base must not find -delete any .dll files from the Functions host"
         )
 
-    def test_smoke_test_checks_nuget_dlls(self):
-        """Container smoke test must verify NuGet DLLs are present."""
+    def test_smoke_test_checks_host_dlls(self):
+        """Container smoke test must verify critical host DLLs are present."""
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
-        assert re.search(r"NuGet\..*\.dll", smoke), (
-            "container_smoke_test.py must explicitly check for NuGet.*.dll "
-            "presence to prevent regressions where they are removed from the "
-            ".NET host image"
-        )
+        for dll in ["NuGet.Versioning.dll", "NuGet.Packaging.dll", "Microsoft.CodeAnalysis.dll"]:
+            assert dll in smoke, f"container_smoke_test.py must check for {dll} presence"

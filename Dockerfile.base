@@ -19,11 +19,15 @@
 #   - bin_v3 (.NET isolated worker)        ~167 MB  (Python worker only)
 #   - Kafka native libs (all variants)      ~94 MB  (not using Kafka)
 #   - Windows/OSX/ARM64 runtimes            ~54 MB  (wrong platform)
-#   - Roslyn C# compiler                     ~7 MB  (C# scripts, not Python)
 #   - StaticContent (dashboard UI)            ~6 MB  (API-only container)
-#   - SnapshotCollector (profiling)           ~5 MB  (optional)
-#   - Diagnostics (createdump, DAC, DBI)      ~5 MB  (crash dump tools)
-#   - Proxy DLLs, MonoPosix                    ~2 MB  (deprecated/unused)
+#   - Unused extension DLLs                   ~8 MB  (triggers we don't use)
+#   - PDB + XML from host                    ~3 MB  (debug symbols / docs)
+#
+# What we DON'T strip from /azure-functions-host/:
+#   All DLLs are kept intact. The host lazily loads assemblies like
+#   NuGet.Packaging, Microsoft.CodeAnalysis, etc. at startup or during
+#   extension bundle validation. Deleting host DLLs saves ~21 MB but
+#   has caused three consecutive deploy outages — not worth it.
 #
 # What we KEEP:
 #   - R2R precompiled DLL + map + PreJIT   ~242 MB  (critical for scale-to-zero cold start)
@@ -37,30 +41,14 @@
 # ── Stage 1: Extract & strip Functions runtime from MS image ─
 FROM mcr.microsoft.com/azure-functions/python:4-python3.12 AS functions-host
 
-# ── Host optimisations (~21 MB saved; R2R kept for cold start) ─
+# ── Host optimisations (safe only: PDB + XML) ───────────────
+# All DLLs kept intact — the host lazily loads assemblies at startup
+# and during extension bundle validation.  Deleting DLLs saves ~21 MB
+# but has caused repeated deploy outages (CodeAnalysis, NuGet.Packaging,
+# NuGet.Versioning).  Only debug symbols and XML docs are stripped.
 RUN set -e && \
     cd /azure-functions-host && \
-    # Roslyn C# compiler — for C# script functions, not Python (saves 7 MB)
-    rm -f Microsoft.CodeAnalysis.CSharp.dll \
-          Microsoft.CodeAnalysis.dll && \
-    # SnapshotCollector — App Insights profiler, optional (saves 5 MB)
-    rm -rf SnapshotCollector/ 2>/dev/null || true && \
-    # Diagnostics — crash dump tools (saves ~5 MB)
-    rm -f createdump \
-          libmscordaccore.so \
-          libmscordbi.so \
-          libcoreclrtraceptprovider.so && \
-    # NuGet DLLs — kept intact; multiple assemblies (Versioning, Packaging, …)
-    # are loaded lazily by the Functions host and deleting any causes startup
-    # crashes.  Total cost: ~2 MB — not worth the breakage risk.
-    # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
-    rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll 2>/dev/null || true && \
-    rm -rf ProxyLibrary/ 2>/dev/null || true && \
-    # MonoPosixHelper — Mono compatibility layer (saves ~1 MB)
-    rm -f libMonoPosixHelper.so && \
-    # PDB debug symbols
     find . -name '*.pdb' -delete && \
-    # XML documentation
     find . -name '*.xml' -delete
 
 # ── Bundle optimisations (~329 MB saved) ─────────────────────

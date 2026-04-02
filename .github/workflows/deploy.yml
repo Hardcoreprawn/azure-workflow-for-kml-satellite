@@ -280,8 +280,8 @@ jobs:
         run: |
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           BASE_URL="https://${HOSTNAME}"
-          MAX_WAIT=360          # 6 minutes — generous for Container Apps cold start
-          INTERVAL=10
+          MAX_WAIT=90           # normal startup is <60s; if not up by 90s it's broken
+          INTERVAL=5
           elapsed=0
           health_code=0
           ready_code=0
