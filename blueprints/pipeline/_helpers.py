@@ -163,6 +163,27 @@ def _build_order_lookups(
     return asset_urls, order_meta
 
 
+def _split_batch_routing(
+    ready: list[dict[str, Any]],
+    aoi_area_by_name: dict[str, float],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split ready outcomes into serverless vs Azure Batch tiers.
+
+    Returns ``(serverless_ready, batch_ready)``.
+    """
+    from treesight.pipeline.batch import needs_batch_fallback
+
+    serverless: list[dict[str, Any]] = []
+    batch: list[dict[str, Any]] = []
+    for outcome in ready:
+        area = aoi_area_by_name.get(outcome.get("aoi_feature_name", ""), 0.0)
+        if needs_batch_fallback(area):
+            batch.append(outcome)
+        else:
+            serverless.append(outcome)
+    return serverless, batch
+
+
 def _dedup_orders_by_scene(
     orders: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:

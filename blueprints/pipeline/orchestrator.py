@@ -30,6 +30,7 @@ from ._helpers import (
     _download_payload,
     _poll_payload,
     _post_process_payload,
+    _split_batch_routing,
 )
 
 
@@ -75,6 +76,11 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
 
     # Claim-check: extract enrichment coords before offloading AOIs
     all_coords = _collect_enrichment_coords(aois)
+
+    # Extract area_ha per AOI for batch routing (before claim-check offload)
+    aoi_area_by_name: dict[str, float] = {
+        a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois
+    }
 
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs
     context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
@@ -176,10 +182,67 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
     batch_size = config_get_int(inp, "download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)
 
-    # Download in batches
+    # Split ready imagery: oversized AOIs → Azure Batch, normal → serverless
+    serverless_ready, batch_ready = _split_batch_routing(ready, aoi_area_by_name)
+
+    # Route oversized AOIs to Azure Batch Spot VMs
+    batch_tracking: list[dict[str, Any]] = []
+    if batch_ready:
+        context.set_custom_status(
+            {"phase": "fulfilment", "step": "batch_submit", "count": len(batch_ready)}
+        )
+        submit_tasks = [
+            context.call_activity(
+                "submit_batch_fulfilment",
+                {
+                    "outcome": outcome,
+                    "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
+                    "output_container": output_container,
+                    "project_name": ctx["project_name"],
+                    "timestamp": ctx["timestamp"],
+                },
+            )
+            for outcome in batch_ready
+        ]
+        batch_tracking = cast(
+            "list[dict[str, Any]]",
+            (yield context.task_all(submit_tasks)),
+        )
+
+        # Poll Batch tasks until all complete (or fail)
+        pending = [t for t in batch_tracking if t.get("state") == "submitted"]
+        while pending:
+            context.set_custom_status(
+                {"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)}
+            )
+            poll_batch_tasks = [
+                context.call_activity(
+                    "poll_batch_fulfilment",
+                    {"job_id": t["job_id"], "task_id": t["task_id"]},
+                )
+                for t in pending
+            ]
+            poll_batch_results = cast(
+                "list[dict[str, Any]]",
+                (yield context.task_all(poll_batch_tasks)),
+            )
+            state_map = {(r["job_id"], r["task_id"]): r["state"] for r in poll_batch_results}
+            for t in batch_tracking:
+                key = (t["job_id"], t["task_id"])
+                if key in state_map:
+                    t["state"] = state_map[key]
+
+            pending = [t for t in batch_tracking if t.get("state") not in ("completed", "failed")]
+            if pending:
+                import datetime as _dt
+
+                fire_at = context.current_utc_datetime + _dt.timedelta(seconds=60)
+                yield context.create_timer(fire_at)
+
+    # Download serverless-tier imagery in batches
     download_results: list[dict[str, Any]] = []
-    for i in range(0, len(ready), batch_size):
-        batch = ready[i : i + batch_size]
+    for i in range(0, len(serverless_ready), batch_size):
+        batch = serverless_ready[i : i + batch_size]
         dl_tasks = [
             context.call_activity(
                 "download_imagery",
@@ -230,11 +293,18 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         )
         pp_results.extend(batch_pp)
 
+    # Merge batch results into download tracking
+    batch_succeeded = [t for t in batch_tracking if t.get("state") == "completed"]
+    batch_failed_items = [t for t in batch_tracking if t.get("state") == "failed"]
+
     fulfilment: dict[str, Any] = {
         "download_results": download_results,
-        "downloads_completed": len(download_results),
-        "downloads_succeeded": len(successful_downloads),
-        "downloads_failed": len(failed_downloads),
+        "downloads_completed": len(download_results) + len(batch_tracking),
+        "downloads_succeeded": len(successful_downloads) + len(batch_succeeded),
+        "downloads_failed": len(failed_downloads) + len(batch_failed_items),
+        "batch_submitted": len(batch_tracking),
+        "batch_succeeded": len(batch_succeeded),
+        "batch_failed": len(batch_failed_items),
         "post_process_results": pp_results,
         "pp_completed": len(pp_results),
         "pp_clipped": sum(1 for p in pp_results if p.get("clipped")),
