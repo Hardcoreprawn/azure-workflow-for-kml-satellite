@@ -85,6 +85,7 @@ ignore = [
 "scripts/**" = ["T20", "S", "C901"]
 "blueprints/analysis.py" = ["C901"]
 "blueprints/pipeline.py" = ["C901"]
+"blueprints/pipeline/orchestrator.py" = ["C901"]
 "treesight/pipeline/enrichment/runner.py" = ["C901"]
 "treesight/pipeline/enrichment/ndvi.py" = ["C901"]
 "treesight/security/auth.py" = ["C901"]

@@ -291,3 +291,32 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Azure Batch fallback activities (#315)
+# ---------------------------------------------------------------------------
+
+
+@bp.activity_trigger(input_name="payload")
+def submit_batch_fulfilment(payload: _Payload) -> dict[str, Any]:
+    """Submit an oversized-AOI fulfilment job to Azure Batch Spot VMs."""
+    from treesight.pipeline.batch import submit_batch_job
+
+    outcome = payload["outcome"]
+    return submit_batch_job(
+        aoi_ref=outcome.get("aoi_feature_name", ""),
+        claim_key=outcome.get("order_id", ""),
+        asset_url=payload.get("asset_url", ""),
+        output_container=payload["output_container"],
+        project_name=payload["project_name"],
+        timestamp=payload["timestamp"],
+    )
+
+
+@bp.activity_trigger(input_name="payload")
+def poll_batch_fulfilment(payload: _Payload) -> dict[str, Any]:
+    """Poll an Azure Batch task for completion."""
+    from treesight.pipeline.batch import poll_batch_task
+
+    return poll_batch_task(payload["job_id"], payload["task_id"])
