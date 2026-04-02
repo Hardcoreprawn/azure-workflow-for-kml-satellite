@@ -300,13 +300,18 @@ jobs:
               exit 0
             fi
 
-            # Fail fast on server errors (5xx) — indicates a real crash
-            if [[ "$health_code" =~ ^5 ]] || [[ "$ready_code" =~ ^5 ]]; then
-              echo "❌ Server error detected (health=${health_code}, readiness=${ready_code}). Failing."
+            # Fail fast on real server errors — but tolerate 502/503/504 which
+            # are normal during Container Apps cold start + Python worker init.
+            if [[ "$health_code" =~ ^5 ]] && ! [[ "$health_code" =~ ^50[234]$ ]]; then
+              echo "❌ Server error (health=${health_code}). Failing."
+              exit 1
+            fi
+            if [[ "$ready_code" =~ ^5 ]] && ! [[ "$ready_code" =~ ^50[234]$ ]]; then
+              echo "❌ Server error (readiness=${ready_code}). Failing."
               exit 1
             fi
 
-            # 404 / 000 / other — likely routing lag, keep waiting
+            # 502/503/504 / 404 / 000 — transient during cold start, keep waiting
             sleep $INTERVAL
             elapsed=$((elapsed + INTERVAL))
           done
