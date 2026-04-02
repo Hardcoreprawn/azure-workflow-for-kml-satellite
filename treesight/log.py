@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextvars
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -17,6 +18,14 @@ from typing import Any
 correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="")
 
 logger = logging.getLogger("treesight")
+
+# Strip control characters (newlines, tabs, etc.) to prevent log injection.
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _sanitise(value: object) -> str:
+    """Return a log-safe string with control characters removed."""
+    return _CONTROL_CHAR_RE.sub("", str(value))
 
 
 class JsonFormatter(logging.Formatter):
@@ -59,6 +68,9 @@ def log_phase(
     **extra: object,
 ) -> str:
     """Build a structured log line and emit it at INFO level."""
+    phase, step = _sanitise(phase), _sanitise(step)
+    instance_id = _sanitise(instance_id)
+    blob_name = _sanitise(blob_name)
     props: dict[str, Any] = {"phase": phase, "step": step}
     if instance_id:
         props["instance_id"] = instance_id
@@ -73,7 +85,7 @@ def log_phase(
     if instance_id:
         parts.append(f"instance={instance_id}")
     for k, v in extra.items():
-        parts.append(f"{k}={v}")
+        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
     if blob_name:
         parts.append(f"blob={blob_name}")
     msg = " | ".join(parts)
@@ -89,6 +101,9 @@ def log_error(
     **extra: object,
 ) -> None:
     """Build a structured log line and emit it at ERROR level."""
+    phase, step = _sanitise(phase), _sanitise(step)
+    error = _sanitise(error)
+    instance_id = _sanitise(instance_id)
     props: dict[str, Any] = {"phase": phase, "step": step, "error": error}
     if instance_id:
         props["instance_id"] = instance_id
@@ -100,7 +115,7 @@ def log_error(
     if instance_id:
         parts.append(f"instance={instance_id}")
     for k, v in extra.items():
-        parts.append(f"{k}={v}")
+        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
     parts.append(f"error={error}")
     logger.error(" | ".join(parts), extra={"custom_properties": props})
 
