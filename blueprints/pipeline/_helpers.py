@@ -9,6 +9,7 @@ from typing import Any
 
 import azure.functions as func
 
+from blueprints._helpers import cors_headers
 from treesight.constants import MAX_KML_FILE_SIZE_BYTES
 from treesight.errors import ContractError
 
@@ -31,11 +32,14 @@ def _cosmos_available() -> bool:
     return bool(config.COSMOS_ENDPOINT)
 
 
-def _error_response(status: int, message: str) -> func.HttpResponse:
+def _error_response(
+    status: int, message: str, req: func.HttpRequest | None = None
+) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps({"error": message}),
         status_code=status,
         mimetype="application/json",
+        headers=cors_headers(req) if req is not None else {},
     )
 
 

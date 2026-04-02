@@ -2561,6 +2561,7 @@
         var err = res ? await res.json().catch(function(){ return {}; }) : {};
         setAnalysisStatus(err.error || 'Could not queue analysis request.', 'error');
         updateContentSummary(null);
+        resetAnalysisProgress();
         return;
       }
 
