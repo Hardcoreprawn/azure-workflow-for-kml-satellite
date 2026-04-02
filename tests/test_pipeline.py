@@ -317,3 +317,145 @@ class TestAcquisitionBatchConstant:
         from treesight.constants import DEFAULT_ACQUISITION_BATCH_SIZE
 
         assert DEFAULT_ACQUISITION_BATCH_SIZE == 25
+
+
+# ---------------------------------------------------------------------------
+# §11 — Bulk AOI (#311)
+# ---------------------------------------------------------------------------
+
+
+class TestMaxFeaturesConstant:
+    def test_max_features_exists(self):
+        from treesight.constants import MAX_FEATURES_PER_KML
+
+        assert MAX_FEATURES_PER_KML == 500
+
+
+class TestGroupPerAoi:
+    def test_groups_by_feature_name(self):
+        from treesight.pipeline.orchestrator import _group_per_aoi
+
+        acquisition = {
+            "imagery_outcomes": [
+                {"aoi_feature_name": "farm_a", "state": "ready"},
+                {"aoi_feature_name": "farm_a", "state": "ready"},
+                {"aoi_feature_name": "farm_b", "state": "failed"},
+            ]
+        }
+        fulfilment = {
+            "download_results": [
+                {"aoi_feature_name": "farm_a", "state": "completed"},
+                {"aoi_feature_name": "farm_b", "state": "failed"},
+            ],
+            "post_process_results": [
+                {"aoi_feature_name": "farm_a", "clipped_blob_path": "x.tif"},
+            ],
+        }
+
+        result = _group_per_aoi(acquisition, fulfilment)
+        assert len(result) == 2
+        a = next(r for r in result if r["feature_name"] == "farm_a")
+        b = next(r for r in result if r["feature_name"] == "farm_b")
+        assert a["imagery_ready"] == 2
+        assert a["downloads_succeeded"] == 1
+        assert a["post_process_completed"] == 1
+        assert b["imagery_failed"] == 1
+        assert b["downloads_failed"] == 1
+
+    def test_empty_inputs(self):
+        from treesight.pipeline.orchestrator import _group_per_aoi
+
+        result = _group_per_aoi({}, {})
+        assert result == []
+
+
+class TestDedupOrdersByScene:
+    def test_deduplicates_shared_scenes(self):
+        from blueprints.pipeline._helpers import _dedup_orders_by_scene
+
+        orders = [
+            {"scene_id": "S2_A", "aoi_feature_name": "farm_1", "order_id": "o1"},
+            {"scene_id": "S2_A", "aoi_feature_name": "farm_2", "order_id": "o2"},
+            {"scene_id": "S2_B", "aoi_feature_name": "farm_3", "order_id": "o3"},
+        ]
+        unique, scene_map = _dedup_orders_by_scene(orders)
+        assert len(unique) == 2
+        assert set(scene_map["S2_A"]) == {"farm_1", "farm_2"}
+        assert scene_map["S2_B"] == ["farm_3"]
+
+    def test_no_duplicates(self):
+        from blueprints.pipeline._helpers import _dedup_orders_by_scene
+
+        orders = [
+            {"scene_id": "S1", "aoi_feature_name": "a", "order_id": "o1"},
+            {"scene_id": "S2", "aoi_feature_name": "b", "order_id": "o2"},
+        ]
+        unique, scene_map = _dedup_orders_by_scene(orders)
+        assert len(unique) == 2
+        assert len(scene_map) == 2
+
+    def test_empty_list(self):
+        from blueprints.pipeline._helpers import _dedup_orders_by_scene
+
+        unique, scene_map = _dedup_orders_by_scene([])
+        assert unique == []
+        assert scene_map == {}
+
+
+class TestAoiSummaryModel:
+    def test_defaults(self):
+        from treesight.models.outcomes import AoiSummary
+
+        s = AoiSummary(feature_name="test")
+        assert s.feature_name == "test"
+        assert s.imagery_ready == 0
+
+    def test_roundtrip(self):
+        from treesight.models.outcomes import AoiSummary
+
+        s = AoiSummary(feature_name="field", imagery_ready=3, downloads_succeeded=2)
+        d = s.model_dump()
+        assert d["feature_name"] == "field"
+        assert d["imagery_ready"] == 3
+
+
+class TestPipelineSummaryPerAoi:
+    def test_includes_per_aoi(self):
+        from treesight.pipeline.orchestrator import build_pipeline_summary
+
+        result = build_pipeline_summary(
+            instance_id="inst-1",
+            blob_name="test.kml",
+            blob_url="https://example.com/test.kml",
+            ingestion={"feature_count": 2, "aoi_count": 2},
+            acquisition={
+                "ready_count": 2,
+                "failed_count": 0,
+                "imagery_outcomes": [
+                    {"aoi_feature_name": "a", "state": "ready"},
+                    {"aoi_feature_name": "b", "state": "ready"},
+                ],
+            },
+            fulfilment={
+                "downloads_completed": 2,
+                "downloads_succeeded": 2,
+                "downloads_failed": 0,
+                "download_results": [
+                    {"aoi_feature_name": "a", "state": "completed"},
+                    {"aoi_feature_name": "b", "state": "completed"},
+                ],
+                "pp_completed": 2,
+                "pp_clipped": 2,
+                "pp_reprojected": 2,
+                "pp_failed": 0,
+                "post_process_results": [
+                    {"aoi_feature_name": "a", "clipped_blob_path": "x.tif"},
+                    {"aoi_feature_name": "b", "clipped_blob_path": "y.tif"},
+                ],
+            },
+        )
+
+        assert "per_aoi_summaries" in result
+        assert len(result["per_aoi_summaries"]) == 2
+        names = {s["feature_name"] for s in result["per_aoi_summaries"]}
+        assert names == {"a", "b"}

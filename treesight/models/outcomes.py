@@ -116,6 +116,18 @@ class FulfillmentResult(BaseModel):
     pp_failed: int = 0
 
 
+class AoiSummary(BaseModel):
+    """Per-AOI breakdown aggregated from pipeline phase results."""
+
+    feature_name: str = ""
+    imagery_ready: int = 0
+    imagery_failed: int = 0
+    downloads_succeeded: int = 0
+    downloads_failed: int = 0
+    post_process_completed: int = 0
+    post_process_failed: int = 0
+
+
 class PipelineSummary(BaseModel):
     """Final pipeline output aggregating all three phases (§3.4).
 
@@ -142,6 +154,7 @@ class PipelineSummary(BaseModel):
     imagery_outcomes: list[dict[str, Any]] = []
     download_results: list[dict[str, Any]] = []
     post_process_results: list[dict[str, Any]] = []
+    per_aoi_summaries: list[dict[str, Any]] = []
     message: str = ""
 
     def compute_status(self) -> None:

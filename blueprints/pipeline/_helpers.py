@@ -163,6 +163,30 @@ def _build_order_lookups(
     return asset_urls, order_meta
 
 
+def _dedup_orders_by_scene(
+    orders: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    """Deduplicate orders that share the same scene_id.
+
+    Returns ``(unique_orders, scene_to_aois)`` where *unique_orders* keeps
+    only the first order per scene and *scene_to_aois* maps each scene_id
+    to all AOI feature_names that need imagery from that scene.
+    """
+    seen: dict[str, dict[str, Any]] = {}
+    scene_to_aois: dict[str, list[str]] = {}
+
+    for o in orders:
+        sid = o.get("scene_id", "")
+        aoi_name = o.get("aoi_feature_name", "")
+        if sid not in seen:
+            seen[sid] = o
+            scene_to_aois[sid] = []
+        if aoi_name and aoi_name not in scene_to_aois[sid]:
+            scene_to_aois[sid].append(aoi_name)
+
+    return list(seen.values()), scene_to_aois
+
+
 def _acq_payload(
     ref: dict[str, str],
     inp: dict[str, Any],

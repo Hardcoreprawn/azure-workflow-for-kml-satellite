@@ -20,7 +20,7 @@ from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FORMATS = {"geojson", "csv", "pdf"}
+_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf"}
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +237,70 @@ def _build_csv(manifest: dict[str, Any]) -> str:
             "total_precip_mm": total_precip if total_precip is not None else "",
         }
         writer.writerow(row)
+
+    return buf.getvalue()
+
+
+def _build_bulk_csv(manifest: dict[str, Any]) -> str:
+    """Build a per-AOI summary CSV from the enrichment manifest.
+
+    One row per AOI with geometry, vegetation, change, and weather metrics.
+    Requires ``per_aoi_metrics`` in the manifest (present for multi-AOI runs).
+    """
+    per_aoi = manifest.get("per_aoi_metrics", [])
+    if not per_aoi:
+        return _build_csv(manifest)
+
+    fieldnames = [
+        "feature_name",
+        "feature_index",
+        "area_ha",
+        "perimeter_km",
+        "centroid_lon",
+        "centroid_lat",
+        "ndvi_latest_mean",
+        "health_class",
+        "trend_direction",
+        "total_loss_ha",
+        "total_gain_ha",
+        "net_change_ha",
+        "trajectory",
+        "temp_mean_c",
+        "precip_total_mm",
+        "ndvi_data_scope",
+    ]
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+
+    for m in per_aoi:
+        geo = m.get("geometry", {})
+        veg = m.get("vegetation", {})
+        latest = veg.get("latest_detail", {})
+        change = m.get("change", {})
+        weather = m.get("weather", {})
+
+        writer.writerow(
+            {
+                "feature_name": m.get("feature_name", ""),
+                "feature_index": m.get("feature_index", 0),
+                "area_ha": geo.get("area_ha", ""),
+                "perimeter_km": geo.get("perimeter_km", ""),
+                "centroid_lon": geo.get("centroid_lon", ""),
+                "centroid_lat": geo.get("centroid_lat", ""),
+                "ndvi_latest_mean": latest.get("mean", ""),
+                "health_class": veg.get("health_class", ""),
+                "trend_direction": veg.get("trend_direction", ""),
+                "total_loss_ha": change.get("total_loss_ha", ""),
+                "total_gain_ha": change.get("total_gain_ha", ""),
+                "net_change_ha": change.get("net_change_ha", ""),
+                "trajectory": change.get("trajectory", ""),
+                "temp_mean_c": weather.get("temp_mean_c", ""),
+                "precip_total_mm": weather.get("precip_total_mm", ""),
+                "ndvi_data_scope": m.get("ndvi_data_scope", ""),
+            }
+        )
 
     return buf.getvalue()
 
@@ -513,7 +577,10 @@ async def export_data(
 ) -> func.HttpResponse:
     """GET /api/export/{instance_id}/{format} — download enrichment data.
 
-    Supported formats: ``geojson``, ``csv``, ``pdf``.
+    Supported formats: ``geojson``, ``csv``, ``csv-bulk``, ``pdf``.
+
+    The ``csv-bulk`` format produces one row per AOI with aggregated metrics.
+    Falls back to the regular temporal CSV when ``per_aoi_metrics`` is absent.
     Returns the file as a downloadable attachment.
     """
     if req.method == "OPTIONS":
@@ -552,6 +619,16 @@ async def export_data(
     if fmt == "csv":
         csv_body = _build_csv(manifest)
         headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}.csv"'
+        return func.HttpResponse(
+            csv_body,
+            status_code=200,
+            mimetype="text/csv",
+            headers=headers,
+        )
+
+    if fmt == "csv-bulk":
+        csv_body = _build_bulk_csv(manifest)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_bulk.csv"'
         return func.HttpResponse(
             csv_body,
             status_code=200,

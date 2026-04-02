@@ -51,6 +51,14 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     blob_event = BlobEvent.model_validate(payload)
     storage = BlobStorageClient()
     features = parse_kml_from_blob(blob_event, storage)
+
+    from treesight.constants import MAX_FEATURES_PER_KML
+
+    if len(features) > MAX_FEATURES_PER_KML:
+        raise ValueError(
+            f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}"
+        )
+
     feature_dicts = [f.model_dump() for f in features]
 
     offloader = PayloadOffloader(storage)

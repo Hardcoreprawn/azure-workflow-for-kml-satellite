@@ -17,7 +17,58 @@ from treesight.constants import (
     DEFAULT_POST_PROCESS_BATCH_SIZE,
 )
 from treesight.log import log_phase
-from treesight.models.outcomes import PipelineSummary
+from treesight.models.outcomes import AoiSummary, PipelineSummary
+
+
+def _group_per_aoi(
+    acquisition: dict[str, Any],
+    fulfilment: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Group imagery/download/post-process results by ``aoi_feature_name``."""
+    from collections import defaultdict
+
+    buckets: dict[str, dict[str, int]] = defaultdict(
+        lambda: {
+            "imagery_ready": 0,
+            "imagery_failed": 0,
+            "downloads_succeeded": 0,
+            "downloads_failed": 0,
+            "post_process_completed": 0,
+            "post_process_failed": 0,
+        }
+    )
+
+    for o in acquisition.get("imagery_outcomes", []):
+        name = o.get("aoi_feature_name", "")
+        if not name:
+            continue
+        if o.get("state") == "ready":
+            buckets[name]["imagery_ready"] += 1
+        else:
+            buckets[name]["imagery_failed"] += 1
+
+    for d in fulfilment.get("download_results", []):
+        name = d.get("aoi_feature_name", "")
+        if not name:
+            continue
+        if d.get("state") == "failed":
+            buckets[name]["downloads_failed"] += 1
+        else:
+            buckets[name]["downloads_succeeded"] += 1
+
+    for p in fulfilment.get("post_process_results", []):
+        name = p.get("aoi_feature_name", "")
+        if not name:
+            continue
+        if p.get("clip_error"):
+            buckets[name]["post_process_failed"] += 1
+        else:
+            buckets[name]["post_process_completed"] += 1
+
+    return [
+        AoiSummary(feature_name=name, **counts).model_dump()
+        for name, counts in sorted(buckets.items())
+    ]
 
 
 def build_pipeline_summary(
@@ -49,6 +100,7 @@ def build_pipeline_summary(
         post_process_reprojected=fulfilment.get("pp_reprojected", 0),
         post_process_failed=fulfilment.get("pp_failed", 0),
         post_process_results=fulfilment.get("post_process_results", []),
+        per_aoi_summaries=_group_per_aoi(acquisition, fulfilment),
     )
     summary.compute_status()
 
