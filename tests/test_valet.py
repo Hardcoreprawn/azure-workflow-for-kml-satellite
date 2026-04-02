@@ -13,7 +13,7 @@ from treesight.security.valet import (
     verify_valet_token,
 )
 
-SECRET = "test-valet-secret-32chars-min!!"
+SECRET = "test-valet-secret-32chars-min!!"  # pragma: allowlist secret
 
 
 @pytest.fixture(autouse=True)
@@ -93,7 +93,7 @@ class TestVerifyValetToken:
     def test_wrong_secret_rejected(self):
         token = self._mint()
         with pytest.raises(ValueError, match="Invalid token signature"):
-            verify_valet_token(token, secret="wrong-secret-entirely")
+            verify_valet_token(token, secret="wrong-secret-entirely")  # pragma: allowlist secret
 
     def test_expired_token_rejected(self):
         token = self._mint(ttl_seconds=0)

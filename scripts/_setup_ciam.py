@@ -1,9 +1,10 @@
 """One-time: Create service principal + configure CIAM user flow for TreeSight SPA."""
+
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 TOKEN = os.environ.get("CIAM_TOKEN")
 APP_ID = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
@@ -52,6 +53,7 @@ def main():
     # 2) Check OIDC discovery endpoint
     print("\n=== OIDC Discovery ===")
     import urllib.request as ur
+
     oidc_url = "https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0/.well-known/openid-configuration"
     try:
         resp = ur.urlopen(oidc_url)
@@ -68,7 +70,9 @@ def main():
     idps = graph("GET", "/identity/identityProviders", beta=True)
     if idps:
         for p in idps.get("value", []):
-            print(f"  - {p.get('displayName')} ({p.get('identityProviderType', p.get('@odata.type'))})")
+            name = p.get("displayName")
+            kind = p.get("identityProviderType", p.get("@odata.type"))
+            print(f"  - {name} ({kind})")
 
     # 4) List existing user flows (beta)
     print("\n=== Existing User Flows ===")

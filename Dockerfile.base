@@ -51,7 +51,8 @@ RUN set -e && \
           libmscordbi.so \
           libcoreclrtraceptprovider.so && \
     # NuGet DLLs — package management, not needed at runtime (saves 2 MB)
-    rm -f NuGet.*.dll && \
+    # KEEP NuGet.Versioning.dll — required by ScriptConstants at startup
+    find . -name 'NuGet.*.dll' ! -name 'NuGet.Versioning.dll' -delete && \
     # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
     rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll 2>/dev/null || true && \
     rm -rf ProxyLibrary/ 2>/dev/null || true && \
@@ -108,7 +109,7 @@ LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-wo
 RUN apt-get update -qq && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-      ca-certificates curl libexpat1 libpng16-16 && \
+      ca-certificates curl libexpat1 libicu72 libpng16-16 && \
     curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
     bash /tmp/dotnet-install.sh \
       --runtime aspnetcore \

@@ -449,3 +449,27 @@ class TestSsoReadiness:
                 f"auth.py must not reference '{pattern}' — "
                 "JWT validation should be provider-agnostic via CIAM federation"
             )
+
+
+# ---------------------------------------------------------------------------
+# 13. Container runtime prerequisites
+# ---------------------------------------------------------------------------
+
+
+class TestContainerRuntimePrereqs:
+    """Validate that Dockerfile.base includes all .NET host requirements."""
+
+    BASE_DOCKERFILE = ROOT / "Dockerfile.base"
+
+    def test_libicu_in_dockerfile_base(self):
+        """libicu must be installed — .NET host crashes without ICU."""
+        content = self.BASE_DOCKERFILE.read_text()
+        assert re.search(r"libicu\d*", content), (
+            "Dockerfile.base must install libicu (e.g. libicu72) — "
+            ".NET Functions host crashes at startup without ICU globalization support"
+        )
+
+    def test_smoke_test_checks_icu(self):
+        """Container smoke test must verify ICU is present."""
+        smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
+        assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
