@@ -34,10 +34,10 @@ async def orchestrator_status(
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc))
+        return _error_response(401, str(exc), req)
 
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return _error_response(429, "Rate limit exceeded — try again later")
+        return _error_response(429, "Rate limit exceeded — try again later", req)
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
@@ -79,12 +79,12 @@ async def analysis_history(
     try:
         _claims, user_id = check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc))
+        return _error_response(401, str(exc), req)
 
     if user_id == "anonymous":
-        return _error_response(401, "Authentication required for analysis history")
+        return _error_response(401, "Authentication required for analysis history", req)
 
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return _error_response(429, "Rate limit exceeded — try again later")
+        return _error_response(429, "Rate limit exceeded — try again later", req)
 
     return await _build_analysis_history_response(req, client, user_id)

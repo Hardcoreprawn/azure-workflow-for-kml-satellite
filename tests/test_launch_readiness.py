@@ -502,3 +502,97 @@ class TestContainerRuntimePrereqs:
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         for dll in ["NuGet.Versioning.dll", "NuGet.Packaging.dll", "Microsoft.CodeAnalysis.dll"]:
             assert dll in smoke, f"container_smoke_test.py must check for {dll} presence"
+
+
+# ---------------------------------------------------------------------------
+# 14. Submission endpoint CORS parity
+# ---------------------------------------------------------------------------
+
+
+class TestSubmissionCORSParity:
+    """Both demo and authenticated submission must include CORS headers.
+
+    Bug: _submit_analysis_request returned responses without CORS headers,
+    causing browsers to block the response on cross-origin requests.  The
+    frontend then showed a generic 'Could not queue analysis request' error
+    instead of the real error message.
+    """
+
+    SUBMISSION_PY = ROOT / "blueprints" / "pipeline" / "submission.py"
+
+    def test_analysis_submit_returns_cors_headers(self):
+        """The authenticated 202 response must include headers=cors_headers(req)."""
+        content = self.SUBMISSION_PY.read_text()
+        # Find the _submit_analysis_request function
+        fn_match = re.search(
+            r"async def _submit_analysis_request\b.*?(?=\nasync def |\nclass |\Z)",
+            content,
+            flags=re.DOTALL,
+        )
+        assert fn_match, "_submit_analysis_request not found in submission.py"
+        fn_body = fn_match.group(0)
+
+        # Every HttpResponse in this function should have cors_headers
+        responses = re.findall(r"func\.HttpResponse\(.*?\n\s*\)", fn_body, flags=re.DOTALL)
+        for resp_call in responses:
+            assert "cors_headers" in resp_call or "_error_response" in resp_call, (
+                f"HttpResponse in _submit_analysis_request missing cors_headers: {resp_call[:80]}"
+            )
+
+    def test_error_response_includes_cors_headers(self):
+        """_error_response should accept a request and include CORS headers."""
+        helpers = (ROOT / "blueprints" / "pipeline" / "_helpers.py").read_text()
+        fn_match = re.search(
+            r"def _error_response\b.*?(?=\ndef |\nclass |\Z)",
+            helpers,
+            flags=re.DOTALL,
+        )
+        assert fn_match, "_error_response not found in _helpers.py"
+        fn_body = fn_match.group(0)
+        assert "cors_headers" in fn_body, (
+            "_error_response must include cors_headers so error responses "
+            "are not blocked by CORS policy"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 15. Frontend progress animation reset on submission error
+# ---------------------------------------------------------------------------
+
+
+class TestFrontendProgressReset:
+    """The pipeline progress animation must be hidden when submission fails.
+
+    Bug: submitAnalysis() showed the progress spinner before the API call
+    but did not reset it in the error branch (only in the catch block),
+    leaving a spinning animation on a failed submission.
+    """
+
+    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+
+    def test_submit_error_branch_resets_progress(self):
+        """The '!res || !res.ok' branch must call resetAnalysisProgress()."""
+        content = self.APP_SHELL.read_text()
+        # Find the submitAnalysis function
+        fn_start = content.find("async function submitAnalysis()")
+        assert fn_start != -1, "submitAnalysis function not found in app-shell.js"
+
+        # Extract until next top-level function (heuristic: next 'async function' or '  function')
+        fn_end = content.find("\n  async function ", fn_start + 1)
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+
+        # Find the error handling block: 'if (!res || !res.ok)'
+        error_branch = re.search(
+            r"if\s*\(\s*!res\s*\|\|\s*!res\.ok\s*\)(.*?)(?:}\s*$|}\s*\n)",
+            fn_body,
+            flags=re.DOTALL,
+        )
+        assert error_branch, "Error branch 'if (!res || !res.ok)' not found in submitAnalysis"
+        error_block = error_branch.group(1)
+
+        assert "resetAnalysisProgress" in error_block, (
+            "submitAnalysis error branch must call resetAnalysisProgress() "
+            "to hide the pipeline spinner on API failure"
+        )
