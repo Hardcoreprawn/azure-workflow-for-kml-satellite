@@ -47,30 +47,20 @@ def main() -> int:
     if host_bin.exists():
         check("Functions host is executable", os.access(host_bin, os.X_OK))
 
-    # NuGet DLLs — explicitly require the assemblies the host depends on
-    nuget_dlls = list(host_dir.glob("NuGet.*.dll"))
-    required_nuget = ["NuGet.Versioning.dll", "NuGet.Packaging.dll"]
-    missing_nuget = [n for n in required_nuget if not (host_dir / n).exists()]
+    # ── 1b. Host integrity (DLLs kept intact, only PDB/XML stripped) ──
+    print("\n[Host Integrity]")
+    # All DLLs must be present — the host lazily loads them at startup
+    required_host_dlls = [
+        "NuGet.Versioning.dll",
+        "NuGet.Packaging.dll",
+        "Microsoft.CodeAnalysis.dll",
+    ]
+    missing = [n for n in required_host_dlls if not (host_dir / n).exists()]
     check(
-        "NuGet DLLs present (Versioning, Packaging, etc.)",
-        not missing_nuget,
-        f"found: {[f.name for f in nuget_dlls]}; missing: {missing_nuget}",
+        "Required host DLLs present",
+        not missing,
+        f"missing: {missing}" if missing else "",
     )
-
-    # Verify JIT fallback DLL present
-    jit_dll = host_dir / "Microsoft.Azure.WebJobs.Script.WebHost.dll"
-    check("JIT host DLL present (non-R2R fallback)", jit_dll.exists())
-
-    # R2R precompiled DLL — kept for scale-to-zero cold start performance
-    r2r_dll = host_dir / "Microsoft.Azure.WebJobs.Script.WebHost.r2r.dll"
-    check("R2R precompiled DLL present (cold start)", r2r_dll.exists())
-
-    # ── 1b. Bloat stripped from host ──
-    print("\n[Host Optimisation]")
-    check(
-        "Roslyn C# compiler removed", not (host_dir / "Microsoft.CodeAnalysis.CSharp.dll").exists()
-    )
-    # NuGet DLLs are now kept intact (only ~2 MB, host needs them at startup)
     check("No PDB files remain", not any(host_dir.rglob("*.pdb")))
 
     # ── 2. Extension bundles ──

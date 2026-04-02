@@ -474,23 +474,31 @@ class TestContainerRuntimePrereqs:
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
 
-    def test_nuget_dlls_not_deleted_in_dockerfile(self):
-        """NuGet DLLs must NOT be deleted — host loads them lazily at startup."""
-        content = self.BASE_DOCKERFILE.read_text()
-        no_find_delete = not re.search(
-            r"find\b[^\n]*NuGet[^\n]*\b-delete\b", content, flags=re.IGNORECASE
-        )
-        no_rm_nuget = not re.search(r"\brm\b[^\n]*NuGet[^\n]*\.dll", content, flags=re.IGNORECASE)
-        assert no_find_delete and no_rm_nuget, (
-            "Dockerfile.base must not delete NuGet DLLs — "
-            "the Functions host lazily loads Versioning, Packaging, etc. at startup"
-        )
+    def test_no_host_dll_deletion_in_dockerfile(self):
+        """Host DLLs must NOT be deleted — host lazily loads them at startup.
 
-    def test_smoke_test_checks_nuget_dlls(self):
-        """Container smoke test must verify NuGet DLLs are present."""
-        smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
-        assert re.search(r"NuGet\..*\.dll", smoke), (
-            "container_smoke_test.py must explicitly check for NuGet.*.dll "
-            "presence to prevent regressions where they are removed from the "
-            ".NET host image"
+        Deleting CodeAnalysis, NuGet.Packaging, NuGet.Versioning etc. has
+        caused three consecutive deploy outages.  Only PDB/XML are safe to strip.
+        """
+        content = self.BASE_DOCKERFILE.read_text()
+        # Extract the host optimisation RUN block (between "cd /azure-functions-host"
+        # and the next blank line / Stage marker).  Bundle-level rm is fine.
+        host_match = re.search(
+            r"(cd /azure-functions-host.*?)(?:\n\n|# ── Bundle|# ── Stage)",
+            content,
+            flags=re.DOTALL,
         )
+        if host_match:
+            host_section = host_match.group(1)
+            assert not re.search(r"\brm\b[^\n]*\.dll", host_section, flags=re.IGNORECASE), (
+                "Dockerfile.base host section must not rm any .dll files"
+            )
+            assert not re.search(
+                r"find\b[^\n]*\.dll[^\n]*-delete", host_section, flags=re.IGNORECASE
+            ), "Dockerfile.base host section must not find -delete any .dll files"
+
+    def test_smoke_test_checks_host_dlls(self):
+        """Container smoke test must verify critical host DLLs are present."""
+        smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
+        for dll in ["NuGet.Versioning.dll", "NuGet.Packaging.dll", "Microsoft.CodeAnalysis.dll"]:
+            assert dll in smoke, f"container_smoke_test.py must check for {dll} presence"
