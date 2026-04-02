@@ -232,7 +232,7 @@ def _parse_json_response(text: str) -> dict[str, Any] | None:
         if json_match:
             return json.loads(json_match.group())
     except json.JSONDecodeError:
-        pass
+        pass  # LLM response was not valid JSON — fall through to return None
     return None
 
 

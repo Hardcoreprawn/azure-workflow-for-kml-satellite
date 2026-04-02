@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -47,6 +48,13 @@ HTML_PAGES = [
     WEBSITE / "terms.html",
     WEBSITE / "docs" / "eudr-methodology.html",
 ]
+
+
+def _csp_token_matches_host(token: str, host: str) -> bool:
+    """Check whether a CSP source token matches a given host exactly or as a subdomain."""
+    parsed = urlparse(token)
+    h = parsed.hostname or token
+    return h == host or h.endswith(f".{host}")
 
 
 # ---------------------------------------------------------------------------
@@ -289,16 +297,19 @@ class TestCspAppInsights:
     def test_script_src_allows_monitor_cdn(self, csp):
         script_match = re.search(r"script-src\s+([^;]+)", csp)
         assert script_match, "CSP missing script-src"
-        assert "js.monitor.azure.com" in script_match.group(1), (
+        sources = script_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "js.monitor.azure.com") for src in sources), (
             "CSP script-src must allow js.monitor.azure.com for the App Insights SDK"
         )
 
     def test_connect_src_allows_telemetry_endpoint(self, csp):
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src"
-        connect_src = connect_match.group(1)
-        assert (
-            "applicationinsights.azure.com" in connect_src or "visualstudio.com" in connect_src
+        sources = connect_match.group(1).split()
+        assert any(
+            _csp_token_matches_host(src, "applicationinsights.azure.com")
+            or _csp_token_matches_host(src, "visualstudio.com")
+            for src in sources
         ), "CSP connect-src must allow App Insights telemetry ingestion endpoint"
 
 

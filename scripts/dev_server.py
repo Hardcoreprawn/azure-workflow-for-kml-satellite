@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import http.server
 import os
+import posixpath
 import socketserver
 import urllib.error
 import urllib.request
+from urllib.parse import unquote, urlparse, urlunparse
 
 
 class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
@@ -50,9 +52,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
     # --- proxy logic ---
 
     def _proxy(self) -> None:
-        from urllib.parse import urlparse
-
-        # Validate the path is a safe relative path (no host/scheme injection)
+        # Validate and normalise the path to prevent host/scheme or traversal
         parsed = urlparse(self.path)
         if parsed.scheme or parsed.netloc:
             self.send_response(400)
@@ -61,7 +61,23 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"error":"Invalid path"}')
             return
-        target = f"{self.func_origin}{self.path}"
+
+        # Normalise the path and ensure it stays under /api/
+        raw_path = parsed.path or "/"
+        normalised = posixpath.normpath(unquote(raw_path))
+        if not normalised.startswith("/"):
+            normalised = "/" + normalised
+
+        if not normalised.startswith("/api/"):
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self._cors_headers()
+            self.end_headers()
+            self.wfile.write(b'{"error":"Invalid API path"}')
+            return
+
+        safe_suffix = urlunparse(("", "", normalised, "", parsed.query, parsed.fragment))
+        target = f"{self.func_origin}{safe_suffix}"
 
         # Read request body (for POST)
         content_length = int(self.headers.get("Content-Length", 0))

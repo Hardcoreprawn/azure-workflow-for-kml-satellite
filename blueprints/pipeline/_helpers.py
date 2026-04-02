@@ -6,6 +6,7 @@ See blueprints/pipeline/__init__.py for details.
 
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 import azure.functions as func
 
@@ -67,18 +68,28 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
 
 
 def _extract_container(blob_url: str) -> str:
-    parts = blob_url.split("/")
-    for i, p in enumerate(parts):
-        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 1 < len(parts):
-            return parts[i + 1]
+    parsed = urlparse(blob_url)
+    host = parsed.hostname or ""
+    if host.endswith(".blob.core.windows.net") or host == "devstoreaccount1":
+        parts = parsed.path.lstrip("/").split("/")
+        return parts[0] if parts else ""
+    # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
+    parts = parsed.path.lstrip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "devstoreaccount1":
+        return parts[1]
     return ""
 
 
 def _extract_blob_name(blob_url: str) -> str:
-    parts = blob_url.split("/")
-    for i, p in enumerate(parts):
-        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 2 < len(parts):
-            return "/".join(parts[i + 2 :])
+    parsed = urlparse(blob_url)
+    host = parsed.hostname or ""
+    if host.endswith(".blob.core.windows.net") or host == "devstoreaccount1":
+        parts = parsed.path.lstrip("/").split("/")
+        return "/".join(parts[1:]) if len(parts) > 1 else ""
+    # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
+    parts = parsed.path.lstrip("/").split("/")
+    if len(parts) >= 3 and parts[0] == "devstoreaccount1":
+        return "/".join(parts[2:])
     return ""
 
 

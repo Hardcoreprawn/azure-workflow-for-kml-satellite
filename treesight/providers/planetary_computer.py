@@ -56,6 +56,7 @@ DEFAULT_MAX_ITEMS = 5
 
 class PlanetaryComputerProvider(ImageryProvider):
     def __init__(self, config: ProviderConfig | None = None) -> None:
+        super().__init__(config)
         config = config or {}
         self.api_url = str(config.get("api_url", DEFAULT_API_URL))
         self._stub_mode = bool(config.get("stub_mode", False))

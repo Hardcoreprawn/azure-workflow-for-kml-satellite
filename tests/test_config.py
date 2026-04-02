@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from unittest.mock import patch
 
@@ -57,10 +58,7 @@ class TestValidateConfig:
     def test_invalid_resolution_raises(self):
         with patch.dict(os.environ, {"IMAGERY_RESOLUTION_TARGET_M": "0"}):
             # Need to reimport to pick up env change
-            import importlib
-
-            import treesight.config as cfg
-
+            cfg = importlib.import_module("treesight.config")
             importlib.reload(cfg)
             with pytest.raises(ConfigValidationError):
                 cfg.validate_config()
@@ -69,10 +67,7 @@ class TestValidateConfig:
 
     def test_invalid_cloud_cover_raises(self):
         with patch.dict(os.environ, {"IMAGERY_MAX_CLOUD_COVER_PCT": "150"}):
-            import importlib
-
-            import treesight.config as cfg
-
+            cfg = importlib.import_module("treesight.config")
             importlib.reload(cfg)
             with pytest.raises(ConfigValidationError):
                 cfg.validate_config()

@@ -8,6 +8,18 @@ from __future__ import annotations
 
 from typing import Final
 
+__all__ = [
+    "AZURITE_ACCOUNT_KEY",
+    "AZURITE_ACCOUNT_NAME",
+    "AZURITE_BLOB_BASE",
+    "AZURITE_BLOB_HOST",
+    "AZURITE_BLOB_PORT",
+    "AZURITE_CONN_STR",
+    "AZURITE_QUEUE_PORT",
+    "AZURITE_TABLE_PORT",
+    "CONTAINERS",
+]
+
 AZURITE_ACCOUNT_NAME: Final[str] = "devstoreaccount1"
 AZURITE_ACCOUNT_KEY: Final[str] = (
     "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="  # pragma: allowlist secret
