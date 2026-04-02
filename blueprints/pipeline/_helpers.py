@@ -161,3 +161,81 @@ def _build_order_lookups(
         for o in orders
     }
     return asset_urls, order_meta
+
+
+def _acq_payload(
+    ref: dict[str, str],
+    inp: dict[str, Any],
+    composite: bool,
+) -> dict[str, Any]:
+    """Build a single acquisition activity payload from a claim ref."""
+    base: dict[str, Any] = {
+        "aoi_ref": ref["ref"],
+        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_config": inp.get("provider_config"),
+        "imagery_filters": inp.get("imagery_filters"),
+    }
+    if composite:
+        from treesight.config import config_get_int
+
+        base["temporal_count"] = config_get_int(inp, "temporal_count", 6)
+    return base
+
+
+def _poll_payload(order: dict[str, Any], inp: dict[str, Any]) -> dict[str, Any]:
+    """Build a single poll_order activity payload."""
+    return {
+        "order_id": order.get("order_id", ""),
+        "scene_id": order.get("scene_id", ""),
+        "aoi_feature_name": order.get("aoi_feature_name", ""),
+        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_config": inp.get("provider_config"),
+        "overrides": inp,
+    }
+
+
+def _download_payload(
+    outcome: dict[str, Any],
+    inp: dict[str, Any],
+    ctx: dict[str, str],
+    asset_urls: dict[str, str],
+    order_meta: dict[str, dict[str, str]],
+    aoi_ref_lookup: dict[str, str],
+    output_container: str,
+) -> dict[str, Any]:
+    """Build a single download_imagery activity payload."""
+    oid = outcome.get("order_id", "")
+    return {
+        "outcome": outcome,
+        "asset_url": asset_urls.get(oid, ""),
+        "aoi_ref": aoi_ref_lookup.get(outcome.get("aoi_feature_name", "")),
+        "role": order_meta.get(oid, {}).get("role", ""),
+        "collection": order_meta.get(oid, {}).get("collection", ""),
+        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_config": inp.get("provider_config"),
+        "project_name": ctx["project_name"],
+        "timestamp": ctx["timestamp"],
+        "output_container": output_container,
+    }
+
+
+def _post_process_payload(
+    dl: dict[str, Any],
+    inp: dict[str, Any],
+    ctx: dict[str, str],
+    aoi_ref_lookup: dict[str, str],
+    output_container: str,
+) -> dict[str, Any]:
+    """Build a single post_process_imagery activity payload."""
+    return {
+        "download_result": dl,
+        "aoi_ref": aoi_ref_lookup.get(dl.get("aoi_feature_name", "")),
+        "project_name": ctx["project_name"],
+        "timestamp": ctx["timestamp"],
+        "target_crs": inp.get("target_crs", "EPSG:4326"),
+        "enable_clipping": inp.get("enable_clipping", True),
+        "enable_reprojection": inp.get("enable_reprojection", True),
+        "output_container": output_container,
+        "square_frame": inp.get("square_frame", True),
+        "frame_padding_pct": inp.get("frame_padding_pct", 10.0),
+    }

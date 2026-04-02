@@ -28,6 +28,19 @@ else:
 # ---------------------------------------------------------------------------
 
 
+def _load_aoi(payload: dict[str, Any], storage: Any = None) -> Any:
+    """Resolve AOI from claim-check ref or inline ``aoi`` dict."""
+    from treesight.models.aoi import AOI
+    from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
+
+    if payload.get("aoi_ref"):
+        s = storage or BlobStorageClient()
+        data = PayloadOffloader(s).load_claim(payload["aoi_ref"])
+        return AOI.model_validate(data)
+    return AOI.model_validate(payload["aoi"])
+
+
 @bp.activity_trigger(input_name="payload")
 def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     from treesight.models.blob_event import BlobEvent
@@ -70,12 +83,11 @@ def prepare_aoi(payload: _Payload) -> dict[str, Any]:
 
 @bp.activity_trigger(input_name="payload")
 def write_metadata(payload: _Payload) -> dict[str, Any]:
-    from treesight.models.aoi import AOI
     from treesight.pipeline.ingestion import write_metadata as _write
     from treesight.storage.client import BlobStorageClient
 
-    aoi = AOI.model_validate(payload["aoi"])
     storage = BlobStorageClient()
+    aoi = _load_aoi(payload, storage)
 
     kml_bytes: bytes | None = None
     input_container = payload.get("input_container", "")
@@ -96,6 +108,30 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
     )
 
 
+@bp.activity_trigger(input_name="payload")
+def store_aoi_claims(payload: _Payload) -> list[dict[str, str]]:
+    """Claim-check: store AOIs in blob storage, return lightweight refs."""
+    from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
+
+    offloader = PayloadOffloader(BlobStorageClient())
+    return offloader.store_claims_batch(
+        instance_id=payload["instance_id"],
+        items=payload["aois"],
+        key_field="feature_name",
+    )
+
+
+@bp.activity_trigger(input_name="payload")
+def load_aoi_claim(payload: _Payload) -> dict[str, Any]:
+    """Claim-check: retrieve a single AOI by blob ref."""
+    from treesight.storage.client import BlobStorageClient
+    from treesight.storage.offload import PayloadOffloader
+
+    offloader = PayloadOffloader(BlobStorageClient())
+    return offloader.load_claim(payload["ref"])
+
+
 # ---------------------------------------------------------------------------
 # Acquisition activities
 # ---------------------------------------------------------------------------
@@ -103,12 +139,11 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
 
 @bp.activity_trigger(input_name="payload")
 def acquire_imagery(payload: _Payload) -> dict[str, Any]:
-    from treesight.models.aoi import AOI
     from treesight.models.imagery import ImageryFilters
     from treesight.pipeline.acquisition import acquire_imagery as _acquire
     from treesight.providers.registry import get_provider
 
-    aoi = AOI.model_validate(payload["aoi"])
+    aoi = _load_aoi(payload)
     provider = get_provider(
         payload.get("provider_name", "planetary_computer"),
         payload.get("provider_config"),
@@ -123,12 +158,11 @@ def acquire_imagery(payload: _Payload) -> dict[str, Any]:
 
 @bp.activity_trigger(input_name="payload")
 def acquire_composite(payload: _Payload) -> list[dict[str, Any]]:
-    from treesight.models.aoi import AOI
     from treesight.models.imagery import ImageryFilters
     from treesight.pipeline.acquisition import acquire_composite as _composite
     from treesight.providers.registry import get_provider
 
-    aoi = AOI.model_validate(payload["aoi"])
+    aoi = _load_aoi(payload)
     provider = get_provider(
         payload.get("provider_name", "planetary_computer"),
         payload.get("provider_config"),
@@ -184,6 +218,13 @@ def download_imagery(payload: _Payload) -> dict[str, Any]:
         payload.get("provider_config"),
     )
     storage = BlobStorageClient()
+
+    # Resolve aoi_bbox from claim check or inline payload
+    aoi_bbox = payload.get("aoi_bbox")
+    if not aoi_bbox and payload.get("aoi_ref"):
+        aoi = _load_aoi(payload, storage)
+        aoi_bbox = aoi.buffered_bbox
+
     return _download(
         outcome=payload["outcome"],
         provider=provider,
@@ -192,7 +233,7 @@ def download_imagery(payload: _Payload) -> dict[str, Any]:
         output_container=payload["output_container"],
         storage=storage,
         asset_url=payload.get("asset_url", ""),
-        aoi_bbox=payload.get("aoi_bbox"),
+        aoi_bbox=aoi_bbox,
         role=payload.get("role", ""),
         collection=payload.get("collection", ""),
     )
@@ -200,12 +241,11 @@ def download_imagery(payload: _Payload) -> dict[str, Any]:
 
 @bp.activity_trigger(input_name="payload")
 def post_process_imagery(payload: _Payload) -> dict[str, Any]:
-    from treesight.models.aoi import AOI
     from treesight.pipeline.fulfilment import post_process_imagery as _post_process
     from treesight.storage.client import BlobStorageClient
 
-    aoi = AOI.model_validate(payload.get("aoi", {}))
     storage = BlobStorageClient()
+    aoi = _load_aoi(payload, storage)
     return _post_process(
         download_result=payload["download_result"],
         aoi=aoi,

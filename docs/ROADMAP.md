@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 ---
 
@@ -15,35 +15,30 @@ Last updated: 2026-04-01
 | **M2 — Free Tier Launch** | Auth (Entra CIAM), onboarding, KML guide, file upload, terms/privacy, structured logging |
 | **M3 — Core Analysis Value** | NDVI, weather overlay, AI summaries, change detection, multi-polygon KML, enrichment split, site review fixes |
 | **M4 — Revenue (12/13)** | Stripe billing, quota enforcement, pricing page, export (PDF/GeoJSON/CSV), EUDR mode, WorldCover, WDPA, circuit breaker |
+| **Stage 1 — Launch Readiness** | Cosmos state migration, billing gate, user dashboard, pipeline modularisation, SSO providers, branding due diligence |
 
 ---
 
-## In Flight (PRs open — awaiting review)
+## In Flight
 
-| PR | Branch | Issue | Summary |
-|----|--------|-------|---------|
-| [#350](../../pull/350) | `feature/cosmos-state-migration` | #314 | Migrate blob state to Cosmos DB (subscriptions, quota, runs, customer lookup) |
-| [#347](../../pull/347) | `feature/billing-feature-gate` | #346 | Gate billing to named users with demo fallback |
-| [#345](../../pull/345) | `infra/custom-container-image` | — | Custom slim container image with smoke tests |
-| [#344](../../pull/344) | `fix/code-scanning-alerts` | — | Resolve code scanning alerts (SSRF, CVE-2006-10003) |
-| [#349](../../pull/349) | `dependabot/uv/aiohttp-3.13.4` | — | Bump aiohttp 3.13.3 → 3.13.4 |
+*None — all PRs merged.*
 
 ---
 
-## Stage 1 — Launch Readiness
+## Stage 1 — Launch Readiness ✅
 
 Complete M4 and ship the product for paying users. Everything here unblocks revenue.
 
-| Order | Issue | Title | Depends On | Notes |
-|-------|-------|-------|------------|-------|
-| 1.1 | #314 | State migration to Cosmos DB | — | PR #350 in review |
-| 1.2 | #346 | Gate billing to named users | — | PR #347 in review |
-| 1.3 | #312 | User dashboard (history, usage) | #314 | Last M4 item — query Cosmos `runs` container |
-| 1.4 | — | Pipeline modularisation | — | Factor pipeline.py into workflow + module files (reduce blast radius) |
-| 1.5 | #321 | SSO: Google, Microsoft, M365 Enterprise | — | CIAM currently email-only; enterprise needs federated login |
-| 1.6 | #199 | Branding due diligence | — | Must resolve before custom domain / public marketing |
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 1.1 | #314 | State migration to Cosmos DB | ✅ PR #350 merged |
+| 1.2 | #346 | Gate billing to named users | ✅ PR #347 merged |
+| 1.3 | #312 | User dashboard (history, usage) | ✅ PR #353 merged |
+| 1.4 | #357 | Pipeline modularisation | ✅ PR #358 merged |
+| 1.5 | #321 | SSO: Google, Microsoft, M365 Enterprise | ✅ PR #359 merged |
+| 1.6 | #199 | Branding due diligence | ✅ PR #359 merged |
 
-**Exit criteria:** Dashboard live, billing gated, SSO available, product launchable.
+**Exit criteria:** Dashboard live, billing gated, SSO available, product launchable. **MET.**
 
 ---
 
@@ -53,7 +48,7 @@ Handle bulk workloads (200+ AOIs). Build once, then ship product features on top
 
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|
-| 2.1 | #320 | Load testing baseline | — | Empirical breaking points before scaling work |
+| 2.1 | #320 | Load testing baseline | — | ✅ Complete |
 | 2.2 | #316 | Fan-out / Fan-in + Claim Check | #314 | Concurrent per-AOI processing via Durable Functions |
 | 2.3 | #311 | Bulk AOI uploads | #316 | Multi-polygon KML → fan-out → aggregated output |
 | 2.4 | #318 | Spike: bulk image strategy (ADR) | #316 | Decide: individual images vs. mosaic for 200+ AOIs |
@@ -131,13 +126,13 @@ Advanced features, enterprise deals, competitive moats.
 
 ---
 
-## Stale Issues to Close
+## Closed Stale Issues
 
-These are open but already shipped:
+These were open but already shipped — all closed 2026-04-01:
 
 | Issue | Title | Shipped In |
 |-------|-------|------------|
 | #75 | Per-tenant quota enforcement | PR #223 |
-| #76 | Subscription tier logic | PR #299 (billing) |
+| #76 | Subscription tier logic | PR #299 |
 | #77 | Stripe billing integration | PR #299 |
 | #88 | Report export (PDF, CSV, GeoJSON) | PR #303 |
