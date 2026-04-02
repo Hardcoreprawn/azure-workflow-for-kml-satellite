@@ -85,6 +85,7 @@ jobs:
           ignore-unfixed: true
           trivyignores: .trivyignore
           exit-code: "1"        # block on findings — base must be clean
+          limit-severities-for-sarif: true  # only CRITICAL/HIGH in SARIF; prevents LOW/MEDIUM triggering exit code
 
       - name: Upload Trivy SARIF
         if: always()

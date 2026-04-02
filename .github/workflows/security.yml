@@ -172,6 +172,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy FS SARIF
         if: always()
