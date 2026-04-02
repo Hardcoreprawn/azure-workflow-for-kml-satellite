@@ -27,6 +27,9 @@ Thumbs.db
 azurite-data/
 .azurite/
 
+# Rust build artifacts
+rust/target/
+
 # Environment
 .env
 .env.*

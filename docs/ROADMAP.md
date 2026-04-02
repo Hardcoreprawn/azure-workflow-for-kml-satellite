@@ -50,9 +50,9 @@ Handle bulk workloads (200+ AOIs). Build once, then ship product features on top
 |-------|-------|-------|------------|-------|
 | 2.1 | #320 | Load testing baseline | — | ✅ Complete |
 | 2.2 | #316 | Fan-out / Fan-in + Claim Check | #314 | ✅ PR #360 merged |
-| 2.3 | #311 | Bulk AOI uploads | #316 | Multi-polygon KML → fan-out → aggregated output |
+| 2.3 | #311 | Bulk AOI uploads | #316 | ✅ PR #362 merged |
 | 2.4 | #318 | Spike: bulk image strategy (ADR) | #316 | ✅ ADR 0002 written |
-| 2.5 | #317 | Rust (PyO3) geospatial hotspots | #316 | Memory-safe clipping for fanned-out workers |
+| 2.5 | #317 | Rust (PyO3) geospatial hotspots | #316 | ✅ NDVI, change detection, SCL resample accelerated |
 | 2.6 | #315 | Azure Batch fallback (Spot VMs) | #316, #317 | Only for edge-case oversized AOIs |
 
 **Exit criteria:** 200+ concurrent AOIs process reliably without OOM or timeout.

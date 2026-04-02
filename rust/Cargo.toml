@@ -1,0 +1,13 @@
+[package]
+name = "treesight_rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "treesight_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+numpy = "0.25"
+rayon = "1.10"

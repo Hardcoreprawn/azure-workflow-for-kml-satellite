@@ -16,6 +16,12 @@ from treesight.log import log_phase
 
 logger = logging.getLogger(__name__)
 
+# ── Optional Rust acceleration ────────────────────────────────
+try:
+    import treesight_rs as _rs
+except ImportError:  # pragma: no cover — Rust extension not installed
+    _rs = None  # type: ignore[assignment]
+
 
 def compute_change_map(
     raster_a_bytes: bytes,
@@ -61,41 +67,53 @@ def compute_change_map(
         ndvi_a = ndvi_a[:min_h, :min_w]
         ndvi_b = ndvi_b[:min_h, :min_w]
 
-        # Both must have valid (non-NaN) pixels
-        valid = np.isfinite(ndvi_a) & np.isfinite(ndvi_b)
-        if not np.any(valid):
-            return None
-
-        # Pixel-level change: positive = greening, negative = browning
-        delta = np.where(valid, ndvi_b - ndvi_a, np.nan)
-
-        valid_deltas = delta[valid]
         pixel_area_m2 = abs(res_a[0] * res_a[1])
         pixel_area_ha = pixel_area_m2 / 10_000  # 1 ha = 10,000 m²
 
-        loss_mask = valid_deltas < loss_threshold
-        gain_mask = valid_deltas > gain_threshold
-        stable_mask = ~loss_mask & ~gain_mask
+        if _rs is not None:
+            # Rust-accelerated: parallel pixel delta + stats in one pass
+            delta, rs_stats = _rs.compute_change(
+                ndvi_a.astype(np.float32),
+                ndvi_b.astype(np.float32),
+                pixel_area_ha,
+                float(loss_threshold),
+                float(gain_threshold),
+            )
+            if rs_stats is None:
+                return None
+            result: dict[str, Any] = dict(rs_stats)
+        else:
+            # Pure-Python fallback
+            valid = np.isfinite(ndvi_a) & np.isfinite(ndvi_b)
+            if not np.any(valid):
+                return None
 
-        n_valid = int(np.sum(valid))
-        n_loss = int(np.sum(loss_mask))
-        n_gain = int(np.sum(gain_mask))
-        n_stable = int(np.sum(stable_mask))
+            delta = np.where(valid, ndvi_b - ndvi_a, np.nan)
+            valid_deltas = delta[valid]
 
-        result: dict[str, Any] = {
-            "mean_delta": round(float(np.mean(valid_deltas)), 4),
-            "median_delta": round(float(np.median(valid_deltas)), 4),
-            "std_delta": round(float(np.std(valid_deltas)), 4),
-            "min_delta": round(float(np.min(valid_deltas)), 4),
-            "max_delta": round(float(np.max(valid_deltas)), 4),
-            "loss_ha": round(n_loss * pixel_area_ha, 2),
-            "gain_ha": round(n_gain * pixel_area_ha, 2),
-            "stable_ha": round(n_stable * pixel_area_ha, 2),
-            "total_ha": round(n_valid * pixel_area_ha, 2),
-            "loss_pct": round(n_loss / n_valid * 100, 1) if n_valid else 0.0,
-            "gain_pct": round(n_gain / n_valid * 100, 1) if n_valid else 0.0,
-            "valid_pixels": n_valid,
-        }
+            loss_mask = valid_deltas < loss_threshold
+            gain_mask = valid_deltas > gain_threshold
+            stable_mask = ~loss_mask & ~gain_mask
+
+            n_valid = int(np.sum(valid))
+            n_loss = int(np.sum(loss_mask))
+            n_gain = int(np.sum(gain_mask))
+            n_stable = int(np.sum(stable_mask))
+
+            result = {
+                "mean_delta": round(float(np.mean(valid_deltas)), 4),
+                "median_delta": round(float(np.median(valid_deltas)), 4),
+                "std_delta": round(float(np.std(valid_deltas)), 4),
+                "min_delta": round(float(np.min(valid_deltas)), 4),
+                "max_delta": round(float(np.max(valid_deltas)), 4),
+                "loss_ha": round(n_loss * pixel_area_ha, 2),
+                "gain_ha": round(n_gain * pixel_area_ha, 2),
+                "stable_ha": round(n_stable * pixel_area_ha, 2),
+                "total_ha": round(n_valid * pixel_area_ha, 2),
+                "loss_pct": round(n_loss / n_valid * 100, 1) if n_valid else 0.0,
+                "gain_pct": round(n_gain / n_valid * 100, 1) if n_valid else 0.0,
+                "valid_pixels": n_valid,
+            }
 
         # Write change map as GeoTIFF
         buf = io.BytesIO()
