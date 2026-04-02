@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -297,8 +298,16 @@ class TestCspAppInsights:
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src"
         connect_src = connect_match.group(1)
-        assert (
-            "applicationinsights.azure.com" in connect_src or "visualstudio.com" in connect_src
+        sources = connect_src.split()
+
+        def allows_app_insights_telemetry(src: str) -> bool:
+            # Handle bare hosts and scheme/host URLs.
+            parsed = urlparse(src)
+            host = parsed.hostname or src
+            return host == "applicationinsights.azure.com" or host.endswith(".visualstudio.com")
+
+        assert any(
+            allows_app_insights_telemetry(src) for src in sources
         ), "CSP connect-src must allow App Insights telemetry ingestion endpoint"
 
 
