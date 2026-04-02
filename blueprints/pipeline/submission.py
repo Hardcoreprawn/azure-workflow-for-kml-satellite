@@ -52,20 +52,20 @@ async def _submit_demo_request(
     client_ip = get_client_ip(req)
 
     if not demo_limiter.is_allowed(client_ip):
-        return _error_response(429, "Demo rate limit exceeded — try again later")
+        return _error_response(429, "Demo rate limit exceeded — try again later", req)
 
     try:
         body = req.get_json()
     except ValueError:
-        return _error_response(400, "Invalid JSON body")
+        return _error_response(400, "Invalid JSON body", req)
 
     kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
     if not isinstance(kml_content, str) or not kml_content.strip():
-        return _error_response(400, "kml_content is required")
+        return _error_response(400, "kml_content is required", req)
 
     kml_bytes = kml_content.encode("utf-8")
     if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
-        return _error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes")
+        return _error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", req)
 
     ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()[:12]
     demo_user_id = f"demo:{ip_hash}"

@@ -31,20 +31,20 @@ async def timelapse_data(
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc))
+        return _error_response(401, str(exc), req)
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
-        return _error_response(400, "instance_id required")
+        return _error_response(400, "instance_id required", req)
 
     status = await client.get_status(instance_id)
     if not status or not status.output:
-        return _error_response(404, "Pipeline not found or not complete")
+        return _error_response(404, "Pipeline not found or not complete", req)
 
     output = _reshape_output(status.output) if status.output else {}
     manifest_path = output.get("enrichment_manifest") or output.get("enrichmentManifest")
     if not manifest_path:
-        return _error_response(404, "No enrichment data for this pipeline run")
+        return _error_response(404, "No enrichment data for this pipeline run", req)
 
     from treesight.storage.client import BlobStorageClient
 
@@ -52,7 +52,7 @@ async def timelapse_data(
     try:
         data = storage.download_json(DEFAULT_OUTPUT_CONTAINER, manifest_path)
     except Exception:
-        return _error_response(404, "Enrichment manifest not found in storage")
+        return _error_response(404, "Enrichment manifest not found in storage", req)
 
     return func.HttpResponse(
         json.dumps(data, default=str),
@@ -75,24 +75,24 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc))
+        return _error_response(401, str(exc), req)
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_ANALYSIS_BODY_BYTES:
         return _error_response(
-            413, f"Request body too large (max {_MAX_ANALYSIS_BODY_BYTES} bytes)"
+            413, f"Request body too large (max {_MAX_ANALYSIS_BODY_BYTES} bytes)", req
         )
 
     try:
         body = req.get_json()
     except ValueError:
-        return _error_response(400, "Invalid JSON body")
+        return _error_response(400, "Invalid JSON body", req)
 
     instance_id = body.get("instance_id", "")
     analysis = body.get("analysis", {})
 
     if not instance_id or not analysis:
-        return _error_response(400, "instance_id and analysis are required")
+        return _error_response(400, "instance_id and analysis are required", req)
 
     from treesight.storage.client import BlobStorageClient
 
@@ -121,11 +121,11 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc))
+        return _error_response(401, str(exc), req)
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
-        return _error_response(400, "instance_id required")
+        return _error_response(400, "instance_id required", req)
 
     from treesight.storage.client import BlobStorageClient
 
@@ -134,7 +134,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     try:
         data = storage.download_json(DEFAULT_OUTPUT_CONTAINER, analysis_path)
     except Exception:
-        return _error_response(404, "No saved analysis for this pipeline run")
+        return _error_response(404, "No saved analysis for this pipeline run", req)
 
     return func.HttpResponse(
         json.dumps(data, default=str),
