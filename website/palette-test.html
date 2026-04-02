@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Canopex — Brand Palette Test</title>
+<style>
+/* === Canopex Dark Palette === */
+:root {
+  /* Backgrounds — forest-tinted darks (shifted from GitHub blue-grey) */
+  --c-bg: #0b1411;
+  --c-surface: #131f1b;
+  --c-border: #243832;
+
+  /* Typography */
+  --c-text: #e4ede8;
+  --c-muted: #7d9a8d;
+
+  /* Brand */
+  --c-accent: #22c997;      /* Canopex Emerald — primary brand colour */
+  --c-accent-hover: #45ddb0;
+
+  /* Semantic */
+  --c-green: #3fb950;
+  --c-red: #f85149;
+  --c-orange: #d29922;
+  --c-purple: #bc8cff;
+
+  --radius: 8px;
+  --shadow: 0 2px 12px rgba(0,0,0,.4);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--c-bg);color:var(--c-text);line-height:1.6;padding:40px 24px}
+.container{max-width:960px;margin:0 auto}
+h1{font-size:2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:8px}
+h2{font-size:1.3rem;font-weight:600;margin:32px 0 16px;color:var(--c-accent)}
+h3{font-size:1rem;font-weight:600;margin:24px 0 12px}
+p{color:var(--c-muted);margin-bottom:16px;max-width:640px}
+a{color:var(--c-accent)}
+
+/* Swatch grid */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:32px}
+.swatch{border-radius:12px;overflow:hidden;border:1px solid var(--c-border)}
+.swatch-color{height:80px}
+.swatch-info{padding:10px 12px;background:var(--c-surface)}
+.swatch-info strong{font-size:.82rem;display:block}
+.swatch-info code{font-size:.72rem;color:var(--c-muted);font-family:'SF Mono',Consolas,monospace}
+.swatch-info .role{font-size:.7rem;color:var(--c-muted);margin-top:2px}
+
+/* Buttons */
+.btn{display:inline-block;padding:10px 24px;border-radius:var(--radius);font-weight:600;font-size:.875rem;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+.btn-primary{background:var(--c-accent);color:#fff}
+.btn-primary:hover{background:var(--c-accent-hover)}
+.btn-secondary{background:transparent;color:var(--c-accent);border:1px solid var(--c-accent)}
+.btn-secondary:hover{background:rgba(34,201,151,.1)}
+.btn-row{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0 32px}
+
+/* Nav mock */
+.mock-nav{position:sticky;top:0;z-index:100;background:rgba(11,20,17,.92);backdrop-filter:blur(12px);border-bottom:1px solid var(--c-border);padding:12px 0;margin:-40px -24px 32px;padding:12px 24px}
+.mock-nav .inner{max-width:960px;margin:0 auto;display:flex;align-items:center;gap:16px}
+.mock-nav .logo{font-weight:700;font-size:1.25rem;display:flex;align-items:center;gap:8px;color:var(--c-text);text-decoration:none}
+.mock-nav .logo svg{width:24px;height:24px;fill:var(--c-accent)}
+.mock-nav ul{list-style:none;display:flex;gap:20px;margin:0 auto}
+.mock-nav ul a{color:var(--c-muted);font-size:.875rem;text-decoration:none}
+.mock-nav ul a:hover{color:var(--c-text)}
+.mock-nav .auth-btn{padding:6px 16px;border-radius:var(--radius);font-size:.8rem;font-weight:600;cursor:pointer;border:none;background:var(--c-accent);color:#fff}
+
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:16px 0 32px}
+.card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:20px;transition:border-color .2s}
+.card:hover{border-color:var(--c-accent)}
+.card .icon{font-size:1.3rem;margin-bottom:8px}
+.card h4{font-size:.95rem;font-weight:600;margin-bottom:4px}
+.card p{font-size:.82rem;color:var(--c-muted);margin:0}
+
+/* Semantic pills */
+.pill-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 24px}
+.pill{padding:6px 14px;border-radius:999px;font-size:.78rem;font-weight:600}
+.pill.positive{background:rgba(63,185,80,.12);color:var(--c-green);border:1px solid rgba(63,185,80,.2)}
+.pill.negative{background:rgba(248,81,73,.12);color:var(--c-red);border:1px solid rgba(248,81,73,.24)}
+.pill.warning{background:rgba(210,153,34,.12);color:var(--c-orange);border:1px solid rgba(210,153,34,.24)}
+.pill.info{background:rgba(34,201,151,.1);color:var(--c-accent);border:1px solid rgba(34,201,151,.25)}
+.pill.analysis{background:rgba(188,140,255,.1);color:var(--c-purple);border:1px solid rgba(188,140,255,.2)}
+
+/* Pricing mock */
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:16px 0 32px}
+.pricing-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:12px;padding:24px;transition:border-color .2s}
+.pricing-card:hover{border-color:var(--c-accent)}
+.pricing-card.featured{border-color:var(--c-accent);box-shadow:0 0 0 1px var(--c-accent)}
+.tier-name{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:4px}
+.tier-price{font-size:1.8rem;font-weight:700;margin-bottom:2px}
+.tier-price span{font-size:.8rem;font-weight:400;color:var(--c-muted)}
+.tier-desc{font-size:.78rem;color:var(--c-muted);margin-bottom:12px}
+
+/* Section labels */
+.section-label{text-transform:uppercase;font-size:.72rem;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:8px}
+
+/* Data table mock */
+table{width:100%;border-collapse:collapse;font-size:.82rem;color:var(--c-muted);margin:12px 0 32px}
+th{text-align:left;padding:10px 12px;color:var(--c-text);font-weight:600;border-bottom:2px solid var(--c-border)}
+td{padding:10px 12px;border-bottom:1px solid var(--c-border)}
+td.positive{color:var(--c-green);font-weight:600}
+td.negative{color:var(--c-red);font-weight:600}
+
+/* Comparison strip */
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:0;margin:16px 0 32px;border-radius:12px;overflow:hidden;border:1px solid var(--c-border)}
+.comparison-half{padding:24px}
+.comparison-half.old{background:#161b22}
+.comparison-half.new{background:var(--c-surface)}
+.comparison-half h4{font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<!-- Mock Nav -->
+<nav class="mock-nav">
+  <div class="inner">
+    <a href="#" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="#">Overview</a></li>
+      <li><a href="#">Try Demo</a></li>
+      <li><a href="#">Docs</a></li>
+      <li><a href="#">Pricing</a></li>
+    </ul>
+    <button class="auth-btn">Sign In</button>
+  </div>
+</nav>
+
+<div class="container">
+
+<h1>Canopex Brand Palette</h1>
+<p>Visual test of the Canopex design system. Emerald-teal primary with forest-tinted dark backgrounds — nature meets precision.</p>
+
+<!-- Palette Swatches -->
+<h2>Colour Tokens</h2>
+<div class="swatches">
+  <div class="swatch"><div class="swatch-color" style="background:#0b1411"></div><div class="swatch-info"><strong>Background</strong><code>#0b1411</code><div class="role">--c-bg · page canvas</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#131f1b"></div><div class="swatch-info"><strong>Surface</strong><code>#131f1b</code><div class="role">--c-surface · cards, panels</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#243832"></div><div class="swatch-info"><strong>Border</strong><code>#243832</code><div class="role">--c-border · dividers</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#e4ede8"></div><div class="swatch-info"><strong>Text</strong><code>#e4ede8</code><div class="role">--c-text · primary copy</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#7d9a8d"></div><div class="swatch-info"><strong>Muted</strong><code>#7d9a8d</code><div class="role">--c-muted · secondary copy</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#22c997"></div><div class="swatch-info"><strong>Accent</strong><code>#22c997</code><div class="role">--c-accent · Canopex Emerald</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#3fb950"></div><div class="swatch-info"><strong>Green</strong><code>#3fb950</code><div class="role">--c-green · positive/success</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#f85149"></div><div class="swatch-info"><strong>Red</strong><code>#f85149</code><div class="role">--c-red · error/alert</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#d29922"></div><div class="swatch-info"><strong>Orange</strong><code>#d29922</code><div class="role">--c-orange · warning</div></div></div>
+  <div class="swatch"><div class="swatch-color" style="background:#bc8cff"></div><div class="swatch-info"><strong>Purple</strong><code>#bc8cff</code><div class="role">--c-purple · analysis</div></div></div>
+</div>
+
+<!-- Before / After -->
+<h2>Before &amp; After</h2>
+<div class="comparison">
+  <div class="comparison-half old">
+    <h4 style="color:#8b949e">TreeSight (old) — GitHub blue-grey</h4>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:#0c1117"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:#161b22"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:#30363d"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:#58a6ff"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:#8b949e"></span>
+    </div>
+    <p style="font-size:.78rem;color:#8b949e;margin:0">Blue accent, neutral grey surfaces. Generic developer-tool feel.</p>
+  </div>
+  <div class="comparison-half new">
+    <h4 style="color:var(--c-accent)">Canopex (new) — Forest emerald</h4>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:var(--c-bg);border:1px solid var(--c-border)"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:var(--c-surface)"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:var(--c-border)"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:var(--c-accent)"></span>
+      <span style="display:inline-block;width:28px;height:28px;border-radius:6px;background:var(--c-muted)"></span>
+    </div>
+    <p style="font-size:.78rem;color:var(--c-muted);margin:0">Emerald accent, green-tinted darks. Nature-tech, distinctive.</p>
+  </div>
+</div>
+
+<!-- Buttons -->
+<h2>Buttons</h2>
+<div class="btn-row">
+  <a href="#" class="btn btn-primary">Try Live Demo</a>
+  <a href="#" class="btn btn-secondary">Request Early Access</a>
+  <a href="#" class="btn btn-primary" style="background:var(--c-green)">Compliant ✓</a>
+  <a href="#" class="btn btn-primary" style="background:var(--c-red)">Alert</a>
+</div>
+
+<!-- Semantic Indicators -->
+<h2>Semantic Indicators</h2>
+<div class="pill-row">
+  <span class="pill positive">+12.3% NDVI Growth</span>
+  <span class="pill negative">-8.1% Canopy Loss</span>
+  <span class="pill warning">Cloud Cover: 18%</span>
+  <span class="pill info">5 Scenes Available</span>
+  <span class="pill analysis">AI Analysis Ready</span>
+</div>
+
+<!-- Cards -->
+<h2>Feature Cards</h2>
+<div class="card-grid">
+  <div class="card">
+    <div class="icon">🛰️</div>
+    <h4>KML to Evidence</h4>
+    <p>Upload a KML, get analysis-ready satellite imagery back. Automated parsing, orchestration, clipping, and reprojection.</p>
+  </div>
+  <div class="card">
+    <div class="icon">📊</div>
+    <h4>NDVI Change Detection</h4>
+    <p>Year-over-year vegetation health analysis with quantified change metrics and confidence scores.</p>
+  </div>
+  <div class="card">
+    <div class="icon">📋</div>
+    <h4>EUDR Compliance</h4>
+    <p>Before/after deforestation evidence with AI-generated compliance narratives.</p>
+  </div>
+</div>
+
+<!-- Data Table -->
+<h2>Data Display</h2>
+<table>
+  <thead><tr><th>AOI</th><th>NDVI (2024)</th><th>NDVI (2023)</th><th>Change</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Concession A</td><td>0.72</td><td>0.68</td><td class="positive">+5.9%</td><td><span class="pill positive" style="font-size:.7rem;padding:3px 10px">Healthy</span></td></tr>
+    <tr><td>Concession B</td><td>0.41</td><td>0.65</td><td class="negative">-36.9%</td><td><span class="pill negative" style="font-size:.7rem;padding:3px 10px">Alert</span></td></tr>
+    <tr><td>Concession C</td><td>0.69</td><td>0.71</td><td style="color:var(--c-muted)">-2.8%</td><td><span class="pill info" style="font-size:.7rem;padding:3px 10px">Stable</span></td></tr>
+  </tbody>
+</table>
+
+<!-- Pricing Sample -->
+<h2>Pricing Cards</h2>
+<div class="pricing-grid">
+  <div class="pricing-card">
+    <div class="tier-name">Free</div>
+    <div class="tier-price">£0 <span>/month</span></div>
+    <div class="tier-desc">For evaluation and small projects</div>
+    <a href="#" class="btn btn-primary" style="width:100%;text-align:center;margin-top:12px">Start Free</a>
+  </div>
+  <div class="pricing-card featured">
+    <div class="tier-name">Pro</div>
+    <div class="tier-price">£39 <span>/month</span></div>
+    <div class="tier-desc">For NGOs and independent advisors</div>
+    <a href="#" class="btn btn-primary" style="width:100%;text-align:center;margin-top:12px">Get Pro</a>
+  </div>
+  <div class="pricing-card">
+    <div class="tier-name">Team</div>
+    <div class="tier-price">£119 <span>/month</span></div>
+    <div class="tier-desc">For compliance teams and agritech</div>
+    <a href="#" class="btn btn-secondary" style="width:100%;text-align:center;margin-top:12px">Get Team</a>
+  </div>
+</div>
+
+<!-- Section Label -->
+<h2>Section Labels</h2>
+<div class="section-label">Experience</div>
+<h3 style="font-size:1.4rem;margin-bottom:8px">Try the Live Demo</h3>
+<p>Upload a KML file or use one of our sample locations to explore satellite imagery, NDVI analysis, and historical change detection. No sign-up required.</p>
+
+<!-- Typography -->
+<h2>Typography Scale</h2>
+<div style="margin-bottom:32px">
+  <p style="font-size:2.5rem;font-weight:700;letter-spacing:-.03em;color:var(--c-text);margin-bottom:8px">KML to Satellite Imagery, Automated.</p>
+  <p style="font-size:1.75rem;font-weight:600;color:var(--c-text);margin-bottom:8px">Simple, Transparent Pricing</p>
+  <p style="font-size:1.125rem;font-weight:600;color:var(--c-text);margin-bottom:8px">NDVI Change Detection</p>
+  <p style="font-size:.875rem;color:var(--c-text);margin-bottom:4px">Body — Upload a KML file and get multi-year analysis.</p>
+  <p style="font-size:.78rem;color:var(--c-muted)">Caption — Processing time varies with AOI size and cloud cover.</p>
+</div>
+
+<!-- Link styles -->
+<h2>Link &amp; Interaction</h2>
+<p>Standard link to <a href="#">documentation</a> or <a href="#">privacy policy</a>. Hover for underline.</p>
+
+</div>
+</body>
+</html>

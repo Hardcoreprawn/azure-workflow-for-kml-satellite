@@ -1,6 +1,6 @@
-# TreeSight Website
+# Canopex Website
 
-Minimal marketing landing page for TreeSight. Deployed to Azure Static Web Apps.
+Minimal marketing landing page for Canopex. Deployed to Azure Static Web Apps.
 
 ## Structure
 

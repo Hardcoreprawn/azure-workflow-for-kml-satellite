@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EUDR Methodology — TreeSight</title>
-<meta name="description" content="How TreeSight's satellite analysis supports EU Deforestation Regulation (EUDR) due diligence — data sources, methodology, and limitations.">
+<title>EUDR Methodology — Canopex</title>
+<meta name="description" content="How Canopex's satellite analysis supports EU Deforestation Regulation (EUDR) due diligence — data sources, methodology, and limitations.">
 <link rel="canonical" href="/docs/eudr-methodology.html">
-<meta property="og:title" content="EUDR Methodology — TreeSight">
+<meta property="og:title" content="EUDR Methodology — Canopex">
 <meta property="og:description" content="Satellite analysis methodology for EUDR compliance due diligence.">
 <meta property="og:url" content="/docs/eudr-methodology.html">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="TreeSight">
+<meta property="og:site_name" content="Canopex">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="EUDR Methodology — TreeSight">
+<meta name="twitter:title" content="EUDR Methodology — Canopex">
 <meta name="twitter:description" content="Satellite analysis methodology for EUDR compliance due diligence.">
 <link rel="stylesheet" href="/css/shared.css">
 <meta name="ai-connection-string" content="">
@@ -44,29 +44,27 @@ li strong{color:var(--c-text)}
   <div class="container">
     <a href="/" class="logo">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-      TreeSight
+      Canopex
     </a>
     <ul>
-      <li><a href="/#problem">Overview</a></li>
-      <li><a href="/#demo">Demo</a></li>
-      <li><a href="/docs/" aria-current="page">Docs</a></li>
-      <li><a href="/#timeline">Pipeline</a></li>
+      <li><a href="/app/?mode=demo">Try Demo</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
       <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
       <li><a href="/#faq">FAQ</a></li>
-      <li><a href="/#early-access">Early Access</a></li>
     </ul>
     <div class="auth-area">
       <a href="/" class="auth-btn">Sign In</a>
     </div>
   </div>
 </nav>
-<noscript><div class="noscript-banner">TreeSight requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
 
 <main>
   <section class="hero-sm">
     <div class="container" style="text-align:center;padding:48px 0 32px">
       <h1>EUDR Assessment Methodology</h1>
-      <p>How TreeSight uses satellite imagery to support EU Deforestation Regulation due diligence</p>
+      <p>How Canopex uses satellite imagery to support EU Deforestation Regulation due diligence</p>
     </div>
   </section>
 
@@ -76,7 +74,7 @@ li strong{color:var(--c-text)}
     <section class="method-section">
       <h2>1. Regulatory Context</h2>
       <p>The <strong>EU Deforestation Regulation</strong> (Regulation 2023/1115, "EUDR") requires operators placing certain commodities on the EU market to demonstrate that those products were not produced on land subject to deforestation or forest degradation after <strong>31 December 2020</strong>.</p>
-      <p>Article 10 of the EUDR requires a due-diligence statement with geolocation data confirming the origin of products. TreeSight provides satellite-based evidence to support — but not replace — that due-diligence obligation.</p>
+      <p>Article 10 of the EUDR requires a due-diligence statement with geolocation data confirming the origin of products. Canopex provides satellite-based evidence to support — but not replace — that due-diligence obligation.</p>
 
       <div class="info-card">
         <h4>Key EUDR Dates</h4>
@@ -91,7 +89,7 @@ li strong{color:var(--c-text)}
     <!-- §2 Data Sources -->
     <section class="method-section">
       <h2>2. Data Sources</h2>
-      <p>TreeSight analyses multiple Earth observation datasets to build a comprehensive vegetation history for each parcel:</p>
+      <p>Canopex analyses multiple Earth observation datasets to build a comprehensive vegetation history for each parcel:</p>
 
       <table class="source-table">
         <thead>
@@ -148,7 +146,7 @@ li strong{color:var(--c-text)}
       <h2>3. Analysis Method</h2>
 
       <h3>3.1 Seasonal Frame Plan</h3>
-      <p>For EUDR assessments, TreeSight builds a time series starting from <strong>January 2021</strong> (immediately after the EUDR cutoff). Four seasonal observations per year (winter, spring, summer, autumn) capture the vegetation cycle. This avoids false positives from natural seasonal leaf-fall.</p>
+      <p>For EUDR assessments, Canopex builds a time series starting from <strong>January 2021</strong> (immediately after the EUDR cutoff). Four seasonal observations per year (winter, spring, summer, autumn) capture the vegetation cycle. This avoids false positives from natural seasonal leaf-fall.</p>
 
       <h3>3.2 NDVI Computation</h3>
       <p>The <strong>Normalised Difference Vegetation Index</strong> (NDVI) is computed for each seasonal frame using Sentinel-2 bands B08 (near-infrared) and B04 (red):</p>
@@ -156,7 +154,7 @@ li strong{color:var(--c-text)}
       <p>NDVI ranges from −1 to +1. Healthy vegetation typically yields 0.3–0.8. Values below 0.2 may indicate bare soil, impervious surfaces, or water.</p>
 
       <h3>3.3 Year-over-Year Comparison</h3>
-      <p>TreeSight compares the <strong>same season across different years</strong> to detect genuine vegetation loss. A decline of &gt;0.15 in same-season NDVI between consecutive years is flagged as a significant event requiring attention. This approach avoids false alarms from comparing winter (low NDVI) with summer (high NDVI).</p>
+      <p>Canopex compares the <strong>same season across different years</strong> to detect genuine vegetation loss. A decline of &gt;0.15 in same-season NDVI between consecutive years is flagged as a significant event requiring attention. This approach avoids false alarms from comparing winter (low NDVI) with summer (high NDVI).</p>
 
       <h3>3.4 Change Detection</h3>
       <p>Where NDVI rasters are available, pixel-level change detection identifies the spatial extent and magnitude of vegetation changes. The system reports:</p>
@@ -205,7 +203,7 @@ li strong{color:var(--c-text)}
 
       <div class="disclaimer">
         <h4>Important Disclaimer</h4>
-        <p>TreeSight's satellite analysis provides supporting evidence for EUDR due diligence but does <strong>not</strong> constitute a complete due-diligence assessment under Regulation 2023/1115. Operators remain responsible for fulfilling all EUDR obligations, including in-country verification, supply-chain traceability, and declaration submission. This tool is intended to augment — not replace — professional judgement and on-the-ground verification.</p>
+        <p>Canopex's satellite analysis provides supporting evidence for EUDR due diligence but does <strong>not</strong> constitute a complete due-diligence assessment under Regulation 2023/1115. Operators remain responsible for fulfilling all EUDR obligations, including in-country verification, supply-chain traceability, and declaration submission. This tool is intended to augment — not replace — professional judgement and on-the-ground verification.</p>
       </div>
     </section>
 
@@ -226,7 +224,7 @@ li strong{color:var(--c-text)}
 
 <footer>
   <div class="container">
-    <p>&copy; 2026 TreeSight. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
   </div>
 </footer>
 </body>
