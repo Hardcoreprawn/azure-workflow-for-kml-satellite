@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from blueprints.export import _build_csv, _build_geojson, _build_pdf
+from blueprints.export import _build_bulk_csv, _build_csv, _build_geojson, _build_pdf
 
 
 @pytest.fixture()
@@ -261,3 +261,78 @@ class TestBuildPDF:
 
         result = _build_pdf(manifest, "run-legacy")
         assert result.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Bulk CSV export (#311)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildBulkCsv:
+    def test_produces_per_aoi_rows(self):
+        manifest = {
+            "per_aoi_metrics": [
+                {
+                    "feature_name": "Farm A",
+                    "feature_index": 0,
+                    "geometry": {
+                        "area_ha": 12.5,
+                        "perimeter_km": 1.4,
+                        "centroid_lon": 36.8,
+                        "centroid_lat": -1.3,
+                    },
+                    "vegetation": {
+                        "health_class": "healthy",
+                        "trend_direction": "stable",
+                        "latest_detail": {"mean": 0.72},
+                    },
+                    "change": {
+                        "total_loss_ha": 0.1,
+                        "total_gain_ha": 0.3,
+                        "net_change_ha": 0.2,
+                        "trajectory": "improving",
+                    },
+                    "weather": {"temp_mean_c": 22.5, "precip_total_mm": 350.0},
+                    "ndvi_data_scope": "union",
+                },
+                {
+                    "feature_name": "Farm B",
+                    "feature_index": 1,
+                    "geometry": {
+                        "area_ha": 8.0,
+                        "perimeter_km": 1.1,
+                        "centroid_lon": 36.9,
+                        "centroid_lat": -1.4,
+                    },
+                    "vegetation": {
+                        "health_class": "stressed",
+                        "trend_direction": "declining",
+                        "latest_detail": {"mean": 0.35},
+                    },
+                    "change": {
+                        "total_loss_ha": 2.5,
+                        "total_gain_ha": 0.0,
+                        "net_change_ha": -2.5,
+                        "trajectory": "degrading",
+                    },
+                    "weather": {"temp_mean_c": 23.1, "precip_total_mm": 280.0},
+                    "ndvi_data_scope": "union",
+                },
+            ],
+        }
+
+        result = _build_bulk_csv(manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 2
+        assert rows[0]["feature_name"] == "Farm A"
+        assert rows[0]["area_ha"] == "12.5"
+        assert rows[0]["ndvi_latest_mean"] == "0.72"
+        assert rows[1]["feature_name"] == "Farm B"
+        assert rows[1]["trajectory"] == "degrading"
+
+    def test_falls_back_to_regular_csv(self, enrichment_manifest):
+        result = _build_bulk_csv(enrichment_manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert "frame_index" in rows[0]

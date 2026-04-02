@@ -11,6 +11,7 @@ this convention.
 
 # --- Size limits ---
 MAX_KML_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
+MAX_FEATURES_PER_KML = 500
 PAYLOAD_OFFLOAD_THRESHOLD_BYTES = 49_152  # 48 KiB
 
 # --- Imagery defaults ---
