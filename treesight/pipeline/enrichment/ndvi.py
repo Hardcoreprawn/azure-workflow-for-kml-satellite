@@ -29,6 +29,12 @@ from treesight.pipeline.enrichment.mosaic import PC_API
 
 logger = logging.getLogger(__name__)
 
+# ── Optional Rust acceleration ────────────────────────────────
+try:
+    import treesight_rs as _rs
+except ImportError:  # pragma: no cover — Rust extension not installed
+    _rs = None  # type: ignore[assignment]
+
 # ── STAC search helper ────────────────────────────────────────
 
 STAC_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
@@ -156,14 +162,21 @@ def compute_ndvi(
             b04_data = b04_data[:min_h, :min_w]
             b08_data = b08_data[:min_h, :min_w]
 
-        # Read SCL band for pixel-level cloud masking (20m → resample to 10m)
+        # Read SCL band for pixel-level cloud masking (20 m → resample to 10 m)
         scl_mask = None
         scl_masked_count = 0
         if scene.get("SCL"):
             try:
                 scl_data, _scl_profile = _cog_band_read(scene["SCL"], bbox)
                 # Resample SCL (20m) to match B04/B08 (10m) via nearest-neighbour
-                scl_mask = _resample_scl(scl_data, b04_data.shape)
+                if _rs is not None:
+                    scl_mask = _rs.resample_nearest(
+                        scl_data.astype(np.uint8),
+                        b04_data.shape[0],
+                        b04_data.shape[1],
+                    )
+                else:
+                    scl_mask = _resample_scl(scl_data, b04_data.shape)
                 log_phase("ndvi", "scl_loaded", scene_id=scene["scene_id"])
             except Exception as scl_exc:
                 logger.warning(
@@ -176,18 +189,28 @@ def compute_ndvi(
         red = b04_data.astype(np.float32)
         nir = b08_data.astype(np.float32)
 
-        # NDVI = (NIR - Red) / (NIR + Red), with zero-division guard
-        denom = nir + red
-        ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
+        if _rs is not None:
+            # Rust-accelerated NDVI: parallel SIMD band math
+            ndvi, valid_mask = _rs.compute_ndvi_array(red, nir)
 
-        # Mask invalid (nodata) pixels — S2 L2A uses 0 as nodata
-        valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
-
-        # Apply SCL pixel-level cloud/shadow/snow mask
-        if scl_mask is not None:
-            scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
-            scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
-            valid_mask = valid_mask & scl_valid
+            # Apply SCL mask via Rust (in-place)
+            if scl_mask is not None:
+                scl_masked_count = int(
+                    _rs.apply_scl_mask(
+                        valid_mask,
+                        scl_mask.astype(np.uint8),
+                        list(VALID_SCL_CLASSES),
+                    )
+                )
+        else:
+            # Pure-Python fallback
+            denom = nir + red
+            ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
+            valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
+            if scl_mask is not None:
+                scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)
+                scl_masked_count = int(np.sum(valid_mask & ~scl_valid))
+                valid_mask = valid_mask & scl_valid
 
         valid_pixels = ndvi[valid_mask]
 
