@@ -47,9 +47,13 @@ def main() -> int:
     if host_bin.exists():
         check("Functions host is executable", os.access(host_bin, os.X_OK))
 
-    # NuGet.Versioning is required by ScriptConstants at startup
-    nuget_ver = host_dir / "NuGet.Versioning.dll"
-    check("NuGet.Versioning.dll present (required by host)", nuget_ver.exists())
+    # NuGet DLLs — kept intact; multiple assemblies are lazily loaded by host
+    nuget_dlls = list(host_dir.glob("NuGet.*.dll"))
+    check(
+        "NuGet DLLs present (Versioning, Packaging, etc.)",
+        len(nuget_dlls) >= 2,
+        f"found: {[f.name for f in nuget_dlls]}",
+    )
 
     # Verify JIT fallback DLL present
     jit_dll = host_dir / "Microsoft.Azure.WebJobs.Script.WebHost.dll"
@@ -64,10 +68,7 @@ def main() -> int:
     check(
         "Roslyn C# compiler removed", not (host_dir / "Microsoft.CodeAnalysis.CSharp.dll").exists()
     )
-    check(
-        "NuGet bloat DLLs removed",
-        not any(f for f in host_dir.glob("NuGet.*.dll") if f.name != "NuGet.Versioning.dll"),
-    )
+    # NuGet DLLs are now kept intact (only ~2 MB, host needs them at startup)
     check("No PDB files remain", not any(host_dir.rglob("*.pdb")))
 
     # ── 2. Extension bundles ──

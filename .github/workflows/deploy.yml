@@ -300,13 +300,14 @@ jobs:
               exit 0
             fi
 
-            # Fail fast on server errors (5xx) — indicates a real crash
-            if [[ "$health_code" =~ ^5 ]] || [[ "$ready_code" =~ ^5 ]]; then
-              echo "❌ Server error detected (health=${health_code}, readiness=${ready_code}). Failing."
+            # Fail fast on 500 Internal Server Error — indicates a real crash.
+            # 502/503/504 are transient during Container Apps cold start + worker init.
+            if [ "$health_code" = "500" ] || [ "$ready_code" = "500" ]; then
+              echo "❌ Internal server error (health=${health_code}, readiness=${ready_code}). Failing."
               exit 1
             fi
 
-            # 404 / 000 / other — likely routing lag, keep waiting
+            # 503 / 502 / 404 / 000 — transient during cold start, keep waiting
             sleep $INTERVAL
             elapsed=$((elapsed + INTERVAL))
           done

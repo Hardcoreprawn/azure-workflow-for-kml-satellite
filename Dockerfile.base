@@ -23,7 +23,7 @@
 #   - StaticContent (dashboard UI)            ~6 MB  (API-only container)
 #   - SnapshotCollector (profiling)           ~5 MB  (optional)
 #   - Diagnostics (createdump, DAC, DBI)      ~5 MB  (crash dump tools)
-#   - NuGet, Proxy DLLs, MonoPosix           ~4 MB  (deprecated/unused)
+#   - Proxy DLLs, MonoPosix                    ~2 MB  (deprecated/unused)
 #
 # What we KEEP:
 #   - R2R precompiled DLL + map + PreJIT   ~242 MB  (critical for scale-to-zero cold start)
@@ -50,9 +50,10 @@ RUN set -e && \
           libmscordaccore.so \
           libmscordbi.so \
           libcoreclrtraceptprovider.so && \
-    # NuGet DLLs — package management, not needed at runtime (saves 2 MB)
-    # KEEP NuGet.Versioning.dll — required by ScriptConstants at startup
-    find . -name 'NuGet.*.dll' ! -name 'NuGet.Versioning.dll' -delete && \
+    # NuGet DLLs — kept intact; multiple assemblies (Versioning, Packaging, …)
+    # are loaded lazily by the Functions host and deleting any causes startup
+    # crashes.  Total cost: ~2 MB — not worth the breakage risk.
+    #
     # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
     rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll 2>/dev/null || true && \
     rm -rf ProxyLibrary/ 2>/dev/null || true && \

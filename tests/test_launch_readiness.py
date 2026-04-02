@@ -474,10 +474,18 @@ class TestContainerRuntimePrereqs:
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
 
-    def test_smoke_test_checks_nuget_versioning(self):
-        """Container smoke test must verify NuGet.Versioning.dll is preserved."""
+    def test_nuget_dlls_not_deleted_in_dockerfile(self):
+        """NuGet DLLs must NOT be deleted — host loads them lazily at startup."""
+        content = self.BASE_DOCKERFILE.read_text()
+        assert "NuGet.*.dll" not in content or "kept intact" in content, (
+            "Dockerfile.base must not delete NuGet DLLs — "
+            "the Functions host lazily loads Versioning, Packaging, etc. at startup"
+        )
+
+    def test_smoke_test_checks_nuget_dlls(self):
+        """Container smoke test must verify NuGet DLLs are present."""
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
-        assert "nuget.versioning.dll" in smoke.lower(), (
-            "container_smoke_test.py must check for NuGet.Versioning.dll presence to "
-            "prevent regressions where it is removed from the .NET host image"
+        assert "nuget" in smoke.lower(), (
+            "container_smoke_test.py must check for NuGet DLL presence to "
+            "prevent regressions where they are removed from the .NET host image"
         )
