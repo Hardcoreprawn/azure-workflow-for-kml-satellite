@@ -69,7 +69,7 @@ textarea{min-height:120px;font-family:inherit}
 .proof-card .proof-quote{font-size:.875rem;color:var(--c-text);line-height:1.6;margin-bottom:12px;font-style:italic}
 .proof-card .proof-author{font-size:.75rem;color:var(--c-muted)}
 .proof-card .proof-author strong{color:var(--c-text)}
-.proof-card .proof-tag{display:inline-block;font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(34,201,151,.1);color:var(--c-accent);font-weight:600;margin-top:8px}
+.proof-card .proof-tag{display:inline-block;font-size:.65rem;padding:2px 8px;border-radius:12px;background:rgba(94,236,196,.1);color:var(--c-accent);font-weight:600;margin-top:8px}
 
 /* --- FAQ --- */
 .faq-item{border-bottom:1px solid var(--c-border);padding:16px 0}
@@ -92,7 +92,7 @@ footer{padding:32px 0;border-top:1px solid var(--c-border);text-align:center;col
 .contract-warning.show{display:block}
 
 /* --- Onboarding banner --- */
-.onboard-banner{background:rgba(34,201,151,.08);border:1px solid rgba(34,201,151,.2);border-radius:var(--radius);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;font-size:.875rem;flex-wrap:wrap}
+.onboard-banner{background:rgba(94,236,196,.08);border:1px solid rgba(94,236,196,.2);border-radius:var(--radius);padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:14px;font-size:.875rem;flex-wrap:wrap}
 .onboard-banner .onboard-icon{font-size:1.5rem;flex-shrink:0}
 .onboard-banner .onboard-text{flex:1;min-width:200px}
 .onboard-banner .onboard-text strong{color:var(--c-text)}
