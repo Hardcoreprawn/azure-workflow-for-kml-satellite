@@ -53,7 +53,6 @@ RUN set -e && \
     # NuGet DLLs — kept intact; multiple assemblies (Versioning, Packaging, …)
     # are loaded lazily by the Functions host and deleting any causes startup
     # crashes.  Total cost: ~2 MB — not worth the breakage risk.
-    #
     # Proxy DLLs — Azure Functions Proxies is deprecated (saves 1 MB)
     rm -f Microsoft.Azure.WebJobs.Script.WebHost.Proxy.dll 2>/dev/null || true && \
     rm -rf ProxyLibrary/ 2>/dev/null || true && \

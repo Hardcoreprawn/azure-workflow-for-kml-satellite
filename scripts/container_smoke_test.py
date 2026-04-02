@@ -47,12 +47,14 @@ def main() -> int:
     if host_bin.exists():
         check("Functions host is executable", os.access(host_bin, os.X_OK))
 
-    # NuGet DLLs — kept intact; multiple assemblies are lazily loaded by host
+    # NuGet DLLs — explicitly require the assemblies the host depends on
     nuget_dlls = list(host_dir.glob("NuGet.*.dll"))
+    required_nuget = ["NuGet.Versioning.dll", "NuGet.Packaging.dll"]
+    missing_nuget = [n for n in required_nuget if not (host_dir / n).exists()]
     check(
         "NuGet DLLs present (Versioning, Packaging, etc.)",
-        len(nuget_dlls) >= 2,
-        f"found: {[f.name for f in nuget_dlls]}",
+        not missing_nuget,
+        f"found: {[f.name for f in nuget_dlls]}; missing: {missing_nuget}",
     )
 
     # Verify JIT fallback DLL present
