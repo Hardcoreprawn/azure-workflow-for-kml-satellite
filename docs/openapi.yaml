@@ -77,7 +77,15 @@ paths:
                   status:
                     type: string
                     example: healthy
-                required: [status]
+                  version:
+                    type: string
+                    description: Application version from pyproject.toml
+                    example: "1.0.0"
+                  commit:
+                    type: string
+                    description: Git commit SHA of the deployed image
+                    example: "a1b2c3d"  # pragma: allowlist secret
+                required: [status, version, commit]
 
   /readiness:
     get:
@@ -98,8 +106,16 @@ paths:
                     example: ready
                   api_version:
                     type: string
-                    example: v1
-                required: [status, api_version]
+                    example: "2026-03-15.1"
+                  version:
+                    type: string
+                    description: Application version from pyproject.toml
+                    example: "1.0.0"
+                  commit:
+                    type: string
+                    description: Git commit SHA of the deployed image
+                    example: "a1b2c3d"  # pragma: allowlist secret
+                required: [status, api_version, version, commit]
 
   /contract:
     get:

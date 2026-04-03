@@ -14,7 +14,7 @@ ARG APP_VERSION=0.0.0-dev
 ARG GIT_SHA=unknown
 
 LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
-      org.opencontainers.image.description="Canopex – satellite vegetation-analysis API" \
+      org.opencontainers.image.description="TreeSight – satellite vegetation-analysis API" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${GIT_SHA}"
 
