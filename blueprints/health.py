@@ -8,6 +8,7 @@ import json
 
 import azure.functions as func
 
+from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
 
 from ._helpers import cors_headers, cors_preflight
@@ -20,7 +21,7 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
     return func.HttpResponse(
-        json.dumps({"status": "healthy"}),
+        json.dumps({"status": "healthy", "version": __version__, "commit": __git_sha__}),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
@@ -32,7 +33,14 @@ def readiness(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_preflight(req)
     return func.HttpResponse(
-        json.dumps({"status": "ready", "api_version": API_CONTRACT_VERSION}),
+        json.dumps(
+            {
+                "status": "ready",
+                "api_version": API_CONTRACT_VERSION,
+                "version": __version__,
+                "commit": __git_sha__,
+            }
+        ),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),

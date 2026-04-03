@@ -10,8 +10,16 @@
 ARG BASE_IMAGE=treesight-base:latest
 FROM ${BASE_IMAGE}
 
+ARG APP_VERSION=0.0.0-dev
+ARG GIT_SHA=unknown
+
 LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
-      org.opencontainers.image.description="TreeSight – satellite vegetation-analysis API"
+      org.opencontainers.image.description="TreeSight – satellite vegetation-analysis API" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}"
+
+ENV APP_VERSION=${APP_VERSION} \
+    GIT_SHA=${GIT_SHA}
 
 # Install uv for fast, deterministic dependency resolution
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv

@@ -361,8 +361,8 @@ All endpoints return JSON unless otherwise specified.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/health` | anonymous | Returns `{"status": "healthy"}` with 200 |
-| GET | `/api/readiness` | anonymous | Returns `{"status": "ready", "api_version": "2026-03-15.1"}` with 200 |
+| GET | `/api/health` | anonymous | Returns `{"status": "healthy", "version": "...", "commit": "..."}` with 200 |
+| GET | `/api/readiness` | anonymous | Returns `{"status": "ready", "api_version": "2026-03-15.1", "version": "...", "commit": "..."}` with 200 |
 
 ### 4.2 Pipeline Trigger
 

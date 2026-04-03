@@ -250,6 +250,49 @@ def main() -> int:
         except ImportError:
             check(f"{pkg} NOT installed (dev leak)", True)
 
+    # ── 10. Version metadata (app image only) ──
+    print("\n[Version Metadata]")
+    app_version = os.environ.get("APP_VERSION", "")
+    git_sha = os.environ.get("GIT_SHA", "")
+    if func_app.exists():
+        check(
+            "APP_VERSION env var set",
+            bool(app_version) and app_version != "0.0.0-dev",
+            f"got '{app_version}'" if app_version else "not set",
+        )
+        check(
+            "GIT_SHA env var set",
+            bool(git_sha) and git_sha != "unknown",
+            f"got '{git_sha}'" if git_sha else "not set",
+        )
+    else:
+        print("  — Base image — skipping version env var checks")
+    if func_app.exists() and app_version:
+        # Semver-ish: at least N.N.N
+        import re
+
+        check(
+            "APP_VERSION looks like semver",
+            bool(re.match(r"^\d+\.\d+\.\d+", app_version)),
+            f"got '{app_version}'",
+        )
+    if func_app.exists() and app_version:
+        try:
+            from treesight import __git_sha__, __version__
+
+            check(
+                "treesight.__version__ matches APP_VERSION",
+                __version__ == app_version,
+                f"__version__={__version__!r} != APP_VERSION={app_version!r}",
+            )
+            check(
+                "treesight.__git_sha__ matches GIT_SHA",
+                __git_sha__ == git_sha,
+                f"__git_sha__={__git_sha__!r} != GIT_SHA={git_sha!r}",
+            )
+        except ImportError:
+            pass  # already caught in section 7
+
     # ── Summary ──
     print("\n" + "=" * 50)
     if failures:

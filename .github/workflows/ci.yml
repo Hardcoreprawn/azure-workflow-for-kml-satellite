@@ -82,8 +82,11 @@ jobs:
 
       - name: Build app image
         run: |
+          APP_VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
           docker build \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg APP_VERSION="${APP_VERSION}" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
             -t treesight:ci-check .
 
       - name: Run container smoke tests

@@ -11,6 +11,7 @@ import json
 
 from blueprints.health import contract, health, readiness
 from tests.conftest import TEST_ORIGIN, make_test_request
+from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
 
 _ALLOWED_ORIGIN = "https://polite-glacier-0d6885003.4.azurestaticapps.net"
@@ -39,7 +40,10 @@ class TestHealth:
 
     def test_body_is_healthy(self):
         resp = health(_make_req())
-        assert json.loads(resp.get_body()) == {"status": "healthy"}
+        body = json.loads(resp.get_body())
+        assert body["status"] == "healthy"
+        assert body["version"] == __version__
+        assert body["commit"] == __git_sha__
 
     def test_cors_header_for_allowed_origin(self):
         resp = health(_make_req())
@@ -73,6 +77,8 @@ class TestReadiness:
         body = json.loads(resp.get_body())
         assert body["status"] == "ready"
         assert body["api_version"] == API_CONTRACT_VERSION
+        assert body["version"] == __version__
+        assert body["commit"] == __git_sha__
 
     def test_cors_header_for_allowed_origin(self):
         resp = readiness(_make_req())
