@@ -59,8 +59,10 @@ jobs:
           source .github/image-config.env
           IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${APP_IMAGE_REPO}"
           TAG="${{ github.sha }}"
+          APP_VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve base image
         id: base
@@ -85,7 +87,10 @@ jobs:
         run: |
           docker build \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg APP_VERSION="${{ steps.meta.outputs.app_version }}" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
             -t "${IMAGE_NAME}:${{ github.sha }}" \
+            -t "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}" \
             -t "${IMAGE_NAME}:latest" .
 
       - name: Run container smoke tests
@@ -102,6 +107,7 @@ jobs:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
           docker push "${IMAGE_NAME}:${{ github.sha }}"
+          docker push "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
           docker push "${IMAGE_NAME}:latest"
 
       - name: Trivy container scan
@@ -297,6 +303,8 @@ jobs:
             # Success: both return 200
             if [ "$health_code" = "200" ] && [ "$ready_code" = "200" ]; then
               echo "✅ Runtime is healthy and ready."
+              HEALTH_BODY=$(curl -s --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || true)
+              echo "  Deployed version: $(echo "$HEALTH_BODY" | jq -r '.version // "unknown"') ($(echo "$HEALTH_BODY" | jq -r '.commit // "unknown"'))"
               exit 0
             fi
 

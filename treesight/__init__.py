@@ -1,8 +1,6 @@
-"""TreeSight — KML satellite imagery pipeline."""
+"""Canopex — KML satellite imagery pipeline."""
 
-import importlib.metadata
+import os
 
-try:
-    __version__ = importlib.metadata.version("treesight")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.0.0-dev"
+__version__ = os.environ.get("APP_VERSION", "0.0.0-dev")
+__git_sha__ = os.environ.get("GIT_SHA", "unknown")
