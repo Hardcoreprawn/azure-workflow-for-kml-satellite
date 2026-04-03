@@ -100,11 +100,14 @@ async def _submit_analysis_request(
 
     submission_context = _extract_submission_context(body)
 
+    effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
+
     resp = await _submit_kml(
         req,
         client,
         body,
         blob_prefix=blob_prefix,
+        extra_input={"provider_name": effective_provider},
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
@@ -125,7 +128,7 @@ async def _submit_analysis_request(
             if isinstance(body, dict)
             else 0,
             "submission_prefix": blob_prefix.strip("/") or "analysis",
-            "provider_name": submission_context.get("provider_name", DEFAULT_PROVIDER),
+            "provider_name": effective_provider,
             "status": "submitted",
         }
         record.update(submission_context)

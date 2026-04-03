@@ -106,8 +106,6 @@ class PostProcessResult(BaseModel):
     state: str = "completed"
     error: str = ""
     clip_error: str = ""
-    state: str = ""
-    error: str = ""
 
 
 class FulfillmentResult(BaseModel):

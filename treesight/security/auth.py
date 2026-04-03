@@ -18,7 +18,7 @@ _jwks_lock = threading.Lock()
 _JWKS_TTL = 86400  # 24 hours
 _JWKS_MIN_REFETCH_INTERVAL = 5  # seconds – prevents thundering-herd on key rotation
 
-_auth_warned = False
+_auth_warned: dict[str, bool] = {"warned": False}
 
 
 def _oidc_config_url() -> str:
@@ -73,13 +73,12 @@ def auth_enabled() -> bool:
                 "REQUIRE_AUTH is set but CIAM_TENANT_NAME or CIAM_CLIENT_ID "
                 "is missing. Refusing to start without authentication."
             )
-        global _auth_warned
-        if not _auth_warned:
+        if not _auth_warned["warned"]:
             logger.warning(
                 "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
                 "All requests will be treated as anonymous."
             )
-            _auth_warned = True
+            _auth_warned["warned"] = True
     return enabled
 
 

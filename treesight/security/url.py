@@ -41,8 +41,8 @@ def parse_host(url_or_token: str) -> str:
 
     If *url_or_token* has no scheme (common for CSP directives like
     ``*.example.com``), ``urlparse`` puts everything in the *path*
-    component.  In that case, fall back to the raw token (stripped of
-    any leading wildcard / scheme parts).
+    component.  In that case, fall back to the raw token stripped and
+    lowercased.
 
     Returns the empty string for values that cannot be parsed.
 
