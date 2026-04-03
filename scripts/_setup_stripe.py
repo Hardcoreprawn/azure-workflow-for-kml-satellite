@@ -122,6 +122,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     print("\n=== Prices ===")
     prices_config = [
+        # TODO: parameterise amounts — these should come from config or CLI args
         {"currency": "gbp", "unit_amount": 3900, "label": "GBP"},
         {"currency": "usd", "unit_amount": 4900, "label": "USD"},
         {"currency": "eur", "unit_amount": 4500, "label": "EUR"},

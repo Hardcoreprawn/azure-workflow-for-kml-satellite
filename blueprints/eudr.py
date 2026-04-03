@@ -70,34 +70,13 @@ def _validate_plot(i: int, p: dict) -> dict | str:
     return entry
 
 
-@bp.route(
-    route="convert-coordinates",
-    methods=["POST", "OPTIONS"],
-    auth_level=func.AuthLevel.ANONYMOUS,
-)
-def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:  # noqa: C901
-    """POST /api/convert-coordinates — convert coordinate plots to KML.
+def _validate_convert_request(
+    req: func.HttpRequest,
+) -> tuple[list[dict], str, float] | func.HttpResponse:
+    """Validate convert-coordinates request.
 
-    Accepts a JSON body with an array of plots (points or polygons) and
-    returns a downloadable KML document.
-
-    Request body::
-
-        {
-            "doc_name": "My EUDR Plots",
-            "buffer_m": 100,
-            "plots": [
-                {"name": "Plot A", "lon": 2.35, "lat": 48.86},
-                {"name": "Plot B", "lon": 2.36, "lat": 48.87, "radius_m": 200},
-                {"name": "Block C", "coordinates": [[lon,lat], [lon,lat], ...]}
-            ]
-        }
-
-    Response: KML file as ``application/vnd.google-earth.kml+xml``.
+    Returns (validated_plots, doc_name, buffer_m) or error response.
     """
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
         return error_response(429, "Too many requests — please wait before trying again", req=req)
 
@@ -124,15 +103,12 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:  # noqa: C9
     if len(plots) > _MAX_PLOTS:
         return error_response(400, f"Maximum {_MAX_PLOTS} plots per request", req=req)
 
-    # Validate each plot
     validated = []
     for i, p in enumerate(plots):
         result = _validate_plot(i, p)
         if isinstance(result, str):
             return error_response(400, result, req=req)
         validated.append(result)
-
-    from treesight.pipeline.eudr import coords_to_kml
 
     doc_name = _sanitise_name(body.get("doc_name", "EUDR Plots")) or "EUDR Plots"
     try:
@@ -141,6 +117,44 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:  # noqa: C9
         return error_response(400, "'buffer_m' must be a number", req=req)
     if buffer_m <= 0 or not math.isfinite(buffer_m):
         return error_response(400, "'buffer_m' must be a positive finite number", req=req)
+
+    return validated, doc_name, buffer_m
+
+
+@bp.route(
+    route="convert-coordinates",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/convert-coordinates — convert coordinate plots to KML.
+
+    Accepts a JSON body with an array of plots (points or polygons) and
+    returns a downloadable KML document.
+
+    Request body::
+
+        {
+            "doc_name": "My EUDR Plots",
+            "buffer_m": 100,
+            "plots": [
+                {"name": "Plot A", "lon": 2.35, "lat": 48.86},
+                {"name": "Plot B", "lon": 2.36, "lat": 48.87, "radius_m": 200},
+                {"name": "Block C", "coordinates": [[lon,lat], [lon,lat], ...]}
+            ]
+        }
+
+    Response: KML file as ``application/vnd.google-earth.kml+xml``.
+    """
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    result = _validate_convert_request(req)
+    if isinstance(result, func.HttpResponse):
+        return result
+    validated, doc_name, buffer_m = result
+
+    from treesight.pipeline.eudr import coords_to_kml
 
     kml_str = coords_to_kml(validated, doc_name=doc_name, buffer_m=buffer_m)
 

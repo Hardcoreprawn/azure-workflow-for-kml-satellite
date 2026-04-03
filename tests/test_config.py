@@ -22,10 +22,11 @@ class TestConfigGetInt:
 
         assert config_get_int({"x": "10"}, "x", 0) == 10
 
-    def test_float_string_truncated(self):
+    def test_float_string_raises(self):
         from treesight.config import config_get_int
 
-        assert config_get_int({"x": "3.9"}, "x", 0) == 3
+        with pytest.raises(ValueError):
+            config_get_int({"x": "3.9"}, "x", 0)
 
     def test_missing_key_returns_default(self):
         from treesight.config import config_get_int
@@ -37,15 +38,22 @@ class TestConfigGetInt:
 
         assert config_get_int({"x": None}, "x", 7) == 7
 
-    def test_garbage_string_returns_default(self):
+    def test_garbage_string_raises(self):
         from treesight.config import config_get_int
 
-        assert config_get_int({"x": "not-a-number"}, "x", 5) == 5
+        with pytest.raises(ValueError):
+            config_get_int({"x": "not-a-number"}, "x", 5)
 
-    def test_float_value(self):
+    def test_float_value_non_integer_raises(self):
         from treesight.config import config_get_int
 
-        assert config_get_int({"x": 3.7}, "x", 0) == 3
+        with pytest.raises(ValueError):
+            config_get_int({"x": 3.7}, "x", 0)
+
+    def test_float_value_integer_ok(self):
+        from treesight.config import config_get_int
+
+        assert config_get_int({"x": 4.0}, "x", 0) == 4
 
 
 class TestValidateConfig:

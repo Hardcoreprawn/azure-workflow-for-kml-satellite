@@ -13,54 +13,19 @@ from typing import Any
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
-from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+from blueprints._helpers import (
+    cors_headers,
+    cors_preflight,
+    error_response,
+    fetch_enrichment_manifest,
+)
+from treesight.constants import EUDR_CUTOFF_DATE
 from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
 _ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf"}
-
-
-# ---------------------------------------------------------------------------
-# Shared: fetch enrichment manifest for a given pipeline instance
-# ---------------------------------------------------------------------------
-
-
-async def _fetch_manifest(
-    req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
-) -> tuple[dict[str, Any] | None, func.HttpResponse | None]:
-    """Return (manifest_dict, None) on success or (None, error_response) on failure."""
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return None, error_response(401, str(exc), req=req)
-
-    instance_id = req.route_params.get("instance_id", "")
-    if not instance_id:
-        return None, error_response(400, "instance_id required", req=req)
-
-    status = await client.get_status(instance_id)
-    if not status or not status.output:
-        return None, error_response(404, "Pipeline not found or not complete", req=req)
-
-    output = status.output if isinstance(status.output, dict) else {}
-    manifest_path = output.get("enrichment_manifest") or output.get("enrichmentManifest")
-    if not manifest_path:
-        return None, error_response(404, "No enrichment data for this pipeline run", req=req)
-
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
-    try:
-        data = storage.download_json(DEFAULT_OUTPUT_CONTAINER, manifest_path)
-    except Exception:
-        logger.exception("Failed to download enrichment manifest")
-        return None, error_response(404, "Enrichment manifest not found in storage", req=req)
-
-    return data, None
 
 
 # ---------------------------------------------------------------------------
@@ -194,22 +159,29 @@ def _build_csv(manifest: dict[str, Any]) -> str:
     daily_temps = weather_daily.get("temp", []) if weather_daily else []
     daily_precip = weather_daily.get("precip", []) if weather_daily else []
 
+    # Pre-group daily weather by date string for O(n+m) lookup
+    weather_by_date: dict[str, tuple[float | None, float | None]] = {}
+    for j, d in enumerate(daily_dates):
+        t = daily_temps[j] if j < len(daily_temps) else None
+        p = daily_precip[j] if j < len(daily_precip) else None
+        weather_by_date[d] = (t, p)
+
     for i, frame in enumerate(frame_plan):
         ndvi = ndvi_stats[i] if i < len(ndvi_stats) else None
 
-        # Simple weather aggregation for the frame's date range
+        # Weather aggregation for the frame's date range
         mean_temp = None
         total_precip = None
-        if daily_dates:
+        if weather_by_date:
             start, end = frame.get("start", ""), frame.get("end", "")
             temps_in_range = []
             precip_in_range = []
-            for j, d in enumerate(daily_dates):
+            for d, (t, p) in weather_by_date.items():
                 if start <= d <= end:
-                    if j < len(daily_temps) and daily_temps[j] is not None:
-                        temps_in_range.append(daily_temps[j])
-                    if j < len(daily_precip) and daily_precip[j] is not None:
-                        precip_in_range.append(daily_precip[j])
+                    if t is not None:
+                        temps_in_range.append(t)
+                    if p is not None:
+                        precip_in_range.append(p)
             if temps_in_range:
                 mean_temp = round(sum(temps_in_range) / len(temps_in_range), 1)
             if precip_in_range:
@@ -357,7 +329,7 @@ def _pdf_eudr_section(pdf: Any, manifest: dict[str, Any]) -> None:
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 8, "EUDR Compliance Summary", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 10)
-    cutoff = manifest.get("eudr_date_start", "2021-01-01")
+    cutoff = manifest.get("eudr_date_start", EUDR_CUTOFF_DATE)
     pdf.cell(0, 6, "EUDR cutoff date: 31 December 2020", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(
         0,
@@ -597,7 +569,7 @@ async def export_data(
             req=req,
         )
 
-    manifest, err = await _fetch_manifest(req, client)
+    manifest, err = await fetch_enrichment_manifest(req, client)
     if err:
         return err
     assert manifest is not None  # ensured by err check above

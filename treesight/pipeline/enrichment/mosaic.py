@@ -45,7 +45,10 @@ def register_mosaic(
     extra_filters: list[dict[str, Any]] | None = None,
     client: httpx.Client | None = None,
 ) -> str | None:
-    """Register a Planetary Computer mosaic and return the search ID."""
+    """Register a Planetary Computer mosaic and return the search ID.
+
+    Returns ``None`` if registration fails (error is logged as a warning).
+    """
     filter_args: list[dict[str, Any]] = [
         {
             "op": "t_intersects",
@@ -75,11 +78,20 @@ def register_mosaic(
         "sortby": sortby,
     }
 
-    http = client or httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
-    try:
-        r = http.post(f"{PC_API}/mosaic/register", json=body)
-        r.raise_for_status()
-        return r.json().get("searchid")
-    except Exception as exc:
-        logger.warning("Mosaic registration failed for %s: %s", collection, exc)
-        return None
+    if client is not None:
+        try:
+            r = client.post(f"{PC_API}/mosaic/register", json=body)
+            r.raise_for_status()
+            return r.json().get("searchid")
+        except Exception as exc:
+            logger.warning("Mosaic registration failed for %s: %s", collection, exc)
+            return None
+
+    with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as http:
+        try:
+            r = http.post(f"{PC_API}/mosaic/register", json=body)
+            r.raise_for_status()
+            return r.json().get("searchid")
+        except Exception as exc:
+            logger.warning("Mosaic registration failed for %s: %s", collection, exc)
+            return None

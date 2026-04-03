@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import math
+import os
 from typing import Any
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, EARTH_RADIUS_M
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +52,6 @@ _PLACEMARK_POINT_BUFFER = """\
     </Polygon>
   </Placemark>
 """
-
-# Earth radius for buffer computation
-_EARTH_RADIUS_M = 6_371_000.0
 
 
 def coords_to_kml(
@@ -122,17 +121,15 @@ def _point_buffer(lon: float, lat: float, radius_m: float, segments: int = 32) -
     ring: list[list[float]] = []
     for i in range(segments + 1):
         angle = 2 * math.pi * i / segments
-        dlat = (radius_m / _EARTH_RADIUS_M) * math.cos(angle)
-        dlon = (radius_m / (_EARTH_RADIUS_M * cos_safe_lat)) * math.sin(angle)
+        dlat = (radius_m / EARTH_RADIUS_M) * math.cos(angle)
+        dlon = (radius_m / (EARTH_RADIUS_M * cos_safe_lat)) * math.sin(angle)
         ring.append([lon + math.degrees(dlon), lat + math.degrees(dlat)])
     return ring
 
 
 def _xml_escape(text: str) -> str:
-    """Minimal XML escaping for KML text content."""
-    return (
-        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
-    )
+    """XML escaping for KML text content."""
+    return html.escape(text, quote=True)
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +159,6 @@ def check_wdpa_overlap(
         Protected Planet API token.  Falls back to env var
         ``WDPA_API_TOKEN`` if not supplied.
     """
-    import os
-
     api_token = token or os.environ.get("WDPA_API_TOKEN", "")
     if not api_token:
         logger.info("WDPA check skipped — no API token configured")

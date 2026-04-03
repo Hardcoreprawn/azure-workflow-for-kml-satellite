@@ -50,6 +50,7 @@ class TableReplayStore:
 
         self._service = TableServiceClient.from_connection_string(connection_string)
         self._table_name = table_name
+        self._table_client = None
         self._ensure_table()
 
     def _ensure_table(self) -> None:
@@ -60,7 +61,9 @@ class TableReplayStore:
 
     @property
     def _table(self):
-        return self._service.get_table_client(self._table_name)
+        if self._table_client is None:
+            self._table_client = self._service.get_table_client(self._table_name)
+        return self._table_client
 
     def get_and_increment(self, nonce: str, ttl_seconds: int) -> int:
         import datetime

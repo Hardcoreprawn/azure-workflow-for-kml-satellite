@@ -27,13 +27,13 @@ from treesight.constants import (
     AI_AZURE_TIMEOUT_SECONDS,
     AI_MAX_TOKENS,
     AI_OLLAMA_TIMEOUT_SECONDS,
-    DEFAULT_HTTP_TIMEOUT_SECONDS,
     DEFAULT_OUTPUT_CONTAINER,
 )
 
 logger = logging.getLogger(__name__)
 
 # Azure AI configuration
+# NOTE: read at import time; changes to env vars after import are not picked up.
 AZURE_AI_ENDPOINT = os.environ.get("AZURE_AI_ENDPOINT", "")
 AZURE_AI_API_KEY = os.environ.get("AZURE_AI_API_KEY", "")
 AZURE_AI_DEPLOYMENT = os.environ.get("AZURE_AI_DEPLOYMENT", "gpt-4o-mini")
@@ -205,7 +205,7 @@ def _call_ollama(prompt: str) -> str | None:
         return None
 
     try:
-        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=AI_OLLAMA_TIMEOUT_SECONDS) as client:
             resp = client.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={
@@ -214,7 +214,6 @@ def _call_ollama(prompt: str) -> str | None:
                     "stream": False,
                     "temperature": 0.3,
                 },
-                timeout=AI_OLLAMA_TIMEOUT_SECONDS,
             )
             resp.raise_for_status()
             _ollama_circuit.record_success()
@@ -232,7 +231,8 @@ def _parse_json_response(text: str) -> dict[str, Any] | None:
         if json_match:
             return json.loads(json_match.group())
     except json.JSONDecodeError:
-        pass  # LLM response was not valid JSON — fall through to return None
+        logger.debug("Failed to parse JSON from LLM response: %.200s", text)
+    logger.debug("No valid JSON found in LLM response (length=%d)", len(text))
     return None
 
 

@@ -24,6 +24,7 @@ from typing import Any, cast
 import httpx
 
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
+from treesight.geo import transform_bbox
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.mosaic import PC_API
 
@@ -279,7 +280,7 @@ def _cog_band_read(
     from rasterio.windows import from_bounds as window_from_bounds
 
     with rasterio.open(url) as src:
-        src_bbox = _transform_bbox_4326(bbox, str(src.crs))
+        src_bbox = transform_bbox(bbox, "EPSG:4326", str(src.crs))
         window = window_from_bounds(*src_bbox, transform=src.transform)
         window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
         data = src.read(1, window=window)
@@ -317,27 +318,6 @@ def _resample_scl(
     return scl_data[np.ix_(row_idx, col_idx)]
 
 
-def _transform_bbox_4326(
-    bbox: list[float],
-    dst_crs: str,
-) -> tuple[float, float, float, float]:
-    """Reproject [min_lon, min_lat, max_lon, max_lat] from EPSG:4326."""
-    if dst_crs in ("EPSG:4326", "epsg:4326"):
-        return (bbox[0], bbox[1], bbox[2], bbox[3])
-
-    from pyproj import Transformer
-
-    transformer = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
-    x_min, y_min = transformer.transform(bbox[0], bbox[1])
-    x_max, y_max = transformer.transform(bbox[2], bbox[3])
-    return (
-        min(x_min, x_max),
-        min(y_min, y_max),
-        max(x_min, x_max),
-        max(y_min, y_max),
-    )
-
-
 def fetch_ndvi_stat(
     search_id: str,
     coords: list[list[float]],
@@ -367,6 +347,7 @@ def fetch_ndvi_stat(
         f"&expression=(B08_b1-B04_b1)/(B08_b1%2BB04_b1)"
         f"&rescale=-0.2,0.8&nodata=0&format=png"
     )
+    _owns_client = client is None
     http = client or httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
     try:
         r = http.get(url)
@@ -390,12 +371,25 @@ def fetch_ndvi_stat(
     except Exception as exc:
         logger.warning("NDVI stat fetch failed for %s: %s", search_id, exc)
         return None
+    finally:
+        if _owns_client:
+            http.close()
 
 
 def _extract_red_channel_from_png(png_bytes: bytes) -> list[int]:
     """Extract non-transparent red channel values from a PNG without PIL.
 
     Handles RGBA 8-bit PNGs (the format PC returns for expression tiles).
+
+    **Limitations** (manual PNG decoder — no Pillow dependency):
+    - Only 8-bit RGB (colour type 2) and 8-bit RGBA (colour type 6) are
+      supported.  Palette (type 3), greyscale (type 0/4), and 16-bit
+      images will be rejected.
+    - Interlaced (Adam7) PNGs are NOT handled; the decompressed scanline
+      layout assumed here is non-interlaced only.
+    - All five PNG filter types (None/Sub/Up/Average/Paeth) are
+      implemented, but edge-cases in corrupted streams may produce
+      incorrect pixel values rather than raising.
     """
     if png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
         return []
@@ -422,7 +416,14 @@ def _extract_red_channel_from_png(png_bytes: bytes) -> list[int]:
 
         pos += 12 + chunk_len  # 4 len + 4 type + data + 4 crc
 
-    if not width or not height or bit_depth != 8:
+    if not width or not height:
+        return []
+
+    if bit_depth != 8:
+        logger.warning(
+            "Unsupported PNG bit depth %d (only 8-bit supported); returning empty",
+            bit_depth,
+        )
         return []
 
     # Determine bytes per pixel
@@ -431,7 +432,12 @@ def _extract_red_channel_from_png(png_bytes: bytes) -> list[int]:
     elif color_type == 2:  # RGB
         bpp = 3
     else:
-        return []  # unsupported
+        logger.warning(
+            "Unsupported PNG colour type %d (only RGB=2 and RGBA=6 supported); "
+            "palette, greyscale, and interlaced images are not handled",
+            color_type,
+        )
+        return []
 
     try:
         decompressed: bytes = zlib.decompress(raw_idat)

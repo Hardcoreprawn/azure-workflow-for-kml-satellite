@@ -9,11 +9,11 @@ instead of ``dict[str, Any]`` — the runtime cannot resolve parameterised
 generics on binding arguments.
 """
 
-import contextlib
+import logging
 from typing import TYPE_CHECKING, Any
 
 from treesight.config import config_get_int
-from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+from treesight.constants import DEFAULT_OUTPUT_CONTAINER, DEFAULT_PROVIDER
 
 from . import bp
 
@@ -101,8 +101,15 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
     input_container = payload.get("input_container", "")
     source_file = payload["source_file"]
     if input_container and source_file:
-        with contextlib.suppress(Exception):
+        try:
             kml_bytes = storage.download_bytes(input_container, source_file)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to download source KML %s/%s for metadata",
+                input_container,
+                source_file,
+                exc_info=True,
+            )
 
     return _write(
         aoi=aoi,
@@ -153,7 +160,7 @@ def acquire_imagery(payload: _Payload) -> dict[str, Any]:
 
     aoi = _load_aoi(payload)
     provider = get_provider(
-        payload.get("provider_name", "planetary_computer"),
+        payload.get("provider_name", DEFAULT_PROVIDER),
         payload.get("provider_config"),
     )
     filters = (
@@ -172,7 +179,7 @@ def acquire_composite(payload: _Payload) -> list[dict[str, Any]]:
 
     aoi = _load_aoi(payload)
     provider = get_provider(
-        payload.get("provider_name", "planetary_computer"),
+        payload.get("provider_name", DEFAULT_PROVIDER),
         payload.get("provider_config"),
     )
     filters = (
@@ -194,7 +201,7 @@ def poll_order(payload: _Payload) -> dict[str, Any]:
     from treesight.providers.registry import get_provider
 
     provider = get_provider(
-        payload.get("provider_name", "planetary_computer"),
+        payload.get("provider_name", DEFAULT_PROVIDER),
         payload.get("provider_config"),
     )
     outcome = _poll(
@@ -222,7 +229,7 @@ def download_imagery(payload: _Payload) -> dict[str, Any]:
     from treesight.storage.client import BlobStorageClient
 
     provider = get_provider(
-        payload.get("provider_name", "planetary_computer"),
+        payload.get("provider_name", DEFAULT_PROVIDER),
         payload.get("provider_config"),
     )
     storage = BlobStorageClient()

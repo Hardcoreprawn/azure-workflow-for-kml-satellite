@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 _jwks_cache: dict[str, Any] = {}
 _jwks_lock = threading.Lock()
 _JWKS_TTL = 86400  # 24 hours
+_JWKS_MIN_REFETCH_INTERVAL = 5  # seconds – prevents thundering-herd on key rotation
+
+_auth_warned = False
 
 
 def _oidc_config_url() -> str:
@@ -70,12 +73,13 @@ def auth_enabled() -> bool:
                 "REQUIRE_AUTH is set but CIAM_TENANT_NAME or CIAM_CLIENT_ID "
                 "is missing. Refusing to start without authentication."
             )
-        if not getattr(auth_enabled, "_warned", False):
+        global _auth_warned
+        if not _auth_warned:
             logger.warning(
                 "CIAM auth is disabled — CIAM_TENANT_NAME or CIAM_CLIENT_ID not set. "
                 "All requests will be treated as anonymous."
             )
-            auth_enabled._warned = True  # type: ignore[attr-defined]
+            _auth_warned = True
     return enabled
 
 
@@ -113,8 +117,12 @@ def validate_token(auth_header: str) -> dict[str, Any]:
             break
 
     if not public_key:
-        # Key not found — maybe keys rotated. Force refresh once.
-        _jwks_cache.clear()
+        # Key not found — maybe keys rotated. Force refresh once,
+        # but respect the minimum refetch interval to avoid thundering herd.
+        with _jwks_lock:
+            elapsed = time.monotonic() - _jwks_cache.get("fetched_at", 0)
+            if elapsed >= _JWKS_MIN_REFETCH_INTERVAL:
+                _jwks_cache.clear()
         jwks = _fetch_jwks()
         for key_data in jwks.get("keys", []):
             if key_data.get("kid") == kid:

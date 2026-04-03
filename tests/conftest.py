@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
 
+import azure.functions as func
 import pytest
 
 # Ensure Azure storage env var is set for config module import
@@ -12,6 +16,10 @@ os.environ.setdefault("AzureWebJobsStorage", "UseDevelopmentStorage=true")
 os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+# Canonical test origins — use these instead of hardcoding strings in tests
+TEST_ORIGIN = "https://treesight.hrdcrprwn.com"
+TEST_LOCAL_ORIGIN = "http://localhost:4280"
 
 
 @pytest.fixture()
@@ -155,3 +163,81 @@ def tenant_blob_event_dict() -> dict:
         "event_time": "2025-01-15T11:00:00Z",
         "correlation_id": "evt-def-456",
     }
+
+
+# ---------------------------------------------------------------------------
+# M28 — shared HTTP request builder for endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def make_test_request(
+    url: str = "/api/test",
+    *,
+    method: str = "GET",
+    body: bytes | str | dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+    origin: str | None = TEST_ORIGIN,
+    auth_header: str | None = "Bearer fake-token",
+) -> func.HttpRequest:
+    """Build an ``azure.functions.HttpRequest`` for endpoint tests.
+
+    Consolidates the ``_make_req`` helpers previously duplicated across
+    test_analysis_submission_endpoints, test_billing_endpoints,
+    test_health_endpoints, and test_submission_cors.
+    """
+    h: dict[str, str] = {}
+    if origin:
+        h["Origin"] = origin
+    if auth_header:
+        h["Authorization"] = auth_header
+    if headers:
+        h.update(headers)
+
+    if body is None:
+        raw_body = b""
+    elif isinstance(body, bytes):
+        raw_body = body
+    elif isinstance(body, dict):
+        h.setdefault("Content-Type", "application/json")
+        raw_body = json.dumps(body).encode("utf-8")
+    else:
+        raw_body = body.encode("utf-8")
+
+    return func.HttpRequest(
+        method=method,
+        url=url,
+        headers=h,
+        params=params or {},
+        body=raw_body,
+    )
+
+
+# ---------------------------------------------------------------------------
+# M30 — shared mock-storage fixture (dict-backed BlobStorageClient)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_storage():
+    """Patch ``BlobStorageClient`` with an in-memory dict store.
+
+    Yields the backing ``dict`` so tests can pre-populate or inspect
+    stored values.  Supports ``download_json`` / ``upload_json``.
+    """
+    store: dict[str, dict] = {}
+    mock_cls = MagicMock()
+
+    def _download_json(_container: str, path: str) -> dict:
+        if path not in store:
+            raise FileNotFoundError(path)
+        return store[path]
+
+    def _upload_json(_container: str, path: str, data: dict) -> None:
+        store[path] = data
+
+    mock_cls.return_value.download_json = _download_json
+    mock_cls.return_value.upload_json = _upload_json
+
+    with patch("treesight.storage.client.BlobStorageClient", mock_cls):
+        yield store

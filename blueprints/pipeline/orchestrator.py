@@ -14,6 +14,7 @@ import azure.durable_functions as df
 
 from treesight.config import config_get_int
 from treesight.constants import (
+    BATCH_POLL_INTERVAL_SECONDS,
     DEFAULT_ACQUISITION_BATCH_SIZE,
     DEFAULT_DOWNLOAD_BATCH_SIZE,
     DEFAULT_INPUT_CONTAINER,
@@ -236,7 +237,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             if pending:
                 import datetime as _dt
 
-                fire_at = context.current_utc_datetime + _dt.timedelta(seconds=60)
+                fire_at = context.current_utc_datetime + _dt.timedelta(
+                    seconds=BATCH_POLL_INTERVAL_SECONDS
+                )
                 yield context.create_timer(fire_at)
 
     # Download serverless-tier imagery in batches

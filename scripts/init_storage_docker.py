@@ -2,6 +2,14 @@
 
 Installs azure-storage-blob at runtime (kept out of the slim image layer)
 and uses the well-known Azurite connection string.
+
+NOTE: This file intentionally duplicates constants from ``scripts/_azurite.py``.
+In docker-compose the script is volume-mounted as a single file
+(``/app/init_storage_docker.py``) into a bare ``uv:python3.12`` image —
+``_azurite.py`` is NOT available on ``sys.path`` inside that container.
+The duplication also lets us use ``os.environ.get`` overrides (the Docker
+service sets ``AZURITE_BLOB_HOST=azurite``) which ``_azurite.py`` does not
+support.
 """
 
 from __future__ import annotations

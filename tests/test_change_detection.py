@@ -8,31 +8,16 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import rasterio
-from rasterio.transform import from_bounds
+
+from tests.tiff_helpers import make_ndvi_tiff
 
 
 def _make_ndvi_tiff(
     data: np.ndarray,
     bounds: tuple[float, float, float, float] = (0, 0, 100, 100),
 ) -> bytes:
-    """Create a single-band float32 GeoTIFF from an NDVI array."""
-    h, w = data.shape
-    buf = io.BytesIO()
-    transform = from_bounds(*bounds, w, h)
-    with rasterio.open(
-        buf,
-        "w",
-        driver="GTiff",
-        height=h,
-        width=w,
-        count=1,
-        dtype="float32",
-        crs="EPSG:32632",
-        transform=transform,
-        nodata=np.nan,
-    ) as dst:
-        dst.write(data.astype(np.float32)[np.newaxis, :, :])
-    return buf.getvalue()
+    """Delegate to shared helper in tiff_helpers."""
+    return make_ndvi_tiff(data, bounds=bounds)
 
 
 class TestComputeChangeMap:

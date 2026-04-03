@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import PurePosixPath
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
 
@@ -36,6 +37,8 @@ def get_blob_service_client() -> BlobServiceClient:
 class BlobStorageClient:
     """Thin wrapper around Azure Blob SDK for pipeline operations."""
 
+    _known_containers: ClassVar[set[str]] = set()
+
     def __init__(self, connection_string: str | None = None) -> None:
         if connection_string:
             self._client = BlobServiceClient.from_connection_string(connection_string)
@@ -43,10 +46,17 @@ class BlobStorageClient:
             self._client = get_blob_service_client()
 
     def ensure_container(self, container_name: str) -> None:
-        """Create the container if it does not already exist."""
+        """Create the container if it does not already exist.
+
+        Skips the HTTP HEAD check when the container has already been
+        confirmed this process lifetime.
+        """
+        if container_name in self._known_containers:
+            return
         container = self._client.get_container_client(container_name)
         if not container.exists():
             container.create_container()
+        self._known_containers.add(container_name)
 
     def upload_bytes(
         self,
@@ -70,8 +80,6 @@ class BlobStorageClient:
 
     def upload_json(self, container: str, blob_path: str, data: dict[str, Any]) -> str:
         """Serialise *data* as JSON and upload it."""
-        import json
-
         payload = json.dumps(data, indent=2, default=str).encode("utf-8")
         return self.upload_bytes(container, blob_path, payload, content_type="application/json")
 
@@ -83,8 +91,6 @@ class BlobStorageClient:
 
     def download_json(self, container: str, blob_path: str) -> dict[str, Any]:
         """Download and deserialise a JSON blob as a dict."""
-        import json
-
         raw = json.loads(self.download_bytes(container, blob_path))
         if not isinstance(raw, dict):
             msg = f"Expected JSON object in {container}/{blob_path}, got {type(raw).__name__}"
@@ -93,8 +99,6 @@ class BlobStorageClient:
 
     def download_json_list(self, container: str, blob_path: str) -> list[dict[str, Any]]:
         """Download and deserialise a JSON blob as a list of dicts."""
-        import json
-
         raw = json.loads(self.download_bytes(container, blob_path))
         if not isinstance(raw, list):
             msg = f"Expected JSON array in {container}/{blob_path}, got {type(raw).__name__}"

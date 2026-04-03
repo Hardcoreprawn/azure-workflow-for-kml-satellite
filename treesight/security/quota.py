@@ -25,12 +25,6 @@ def _blob_path(user_id: str) -> str:
     return f"{_QUOTA_PREFIX}/{user_id}.json"
 
 
-def _cosmos_available() -> bool:
-    from treesight import config
-
-    return bool(config.COSMOS_ENDPOINT)
-
-
 def _run_limit(user_id: str) -> int:
     """Return the run limit for a user, checking subscription tier."""
     try:
@@ -47,43 +41,46 @@ def _run_limit(user_id: str) -> int:
 
 def _get_quota_record(user_id: str) -> dict[str, Any]:
     """Load the quota record from Cosmos (users container) or blob storage."""
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import read_item
+    from treesight.storage.cosmos_or_blob import read_with_fallback
 
-            doc = read_item("users", user_id, user_id)
-            if doc:
-                return doc.get("quota", {"used": 0, "runs": []})
-            return {"used": 0, "runs": []}
-        except Exception:
-            logger.warning("Cosmos read failed for quota user=%s, falling back to blob", user_id)
+    def _cosmos():
+        from treesight.storage.cosmos import read_item
 
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
-    try:
-        return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
-    except Exception:
+        doc = read_item("users", user_id, user_id)
+        if doc:
+            return doc.get("quota", {"used": 0, "runs": []})
         return {"used": 0, "runs": []}
+
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        try:
+            return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
+        except Exception:
+            return {"used": 0, "runs": []}
+
+    return read_with_fallback(_cosmos, _blob)
 
 
 def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
     """Persist the quota record to Cosmos (users container) or blob storage."""
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import read_item, upsert_item
+    from treesight.storage.cosmos_or_blob import write_with_fallback
 
-            existing = read_item("users", user_id, user_id) or {}
-            existing.update({"id": user_id, "user_id": user_id, "quota": record})
-            upsert_item("users", existing)
-            return
-        except Exception:
-            logger.warning("Cosmos write failed for quota user=%s, falling back to blob", user_id)
+    def _cosmos():
+        from treesight.storage.cosmos import read_item, upsert_item
 
-    from treesight.storage.client import BlobStorageClient
+        existing = read_item("users", user_id, user_id) or {}
+        existing.update({"id": user_id, "user_id": user_id, "quota": record})
+        upsert_item("users", existing)
 
-    storage = BlobStorageClient()
-    storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id), record)
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id), record)
+
+    write_with_fallback(_cosmos, _blob)
 
 
 def check_quota(user_id: str) -> int:
@@ -112,7 +109,13 @@ def consume_quota(user_id: str) -> int:
     """Increment usage and return remaining runs (after this one).
 
     Raises ``ValueError`` if the user has exhausted their quota.
+
+    .. warning::
+
+        The read/increment/write cycle is **not atomic**.  Concurrent
+        requests for the same user may over-count or under-count.
     """
+    # TODO: use Cosmos stored procedure for atomic quota increment
     limit = _run_limit(user_id)
     record = _get_quota_record(user_id)
 

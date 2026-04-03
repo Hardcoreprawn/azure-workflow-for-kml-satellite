@@ -8,7 +8,7 @@ from treesight.geo import (
     _buffer_bbox,
     _centroid,
     _compute_bbox,
-    _geodesic_area_ha,
+    _geodesic_area_and_perimeter,
     prepare_aoi,
 )
 from treesight.models.aoi import AOI
@@ -64,15 +64,15 @@ class TestGeodesicArea:
             [36.8, -1.31],
             [36.8, -1.3],
         ]
-        area = _geodesic_area_ha(coords)
+        area, _peri = _geodesic_area_and_perimeter(coords)
         assert area > 0
         # ~120 hectares for a 1.1km square
         assert 50 < area < 200
 
     def test_degenerate_polygon(self):
-        assert _geodesic_area_ha([]) == 0.0
-        assert _geodesic_area_ha([[0, 0]]) == 0.0
-        assert _geodesic_area_ha([[0, 0], [1, 0]]) == 0.0
+        assert _geodesic_area_and_perimeter([]) == (0.0, 0.0)
+        assert _geodesic_area_and_perimeter([[0, 0]]) == (0.0, 0.0)
+        assert _geodesic_area_and_perimeter([[0, 0], [1, 0]]) == (0.0, 0.0)
 
 
 class TestCentroid:

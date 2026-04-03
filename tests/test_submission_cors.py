@@ -15,11 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import TEST_ORIGIN
+
 
 def _make_request(
     body: dict[str, Any] | None = None,
     *,
-    origin: str = "https://treesight.hrdcrprwn.com",
+    origin: str = TEST_ORIGIN,
     auth_header: str | None = "Bearer fake-jwt",
 ) -> MagicMock:
     """Build a mock HttpRequest with Origin and optional auth."""
@@ -61,7 +63,7 @@ class TestAnalysisSubmitCORS:
         assert "Access-Control-Allow-Origin" in resp.headers, (
             "CORS headers missing on 202 success response — browser will block it"
         )
-        assert resp.headers["Access-Control-Allow-Origin"] == "https://treesight.hrdcrprwn.com"
+        assert resp.headers["Access-Control-Allow-Origin"] == TEST_ORIGIN
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
@@ -164,13 +166,13 @@ class TestDemoSubmitCORSParity:
 
 
 class TestErrorResponseCORS:
-    """_error_response must include CORS headers when a request is available."""
+    """error_response must include CORS headers when a request is available."""
 
     def test_error_response_without_req_has_no_cors(self):
-        """Baseline: plain _error_response (no req) has no CORS — this is expected."""
-        from blueprints.pipeline._helpers import _error_response
+        """Baseline: plain error_response (no req) has no CORS — this is expected."""
+        from blueprints._helpers import error_response
 
-        resp = _error_response(400, "bad request")
+        resp = error_response(400, "bad request")
         assert resp.status_code == 400
         # Without a request object, there's no Origin to reflect
         assert "Access-Control-Allow-Origin" not in resp.headers

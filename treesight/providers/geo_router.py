@@ -112,6 +112,11 @@ class GeoRoutingProvider(ImageryProvider):
         config = config or {}
         self._stub_mode = bool(config.get("stub_mode", False))
         self._pc_config: ProviderConfig = dict(config)
+        self._provider_class: type[ImageryProvider] | None = None
+
+    def set_provider_class(self, cls: type[ImageryProvider]) -> None:
+        """Override the underlying provider class (used by test infrastructure)."""
+        self._provider_class = cls
 
     @property
     def name(self) -> str:
@@ -120,13 +125,14 @@ class GeoRoutingProvider(ImageryProvider):
     # -- internal helpers ---------------------------------------------------
 
     def _make_pc(self, collections: list[str]) -> Any:
-        """Create a :class:`PlanetaryComputerProvider` for *collections*."""
+        """Create a provider for *collections*."""
         from treesight.providers.planetary_computer import PlanetaryComputerProvider
 
+        cls = self._provider_class or PlanetaryComputerProvider
         pc_config: ProviderConfig = dict(self._pc_config)
         pc_config["collections"] = collections
         pc_config["fallback"] = True
-        return PlanetaryComputerProvider(pc_config)
+        return cls(pc_config)
 
     def _route(self, aoi: AOI) -> Region:
         """Determine the coverage region for an AOI."""

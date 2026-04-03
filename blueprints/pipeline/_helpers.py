@@ -4,15 +4,11 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
-import json
 import re
 from typing import Any
 from urllib.parse import urlparse
 
-import azure.functions as func
-
-from blueprints._helpers import cors_headers
-from treesight.constants import MAX_KML_FILE_SIZE_BYTES
+from treesight.constants import DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.errors import ContractError
 
 # ---------------------------------------------------------------------------
@@ -49,29 +45,6 @@ def _expected_blob_host() -> str:
         return f"{m.group(1).lower()}.blob.core.windows.net"
 
     return ""
-
-
-# ---------------------------------------------------------------------------
-# Config helpers
-# ---------------------------------------------------------------------------
-
-
-def _cosmos_available() -> bool:
-    """Return True if Cosmos DB is configured for run storage."""
-    from treesight import config
-
-    return bool(config.COSMOS_ENDPOINT)
-
-
-def _error_response(
-    status: int, message: str, req: func.HttpRequest | None = None
-) -> func.HttpResponse:
-    return func.HttpResponse(
-        json.dumps({"error": message}),
-        status_code=status,
-        mimetype="application/json",
-        headers=cors_headers(req) if req is not None else {},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +165,8 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
             all_coords.extend(ext)
 
     if not all_coords:
+        # Intentional: use first AOI's bbox only. Enrichment (weather, NDVI)
+        # targets a single representative location, not the union of all AOIs.
         for aoi in aois:
             bb = aoi.get("bbox") or aoi.get("buffered_bbox")
             if bb and len(bb) == 4:
@@ -243,30 +218,6 @@ def _split_batch_routing(
     return serverless, batch
 
 
-def _dedup_orders_by_scene(
-    orders: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
-    """Deduplicate orders that share the same scene_id.
-
-    Returns ``(unique_orders, scene_to_aois)`` where *unique_orders* keeps
-    only the first order per scene and *scene_to_aois* maps each scene_id
-    to all AOI feature_names that need imagery from that scene.
-    """
-    seen: dict[str, dict[str, Any]] = {}
-    scene_to_aois: dict[str, list[str]] = {}
-
-    for o in orders:
-        sid = o.get("scene_id", "")
-        aoi_name = o.get("aoi_feature_name", "")
-        if sid not in seen:
-            seen[sid] = o
-            scene_to_aois[sid] = []
-        if aoi_name and aoi_name not in scene_to_aois[sid]:
-            scene_to_aois[sid].append(aoi_name)
-
-    return list(seen.values()), scene_to_aois
-
-
 def _acq_payload(
     ref: dict[str, str],
     inp: dict[str, Any],
@@ -275,7 +226,7 @@ def _acq_payload(
     """Build a single acquisition activity payload from a claim ref."""
     base: dict[str, Any] = {
         "aoi_ref": ref["ref"],
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "imagery_filters": inp.get("imagery_filters"),
     }
@@ -292,7 +243,7 @@ def _poll_payload(order: dict[str, Any], inp: dict[str, Any]) -> dict[str, Any]:
         "order_id": order.get("order_id", ""),
         "scene_id": order.get("scene_id", ""),
         "aoi_feature_name": order.get("aoi_feature_name", ""),
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "overrides": inp,
     }
@@ -315,7 +266,7 @@ def _download_payload(
         "aoi_ref": aoi_ref_lookup.get(outcome.get("aoi_feature_name", "")),
         "role": order_meta.get(oid, {}).get("role", ""),
         "collection": order_meta.get(oid, {}).get("collection", ""),
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "project_name": ctx["project_name"],
         "timestamp": ctx["timestamp"],

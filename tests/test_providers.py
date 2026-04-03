@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.stub_provider import StubPlanetaryComputerProvider
 from treesight.models.aoi import AOI
 from treesight.models.imagery import ImageryFilters
 from treesight.providers.base import BlobReference, OrderStatus
@@ -30,7 +31,7 @@ class TestPlanetaryComputerProvider:
         assert p.name == "planetary_computer"
 
     def test_stub_search_returns_results(self, sample_aoi: AOI):
-        p = PlanetaryComputerProvider({"stub_mode": True})
+        p = StubPlanetaryComputerProvider()
         results = p.search(sample_aoi, ImageryFilters())
         assert len(results) >= 1
         assert results[0].provider == "planetary_computer"
@@ -50,14 +51,14 @@ class TestPlanetaryComputerProvider:
         assert status.is_terminal is True
 
     def test_stub_download_returns_blob_ref(self):
-        p = PlanetaryComputerProvider({"stub_mode": True})
+        p = StubPlanetaryComputerProvider()
         ref = p.download("ord-123")
         assert isinstance(ref, BlobReference)
         assert ref.size_bytes > 0
         assert ref.content_type == "image/tiff"
 
     def test_search_result_fields(self, sample_aoi: AOI):
-        p = PlanetaryComputerProvider({"stub_mode": True})
+        p = StubPlanetaryComputerProvider()
         results = p.search(sample_aoi, ImageryFilters())
         r = results[0]
         # NAIP: no cloud cover, US CRS
@@ -68,7 +69,7 @@ class TestPlanetaryComputerProvider:
 
     def test_stub_search_s2_only(self, sample_aoi: AOI):
         """Explicit S2-only collections return Sentinel-2 stub results."""
-        p = PlanetaryComputerProvider({"stub_mode": True, "collections": ["sentinel-2-l2a"]})
+        p = StubPlanetaryComputerProvider({"collections": ["sentinel-2-l2a"]})
         results = p.search(sample_aoi, ImageryFilters())
         assert len(results) >= 1
         assert results[0].scene_id.startswith("S2B_MSIL2A_")
@@ -77,7 +78,7 @@ class TestPlanetaryComputerProvider:
 
     def test_stub_composite_search(self, sample_aoi: AOI):
         """Composite search returns 1 NAIP detail + N S2 temporal results."""
-        p = PlanetaryComputerProvider({"stub_mode": True})
+        p = StubPlanetaryComputerProvider()
         results = p.composite_search(sample_aoi, ImageryFilters(), temporal_count=4)
 
         assert len(results) == 5  # 1 NAIP + 4 S2
@@ -92,7 +93,7 @@ class TestPlanetaryComputerProvider:
 
     def test_stub_composite_temporal_dates_spread(self, sample_aoi: AOI):
         """Composite search temporal results have distinct acquisition dates."""
-        p = PlanetaryComputerProvider({"stub_mode": True})
+        p = StubPlanetaryComputerProvider()
         results = p.composite_search(sample_aoi, ImageryFilters(), temporal_count=3)
 
         temporal = [r for r in results if r.extra.get("role") == "temporal"]
@@ -117,7 +118,7 @@ class TestProviderRegistry:
             get_provider("nonexistent_provider")
 
     def test_get_geo_routing(self):
-        p = get_provider("geo_routing", {"stub_mode": True})
+        p = get_provider("geo_routing")
         assert p.name == "geo_routing"
 
 
@@ -212,13 +213,19 @@ class TestClassifyRegion:
 
 
 class TestGeoRoutingProvider:
+    def _make(self, config: dict | None = None) -> GeoRoutingProvider:
+        """Create a GeoRoutingProvider backed by StubPlanetaryComputerProvider."""
+        p = GeoRoutingProvider(config)
+        p.set_provider_class(StubPlanetaryComputerProvider)
+        return p
+
     def test_name(self):
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         assert p.name == "geo_routing"
 
     def test_us_search_uses_naip(self):
         """US CONUS AOI should route to NAIP first and get sub-meter results."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(US_AOI, ImageryFilters())
         assert len(results) >= 1
         r = results[0]
@@ -229,7 +236,7 @@ class TestGeoRoutingProvider:
 
     def test_europe_search_skips_naip(self):
         """European AOI should get Sentinel-2 directly, not NAIP."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(UK_AOI, ImageryFilters())
         assert len(results) >= 1
         r = results[0]
@@ -238,7 +245,7 @@ class TestGeoRoutingProvider:
 
     def test_tropics_search_uses_sentinel2(self):
         """Tropical AOI should route to Sentinel-2 (best free commercial-use source)."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(BRAZIL_AOI, ImageryFilters())
         assert len(results) >= 1
         r = results[0]
@@ -246,7 +253,7 @@ class TestGeoRoutingProvider:
         assert r.extra.get("collection") == "sentinel-2-l2a"
 
     def test_tropics_africa_search(self):
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(CONGO_AOI, ImageryFilters())
         assert len(results) >= 1
         assert results[0].extra.get("region") == "tropics_africa"
@@ -254,32 +261,32 @@ class TestGeoRoutingProvider:
 
     def test_global_fallback_search(self):
         """Non-regional AOI falls back to global (Sentinel-2 + Landsat)."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(PATAGONIA_AOI, ImageryFilters())
         assert len(results) >= 1
         assert results[0].extra.get("region") == "global"
         assert results[0].extra.get("collection") == "sentinel-2-l2a"
 
     def test_order_delegates_to_pc(self):
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         oid = p.order("test-scene-123")
         assert oid.startswith("pc-order-test-scene-123-")
 
     def test_poll_delegates_to_pc(self):
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         status = p.poll("any")
         assert isinstance(status, OrderStatus)
         assert status.state == "ready"
 
     def test_download_delegates_to_pc(self):
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         ref = p.download("ord-123")
         assert isinstance(ref, BlobReference)
         assert ref.content_type == "image/tiff"
 
     def test_composite_search_us(self):
         """Composite search on US CONUS includes NAIP detail."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.composite_search(US_AOI, ImageryFilters(), temporal_count=3)
         assert len(results) == 4  # 1 NAIP detail + 3 S2 temporal
         detail = [r for r in results if r.extra.get("role") == "detail"]
@@ -289,7 +296,7 @@ class TestGeoRoutingProvider:
 
     def test_explicit_collections_override_routing(self):
         """Caller-specified collections override geo-routing."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         filters = ImageryFilters(collections=["sentinel-2-l2a"])
         results = p.search(US_AOI, filters)
         assert len(results) >= 1
@@ -298,7 +305,7 @@ class TestGeoRoutingProvider:
 
     def test_results_tagged_with_routing_metadata(self):
         """All results include region and routed_by metadata."""
-        p = GeoRoutingProvider({"stub_mode": True})
+        p = self._make()
         results = p.search(UK_AOI, ImageryFilters())
         for r in results:
             assert "region" in r.extra

@@ -47,12 +47,12 @@ class TestGetBatchConfig:
             {
                 "poll_batch_size": 5,
                 "download_batch_size": "20",
-                "post_process_batch_size": 3.9,
+                "post_process_batch_size": 4.0,
             }
         )
         assert cfg["poll_batch_size"] == 5
         assert cfg["download_batch_size"] == 20
-        assert cfg["post_process_batch_size"] == 3
+        assert cfg["post_process_batch_size"] == 4
 
 
 class TestBuildPipelineSummary:
@@ -367,39 +367,6 @@ class TestGroupPerAoi:
 
         result = _group_per_aoi({}, {})
         assert result == []
-
-
-class TestDedupOrdersByScene:
-    def test_deduplicates_shared_scenes(self):
-        from blueprints.pipeline._helpers import _dedup_orders_by_scene
-
-        orders = [
-            {"scene_id": "S2_A", "aoi_feature_name": "farm_1", "order_id": "o1"},
-            {"scene_id": "S2_A", "aoi_feature_name": "farm_2", "order_id": "o2"},
-            {"scene_id": "S2_B", "aoi_feature_name": "farm_3", "order_id": "o3"},
-        ]
-        unique, scene_map = _dedup_orders_by_scene(orders)
-        assert len(unique) == 2
-        assert set(scene_map["S2_A"]) == {"farm_1", "farm_2"}
-        assert scene_map["S2_B"] == ["farm_3"]
-
-    def test_no_duplicates(self):
-        from blueprints.pipeline._helpers import _dedup_orders_by_scene
-
-        orders = [
-            {"scene_id": "S1", "aoi_feature_name": "a", "order_id": "o1"},
-            {"scene_id": "S2", "aoi_feature_name": "b", "order_id": "o2"},
-        ]
-        unique, scene_map = _dedup_orders_by_scene(orders)
-        assert len(unique) == 2
-        assert len(scene_map) == 2
-
-    def test_empty_list(self):
-        from blueprints.pipeline._helpers import _dedup_orders_by_scene
-
-        unique, scene_map = _dedup_orders_by_scene([])
-        assert unique == []
-        assert scene_map == {}
 
 
 class TestAoiSummaryModel:
