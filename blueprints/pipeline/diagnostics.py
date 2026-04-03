@@ -9,11 +9,11 @@ import json
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight
+from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 
 from . import bp
-from ._helpers import _durable_status_payload, _error_response
+from ._helpers import _durable_status_payload
 from .history import _build_analysis_history_response
 
 
@@ -34,10 +34,10 @@ async def orchestrator_status(
     try:
         check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc), req)
+        return error_response(401, str(exc), req=req)
 
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return _error_response(429, "Rate limit exceeded — try again later", req)
+        return error_response(429, "Rate limit exceeded — try again later", req=req)
 
     instance_id = req.route_params.get("instance_id", "")
     if not instance_id:
@@ -79,12 +79,12 @@ async def analysis_history(
     try:
         _claims, user_id = check_auth(req)
     except ValueError as exc:
-        return _error_response(401, str(exc), req)
+        return error_response(401, str(exc), req=req)
 
     if user_id == "anonymous":
-        return _error_response(401, "Authentication required for analysis history", req)
+        return error_response(401, "Authentication required for analysis history", req=req)
 
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return _error_response(429, "Rate limit exceeded — try again later", req)
+        return error_response(429, "Rate limit exceeded — try again later", req=req)
 
     return await _build_analysis_history_response(req, client, user_id)

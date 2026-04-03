@@ -56,6 +56,7 @@ DEFAULT_MAX_ITEMS = 5
 
 class PlanetaryComputerProvider(ImageryProvider):
     def __init__(self, config: ProviderConfig | None = None) -> None:
+        super().__init__(config)
         config = config or {}
         self.api_url = str(config.get("api_url", DEFAULT_API_URL))
         self._stub_mode = bool(config.get("stub_mode", False))
@@ -82,7 +83,10 @@ class PlanetaryComputerProvider(ImageryProvider):
         log_phase("acquisition", "search", aoi_name=aoi.feature_name, provider=self.name)
 
         if self._stub_mode:
-            return self._stub_search(aoi, filters)
+            raise NotImplementedError(
+                "stub_mode is no longer supported inline — "
+                "use tests.stub_provider.StubPlanetaryComputerProvider instead"
+            )
 
         import planetary_computer
         from pystac_client import Client
@@ -217,7 +221,10 @@ class PlanetaryComputerProvider(ImageryProvider):
         log_phase("fulfilment", "download", order_id=order_id, provider=self.name)
 
         if self._stub_mode:
-            return self._stub_download(order_id)
+            raise NotImplementedError(
+                "stub_mode is no longer supported inline — "
+                "use tests.stub_provider.StubPlanetaryComputerProvider instead"
+            )
 
         return BlobReference(
             container=OUTPUT_CONTAINER,
@@ -258,7 +265,10 @@ class PlanetaryComputerProvider(ImageryProvider):
         )
 
         if self._stub_mode:
-            return self._stub_composite_search(aoi, filters, temporal_count)
+            raise NotImplementedError(
+                "stub_mode is no longer supported inline — "
+                "use tests.stub_provider.StubPlanetaryComputerProvider instead"
+            )
 
         import planetary_computer
         from pystac_client import Client
@@ -360,124 +370,3 @@ class PlanetaryComputerProvider(ImageryProvider):
         if epsg:
             return f"EPSG:{epsg}"
         return "EPSG:4326"
-
-    # --- Stub helpers (unit tests only) ---
-
-    def _stub_search(self, aoi: AOI, filters: ImageryFilters) -> list[SearchResult]:
-        """Return a realistic-looking synthetic search result.
-
-        When the default collection order is used the stub pretends NAIP
-        returned a result (higher res).  If the caller explicitly requests
-        only ``sentinel-2-l2a`` the stub returns an S2 result instead.
-        """
-        now = datetime.now(UTC)
-        collections = filters.collections or self._collections
-
-        # Return a stub for the *first* collection in priority order.
-        first = collections[0] if collections else "sentinel-2-l2a"
-        return [self._stub_result_for_collection(first, aoi, now)]
-
-    def _stub_result_for_collection(self, collection: str, aoi: AOI, now: datetime) -> SearchResult:
-        """Return a single realistic stub result for *collection*."""
-        gsd = COLLECTION_DEFAULT_GSD.get(collection, 10.0)
-        asset_key = COLLECTION_ASSET_KEYS.get(collection, DEFAULT_ASSET_KEY)
-
-        _stub_profiles: dict[str, dict[str, object]] = {
-            "naip": {
-                "prefix": "naip",
-                "cloud": 0.0,
-                "crs": "EPSG:26911",
-                "off_nadir": 0.0,
-            },
-            "sentinel-2-l2a": {
-                "prefix": "S2B_MSIL2A",
-                "cloud": 8.5,
-                "crs": "EPSG:32637",
-                "off_nadir": 5.2,
-            },
-            "landsat-c2-l2": {
-                "prefix": "LC09_L2SP",
-                "cloud": 12.0,
-                "crs": "EPSG:32614",
-                "off_nadir": 0.0,
-            },
-        }
-        profile = _stub_profiles.get(collection, _stub_profiles["sentinel-2-l2a"])
-        scene_id = f"{profile['prefix']}_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-
-        return SearchResult(
-            scene_id=scene_id,
-            provider=self.name,
-            acquisition_date=now,
-            cloud_cover_pct=float(profile["cloud"]),  # type: ignore[arg-type]
-            spatial_resolution_m=gsd,
-            off_nadir_deg=float(profile["off_nadir"]),  # type: ignore[arg-type]
-            crs=str(profile["crs"]),
-            bbox=aoi.buffered_bbox,
-            asset_url=f"https://stub.blob.core.windows.net/imagery/{scene_id}.tif",
-            extra={"collection": collection, "asset_key": asset_key, "stub": True},
-        )
-
-    def _stub_download(self, order_id: str) -> BlobReference:
-        """Return a synthetic blob reference."""
-        return BlobReference(
-            container=OUTPUT_CONTAINER,
-            blob_path=f"imagery/raw/stub/{order_id}.tif",
-            size_bytes=1024,
-            content_type="image/tiff",
-        )
-
-    def _stub_composite_search(
-        self,
-        aoi: AOI,
-        filters: ImageryFilters,
-        temporal_count: int,
-    ) -> list[SearchResult]:
-        """Synthetic composite results for unit tests."""
-        from datetime import timedelta
-
-        now = datetime.now(UTC)
-        results: list[SearchResult] = []
-
-        # NAIP detail
-        naip_id = f"naip_{now.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-        results.append(
-            SearchResult(
-                scene_id=naip_id,
-                provider=self.name,
-                acquisition_date=now,
-                cloud_cover_pct=0.0,
-                spatial_resolution_m=0.6,
-                off_nadir_deg=0.0,
-                crs="EPSG:26911",
-                bbox=aoi.buffered_bbox,
-                asset_url=f"https://stub.blob.core.windows.net/imagery/{naip_id}.tif",
-                extra={"collection": "naip", "asset_key": "image", "role": "detail", "stub": True},
-            )
-        )
-
-        # S2 temporal series
-        for i in range(temporal_count):
-            dt = now - timedelta(days=60 * (i + 1))
-            s2_id = f"S2B_MSIL2A_{dt.strftime('%Y%m%d')}_{uuid.uuid4().hex[:6]}"
-            results.append(
-                SearchResult(
-                    scene_id=s2_id,
-                    provider=self.name,
-                    acquisition_date=dt,
-                    cloud_cover_pct=5.0 + i * 2,
-                    spatial_resolution_m=10.0,
-                    off_nadir_deg=3.0,
-                    crs="EPSG:32611",
-                    bbox=aoi.buffered_bbox,
-                    asset_url=f"https://stub.blob.core.windows.net/imagery/{s2_id}.tif",
-                    extra={
-                        "collection": "sentinel-2-l2a",
-                        "asset_key": "visual",
-                        "role": "temporal",
-                        "stub": True,
-                    },
-                )
-            )
-
-        return results

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 from typing import Any
 
@@ -18,8 +19,10 @@ MONTHS: list[dict[str, Any]] = [
     {"key": f"m{m:02d}", "label": f"Month {m}", "month": m} for m in range(1, 13)
 ]
 
-SEASONAL_YEARS = list(range(2018, 2027))
+SEASONAL_YEARS = list(range(2018, date.today().year + 1))
 NAIP_ONLY_YEARS = [2012, 2014, 2016]
+# NAIP imagery releases lag ~2 years; update this set when new vintages
+# are published on Planetary Computer (typically even-numbered years).
 NAIP_SUMMERS = {
     "2012-summer",
     "2014-summer",
@@ -46,17 +49,12 @@ def _aoi_has_naip(coords: list[list[float]]) -> bool:
 def _season_window(year: int, season: dict[str, Any]) -> dict[str, str]:
     """Compute date window for a season/year, matching frontend logic."""
     if season["key"] == "winter":
-        return {"start": f"{year - 1}-12-01", "end": f"{year}-02-28"}
+        _, feb_end = calendar.monthrange(year, 2)
+        return {"start": f"{year - 1}-12-01", "end": f"{year}-02-{feb_end}"}
     m0 = season["months"][0]
     m2 = season["months"][2]
     start = f"{year}-{m0:02d}-01"
-    # Last day of end month
-    if m2 == 2:
-        end_day = 28
-    elif m2 in (4, 6, 9, 11):
-        end_day = 30
-    else:
-        end_day = 31
+    _, end_day = calendar.monthrange(year, m2)
     end = f"{year}-{m2:02d}-{end_day}"
     return {"start": start, "end": end}
 

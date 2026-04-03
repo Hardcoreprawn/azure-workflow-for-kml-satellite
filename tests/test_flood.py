@@ -65,9 +65,7 @@ class TestFetchEaFloods:
             side_effect=Exception("timeout"),
         ):
             events = fetch_ea_floods(52.0, -1.5, 53.0, -0.5)
-        assert len(events) == 1
-        assert events[0]["source"] == "ea_error"
-        assert "error" in events[0]
+        assert events == []
 
 
 # ---------------------------------------------------------------------------
@@ -114,9 +112,7 @@ class TestFetchUsgsStreamflow:
             side_effect=Exception("timeout"),
         ):
             events = fetch_usgs_streamflow(39.0, -101.0, 41.0, -99.0)
-        assert len(events) == 1
-        assert events[0]["source"] == "usgs_error"
-        assert "error" in events[0]
+        assert events == []
 
 
 # ---------------------------------------------------------------------------

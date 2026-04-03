@@ -16,7 +16,12 @@ import logging
 import math
 from typing import Any
 
+from treesight.constants import METRES_PER_DEGREE_LATITUDE
+
 logger = logging.getLogger(__name__)
+
+# Kilometres per degree of latitude (constant for spherical approximation)
+_KM_PER_DEGREE_LAT = METRES_PER_DEGREE_LATITUDE / 1000.0
 
 # NDVI health classification thresholds (Sentinel-2 L2A, 0–1 scale)
 NDVI_THRESHOLDS = {
@@ -296,7 +301,7 @@ def _bbox_width_km(bbox: list[float]) -> float:
         return 0.0
     min_lon, min_lat, max_lon, max_lat = bbox
     mid_lat = (min_lat + max_lat) / 2
-    deg_to_km = 111.32 * math.cos(math.radians(mid_lat))
+    deg_to_km = _KM_PER_DEGREE_LAT * math.cos(math.radians(mid_lat))
     return abs(max_lon - min_lon) * deg_to_km
 
 
@@ -304,7 +309,7 @@ def _bbox_height_km(bbox: list[float]) -> float:
     """Approximate north-south extent of bbox in kilometres."""
     if len(bbox) < 4:
         return 0.0
-    return abs(bbox[3] - bbox[1]) * 111.32
+    return abs(bbox[3] - bbox[1]) * _KM_PER_DEGREE_LAT
 
 
 def _worst_change(changes: list[dict[str, Any]], key: str) -> dict[str, Any] | None:

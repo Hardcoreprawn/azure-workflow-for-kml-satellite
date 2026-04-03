@@ -1,3 +1,8 @@
 """TreeSight — KML satellite imagery pipeline."""
 
-__version__ = "1.0.0"
+import importlib.metadata
+
+try:
+    __version__ = importlib.metadata.version("treesight")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "0.0.0-dev"

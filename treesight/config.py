@@ -34,7 +34,10 @@ def _env_int(key: str, default: int) -> int:
     raw = os.environ.get(key)
     if raw is None:
         return default
-    return config_get_int({key: raw}, key, default)
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return default
 
 
 def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
@@ -44,11 +47,15 @@ def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
         return default
     if isinstance(val, int):
         return val
-    if isinstance(val, (str, float)):
+    if isinstance(val, float):
+        if val != int(val):
+            raise ValueError(f"Non-integer float value for {key!r}: {val!r}")
+        return int(val)
+    if isinstance(val, str):
         try:
-            return int(float(val))
-        except (ValueError, TypeError):
-            return default
+            return int(val)
+        except ValueError:
+            raise ValueError(f"Non-integer string value for {key!r}: {val!r}") from None
     return default
 
 

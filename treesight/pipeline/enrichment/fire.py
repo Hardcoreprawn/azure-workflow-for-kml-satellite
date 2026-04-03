@@ -20,6 +20,7 @@ from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS
 logger = logging.getLogger(__name__)
 
 FIRMS_API_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
+# NOTE: read at import time; changes to env vars after import are not picked up.
 FIRMS_API_KEY = os.environ.get("FIRMS_API_KEY", "")
 
 # Default source and day range

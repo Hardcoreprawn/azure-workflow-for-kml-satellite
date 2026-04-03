@@ -5,6 +5,7 @@ Pure business logic, no Azure Functions dependencies.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -17,6 +18,8 @@ from treesight.models.aoi import AOI
 from treesight.models.blob_event import BlobEvent
 from treesight.models.feature import Feature
 from treesight.storage.client import BlobStorageClient
+
+logger = logging.getLogger(__name__)
 
 
 def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> list[Feature]:
@@ -33,6 +36,11 @@ def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> li
 
         features = parse_kml_fiona(kml_bytes, source_file=source_file)
     except Exception:
+        logger.warning(
+            "Fiona parser failed for %s, falling back to lxml",
+            blob_event.blob_name,
+            exc_info=True,
+        )
         from treesight.parsers.lxml_parser import parse_kml_lxml
 
         features = parse_kml_lxml(kml_bytes, source_file=source_file)

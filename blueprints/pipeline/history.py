@@ -14,9 +14,10 @@ import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import cors_headers
-from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
+from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
+from treesight.storage import cosmos as _cosmos_mod
 
-from ._helpers import _cosmos_available, _durable_status_payload
+from ._helpers import _durable_status_payload
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -79,7 +80,7 @@ def _persist_submission_record(
     submission_id: str,
 ) -> None:
     """Write a submission record to Cosmos (preferred) or blob storage."""
-    if _cosmos_available():
+    if _cosmos_mod.cosmos_available():
         try:
             from treesight.storage import cosmos
 
@@ -129,9 +130,12 @@ def _parse_history_offset(raw_offset: str) -> int:
     return max(0, min(offset, _MAX_HISTORY_OFFSET))
 
 
-def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> list:
+def _fetch_submission_records(
+    user_id: str, limit: int, *, offset: int = 0, max_results: int = 100
+) -> list:
+    # TODO: paginated Cosmos query — blob fallback is O(n) over all blobs
     """Retrieve submission records from Cosmos (preferred) or blob storage."""
-    if _cosmos_available():
+    if _cosmos_mod.cosmos_available():
         try:
             from treesight.storage import cosmos
 
@@ -164,6 +168,8 @@ def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> l
 
     try:
         blob_names = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix=prefix)
+        if max_results:
+            blob_names = blob_names[:max_results]
     except Exception:
         logging.info("No analysis history found for user=%s prefix=%s", user_id, prefix)
 
@@ -192,7 +198,11 @@ async def _build_analysis_history_response(
     offset = _parse_history_offset(req.params.get("offset", ""))
     records = _fetch_submission_records(user_id, limit, offset=offset)
 
-    runs = [await _build_analysis_history_entry(record, client) for record in records]
+    import asyncio
+
+    runs = await asyncio.gather(
+        *(_build_analysis_history_entry(record, client) for record in records)
+    )
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 
     payload = {
@@ -235,7 +245,7 @@ async def _build_analysis_history_entry(
         "instanceId": instance_id,
         "submittedAt": record.get("submitted_at", ""),
         "submissionPrefix": record.get("submission_prefix", "analysis"),
-        "providerName": record.get("provider_name", "planetary_computer"),
+        "providerName": record.get("provider_name", DEFAULT_PROVIDER),
         "featureCount": feature_count,
         "aoiCount": aoi_count,
         "processingMode": record.get("processing_mode"),

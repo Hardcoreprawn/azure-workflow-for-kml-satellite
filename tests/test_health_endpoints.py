@@ -9,22 +9,21 @@ Covers:
 
 import json
 
-import azure.functions as func
-
 from blueprints.health import contract, health, readiness
+from tests.conftest import TEST_ORIGIN, make_test_request
 from treesight.constants import API_CONTRACT_VERSION
 
 _ALLOWED_ORIGIN = "https://polite-glacier-0d6885003.4.azurestaticapps.net"
-_CUSTOM_DOMAIN_ORIGIN = "https://treesight.hrdcrprwn.com"
+_CUSTOM_DOMAIN_ORIGIN = TEST_ORIGIN
 _UNKNOWN_ORIGIN = "https://evil.example.com"
 
 
 def _make_req(method="GET", origin=_ALLOWED_ORIGIN):
-    return func.HttpRequest(
-        method=method,
+    return make_test_request(
         url="/api/health",
-        headers={"Origin": origin} if origin else {},
-        body=b"",
+        method=method,
+        origin=origin,
+        auth_header=None,
     )
 
 

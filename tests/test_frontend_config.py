@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
+
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
@@ -78,11 +80,11 @@ class TestCsp:
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         frame_match = re.search(r"frame-src\s+([^;]+)", csp)
         assert frame_match, "CSP missing frame-src directive"
-        frame_src = frame_match.group(1)
-        assert "treesightauth.ciamlogin.com" in frame_src, (
-            "frame-src must include treesightauth.ciamlogin.com for MSAL iframes"
-        )
-        assert "login.microsoftonline.com" in frame_src
+        sources = frame_match.group(1).split()
+        assert any(
+            _csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in sources
+        ), "frame-src must include treesightauth.ciamlogin.com for MSAL iframes"
+        assert any(_csp_token_matches_host(src, "login.microsoftonline.com") for src in sources)
 
     def test_frame_src_not_none(self, swa_config):
         """frame-src 'none' breaks MSAL silent token renewal."""
@@ -96,16 +98,21 @@ class TestCsp:
     def test_script_src_no_dead_cdn(self, swa_config):
         """CSP script-src must not reference the deprecated MSAL CDN."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
-        assert "alcdn.msauth.net" not in csp, "CSP still references deprecated alcdn.msauth.net CDN"
+        script_match = re.search(r"script-src\s+([^;]+)", csp)
+        assert script_match, "CSP missing script-src directive"
+        sources = script_match.group(1).split()
+        assert not any(_csp_token_matches_host(src, "alcdn.msauth.net") for src in sources), (
+            "CSP still references deprecated alcdn.msauth.net CDN"
+        )
 
     def test_connect_src_allows_ciam(self, swa_config):
         """CSP connect-src must allow CIAM token endpoint calls."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
-        connect_src = connect_match.group(1)
-        assert "treesightauth.ciamlogin.com" in connect_src
-        assert "login.microsoftonline.com" in connect_src
+        sources = connect_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in sources)
+        assert any(_csp_token_matches_host(src, "login.microsoftonline.com") for src in sources)
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +153,13 @@ class TestCorsConfig:
     def test_swa_hostname_in_cors_origins(self):
         """The SWA default hostname must be in _ALLOWED_ORIGINS."""
         src = HELPERS_PY.read_text()
-        assert "polite-glacier-0d6885003.4.azurestaticapps.net" in src
+        assert re.search(
+            r'["\']https://polite-glacier-0d6885003\.4\.azurestaticapps\.net["\']', src
+        ), "_ALLOWED_ORIGINS must contain the SWA default hostname"
 
     def test_custom_domain_in_cors_origins(self):
         """The custom domain must be in _ALLOWED_ORIGINS."""
         src = HELPERS_PY.read_text()
-        assert "treesight.hrdcrprwn.com" in src
+        assert re.search(r'["\']https://treesight\.hrdcrprwn\.com["\']', src), (
+            "_ALLOWED_ORIGINS must contain the custom domain"
+        )

@@ -48,16 +48,16 @@ def acquire_imagery(
         order_id=order_id,
     )
 
-    return {
-        "order_id": order_id,
-        "scene_id": best.scene_id,
-        "provider": provider.name,
-        "cloud_cover_pct": best.cloud_cover_pct,
-        "acquisition_date": best.acquisition_date.isoformat(),
-        "spatial_resolution_m": best.spatial_resolution_m,
-        "asset_url": best.asset_url,
-        "aoi_feature_name": aoi.feature_name,
-    }
+    return ImageryOutcome(
+        order_id=order_id,
+        scene_id=best.scene_id,
+        provider=provider.name,
+        cloud_cover_pct=best.cloud_cover_pct,
+        acquisition_date=best.acquisition_date.isoformat(),
+        spatial_resolution_m=best.spatial_resolution_m,
+        asset_url=best.asset_url,
+        aoi_feature_name=aoi.feature_name,
+    ).model_dump()
 
 
 def acquire_composite(
@@ -106,18 +106,18 @@ def acquire_composite(
         )
 
         orders.append(
-            {
-                "order_id": order_id,
-                "scene_id": r.scene_id,
-                "provider": provider.name,
-                "cloud_cover_pct": r.cloud_cover_pct,
-                "acquisition_date": r.acquisition_date.isoformat(),
-                "spatial_resolution_m": r.spatial_resolution_m,
-                "asset_url": r.asset_url,
-                "aoi_feature_name": aoi.feature_name,
-                "role": role,
-                "collection": collection,
-            }
+            ImageryOutcome(
+                order_id=order_id,
+                scene_id=r.scene_id,
+                provider=provider.name,
+                cloud_cover_pct=r.cloud_cover_pct,
+                acquisition_date=r.acquisition_date.isoformat(),
+                spatial_resolution_m=r.spatial_resolution_m,
+                asset_url=r.asset_url,
+                aoi_feature_name=aoi.feature_name,
+                role=role,
+                collection=collection,
+            ).model_dump()
         )
 
     return orders

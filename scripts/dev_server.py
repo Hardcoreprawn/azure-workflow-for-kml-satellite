@@ -11,11 +11,11 @@ from __future__ import annotations
 import argparse
 import http.server
 import os
+import posixpath
 import socketserver
 import urllib.error
 import urllib.request
-import posixpath
-from urllib.parse import urlparse, urlunparse, unquote
+from urllib.parse import unquote, urlparse, urlunparse
 
 
 class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
@@ -52,7 +52,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
     # --- proxy logic ---
 
     def _proxy(self) -> None:
-        # Validate and normalize the path to prevent host/scheme or path traversal issues
+        # Validate and normalise the path to prevent host/scheme or traversal
         parsed = urlparse(self.path)
         if parsed.scheme or parsed.netloc:
             self.send_response(400)
@@ -62,15 +62,13 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b'{"error":"Invalid path"}')
             return
 
-        # Normalize the path and ensure it stays under /api/
+        # Normalise the path and ensure it stays under /api/
         raw_path = parsed.path or "/"
-        decoded_path = unquote(raw_path)
-        normalized_path = posixpath.normpath(decoded_path)
-        if not normalized_path.startswith("/"):
-            normalized_path = "/" + normalized_path
+        normalised = posixpath.normpath(unquote(raw_path))
+        if not normalised.startswith("/"):
+            normalised = "/" + normalised
 
-        # Enforce that all proxied requests remain under the /api/ prefix
-        if not normalized_path.startswith("/api/"):
+        if not (normalised.startswith("/api/") or normalised == "/api"):
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self._cors_headers()
@@ -78,8 +76,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(b'{"error":"Invalid API path"}')
             return
 
-        # Reconstruct the URL suffix with the sanitized path plus original query/fragment
-        safe_suffix = urlunparse(("", "", normalized_path, "", parsed.query, parsed.fragment))
+        safe_suffix = urlunparse(("", "", normalised, "", parsed.query, parsed.fragment))
         target = f"{self.func_origin}{safe_suffix}"
 
         # Read request body (for POST)
@@ -94,10 +91,17 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
             if val:
                 request.add_header(header, val)
 
+        # Build an opener that refuses redirects — prevents a compromised
+        # func host from bouncing us to internal/external endpoints.
+        opener = urllib.request.build_opener()
+        opener.handlers = [
+            h for h in opener.handlers if not isinstance(h, urllib.request.HTTPRedirectHandler)
+        ]
+
         try:
             # Use extended timeout for AI analysis endpoints (can take 100+ seconds)
-            timeout = 180.0 if "/timelapse-analysis" in self.path else 60.0
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
+            timeout = 180.0 if "/timelapse-analysis" in normalised else 60.0
+            with opener.open(request, timeout=timeout) as resp:
                 resp_body = resp.read()
                 self.send_response(resp.status)
                 for key, val in resp.getheaders():

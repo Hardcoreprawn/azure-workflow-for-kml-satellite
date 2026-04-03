@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 from typing import Any
 
 from treesight.constants import BATCH_FALLBACK_AREA_HA
@@ -83,13 +84,14 @@ def submit_batch_job(
 
     # Command: invoke the same fulfilment logic as a standalone script.
     # The Batch node has the application package pre-installed.
+    # Use shlex.quote() to prevent shell injection via user-controlled values.
     command_line = (
         f"python -m treesight.pipeline.fulfilment "
-        f"--claim-key {claim_key} "
-        f"--asset-url {asset_url} "
-        f"--output-container {output_container} "
-        f"--project {project_name} "
-        f"--timestamp {timestamp}"
+        f"--claim-key {shlex.quote(claim_key)} "
+        f"--asset-url {shlex.quote(asset_url)} "
+        f"--output-container {shlex.quote(output_container)} "
+        f"--project {shlex.quote(project_name)} "
+        f"--timestamp {shlex.quote(timestamp)}"
     )
 
     job = JobAddParameter(
