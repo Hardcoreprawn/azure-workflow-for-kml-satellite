@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import time
 
 import pytest
@@ -40,12 +41,10 @@ class TestMintValetToken:
 
     def test_no_secret_raises(self, monkeypatch):
         monkeypatch.setenv("DEMO_VALET_TOKEN_SECRET", "")
-        import importlib
+        config_mod = importlib.import_module("treesight.config")
+        valet_mod = importlib.import_module("treesight.security.valet")
 
-        import treesight.config
-        import treesight.security.valet as valet_mod
-
-        importlib.reload(treesight.config)
+        importlib.reload(config_mod)
         importlib.reload(valet_mod)
         try:
             with pytest.raises(ValueError, match="not configured"):
@@ -59,7 +58,7 @@ class TestMintValetToken:
                 )
         finally:
             monkeypatch.setenv("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
-            importlib.reload(treesight.config)
+            importlib.reload(config_mod)
             importlib.reload(valet_mod)
 
 

@@ -233,12 +233,14 @@ class TestFulfilmentE2E:
 
     def test_download_writes_blob_to_azurite(self) -> None:
         """``download_imagery`` writes a GeoTIFF placeholder to Azurite."""
+        from unittest.mock import patch
+
+        from tests.stub_provider import StubPlanetaryComputerProvider, get_stub_geotiff
         from treesight.pipeline.fulfilment import download_imagery
-        from treesight.providers.planetary_computer import PlanetaryComputerProvider
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient(connection_string=AZURITE_CONN_STR)
-        provider = PlanetaryComputerProvider({"stub_mode": True})
+        provider = StubPlanetaryComputerProvider()
 
         outcome = {
             "order_id": "pc-order-e2e-001",
@@ -248,14 +250,19 @@ class TestFulfilmentE2E:
             "state": "ready",
         }
 
-        result = download_imagery(
-            outcome=outcome,
-            provider=provider,
-            project_name="e2e-farm",
-            timestamp="2026-03-18T12:00:00Z",
-            output_container="kml-output",
-            storage=storage,
-        )
+        with patch(
+            "treesight.pipeline.fulfilment.fetch_asset_bytes",
+            return_value=get_stub_geotiff(),
+        ):
+            result = download_imagery(
+                outcome=outcome,
+                provider=provider,
+                project_name="e2e-farm",
+                timestamp="2026-03-18T12:00:00Z",
+                output_container="kml-output",
+                storage=storage,
+                asset_url="https://stub.example.com/test.tif",
+            )
 
         assert result["blob_path"].endswith(".tif")
         assert result["container"] == "kml-output"
@@ -267,8 +274,9 @@ class TestFulfilmentE2E:
 
     def test_post_process_writes_clipped_blob(self) -> None:
         """``post_process_imagery`` writes a clipped blob to Azurite."""
+        from tests.stub_provider import get_stub_geotiff
         from treesight.models.aoi import AOI
-        from treesight.pipeline.fulfilment import _get_stub_geotiff, post_process_imagery
+        from treesight.pipeline.fulfilment import post_process_imagery
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient(connection_string=AZURITE_CONN_STR)
@@ -287,7 +295,7 @@ class TestFulfilmentE2E:
 
         # Pre-upload a valid GeoTIFF so post_process can download_bytes it
         raw_path = "imagery/raw/e2e-farm/ts/Block_A/S2B_E2E_CLIP.tif"
-        storage.upload_bytes("kml-output", raw_path, _get_stub_geotiff())
+        storage.upload_bytes("kml-output", raw_path, get_stub_geotiff())
 
         download_result = {
             "order_id": "pc-order-e2e-002",
@@ -315,13 +323,15 @@ class TestFulfilmentE2E:
 
     def test_download_then_post_process_chain(self) -> None:
         """Full chain: download → post-process, both blobs land in Azurite."""
+        from unittest.mock import patch
+
+        from tests.stub_provider import StubPlanetaryComputerProvider, get_stub_geotiff
         from treesight.models.aoi import AOI
         from treesight.pipeline.fulfilment import download_imagery, post_process_imagery
-        from treesight.providers.planetary_computer import PlanetaryComputerProvider
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient(connection_string=AZURITE_CONN_STR)
-        provider = PlanetaryComputerProvider({"stub_mode": True})
+        provider = StubPlanetaryComputerProvider()
         aoi = AOI(
             feature_name="Block B",
             source_file="test.kml",
@@ -344,14 +354,19 @@ class TestFulfilmentE2E:
         }
 
         # Step 1: Download
-        dl_result = download_imagery(
-            outcome=outcome,
-            provider=provider,
-            project_name="chain-farm",
-            timestamp="2026-03-18T12:00:00Z",
-            output_container="kml-output",
-            storage=storage,
-        )
+        with patch(
+            "treesight.pipeline.fulfilment.fetch_asset_bytes",
+            return_value=get_stub_geotiff(),
+        ):
+            dl_result = download_imagery(
+                outcome=outcome,
+                provider=provider,
+                project_name="chain-farm",
+                timestamp="2026-03-18T12:00:00Z",
+                output_container="kml-output",
+                storage=storage,
+                asset_url="https://stub.example.com/test.tif",
+            )
         assert storage.blob_exists("kml-output", dl_result["blob_path"])
 
         # Step 2: Post-process

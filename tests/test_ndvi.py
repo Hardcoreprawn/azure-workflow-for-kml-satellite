@@ -304,23 +304,16 @@ class TestComputeNdvi:
 
 
 # ---------------------------------------------------------------------------
-# Tests for _transform_bbox_4326
+# Tests for transform_bbox (moved to treesight.geo)
 # ---------------------------------------------------------------------------
 
 
-class TestTransformBbox4326:
-    def test_identity_for_4326(self):
-        from treesight.pipeline.enrichment.ndvi import _transform_bbox_4326
+class TestTransformBbox:
+    def test_identity_for_same_crs(self):
+        from treesight.geo import transform_bbox
 
         bbox = [-0.5, 51.4, -0.4, 51.5]
-        result = _transform_bbox_4326(bbox, "EPSG:4326")
-        assert result == (-0.5, 51.4, -0.4, 51.5)
-
-    def test_case_insensitive_4326(self):
-        from treesight.pipeline.enrichment.ndvi import _transform_bbox_4326
-
-        bbox = [-0.5, 51.4, -0.4, 51.5]
-        result = _transform_bbox_4326(bbox, "epsg:4326")
+        result = transform_bbox(bbox, "EPSG:4326", "EPSG:4326")
         assert result == (-0.5, 51.4, -0.4, 51.5)
 
 

@@ -10,7 +10,14 @@ from urllib.parse import urlparse
 
 import azure.functions as func
 
-from blueprints._helpers import cors_headers, cors_preflight, error_response, require_auth
+from blueprints._helpers import (
+    _cors_origin,
+    cors_headers,
+    error_response,
+    require_auth,
+    sanitise,
+    submit_contact,
+)
 from treesight.config import (
     STRIPE_API_KEY,
     STRIPE_PRICE_ID_PRO_EUR,
@@ -18,17 +25,11 @@ from treesight.config import (
     STRIPE_PRICE_ID_PRO_USD,
     STRIPE_WEBHOOK_SECRET,
 )
+from treesight.storage import cosmos as _cosmos_mod
 
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
-
-
-def _cosmos_available() -> bool:
-    """Return True if Cosmos DB is configured."""
-    from treesight import config
-
-    return bool(config.COSMOS_ENDPOINT)
 
 
 _LOCAL_EMULATION_ORIGINS = {
@@ -53,20 +54,6 @@ def _get_stripe():
 
     stripe.api_key = STRIPE_API_KEY
     return stripe
-
-
-def _safe_origin(req: func.HttpRequest) -> str:
-    """Return the request Origin only if it's in our allowed set."""
-    from blueprints._helpers import _ALLOWED_ORIGINS
-
-    origin = req.headers.get("Origin", "")
-    if origin in _ALLOWED_ORIGINS:
-        return origin
-    # Fall back to the first production origin in the allowlist
-    return next(
-        (o for o in _ALLOWED_ORIGINS if o.startswith("https://")),
-        "https://treesight.hrdcrprwn.com",
-    )
 
 
 def _tier_emulation_allowed(req: func.HttpRequest) -> bool:
@@ -142,9 +129,6 @@ def billing_checkout(
     auth_claims: dict,
     user_id: str,
 ) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     if user_id == "anonymous":
         return error_response(401, "Authentication required for billing", req=req)
 
@@ -162,7 +146,7 @@ def billing_checkout(
         return error_response(503, "Billing not configured", req=req)
 
     stripe = _get_stripe()
-    origin = _safe_origin(req)
+    origin = _cors_origin(req) or "https://treesight.hrdcrprwn.com"
 
     from treesight.constants import DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
 
@@ -230,9 +214,6 @@ def billing_checkout(
 @bp.route(route="billing/portal", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def billing_portal(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     if user_id == "anonymous":
         return error_response(401, "Authentication required for billing", req=req)
 
@@ -252,7 +233,7 @@ def billing_portal(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
         return error_response(404, "No active subscription found", req=req)
 
     stripe = _get_stripe()
-    origin = _safe_origin(req)
+    origin = _cors_origin(req) or "https://treesight.hrdcrprwn.com"
 
     try:
         session = stripe.billing_portal.Session.create(
@@ -294,13 +275,21 @@ def billing_webhook(req: func.HttpRequest) -> func.HttpResponse:
         logger.warning("Stripe webhook payload invalid")
         return func.HttpResponse("Invalid payload", status_code=400)
 
-    _handle_event(event)
+    try:
+        _handle_event(event)
+    except Exception:
+        logger.exception("Failed to process Stripe event %s", event.get("type", ""))
+        return func.HttpResponse("Internal error", status_code=500)
 
     return func.HttpResponse("ok", status_code=200)
 
 
 def _handle_event(event: dict) -> None:
-    """Dispatch Stripe webhook events to subscription record updates."""
+    """Dispatch Stripe webhook events to subscription record updates.
+
+    Raises on save_subscription failure so the webhook handler can return
+    a non-200 status and Stripe will retry delivery.
+    """
     from treesight.security.billing import save_subscription
 
     event_type = event.get("type", "")
@@ -359,16 +348,23 @@ def _handle_event(event: dict) -> None:
         logger.warning("Payment failed for user=%s", user_id)
 
 
+_customer_to_user_cache: dict[str, str | None] = {}
+
+
 def _user_id_from_customer(customer_id: str | None) -> str | None:
     """Reverse-lookup user_id from Stripe customer ID.
 
     Queries the Cosmos subscriptions container (indexed on stripe_customer_id)
     when available; falls back to scanning subscription blobs.
+    Results are cached in-process to avoid repeated blob scans.
     """
     if not customer_id:
         return None
 
-    if _cosmos_available():
+    if customer_id in _customer_to_user_cache:
+        return _customer_to_user_cache[customer_id]
+
+    if _cosmos_mod.cosmos_available():
         try:
             from treesight.storage import cosmos
 
@@ -378,7 +374,9 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
                 parameters=[{"name": "@cid", "value": customer_id}],
             )
             if results:
-                return results[0].get("user_id")
+                uid = results[0].get("user_id")
+                _customer_to_user_cache[customer_id] = uid
+                return uid
         except Exception:
             logger.warning(
                 "Cosmos reverse lookup failed for customer=%s, falling back to blob",
@@ -399,12 +397,15 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
             try:
                 record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
                 if record.get("stripe_customer_id") == customer_id:
-                    return blob_name.removeprefix(prefix).removesuffix(".json")
+                    uid = blob_name.removeprefix(prefix).removesuffix(".json")
+                    _customer_to_user_cache[customer_id] = uid
+                    return uid
             except Exception:
                 logger.debug("Skipping unreadable blob %s", blob_name)
                 continue
     except Exception:
         logger.warning("Could not scan subscriptions for customer=%s", customer_id)
+    _customer_to_user_cache[customer_id] = None
     return None
 
 
@@ -414,9 +415,6 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
 @bp.route(route="billing/status", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     return func.HttpResponse(
         json.dumps(_billing_status_payload(user_id, req)),
         status_code=200,
@@ -432,9 +430,6 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
 def billing_emulation(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     if not _tier_emulation_allowed(req):
         if user_id == "anonymous":
             return error_response(401, "Authentication required for billing", req=req)
@@ -482,21 +477,6 @@ def billing_interest(
     auth_claims: dict,
     user_id: str,
 ) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    import uuid
-    from datetime import UTC, datetime
-
-    from blueprints._helpers import EMAIL_RE, sanitise
-    from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
-    from treesight.email import send_contact_notification
-    from treesight.security.rate_limit import form_limiter, get_client_ip
-    from treesight.storage.client import BlobStorageClient
-
-    if not form_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Rate limit exceeded — try again later", req=req)
-
     try:
         body = req.get_json()
     except ValueError:
@@ -504,36 +484,9 @@ def billing_interest(
     if not isinstance(body, dict):
         body = {}
 
-    email = sanitise(body.get("email", ""))
-    if not email or not EMAIL_RE.match(email):
-        return error_response(400, "Valid email is required", req=req)
-
-    organization = sanitise(body.get("organization", ""))
-    message = sanitise(body.get("message", ""))
-
-    submission_id = str(uuid.uuid4())
-    record = {
-        "submission_id": submission_id,
-        "source": "billing_interest",
+    extra = {
         "user_id": user_id,
-        "email": email,
-        "organization": organization,
-        "message": message,
-        "submitted_at": datetime.now(UTC).isoformat(),
+        "message": sanitise(body.get("message", "")),
     }
 
-    storage = BlobStorageClient()
-    storage.upload_json(
-        PIPELINE_PAYLOADS_CONTAINER,
-        f"contact-submissions/{submission_id}.json",
-        record,
-    )
-
-    send_contact_notification(record)
-
-    return func.HttpResponse(
-        json.dumps({"status": "received", "submission_id": submission_id}),
-        status_code=200,
-        mimetype="application/json",
-        headers=cors_headers(req),
-    )
+    return submit_contact(req, body, source="billing_interest", extra_fields=extra)

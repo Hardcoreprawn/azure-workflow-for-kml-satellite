@@ -71,7 +71,7 @@ def fetch_ea_floods(
         return events
     except Exception as exc:
         logger.warning("EA flood fetch failed: %s", exc)
-        return [{"source": "ea_error", "error": str(exc)}]
+        return []
 
 
 def fetch_usgs_streamflow(
@@ -121,7 +121,7 @@ def fetch_usgs_streamflow(
         return events
     except Exception as exc:
         logger.warning("USGS streamflow fetch failed: %s", exc)
-        return [{"source": "usgs_error", "error": str(exc)}]
+        return []
 
 
 def fetch_flood_events(

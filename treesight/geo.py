@@ -17,8 +17,7 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
 
     bbox = _compute_bbox(exterior)
     buffered_bbox = _buffer_bbox(bbox, buf)
-    area_ha = _geodesic_area_ha(exterior)
-    perimeter_km = _geodesic_perimeter_km(exterior)
+    area_ha, perimeter_km = _geodesic_area_and_perimeter(exterior)
     centroid = _centroid(exterior)
 
     area_warning = ""
@@ -67,41 +66,42 @@ def _buffer_bbox(bbox: list[float], buffer_m: float) -> list[float]:
     ]
 
 
-def _geodesic_area_ha(coords: list[list[float]]) -> float:
-    """Compute geodesic area of a polygon in hectares using the Shoelace formula on a sphere."""
+def _geodesic_area_and_perimeter(coords: list[list[float]]) -> tuple[float, float]:
+    """Compute geodesic area (ha) and perimeter (km) from a single Geod call."""
     if len(coords) < 3:
-        return 0.0
+        return 0.0, 0.0
     try:
         from pyproj import Geod
 
         geod = Geod(ellps="WGS84")
         lons = [c[0] for c in coords]
         lats = [c[1] for c in coords]
-        area_m2, _ = geod.polygon_area_perimeter(lons, lats)
-        return abs(area_m2) / 10_000.0
+        area_m2, perimeter_m = geod.polygon_area_perimeter(lons, lats)
+        return abs(area_m2) / 10_000.0, abs(perimeter_m) / 1_000.0
     except ImportError:
-        # Fallback: simple spherical excess (less accurate)
-        return _spherical_area_ha(coords)
+        return _spherical_area_ha(coords), _haversine_perimeter_km(coords)
 
 
-def _geodesic_perimeter_km(coords: list[list[float]]) -> float:
-    """Compute geodesic perimeter of a polygon in kilometres.
+def transform_bbox(
+    bbox: list[float],
+    src_crs: str,
+    dst_crs: str,
+) -> tuple[float, float, float, float]:
+    """Reproject a bounding box between CRS."""
+    if src_crs == dst_crs:
+        return (bbox[0], bbox[1], bbox[2], bbox[3])
 
-    Uses pyproj Geod for WGS84 ellipsoid accuracy; falls back to
-    Haversine summation when pyproj is unavailable.
-    """
-    if len(coords) < 2:
-        return 0.0
-    try:
-        from pyproj import Geod
+    from pyproj import Transformer
 
-        geod = Geod(ellps="WGS84")
-        lons = [c[0] for c in coords]
-        lats = [c[1] for c in coords]
-        _area_m2, perimeter_m = geod.polygon_area_perimeter(lons, lats)
-        return abs(perimeter_m) / 1_000.0
-    except ImportError:
-        return _haversine_perimeter_km(coords)
+    transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    x_min, y_min = transformer.transform(bbox[0], bbox[1])
+    x_max, y_max = transformer.transform(bbox[2], bbox[3])
+    return (
+        min(x_min, x_max),
+        min(y_min, y_max),
+        max(x_min, x_max),
+        max(y_min, y_max),
+    )
 
 
 def _haversine_perimeter_km(coords: list[list[float]]) -> float:
@@ -194,6 +194,12 @@ def square_bbox(
 
 
 def _centroid(coords: list[list[float]]) -> list[float]:
+    """Arithmetic mean of exterior ring vertices.
+
+    Note: for concave or complex polygons the result may fall outside
+    the polygon boundary.  This is acceptable for our use-case (map
+    centering) but should not be treated as a guaranteed interior point.
+    """
     if not coords:
         return [0.0, 0.0]
     # Exclude closing point if ring is closed

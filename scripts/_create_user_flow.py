@@ -4,41 +4,9 @@ Supports email/password, Google, and Microsoft Account identity providers.
 Run _setup_sso_providers.py first to register social providers in the tenant.
 """
 
-import json
-import os
 import sys
-import urllib.error
-import urllib.request
 
-TOKEN = os.environ.get("CIAM_TOKEN")
-APP_ID = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
-SP_ID = "1d43a846-7f56-46b3-b72b-6309c40a3bd7"
-
-
-def graph(method, path, body=None):
-    data = json.dumps(body).encode() if body else None
-    req = urllib.request.Request(
-        f"https://graph.microsoft.com/beta{path}",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method=method,
-    )
-    try:
-        resp = urllib.request.urlopen(req)
-        if resp.status == 204:
-            return {"_status": 204}
-        return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body_text = e.read().decode()
-        print(f"ERROR {e.code} on {method} {path}:")
-        try:
-            print(json.dumps(json.loads(body_text), indent=2))
-        except Exception:
-            print(body_text)
-        return None
+from _graph import APP_ID, SP_ID, TENANT_ID, TENANT_NAME, TOKEN, graph
 
 
 def main():
@@ -128,6 +96,7 @@ def main():
                 },
             },
         },
+        beta=True,
     )
 
     if not flow:
@@ -143,6 +112,7 @@ def main():
         "POST",
         f"/identity/authenticationEventsFlows/{flow_id}/conditions/applications/includeApplications/$ref",
         {"@odata.id": f"https://graph.microsoft.com/beta/servicePrincipals/{SP_ID}"},
+        beta=True,
     )
     if link is not None:
         print("App linked to user flow successfully")
@@ -150,13 +120,13 @@ def main():
         print("Failed to link app to user flow")
 
     print("\n=== Summary ===")
-    print("Tenant: treesightauth.onmicrosoft.com")
-    print("Tenant ID: 92001438-8b42-4bd7-950f-0ed1775f87b7")
+    print(f"Tenant: {TENANT_NAME}.onmicrosoft.com")
+    print(f"Tenant ID: {TENANT_ID}")
     print(f"App client ID: {APP_ID}")
     print(f"User flow ID: {flow_id}")
-    print("Authority: https://treesightauth.ciamlogin.com/")
+    print(f"Authority: https://{TENANT_NAME}.ciamlogin.com/")
     print(
-        "OIDC config: https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0/.well-known/openid-configuration"
+        f"OIDC config: https://{TENANT_NAME}.ciamlogin.com/{TENANT_ID}/v2.0/.well-known/openid-configuration"
     )
 
 

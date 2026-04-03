@@ -1,37 +1,10 @@
 """One-time: Create service principal + configure CIAM user flow for TreeSight SPA."""
 
 import json
-import os
 import sys
-import urllib.error
 import urllib.request
 
-TOKEN = os.environ.get("CIAM_TOKEN")
-APP_ID = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
-APP_OBJECT_ID = "7ce73a2a-b80a-4b6f-afb7-eccf74bfaf47"
-
-
-def graph(method, path, body=None, beta=False):
-    base = "https://graph.microsoft.com/beta" if beta else "https://graph.microsoft.com/v1.0"
-    data = json.dumps(body).encode() if body else None
-    req = urllib.request.Request(
-        f"{base}{path}",
-        data=data,
-        headers={
-            "Authorization": f"Bearer {TOKEN}",
-            "Content-Type": "application/json",
-        },
-        method=method,
-    )
-    try:
-        resp = urllib.request.urlopen(req)
-        if resp.status == 204:
-            return None
-        return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body_text = e.read().decode()
-        print(f"ERROR {e.code} on {method} {path}: {body_text}")
-        return None
+from _graph import APP_ID, TENANT_ID, TENANT_NAME, TOKEN, graph
 
 
 def main():
@@ -52,11 +25,11 @@ def main():
 
     # 2) Check OIDC discovery endpoint
     print("\n=== OIDC Discovery ===")
-    import urllib.request as ur
-
-    oidc_url = "https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0/.well-known/openid-configuration"
+    oidc_url = (
+        f"https://{TENANT_NAME}.ciamlogin.com/{TENANT_ID}/v2.0/.well-known/openid-configuration"
+    )
     try:
-        resp = ur.urlopen(oidc_url)
+        resp = urllib.request.urlopen(oidc_url)
         config = json.loads(resp.read())
         print(f"Issuer: {config.get('issuer')}")
         print(f"JWKS URI: {config.get('jwks_uri')}")

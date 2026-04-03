@@ -21,6 +21,7 @@ from rasterio.io import MemoryFile
 from rasterio.warp import Resampling, calculate_default_transform, reproject
 from rasterio.windows import from_bounds as window_from_bounds
 
+from treesight.geo import transform_bbox
 from treesight.log import log_error, log_phase
 from treesight.models.aoi import AOI
 from treesight.models.outcomes import DownloadResult, PostProcessResult
@@ -28,42 +29,6 @@ from treesight.providers.base import ImageryProvider
 from treesight.storage.client import BlobStorageClient
 
 logger = logging.getLogger(__name__)
-
-
-def _make_stub_geotiff() -> bytes:
-    """Generate a minimal valid GeoTIFF covering the test AOI area."""
-    import numpy as np
-
-    # Use EPSG:4326 to avoid CRS transform issues in tests
-    buf = io.BytesIO()
-    from rasterio.transform import from_bounds as _tfm
-
-    # Covers test AOI buffered_bbox [36.79, -1.32, 36.82, -1.29]
-    transform = _tfm(36.78, -1.33, 36.83, -1.28, 50, 50)
-    data = np.ones((3, 50, 50), dtype=np.uint8) * 128
-    with rasterio.open(
-        buf,
-        "w",
-        driver="GTiff",
-        height=50,
-        width=50,
-        count=3,
-        dtype="uint8",
-        crs="EPSG:4326",
-        transform=transform,
-    ) as dst:
-        dst.write(data)
-    return buf.getvalue()
-
-
-_stub_geotiff_cache: bytes | None = None
-
-
-def _get_stub_geotiff() -> bytes:
-    global _stub_geotiff_cache
-    if _stub_geotiff_cache is None:
-        _stub_geotiff_cache = _make_stub_geotiff()
-    return _stub_geotiff_cache
 
 
 def download_imagery(
@@ -104,7 +69,9 @@ def download_imagery(
         elif asset_url:
             image_bytes = fetch_asset_bytes(asset_url)
         else:
-            image_bytes = _get_stub_geotiff()
+            raise ValueError(
+                "No asset_url provided — cannot download imagery. Use a stub provider in tests."
+            )
 
         content_type = blob_ref.content_type or "image/tiff"
         storage.upload_bytes(
@@ -141,21 +108,15 @@ def download_imagery(
     except Exception as exc:
         duration = time.monotonic() - start
         log_error("fulfilment", "download_failed", str(exc), order_id=order_id)
-        return {
-            "state": "failed",
-            "order_id": order_id,
-            "scene_id": scene_id,
-            "provider": provider.name,
-            "aoi_feature_name": aoi_name,
-            "blob_path": "",
-            "adapter_blob_path": "",
-            "container": "",
-            "size_bytes": 0,
-            "content_type": "",
-            "download_duration_seconds": duration,
-            "retry_count": 0,
-            "error": str(exc),
-        }
+        return DownloadResult(
+            state="failed",
+            order_id=order_id,
+            scene_id=scene_id,
+            provider=provider.name,
+            aoi_feature_name=aoi_name,
+            download_duration_seconds=duration,
+            error=str(exc),
+        ).model_dump()
 
 
 def post_process_imagery(
@@ -257,22 +218,15 @@ def post_process_imagery(
     except Exception as exc:
         duration = time.monotonic() - start
         log_error("fulfilment", "post_process_failed", str(exc), order_id=order_id)
-        return {
-            "state": "failed",
-            "order_id": order_id,
-            "source_blob_path": source_path,
-            "clipped_blob_path": "",
-            "container": "",
-            "clipped": False,
-            "reprojected": False,
-            "source_crs": "",
-            "target_crs": target_crs,
-            "source_size_bytes": 0,
-            "output_size_bytes": 0,
-            "processing_duration_seconds": duration,
-            "clip_error": str(exc),
-            "error": str(exc),
-        }
+        return PostProcessResult(
+            state="failed",
+            order_id=order_id,
+            source_blob_path=source_path,
+            target_crs=target_crs,
+            processing_duration_seconds=duration,
+            clip_error=str(exc),
+            error=str(exc),
+        ).model_dump()
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +256,7 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
 
     with rasterio.open(url) as src:
         # Transform bbox from EPSG:4326 → source CRS if needed
-        src_bbox = _transform_bbox(bbox, "EPSG:4326", str(src.crs))
+        src_bbox = transform_bbox(bbox, "EPSG:4326", str(src.crs))
 
         window = window_from_bounds(*src_bbox, transform=src.transform)
         # Clamp to dataset bounds
@@ -334,31 +288,9 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
     return result
 
 
-def _transform_bbox(
-    bbox: list[float],
-    src_crs: str,
-    dst_crs: str,
-) -> tuple[float, float, float, float]:
-    """Reproject a bounding box between CRS."""
-    if src_crs == dst_crs:
-        return (bbox[0], bbox[1], bbox[2], bbox[3])
-
-    from pyproj import Transformer
-
-    transformer = Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-    x_min, y_min = transformer.transform(bbox[0], bbox[1])
-    x_max, y_max = transformer.transform(bbox[2], bbox[3])
-    return (
-        min(x_min, x_max),
-        min(y_min, y_max),
-        max(x_min, x_max),
-        max(y_min, y_max),
-    )
-
-
 def _clip_to_bbox(src: rasterio.DatasetReader, bbox: list[float]) -> bytes:
     """Clip an open rasterio dataset to a bounding box, return GeoTIFF bytes."""
-    src_bbox = _transform_bbox(bbox, "EPSG:4326", str(src.crs))
+    src_bbox = transform_bbox(bbox, "EPSG:4326", str(src.crs))
     window = window_from_bounds(*src_bbox, transform=src.transform)
     window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
 

@@ -65,8 +65,13 @@ class TestOidcConfigUrl:
     def test_url_format(self):
         with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"):
             url = _oidc_config_url()
-            assert "mytenant.ciamlogin.com" in url
-            assert "mytenant.onmicrosoft.com" in url
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            assert parsed.hostname == "mytenant.ciamlogin.com"
+            path_segments = parsed.path.strip("/").split("/")
+            # First path segment must be the exact tenant domain
+            assert path_segments[0] == "mytenant.onmicrosoft.com"
             assert url.endswith("/v2.0/.well-known/openid-configuration")
 
 

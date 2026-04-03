@@ -4,13 +4,11 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
-import json
+import re
 from typing import Any
+from urllib.parse import urlparse
 
-import azure.functions as func
-
-from blueprints._helpers import cors_headers
-from treesight.constants import MAX_KML_FILE_SIZE_BYTES
+from treesight.constants import DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.errors import ContractError
 
 # ---------------------------------------------------------------------------
@@ -20,27 +18,33 @@ from treesight.errors import ContractError
 _MAX_ANALYSIS_BODY_BYTES = 131_072
 
 
-# ---------------------------------------------------------------------------
-# Config helpers
-# ---------------------------------------------------------------------------
+def _expected_blob_host() -> str:
+    """Derive the expected Azure Blob hostname from the connection string.
 
+    Returns the hostname of the configured storage account so callers
+    can validate that an incoming blob URL belongs to *our* account,
+    not just any ``*.blob.core.windows.net`` host.
+    """
+    from treesight.config import STORAGE_CONNECTION_STRING
 
-def _cosmos_available() -> bool:
-    """Return True if Cosmos DB is configured for run storage."""
-    from treesight import config
+    conn = STORAGE_CONNECTION_STRING or ""
 
-    return bool(config.COSMOS_ENDPOINT)
+    # Azurite / emulator shorthand
+    if conn.strip().lower() == "usedevelopmentstorage=true":
+        return "devstoreaccount1.blob.core.windows.net"
 
+    # Prefer explicit BlobEndpoint (handles Azurite and custom endpoints)
+    m = re.search(r"BlobEndpoint=([^;]+)", conn, re.IGNORECASE)
+    if m:
+        parsed = urlparse(m.group(1))
+        return (parsed.hostname or "").lower()
 
-def _error_response(
-    status: int, message: str, req: func.HttpRequest | None = None
-) -> func.HttpResponse:
-    return func.HttpResponse(
-        json.dumps({"error": message}),
-        status_code=status,
-        mimetype="application/json",
-        headers=cors_headers(req) if req is not None else {},
-    )
+    # Fall back to AccountName → <account>.blob.core.windows.net
+    m = re.search(r"AccountName=([^;]+)", conn, re.IGNORECASE)
+    if m:
+        return f"{m.group(1).lower()}.blob.core.windows.net"
+
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -66,19 +70,43 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
         raise ContractError(f"File exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", code="FILE_TOO_LARGE")
 
 
+def _is_trusted_blob_host(host: str) -> bool:
+    """Return True if *host* is the configured storage account or Azurite."""
+    expected = _expected_blob_host()
+    if expected and host == expected:
+        return True
+    # Azurite IP-based URLs (127.0.0.1, localhost, azurite)
+    return host in ("127.0.0.1", "localhost", "azurite")
+
+
 def _extract_container(blob_url: str) -> str:
-    parts = blob_url.split("/")
-    for i, p in enumerate(parts):
-        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 1 < len(parts):
-            return parts[i + 1]
+    parsed = urlparse(blob_url)
+    host = (parsed.hostname or "").lower()
+    if not _is_trusted_blob_host(host):
+        return ""
+    if host.endswith(".blob.core.windows.net"):
+        # https://<account>.blob.core.windows.net/<container>/<blob>
+        parts = parsed.path.lstrip("/").split("/")
+        return parts[0] if parts else ""
+    # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
+    parts = parsed.path.lstrip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "devstoreaccount1":
+        return parts[1]
     return ""
 
 
 def _extract_blob_name(blob_url: str) -> str:
-    parts = blob_url.split("/")
-    for i, p in enumerate(parts):
-        if (p.endswith(".blob.core.windows.net") or p == "devstoreaccount1") and i + 2 < len(parts):
-            return "/".join(parts[i + 2 :])
+    parsed = urlparse(blob_url)
+    host = (parsed.hostname or "").lower()
+    if not _is_trusted_blob_host(host):
+        return ""
+    if host.endswith(".blob.core.windows.net"):
+        parts = parsed.path.lstrip("/").split("/")
+        return "/".join(parts[1:]) if len(parts) > 1 else ""
+    # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
+    parts = parsed.path.lstrip("/").split("/")
+    if len(parts) >= 3 and parts[0] == "devstoreaccount1":
+        return "/".join(parts[2:])
     return ""
 
 
@@ -137,6 +165,8 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
             all_coords.extend(ext)
 
     if not all_coords:
+        # Intentional: use first AOI's bbox only. Enrichment (weather, NDVI)
+        # targets a single representative location, not the union of all AOIs.
         for aoi in aois:
             bb = aoi.get("bbox") or aoi.get("buffered_bbox")
             if bb and len(bb) == 4:
@@ -188,30 +218,6 @@ def _split_batch_routing(
     return serverless, batch
 
 
-def _dedup_orders_by_scene(
-    orders: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
-    """Deduplicate orders that share the same scene_id.
-
-    Returns ``(unique_orders, scene_to_aois)`` where *unique_orders* keeps
-    only the first order per scene and *scene_to_aois* maps each scene_id
-    to all AOI feature_names that need imagery from that scene.
-    """
-    seen: dict[str, dict[str, Any]] = {}
-    scene_to_aois: dict[str, list[str]] = {}
-
-    for o in orders:
-        sid = o.get("scene_id", "")
-        aoi_name = o.get("aoi_feature_name", "")
-        if sid not in seen:
-            seen[sid] = o
-            scene_to_aois[sid] = []
-        if aoi_name and aoi_name not in scene_to_aois[sid]:
-            scene_to_aois[sid].append(aoi_name)
-
-    return list(seen.values()), scene_to_aois
-
-
 def _acq_payload(
     ref: dict[str, str],
     inp: dict[str, Any],
@@ -220,7 +226,7 @@ def _acq_payload(
     """Build a single acquisition activity payload from a claim ref."""
     base: dict[str, Any] = {
         "aoi_ref": ref["ref"],
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "imagery_filters": inp.get("imagery_filters"),
     }
@@ -237,7 +243,7 @@ def _poll_payload(order: dict[str, Any], inp: dict[str, Any]) -> dict[str, Any]:
         "order_id": order.get("order_id", ""),
         "scene_id": order.get("scene_id", ""),
         "aoi_feature_name": order.get("aoi_feature_name", ""),
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "overrides": inp,
     }
@@ -260,7 +266,7 @@ def _download_payload(
         "aoi_ref": aoi_ref_lookup.get(outcome.get("aoi_feature_name", "")),
         "role": order_meta.get(oid, {}).get("role", ""),
         "collection": order_meta.get(oid, {}).get("collection", ""),
-        "provider_name": inp.get("provider_name", "planetary_computer"),
+        "provider_name": inp.get("provider_name", DEFAULT_PROVIDER),
         "provider_config": inp.get("provider_config"),
         "project_name": ctx["project_name"],
         "timestamp": ctx["timestamp"],

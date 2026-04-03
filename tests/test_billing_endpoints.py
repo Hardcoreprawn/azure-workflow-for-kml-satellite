@@ -17,7 +17,9 @@ from unittest.mock import patch
 
 import azure.functions as func
 
-_ALLOWED_ORIGIN = "https://treesight.hrdcrprwn.com"
+from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
+
+_ALLOWED_ORIGIN = TEST_ORIGIN
 _AUTH_DISABLED = patch("treesight.security.auth.auth_enabled", return_value=False)
 _AUTH_TEST_USER = [
     patch("blueprints._helpers.auth_enabled", return_value=True),
@@ -30,10 +32,13 @@ _BILLING_UNGATED = patch(
 
 
 def _make_req(method="POST", body=b"", headers=None, url="/api/billing/webhook"):
-    h = {"Origin": _ALLOWED_ORIGIN, "Authorization": "Bearer fake-token"}
-    if headers:
-        h.update(headers)
-    return func.HttpRequest(method=method, url=url, headers=h, body=body)
+    return make_test_request(
+        url=url,
+        method=method,
+        body=body,
+        headers=headers,
+        origin=_ALLOWED_ORIGIN,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +276,7 @@ class TestBillingStatus:
 
         emulate_req = _make_req(
             body=json.dumps({"tier": "team"}).encode("utf-8"),
-            headers={"Origin": "http://localhost:4280"},
+            headers={"Origin": TEST_LOCAL_ORIGIN},
             url="/api/billing/emulation",
         )
         emulate_resp = billing_emulation(emulate_req)
@@ -282,7 +287,7 @@ class TestBillingStatus:
         assert emulate_data["emulation"]["active"] is True
 
         status_req = _make_req(
-            method="GET", headers={"Origin": "http://localhost:4280"}, url="/api/billing/status"
+            method="GET", headers={"Origin": TEST_LOCAL_ORIGIN}, url="/api/billing/status"
         )
         status_resp = billing_status(status_req)
         assert status_resp.status_code == 200
@@ -323,7 +328,7 @@ class TestBillingStatus:
 
         req = _make_req(
             body=json.dumps({"tier": "starter"}).encode("utf-8"),
-            headers={"Origin": "http://localhost:4280"},
+            headers={"Origin": TEST_LOCAL_ORIGIN},
             url="/api/billing/emulation",
         )
         resp = billing_emulation(req)
@@ -339,6 +344,11 @@ class TestBillingStatus:
 
 
 class TestUserIdFromCustomer:
+    def setup_method(self):
+        from blueprints.billing import _customer_to_user_cache
+
+        _customer_to_user_cache.clear()
+
     def test_none_customer_returns_none(self):
         from blueprints.billing import _user_id_from_customer
 
@@ -371,7 +381,12 @@ class TestUserIdFromCustomer:
 
 
 class TestUserIdFromCustomerCosmos:
-    @patch("blueprints.billing._cosmos_available", return_value=True)
+    def setup_method(self):
+        from blueprints.billing import _customer_to_user_cache
+
+        _customer_to_user_cache.clear()
+
+    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items")
     def test_finds_user_via_cosmos_query(self, mock_query, _mock_cosmos):
         from blueprints.billing import _user_id_from_customer
@@ -384,7 +399,7 @@ class TestUserIdFromCustomerCosmos:
             parameters=[{"name": "@cid", "value": "cus_123"}],
         )
 
-    @patch("blueprints.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items")
     def test_returns_none_when_no_cosmos_match(self, mock_query, _mock_cosmos):
         from blueprints.billing import _user_id_from_customer
@@ -394,7 +409,7 @@ class TestUserIdFromCustomerCosmos:
             mock_cls.return_value.list_blobs.return_value = []
             assert _user_id_from_customer("cus_ghost") is None
 
-    @patch("blueprints.billing._cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("down"))
     @patch("treesight.storage.client.BlobStorageClient")
     def test_falls_back_to_blob_on_cosmos_error(self, mock_cls, _mock_query, _mock_cosmos):

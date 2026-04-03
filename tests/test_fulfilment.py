@@ -6,15 +6,12 @@ using a stub provider and mock ``BlobStorageClient``.
 
 from __future__ import annotations
 
-import io
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_bounds
 
+from tests.tiff_helpers import make_geotiff_bytes
 from treesight.models.aoi import AOI
 from treesight.providers.base import (
     BlobReference,
@@ -34,36 +31,8 @@ def _make_geotiff_bytes(
     crs: str = "EPSG:32637",
     bounds: tuple[float, float, float, float] | None = None,
 ) -> bytes:
-    """Generate a minimal in-memory GeoTIFF for testing.
-
-    Default bounds cover the test AOI (~36.8E, 1.3S) projected into UTM 37N.
-    """
-    if bounds is None:
-        # Transform the test AOI buffered_bbox [36.79, -1.32, 36.82, -1.29]
-        # into EPSG:32637 (UTM zone 37N).
-        from pyproj import Transformer
-
-        t = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
-        x_min, y_min = t.transform(36.79, -1.32)
-        x_max, y_max = t.transform(36.82, -1.29)
-        bounds = (x_min, y_min, x_max, y_max)
-
-    transform = from_bounds(*bounds, width, height)
-    data = np.ones((3, height, width), dtype=np.uint8) * 128
-    buf = io.BytesIO()
-    with rasterio.open(
-        buf,
-        "w",
-        driver="GTiff",
-        height=height,
-        width=width,
-        count=3,
-        dtype="uint8",
-        crs=crs,
-        transform=transform,
-    ) as dst:
-        dst.write(data)
-    return buf.getvalue()
+    """Delegate to shared helper in tiff_helpers."""
+    return make_geotiff_bytes(width=width, height=height, crs=crs, bounds=bounds)
 
 
 class _StubProvider(ImageryProvider):
@@ -157,14 +126,19 @@ class TestDownloadImagery:
         provider = _StubProvider()
         outcome = _ready_outcome()
 
-        download_imagery(
-            outcome=outcome,
-            provider=provider,
-            project_name="my-farm",
-            timestamp="2026-03-18T12:00:00Z",
-            output_container="kml-output",
-            storage=storage,
-        )
+        with patch(
+            "treesight.pipeline.fulfilment.fetch_asset_bytes",
+            return_value=_make_geotiff_bytes(),
+        ):
+            download_imagery(
+                outcome=outcome,
+                provider=provider,
+                project_name="my-farm",
+                timestamp="2026-03-18T12:00:00Z",
+                output_container="kml-output",
+                storage=storage,
+                asset_url="https://stub.example.com/test.tif",
+            )
 
         storage.upload_bytes.assert_called_once()
         call_args = storage.upload_bytes.call_args[0]
@@ -179,14 +153,19 @@ class TestDownloadImagery:
         storage = MagicMock()
         provider = _StubProvider()
 
-        result = download_imagery(
-            outcome=_ready_outcome(),
-            provider=provider,
-            project_name="farm",
-            timestamp="ts",
-            output_container="kml-output",
-            storage=storage,
-        )
+        with patch(
+            "treesight.pipeline.fulfilment.fetch_asset_bytes",
+            return_value=_make_geotiff_bytes(),
+        ):
+            result = download_imagery(
+                outcome=_ready_outcome(),
+                provider=provider,
+                project_name="farm",
+                timestamp="ts",
+                output_container="kml-output",
+                storage=storage,
+                asset_url="https://stub.example.com/test.tif",
+            )
 
         assert result["order_id"] == "order-1"
         assert result["scene_id"] == "SCENE-001"

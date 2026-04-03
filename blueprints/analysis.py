@@ -7,7 +7,9 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import json
+import logging
 import re
+import statistics
 from typing import Any
 
 import azure.functions as func
@@ -37,6 +39,132 @@ bp = func.Blueprint()
 _MAX_AI_BODY_BYTES = 32_768  # 32 KiB
 # Maximum number of NDVI timeseries entries
 _MAX_TIMESERIES_ENTRIES = 120
+
+logger = logging.getLogger(__name__)
+
+
+def _run_analysis(
+    req: func.HttpRequest,
+    *,
+    run_fn,
+    require_ndvi: bool = False,
+    rate_limit: bool = True,
+    error_msg: str = "Analysis failed",
+) -> func.HttpResponse:
+    """Shared pipeline: auth \u2192 rate-limit \u2192 parse \u2192 generate \u2192 respond."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    if rate_limit and not pipeline_limiter.is_allowed(get_client_ip(req)):
+        return error_response(
+            429, "Too many requests \u2014 please wait before trying again", req=req
+        )
+
+    raw_body = req.get_body()
+    if len(raw_body) > _MAX_AI_BODY_BYTES:
+        return error_response(
+            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
+        )
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return error_response(400, "Invalid JSON body", req=req)
+
+    context = body.get("context", {})
+
+    if require_ndvi:
+        if not context or not context.get("ndvi_timeseries"):
+            return error_response(400, "Missing 'context' with ndvi_timeseries", req=req)
+        ndvi_ts = context.get("ndvi_timeseries", [])
+        if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
+            return error_response(
+                400,
+                f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries",
+                req=req,
+            )
+    else:
+        if not context:
+            return error_response(400, "Missing 'context' with satellite metadata", req=req)
+
+    try:
+        return run_fn(req, context)
+    except Exception:
+        logger.exception(error_msg)
+        return error_response(500, error_msg, req=req)
+
+
+def _frame_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
+    """Build frame-analysis prompt and call AI."""
+    context_lines: list[str] = []
+    if context.get("aoi_name"):
+        aoi_name = _sanitise_for_prompt(context["aoi_name"])
+        if aoi_name:
+            context_lines.append(f"Area of Interest: {aoi_name}")
+    if context.get("date"):
+        date_val = _sanitise_for_prompt(context["date"])
+        if date_val:
+            context_lines.append(f"Date: {date_val}")
+    if context.get("latitude") and context.get("longitude"):
+        context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
+
+    context_lines.append("\n=== Vegetation Health ===")
+    if context.get("ndvi_mean") is not None:
+        context_lines.append(f"NDVI (current): {context['ndvi_mean']:.3f}")
+    if context.get("ndvi_previous") is not None:
+        context_lines.append(f"NDVI (previous): {context['ndvi_previous']:.3f}")
+        ndvi_change = context["ndvi_mean"] - context["ndvi_previous"]
+        pct = ndvi_change / context["ndvi_previous"] * 100
+        context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
+    if context.get("ndvi_min") is not None:
+        context_lines.append(f"NDVI Range: {context['ndvi_min']:.3f} to {context['ndvi_max']:.3f}")
+
+    context_lines.append("\n=== Weather Context ===")
+    if context.get("temperature") is not None:
+        context_lines.append(f"Temperature: {context['temperature']:.1f}°C")
+    if context.get("precipitation") is not None:
+        context_lines.append(f"Precipitation (90 days): {context['precipitation']:.0f}mm")
+
+    context_str = "\n".join(context_lines)
+
+    prompt = f"""You are an expert geospatial analyst. Analyze this satellite \
+image metadata and provide structured observations about the area's \
+vegetation health, land use, and any concerning trends.
+
+{context_str}
+
+Provide analysis as JSON with exactly this structure (respond ONLY with valid JSON):
+{{
+  "observations": [
+    {{
+      "category": "vegetation_health",
+      "severity": "critical|high|moderate|low|normal",
+      "description": "Specific observation",
+      "recommendation": "Suggested action"
+    }}
+  ],
+  "summary": "2-3 sentence executive summary",
+  "score": 0.5
+}}
+
+Categories: vegetation_health, water, clearing, anomaly, or trend.
+Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
+
+    analysis = generate_analysis(prompt)
+    if analysis is None:
+        analysis = _default_analysis("AI analysis unavailable — all providers failed")
+
+    return func.HttpResponse(
+        json.dumps(analysis),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
 
 @bp.route(route="frame-analysis", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -79,105 +207,7 @@ def frame_analysis(req: func.HttpRequest) -> func.HttpResponse:
         "score": 0.65
     }
     """
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Too many requests — please wait before trying again", req=req)
-
-    raw_body = req.get_body()
-    if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(
-            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
-        )
-
-    try:
-        body = req.get_json()
-    except ValueError:
-        return error_response(400, "Invalid JSON body", req=req)
-
-    context = body.get("context", {})
-
-    if not context:
-        return error_response(400, "Missing 'context' with satellite metadata", req=req)
-
-    try:
-        # Build analysis prompt from context
-        context_lines: list[str] = []
-        if context.get("aoi_name"):
-            aoi_name = _sanitise_for_prompt(context["aoi_name"])
-            if aoi_name:
-                context_lines.append(f"Area of Interest: {aoi_name}")
-        if context.get("date"):
-            date_val = _sanitise_for_prompt(context["date"])
-            if date_val:
-                context_lines.append(f"Date: {date_val}")
-        if context.get("latitude") and context.get("longitude"):
-            context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
-
-        context_lines.append("\n=== Vegetation Health ===")
-        if context.get("ndvi_mean") is not None:
-            context_lines.append(f"NDVI (current): {context['ndvi_mean']:.3f}")
-        if context.get("ndvi_previous") is not None:
-            context_lines.append(f"NDVI (previous): {context['ndvi_previous']:.3f}")
-            ndvi_change = context["ndvi_mean"] - context["ndvi_previous"]
-            pct = ndvi_change / context["ndvi_previous"] * 100
-            context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
-        if context.get("ndvi_min") is not None:
-            context_lines.append(
-                f"NDVI Range: {context['ndvi_min']:.3f} to {context['ndvi_max']:.3f}"
-            )
-
-        context_lines.append("\n=== Weather Context ===")
-        if context.get("temperature") is not None:
-            context_lines.append(f"Temperature: {context['temperature']:.1f}°C")
-        if context.get("precipitation") is not None:
-            context_lines.append(f"Precipitation (90 days): {context['precipitation']:.0f}mm")
-
-        context_str = "\n".join(context_lines)
-
-        prompt = f"""You are an expert geospatial analyst. Analyze this satellite \
-image metadata and provide structured observations about the area's \
-vegetation health, land use, and any concerning trends.
-
-{context_str}
-
-Provide analysis as JSON with exactly this structure (respond ONLY with valid JSON):
-{{
-  "observations": [
-    {{
-      "category": "vegetation_health",
-      "severity": "critical|high|moderate|low|normal",
-      "description": "Specific observation",
-      "recommendation": "Suggested action"
-    }}
-  ],
-  "summary": "2-3 sentence executive summary",
-  "score": 0.5
-}}
-
-Categories: vegetation_health, water, clearing, anomaly, or trend.
-Keep descriptions concise. Recommend at-risk areas for closer monitoring."""
-
-        # Call AI provider (Azure AI Foundry → Ollama → graceful degradation)
-        analysis = generate_analysis(prompt)
-        if analysis is None:
-            analysis = _default_analysis("AI analysis unavailable — all providers failed")
-
-        return func.HttpResponse(
-            json.dumps(analysis),
-            status_code=200,
-            mimetype="application/json",
-            headers=cors_headers(req),
-        )
-
-    except Exception:
-        return error_response(500, "Analysis failed", req=req)
+    return _run_analysis(req, run_fn=_frame_logic, error_msg="Analysis failed")
 
 
 def _default_analysis(text: str) -> dict[str, Any]:
@@ -194,6 +224,145 @@ def _default_analysis(text: str) -> dict[str, Any]:
         "summary": text[:200],
         "score": 0.5,
     }
+
+
+def _timelapse_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
+    """Build timelapse-analysis prompt and call AI."""
+    ndvi_series = context.get("ndvi_timeseries", [])
+    weather_series = context.get("weather_timeseries", [])
+
+    # Calculate trend statistics
+    trend_info = _calculate_trends(ndvi_series, weather_series)
+
+    # Build analysis prompt with temporal context
+    context_lines: list[str] = []
+    if context.get("aoi_name"):
+        aoi_name = _sanitise_for_prompt(context["aoi_name"])
+        if aoi_name:
+            context_lines.append(f"Area of Interest: {aoi_name}")
+    if context.get("date_range_start") and context.get("date_range_end"):
+        start = _sanitise_for_prompt(context["date_range_start"])
+        end = _sanitise_for_prompt(context["date_range_end"])
+        if start and end:
+            context_lines.append(f"Analysis Period: {start} to {end}")
+    if context.get("latitude") and context.get("longitude"):
+        context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
+
+    n_frames = context.get("frame_count", len(ndvi_series))
+    context_lines.append(f"\nObservations: {n_frames} satellite frames analyzed")
+
+    context_lines.append("\n=== NDVI Vegetation Analysis ===")
+    if trend_info.get("ndvi_avg") is not None:
+        context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
+    if trend_info.get("ndvi_min_val") is not None:
+        lo = trend_info["ndvi_min_val"]
+        hi = trend_info["ndvi_max_val"]
+        context_lines.append(f"NDVI Range: {lo:.3f} to {hi:.3f}")
+    if trend_info.get("ndvi_volatility"):
+        vol = trend_info["ndvi_volatility"]
+        std = trend_info.get("ndvi_std_dev", 0)
+        context_lines.append(f"Volatility: {vol} (σ={std:.3f})")
+    if trend_info.get("ndvi_trajectory"):
+        context_lines.append(f"Multi-year Trajectory: {trend_info['ndvi_trajectory']}")
+    if trend_info.get("ndvi_yoy_avg_change") is not None:
+        yoy = trend_info["ndvi_yoy_avg_change"]
+        context_lines.append(f"Avg Year-over-Year Change (same season): {yoy:+.4f}")
+    elif trend_info.get("ndvi_change") is not None:
+        chg = trend_info["ndvi_change"]
+        pct = trend_info.get("ndvi_pct_change", 0)
+        context_lines.append(f"Overall Change: {chg:+.3f} ({pct:+.1f}%)")
+
+    # Season breakdown
+    if trend_info.get("ndvi_by_season"):
+        context_lines.append("\n  Per-season NDVI averages:")
+        for skey, sdata in trend_info["ndvi_by_season"].items():
+            context_lines.append(
+                f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
+                f"(range {sdata['min']:.3f}–{sdata['max']:.3f}, {sdata['n_years']} years)"
+            )
+
+    context_lines.append("\n=== Weather Context ===")
+    if trend_info.get("weather_period"):
+        context_lines.append(f"Weather data: {trend_info['weather_period']}")
+    if trend_info.get("temp_avg") is not None:
+        t_avg = trend_info["temp_avg"]
+        t_lo = trend_info.get("temp_min", 0)
+        t_hi = trend_info.get("temp_max", 0)
+        context_lines.append(f"Temperature: avg {t_avg:.1f}°C (range {t_lo:.1f} to {t_hi:.1f}°C)")
+    if trend_info.get("temp_change") is not None:
+        t_chg = trend_info["temp_change"]
+        t_src = trend_info.get("temp_change_source", "unknown")
+        context_lines.append(f"Temperature Change: {t_chg:+.1f}°C — {t_src}")
+    if trend_info.get("precip_total") is not None:
+        p_tot = trend_info["precip_total"]
+        p_avg = trend_info.get("precip_avg", 0)
+        context_lines.append(f"Total Precipitation: {p_tot:.0f}mm (avg {p_avg:.0f}mm/month)")
+    if trend_info.get("dry_months"):
+        dry = ", ".join(str(m) for m in trend_info["dry_months"])
+        context_lines.append(f"Dry months (<10mm): {dry}")
+    if trend_info.get("wet_months"):
+        wet = ", ".join(str(m) for m in trend_info["wet_months"])
+        context_lines.append(f"Wet months (>150mm): {wet}")
+
+    context_lines.append("\n=== Significant Year-over-Year Events ===")
+    if trend_info.get("significant_events"):
+        for event in trend_info["significant_events"]:
+            context_lines.append(f"• {event}")
+    else:
+        context_lines.append("• No significant deviations detected between same-season years")
+
+    context_str = "\n".join(context_lines)
+
+    prompt = f"""You are an expert geospatial analyst reviewing \
+satellite timelapse data spanning multiple years. Analyze these \
+observations and provide accurate, evidence-based findings.
+
+{context_str}
+
+Provide structured analysis as JSON (respond ONLY with valid JSON, \
+no markdown):
+{{
+  "observations": [
+    {{
+      "category": "vegetation_health|trend|temperature|precipitation|anomaly",
+      "severity": "critical|high|moderate|low|normal",
+      "description": "Specific observation backed by the data above",
+      "recommendation": "Suggested action or monitoring focus"
+    }}
+  ],
+  "summary": "2-3 sentence executive summary of findings",
+  "score": 0.0,
+  "key_finding": "Most significant finding"
+}}
+
+CRITICAL RULES:
+- The NDVI data is SEASONAL. Winter NDVI is naturally lower \
+than summer — do NOT treat this as vegetation loss.
+- Only flag YEAR-OVER-YEAR same-season changes as concerning \
+(e.g. Summer 2023 vs Summer 2022).
+- Temperature variation over 6+ months is SEASONAL, not anomalous.
+- The "Significant Events" section lists real year-over-year \
+deviations — use these as your primary evidence.
+- The "Multi-year Trajectory" and per-season breakdown are the \
+most reliable indicators.
+- Set "score" between 0.0 (critical decline) and 1.0 (excellent \
+health) based on the trajectory and data.
+- Keep observations SPECIFIC — cite actual values from the data."""
+
+    # Call AI provider (Azure AI Foundry → Ollama → graceful degradation)
+    analysis = generate_analysis(prompt)
+    if analysis is None:
+        analysis = _default_analysis("AI analysis unavailable — all providers failed")
+
+    # Add calculated trend info to response
+    analysis["trend_data"] = trend_info
+
+    return func.HttpResponse(
+        json.dumps(analysis),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
 
 @bp.route(
@@ -245,183 +414,9 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         "trend_analysis": {...}
     }
     """
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
-        return error_response(429, "Too many requests — please wait before trying again", req=req)
-
-    raw_body = req.get_body()
-    if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(
-            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
-        )
-
-    try:
-        body = req.get_json()
-    except ValueError:
-        return error_response(400, "Invalid JSON body", req=req)
-
-    context = body.get("context", {})
-
-    if not context or not context.get("ndvi_timeseries"):
-        return error_response(400, "Missing 'context' with ndvi_timeseries", req=req)
-
-    ndvi_ts = context.get("ndvi_timeseries", [])
-    if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
-        return error_response(
-            400,
-            f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries",
-            req=req,
-        )
-
-    try:
-        # Extract timeseries data
-        ndvi_series = ndvi_ts
-        weather_series = context.get("weather_timeseries", [])
-
-        # Calculate trend statistics
-        trend_info = _calculate_trends(ndvi_series, weather_series)
-
-        # Build analysis prompt with temporal context
-        context_lines: list[str] = []
-        if context.get("aoi_name"):
-            aoi_name = _sanitise_for_prompt(context["aoi_name"])
-            if aoi_name:
-                context_lines.append(f"Area of Interest: {aoi_name}")
-        if context.get("date_range_start") and context.get("date_range_end"):
-            start = _sanitise_for_prompt(context["date_range_start"])
-            end = _sanitise_for_prompt(context["date_range_end"])
-            if start and end:
-                context_lines.append(f"Analysis Period: {start} to {end}")
-        if context.get("latitude") and context.get("longitude"):
-            context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
-
-        n_frames = context.get("frame_count", len(ndvi_series))
-        context_lines.append(f"\nObservations: {n_frames} satellite frames analyzed")
-
-        context_lines.append("\n=== NDVI Vegetation Analysis ===")
-        if trend_info.get("ndvi_avg") is not None:
-            context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
-        if trend_info.get("ndvi_min_val") is not None:
-            lo = trend_info["ndvi_min_val"]
-            hi = trend_info["ndvi_max_val"]
-            context_lines.append(f"NDVI Range: {lo:.3f} to {hi:.3f}")
-        if trend_info.get("ndvi_volatility"):
-            vol = trend_info["ndvi_volatility"]
-            std = trend_info.get("ndvi_std_dev", 0)
-            context_lines.append(f"Volatility: {vol} (σ={std:.3f})")
-        if trend_info.get("ndvi_trajectory"):
-            context_lines.append(f"Multi-year Trajectory: {trend_info['ndvi_trajectory']}")
-        if trend_info.get("ndvi_yoy_avg_change") is not None:
-            yoy = trend_info["ndvi_yoy_avg_change"]
-            context_lines.append(f"Avg Year-over-Year Change (same season): {yoy:+.4f}")
-        elif trend_info.get("ndvi_change") is not None:
-            chg = trend_info["ndvi_change"]
-            pct = trend_info.get("ndvi_pct_change", 0)
-            context_lines.append(f"Overall Change: {chg:+.3f} ({pct:+.1f}%)")
-
-        # Season breakdown
-        if trend_info.get("ndvi_by_season"):
-            context_lines.append("\n  Per-season NDVI averages:")
-            for skey, sdata in trend_info["ndvi_by_season"].items():
-                context_lines.append(
-                    f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
-                    f"(range {sdata['min']:.3f}–{sdata['max']:.3f}, {sdata['n_years']} years)"
-                )
-
-        context_lines.append("\n=== Weather Context ===")
-        if trend_info.get("weather_period"):
-            context_lines.append(f"Weather data: {trend_info['weather_period']}")
-        if trend_info.get("temp_avg") is not None:
-            t_avg = trend_info["temp_avg"]
-            t_lo = trend_info.get("temp_min", 0)
-            t_hi = trend_info.get("temp_max", 0)
-            context_lines.append(
-                f"Temperature: avg {t_avg:.1f}°C (range {t_lo:.1f} to {t_hi:.1f}°C)"
-            )
-        if trend_info.get("temp_change") is not None:
-            t_chg = trend_info["temp_change"]
-            t_src = trend_info.get("temp_change_source", "unknown")
-            context_lines.append(f"Temperature Change: {t_chg:+.1f}°C — {t_src}")
-        if trend_info.get("precip_total") is not None:
-            p_tot = trend_info["precip_total"]
-            p_avg = trend_info.get("precip_avg", 0)
-            context_lines.append(f"Total Precipitation: {p_tot:.0f}mm (avg {p_avg:.0f}mm/month)")
-        if trend_info.get("dry_months"):
-            dry = ", ".join(str(m) for m in trend_info["dry_months"])
-            context_lines.append(f"Dry months (<10mm): {dry}")
-        if trend_info.get("wet_months"):
-            wet = ", ".join(str(m) for m in trend_info["wet_months"])
-            context_lines.append(f"Wet months (>150mm): {wet}")
-
-        context_lines.append("\n=== Significant Year-over-Year Events ===")
-        if trend_info.get("significant_events"):
-            for event in trend_info["significant_events"]:
-                context_lines.append(f"• {event}")
-        else:
-            context_lines.append("• No significant deviations detected between same-season years")
-
-        context_str = "\n".join(context_lines)
-
-        prompt = f"""You are an expert geospatial analyst reviewing \
-satellite timelapse data spanning multiple years. Analyze these \
-observations and provide accurate, evidence-based findings.
-
-{context_str}
-
-Provide structured analysis as JSON (respond ONLY with valid JSON, \
-no markdown):
-{{
-  "observations": [
-    {{
-      "category": "vegetation_health|trend|temperature|precipitation|anomaly",
-      "severity": "critical|high|moderate|low|normal",
-      "description": "Specific observation backed by the data above",
-      "recommendation": "Suggested action or monitoring focus"
-    }}
-  ],
-  "summary": "2-3 sentence executive summary of findings",
-  "score": 0.0,
-  "key_finding": "Most significant finding"
-}}
-
-CRITICAL RULES:
-- The NDVI data is SEASONAL. Winter NDVI is naturally lower \
-than summer — do NOT treat this as vegetation loss.
-- Only flag YEAR-OVER-YEAR same-season changes as concerning \
-(e.g. Summer 2023 vs Summer 2022).
-- Temperature variation over 6+ months is SEASONAL, not anomalous.
-- The "Significant Events" section lists real year-over-year \
-deviations — use these as your primary evidence.
-- The "Multi-year Trajectory" and per-season breakdown are the \
-most reliable indicators.
-- Set "score" between 0.0 (critical decline) and 1.0 (excellent \
-health) based on the trajectory and data.
-- Keep observations SPECIFIC — cite actual values from the data."""
-
-        # Call AI provider (Azure AI Foundry → Ollama → graceful degradation)
-        analysis = generate_analysis(prompt)
-        if analysis is None:
-            analysis = _default_analysis("AI analysis unavailable — all providers failed")
-
-        # Add calculated trend info to response
-        analysis["trend_data"] = trend_info
-
-        return func.HttpResponse(
-            json.dumps(analysis),
-            status_code=200,
-            mimetype="application/json",
-            headers=cors_headers(req),
-        )
-
-    except Exception:
-        return error_response(500, "Analysis failed", req=req)
+    return _run_analysis(
+        req, run_fn=_timelapse_logic, require_ndvi=True, error_msg="Analysis failed"
+    )
 
 
 def _calculate_trends(
@@ -448,9 +443,7 @@ def _calculate_trends(
             trends["ndvi_min_val"] = round(min(ndvi_means), 4)
 
             # Volatility (standard deviation)
-            avg = trends["ndvi_avg"]
-            variance = sum((x - avg) ** 2 for x in ndvi_means) / len(ndvi_means)
-            trends["ndvi_std_dev"] = round(variance**0.5, 4)
+            trends["ndvi_std_dev"] = round(statistics.pstdev(ndvi_means), 4)
             trends["ndvi_volatility"] = (
                 "High"
                 if trends["ndvi_std_dev"] > 0.15
@@ -605,124 +598,75 @@ def _calculate_trends(
 _EUDR_CUTOFF = EUDR_CUTOFF_DATE
 
 
-@bp.route(
-    route="eudr-assessment",
-    methods=["POST", "OPTIONS"],
-    auth_level=func.AuthLevel.ANONYMOUS,
-)
-def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
-    """AI-generated EUDR deforestation-free due-diligence statement.
-
-    Analyses post-2020 NDVI timeseries data and produces a structured
-    compliance assessment leading with a clear yes/no conclusion.
-
-    Request body mirrors ``timelapse-analysis`` but adds ``eudr_mode: true``.
-    """
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
-    raw_body = req.get_body()
-    if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(
-            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
-        )
-
-    try:
-        body = req.get_json()
-    except ValueError:
-        return error_response(400, "Invalid JSON body", req=req)
-
-    context = body.get("context", {})
-    if not context or not context.get("ndvi_timeseries"):
-        return error_response(400, "Missing 'context' with ndvi_timeseries", req=req)
-
+def _eudr_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
+    """Build EUDR assessment prompt and call AI."""
     ndvi_ts = context.get("ndvi_timeseries", [])
-    if not isinstance(ndvi_ts, list) or len(ndvi_ts) > _MAX_TIMESERIES_ENTRIES:
-        return error_response(
-            400,
-            f"ndvi_timeseries must be a list of at most {_MAX_TIMESERIES_ENTRIES} entries",
-            req=req,
-        )
 
-    try:
-        # Filter to post-2020 data only — require a valid date or year
-        post_cutoff = [
-            s
-            for s in ndvi_ts
-            if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
-            or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
-        ]
-        if not post_cutoff:
+    # Filter to post-2020 data only — require a valid date or year
+    post_cutoff = [
+        s
+        for s in ndvi_ts
+        if (isinstance(s.get("date"), str) and s["date"] > _EUDR_CUTOFF)
+        or (isinstance(s.get("year"), (int, float)) and s["year"] > 2020)
+    ]
+    if not post_cutoff:
+        return error_response(400, "No post-2020 NDVI data available for EUDR assessment", req=req)
+
+    weather_series = context.get("weather_timeseries", [])
+    trend_info = _calculate_trends(post_cutoff, weather_series)
+
+    # Build EUDR-specific prompt
+    context_lines: list[str] = []
+    if context.get("aoi_name"):
+        aoi_name = _sanitise_for_prompt(context["aoi_name"])
+        if aoi_name:
+            context_lines.append(f"Area of Interest: {aoi_name}")
+    lat_raw = context.get("latitude")
+    lon_raw = context.get("longitude")
+    if lat_raw is not None and lon_raw is not None:
+        try:
+            latitude = float(lat_raw)
+            longitude = float(lon_raw)
+        except (TypeError, ValueError):
             return error_response(
-                400, "No post-2020 NDVI data available for EUDR assessment", req=req
+                400,
+                "Invalid latitude/longitude; values must be numeric.",
+                req=req,
             )
+        context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+    context_lines.append(f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)")
+    context_lines.append(f"Analysis Period: post-{_EUDR_CUTOFF} ({len(post_cutoff)} observations)")
 
-        weather_series = context.get("weather_timeseries", [])
-        trend_info = _calculate_trends(post_cutoff, weather_series)
-
-        # Build EUDR-specific prompt
-        context_lines: list[str] = []
-        if context.get("aoi_name"):
-            aoi_name = _sanitise_for_prompt(context["aoi_name"])
-            if aoi_name:
-                context_lines.append(f"Area of Interest: {aoi_name}")
-        lat_raw = context.get("latitude")
-        lon_raw = context.get("longitude")
-        if lat_raw is not None and lon_raw is not None:
-            try:
-                latitude = float(lat_raw)
-                longitude = float(lon_raw)
-            except (TypeError, ValueError):
-                return error_response(
-                    400,
-                    "Invalid latitude/longitude; values must be numeric.",
-                    req=req,
-                )
-            context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+    context_lines.append("\n=== Post-2020 Vegetation Data ===")
+    if trend_info.get("ndvi_avg") is not None:
+        context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
+    if trend_info.get("ndvi_min_val") is not None:
         context_lines.append(
-            f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)"
+            f"NDVI Range: {trend_info['ndvi_min_val']:.3f} to {trend_info['ndvi_max_val']:.3f}"
         )
-        context_lines.append(
-            f"Analysis Period: post-{_EUDR_CUTOFF} ({len(post_cutoff)} observations)"
-        )
+    if trend_info.get("ndvi_trajectory"):
+        context_lines.append(f"Trajectory: {trend_info['ndvi_trajectory']}")
+    if trend_info.get("ndvi_yoy_avg_change") is not None:
+        context_lines.append(f"Avg Year-over-Year Change: {trend_info['ndvi_yoy_avg_change']:+.4f}")
 
-        context_lines.append("\n=== Post-2020 Vegetation Data ===")
-        if trend_info.get("ndvi_avg") is not None:
-            context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
-        if trend_info.get("ndvi_min_val") is not None:
+    if trend_info.get("ndvi_by_season"):
+        context_lines.append("\n  Per-season post-2020 NDVI:")
+        for skey, sdata in trend_info["ndvi_by_season"].items():
             context_lines.append(
-                f"NDVI Range: {trend_info['ndvi_min_val']:.3f} to {trend_info['ndvi_max_val']:.3f}"
-            )
-        if trend_info.get("ndvi_trajectory"):
-            context_lines.append(f"Trajectory: {trend_info['ndvi_trajectory']}")
-        if trend_info.get("ndvi_yoy_avg_change") is not None:
-            context_lines.append(
-                f"Avg Year-over-Year Change: {trend_info['ndvi_yoy_avg_change']:+.4f}"
+                f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
+                f"(range {sdata['min']:.3f}–{sdata['max']:.3f})"
             )
 
-        if trend_info.get("ndvi_by_season"):
-            context_lines.append("\n  Per-season post-2020 NDVI:")
-            for skey, sdata in trend_info["ndvi_by_season"].items():
-                context_lines.append(
-                    f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
-                    f"(range {sdata['min']:.3f}–{sdata['max']:.3f})"
-                )
+    context_lines.append("\n=== Significant Events (post-2020) ===")
+    if trend_info.get("significant_events"):
+        for event in trend_info["significant_events"]:
+            context_lines.append(f"• {event}")
+    else:
+        context_lines.append("• No significant deviations detected")
 
-        context_lines.append("\n=== Significant Events (post-2020) ===")
-        if trend_info.get("significant_events"):
-            for event in trend_info["significant_events"]:
-                context_lines.append(f"• {event}")
-        else:
-            context_lines.append("• No significant deviations detected")
+    context_str = "\n".join(context_lines)
 
-        context_str = "\n".join(context_lines)
-
-        prompt = f"""You are an expert geospatial analyst conducting an EU \
+    prompt = f"""You are an expert geospatial analyst conducting an EU \
 Deforestation Regulation (EUDR) due-diligence assessment. The EUDR \
 (Regulation 2023/1115) requires operators to demonstrate that commodities \
 were produced on land not subject to deforestation after 31 December 2020.
@@ -760,29 +704,48 @@ constitute full EUDR due diligence.
 - Cite actual NDVI values from the data as evidence.
 - Compare SAME SEASONS across years — seasonal variation is NOT deforestation."""
 
-        analysis = generate_analysis(prompt)
-        if analysis is None:
-            analysis = {
-                "deforestation_free": None,
-                "confidence": "unavailable",
-                "conclusion": "AI analysis unavailable — all providers failed",
-                "evidence": [],
-                "risk_factors": ["Automated assessment could not be completed"],
-                "methodology": "N/A",
-                "recommendation": "Manual review required",
-                "disclaimer": "This is an automated preliminary assessment only.",
-            }
+    analysis = generate_analysis(prompt)
+    if analysis is None:
+        analysis = {
+            "deforestation_free": None,
+            "confidence": "unavailable",
+            "conclusion": "AI analysis unavailable — all providers failed",
+            "evidence": [],
+            "risk_factors": ["Automated assessment could not be completed"],
+            "methodology": "N/A",
+            "recommendation": "Manual review required",
+            "disclaimer": "This is an automated preliminary assessment only.",
+        }
 
-        analysis["trend_data"] = trend_info
-        analysis["eudr_cutoff_date"] = _EUDR_CUTOFF
-        analysis["observations_analysed"] = len(post_cutoff)
+    analysis["trend_data"] = trend_info
+    analysis["eudr_cutoff_date"] = _EUDR_CUTOFF
+    analysis["observations_analysed"] = len(post_cutoff)
 
-        return func.HttpResponse(
-            json.dumps(analysis),
-            status_code=200,
-            mimetype="application/json",
-            headers=cors_headers(req),
-        )
+    return func.HttpResponse(
+        json.dumps(analysis),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
-    except Exception:
-        return error_response(500, "EUDR assessment failed", req=req)
+
+@bp.route(
+    route="eudr-assessment",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
+    """AI-generated EUDR deforestation-free due-diligence statement.
+
+    Analyses post-2020 NDVI timeseries data and produces a structured
+    compliance assessment leading with a clear yes/no conclusion.
+
+    Request body mirrors ``timelapse-analysis`` but adds ``eudr_mode: true``.
+    """
+    return _run_analysis(
+        req,
+        run_fn=_eudr_logic,
+        require_ndvi=True,
+        rate_limit=False,
+        error_msg="EUDR assessment failed",
+    )

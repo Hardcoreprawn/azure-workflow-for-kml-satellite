@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import azure.functions as func
 
+from tests.conftest import TEST_LOCAL_ORIGIN, make_test_request
 from treesight.constants import DEFAULT_INPUT_CONTAINER, PIPELINE_PAYLOADS_CONTAINER
 
 PIPELINE_PKG = Path(__file__).resolve().parent.parent / "blueprints" / "pipeline"
@@ -21,16 +22,12 @@ def _make_req(
     params: dict[str, str] | None = None,
 ) -> func.HttpRequest:
     payload = body if body is not None else {"kml_content": "<kml></kml>"}
-    return func.HttpRequest(
-        method=method,
+    return make_test_request(
         url=url,
-        headers={
-            "Origin": "http://localhost:4280",
-            "Authorization": "Bearer fake-token",
-            "Content-Type": "application/json",
-        },
+        method=method,
+        body=payload,
         params=params,
-        body=json.dumps(payload).encode("utf-8"),
+        origin=TEST_LOCAL_ORIGIN,
     )
 
 
@@ -287,7 +284,7 @@ class TestFetchSubmissionRecordsCosmos:
         ]
 
         with (
-            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", return_value=records) as mock_q,
         ):
             result = _fetch_submission_records("u1", 8)
@@ -302,7 +299,7 @@ class TestFetchSubmissionRecordsCosmos:
         from blueprints.pipeline.history import _fetch_submission_records
 
         with (
-            patch("blueprints.pipeline.history._cosmos_available", return_value=False),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=False),
             patch("treesight.storage.client.BlobStorageClient") as mock_cls,
         ):
             mock_cls.return_value.list_blobs.return_value = [
@@ -322,7 +319,7 @@ class TestFetchSubmissionRecordsCosmos:
         from blueprints.pipeline.history import _fetch_submission_records
 
         with (
-            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
             patch("treesight.storage.client.BlobStorageClient") as mock_cls,
         ):
@@ -339,7 +336,7 @@ class TestPersistSubmissionRecordCosmos:
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
         with (
-            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item") as mock_upsert,
         ):
             _persist_submission_record(None, record, "u1", "s1")
@@ -357,7 +354,7 @@ class TestPersistSubmissionRecordCosmos:
         storage = MagicMock()
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
-        with patch("blueprints.pipeline.history._cosmos_available", return_value=False):
+        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
             _persist_submission_record(storage, record, "u1", "s1")
 
         storage.upload_json.assert_called_once()
@@ -371,7 +368,7 @@ class TestPersistSubmissionRecordCosmos:
         record = {"submission_id": "s1", "user_id": "u1", "status": "submitted"}
 
         with (
-            patch("blueprints.pipeline.history._cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("boom")),
         ):
             _persist_submission_record(storage, record, "u1", "s1")

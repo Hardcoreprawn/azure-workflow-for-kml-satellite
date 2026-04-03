@@ -51,6 +51,12 @@ class ImageryOutcome(BaseModel):
     poll_count: int = 0
     elapsed_seconds: float = 0.0
     error: str = ""
+    cloud_cover_pct: float = 0.0
+    acquisition_date: str = ""
+    spatial_resolution_m: float = 0.0
+    asset_url: str = ""
+    role: str = ""
+    collection: str = ""
 
 
 class AcquisitionResult(BaseModel):
@@ -79,7 +85,7 @@ class DownloadResult(BaseModel):
     content_type: str = ""
     download_duration_seconds: float = 0.0
     retry_count: int = 0
-    state: str = ""
+    state: str = "completed"
     error: str = ""
 
 
@@ -97,9 +103,9 @@ class PostProcessResult(BaseModel):
     source_size_bytes: int = 0
     output_size_bytes: int = 0
     processing_duration_seconds: float = 0.0
-    clip_error: str = ""
-    state: str = ""
+    state: str = "completed"
     error: str = ""
+    clip_error: str = ""
 
 
 class FulfillmentResult(BaseModel):

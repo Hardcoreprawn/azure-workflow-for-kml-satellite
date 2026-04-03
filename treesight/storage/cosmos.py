@@ -21,6 +21,14 @@ from treesight import config
 
 logger = logging.getLogger("treesight.storage.cosmos")
 
+
+def cosmos_available() -> bool:
+    """Return True when a Cosmos DB endpoint is configured."""
+    from treesight import config
+
+    return bool(config.COSMOS_ENDPOINT)
+
+
 _lock = threading.Lock()
 _client: CosmosClient | None = None
 _database: Any = None
@@ -104,7 +112,7 @@ def reset_client() -> None:
     with _lock:
         if _client is not None:
             with contextlib.suppress(Exception):
-                _client.__exit__(None, None, None)
+                _client.__exit__(None, None, None)  # CosmosClient lacks .close()
         if _credential is not None:
             with contextlib.suppress(Exception):
                 _credential.close()

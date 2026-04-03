@@ -14,17 +14,16 @@ from typing import Any
 
 from treesight.constants import (
     DEMO_TIER_RUN_LIMIT,
+    ENTERPRISE_TIER_RUN_LIMIT,
     FREE_TIER_RUN_LIMIT,
     PIPELINE_PAYLOADS_CONTAINER,
     PRO_TIER_RUN_LIMIT,
+    STARTER_TIER_RUN_LIMIT,
     SUBSCRIPTIONS_PREFIX,
+    TEAM_TIER_RUN_LIMIT,
 )
 
 logger = logging.getLogger(__name__)
-
-STARTER_TIER_RUN_LIMIT = 15
-TEAM_TIER_RUN_LIMIT = 200
-ENTERPRISE_TIER_RUN_LIMIT = 10_000
 
 EMULATIONS_PREFIX = "subscription-emulations"
 
@@ -118,13 +117,6 @@ def _emulation_blob_path(user_id: str) -> str:
     return f"{EMULATIONS_PREFIX}/{user_id}.json"
 
 
-def _cosmos_available() -> bool:
-    """Return True if Cosmos DB is configured for subscription storage."""
-    from treesight import config
-
-    return bool(config.COSMOS_ENDPOINT)
-
-
 def supported_tiers() -> tuple[str, ...]:
     """Return the supported plan tiers in UI order."""
     return tuple(PLAN_CATALOG)
@@ -146,70 +138,72 @@ def plan_capabilities(tier: str | None) -> dict[str, Any]:
 
 def get_subscription(user_id: str) -> dict[str, Any]:
     """Return cached subscription record, or a free-tier default."""
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import read_item
+    from treesight.storage.cosmos_or_blob import read_with_fallback
 
-            doc = read_item("subscriptions", user_id, user_id)
-            if doc:
-                return {k: v for k, v in doc.items() if not k.startswith("_")}
-            return {"tier": "free", "status": "none"}
-        except Exception:
-            logger.warning(
-                "Cosmos read failed for subscription user=%s, falling back to blob", user_id
-            )
+    def _cosmos():
+        from treesight.storage.cosmos import read_item
 
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
-    try:
-        return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
-    except Exception:
+        doc = read_item("subscriptions", user_id, user_id)
+        if doc:
+            return {k: v for k, v in doc.items() if not k.startswith("_")}
         return {"tier": "free", "status": "none"}
+
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        try:
+            return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
+        except Exception:
+            return {"tier": "free", "status": "none"}
+
+    return read_with_fallback(_cosmos, _blob)
 
 
 def get_subscription_emulation(user_id: str) -> dict[str, Any] | None:
     """Return a local tier-emulation record for *user_id*, if present."""
-    if _cosmos_available():
+    from treesight.storage.cosmos_or_blob import read_with_fallback
+
+    def _cosmos():
+        from treesight.storage.cosmos import read_item
+
+        doc = read_item("subscriptions", f"{user_id}:emulation", user_id)
+        if not doc or not doc.get("enabled"):
+            return None
+        tier = normalize_tier(doc.get("tier"))
+        return {
+            "tier": tier,
+            "status": "active",
+            "enabled": True,
+            "updated_at": doc.get("updated_at"),
+        }
+
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
         try:
-            from treesight.storage.cosmos import read_item
-
-            doc = read_item("subscriptions", f"{user_id}:emulation", user_id)
-            if not doc or not doc.get("enabled"):
-                return None
-            tier = normalize_tier(doc.get("tier"))
-            return {
-                "tier": tier,
-                "status": "active",
-                "enabled": True,
-                "updated_at": doc.get("updated_at"),
-            }
-        except Exception:
-            logger.warning(
-                "Cosmos read failed for emulation user=%s, falling back to blob", user_id
+            record = storage.download_json(
+                PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id)
             )
+        except Exception:
+            return None
 
-    from treesight.storage.client import BlobStorageClient
+        if not record.get("enabled"):
+            return None
 
-    storage = BlobStorageClient()
-    try:
-        record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id))
-    except Exception:
-        return None
+        tier = normalize_tier(record.get("tier"))
+        if tier not in PLAN_CATALOG:
+            return None
 
-    if not record.get("enabled"):
-        return None
+        return {
+            "tier": tier,
+            "status": "active",
+            "enabled": True,
+            "updated_at": record.get("updated_at"),
+        }
 
-    tier = normalize_tier(record.get("tier"))
-    if tier not in PLAN_CATALOG:
-        return None
-
-    return {
-        "tier": tier,
-        "status": "active",
-        "enabled": True,
-        "updated_at": record.get("updated_at"),
-    }
+    return read_with_fallback(_cosmos, _blob)
 
 
 def save_subscription_emulation(user_id: str, tier: str) -> None:
@@ -225,24 +219,23 @@ def save_subscription_emulation(user_id: str, tier: str) -> None:
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import upsert_item
+    from treesight.storage.cosmos_or_blob import write_with_fallback
 
-            upsert_item(
-                "subscriptions",
-                {"id": f"{user_id}:emulation", "user_id": user_id, **record},
-            )
-            return
-        except Exception:
-            logger.warning(
-                "Cosmos write failed for emulation user=%s, falling back to blob", user_id
-            )
+    def _cosmos():
+        from treesight.storage.cosmos import upsert_item
 
-    from treesight.storage.client import BlobStorageClient
+        upsert_item(
+            "subscriptions",
+            {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+        )
 
-    storage = BlobStorageClient()
-    storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id), record)
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id), record)
+
+    write_with_fallback(_cosmos, _blob)
 
 
 def clear_subscription_emulation(user_id: str) -> None:
@@ -253,24 +246,23 @@ def clear_subscription_emulation(user_id: str) -> None:
         "updated_at": datetime.now(UTC).isoformat(),
     }
 
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import upsert_item
+    from treesight.storage.cosmos_or_blob import write_with_fallback
 
-            upsert_item(
-                "subscriptions",
-                {"id": f"{user_id}:emulation", "user_id": user_id, **record},
-            )
-            return
-        except Exception:
-            logger.warning(
-                "Cosmos write failed for clear_emulation user=%s, falling back to blob", user_id
-            )
+    def _cosmos():
+        from treesight.storage.cosmos import upsert_item
 
-    from treesight.storage.client import BlobStorageClient
+        upsert_item(
+            "subscriptions",
+            {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+        )
 
-    storage = BlobStorageClient()
-    storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id), record)
+    def _blob():
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _emulation_blob_path(user_id), record)
+
+    write_with_fallback(_cosmos, _blob)
 
 
 def get_effective_subscription(user_id: str) -> dict[str, Any]:
@@ -299,26 +291,23 @@ def save_subscription(user_id: str, record: dict[str, Any]) -> None:
     """Persist subscription record."""
     record["updated_at"] = datetime.now(UTC).isoformat()
 
-    saved_to_cosmos = False
-    if _cosmos_available():
-        try:
-            from treesight.storage.cosmos import upsert_item
+    from treesight.storage.cosmos_or_blob import write_with_fallback
 
-            upsert_item(
-                "subscriptions",
-                {"id": user_id, "user_id": user_id, **record},
-            )
-            saved_to_cosmos = True
-        except Exception:
-            logger.warning(
-                "Cosmos write failed for subscription user=%s, falling back to blob", user_id
-            )
+    def _cosmos():
+        from treesight.storage.cosmos import upsert_item
 
-    if not saved_to_cosmos:
+        upsert_item(
+            "subscriptions",
+            {"id": user_id, "user_id": user_id, **record},
+        )
+
+    def _blob():
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()
         storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id), record)
+
+    write_with_fallback(_cosmos, _blob)
 
     logger.info(
         "Subscription saved user=%s tier=%s status=%s",

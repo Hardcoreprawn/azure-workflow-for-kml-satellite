@@ -5,7 +5,7 @@ accidentally removed or misconfigured.  They cover:
 
 1. Container Apps scaling limits (maxReplicas)
 2. App Insights browser analytics on all pages
-3. Rate limiting on demo-submit endpoint
+3. Rate limiting on demo-process endpoint
 4. REQUIRE_AUTH wired into production app settings
 5. Log Analytics daily ingestion cap
 6. detect-secrets in CI security workflow
@@ -24,6 +24,8 @@ import re
 from pathlib import Path
 
 import pytest
+
+from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -131,44 +133,43 @@ class TestBrowserAnalytics:
 
 
 # ---------------------------------------------------------------------------
-# 3. Rate limiter on demo-submit
+# 3. Rate limiter on demo-process
 # ---------------------------------------------------------------------------
 
 
-class TestDemoSubmitRateLimiter:
-    """Ensure the demo-submit endpoint has rate limiting to prevent abuse."""
+class TestDemoProcessRateLimiter:
+    """Ensure the demo-process endpoint has rate limiting to prevent abuse."""
 
-    def test_demo_submit_imports_pipeline_limiter(self):
-        src = (ROOT / "blueprints" / "demo.py").read_text()
-        assert "pipeline_limiter" in src, (
-            "demo.py must import pipeline_limiter to rate-limit demo-submit"
+    def test_demo_process_imports_limiter(self):
+        src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
+        assert "demo_limiter" in src, (
+            "submission.py must import demo_limiter to rate-limit demo-process"
         )
 
-    def test_demo_submit_calls_rate_limiter(self):
-        src = (ROOT / "blueprints" / "demo.py").read_text()
-        # Find the demo_submit function and check it uses the limiter
+    def test_demo_process_calls_rate_limiter(self):
+        src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
         func_match = re.search(
-            r"def demo_submit\(.*?\n(.*?)(?=\ndef |\Z)",
+            r"def _submit_demo_request\(.*?\n(.*?)(?=\ndef |\Z)",
             src,
             re.DOTALL,
         )
-        assert func_match, "demo_submit function not found"
+        assert func_match, "_submit_demo_request function not found"
         body = func_match.group(1)
-        assert "pipeline_limiter.is_allowed" in body, (
-            "demo_submit must call pipeline_limiter.is_allowed() before processing the request"
+        assert "demo_limiter.is_allowed" in body, (
+            "_submit_demo_request must call demo_limiter.is_allowed() before processing"
         )
 
     def test_rate_limit_returns_429(self):
         """Rate-limited requests must get a 429 response."""
-        src = (ROOT / "blueprints" / "demo.py").read_text()
+        src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
         func_match = re.search(
-            r"def demo_submit\(.*?\n(.*?)(?=\ndef |\Z)",
+            r"def _submit_demo_request\(.*?\n(.*?)(?=\ndef |\Z)",
             src,
             re.DOTALL,
         )
         assert func_match
         body = func_match.group(1)
-        assert "429" in body, "demo_submit must return HTTP 429 when rate limited"
+        assert "429" in body, "_submit_demo_request must return HTTP 429 when rate limited"
 
 
 # ---------------------------------------------------------------------------
@@ -289,16 +290,19 @@ class TestCspAppInsights:
     def test_script_src_allows_monitor_cdn(self, csp):
         script_match = re.search(r"script-src\s+([^;]+)", csp)
         assert script_match, "CSP missing script-src"
-        assert "js.monitor.azure.com" in script_match.group(1), (
+        sources = script_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "js.monitor.azure.com") for src in sources), (
             "CSP script-src must allow js.monitor.azure.com for the App Insights SDK"
         )
 
     def test_connect_src_allows_telemetry_endpoint(self, csp):
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src"
-        connect_src = connect_match.group(1)
-        assert (
-            "applicationinsights.azure.com" in connect_src or "visualstudio.com" in connect_src
+        sources = connect_match.group(1).split()
+        assert any(
+            _csp_token_matches_host(src, "applicationinsights.azure.com")
+            or _csp_token_matches_host(src, "visualstudio.com")
+            for src in sources
         ), "CSP connect-src must allow App Insights telemetry ingestion endpoint"
 
 
@@ -540,17 +544,17 @@ class TestSubmissionCORSParity:
             )
 
     def test_error_response_includes_cors_headers(self):
-        """_error_response should accept a request and include CORS headers."""
-        helpers = (ROOT / "blueprints" / "pipeline" / "_helpers.py").read_text()
+        """error_response should accept a request and include CORS headers."""
+        helpers = (ROOT / "blueprints" / "_helpers.py").read_text()
         fn_match = re.search(
-            r"def _error_response\b.*?(?=\ndef |\nclass |\Z)",
+            r"def error_response\b.*?(?=\ndef |\nclass |\Z)",
             helpers,
             flags=re.DOTALL,
         )
-        assert fn_match, "_error_response not found in _helpers.py"
+        assert fn_match, "error_response not found in _helpers.py"
         fn_body = fn_match.group(0)
-        assert "cors_headers" in fn_body, (
-            "_error_response must include cors_headers so error responses "
+        assert "Access-Control-Allow-Origin" in fn_body or "cors" in fn_body.lower(), (
+            "error_response must include CORS headers so error responses "
             "are not blocked by CORS policy"
         )
 

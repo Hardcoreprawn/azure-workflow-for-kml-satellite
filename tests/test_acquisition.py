@@ -267,10 +267,10 @@ class TestAcquireComposite:
 
     def test_returns_detail_and_temporal_orders(self, aoi: AOI) -> None:
         """Composite acquisition returns 1 detail + N temporal orders."""
+        from tests.stub_provider import StubPlanetaryComputerProvider
         from treesight.pipeline.acquisition import acquire_composite
-        from treesight.providers.planetary_computer import PlanetaryComputerProvider
 
-        provider = PlanetaryComputerProvider({"stub_mode": True})
+        provider = StubPlanetaryComputerProvider()
         orders = acquire_composite(aoi, provider, ImageryFilters(), temporal_count=3)
 
         detail = [o for o in orders if o.get("role") == "detail"]
@@ -284,10 +284,10 @@ class TestAcquireComposite:
 
     def test_all_orders_have_required_keys(self, aoi: AOI) -> None:
         """Every order dict contains the expected metadata keys."""
+        from tests.stub_provider import StubPlanetaryComputerProvider
         from treesight.pipeline.acquisition import acquire_composite
-        from treesight.providers.planetary_computer import PlanetaryComputerProvider
 
-        provider = PlanetaryComputerProvider({"stub_mode": True})
+        provider = StubPlanetaryComputerProvider()
         orders = acquire_composite(aoi, provider, ImageryFilters(), temporal_count=2)
 
         required_keys = {

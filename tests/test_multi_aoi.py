@@ -10,12 +10,19 @@ import pytest
 
 from treesight.geo import (
     _compute_bbox,
-    _geodesic_perimeter_km,
+    _geodesic_area_and_perimeter,
     prepare_aoi,
 )
 from treesight.models.aoi import AOI
 from treesight.models.feature import Feature
 from treesight.parsers.lxml_parser import parse_kml_lxml
+
+
+def _geodesic_perimeter_km(coords):
+    """Thin wrapper for tests — extracts perimeter from merged function."""
+    _, perimeter = _geodesic_area_and_perimeter(coords)
+    return perimeter
+
 
 # ── Single-polygon KML ─────────────────────────────────────
 
@@ -301,9 +308,9 @@ class TestPerimeter:
         assert _geodesic_perimeter_km([[0, 0]]) == 0.0
 
     def test_two_point_line(self):
-        """Two-point 'polygon' should give a perimeter (there + back)."""
+        """Two-point input is degenerate — merged function requires ≥3 coords."""
         p = _geodesic_perimeter_km([[0, 0], [1, 0]])
-        assert p > 0
+        assert p == 0.0
 
     def test_perimeter_increases_with_size(self):
         small = [[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]
