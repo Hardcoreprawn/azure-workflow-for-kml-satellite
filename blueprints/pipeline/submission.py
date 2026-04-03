@@ -75,7 +75,7 @@ async def _submit_demo_request(
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    storage.upload_bytes(
+    blob_url = storage.upload_bytes(
         DEFAULT_INPUT_CONTAINER,
         kml_blob_name,
         kml_bytes,
@@ -83,7 +83,7 @@ async def _submit_demo_request(
     )
 
     orchestrator_input = {
-        "blob_url": f"https://devstoreaccount1.blob.core.windows.net/{DEFAULT_INPUT_CONTAINER}/{kml_blob_name}",
+        "blob_url": blob_url,
         "container_name": DEFAULT_INPUT_CONTAINER,
         "blob_name": kml_blob_name,
         "content_length": len(kml_bytes),
@@ -157,7 +157,7 @@ async def _submit_analysis_request(
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    storage.upload_bytes(
+    blob_url = storage.upload_bytes(
         DEFAULT_INPUT_CONTAINER,
         kml_blob_name,
         kml_bytes,
@@ -165,7 +165,7 @@ async def _submit_analysis_request(
     )
 
     orchestrator_input = {
-        "blob_url": f"https://devstoreaccount1.blob.core.windows.net/{DEFAULT_INPUT_CONTAINER}/{kml_blob_name}",
+        "blob_url": blob_url,
         "container_name": DEFAULT_INPUT_CONTAINER,
         "blob_name": kml_blob_name,
         "content_length": len(kml_bytes),

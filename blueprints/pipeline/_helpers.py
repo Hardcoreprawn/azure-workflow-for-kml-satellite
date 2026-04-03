@@ -5,6 +5,7 @@ See blueprints/pipeline/__init__.py for details.
 """
 
 import json
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -19,6 +20,35 @@ from treesight.errors import ContractError
 # ---------------------------------------------------------------------------
 
 _MAX_ANALYSIS_BODY_BYTES = 131_072
+
+
+def _expected_blob_host() -> str:
+    """Derive the expected Azure Blob hostname from the connection string.
+
+    Returns the hostname of the configured storage account so callers
+    can validate that an incoming blob URL belongs to *our* account,
+    not just any ``*.blob.core.windows.net`` host.
+    """
+    from treesight.config import STORAGE_CONNECTION_STRING
+
+    conn = STORAGE_CONNECTION_STRING or ""
+
+    # Azurite / emulator shorthand
+    if conn.strip().lower() == "usedevelopmentstorage=true":
+        return "devstoreaccount1.blob.core.windows.net"
+
+    # Prefer explicit BlobEndpoint (handles Azurite and custom endpoints)
+    m = re.search(r"BlobEndpoint=([^;]+)", conn, re.IGNORECASE)
+    if m:
+        parsed = urlparse(m.group(1))
+        return (parsed.hostname or "").lower()
+
+    # Fall back to AccountName → <account>.blob.core.windows.net
+    m = re.search(r"AccountName=([^;]+)", conn, re.IGNORECASE)
+    if m:
+        return f"{m.group(1).lower()}.blob.core.windows.net"
+
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +97,22 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
         raise ContractError(f"File exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", code="FILE_TOO_LARGE")
 
 
+def _is_trusted_blob_host(host: str) -> bool:
+    """Return True if *host* is the configured storage account or Azurite."""
+    expected = _expected_blob_host()
+    if expected and host == expected:
+        return True
+    # Azurite IP-based URLs (127.0.0.1, localhost, azurite)
+    return host in ("127.0.0.1", "localhost", "azurite")
+
+
 def _extract_container(blob_url: str) -> str:
     parsed = urlparse(blob_url)
-    host = parsed.hostname or ""
+    host = (parsed.hostname or "").lower()
+    if not _is_trusted_blob_host(host):
+        return ""
     if host.endswith(".blob.core.windows.net"):
+        # https://<account>.blob.core.windows.net/<container>/<blob>
         parts = parsed.path.lstrip("/").split("/")
         return parts[0] if parts else ""
     # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
@@ -82,7 +124,9 @@ def _extract_container(blob_url: str) -> str:
 
 def _extract_blob_name(blob_url: str) -> str:
     parsed = urlparse(blob_url)
-    host = parsed.hostname or ""
+    host = (parsed.hostname or "").lower()
+    if not _is_trusted_blob_host(host):
+        return ""
     if host.endswith(".blob.core.windows.net"):
         parts = parsed.path.lstrip("/").split("/")
         return "/".join(parts[1:]) if len(parts) > 1 else ""
