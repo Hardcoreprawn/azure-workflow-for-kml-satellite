@@ -57,6 +57,36 @@ def parse_host(url_or_token: str) -> str:
     return (parsed.hostname or url_or_token.strip()).lower()
 
 
+def host_in_allowlist(hostname: str, allowed: frozenset[str]) -> bool:
+    """Return True if *hostname* matches any entry in *allowed* (exact or subdomain).
+
+    Instead of looping over every allowlist entry with ``host_matches``,
+    this walks up the domain hierarchy and does **O(depth)** set lookups
+    (where depth is the number of dot-separated labels, typically 2–4).
+
+    >>> allowed = frozenset({"example.com", "other.org"})
+    >>> host_in_allowlist("cdn.example.com", allowed)
+    True
+    >>> host_in_allowlist("example.com", allowed)
+    True
+    >>> host_in_allowlist("evil-example.com", allowed)
+    False
+    >>> host_in_allowlist("", allowed)
+    False
+    """
+    h = hostname.lower()
+    if not h:
+        return False
+    if h in allowed:
+        return True
+    parts = h.split(".")
+    for i in range(1, len(parts)):
+        parent = ".".join(parts[i:])
+        if parent in allowed:
+            return True
+    return False
+
+
 def csp_token_matches_host(token: str, host: str) -> bool:
     """Check whether a CSP source-list token matches *host*.
 

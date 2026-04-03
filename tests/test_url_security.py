@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from treesight.security.url import csp_token_matches_host, host_matches, parse_host
+from treesight.security.url import (
+    csp_token_matches_host,
+    host_in_allowlist,
+    host_matches,
+    parse_host,
+)
 
 
 class TestHostMatches:
@@ -77,3 +82,31 @@ class TestCspTokenMatchesHost:
     )
     def test_real_csp_tokens(self, token, host):
         assert csp_token_matches_host(token, host)
+
+
+class TestHostInAllowlist:
+    _ALLOWED = frozenset({"example.com", "other.org", "api.open-meteo.com"})
+
+    def test_exact_match(self):
+        assert host_in_allowlist("example.com", self._ALLOWED)
+
+    def test_subdomain_match(self):
+        assert host_in_allowlist("cdn.example.com", self._ALLOWED)
+
+    def test_deep_subdomain(self):
+        assert host_in_allowlist("a.b.c.example.com", self._ALLOWED)
+
+    def test_no_partial_match(self):
+        assert not host_in_allowlist("evil-example.com", self._ALLOWED)
+
+    def test_empty_rejected(self):
+        assert not host_in_allowlist("", self._ALLOWED)
+
+    def test_case_insensitive(self):
+        assert host_in_allowlist("CDN.Example.COM", self._ALLOWED)
+
+    def test_unrelated_domain_rejected(self):
+        assert not host_in_allowlist("evil.com", self._ALLOWED)
+
+    def test_fqdn_subdomain_of_entry(self):
+        assert host_in_allowlist("sub.api.open-meteo.com", self._ALLOWED)

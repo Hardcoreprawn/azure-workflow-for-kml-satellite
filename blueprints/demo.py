@@ -209,11 +209,11 @@ _PROXY_MAX_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MiB
 
 def _is_domain_allowed(domain: str) -> bool:
     """Exact match or subdomain match against the allowlist."""
-    from treesight.security.url import host_matches
+    from treesight.security.url import host_in_allowlist
 
     if not domain or "@" in domain:
         return False
-    return any(host_matches(domain, allowed) for allowed in PROXY_ALLOWED_DOMAINS)
+    return host_in_allowlist(domain, PROXY_ALLOWED_DOMAINS)
 
 
 @bp.route(route="proxy", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
