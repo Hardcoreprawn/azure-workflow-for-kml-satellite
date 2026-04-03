@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 import pytest
+
+from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
 # ---------------------------------------------------------------------------
 # Path constants
@@ -48,13 +49,6 @@ HTML_PAGES = [
     WEBSITE / "terms.html",
     WEBSITE / "docs" / "eudr-methodology.html",
 ]
-
-
-def _csp_token_matches_host(token: str, host: str) -> bool:
-    """Check whether a CSP source token matches a given host exactly or as a subdomain."""
-    parsed = urlparse(token)
-    h = parsed.hostname or token
-    return h == host or h.endswith(f".{host}")
 
 
 # ---------------------------------------------------------------------------

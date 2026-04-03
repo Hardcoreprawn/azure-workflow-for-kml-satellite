@@ -11,9 +11,10 @@ correctly configured, catching the class of bugs that caused:
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 import pytest
+
+from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
@@ -22,13 +23,6 @@ MSAL_BUNDLE = WEBSITE / "js" / "msal-browser.min.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_CONFIG = WEBSITE / "api-config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
-
-
-def _csp_token_matches_host(token: str, host: str) -> bool:
-    """Check whether a CSP source token matches a given host exactly or as a subdomain."""
-    parsed = urlparse(token)
-    h = parsed.hostname or token
-    return h == host or h.endswith(f".{host}")
 
 
 @pytest.fixture()
