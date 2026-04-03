@@ -28,6 +28,36 @@ def _sanitise(value: object) -> str:
     return _CONTROL_CHAR_RE.sub("", str(value))
 
 
+# Keys whose values may be sensitive when logged in human-readable form.
+_SENSITIVE_KEYS = {
+    "lat",
+    "latitude",
+    "lon",
+    "lng",
+    "longitude",
+}
+
+
+def _redact_value_for_log(key: str, value: object) -> str:
+    """Return a log-safe representation of a value for console messages.
+
+    For certain keys (e.g. precise geolocation), avoid logging the exact value
+    in the human-readable message to reduce the risk of exposing sensitive data.
+    Structured properties still receive the full value via ``custom_properties``.
+    """
+    key_lower = key.lower()
+    if key_lower in _SENSITIVE_KEYS:
+        # Coarsen numeric coordinates rather than logging full precision.
+        try:
+            num = float(value)  # type: ignore[arg-type]
+        except Exception:
+            # Fallback: do not include the raw value.
+            return "<redacted>"
+        # Round to 2 decimal places (approx ~1 km at mid-latitudes).
+        return _sanitise(round(num, 2))
+    return _sanitise(value)
+
+
 class JsonFormatter(logging.Formatter):
     """Formats log records as single-line JSON for App Insights ingestion."""
 
@@ -85,7 +115,7 @@ def log_phase(
     if instance_id:
         parts.append(f"instance={instance_id}")
     for k, v in extra.items():
-        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
+        parts.append(f"{_sanitise(k)}={_redact_value_for_log(k, v)}")
     if blob_name:
         parts.append(f"blob={blob_name}")
     msg = " | ".join(parts)
