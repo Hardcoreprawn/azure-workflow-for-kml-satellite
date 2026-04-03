@@ -105,11 +105,11 @@ class TestCsp:
         """CSP script-src must not reference the deprecated MSAL CDN."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         script_match = re.search(r"script-src\s+([^;]+)", csp)
-        if script_match:
-            sources = script_match.group(1).split()
-            assert not any(_csp_token_matches_host(src, "alcdn.msauth.net") for src in sources), (
-                "CSP still references deprecated alcdn.msauth.net CDN"
-            )
+        assert script_match, "CSP missing script-src directive"
+        sources = script_match.group(1).split()
+        assert not any(_csp_token_matches_host(src, "alcdn.msauth.net") for src in sources), (
+            "CSP still references deprecated alcdn.msauth.net CDN"
+        )
 
     def test_connect_src_allows_ciam(self, swa_config):
         """CSP connect-src must allow CIAM token endpoint calls."""

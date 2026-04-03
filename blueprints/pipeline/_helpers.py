@@ -70,7 +70,7 @@ def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, An
 def _extract_container(blob_url: str) -> str:
     parsed = urlparse(blob_url)
     host = parsed.hostname or ""
-    if host.endswith(".blob.core.windows.net") or host == "devstoreaccount1":
+    if host.endswith(".blob.core.windows.net"):
         parts = parsed.path.lstrip("/").split("/")
         return parts[0] if parts else ""
     # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob
@@ -83,7 +83,7 @@ def _extract_container(blob_url: str) -> str:
 def _extract_blob_name(blob_url: str) -> str:
     parsed = urlparse(blob_url)
     host = parsed.hostname or ""
-    if host.endswith(".blob.core.windows.net") or host == "devstoreaccount1":
+    if host.endswith(".blob.core.windows.net"):
         parts = parsed.path.lstrip("/").split("/")
         return "/".join(parts[1:]) if len(parts) > 1 else ""
     # Azurite with IP: http://127.0.0.1:10000/devstoreaccount1/container/blob

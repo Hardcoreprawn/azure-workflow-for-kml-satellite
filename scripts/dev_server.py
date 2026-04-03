@@ -68,7 +68,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         if not normalised.startswith("/"):
             normalised = "/" + normalised
 
-        if not normalised.startswith("/api/"):
+        if not (normalised.startswith("/api/") or normalised == "/api"):
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self._cors_headers()
