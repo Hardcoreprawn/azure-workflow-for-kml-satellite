@@ -69,7 +69,8 @@ class TestOidcConfigUrl:
 
             parsed = urlparse(url)
             assert parsed.hostname == "mytenant.ciamlogin.com"
-            assert "mytenant.onmicrosoft.com" in parsed.path
+            path_segments = parsed.path.strip("/").split("/")
+            assert "mytenant.onmicrosoft.com" in path_segments
             assert url.endswith("/v2.0/.well-known/openid-configuration")
 
 
