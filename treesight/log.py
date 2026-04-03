@@ -145,7 +145,7 @@ def log_error(
     if instance_id:
         parts.append(f"instance={instance_id}")
     for k, v in extra.items():
-        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
+        parts.append(f"{_sanitise(k)}={_redact_value_for_log(k, v)}")
     parts.append(f"error={error}")
     logger.error(" | ".join(parts), extra={"custom_properties": props})
 
