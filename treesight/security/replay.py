@@ -53,16 +53,16 @@ class TableReplayStore:
         connection_string: str | None = None,
         table_name: str = "valetreplay",
         *,
-        table_client: TableServiceClient | None = None,
+        table_service_client: TableServiceClient | None = None,
     ) -> None:
-        if table_client is not None:
-            self._service = table_client
+        if table_service_client is not None:
+            self._service = table_service_client
         elif connection_string:
             from azure.data.tables import TableServiceClient
 
             self._service = TableServiceClient.from_connection_string(connection_string)
         else:
-            raise ValueError("Either connection_string or table_client is required")
+            raise ValueError("Either connection_string or table_service_client is required")
         self._table_name = table_name
         self._table_client = None
         self._ensure_table()

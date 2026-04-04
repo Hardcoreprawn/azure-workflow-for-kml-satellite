@@ -36,8 +36,8 @@ elif STORAGE_ACCOUNT_NAME:
         from treesight.security import TableReplayStore, set_replay_store
 
         table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
-        table_client = TableServiceClient(table_url, credential=DefaultAzureCredential())
-        set_replay_store(TableReplayStore(table_client=table_client))
+        table_service_client = TableServiceClient(table_url, credential=DefaultAzureCredential())
+        set_replay_store(TableReplayStore(table_service_client=table_service_client))
     except Exception:
         logging.getLogger(__name__).warning(
             "Could not initialise Table replay store via MI; falling back to in-memory",
