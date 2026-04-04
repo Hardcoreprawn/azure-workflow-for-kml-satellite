@@ -330,25 +330,17 @@ def poll_batch_fulfilment(payload: _Payload) -> dict[str, Any]:
 
 
 @bp.activity_trigger(input_name="payload")
-def record_billing(payload: _Payload) -> dict[str, Any]:
-    """Consume quota after a successful pipeline run."""
-    from treesight.security.quota import consume_quota
+def release_quota(payload: _Payload) -> dict[str, Any]:
+    """Refund a quota slot when a pipeline run fails."""
+    from treesight.security.quota import release_quota as _release
 
     user_id: str = payload["user_id"]
     instance_id: str = payload.get("instance_id", "")
-    try:
-        remaining = consume_quota(user_id)
-        logging.info(
-            "Billing recorded user=%s instance=%s remaining=%d",
-            user_id,
-            instance_id,
-            remaining,
-        )
-        return {"billed": True, "remaining": remaining}
-    except ValueError:
-        logging.warning(
-            "Quota already exhausted at billing time user=%s instance=%s",
-            user_id,
-            instance_id,
-        )
-        return {"billed": False, "remaining": 0}
+    remaining = _release(user_id)
+    logging.info(
+        "Quota released (run failed) user=%s instance=%s remaining=%d",
+        user_id,
+        instance_id,
+        remaining,
+    )
+    return {"released": True, "remaining": remaining}

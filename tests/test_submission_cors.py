@@ -42,7 +42,7 @@ class TestAnalysisSubmitCORS:
     """_submit_analysis_request must include CORS headers on every response."""
 
     @patch("blueprints.pipeline.submission._persist_submission_record")
-    @patch("blueprints.pipeline.submission.check_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
     @patch(
         "blueprints.pipeline.submission.check_auth",
         return_value=({"sub": "user-1"}, "user-1"),
@@ -88,8 +88,8 @@ class TestAnalysisSubmitCORS:
         return_value=({"sub": "user-1"}, "user-1"),
     )
     @patch(
-        "blueprints.pipeline.submission.check_quota",
-        return_value=0,
+        "blueprints.pipeline.submission.consume_quota",
+        side_effect=ValueError("Quota exhausted"),
     )
     @pytest.mark.asyncio
     async def test_quota_error_has_cors_headers(self, mock_quota, mock_auth):
@@ -109,7 +109,7 @@ class TestAnalysisSubmitCORS:
         "blueprints.pipeline.submission.check_auth",
         return_value=({"sub": "user-1"}, "user-1"),
     )
-    @patch("blueprints.pipeline.submission.check_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
     @pytest.mark.asyncio
     async def test_invalid_json_error_has_cors_headers(self, mock_quota, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -128,7 +128,7 @@ class TestAnalysisSubmitCORS:
         "blueprints.pipeline.submission.check_auth",
         return_value=({"sub": "user-1"}, "user-1"),
     )
-    @patch("blueprints.pipeline.submission.check_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
     @pytest.mark.asyncio
     async def test_missing_kml_error_has_cors_headers(self, mock_quota, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request

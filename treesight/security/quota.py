@@ -135,3 +135,25 @@ def consume_quota(user_id: str) -> int:
         limit,
     )
     return remaining
+
+
+def release_quota(user_id: str) -> int:
+    """Decrement usage (refund) and return remaining runs.
+
+    Used to compensate for a failed pipeline run that was billed upfront.
+    """
+    limit = _run_limit(user_id)
+    record = _get_quota_record(user_id)
+    used: int = record.get("used", 0)
+    if used > 0:
+        record["used"] = used - 1
+    _save_quota_record(user_id, record)
+    remaining = limit - record["used"]
+    logger.info(
+        "Quota released user=%s used=%d remaining=%d limit=%d",
+        user_id,
+        record["used"],
+        remaining,
+        limit,
+    )
+    return remaining

@@ -102,7 +102,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.check_quota", return_value=5),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="analysis"))
@@ -146,7 +146,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.check_quota", return_value=5),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="demo"))
