@@ -515,6 +515,50 @@ resource "azurerm_cosmosdb_sql_container" "users" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "monitors" {
+  count                = var.enable_cosmos_db ? 1 : 0
+  name                 = "monitors"
+  resource_group_name  = azurerm_resource_group.main.name
+  account_name         = azurerm_cosmosdb_account.main[0].name
+  database_name        = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths  = ["/user_id"]
+
+  # Queries served:
+  #   M1: Point read by (monitor_id, user_id) — single monitor detail
+  #   M2: SELECT * WHERE user_id = @uid ORDER BY created_at DESC — user's monitors
+  #   M3: SELECT * WHERE enabled = true AND next_check_at <= @now — scheduler (cross-partition)
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/enabled/?"
+    }
+
+    included_path {
+      path = "/next_check_at/?"
+    }
+
+    included_path {
+      path = "/created_at/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+
+    composite_index {
+      index {
+        path  = "/enabled"
+        order = "ascending"
+      }
+      index {
+        path  = "/next_check_at"
+        order = "ascending"
+      }
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location

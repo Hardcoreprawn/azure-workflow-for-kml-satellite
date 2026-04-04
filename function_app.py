@@ -11,6 +11,7 @@ from blueprints.demo import bp as demo_bp
 from blueprints.eudr import bp as eudr_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
+from blueprints.monitoring import bp as monitoring_bp
 from blueprints.pipeline import bp as pipeline_bp
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING, validate_config
 
@@ -54,6 +55,9 @@ app.register_functions(demo_bp)
 app.register_functions(eudr_bp)
 app.register_functions(analysis_bp)
 app.register_functions(export_bp)
+
+# Register monitoring blueprint (Timer Trigger + HTTP)
+app.register_functions(monitoring_bp)
 
 # Register durable pipeline blueprint
 app.register_functions(pipeline_bp)
