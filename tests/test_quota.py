@@ -4,7 +4,13 @@ from unittest.mock import patch
 
 import pytest
 
-from treesight.security.quota import FREE_TIER_LIMIT, check_quota, consume_quota, get_usage
+from treesight.security.quota import (
+    FREE_TIER_LIMIT,
+    check_quota,
+    consume_quota,
+    get_usage,
+    release_quota,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +73,26 @@ class TestGetUsage:
         usage = get_usage("user-stored")
         assert usage["used"] == 5
         assert usage["limit"] == FREE_TIER_LIMIT
+
+
+class TestReleaseQuota:
+    def test_release_increments_remaining(self):
+        consume_quota("user-release")
+        consume_quota("user-release")
+        remaining = release_quota("user-release")
+        assert remaining == FREE_TIER_LIMIT - 1
+
+    def test_release_at_zero_does_not_go_negative(self):
+        remaining = release_quota("user-never-used")
+        assert remaining == FREE_TIER_LIMIT
+
+    def test_idempotent_with_instance_id(self):
+        consume_quota("user-idem")
+        consume_quota("user-idem")
+        release_quota("user-idem", instance_id="run-abc")
+        remaining = release_quota("user-idem", instance_id="run-abc")
+        # Second call should be a no-op
+        assert remaining == FREE_TIER_LIMIT - 1
 
 
 # --- Cosmos path ---

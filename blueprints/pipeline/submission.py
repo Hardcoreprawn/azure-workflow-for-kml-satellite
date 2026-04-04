@@ -16,11 +16,19 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.security.quota import consume_quota
+from treesight.security.quota import consume_quota, release_quota
 from treesight.security.rate_limit import demo_limiter, get_client_ip
 
 from . import bp
 from .history import _extract_submission_context, _persist_submission_record
+
+
+def _safe_release_quota(user_id: str) -> None:
+    """Best-effort quota refund — never raises."""
+    try:
+        release_quota(user_id)
+    except Exception:
+        logging.exception("Failed to release quota for user=%s", user_id)
 
 
 @bp.route(route="demo-process", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -88,14 +96,24 @@ async def _submit_analysis_request(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
+    # Consume quota upfront (atomic reservation).  If storage is
+    # transiently unavailable we log the error but still allow the
+    # submission so a temporary outage doesn't block users.
+    quota_consumed = False
     try:
         consume_quota(user_id)
+        quota_consumed = True
     except ValueError as exc:
+        # Quota genuinely exhausted — hard block.
         return error_response(403, str(exc), req=req)
+    except Exception:
+        logging.exception("Quota storage unavailable for user=%s — allowing submission", user_id)
 
     try:
         body = req.get_json()
     except ValueError:
+        if quota_consumed:
+            _safe_release_quota(user_id)
         return error_response(400, "Invalid JSON body", req=req)
 
     submission_context = _extract_submission_context(body)
@@ -107,9 +125,13 @@ async def _submit_analysis_request(
         client,
         body,
         blob_prefix=blob_prefix,
-        extra_input={"provider_name": effective_provider},
+        extra_input={"provider_name": effective_provider, "user_id": user_id},
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
+
+    # If submission failed, refund the quota slot we consumed upfront.
+    if resp.status_code != 202 and quota_consumed:
+        _safe_release_quota(user_id)
 
     # Persist submission record for analysis history
     if resp.status_code == 202 and (blob_prefix.strip("/") or "analysis") == "analysis":
@@ -161,13 +183,21 @@ async def _submit_kml(
 
     from treesight.storage.client import BlobStorageClient
 
-    storage = BlobStorageClient()
-    blob_url = storage.upload_bytes(
-        DEFAULT_INPUT_CONTAINER,
-        kml_blob_name,
-        kml_bytes,
-        content_type="application/vnd.google-earth.kml+xml",
-    )
+    try:
+        storage = BlobStorageClient()
+        blob_url = storage.upload_bytes(
+            DEFAULT_INPUT_CONTAINER,
+            kml_blob_name,
+            kml_bytes,
+            content_type="application/vnd.google-earth.kml+xml",
+        )
+    except Exception:
+        logging.exception("KML upload failed for %s", kml_blob_name)
+        return error_response(
+            502,
+            "Storage service temporarily unavailable — please retry in a moment.",
+            req=req,
+        )
 
     orchestrator_input: dict[str, Any] = {
         "blob_url": blob_url,
@@ -183,11 +213,19 @@ async def _submit_kml(
     if extra_input:
         orchestrator_input.update(extra_input)
 
-    await client.start_new(
-        "treesight_orchestrator",
-        instance_id=submission_id,
-        client_input=orchestrator_input,
-    )
+    try:
+        await client.start_new(
+            "treesight_orchestrator",
+            instance_id=submission_id,
+            client_input=orchestrator_input,
+        )
+    except Exception:
+        logging.exception("Orchestrator start failed for %s", submission_id)
+        return error_response(
+            502,
+            "Pipeline service temporarily unavailable — please retry in a moment.",
+            req=req,
+        )
 
     logging.info("%s instance=%s", log_tag, submission_id)
 
