@@ -1,6 +1,6 @@
 # Project Initiation Document (PID)
 
-## TreeSight — Multi-Tenant SaaS Platform for KML-Based Satellite Imagery Acquisition, Analysis, and Monitoring
+## Canopex — Multi-Tenant SaaS Platform for KML-Based Satellite Imagery Acquisition, Analysis, and Monitoring
 
 | Field | Detail |
 | --- | --- |
@@ -62,7 +62,7 @@
 
 ## 1. Project Overview
 
-TreeSight is a **multi-tenant SaaS platform** hosted on Microsoft Azure that enables any user — farmers, foresters, conservation researchers, estate managers — to upload KML boundary files, automatically acquire satellite imagery for those areas, and unlock a growing suite of analytical capabilities: vegetation health indices, tree detection and counting, season-over-season change monitoring, and collaborative annotation.
+Canopex is a **multi-tenant SaaS platform** hosted on Microsoft Azure that enables any user — farmers, foresters, conservation researchers, estate managers — to upload KML boundary files, automatically acquire satellite imagery for those areas, and unlock a growing suite of analytical capabilities: vegetation health indices, tree detection and counting, season-over-season change monitoring, and collaborative annotation.
 
 The platform comprises three layers:
 

@@ -117,9 +117,7 @@ def send_contact_notification(record: dict) -> bool:
     submitted = html.escape(record.get("submitted_at", "\u2014"))
     submission_id = html.escape(record.get("submission_id", "\u2014"))
 
-    raw_subject = (
-        f"TreeSight contact: {record.get('organization') or record.get('email', 'unknown')}"
-    )
+    raw_subject = f"Canopex contact: {record.get('organization') or record.get('email', 'unknown')}"
     subject = raw_subject.replace("\r", "").replace("\n", " ")
     body_html = (
         "<h2>New Contact Form Submission</h2>"

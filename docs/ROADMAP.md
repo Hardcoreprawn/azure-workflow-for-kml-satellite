@@ -1,4 +1,4 @@
-# TreeSight — Roadmap
+# Canopex — Roadmap
 
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
@@ -61,7 +61,7 @@ Handle bulk workloads (200+ AOIs). Build once, then ship product features on top
 
 ## Stage 3 — Growth & Retention
 
-Features that make TreeSight a habit, not a one-off tool.
+Features that make Canopex a habit, not a one-off tool.
 
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|

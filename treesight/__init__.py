@@ -1,4 +1,4 @@
-"""TreeSight — KML satellite imagery pipeline."""
+"""Canopex — KML satellite imagery pipeline."""
 
 import contextlib
 import importlib.metadata

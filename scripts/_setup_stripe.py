@@ -9,7 +9,7 @@ Usage:
     python scripts/_setup_stripe.py --vault-name kv-kmlsat-dev
 
 What it creates (in Stripe):
-    1. Product: "TreeSight Pro" (monthly subscription)
+    1. Product: "Canopex Pro" (monthly subscription)
     2. Three Prices: GBP £39, USD $49, EUR €45
     3. Webhook endpoint listening for billing events
     4. Customer Portal configuration (cancel, invoices, payment update)
@@ -17,7 +17,7 @@ What it creates (in Stripe):
 What it writes (back to Key Vault):
     stripe-webhook-secret, stripe-price-id-pro-gbp, -usd, -eur
 
-Idempotent: if a product named "TreeSight Pro" already exists, it reuses it.
+Idempotent: if a product named "Canopex Pro" already exists, it reuses it.
 """
 
 import argparse
@@ -49,7 +49,7 @@ def _ensure_deps() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Provision Stripe for TreeSight")
+    parser = argparse.ArgumentParser(description="Provision Stripe for Canopex")
     parser.add_argument(
         "--vault-name",
         default=os.environ.get("VAULT_NAME", "kv-kmlsat-dev"),
@@ -223,17 +223,17 @@ def _derive_webhook_url(vault_name: str) -> str:
 
 
 def _find_or_create_product(stripe: Any) -> Any:
-    """Find existing 'TreeSight Pro' product or create one."""
+    """Find existing 'Canopex Pro' product or create one."""
     products = stripe.Product.list(limit=100, active=True)
     for p in products.auto_paging_iter():
-        if p.name == "TreeSight Pro":
+        if p.name == "Canopex Pro":
             print("  Found existing product.")
             return p
 
     return stripe.Product.create(
-        name="TreeSight Pro",
+        name="Canopex Pro",
         description=(
-            "TreeSight Pro subscription — geospatial satellite analysis with higher limits."
+            "Canopex Pro subscription — geospatial satellite analysis with higher limits."
         ),
         metadata={"app": "treesight", "tier": "pro"},
     )
@@ -276,7 +276,7 @@ def _find_or_create_webhook(stripe: Any, url: str) -> Any:
     return stripe.WebhookEndpoint.create(
         url=url,
         enabled_events=WEBHOOK_EVENTS,
-        description="TreeSight billing webhook",
+        description="Canopex billing webhook",
         metadata={"app": "treesight"},
     )
 
@@ -289,9 +289,9 @@ def _create_portal_config(stripe: Any, product_id: str) -> Any:
     """
     return stripe.billing_portal.Configuration.create(
         business_profile={
-            "headline": "Manage your TreeSight subscription",
-            "privacy_policy_url": "https://treesight.hrdcrprwn.com/privacy.html",
-            "terms_of_service_url": "https://treesight.hrdcrprwn.com/terms.html",
+            "headline": "Manage your Canopex subscription",
+            "privacy_policy_url": "https://canopex.hrdcrprwn.com/privacy.html",
+            "terms_of_service_url": "https://canopex.hrdcrprwn.com/terms.html",
         },
         features={
             "subscription_cancel": {
@@ -318,7 +318,7 @@ def _create_portal_config(stripe: Any, product_id: str) -> Any:
                 "enabled": True,
             },
         },
-        default_return_url="https://treesight.hrdcrprwn.com?billing=portal-return",
+        default_return_url="https://canopex.hrdcrprwn.com?billing=portal-return",
     )
 
 

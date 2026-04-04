@@ -1,4 +1,4 @@
-"""One-time script: Register the TreeSight SPA app in the CIAM tenant."""
+"""One-time script: Register the Canopex SPA app in the CIAM tenant."""
 
 import json
 import sys
@@ -15,14 +15,14 @@ def main():
         "POST",
         "/applications",
         {
-            "displayName": "TreeSight SPA",
+            "displayName": "Canopex SPA",
             "signInAudience": "AzureADandPersonalMicrosoftAccount",
             "spa": {
                 # TODO: parameterise redirect URIs per environment instead of hardcoding
                 "redirectUris": [
                     "http://localhost:4280",
                     "https://polite-glacier-0d6885003.4.azurestaticapps.net",
-                    "https://treesight.hrdcrprwn.com",
+                    "https://canopex.hrdcrprwn.com",
                 ]
             },
             "requiredResourceAccess": [

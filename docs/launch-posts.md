@@ -1,4 +1,4 @@
-# TreeSight Launch Posts — Reddit
+# Canopex Launch Posts — Reddit
 
 > **Note:** Replace `[LINK]` with the live URL (treesight.io or the azurestaticapps staging URL).
 > Post one per day over a week — don't carpet-bomb them all at once.
@@ -69,7 +69,7 @@ Happy to discuss the approach or take suggestions on what would make the analysi
 
 This started when I saw a researcher posting about needing a satellite imagery pipeline and thought "that sounds like an interesting build." I didn't know much about remote sensing at the time, but I've since learned that the existing tools are either expensive (Planet is $10K+/year), require coding skills (Google Earth Engine), or too narrow for general use (Global Forest Watch is fantastic but forest-only).
 
-So I built TreeSight. You draw a boundary in Google Earth Pro, save it as a KML file, upload it, and get back:
+So I built Canopex. You draw a boundary in Google Earth Pro, save it as a KML file, upload it, and get back:
 
 - Multi-year satellite imagery timelapse
 - Vegetation health (NDVI) trends with change detection
@@ -100,7 +100,7 @@ I originally started building a satellite analysis tool after seeing a researche
 
 **The problem it solves:** Right now, proving a sourcing region is deforestation-free typically means hiring a consultancy ($10K–$50K per assessment, 4–8 week turnaround) or having someone manually work through Sentinel Hub or Google Earth Engine.
 
-**What TreeSight does:** You upload a KML boundary of your sourcing region. It automatically:
+**What Canopex does:** You upload a KML boundary of your sourcing region. It automatically:
 
 1. Pulls Sentinel-2 satellite imagery from 2020 onwards (the EUDR baseline date)
 2. Computes vegetation change detection — quantified in hectares
@@ -154,7 +154,7 @@ I'd be interested to know: if you're currently tracking crop health via satellit
 
 A few months ago I saw a researcher posting about needing an automated satellite imagery pipeline. I didn't know anything about remote sensing, NDVI, or STAC catalogs at the time — but it sounded like a great learning project. Fast forward to now: 12 out of 13 milestone items done, 595 tests, and I've accidentally built something that might actually be useful.
 
-**TreeSight** takes a KML file (a polygon drawn in Google Earth), runs it through a satellite imagery pipeline, and gives you back multi-year NDVI analysis, weather correlation, fire/flood detection, land-cover classification, and AI-generated insights.
+**Canopex** takes a KML file (a polygon drawn in Google Earth), runs it through a satellite imagery pipeline, and gives you back multi-year NDVI analysis, weather correlation, fire/flood detection, land-cover classification, and AI-generated insights.
 
 **Tech stack:**
 

@@ -288,7 +288,7 @@ def _pdf_header(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
     center = manifest.get("center", {})
 
     pdf.set_font("Helvetica", "B", 18)
-    title = "EUDR Due-Diligence Report" if eudr_mode else "TreeSight Analysis Report"
+    title = "EUDR Due-Diligence Report" if eudr_mode else "Canopex Analysis Report"
     pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT")
 
     pdf.set_font("Helvetica", "", 9)

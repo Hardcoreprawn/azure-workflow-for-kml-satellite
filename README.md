@@ -1,4 +1,4 @@
-# TreeSight — Automated Satellite Analysis Platform
+# Canopex — Automated Satellite Analysis Platform
 
 Azure-hosted pipeline that ingests KML/KMZ boundaries, acquires
 multi-provider satellite imagery, and delivers enriched analysis
@@ -390,9 +390,9 @@ func start
 
 ### CIAM Sign-In Setup
 
-TreeSight uses Azure Entra External ID (CIAM) for hosted SPA sign-in. The
+Canopex uses Azure Entra External ID (CIAM) for hosted SPA sign-in. The
 CIAM bootstrap flow in `scripts/_create_user_flow.py` now defaults to
-social/passwordless sign-in rather than dedicated TreeSight passwords.
+social/passwordless sign-in rather than dedicated Canopex passwords.
 
 ```bash
 # Graph token with permission to manage CIAM flows and identity providers
@@ -412,7 +412,7 @@ uv run python scripts/_create_user_flow.py
 
 Behavior:
 
-- If Google and/or Facebook credentials are present, those providers are created in the tenant (if needed) and linked to the TreeSight self-service flow.
+- If Google and/or Facebook credentials are present, those providers are created in the tenant (if needed) and linked to the Canopex self-service flow.
 - `EmailOtpSignup-OAUTH` stays enabled as the default fallback unless `CIAM_SOCIAL_ONLY=true`.
 - Dedicated local passwords are off by default. Re-enable them only with an explicit override such as `CIAM_USER_FLOW_IDENTITY_PROVIDERS=EmailPassword-OAUTH`.
 - `CIAM_USER_FLOW_IDENTITY_PROVIDERS` fully overrides the defaults, for example `Google-OAUTH,EmailOtpSignup-OAUTH`.

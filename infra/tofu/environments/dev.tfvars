@@ -12,7 +12,7 @@ default_tags = {
 }
 budget_amount         = 10
 budget_contact_emails = ["j.brewster@outlook.com"]
-custom_domain         = "treesight.hrdcrprwn.com"
+custom_domain         = "canopex.hrdcrprwn.com"
 enable_azure_ai         = false
 ciam_tenant_name        = "treesightauth"
 ciam_client_id          = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"

@@ -1,4 +1,4 @@
-# TreeSight — Product Roadmap & Business Strategy
+# Canopex — Product Roadmap & Business Strategy
 
 **Date:** 27 March 2026
 **Status:** Draft v3 — updated to reflect M4 near-completion (12/13 items done)
@@ -152,7 +152,7 @@ Key design decisions:
 
 Each item below is benchmarked against what competitors already offer. See §11 for full competitive landscape.
 
-| # | Feature | Who Already Has This | TreeSight Angle | Effort |
+| # | Feature | Who Already Has This | Canopex Angle | Effort |
 |---|---------|---------------------|-----------------|--------|
 | C1 | **Comparison view** (side-by-side frames) | Sentinel Hub (split-view in EO Browser), Planet Explorer (compare mode) | We lack this entirely; critical for ESG before/after evidence — table-stakes for compliance persona | Medium |
 | C2 | **Shareable analysis links** | Google Earth Engine (shared scripts), Planet (shared mosaics) | Neither offers a simple "share this analysis" URL. Viral growth potential: "look at this deforestation" | Medium |
@@ -423,7 +423,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 ### Milestone 5 — Growth & Retention (Weeks 8–14)
 
-**Goal:** Users stay, share, and bring others. Features that make TreeSight a habit rather than a one-off tool.
+**Goal:** Users stay, share, and bring others. Features that make Canopex a habit rather than a one-off tool.
 
 **Why now:** We have paying users (M4). Now we need to retain them and grow organically. These features drive recurring engagement and viral loops.
 
@@ -431,7 +431,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 |---|------|--------|------------|-------------|
 | 5.1 | **Monthly NDVI monitoring** (Timer Trigger → re-run pipeline → alert on threshold breach) | High | 4.2, 3.4 | #1 retention driver — "notify me when NDVI drops >10%". See §4.5 for architecture. Feasible at ~$0.08–$0.15/AOI/month |
 | 5.2 | **Shareable analysis links** | Medium | 4.4 | Viral loop: "look at this deforestation" → new visitor → sign up |
-| 5.3 | **Scheduled re-analysis** ("run this AOI every month") | High | 5.1 | Natural extension of monitoring; makes TreeSight a subscription you keep |
+| 5.3 | **Scheduled re-analysis** ("run this AOI every month") | High | 5.1 | Natural extension of monitoring; makes Canopex a subscription you keep |
 | 5.4 | **External data joins** (FIRMS fire hotspots, GFW alerts) | Medium | 3.3 | Enriches analysis without new satellite data; high perceived value, low marginal cost |
 | 5.5 | **Pydantic models for request/response validation** | Medium | — | Operational safety as API surface grows; catches bad inputs before they hit the pipeline |
 | 5.6 | **Load testing** (10+ concurrent pipelines) | Medium | 1.2 | Must validate scaling before growth marketing pushes traffic |
@@ -439,7 +439,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 | 5.8 | **MODIS Burned Area enrichment** (PC collection `modis-64A1-061`, global 500 m monthly, 2000–present) | Low | 5.4 | Complements FIRMS hotspot data (5.4) with validated burned-extent polygons and detection dates. **Already on Planetary Computer as COGs** — add collection to existing STAC provider, same auth/download path as Sentinel-2. No new infra. Free & open. |
 | 5.9 | **ESA CCI Land Cover enrichment** (PC collection `esa-cci-lc`, 300 m annual, 1992–2020, 22 LCCS classes) | Low | 3.8 | Adds 28-year historical land-cover baseline — detect transitions (forest → cropland → urban). **Already on Planetary Computer as COGs** — same STAC query pattern. Pairs with 6.4 (Landsat baselines) for long-term trend context. Free & open. |
 | 5.10 | **IO LULC Annual V2** (PC collection `io-lulc-annual-v02`, 10m, 2017–2023, 9-class) | Low | — | Multi-year land use change at Sentinel-2 resolution: "forest in 2019, cropland in 2022." Same STAC path. Free. |
-| 5.11 | ~~**Planet-NICFI tropical mosaics**~~ | Medium | — | **Removed** — NICFI licence is non-commercial only; TreeSight is a commercial product. Tropics coverage uses Sentinel-2 + Landsat C2 L2 fallback via geo-routing (PR #304). |
+| 5.11 | ~~**Planet-NICFI tropical mosaics**~~ | Medium | — | **Removed** — NICFI licence is non-commercial only; Canopex is a commercial product. Tropics coverage uses Sentinel-2 + Landsat C2 L2 fallback via geo-routing (PR #304). |
 | 5.12 | **ALOS Forest/Non-Forest** (PC collection `alos-fnf-mosaic`, 25m, global, annual) | Low | — | Independent SAR-based forest classification from JAXA. Cross-validates optical NDVI-based forest detection. Works through clouds. Free & open. |
 | 5.13 | **GFW deforestation alerts** (GFW REST API, GLAD + RADD alerts) | Medium | 5.4 | Cross-reference our analysis with WRI's alert system. "GFW detected 3 deforestation alerts in this AOI in the past 6 months." Adds authority. Free API. |
 
@@ -484,7 +484,7 @@ Single source of truth. Every item has a clear reason ("why now"), a value drive
 
 | # | Item | Effort | Depends On | Value Driver |
 |---|------|--------|------------|-------------|
-| 7.1 | **Custom branding / white-label** | Medium | 6.2 | Enterprise upsell — consultancies resell TreeSight to their clients |
+| 7.1 | **Custom branding / white-label** | Medium | 6.2 | Enterprise upsell — consultancies resell Canopex to their clients |
 | 7.2 | **Land-cover classification** (SatlasPretrain / Clay Foundation) | High | 1.6 | Segments frames into forest/cleared/agriculture/water; quantified change metrics |
 | 7.3 | **Super-resolution upscaling** (SR4RS, S2 10m → ~2.5m) | High | — | Addresses small-AOI resolution gap; competitive with Planet's 3m but free imagery |
 | 7.4 | **Historical baseline report** (Landsat 40-yr, premium one-off) | Medium | 6.4 | $10/AOI add-on; high margin, low recurring cost |
@@ -595,7 +595,7 @@ Revenue milestones:
 | **Regrow** (formerly FluroSat) | Agricultural sustainability monitoring | Enterprise (custom) | Crop-specific models, MRV for carbon credits | Agriculture-only, enterprise pricing, no conservation/ESG use case |
 | **Chloris Geospatial** | Forest carbon / biomass monitoring | Enterprise (custom) | Carbon quantification, science-backed | Narrow carbon focus, enterprise-only |
 
-### 10.2 Where TreeSight Fits
+### 10.2 Where Canopex Fits
 
 **The gap we fill:** Between free-but-manual tools (Google Earth, GFW) and powerful-but-expensive platforms (Planet, Descartes Labs).
 
@@ -603,7 +603,7 @@ Revenue milestones:
                           Ease of Use
                     High ◄──────────────► Low
               ┌──────────────────────────────────┐
-        Free  │  GFW          ▲ TreeSight        │  GEE
+        Free  │  GFW          ▲ Canopex        │  GEE
               │  (forest only)│ (target position) │  (code required)
               │               │                   │
               │───────────────┼───────────────────│
@@ -646,7 +646,7 @@ The broader **geospatial analytics market** (including GIS, mapping, and spatial
 
 ### 11.2 Serviceable Addressable Market (SAM)
 
-TreeSight targets **self-serve satellite change detection for non-GIS users** — the segment that:
+Canopex targets **self-serve satellite change detection for non-GIS users** — the segment that:
 
 - Needs satellite analysis but can't afford Planet/Maxar ($10K+/yr)
 - Doesn't have GIS staff to use Google Earth Engine

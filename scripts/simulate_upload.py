@@ -197,7 +197,7 @@ def main() -> None:
         print(f"ERROR: KML file not found: {kml_path}")
         sys.exit(1)
 
-    print("\n=== TreeSight Local Pipeline Test ===\n")
+    print("\n=== Canopex Local Pipeline Test ===\n")
 
     # Step 1: Check func host
     print("[1/3] Checking func host...")

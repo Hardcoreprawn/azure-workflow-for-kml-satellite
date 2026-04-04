@@ -1,9 +1,9 @@
 openapi: "3.1.0"
 info:
-  title: TreeSight API
+  title: Canopex API
   version: "1.0.0"
   description: |
-    TreeSight — satellite imagery analysis platform. Upload a KML boundary,
+    Canopex — satellite imagery analysis platform. Upload a KML boundary,
     get automated NDVI change detection, weather correlation and AI-generated
     insights for conservation, agriculture and ESG compliance use cases.
 
@@ -32,7 +32,7 @@ info:
     Each user may execute up to **5 pipeline runs**. Exceeding this returns
     `403 Forbidden` with a quota-exhausted message.
   contact:
-    name: TreeSight
+    name: Canopex
     url: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite
   license:
     name: MIT

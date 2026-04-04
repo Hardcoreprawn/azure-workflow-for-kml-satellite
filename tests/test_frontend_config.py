@@ -160,6 +160,6 @@ class TestCorsConfig:
     def test_custom_domain_in_cors_origins(self):
         """The custom domain must be in _ALLOWED_ORIGINS."""
         src = HELPERS_PY.read_text()
-        assert re.search(r'["\']https://treesight\.hrdcrprwn\.com["\']', src), (
+        assert re.search(r'["\']https://canopex\.hrdcrprwn\.com["\']', src), (
             "_ALLOWED_ORIGINS must contain the custom domain"
         )

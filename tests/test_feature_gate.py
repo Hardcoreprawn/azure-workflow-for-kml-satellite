@@ -82,7 +82,7 @@ class TestBillingStatusGating:
             method="GET",
             url="/api/billing/status",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
             },
             body=b"",
@@ -118,7 +118,7 @@ class TestBillingStatusGating:
             method="GET",
             url="/api/billing/status",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
             },
             body=b"",
@@ -149,7 +149,7 @@ class TestCheckoutGating:
             method="POST",
             url="/api/billing/checkout",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
             },
             body=json.dumps({"tier": "pro"}).encode(),
@@ -184,7 +184,7 @@ class TestCheckoutGating:
             method="POST",
             url="/api/billing/checkout",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
             },
             body=json.dumps({"tier": "pro"}).encode(),
@@ -212,7 +212,7 @@ class TestPortalGating:
             method="POST",
             url="/api/billing/portal",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
             },
             body=b"",
@@ -242,7 +242,7 @@ class TestBillingInterest:
             method="POST",
             url="/api/billing/interest",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
                 "Content-Type": "application/json",
             },
@@ -282,7 +282,7 @@ class TestBillingInterest:
             method="POST",
             url="/api/billing/interest",
             headers={
-                "Origin": "https://treesight.hrdcrprwn.com",
+                "Origin": "https://canopex.hrdcrprwn.com",
                 "Authorization": "Bearer fake-token",
                 "Content-Type": "application/json",
             },

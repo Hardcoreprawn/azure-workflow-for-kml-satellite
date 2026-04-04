@@ -142,7 +142,7 @@ class ThreadingDevServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="TreeSight local dev server")
+    parser = argparse.ArgumentParser(description="Canopex local dev server")
     parser.add_argument("--port", type=int, default=4280, help="Dev server port (default: 4280)")
     parser.add_argument(
         "--func-port",
@@ -164,7 +164,7 @@ def main() -> None:
     os.chdir(web_dir)
 
     server = ThreadingDevServer(("0.0.0.0", args.port), DevProxyHandler)
-    print(f"TreeSight dev server on http://localhost:{args.port}")
+    print(f"Canopex dev server on http://localhost:{args.port}")
     print(f"  Static files: {web_dir}")
     print(f"  API proxy:    /api/* -> {DevProxyHandler.func_origin}")
     print("  Press Ctrl+C to stop\n")

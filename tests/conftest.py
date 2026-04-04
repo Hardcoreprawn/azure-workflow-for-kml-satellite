@@ -1,4 +1,4 @@
-"""Shared fixtures for the TreeSight test suite."""
+"""Shared fixtures for the Canopex test suite."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 # Canonical test origins — use these instead of hardcoding strings in tests
-TEST_ORIGIN = "https://treesight.hrdcrprwn.com"
+TEST_ORIGIN = "https://canopex.hrdcrprwn.com"
 TEST_LOCAL_ORIGIN = "http://localhost:4280"
 
 

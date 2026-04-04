@@ -1,4 +1,4 @@
-# TreeSight — Persona Deep Dive & Competitive Strategy
+# Canopex — Persona Deep Dive & Competitive Strategy
 
 <!-- markdownlint-disable MD028 MD040 -->
 
@@ -46,7 +46,7 @@ This is typically a mid-career professional at an environmental NGO (WWF, Rainfo
 
 1. Programme manager sees deforestation happening, needs evidence → searches for tools
 2. Finds Global Forest Watch (free but coarse), tries Sentinel Hub (confusing, requires bands/indices knowledge)
-3. Hears about TreeSight from a colleague, GIS forum, or conservation Slack
+3. Hears about Canopex from a colleague, GIS forum, or conservation Slack
 4. Tries free tier → uploads a KML they already have from Google Earth
 5. If analysis is useful → shows to supervisor → gets budget approval for Pro ($49) immediately (under most NGO discretionary spend thresholds of $100/month)
 6. Team tier ($149) requires a procurement process — budget code, maybe quarterly approval
@@ -65,7 +65,7 @@ Two sub-segments:
 
 **What makes them tick:**
 
-- **ROI calculators.** Unlike NGO users, these people measure everything in $ per hectare. If TreeSight saves them 2 field visits at $150/visit, it pays for itself in one analysis.
+- **ROI calculators.** Unlike NGO users, these people measure everything in $ per hectare. If Canopex saves them 2 field visits at $150/visit, it pays for itself in one analysis.
 - **Batch-centric.** They don't have 1 AOI — they have 50–500 parcels. The per-AOI price _matters critically_ here. At $1/AOI overage, processing 200 parcels on the Team tier costs $149. At $2/AOI it costs $149 + 0 (included). This segment is the most price-sensitive to the per-AOI rate.
 - **Seasonal peaks.** Insurance claims spike after major weather events. Agritech consulting peaks in planting and harvest seasons. Usage is lumpy, not steady.
 - **Already have KMLs.** Insurance companies maintain polygon boundaries of insured parcels. Agritech firms get field boundaries from farmers or government cadastral databases. KML upload is natural.
@@ -101,14 +101,14 @@ This is the newest and potentially largest segment, driven by regulation:
 
 - **Regulatory deadline pressure.** EUDR enforcement was delayed to December 2025 for large operators and June 2026 for SMEs. This creates a _massive_ wave of demand for tools that can produce the required geolocation evidence, right now.
 - **Auditability over accuracy.** They need a tool that produces a _defensible audit trail_ more than one that's perfect. The methodology must be transparent, reproducible, and exportable. A 10-page report with timestamps, satellite imagery, NDVI trends, and AI narrative analysis is exactly what an auditor wants to see.
-- **Scale varies wildly.** A Cargill has 500,000+ sourcing plots. A small chocolate maker importing from Ghana has 50. TreeSight's sweet spot is the 50–5,000 plot range — big enough to be painful manually, small enough that they won't build in-house.
+- **Scale varies wildly.** A Cargill has 500,000+ sourcing plots. A small chocolate maker importing from Ghana has 50. Canopex's sweet spot is the 50–5,000 plot range — big enough to be painful manually, small enough that they won't build in-house.
 - **Will pay premium prices.** EUDR non-compliance fines are 4% of EU turnover. Compared to that, $149/month is a rounding error. Even $10,000/year is cheap insurance. This segment has the highest willingness to pay, but they also have the highest expectations for audit-quality output.
 
 **Their buying process:**
 
 1. Regulation deadline approaching → sustainability team scrambles
 2. Options: (a) hire a consultancy ($10K–$50K per assessment, 4–8 weeks) or (b) buy a tool
-3. Discovery: "satellite deforestation monitoring tool" → finds GFW (free, but no audit export), Planet (expensive, requires GIS expertise), TreeSight (KML upload, audit-ready reports)
+3. Discovery: "satellite deforestation monitoring tool" → finds GFW (free, but no audit export), Planet (expensive, requires GIS expertise), Canopex (KML upload, audit-ready reports)
 4. Trial: test with known supply chain locations → evaluate report quality
 5. If report is credible → procurement (this is an enterprise sale, usually $5K–$50K/year)
 
@@ -118,7 +118,7 @@ This is the newest and potentially largest segment, driven by regulation:
 
 ## 2. Jobs-to-be-Done Stress Test
 
-### 2.1 Does TreeSight Actually Solve the Job?
+### 2.1 Does Canopex Actually Solve the Job?
 
 | JTBD Component | Conservation | Agriculture | ESG Compliance |
 |----------------|-------------|-------------|----------------|
@@ -126,11 +126,11 @@ This is the newest and potentially largest segment, driven by regulation:
 | **Functional job** | Detect and quantify vegetation change in a defined area | Assess crop health across multiple parcels and correlate with weather | Prove a supply chain location is deforestation-free since a cutoff date |
 | **Emotional job** | Feel confident presenting evidence to enforcement/donors | Feel professional using data-driven advice | Feel secure that the company won't be fined |
 | **Social job** | Be seen as rigorous and evidence-based by peers | Be seen as modern/tech-savvy by farmer clients | Be seen as compliant by auditors and investors |
-| **TreeSight delivers?** | **Mostly yes.** NDVI change detection, timestamped imagery, AI narrative. Missing: scheduled monitoring/alerts (M4+), comparison view done (M3). | **Partially.** NDVI and weather correlation exists. Missing: batch upload UX for 200+ KMLs, CSV export of per-parcel NDVI timeseries, crop-specific indices (EVI, SAVI). | **Partially.** Before/after evidence exists. Missing: formal audit report template, EUDR-specific date range (post Dec 2020), quantified "no deforestation" certificate format. |
+| **Canopex delivers?** | **Mostly yes.** NDVI change detection, timestamped imagery, AI narrative. Missing: scheduled monitoring/alerts (M4+), comparison view done (M3). | **Partially.** NDVI and weather correlation exists. Missing: batch upload UX for 200+ KMLs, CSV export of per-parcel NDVI timeseries, crop-specific indices (EVI, SAVI). | **Partially.** Before/after evidence exists. Missing: formal audit report template, EUDR-specific date range (post Dec 2020), quantified "no deforestation" certificate format. |
 
 ### 2.2 The Honest Gap Analysis
 
-**Conservation: 70% fit.** The core analysis pipeline does what they need. The main gap is _monitoring_ — they want "alert me when something changes," not "let me check manually." Scheduled re-analysis (PRODUCT_ROADMAP §4.5) closes this gap. Without it, TreeSight is a one-shot tool; with it, it becomes daily infrastructure.
+**Conservation: 70% fit.** The core analysis pipeline does what they need. The main gap is _monitoring_ — they want "alert me when something changes," not "let me check manually." Scheduled re-analysis (PRODUCT_ROADMAP §4.5) closes this gap. Without it, Canopex is a one-shot tool; with it, it becomes daily infrastructure.
 
 **Agriculture: 50% fit.** The NDVI + weather correlation is genuinely differentiated. But ag users work in _batch_ — they don't upload one KML at a time. They upload a shapefile with 200 parcels and want a CSV back with NDVI trends per parcel. The current one-at-a-time demo flow is friction. Multi-polygon KML support (M3.7) helps but doesn't fully close the gap. This persona also needs crop-specific vegetation indices (EVI for dense canopy, SAVI for sparse) — NDVI alone isn't sufficient for all crop types.
 
@@ -144,7 +144,7 @@ A crucial finding from the Reddit /r/conservation community (thread: "We have hi
 
 > "You know how many satellites are watching the Amazon? How many AI algorithms are tracking deforestation in real time? [...] The issue isn't detection — it's governance."
 
-**What this means for TreeSight:** Detection tools are necessary but not sufficient. Our conservation persona doesn't just need imagery — they need _evidence that triggers action_. The AI narrative feature is actually more valuable than the imagery itself because it translates satellite data into language that non-technical enforcement officers and courts can use. This is a positioning insight: **we're not a satellite imagery tool; we're an evidence generation platform.**
+**What this means for Canopex:** Detection tools are necessary but not sufficient. Our conservation persona doesn't just need imagery — they need _evidence that triggers action_. The AI narrative feature is actually more valuable than the imagery itself because it translates satellite data into language that non-technical enforcement officers and courts can use. This is a positioning insight: **we're not a satellite imagery tool; we're an evidence generation platform.**
 
 ---
 
@@ -167,7 +167,7 @@ A crucial finding from the Reddit /r/conservation community (thread: "We have hi
 
 > "[SkyFi] is good for looking at archive data. Commercial imagery starts at $25 per order." — r/gis
 
-**Implication for TreeSight:** We use free Sentinel-2 imagery via Planetary Computer. This is a massive cost advantage, but it comes at the expense of resolution (10m/px vs. 30cm for Maxar). For conservation (deforestation = large-area change), 10m is sufficient. For agriculture (individual tree health), it may not be.
+**Implication for Canopex:** We use free Sentinel-2 imagery via Planetary Computer. This is a massive cost advantage, but it comes at the expense of resolution (10m/px vs. 30cm for Maxar). For conservation (deforestation = large-area change), 10m is sufficient. For agriculture (individual tree health), it may not be.
 
 **Tool complexity:**
 
@@ -177,7 +177,7 @@ A crucial finding from the Reddit /r/conservation community (thread: "We have hi
 
 > "Felt just got too expensive." — r/gis (2026 thread on "best geo tools")
 
-**Implication:** There's a clear gap between "free but complex" (GEE, QGIS) and "simple but expensive" (Planet, Nearmap). TreeSight sits in this gap: simple (KML upload) and cheap (free Sentinel-2 data).
+**Implication:** There's a clear gap between "free but complex" (GEE, QGIS) and "simple but expensive" (Planet, Nearmap). Canopex sits in this gap: simple (KML upload) and cheap (free Sentinel-2 data).
 
 **KML as a format:**
 
@@ -265,7 +265,7 @@ GFW Pro is NOT simply "free." It has a consumption-based pricing model:
 
 **Why this matters enormously for our two target personas:**
 
-1. **Conservation NGO doing paid consultancy:** Many conservation NGOs supplement funding by providing paid monitoring services to governments or corporations. Under GEE licensing, this fee-for-service work requires a commercial GEE license. TreeSight has no such restriction.
+1. **Conservation NGO doing paid consultancy:** Many conservation NGOs supplement funding by providing paid monitoring services to governments or corporations. Under GEE licensing, this fee-for-service work requires a commercial GEE license. Canopex has no such restriction.
 
 2. **ESG compliance teams:** A sustainability manager at a food importer doing EUDR compliance is doing _commercial work_. An ESG consultancy auditing supply chains is doing _fee-for-service work_. Neither can use GEE's free tier. They need either (a) a commercial GEE license (opaque pricing, reportedly expensive) or (b) an alternative tool.
 
@@ -332,7 +332,7 @@ The user asked: "try 5 different approaches, and dig into each 3-4 times to find
 ### 5.1 Approach A: "Evidence Generation Platform"
 
 **v1 — Initial statement:**  
-"TreeSight is an automated satellite evidence platform for conservation and compliance."
+"Canopex is an automated satellite evidence platform for conservation and compliance."
 
 Core idea: we don't sell imagery (Planetary Computer gives that away free) and we don't sell analysis (GEE does that for coders). We sell _evidence_ — the transformation of raw satellite data into actionable, auditable, human-readable proof.
 
@@ -381,7 +381,7 @@ Yes — "evidence" is the through-line connecting all use cases. It's the _outpu
 ### 5.2 Approach B: "The Self-Serve Gap Filler"
 
 **v1 — Initial statement:**  
-"TreeSight fills the gap between free-but-complex tools (GEE, QGIS) and enterprise-only platforms (GFW Pro, Planet)."
+"Canopex fills the gap between free-but-complex tools (GEE, QGIS) and enterprise-only platforms (GFW Pro, Planet)."
 
 Core idea: position on the market structure itself. There's a clear gap — tools that are powerful but require coding/GIS skills on one side, and enterprise platforms requiring $5K+/year and sales calls on the other. Nothing sits in the middle for the non-technical professional with a modest budget.
 
@@ -424,9 +424,9 @@ But: this is a _feature description_ ("easy to use"), not a _value proposition_ 
 ### 5.3 Approach C: "Compliance-First Satellite Tool"
 
 **v1 — Initial statement:**  
-"TreeSight is the compliance officer's satellite tool — EUDR evidence in 5 minutes, not 5 weeks."
+"Canopex is the compliance officer's satellite tool — EUDR evidence in 5 minutes, not 5 weeks."
 
-Core idea: lead with the regulatory use case. EUDR enforcement is imminent (Dec 2025 large operators, June 2026 SMEs). Companies are scrambling. Position TreeSight as the fastest, cheapest path to EUDR compliance evidence.
+Core idea: lead with the regulatory use case. EUDR enforcement is imminent (Dec 2025 large operators, June 2026 SMEs). Companies are scrambling. Position Canopex as the fastest, cheapest path to EUDR compliance evidence.
 
 **v2 — Stress test: how many buyers does this reach?**
 
@@ -469,13 +469,13 @@ But as _primary_ positioning, this limits our addressable market to EUDR-affecte
 ### 5.4 Approach D: "Monitoring Made Easy"
 
 **v1 — Initial statement:**  
-"TreeSight tells you when your land changes — upload a boundary, get satellite monitoring."
+"Canopex tells you when your land changes — upload a boundary, get satellite monitoring."
 
 Core idea: lead with the monitoring/alerting value. This is what conservation users actually want (the Reddit evidence: "I want to be notified when something changes"). Position as a monitoring service, not a one-shot analysis tool.
 
 **v2 — Stress test: can we deliver this today?**
 
-**No.** At present, TreeSight offers one-shot analysis. Scheduled monitoring/alerts are on the roadmap (PRODUCT_ROADMAP M5.1/5.3) but not built. Positioning on a capability we don't have yet is dishonest and sets up user disappointment.
+**No.** At present, Canopex offers one-shot analysis. Scheduled monitoring/alerts are on the roadmap (PRODUCT_ROADMAP M5.1/5.3) but not built. Positioning on a capability we don't have yet is dishonest and sets up user disappointment.
 
 **v3 — Stress test: what if we position on where we're going, not where we are?**
 
@@ -491,7 +491,7 @@ If we build monitoring (M5.1 — estimated "High" effort), the positioning becom
 
 "Automated satellite evidence for conservation and compliance. _With monthly monitoring alerts._"
 
-Monitoring is a feature that supports the "evidence platform" positioning, not a separate positioning in itself. Users buy TreeSight for evidence → monitoring keeps them subscribed → alerts deliver ongoing evidence.
+Monitoring is a feature that supports the "evidence platform" positioning, not a separate positioning in itself. Users buy Canopex for evidence → monitoring keeps them subscribed → alerts deliver ongoing evidence.
 
 **Verdict: WRONG as primary positioning today. GOOD as a feature message once monitoring ships.** Don't lead with monitoring — lead with evidence, upgrade to monitoring as a retention feature.
 
@@ -565,10 +565,10 @@ The refinement keeps the simplicity message but anchors it to the evidence outpu
 
 **The competitive wedge this drives:**
 
-- vs GFW: "GFW shows you global dashboards. TreeSight produces per-AOI evidence _for your specific locations_ with AI analysis, weather context, and exportable reports."
-- vs GEE: "GEE gives you 80 petabytes of data and a JavaScript editor. TreeSight gives you _evidence_ from a KML upload — no code, no commercial license, 5 minutes."
-- vs Consultancy: "A consultancy charges $10K and takes 8 weeks. TreeSight produces the same evidence for £19/month in 5 minutes."
-- vs QGIS: "QGIS is free and unlimited. TreeSight takes what used to be a full day of QGIS work and does it in 5 minutes with AI interpretation."
+- vs GFW: "GFW shows you global dashboards. Canopex produces per-AOI evidence _for your specific locations_ with AI analysis, weather context, and exportable reports."
+- vs GEE: "GEE gives you 80 petabytes of data and a JavaScript editor. Canopex gives you _evidence_ from a KML upload — no code, no commercial license, 5 minutes."
+- vs Consultancy: "A consultancy charges $10K and takes 8 weeks. Canopex produces the same evidence for £19/month in 5 minutes."
+- vs QGIS: "QGIS is free and unlimited. Canopex takes what used to be a full day of QGIS work and does it in 5 minutes with AI interpretation."
 
 ---
 
@@ -591,20 +591,20 @@ The refinement keeps the simplicity message but anchors it to the evidence outpu
 
 | GFW Weakness | Our Advantage | How to Message |
 |-------------|---------------|----------------|
-| **No per-AOI custom analysis.** GFW shows you a map with layers. It doesn't analyse _your specific boundary_ with quantified metrics. | Our entire product is per-AOI: upload your KML, get analysis of that specific area. | "GFW shows the world. TreeSight analyses _your_ sites." |
-| **No AI narrative.** GFW dashboards are data — the user interprets them. No plain-English explanation. | TreeSight generates AI analysis explaining what changed, why it likely changed, and what it means. | "From data to insight — without staff to interpret satellite imagery." |
-| **No weather correlation.** GFW shows forest change but not whether it correlates with drought, flood, or human activity. | TreeSight integrates Open-Meteo weather: temperature, precipitation, drought indices correlated with vegetation change. | "Know whether NDVI dropped because of drought or because of deforestation." |
-| **Deforestation only.** GFW analyses forest change.  It doesn't handle crop health, flood impact, fire damage, or arbitrary land-use change. | TreeSight analyses any land-use change: forest, crop, wetland, urban fringe, anything with NDVI-responsive vegetation. | "Not just forests — any land area, any change type." |
-| **No exportable evidence reports.** GFW shows data on screen. Getting it into a donor report, enforcement filing, or EUDR submission requires screenshots and manual work. | TreeSight exports structured reports (PDF/JSON/CSV) designed for inclusion in reports and filings. | "Export-ready evidence for donors, enforcement, and auditors." |
+| **No per-AOI custom analysis.** GFW shows you a map with layers. It doesn't analyse _your specific boundary_ with quantified metrics. | Our entire product is per-AOI: upload your KML, get analysis of that specific area. | "GFW shows the world. Canopex analyses _your_ sites." |
+| **No AI narrative.** GFW dashboards are data — the user interprets them. No plain-English explanation. | Canopex generates AI analysis explaining what changed, why it likely changed, and what it means. | "From data to insight — without staff to interpret satellite imagery." |
+| **No weather correlation.** GFW shows forest change but not whether it correlates with drought, flood, or human activity. | Canopex integrates Open-Meteo weather: temperature, precipitation, drought indices correlated with vegetation change. | "Know whether NDVI dropped because of drought or because of deforestation." |
+| **Deforestation only.** GFW analyses forest change.  It doesn't handle crop health, flood impact, fire damage, or arbitrary land-use change. | Canopex analyses any land-use change: forest, crop, wetland, urban fringe, anything with NDVI-responsive vegetation. | "Not just forests — any land area, any change type." |
+| **No exportable evidence reports.** GFW shows data on screen. Getting it into a donor report, enforcement filing, or EUDR submission requires screenshots and manual work. | Canopex exports structured reports (PDF/JSON/CSV) designed for inclusion in reports and filings. | "Export-ready evidence for donors, enforcement, and auditors." |
 | **GFW Pro is enterprise-only.** Account request, consumption-based pricing, designed for Cargill/Mondelez. Small NGOs and independent consultants can't access it. | Self-serve, £19/month, no account request, sign up and start immediately. | "No account request. No enterprise contract. Start in 2 minutes." |
 
-**The conversion pathway — how GFW users become TreeSight users:**
+**The conversion pathway — how GFW users become Canopex users:**
 
 ```
 GFW Free user
   → "I can see deforestation on the map, but I need a proper report for my specific sites"
   → Searches for "satellite analysis specific area" / "KML satellite report"
-  → Finds TreeSight
+  → Finds Canopex
   → Tries free tier (3 AOIs)
   → "This gives me what GFW doesn't — a per-site AI analysis I can actually use"
   → Converts to Starter (£19)
@@ -614,16 +614,16 @@ GFW Free user
 GFW Pro user (small org, frustrated with account request)
   → "I applied for GFW Pro 3 weeks ago, still waiting"
   → Needs results NOW (donor deadline, enforcement filing)
-  → Finds TreeSight → instant sign-up → results in 5 minutes
+  → Finds Canopex → instant sign-up → results in 5 minutes
   → Stays because per-site evidence is more useful than GFW Pro's dashboard
 ```
 
 **Content strategy to capture GFW traffic:**
 
 1. SEO: "Global Forest Watch alternative", "GFW custom analysis", "per-site forest monitoring"
-2. Blog post: "GFW vs TreeSight: when you need more than global dashboards"
-3. Comparison page: honest comparison showing where GFW wins and where TreeSight adds value (not attacking GFW — they're a public good, respect that)
-4. Conservation Slack/forums: "I use GFW for the big picture, TreeSight for specific-site evidence"
+2. Blog post: "GFW vs Canopex: when you need more than global dashboards"
+3. Comparison page: honest comparison showing where GFW wins and where Canopex adds value (not attacking GFW — they're a public good, respect that)
+4. Conservation Slack/forums: "I use GFW for the big picture, Canopex for specific-site evidence"
 
 ### 6.2 Competing with Google Earth Engine
 
@@ -653,14 +653,14 @@ For our two primary personas:
 
 | GEE Weakness | Our Advantage | How to Message |
 |-------------|---------------|----------------|
-| **Requires JavaScript/Python coding.** Every analysis starts with `ee.ImageCollection(...)` and a script. | Zero code. KML upload → results. A conservation officer who's never written code can use TreeSight. | "The satellite insights you'd get from GEE — without writing a line of code." |
+| **Requires JavaScript/Python coding.** Every analysis starts with `ee.ImageCollection(...)` and a script. | Zero code. KML upload → results. A conservation officer who's never written code can use Canopex. | "The satellite insights you'd get from GEE — without writing a line of code." |
 | **No weather integration.** To correlate NDVI with weather in GEE, you'd need to separately load weather data, spatially join it, and analyse the correlation. Hours of coding. | Automatic weather integration. Every analysis includes temperature, precipitation, drought correlation with NDVI trends. | "Weather + NDVI correlated automatically. In GEE, that's 200 lines of code." |
-| **No AI narrative.** GEE outputs data (images, charts, tables). Turning that into a human-readable report requires additional work. | AI-generated plain-English analysis as standard output. | "GEE gives you data. TreeSight gives you a report." |
+| **No AI narrative.** GEE outputs data (images, charts, tables). Turning that into a human-readable report requires additional work. | AI-generated plain-English analysis as standard output. | "GEE gives you data. Canopex gives you a report." |
 | **Commercial license required for paid work.** ESG consultancies, NGOs doing fee-for-service, corporate sustainability teams — all need a commercial GEE license for operational use. | No licensing restrictions at any tier. Pay £19/month, use it for anything — commercial, non-profit, government, consultancy. | "No commercial license needed. Use it for any purpose." |
 | **April 2026 quota tiers adding friction.** Even eligible non-commercial users will face new usage limits. | Predictable pricing. No quota surprises. Pay for what you use. | "Simple, predictable pricing. No quota caps." |
 | **No "KML → report" workflow.** GEE is a platform, not a workflow. There is no "upload boundary, get evidence" path. | That IS our product. KML → evidence is a single end-to-end workflow. | "One workflow to go from boundary to evidence. Not a platform to figure out." |
 
-**The conversion pathway — how GEE users become TreeSight users:**
+**The conversion pathway — how GEE users become Canopex users:**
 
 ```
 GEE researcher
@@ -668,8 +668,8 @@ GEE researcher
   → Now doing paid consultancy on the side for an NGO (fee-for-service)
   → Realises they need a commercial GEE license for this work
   → Doesn't want the cost/complexity of commercial GEE for a side project
-  → Finds TreeSight → £19/month, no licence issues, results without coding
-  → Uses TreeSight for consultancy work, GEE for research
+  → Finds Canopex → £19/month, no licence issues, results without coding
+  → Uses Canopex for consultancy work, GEE for research
 ```
 
 ```
@@ -677,7 +677,7 @@ NGO programme manager
   → Their GIS person used GEE to produce a report last quarter
   → GIS person left / is on leave / is overloaded
   → Programme manager can't use GEE (doesn't code)
-  → Finds TreeSight → uploads KML from Google Earth → gets AI analysis
+  → Finds Canopex → uploads KML from Google Earth → gets AI analysis
   → "I don't need to wait for the GIS team anymore"
 ```
 
@@ -685,7 +685,7 @@ NGO programme manager
 ESG compliance officer
   → Told to produce deforestation evidence for 50 supply chain locations
   → Options: hire GIS consultancy ($20K), use GEE (needs coder), use GFW Pro (needs account request)
-  → Finds TreeSight → uploads KML → evidence report in 5 minutes
+  → Finds Canopex → uploads KML → evidence report in 5 minutes
   → £49/month for 60 analyses vs. weeks of waiting and thousands in fees
 ```
 
@@ -693,7 +693,7 @@ ESG compliance officer
 
 1. SEO: "satellite analysis no coding", "NDVI analysis without code", "Sentinel-2 analysis tool no GIS"
 2. Blog post: "I used GEE for 5 years. Here's what I wish existed for non-coders."
-3. Documentation: "For GEE users" page showing how TreeSight maps to GEE concepts (ImageCollection → AOI, reduceRegion → NDVI analysis, etc.)
+3. Documentation: "For GEE users" page showing how Canopex maps to GEE concepts (ImageCollection → AOI, reduceRegion → NDVI analysis, etc.)
 4. Key message in r/gis, r/remotesensing: "If you're doing quick per-site evidence and don't need GEE's full power, check this out"
 5. LinkedIn targeting: ESG job titles, sustainability managers, compliance officers — "Your supply chain needs satellite evidence. You don't need a GIS team."
 
@@ -709,7 +709,7 @@ Counter-argument chain:
 2. "Can you export a per-site analysis from GFW with quantified NDVI trends?" → No
 3. "Can GFW tell you whether the change was drought-driven vs. human-driven?" → No (no weather)
 4. "Can GFW generate an AI analysis you can paste into a donor report?" → No
-5. "TreeSight does all of that for £19/month. Is that worth the 4 hours you'd spend doing it manually?"
+5. "Canopex does all of that for £19/month. Is that worth the 4 hours you'd spend doing it manually?"
 
 **Sceptic archetype 2: "I can do this in GEE/QGIS for free."**
 
@@ -718,7 +718,7 @@ Counter-argument chain:
 1. "How long does it take you to set up an NDVI analysis for one site in GEE?" → "A few hours"
 2. "And you have how many sites?" → "15–50"
 3. "So that's 75–250 hours of work. At your hourly rate?" → Uncomfortable pause
-4. "TreeSight processes all of them in minutes, with weather correlation and AI analysis included."
+4. "Canopex processes all of them in minutes, with weather correlation and AI analysis included."
 5. "And if you're doing paid work, you'll need a commercial GEE license on top of your time."
 
 **Sceptic archetype 3: "10m resolution isn't enough."**
@@ -745,7 +745,7 @@ Counter-argument chain:
 
 1. "When is your deadline?" → "Next month"
 2. "GFW Pro account approval can take weeks. And their free grant gives you 5,000 MLAs/year — if you have 100 locations and run 4 analysis types, that's only 12 runs before you need to buy tokens."
-3. "TreeSight: sign up in 2 minutes. Results in 5 minutes. And we do NDVI trends + weather correlation that GFW Pro doesn't."
+3. "Canopex: sign up in 2 minutes. Results in 5 minutes. And we do NDVI trends + weather correlation that GFW Pro doesn't."
 
 ---
 
@@ -767,7 +767,7 @@ Counter-argument chain:
 
 **Technical comfort:** Uses Google Earth Pro, Google Sheets, WhatsApp, maybe QGIS (reluctantly). Has KML files of protected area boundaries. Cannot code. Has tried Sentinel Hub once and given up.
 
-### 7.2 Their Exact Workflow Today (Without TreeSight)
+### 7.2 Their Exact Workflow Today (Without Canopex)
 
 ```
 1. Receive report of possible illegal clearing in protected area
@@ -802,16 +802,16 @@ Counter-argument chain:
 Total: 3–6 hours per AOI. With 15 protected areas to monitor monthly: 45–90 hours/month.
 ```
 
-### 7.3 Their Exact Workflow With TreeSight
+### 7.3 Their Exact Workflow With Canopex
 
 ```
 1. Receive report of possible illegal clearing
    (Same as today)
 
-2. Open TreeSight → upload KML of the area (they already have it from Google Earth)
+2. Open Canopex → upload KML of the area (they already have it from Google Earth)
    (2 minutes)
 
-3. TreeSight processes: imagery acquisition, NDVI analysis, weather correlation, AI narrative
+3. Canopex processes: imagery acquisition, NDVI analysis, weather correlation, AI narrative
    (3–5 minutes, automated)
 
 4. Review results: NDVI trend chart, before/after imagery, weather overlay, AI analysis explaining
@@ -824,7 +824,7 @@ Total: 3–6 hours per AOI. With 15 protected areas to monitor monthly: 45–90 
 
 Total: ~10 minutes per AOI. With 15 protected areas: ~2.5 hours/month.
 Time saved: 40–85 hours/month. At $25–40/hour equivalent cost: $1,000–$3,400/month saved.
-Cost of TreeSight: £19–49/month. ROI: 20–170x.
+Cost of Canopex: £19–49/month. ROI: 20–170x.
 ```
 
 ### 7.4 The Exact Feature List They Need
@@ -866,12 +866,12 @@ Cost of TreeSight: £19–49/month. ROI: 20–170x.
 
 **Monthly monitoring with alerts (M5.1) is the single most important feature for this persona.**
 
-Without it, TreeSight is a one-shot analysis tool. Conservation analysts will use it when they have a specific question ("has this area been cleared?") but won't make it part of their daily workflow.
+Without it, Canopex is a one-shot analysis tool. Conservation analysts will use it when they have a specific question ("has this area been cleared?") but won't make it part of their daily workflow.
 
-With it, TreeSight becomes _infrastructure_ — a monitoring service that runs continuously and alerts them when something changes. This is:
+With it, Canopex becomes _infrastructure_ — a monitoring service that runs continuously and alerts them when something changes. This is:
 
 - The difference between a tool and a subscription (retention driver)
-- The difference between "I check TreeSight sometimes" and "TreeSight is essential"
+- The difference between "I check Canopex sometimes" and "Canopex is essential"
 - The feature that GFW Free provides (deforestation alerts) but without per-AOI AI analysis
 
 **Estimated impact on conversion:** Without monitoring, free→Starter conversion ~5–8%. With monitoring + alerts, free→Starter conversion ~12–18%. The alert email is the most powerful activation and retention mechanism possible.
@@ -897,7 +897,7 @@ With it, TreeSight becomes _infrastructure_ — a monitoring service that runs c
 
 **Technical comfort:** Similar to conservation — not GIS-literate. Uses Excel, PowerPoint, compliance management platforms. Has never used satellite imagery directly. Gets geolocation data from suppliers as coordinates or boundaries.
 
-### 8.2 Their Exact Workflow Today (Without TreeSight)
+### 8.2 Their Exact Workflow Today (Without Canopex)
 
 ```
 1. Receive geolocation data from supplier
@@ -927,7 +927,7 @@ With it, TreeSight becomes _infrastructure_ — a monitoring service that runs c
 Total: 4–12 weeks, $10K–$50K, or internal GIS team bottleneck.
 ```
 
-### 8.3 Their Exact Workflow With TreeSight
+### 8.3 Their Exact Workflow With Canopex
 
 ```
 1. Receive geolocation data from supplier
@@ -936,12 +936,12 @@ Total: 4–12 weeks, $10K–$50K, or internal GIS team bottleneck.
    → We should offer a coordinate-to-KML converter in the UI
    (2 minutes)
 
-3. Upload KML to TreeSight
+3. Upload KML to Canopex
    → Select "EUDR Due Diligence" analysis mode
    → Automatically constrains to post-31-December-2020 baseline
    (2 minutes)
 
-4. TreeSight processes: imagery acquisition, NDVI analysis, forest change detection,
+4. Canopex processes: imagery acquisition, NDVI analysis, forest change detection,
    weather correlation, AI narrative
    (3–5 minutes)
 
@@ -1004,7 +1004,7 @@ vs. $10K–$50K and 4–8 weeks from a consultancy.
 
 5. **Clear yes/no conclusion.** The auditor wants to read: "No evidence of deforestation detected" or "Significant vegetation change detected — manual review recommended." The AI narrative should lead with a clear conclusion, then provide supporting detail.
 
-6. **Defensible methodology.** Publish a methodology page on the website: "TreeSight uses European Space Agency Sentinel-2 Level-2A surface reflectance imagery at 10m resolution via Microsoft Planetary Computer. Normalised Difference Vegetation Index (NDVI) is computed as (B08 − B04)/(B08 + B04)..." This is what auditors need to trust the output.
+6. **Defensible methodology.** Publish a methodology page on the website: "Canopex uses European Space Agency Sentinel-2 Level-2A surface reflectance imagery at 10m resolution via Microsoft Planetary Computer. Normalised Difference Vegetation Index (NDVI) is computed as (B08 − B04)/(B08 + B04)..." This is what auditors need to trust the output.
 
 ### 8.6 The Critical Gap: Audit Trust
 
@@ -1012,22 +1012,22 @@ The single biggest challenge for this persona is not feature gaps — it's _trus
 
 A consultancy charges $10K+ because they sell trust: "We are established experts, here is our methodology, here is our certificate."
 
-TreeSight is an unknown tool from an unknown company. For Elena to bet her EUDR compliance on TreeSight, she needs:
+Canopex is an unknown tool from an unknown company. For Elena to bet her EUDR compliance on Canopex, she needs:
 
 1. Published, peer-reviewable methodology
 2. Case studies from other compliance use cases
-3. Reference data showing TreeSight's analysis matches known outcomes
-4. A clear statement of what TreeSight IS and ISN'T: "This tool produces satellite evidence to support your due diligence process. It does not constitute a compliance certificate."
+3. Reference data showing Canopex's analysis matches known outcomes
+4. A clear statement of what Canopex IS and ISN'T: "This tool produces satellite evidence to support your due diligence process. It does not constitute a compliance certificate."
 
 **Positioning for trust-building:**
 
 - Don't overclaim. "Satellite evidence for EUDR due diligence" (our analysis as one input), not "EUDR compliance solution" (implies we handle everything).
 - Partner with a compliance consultancy early. "Verified by [consultancy name]" adds credibility.
-- Publish a validation study: compare TreeSight's deforestation detection against known events.
+- Publish a validation study: compare Canopex's deforestation detection against known events.
 
-### 8.7 GFW Pro vs TreeSight — Head-to-Head for EUDR
+### 8.7 GFW Pro vs Canopex — Head-to-Head for EUDR
 
-| Dimension | GFW Pro | TreeSight |
+| Dimension | GFW Pro | Canopex |
 |-----------|---------|-----------|
 | **Access** | Account request (weeks) | Self-serve (minutes) |
 | **Free tier** | 5,000 MLAs/year | 3 AOIs/month |
@@ -1057,7 +1057,7 @@ Market sizing for niche SaaS is inherently speculative. Built from the bottom up
 
 ### 9.1 Total Addressable Market (TAM)
 
-The geospatial analytics market is estimated at $80–100B globally by 2025–2027 (various analyst sources, though specific numbers are behind paywalls). This number is meaningless for TreeSight — it includes defence, navigation, mining, and sectors we don't serve.
+The geospatial analytics market is estimated at $80–100B globally by 2025–2027 (various analyst sources, though specific numbers are behind paywalls). This number is meaningless for Canopex — it includes defence, navigation, mining, and sectors we don't serve.
 
 **Relevant sub-markets:**
 
@@ -1068,7 +1068,7 @@ The geospatial analytics market is estimated at $80–100B globally by 2025–20
 | Forest monitoring tools/services | $500M–$1B globally | Includes consultancies, tech platforms, government programmes |
 | ESG/EUDR compliance tools | $1–2B globally (emerging) | New market created by regulation; EUDR affects ~7M EU commodity imports by value |
 
-**TreeSight's TAM:** ~$500M (KML-based satellite analysis for conservation + agriculture + ESG). This is generous.
+**Canopex's TAM:** ~$500M (KML-based satellite analysis for conservation + agriculture + ESG). This is generous.
 
 ### 9.2 Serviceable Addressable Market (SAM)
 
@@ -1232,14 +1232,14 @@ The user pays £19 or £49/month. What's the alternative cost?
 **For Conservation (15 AOIs/month):**
 
 - Manual QGIS: 15 × 4 hours = 60 hours/month × £25/hour (NGO rate) = **£1,500/month in staff time**
-- TreeSight Starter: **£19/month** (99% savings)
+- Canopex Starter: **£19/month** (99% savings)
 
 **For ESG (45 AOIs/month):**
 
 - Consultancy: ~£20,000 per engagement (45 plots) → **£20,000 one-time**
-- TreeSight Pro: **£49/month** (99.7% savings, with monthly re-analysis capability)
+- Canopex Pro: **£49/month** (99.7% savings, with monthly re-analysis capability)
 
-These ratios make the price defence trivially easy: "TreeSight costs less than one hour of the work it replaces."
+These ratios make the price defence trivially easy: "Canopex costs less than one hour of the work it replaces."
 
 ### 10.8 What's Included vs. Add-Ons
 
@@ -1292,7 +1292,7 @@ These ratios make the price defence trivially easy: "TreeSight costs less than o
 
 ### 11.3 The "10x Better" Test — Updated
 
-| Persona | Current Workflow | Their Time | TreeSight Time | 10x Better? |
+| Persona | Current Workflow | Their Time | Canopex Time | 10x Better? |
 |---------|-----------------|------------|----------------|-------------|
 | Conservation (15 AOIs/month) | QGIS + Copernicus Hub + weather service + report writing | 60–90 hours/month | ~2.5 hours/month | **Yes (24–36x)** |
 | ESG (45 plots, one-time assessment) | Consultancy ($10K+, 4–8 weeks) | 4–8 weeks | ~4 hours (same day) | **Yes (120–240x on speed)** |
@@ -1304,7 +1304,7 @@ These ratios make the price defence trivially easy: "TreeSight costs less than o
 
 ### 12.1 Persona Priority (Unchanged, Now Evidence-Backed by §7–§8)
 
-1. **Conservation (primary).** Best product-need fit. Their exact workflow maps to our core product. KML is their native format. Evidence generation is our unique value. §7 maps their exact needs — most are already built. **One missing feature (monitoring/alerts) transforms TreeSight from tool to infrastructure.**
+1. **Conservation (primary).** Best product-need fit. Their exact workflow maps to our core product. KML is their native format. Evidence generation is our unique value. §7 maps their exact needs — most are already built. **One missing feature (monitoring/alerts) transforms Canopex from tool to infrastructure.**
 
 2. **ESG/EUDR compliance (secondary, highest revenue potential).** Regulatory urgency creates immediate demand. GEE isn't free for their use case (§4.2). GFW Pro requires account request and is deforestation-only. Our sweet spot is the 50–5,000 plot mid-market that can't access GFW Pro quickly and doesn't want to hire a consultancy. **Three features needed: audit PDF, EUDR date filtering, coordinate-to-KML converter.**
 
@@ -1339,7 +1339,7 @@ These ratios make the price defence trivially easy: "TreeSight costs less than o
 - ESG landing page: "Satellite evidence for EUDR due diligence"
 - Conservation landing page: "Satellite evidence for protected area monitoring"
 - LinkedIn ads (ESG): "Your supply chain needs satellite evidence. You don't need a GIS team."
-- r/gis, r/conservation: "I use GFW for the big picture, TreeSight for site-specific evidence"
+- r/gis, r/conservation: "I use GFW for the big picture, Canopex for site-specific evidence"
 
 ### 12.4 Product Priorities (Immediate — Ranked by Persona Impact)
 
@@ -1355,13 +1355,13 @@ These ratios make the price defence trivially easy: "TreeSight costs less than o
 
 ### 12.5 Competitive Strategy Implementation
 
-**vs GFW (§6.1):** Position as the "next step" — "GFW shows the world. TreeSight analyses your sites." Don't attack GFW (they're a public good). Be the tool GFW users graduate to. SEO: "Global Forest Watch alternative", "GFW per-site analysis."
+**vs GFW (§6.1):** Position as the "next step" — "GFW shows the world. Canopex analyses your sites." Don't attack GFW (they're a public good). Be the tool GFW users graduate to. SEO: "Global Forest Watch alternative", "GFW per-site analysis."
 
 **vs GEE (§6.2):** Position on accessibility and licensing — "The satellite insights you'd get from GEE, without writing a line of code. No commercial licence needed." Target: NGOs doing fee-for-service, ESG consultancies, compliance officers. SEO: "satellite analysis no coding", "NDVI analysis without GEE."
 
 **vs Consultancy:** Position on speed and cost — "The evidence a consultancy takes 8 weeks to produce. In 5 minutes. For £19/month." Target: mid-sized EU importers facing EUDR deadlines.
 
-**vs QGIS/manual:** Position on time savings — "What takes 4 hours in QGIS takes 5 minutes in TreeSight." Target: overwhelmed programme managers, understaffed NGOs.
+**vs QGIS/manual:** Position on time savings — "What takes 4 hours in QGIS takes 5 minutes in Canopex." Target: overwhelmed programme managers, understaffed NGOs.
 
 ---
 
@@ -1378,7 +1378,7 @@ Ranked by **breadth of impact** — how many personas, how much revenue, how muc
 | # | Feature | Effort | Personas Served | Why It's High-Leverage |
 |---|---------|--------|----------------|----------------------|
 | 1 | **Audit-quality PDF export** | Medium | ESG, Conservation, Agriculture | Opens the entire EUDR market. Conservation needs donor reports. Ag needs loss-adjustment evidence. Every persona exports; this is the revenue gate for ESG. Without it, we're a dashboard. With it, we're an evidence generator. |
-| 2 | **Monthly monitoring + threshold alerts** | High | Conservation (primary), ESG (secondary) | Transforms TreeSight from a one-shot tool into infrastructure. Users don't churn from infrastructure they depend on. Conservation persona said this is their #1 need (§7.6). Creates the email touchpoint that drives re-engagement. |
+| 2 | **Monthly monitoring + threshold alerts** | High | Conservation (primary), ESG (secondary) | Transforms Canopex from a one-shot tool into infrastructure. Users don't churn from infrastructure they depend on. Conservation persona said this is their #1 need (§7.6). Creates the email touchpoint that drives re-engagement. |
 | 3 | **EUDR compliance mode** | Low | ESG (primary) | One toggle: "EUDR Due Diligence" → constrains analysis to post-31-Dec-2020 baseline, formats output as audit evidence, leads with yes/no deforestation conclusion. Low effort because the analysis already works — we're just constraining parameters and formatting output. |
 | 4 | **Land cover classification overlay** | Medium | ESG, Conservation | Currently we compute NDVI change but can't say "forest became cropland." Land cover classification turns quantitative change into qualitative meaning. ESA WorldCover (10m, Sentinel-derived, on PC) or IO LULC Annual V2 (10m, 2017-2023, on PC) could give us this with zero new imagery cost. |
 | 5 | **Coordinate / CSV → KML converter** | Low | ESG (primary), Agriculture | EUDR suppliers provide coordinates, not KML files. A simple UI tool that accepts CSV (lat, long, name) and generates KML removes the biggest adoption friction for non-GIS users. Could also accept GeoJSON, Shapefile. |
@@ -1396,7 +1396,7 @@ Ranked by **breadth of impact** — how many personas, how much revenue, how muc
 
 | # | Feature | Effort | Personas Served | Why It Matters |
 |---|---------|--------|----------------|---------------|
-| 10 | **Landsat historical baselines (1985-present)** | High | All | 40-year trend context. On Planetary Computer as `landsat-c2-l2`. Makes TreeSight the "long memory" that neither GFW nor quick-look tools provide. Premium add-on ($10/report). |
+| 10 | **Landsat historical baselines (1985-present)** | High | All | 40-year trend context. On Planetary Computer as `landsat-c2-l2`. Makes Canopex the "long memory" that neither GFW nor quick-look tools provide. Premium add-on ($10/report). |
 | 11 | **AI-powered land change narrative** | Medium | All | Current AI analyses individual frames. A cross-temporal AI analysis ("Between 2018 and 2025, this 50ha forest fragment was progressively cleared from the eastern edge, losing 12ha total") is a qualitative leap. Uses existing AI client + the richer data from #4 and #10. |
 | 12 | **Super-resolution (10m → ~2.5m)** | High | Agriculture, Conservation | Addresses the "resolution isn't enough" objection. SR4RS or similar model on Sentinel-2 imagery. Competitive with Planet's 3m product at zero imagery cost. |
 
@@ -1412,7 +1412,7 @@ The Planetary Computer catalog alone has 100+ datasets. Here's what's worth inte
 
 These use the same STAC search → COG download path we already have. Adding them means adding a collection ID and asset keys to the provider config.
 
-| Dataset | PC Collection | Resolution | Coverage | Value to TreeSight |
+| Dataset | PC Collection | Resolution | Coverage | Value to Canopex |
 |---------|--------------|------------|----------|-------------------|
 | **ESA WorldCover** | `esa-worldcover` | 10m | Global, 2020-2021 | Land cover classification (10 classes incl. Trees, Cropland, Built-up). Answers "was this forest or already farmland?" Directly supports EUDR baseline assessment. **Top priority.** |
 | **IO LULC Annual V2** | `io-lulc-annual-v02` | 10m | Global, 2017-2023 | 9-class annual land use/land cover. Multi-year comparison: "this pixel was forest in 2019, cropland in 2022." Sentinel-derived (same resolution as our imagery). **Top priority.** |
@@ -1535,7 +1535,7 @@ Week 4:    ESA WorldCover overlay + WDPA protected area check
            (enabling: "this plot is classified as forest" and "this plot does/does not
            overlap a protected area" — both major audit evidence points)
 
-Result:    In 4 weeks, TreeSight has a credible EUDR compliance evidence tool
+Result:    In 4 weeks, Canopex has a credible EUDR compliance evidence tool
            that's cheaper, faster, and easier than any alternative for the
            mid-market (50-5,000 plots).
 ```
@@ -1549,7 +1549,7 @@ Result:    In 4 weeks, TreeSight has a credible EUDR compliance evidence tool
 
 Even capturing **0.5% of the large operator segment** = 15 paying customers × £49/month × 12 months = **£8,820 ARR** from one segment. At 2% capture = **£35,280 ARR**. And that's before SMEs and consultancies.
 
-The real play is ESG consultancies — one consultancy that switches to TreeSight for their EUDR assessments could process 100+ clients through our platform, hitting Team/Enterprise tiers. **Five consultancy customers at £149/month = £8,940 ARR with high retention** (switching cost once embedded in their workflow).
+The real play is ESG consultancies — one consultancy that switches to Canopex for their EUDR assessments could process 100+ clients through our platform, hitting Team/Enterprise tiers. **Five consultancy customers at £149/month = £8,940 ARR with high retention** (switching cost once embedded in their workflow).
 
 #### 13.4.5 Why EUDR Before Conservation
 
