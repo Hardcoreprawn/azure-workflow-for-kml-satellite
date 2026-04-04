@@ -264,6 +264,7 @@ jobs:
             --settings \
               WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
               AzureWebJobsStorage__accountName="$(tofu output -raw storage_account_name)" \
+              COSMOS_ENDPOINT="$(tofu output -raw cosmos_endpoint)" \
               CIAM_TENANT_NAME="$CIAM_TENANT" \
               CIAM_CLIENT_ID="$CIAM_CLIENT" \
               CIAM_AUDIENCE="$CIAM_CLIENT" \
