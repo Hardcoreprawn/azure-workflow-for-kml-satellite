@@ -1,4 +1,4 @@
-"""One-time: Create service principal + configure CIAM user flow for TreeSight SPA."""
+"""One-time: Create service principal + configure CIAM user flow for Canopex SPA."""
 
 import json
 import sys

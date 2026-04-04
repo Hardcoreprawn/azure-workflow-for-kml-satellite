@@ -2,7 +2,7 @@
 
 **Date:** 2 April 2026
 **Status:** Draft — actionable plan
-**Brand transition:** TreeSight (demo) → Canopex (launch)
+**Brand transition:** Complete — all user-facing references now use Canopex
 **Target launch state:** Revenue-ready SaaS with credible market presence
 
 ---
@@ -259,7 +259,7 @@ enforcement case. No coding. No GIS degree. No consultancy. Starting at £19/mo.
 | Task | Detail |
 |------|--------|
 | **DNS routing** | Point canopex.io → Azure Static Web Apps (or Cloudflare Pages → Azure Functions) |
-| **Rename product in codebase** | `treesight` → `canopex` in user-facing strings, email templates, API responses. Internal module names can stay as-is for now. |
+| **Rename product in codebase** | ✅ Done — all user-facing strings now say Canopex. Internal module names (`treesight/`) preserved. |
 | **Update Stripe** | Product/plan names to "Canopex Starter", "Canopex Pro", etc. |
 | **Update Entra CIAM** | Branding (custom domain, logo, colours) on login/signup pages. |
 | **Redirect old domain** | `treesight.hrdcrprwn.com` → `canopex.io` with 301 |
@@ -354,7 +354,7 @@ high engagement in sustainability/compliance circles.
 | 0.4 | Commission logo + brand kit (colours, typography, OG image) | |
 | 0.5 | Set up Google Workspace (<hello@canopex.io>, <support@canopex.io>) | |
 | 0.6 | Set up email newsletter (Buttondown or Mailchimp) | |
-| 0.7 | Rename user-facing product strings from "TreeSight" to "Canopex" | |
+| 0.7 | ✅ Rename user-facing product strings from "TreeSight" to "Canopex" | Done |
 | 0.8 | Update Stripe branding (plan names, receipts, checkout) | |
 | 0.9 | Update Entra CIAM login branding | |
 | 0.10 | Configure DNS: canopex.io → Azure Static Web Apps | |

@@ -1,4 +1,4 @@
-# TreeSight — 3-Part Deep Dive Summary
+# Canopex — 3-Part Deep Dive Summary
 
 **Date:** 20 March 2026  
 **Completed:** Roadmap Enhancement, UI Review, Code Review  
@@ -323,7 +323,7 @@ These items address your requirement for **"much longer if possible" historical 
 
 ## Conclusion
 
-TreeSight demonstrates **professional-grade software engineering** with strong roots in:
+Canopex demonstrates **professional-grade software engineering** with strong roots in:
 
 - **Dijkstra's structured programming** (clarity, no hidden state)
 - **Hamilton's Apollo philosophy** (correctness, explicit error handling, redundancy)

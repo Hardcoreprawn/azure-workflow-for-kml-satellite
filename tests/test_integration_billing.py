@@ -69,10 +69,10 @@ def product(stripe_mod):
     """Find or create a test product."""
     products = stripe_mod.Product.list(limit=100, active=True)
     for p in products.auto_paging_iter():
-        if p.name == "TreeSight Pro":
+        if p.name == "Canopex Pro":
             return p
     return stripe_mod.Product.create(
-        name="TreeSight Pro",
+        name="Canopex Pro",
         metadata={"app": "treesight", "tier": "pro", "test": "true"},
     )
 
@@ -108,7 +108,7 @@ class TestStripeConnectivity:
 
     def test_product_exists(self, product):
         assert product.id.startswith("prod_")
-        assert product.name == "TreeSight Pro"
+        assert product.name == "Canopex Pro"
 
     def test_price_exists(self, price_gbp):
         assert price_gbp.id.startswith("price_")
@@ -126,8 +126,8 @@ class TestCheckoutSession:
         session = stripe_mod.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_gbp.id, "quantity": 1}],
-            success_url="https://treesight.hrdcrprwn.com?billing=success",
-            cancel_url="https://treesight.hrdcrprwn.com?billing=cancel",
+            success_url="https://canopex.hrdcrprwn.com?billing=success",
+            cancel_url="https://canopex.hrdcrprwn.com?billing=cancel",
             client_reference_id="test-user-001",
             metadata={"user_id": "test-user-001"},
         )
@@ -152,8 +152,8 @@ class TestCheckoutSession:
         session = stripe_mod.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_usd.id, "quantity": 1}],
-            success_url="https://treesight.hrdcrprwn.com?billing=success",
-            cancel_url="https://treesight.hrdcrprwn.com?billing=cancel",
+            success_url="https://canopex.hrdcrprwn.com?billing=success",
+            cancel_url="https://canopex.hrdcrprwn.com?billing=cancel",
             client_reference_id="test-user-002",
         )
         assert session.id.startswith("cs_test_")
@@ -289,7 +289,7 @@ class TestBillingEndpointIntegration:
             req = func.HttpRequest(
                 method="POST",
                 url="/api/billing/checkout",
-                headers={"Origin": "https://treesight.hrdcrprwn.com"},
+                headers={"Origin": "https://canopex.hrdcrprwn.com"},
                 body=json.dumps({"currency": "GBP"}).encode(),
             )
             resp = billing_checkout(req)
@@ -317,7 +317,7 @@ class TestBillingEndpointIntegration:
             req = func.HttpRequest(
                 method="GET",
                 url="/api/billing/status",
-                headers={"Origin": "https://treesight.hrdcrprwn.com"},
+                headers={"Origin": "https://canopex.hrdcrprwn.com"},
                 body=b"",
             )
             resp = billing_status(req)

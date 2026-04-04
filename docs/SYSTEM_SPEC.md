@@ -1,10 +1,10 @@
-# TreeSight — System Specification
+# Canopex — System Specification
 
 **Version:** 1.0.0  
 **Date:** 17 March 2026  
 **Status:** Canonical reference for re-implementation  
 
-This specification captures the complete behaviour of the TreeSight KML
+This specification captures the complete behaviour of the Canopex KML
 satellite imagery pipeline. It is language-agnostic and
 infrastructure-agnostic. An implementation that satisfies every section
 of this document is functionally equivalent to the current system.
@@ -32,7 +32,7 @@ of this document is functionally equivalent to the current system.
 
 ## 1. System Overview
 
-TreeSight is a geospatial pipeline that:
+Canopex is a geospatial pipeline that:
 
 1. Accepts a **KML file** containing one or more polygon features (orchards, vineyards, plantations).
 2. **Parses** the KML into individual polygon features with metadata.

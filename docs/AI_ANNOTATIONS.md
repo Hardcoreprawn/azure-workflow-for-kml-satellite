@@ -1,6 +1,6 @@
 # AI Annotations & Insights
 
-The TreeSight system includes AI-powered analysis of satellite imagery using a local LLM running in Docker with Nvidia GPU support.
+The Canopex system includes AI-powered analysis of satellite imagery using a local LLM running in Docker with Nvidia GPU support.
 
 ## Setup: Ollama in Docker (Recommended)
 

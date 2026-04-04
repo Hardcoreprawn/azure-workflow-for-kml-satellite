@@ -67,7 +67,7 @@ registration used for local sign-in.
 
    ```bash
    az staticwebapp create \
-     --name treesight-website \
+     --name canopex-website \
      --resource-group <rg-name> \
      --source https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite \
      --branch main \
@@ -84,12 +84,12 @@ registration used for local sign-in.
 
    ```bash
    az staticwebapp custom-domain \
-     --name treesight-website \
+     --name canopex-website \
      --domain-name <your-domain.com> \
      --resource-group <rg-name>
    ```
 
-4. **Verify deployment** at `https://treesight-website.azurestaticapps.net`
+4. **Verify deployment** at `https://canopex-website.azurestaticapps.net`
 
 ## API Proxying
 

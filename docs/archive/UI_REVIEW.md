@@ -1,4 +1,4 @@
-# TreeSight UI — Comprehensive Review Report
+# Canopex UI — Comprehensive Review Report
 
 **Date:** 20 March 2026  
 **Reviewer:** Automated UI Analysis & Manual Testing  
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The TreeSight UI demonstrates **strong structural integrity** with **consistent design language**, **proper semantic HTML**, and **thoughtful component organization**. A heading hierarchy violation was identified and corrected. Overall accessibility and responsiveness are well-implemented.
+The Canopex UI demonstrates **strong structural integrity** with **consistent design language**, **proper semantic HTML**, and **thoughtful component organization**. A heading hierarchy violation was identified and corrected. Overall accessibility and responsiveness are well-implemented.
 
 **Verdict:** UI is **Production-Ready** with minor improvements recommended for accessibility.
 
@@ -146,7 +146,7 @@ The TreeSight UI demonstrates **strong structural integrity** with **consistent 
 
 1. **Navigation** (sticky) — Global context, persistent
 2. **Hero** — Value proposition, CTAs
-3. **Problem Statement** — Why TreeSight matters
+3. **Problem Statement** — Why Canopex matters
 4. **Capabilities Grid** — What it does
 5. **Live Demo** — Interactive proof
 6. **Pipeline Workflow** — How it works (timeline)
@@ -426,8 +426,8 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 **Information Pyramid (Top to Bottom):**
 
 1. **Hero Value** — "KML to Satellite, Automated" (largest text, centered)
-2. **Problem** — Why users need TreeSight (context)
-3. **Solution** — What TreeSight does (capabilities)
+2. **Problem** — Why users need Canopex (context)
+3. **Solution** — What Canopex does (capabilities)
 4. **Proof** — Interactive demo (engagement)
 5. **Details** — How it works (technical breakdown)
 6. **FAQs** — Common questions (reassurance)
@@ -455,7 +455,7 @@ button[disabled] { opacity: 0.5; cursor: not-allowed; }
 
 ✅ **PRODUCTION READY**
 
-The TreeSight UI is **well-structured, accessible, and user-friendly**. Heading hierarchy has been corrected. Overall design demonstrates strong principles of:
+The Canopex UI is **well-structured, accessible, and user-friendly**. Heading hierarchy has been corrected. Overall design demonstrates strong principles of:
 
 - **Clarity** — Every element has a purpose
 - **Consistency** — Colors, spacing, typography align throughout

@@ -104,7 +104,7 @@ this document catalogues findings for triage.
 - **Category:** duplication
 - **Detail:** Two CORS-origin-resolution functions with subtly different fallback
   behaviour. `_safe_origin()` falls back to hardcoded
-  `"https://treesight.hrdcrprwn.com"` (magic number); `_cors_origin()` returns
+  `"https://canopex.hrdcrprwn.com"` (magic number); `_cors_origin()` returns
   `""` on mismatch.
 
 ### M3 — `_transform_bbox` duplicated
@@ -519,7 +519,7 @@ No tests for the proxy logic, CORS, path normalisation, or traversal prevention
 
 ### L41 — Allowed origin strings repeated as literals across test files
 
-`"https://treesight.hrdcrprwn.com"` appears in at least 3 test files. Should
+`"https://canopex.hrdcrprwn.com"` appears in at least 3 test files. Should
 reference a shared constant.
 
 ---

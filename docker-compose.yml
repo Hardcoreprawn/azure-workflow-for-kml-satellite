@@ -1,7 +1,7 @@
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
-    container_name: treesight-azurite
+    container_name: canopex-azurite
     ports:
       - "10000:10000"  # Blob
       - "10001:10001"  # Queue
@@ -23,7 +23,7 @@ services:
 
   init-storage:
     image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-    container_name: treesight-init
+    container_name: canopex-init
     depends_on:
       azurite:
         condition: service_healthy
@@ -37,7 +37,7 @@ services:
 
   func:
     build: .
-    container_name: treesight-func
+    container_name: canopex-func
     ports:
       - "7071:80"
     depends_on:
@@ -68,7 +68,7 @@ services:
 
   web:
     image: python:3.12-slim
-    container_name: treesight-web
+    container_name: canopex-web
     ports:
       - "4280:4280"
     depends_on:
@@ -85,7 +85,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: treesight-ollama
+    container_name: canopex-ollama
     ports:
       - "11434:11434"
     volumes:

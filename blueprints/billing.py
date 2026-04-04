@@ -146,7 +146,7 @@ def billing_checkout(
         return error_response(503, "Billing not configured", req=req)
 
     stripe = _get_stripe()
-    origin = _cors_origin(req) or "https://treesight.hrdcrprwn.com"
+    origin = _cors_origin(req) or "https://canopex.hrdcrprwn.com"
 
     from treesight.constants import DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
 
@@ -185,7 +185,7 @@ def billing_checkout(
                 "terms_of_service_acceptance": {
                     "message": (
                         "I agree to the [Terms of Service]"
-                        "(https://treesight.hrdcrprwn.com/terms.html)"
+                        "(https://canopex.hrdcrprwn.com/terms.html)"
                         " and acknowledge my right to cancel within"
                         " 14 days under the Consumer Contracts"
                         " Regulations 2013."
@@ -233,7 +233,7 @@ def billing_portal(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
         return error_response(404, "No active subscription found", req=req)
 
     stripe = _get_stripe()
-    origin = _cors_origin(req) or "https://treesight.hrdcrprwn.com"
+    origin = _cors_origin(req) or "https://canopex.hrdcrprwn.com"
 
     try:
         session = stripe.billing_portal.Session.create(

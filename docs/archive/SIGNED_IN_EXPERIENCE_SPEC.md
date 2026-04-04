@@ -1,4 +1,4 @@
-# TreeSight Signed-In Experience Spec
+# Canopex Signed-In Experience Spec
 
 **Date:** 28 March 2026  
 **Status:** Proposed replacement for the current logged-in UX
@@ -141,7 +141,7 @@ Those are different jobs and should not share the same primary screen.
 
 Purpose:
 
-- explain TreeSight
+- explain Canopex
 - show a limited demo or sample experience
 - handle pricing and conversion
 - handle sign-in and sign-up entry

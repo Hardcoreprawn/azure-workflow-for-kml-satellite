@@ -1,4 +1,4 @@
-# TreeSight UX Review — Jobs To Be Done, Flows & Recommendations
+# Canopex UX Review — Jobs To Be Done, Flows & Recommendations
 
 **Date:** 30 March 2026  
 **Scope:** Marketing site (`/`), signed-in app (`/app/`), KML guide (`/kml-guide.html`)
@@ -9,7 +9,7 @@
 
 ### Job 1 — Discover & Evaluate (Visitor → Prospect)
 
-**Job statement:** *"When I hear about TreeSight, I want to quickly understand what it does and whether it's relevant to my work, so I can decide if it's worth trying."*
+**Job statement:** *"When I hear about Canopex, I want to quickly understand what it does and whether it's relevant to my work, so I can decide if it's worth trying."*
 
 | Dimension | Detail |
 |-----------|--------|
@@ -20,7 +20,7 @@
 
 ### Job 2 — Try Before Committing (Prospect → Demo User)
 
-**Job statement:** *"When I'm considering TreeSight, I want to test it with my own area of interest (or a sample), so I can see real output quality before creating an account."*
+**Job statement:** *"When I'm considering Canopex, I want to test it with my own area of interest (or a sample), so I can see real output quality before creating an account."*
 
 | Dimension | Detail |
 |-----------|--------|
@@ -75,7 +75,7 @@
 
 ### Job 7 — Compare & Monitor Over Time (Returning User → Repeat Operator)
 
-**Job statement:** *"When I return to TreeSight, I want to see how my sites have changed since my last analysis, so I can spot emerging trends or confirm recovery."*
+**Job statement:** *"When I return to Canopex, I want to see how my sites have changed since my last analysis, so I can spot emerging trends or confirm recovery."*
 
 | Dimension | Detail |
 |-----------|--------|
@@ -529,7 +529,7 @@ All tiers receive NAIP and other high-res imagery **opportunistically** when ava
 
 ## 9. Summary
 
-TreeSight has a **strong core product loop**: upload KML → see satellite imagery → review evidence → export. The main structural change is unifying the demo and the app into a **single surface at different plan tiers**, distinguished by temporal resolution cadence (seasonal → monthly → continuous).
+Canopex has a **strong core product loop**: upload KML → see satellite imagery → review evidence → export. The main structural change is unifying the demo and the app into a **single surface at different plan tiers**, distinguished by temporal resolution cadence (seasonal → monthly → continuous).
 
 The four original UX risks remain the priorities:
 

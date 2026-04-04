@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────
-# TreeSight Functions Base Image  (EXTREME SLIM)
+# Canopex Functions Base Image  (EXTREME SLIM)
 #
 # Slim, security-hardened base for Azure Functions on Python 3.12.
 # Extracts only the essential runtime components from Microsoft's
@@ -87,7 +87,7 @@ RUN set -e && \
 FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
-      org.opencontainers.image.description="TreeSight – Azure Functions Python 3.12 base image" \
+      org.opencontainers.image.description="Canopex – Azure Functions Python 3.12 base image" \
       org.opencontainers.image.title="treesight-base"
 
 # Install .NET 8 ASP.NET runtime — required by the Functions host.

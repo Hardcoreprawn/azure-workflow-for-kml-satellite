@@ -1,4 +1,4 @@
-# TreeSight Code Review — Comprehensive Analysis
+# Canopex Code Review — Comprehensive Analysis
 
 **Date:** 20 March 2026  
 **Scope:** Structure, Stability, Safety  
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-TreeSight demonstrates **mature software engineering practices** grounded in fundamental principles:
+Canopex demonstrates **mature software engineering practices** grounded in fundamental principles:
 
 - **Structure:** Modular architecture with clear separation of concerns
 - **Stability:** Defensive programming with proper error handling throughout
@@ -623,7 +623,7 @@ def _calculate_trends(
 
 ### ✅ PRODUCTION READY
 
-TreeSight demonstrates **professional-grade software engineering** aligned with fundamental principles:
+Canopex demonstrates **professional-grade software engineering** aligned with fundamental principles:
 
 - **Dijkstra's emphasis on clarity** is evident in self-documenting code
 - **Hamilton's focus on correctness** manifests in defensive programming

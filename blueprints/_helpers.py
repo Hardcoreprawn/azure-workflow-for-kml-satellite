@@ -19,7 +19,7 @@ MAX_FIELD_LEN = 2000
 # Allowed CORS origins — production SWA + local dev
 _ALLOWED_ORIGINS: set[str] = {
     "https://polite-glacier-0d6885003.4.azurestaticapps.net",
-    "https://treesight.hrdcrprwn.com",
+    "https://canopex.hrdcrprwn.com",
     "http://localhost:4280",
     "http://localhost:1111",
 }

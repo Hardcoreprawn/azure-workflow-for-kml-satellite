@@ -21,7 +21,7 @@ def main():
         "/identity/authenticationEventsFlows",
         {
             "@odata.type": "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow",
-            "displayName": "TreeSight Sign Up/In",
+            "displayName": "Canopex Sign Up/In",
             "onInteractiveAuthFlowStart": {
                 "@odata.type": "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp",
                 "isSignUpAllowed": True,
