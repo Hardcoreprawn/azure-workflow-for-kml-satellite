@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-02
+Last updated: 2026-04-04
 
 ---
 
@@ -21,7 +21,10 @@ Last updated: 2026-04-02
 
 ## In Flight
 
-*None — all PRs merged.*
+| PR | Branch | Feature |
+|----|--------|---------|
+| #393 | `fix/blob-storage-managed-identity` | Blob storage managed identity fix |
+| #394 | `feature/scheduled-monitoring` | 3.1 — Scheduled monitoring + change alerts |
 
 ---
 
