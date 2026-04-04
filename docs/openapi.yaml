@@ -614,6 +614,135 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # ── Monitoring ──────────────────────────────────────────────
+  /monitoring:
+    get:
+      operationId: listMonitors
+      summary: List monitoring subscriptions
+      description: Returns all scheduled monitors for the authenticated user.
+      tags: [monitoring]
+      responses:
+        "200":
+          description: List of monitors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monitors:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Monitor"
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createMonitor
+      summary: Create a monitoring subscription
+      description: |
+        Subscribe an AOI to scheduled NDVI change detection.
+        Requires Pro tier or higher. The system will re-run analysis on
+        the configured cadence and send email alerts when thresholds are
+        breached.
+      tags: [monitoring]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [aoi_name, aoi_geometry]
+              properties:
+                aoi_name:
+                  type: string
+                aoi_geometry:
+                  type: object
+                  description: AOI geometry with centroid, bbox, exterior_coords
+                cadence_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 365
+                  default: 30
+                alert_thresholds:
+                  $ref: "#/components/schemas/AlertThresholds"
+                source_file:
+                  type: string
+                baseline_run_id:
+                  type: string
+      responses:
+        "201":
+          description: Monitor created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Monitor"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Tier insufficient or monitor limit reached
+
+  /monitoring/{monitor_id}:
+    parameters:
+      - name: monitor_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getMonitor
+      summary: Get monitor details
+      tags: [monitoring]
+      responses:
+        "200":
+          description: Monitor detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Monitor"
+        "404":
+          description: Monitor not found
+    patch:
+      operationId: updateMonitor
+      summary: Update monitor settings
+      tags: [monitoring]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cadence_days:
+                  type: integer
+                enabled:
+                  type: boolean
+                alert_thresholds:
+                  $ref: "#/components/schemas/AlertThresholds"
+      responses:
+        "200":
+          description: Updated monitor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Monitor"
+    delete:
+      operationId: deleteMonitor
+      summary: Delete a monitor
+      tags: [monitoring]
+      responses:
+        "200":
+          description: Monitor deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+
   # ── Catalogue ─────────────────────────────────────────────
 
   /catalogue:
@@ -794,6 +923,70 @@ components:
           type: string
           description: Human-readable error message
       required: [error]
+
+    AlertThresholds:
+      type: object
+      properties:
+        loss_pct:
+          type: number
+          description: Vegetation loss % that triggers an alert
+          default: 5.0
+        gain_pct:
+          type: number
+          nullable: true
+          description: Vegetation gain % that triggers an alert
+        ndvi_mean_drop:
+          type: number
+          description: Mean NDVI decrease that triggers an alert
+          default: 0.1
+
+    Monitor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+        aoi_name:
+          type: string
+        source_file:
+          type: string
+        aoi_geometry:
+          type: object
+        enabled:
+          type: boolean
+        cadence_days:
+          type: integer
+        next_check_at:
+          type: string
+          format: date-time
+        baseline_run_id:
+          type: string
+          nullable: true
+        baseline_ndvi_mean:
+          type: number
+          nullable: true
+          description: Baseline NDVI mean value at monitor creation
+        last_run_id:
+          type: string
+          nullable: true
+        last_run_at:
+          type: string
+          format: date-time
+          nullable: true
+        alert_thresholds:
+          $ref: "#/components/schemas/AlertThresholds"
+        alert_email:
+          type: string
+        alert_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     AnalysisResult:
       type: object
