@@ -354,4 +354,13 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         summary["enrichment_manifest"] = enrichment["manifest_path"]
         summary["enrichment_duration"] = enrichment.get("enrichment_duration_seconds")
 
+    # --- Billing: consume quota only after successful completion ---
+    user_id = inp.get("user_id", "")
+    tier = inp.get("tier", "")
+    if user_id and tier != "demo":
+        yield context.call_activity(
+            "record_billing",
+            {"user_id": user_id, "instance_id": instance_id},
+        )
+
     return summary

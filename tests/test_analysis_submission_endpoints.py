@@ -102,7 +102,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota"),
+            patch("blueprints.pipeline.submission.check_quota", return_value=5),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="analysis"))
@@ -136,6 +136,7 @@ class TestAnalysisSubmissionRoutes:
         assert client.calls[0]["name"] == "treesight_orchestrator"
         assert client.calls[0]["instance_id"] == data["instance_id"]
         assert client.calls[0]["client_input"]["blob_name"].startswith("analysis/")
+        assert client.calls[0]["client_input"]["user_id"] == "user-123"
 
     def test_demo_process_keeps_demo_prefix(self):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -145,7 +146,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota"),
+            patch("blueprints.pipeline.submission.check_quota", return_value=5),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="demo"))

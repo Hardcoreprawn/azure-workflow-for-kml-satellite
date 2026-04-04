@@ -16,7 +16,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.security.quota import consume_quota
+from treesight.security.quota import check_quota
 from treesight.security.rate_limit import demo_limiter, get_client_ip
 
 from . import bp
@@ -88,10 +88,9 @@ async def _submit_analysis_request(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
-    try:
-        consume_quota(user_id)
-    except ValueError as exc:
-        return error_response(403, str(exc), req=req)
+    remaining = check_quota(user_id)
+    if remaining <= 0:
+        return error_response(403, "Quota exhausted. Please upgrade to continue.", req=req)
 
     try:
         body = req.get_json()
@@ -107,7 +106,7 @@ async def _submit_analysis_request(
         client,
         body,
         blob_prefix=blob_prefix,
-        extra_input={"provider_name": effective_provider},
+        extra_input={"provider_name": effective_provider, "user_id": user_id},
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
