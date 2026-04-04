@@ -569,8 +569,8 @@ resource "azapi_resource" "function_app" {
         }
         appSettings = concat([
           {
-            name  = "AzureWebJobsStorage"
-            value = azurerm_storage_account.main.primary_connection_string
+            name  = "AzureWebJobsStorage__accountName"
+            value = azurerm_storage_account.main.name
           },
           {
             name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
@@ -717,9 +717,27 @@ resource "azurerm_static_web_app_custom_domain" "main" {
   validation_type   = "cname-delegation"
 }
 
-resource "azurerm_role_assignment" "storage_blob_data_contributor" {
+resource "azurerm_role_assignment" "storage_blob_data_owner" {
   scope                = azurerm_storage_account.main.id
-  role_definition_name = "Storage Blob Data Contributor"
+  role_definition_name = "Storage Blob Data Owner"
+  principal_id         = azapi_resource.function_app.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "storage_queue_data_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azapi_resource.function_app.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "storage_table_data_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Table Data Contributor"
+  principal_id         = azapi_resource.function_app.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "storage_account_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Account Contributor"
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 

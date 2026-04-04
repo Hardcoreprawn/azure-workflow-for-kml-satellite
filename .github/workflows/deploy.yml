@@ -240,6 +240,7 @@ jobs:
             --resource-group "$FUNC_RG" \
             --settings \
               WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
+              AzureWebJobsStorage__accountName="$(tofu output -raw storage_account_name)" \
               CIAM_TENANT_NAME="$CIAM_TENANT" \
               CIAM_CLIENT_ID="$CIAM_CLIENT" \
               CIAM_AUDIENCE="$CIAM_CLIENT" \
