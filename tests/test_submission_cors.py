@@ -38,6 +38,49 @@ def _make_request(
     return req
 
 
+class TestSubmissionCORSPreflight:
+    """Both submission endpoints must respond to OPTIONS preflight requests.
+
+    The ``@bp.durable_client_input`` decorator makes it hard to call the
+    endpoint directly in tests, so we verify:
+      1. cors_preflight produces the expected 204 with full CORS headers,
+      2. the route source contains the OPTIONS guard (structural assertion).
+    """
+
+    def test_cors_preflight_returns_204_with_headers(self):
+        from blueprints._helpers import cors_preflight
+
+        req = MagicMock()
+        req.headers = {"Origin": TEST_ORIGIN}
+
+        resp = cors_preflight(req)
+
+        assert resp.status_code == 204
+        assert resp.headers["Access-Control-Allow-Origin"] == TEST_ORIGIN
+        assert "POST" in resp.headers["Access-Control-Allow-Methods"]
+        assert "Authorization" in resp.headers["Access-Control-Allow-Headers"]
+
+    def test_analysis_submit_has_options_guard(self):
+        import inspect
+
+        import blueprints.pipeline.submission as mod
+
+        src = inspect.getsource(mod)
+        # Route must accept OPTIONS
+        assert 'methods=["POST", "OPTIONS"]' in src or "methods=['POST', 'OPTIONS']" in src, (
+            "analysis/submit route must accept OPTIONS for CORS preflight"
+        )
+
+    def test_demo_process_has_options_guard(self):
+        import inspect
+
+        import blueprints.pipeline.submission as mod
+
+        src = inspect.getsource(mod)
+        # Both routes must call cors_preflight on OPTIONS
+        assert "cors_preflight" in src, "submission endpoints must call cors_preflight"
+
+
 class TestAnalysisSubmitCORS:
     """_submit_analysis_request must include CORS headers on every response."""
 

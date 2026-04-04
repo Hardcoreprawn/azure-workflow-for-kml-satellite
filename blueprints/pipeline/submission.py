@@ -14,7 +14,7 @@ from typing import Any
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, error_response
+from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.quota import consume_quota, release_quota
 from treesight.security.rate_limit import demo_limiter, get_client_ip
@@ -31,23 +31,27 @@ def _safe_release_quota(user_id: str) -> None:
         logging.exception("Failed to release quota for user=%s", user_id)
 
 
-@bp.route(route="demo-process", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+@bp.route(route="demo-process", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @bp.durable_client_input(client_name="client")
 async def demo_process(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """POST /api/demo-process — anonymous demo submission with tier limits."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
     return await _submit_demo_request(req, client)
 
 
-@bp.route(route="analysis/submit", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+@bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @bp.durable_client_input(client_name="client")
 async def analysis_submit(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """POST /api/analysis/submit — authenticated analysis submission."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
     return await _submit_analysis_request(req, client, blob_prefix="analysis")
 
 
