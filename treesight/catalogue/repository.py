@@ -65,8 +65,14 @@ def record_acquisition(
     from treesight.storage.cosmos import upsert_item
 
     now = datetime.now(UTC)
+    doc_id = _make_id(run_id, aoi_name)
+
+    # Preserve created_at if the entry already exists (upsert semantics)
+    existing = get_entry(doc_id, user_id)
+    created_ts = existing.created_at if existing else now
+
     entry = CatalogueEntry(
-        id=_make_id(run_id, aoi_name),
+        id=doc_id,
         user_id=user_id,
         run_id=run_id,
         aoi_name=aoi_name,
@@ -90,7 +96,7 @@ def record_acquisition(
         imagery_blob_path=imagery_blob_path,
         metadata_blob_path=metadata_blob_path,
         enrichment_manifest_path=enrichment_manifest_path,
-        created_at=now,
+        created_at=created_ts,
         updated_at=now,
     )
 
@@ -147,9 +153,9 @@ def list_entries(
     """
     from treesight.storage.cosmos import query_items
 
-    # Build query dynamically based on provided filters
-    conditions = ["c.user_id = @uid"]
-    params: list[dict[str, Any]] = [{"name": "@uid", "value": user_id}]
+    # Build query dynamically — partition_key scopes to user_id already
+    conditions: list[str] = []
+    params: list[dict[str, Any]] = []
 
     if aoi_name:
         conditions.append("CONTAINS(LOWER(c.aoi_name), @aoi_name)")
@@ -171,7 +177,7 @@ def list_entries(
         conditions.append("c.provider = @provider")
         params.append({"name": "@provider", "value": provider})
 
-    where_clause = " AND ".join(conditions)
+    where_clause = (" AND ".join(conditions)) if conditions else "true"
     order = "DESC" if sort == "desc" else "ASC"
 
     # Count query for pagination metadata
@@ -216,9 +222,8 @@ def list_entries_for_run(
 
     docs = query_items(
         CATALOGUE_CONTAINER,
-        "SELECT * FROM c WHERE c.user_id = @uid AND c.run_id = @rid ORDER BY c.aoi_name ASC",
+        "SELECT * FROM c WHERE c.run_id = @rid ORDER BY c.aoi_name ASC",
         parameters=[
-            {"name": "@uid", "value": user_id},
             {"name": "@rid", "value": run_id},
         ],
         partition_key=user_id,
@@ -237,10 +242,8 @@ def list_entries_for_aoi(
 
     docs = query_items(
         CATALOGUE_CONTAINER,
-        "SELECT * FROM c WHERE c.user_id = @uid AND c.aoi_name = @aoi"
-        " ORDER BY c.submitted_at DESC OFFSET 0 LIMIT @lim",
+        "SELECT * FROM c WHERE c.aoi_name = @aoi ORDER BY c.submitted_at DESC OFFSET 0 LIMIT @lim",
         parameters=[
-            {"name": "@uid", "value": user_id},
             {"name": "@aoi", "value": aoi_name},
             {"name": "@lim", "value": limit},
         ],

@@ -857,8 +857,6 @@ components:
         id:
           type: string
           description: "Deterministic id: {runId}:{aoiSlug}"
-        userId:
-          type: string
         runId:
           type: string
         aoiName:
@@ -886,6 +884,7 @@ components:
         submittedAt:
           type: string
           format: date-time
+          nullable: true
         cloudCoverPct:
           type: number
           nullable: true
@@ -896,7 +895,7 @@ components:
           type: string
         status:
           type: string
-          enum: [completed, partial, failed]
+          enum: [pending, completed, partial, failed]
         ndviMean:
           type: number
           nullable: true
@@ -924,10 +923,12 @@ components:
         createdAt:
           type: string
           format: date-time
+          nullable: true
         updatedAt:
           type: string
           format: date-time
-      required: [id, userId, runId, aoiName, status, submittedAt, createdAt, updatedAt]
+          nullable: true
+      required: [id, runId, aoiName, status]
 
     CatalogueListResponse:
       type: object

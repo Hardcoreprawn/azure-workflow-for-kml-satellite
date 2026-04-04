@@ -25,13 +25,18 @@ from pydantic.alias_generators import to_camel
 class CatalogueQueryParams(BaseModel):
     """Parsed + validated query string for ``GET /api/catalogue``."""
 
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
     aoi_name: str | None = None
     status: str | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
     provider: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0, le=1000)
+    offset: int = Field(default=0, ge=0, le=10_000)
     sort: str = "desc"
 
 

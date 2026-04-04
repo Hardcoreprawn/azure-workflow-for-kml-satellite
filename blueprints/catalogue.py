@@ -63,8 +63,8 @@ def catalogue_list(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     """List catalogue entries with optional filters and pagination."""
     params = req.params
 
-    limit = min(_parse_int(params.get("limit"), 20), _MAX_LIMIT)
-    offset = min(_parse_int(params.get("offset"), 0), _MAX_OFFSET)
+    limit = min(max(_parse_int(params.get("limit"), 20), 1), _MAX_LIMIT)
+    offset = min(max(_parse_int(params.get("offset"), 0), 0), _MAX_OFFSET)
     sort = params.get("sort", "desc")
     if sort not in ("asc", "desc"):
         sort = "desc"

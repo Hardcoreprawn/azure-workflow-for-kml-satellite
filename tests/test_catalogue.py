@@ -218,8 +218,9 @@ class TestMakeId:
 
 
 class TestRecordAcquisition:
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     @patch("treesight.storage.cosmos.upsert_item")
-    def test_creates_entry(self, mock_upsert):
+    def test_creates_entry(self, mock_upsert, mock_read):
         from treesight.catalogue.repository import record_acquisition
 
         entry = record_acquisition(
@@ -238,8 +239,9 @@ class TestRecordAcquisition:
         args = mock_upsert.call_args
         assert args[0][0] == "catalogue"
 
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     @patch("treesight.storage.cosmos.upsert_item")
-    def test_sets_timestamps(self, mock_upsert):
+    def test_sets_timestamps(self, mock_upsert, mock_read):
         from treesight.catalogue.repository import record_acquisition
 
         entry = record_acquisition("u1", "r1", "AOI")
