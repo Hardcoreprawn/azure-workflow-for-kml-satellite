@@ -86,6 +86,14 @@ class TestReleaseQuota:
         remaining = release_quota("user-never-used")
         assert remaining == FREE_TIER_LIMIT
 
+    def test_idempotent_with_instance_id(self):
+        consume_quota("user-idem")
+        consume_quota("user-idem")
+        release_quota("user-idem", instance_id="run-abc")
+        remaining = release_quota("user-idem", instance_id="run-abc")
+        # Second call should be a no-op
+        assert remaining == FREE_TIER_LIMIT - 1
+
 
 # --- Cosmos path ---
 

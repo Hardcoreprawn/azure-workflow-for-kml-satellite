@@ -336,7 +336,7 @@ def release_quota(payload: _Payload) -> dict[str, Any]:
 
     user_id: str = payload["user_id"]
     instance_id: str = payload.get("instance_id", "")
-    remaining = _release(user_id)
+    remaining = _release(user_id, instance_id=instance_id)
     logging.info(
         "Quota released (run failed) user=%s instance=%s remaining=%d",
         user_id,

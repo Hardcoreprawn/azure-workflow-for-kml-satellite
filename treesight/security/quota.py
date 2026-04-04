@@ -137,23 +137,42 @@ def consume_quota(user_id: str) -> int:
     return remaining
 
 
-def release_quota(user_id: str) -> int:
+def release_quota(user_id: str, *, instance_id: str = "") -> int:
     """Decrement usage (refund) and return remaining runs.
 
     Used to compensate for a failed pipeline run that was billed upfront.
+    Idempotent when *instance_id* is provided — repeated calls for the
+    same instance are no-ops to handle Durable Functions at-least-once
+    activity delivery.
     """
     limit = _run_limit(user_id)
     record = _get_quota_record(user_id)
+
+    # Idempotency guard: skip if this instance was already refunded.
+    refunded: list[str] = record.get("refunded", [])
+    if instance_id and instance_id in refunded:
+        logger.info(
+            "Quota already released for instance=%s user=%s — skipping",
+            instance_id,
+            user_id,
+        )
+        used = record.get("used", 0)
+        return max(limit - used, 0)
+
     used: int = record.get("used", 0)
-    if used > 0:
-        record["used"] = used - 1
+    new_used = used - 1 if used > 0 else 0
+    record["used"] = new_used
+    if instance_id:
+        refunded.append(instance_id)
+        record["refunded"] = refunded
     _save_quota_record(user_id, record)
-    remaining = limit - record["used"]
+    remaining = limit - new_used
     logger.info(
-        "Quota released user=%s used=%d remaining=%d limit=%d",
+        "Quota released user=%s used=%d remaining=%d limit=%d instance=%s",
         user_id,
-        record["used"],
+        new_used,
         remaining,
         limit,
+        instance_id,
     )
     return remaining
