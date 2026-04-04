@@ -2559,10 +2559,13 @@
       });
       if (!res || !res.ok) {
         if (res && res.status === 401) {
-          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           resetAnalysisProgress();
           currentAccount = null;
-          updateAuthUI();
+          var expiredAuthGate = document.getElementById('app-analysis-auth-gate');
+          var expiredFormFields = document.getElementById('app-analysis-form-fields');
+          if (expiredAuthGate) expiredAuthGate.hidden = false;
+          if (expiredFormFields) expiredFormFields.hidden = true;
+          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           return;
         }
         var err = res ? await res.json().catch(function(){ return {}; }) : {};
@@ -2868,6 +2871,10 @@
       gate.hidden = false;
       dashboard.hidden = true;
       billingBtn.style.display = 'none';
+      var unauthGate = document.getElementById('app-analysis-auth-gate');
+      var unauthFormFields = document.getElementById('app-analysis-form-fields');
+      if (unauthGate) unauthGate.hidden = false;
+      if (unauthFormFields) unauthFormFields.hidden = true;
       analysisHistoryRuns = [];
       analysisHistoryLoaded = false;
       selectedAnalysisRunId = null;
