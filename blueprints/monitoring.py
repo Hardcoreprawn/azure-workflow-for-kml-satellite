@@ -12,6 +12,7 @@ at import time.  PEP 563 causes FunctionLoadError.
 
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import azure.functions as func
@@ -120,10 +121,12 @@ def _process_monitor(monitor: Any) -> None:
     coords = [centroid]
     storage = BlobStorageClient()
 
+    run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
     enrichment_result = run_enrichment(
         coords=coords,
         project_name=f"monitor-{monitor.id}",
-        timestamp="",
+        timestamp=run_ts,
         output_container="kml-output",
         storage=storage,
         cadence="monthly",
@@ -244,6 +247,50 @@ def create_monitor_endpoint(
     )
 
 
+def _apply_patch(
+    req: func.HttpRequest,
+    monitor: Any,
+    user_id: str,
+) -> func.HttpResponse | None:
+    """Apply PATCH fields to a monitor. Returns an error response or None on success."""
+    try:
+        body = req.get_json()
+    except ValueError:
+        return error_response(400, "Invalid JSON body", req=req)
+
+    if "cadence_days" in body:
+        cd = body["cadence_days"]
+        if not isinstance(cd, int) or cd < 1 or cd > 365:
+            return error_response(400, "cadence_days must be 1\u2013365", req=req)
+
+        sub = get_effective_subscription(user_id)
+        tier = sub.get("tier", "free")
+        caps = plan_capabilities(tier)
+        if caps.get("temporal_cadence") == "seasonal" and cd < 90:
+            return error_response(
+                403,
+                "Seasonal-cadence plans require cadence_days >= 90",
+                req=req,
+            )
+        monitor.cadence_days = cd
+
+    if "enabled" in body:
+        enabled = body["enabled"]
+        if not isinstance(enabled, bool):
+            return error_response(400, "enabled must be a JSON boolean", req=req)
+        monitor.enabled = enabled
+
+    if "alert_thresholds" in body:
+        at = body["alert_thresholds"]
+        if not isinstance(at, dict):
+            return error_response(400, "alert_thresholds must be a JSON object", req=req)
+        from treesight.models.monitor import AlertThresholds
+
+        monitor.alert_thresholds = AlertThresholds(**at)
+
+    return None
+
+
 @bp.route(
     route="monitoring/{monitor_id}",
     methods=["GET", "PATCH", "DELETE", "OPTIONS"],
@@ -276,7 +323,9 @@ def monitor_detail_endpoint(
         )
 
     if req.method == "DELETE":
-        delete_monitor(monitor_id, user_id)
+        ok = delete_monitor(monitor_id, user_id)
+        if not ok:
+            return error_response(500, "Failed to delete monitor", req=req)
         return func.HttpResponse(
             json.dumps({"deleted": True}),
             status_code=200,
@@ -285,27 +334,9 @@ def monitor_detail_endpoint(
         )
 
     # PATCH — update thresholds, cadence, enabled
-    try:
-        body = req.get_json()
-    except ValueError:
-        return error_response(400, "Invalid JSON body", req=req)
-
-    if "cadence_days" in body:
-        cd = body["cadence_days"]
-        if not isinstance(cd, int) or cd < 1 or cd > 365:
-            return error_response(400, "cadence_days must be 1–365", req=req)
-        monitor.cadence_days = cd
-
-    if "enabled" in body:
-        monitor.enabled = bool(body["enabled"])
-
-    if "alert_thresholds" in body:
-        at = body["alert_thresholds"]
-        if not isinstance(at, dict):
-            return error_response(400, "alert_thresholds must be a JSON object", req=req)
-        from treesight.models.monitor import AlertThresholds
-
-        monitor.alert_thresholds = AlertThresholds(**at)
+    patch_err = _apply_patch(req, monitor, user_id)
+    if patch_err:
+        return patch_err
 
     update_monitor(monitor)
     return func.HttpResponse(

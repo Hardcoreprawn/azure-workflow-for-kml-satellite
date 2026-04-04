@@ -152,7 +152,9 @@ def advance_schedule(monitor: MonitorRecord, run_id: str) -> MonitorRecord:
     now = datetime.now(UTC)
     monitor.last_run_id = run_id
     monitor.last_run_at = now
-    monitor.next_check_at = now + timedelta(days=monitor.cadence_days)
+    # Advance from existing schedule to avoid drift; fall back to now
+    base = monitor.next_check_at or now
+    monitor.next_check_at = base + timedelta(days=monitor.cadence_days)
     return update_monitor(monitor)
 
 

@@ -817,6 +817,10 @@ components:
         baseline_run_id:
           type: string
           nullable: true
+        baseline_ndvi_mean:
+          type: number
+          nullable: true
+          description: Baseline NDVI mean value at monitor creation
         last_run_id:
           type: string
           nullable: true
