@@ -2558,6 +2558,16 @@
         body: JSON.stringify(requestBody)
       });
       if (!res || !res.ok) {
+        if (res && res.status === 401) {
+          resetAnalysisProgress();
+          currentAccount = null;
+          var expiredAuthGate = document.getElementById('app-analysis-auth-gate');
+          var expiredFormFields = document.getElementById('app-analysis-form-fields');
+          if (expiredAuthGate) expiredAuthGate.hidden = false;
+          if (expiredFormFields) expiredFormFields.hidden = true;
+          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
+          return;
+        }
         var err = res ? await res.json().catch(function(){ return {}; }) : {};
         setAnalysisStatus(err.error || 'Could not queue analysis request.', 'error');
         updateContentSummary(null);
@@ -2806,6 +2816,10 @@
       userSpan.style.display = 'inline';
       gate.hidden = true;
       dashboard.hidden = false;
+      var localAuthGate = document.getElementById('app-analysis-auth-gate');
+      var localFormFields = document.getElementById('app-analysis-form-fields');
+      if (localAuthGate) localAuthGate.hidden = true;
+      if (localFormFields) localFormFields.hidden = false;
       userName.textContent = 'Local developer';
       accountIdentifier.textContent = 'Authentication disabled';
       accountNote.textContent = 'Auth is disabled in this environment, so this workspace is running in local development mode.';
@@ -2837,6 +2851,10 @@
       userName.textContent = displayName;
       accountIdentifier.textContent = identifier;
       accountNote.textContent = 'This is now the dedicated signed-in home for Canopex. Choose the role view and work preference that match the job at hand.';
+      var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
+      var analysisFormFields = document.getElementById('app-analysis-form-fields');
+      if (analysisAuthGate) analysisAuthGate.hidden = true;
+      if (analysisFormFields) analysisFormFields.hidden = false;
       if (!analysisHistoryLoaded && !latestAnalysisRun) {
         setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
         updateHistorySummary(null);
@@ -2853,6 +2871,10 @@
       gate.hidden = false;
       dashboard.hidden = true;
       billingBtn.style.display = 'none';
+      var unauthGate = document.getElementById('app-analysis-auth-gate');
+      var unauthFormFields = document.getElementById('app-analysis-form-fields');
+      if (unauthGate) unauthGate.hidden = false;
+      if (unauthFormFields) unauthFormFields.hidden = true;
       analysisHistoryRuns = [];
       analysisHistoryLoaded = false;
       selectedAnalysisRunId = null;
@@ -2876,6 +2898,12 @@
     // Skip auth gate — show dashboard
     gate.hidden = true;
     dashboard.hidden = false;
+
+    // In demo mode, show the analysis form (no auth gate)
+    var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
+    var analysisFormFields = document.getElementById('app-analysis-form-fields');
+    if (analysisAuthGate) analysisAuthGate.hidden = true;
+    if (analysisFormFields) analysisFormFields.hidden = false;
 
     // Show sign-in button instead of logout
     loginBtn.style.display = 'inline';
@@ -3025,6 +3053,7 @@
   document.getElementById('auth-login-btn').addEventListener('click', login);
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   document.getElementById('app-sign-in-btn').addEventListener('click', login);
+  document.getElementById('app-analysis-sign-in-btn').addEventListener('click', login);
   document.getElementById('app-manage-billing-btn').addEventListener('click', manageBilling);
   document.getElementById('app-apply-tier-emulation-btn').addEventListener('click', saveTierEmulation);
   document.getElementById('app-guided-primary-btn').addEventListener('click', function() {

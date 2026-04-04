@@ -11,6 +11,11 @@
 .app-panel h2{font-size:1.7rem;letter-spacing:-.02em}
 .app-panel p{color:var(--c-muted);margin-top:12px;max-width:54ch}
 .app-gate-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.app-analysis-auth-gate{padding:24px 0}
+.app-analysis-auth-gate .app-panel{text-align:center;padding:40px 32px}
+.app-analysis-auth-gate .app-panel h4{font-size:1.2rem;margin-bottom:8px}
+.app-analysis-auth-gate .app-panel p{margin:0 auto 0;color:var(--c-muted);max-width:44ch}
+.app-analysis-auth-gate .app-gate-actions{justify-content:center}
 
 .app-dashboard .container{display:flex;flex-direction:column;gap:28px}
 .app-dashboard{--app-role-accent:var(--c-green);--app-role-tint:rgba(63,185,80,.14);--app-role-border:rgba(63,185,80,.26)}

@@ -63,10 +63,11 @@
   <section id="app-unauthenticated" class="app-gate">
     <div class="container">
       <div class="app-panel">
-        <h2>Sign in to access your workspace</h2>
-        <p>Use your Canopex account to view usage, billing, and run history.</p>
+        <h2>Sign in to run your analysis</h2>
+        <p>A Canopex account is required to upload KML, queue analysis runs, and view your results. Sign in to get started.</p>
         <div class="app-gate-actions">
           <button class="btn btn-primary" id="app-sign-in-btn" type="button">Sign In</button>
+          <a class="btn btn-secondary" href="/app/?mode=demo">Try the Public Demo</a>
           <a class="btn btn-secondary" href="/">Back to site</a>
         </div>
       </div>
@@ -280,6 +281,18 @@
             </div>
           </div>
           <p class="app-rail-copy" id="app-run-copy">Upload KML, queue the pipeline, and monitor progress.</p>
+          <!-- ── Auth gate overlay for analysis form ── -->
+          <div class="app-analysis-auth-gate" id="app-analysis-auth-gate" hidden>
+            <div class="app-panel">
+              <h4>Sign in to run your own analysis</h4>
+              <p>You need to be signed in to upload KML and queue analysis runs. Demo mode is available without an account.</p>
+              <div class="app-gate-actions">
+                <button class="btn btn-primary" id="app-analysis-sign-in-btn" type="button">Sign In</button>
+                <a class="btn btn-secondary" href="/app/?mode=demo">Try the Public Demo</a>
+              </div>
+            </div>
+          </div>
+          <div id="app-analysis-form-fields" hidden>
           <div class="app-mode-card">
             <span class="app-run-label">Workspace lens</span>
             <strong id="app-analysis-lens-title">Conservation evidence run</strong>
@@ -321,6 +334,7 @@
             <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
             <a class="btn btn-secondary" href="/app/?mode=demo">View Public Demo</a>
           </div>
+          </div><!-- /app-analysis-form-fields -->
           <div class="app-callout" id="app-analysis-status" hidden></div>
           <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
