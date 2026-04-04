@@ -201,9 +201,9 @@ The app dashboard supports role-based tinting via CSS custom properties:
 - [x] `website/terms.html` — updated brand name throughout
 - [x] `website/js/landing.js` — updated `window.treesightBilling` → `window.canopexBilling`
 - [x] `website/js/app-shell.js` — updated localStorage keys and display strings
-- [x] Nav logo text — changed "Canopex" to "Canopex" in all HTML files
-- [x] Noscript banner — changed "Canopex requires JavaScript"
-- [x] Footer copyright — "© 2026 Canopex" → "© 2026 Canopex"
+- [x] Nav logo text — changed "TreeSight" to "Canopex" in all HTML files
+- [x] Noscript banner — "Canopex requires JavaScript"
+- [x] Footer copyright — "© 2026 Canopex"
 - [x] `website/docs/` pages — all 3 renamed (index, eudr-methodology, kml-guide)
 
 ### Phase 3: Domain & Infrastructure (to do)
@@ -220,7 +220,7 @@ The app dashboard supports role-based tinting via CSS custom properties:
 - [ ] Update `docs/MARKETING_PLAN.md` to reference applied brand
 - [ ] Create social media accounts (@canopex)
 - [ ] Update email templates in `treesight/email.py`
-- [ ] Search codebase for remaining `treesight` / `Canopex` references in backend Python
+- [x] Search codebase for remaining `TreeSight` / `treesight` brand references — ✅ renamed to Canopex
 - [ ] Update `README.md`, `pyproject.toml` project name
 
 ### Phase 5: Cleanup

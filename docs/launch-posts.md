@@ -1,6 +1,6 @@
 # Canopex Launch Posts — Reddit
 
-> **Note:** Replace `[LINK]` with the live URL (treesight.io or the azurestaticapps staging URL).
+> **Note:** Replace `[LINK]` with the live production URL (canopex.io or the azurestaticapps staging URL).
 > Post one per day over a week — don't carpet-bomb them all at once.
 > Reply to comments promptly. The first 2 hours after posting matter most.
 

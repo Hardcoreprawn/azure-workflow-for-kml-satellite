@@ -4,24 +4,24 @@
 **Issue:** #199
 **Status:** Active — Round 3 research in progress
 **Current production name:** Canopex (demo only)
-**Current production domain:** canopex.hrdcrprwn.com
+**Current production domain:** canopex.hrdcrprwn.com (was treesight.hrdcrprwn.com)
 
 ---
 
-## 1. Current Name: "Canopex" Assessment
+## 1. Previous Name: "TreeSight" Assessment
 
 ### Existing entities
 
 | Entity | Domain | Location | Industry | Risk |
 |--------|--------|----------|----------|------|
-| Canopex (BI consulting) | treesight.com | Mexico City, MX | Business intelligence, data analytics | Low — different industry, claims ® mark |
-| Canopex (consulting firm) | treesight.co | Ashkelon, IL | Smart cities, sustainability, security | Medium — "sustainability" keyword overlap |
+| TreeSight (BI consulting) | treesight.com | Mexico City, MX | Business intelligence, data analytics | Low — different industry, claims ® mark |
+| TreeSight (consulting firm) | treesight.co | Ashkelon, IL | Smart cities, sustainability, security | Medium — "sustainability" keyword overlap |
 | treesight.io | — | Unknown | Could not load | Unknown |
 | treesight.ai | — | Unknown | Could not load | Unknown |
 
-**Overall risk: MEDIUM** — Safe for demo use. Not recommended for commercial
+**Overall risk: MEDIUM** — Was safe for demo use. Not recommended for commercial
 launch due to two active companies using the identical name and .com/.co
-unavailability.
+unavailability. This drove the rebrand to Canopex.
 
 ---
 
