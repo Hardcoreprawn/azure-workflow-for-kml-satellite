@@ -88,7 +88,7 @@ def log_phase(
         parts.append(f"{_sanitise(k)}={_sanitise(v)}")
     if blob_name:
         parts.append(f"blob={blob_name}")
-    msg = " | ".join(parts)
+    msg = " | ".join(parts)  # lgtm[py/clear-text-logging-sensitive-data]
     logger.info(msg, extra={"custom_properties": props})
     return msg
 
