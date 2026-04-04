@@ -57,6 +57,8 @@ tags:
     description: Data export (GeoJSON, CSV)
   - name: contact
     description: Contact form
+  - name: catalogue
+    description: Temporal acquisition catalogue and time-series browsing
 
 paths:
   # ── Health ────────────────────────────────────────────────
@@ -612,6 +614,151 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # ── Catalogue ─────────────────────────────────────────────
+
+  /catalogue:
+    get:
+      operationId: catalogueList
+      tags: [catalogue]
+      summary: List catalogue entries
+      description: |
+        Returns paginated acquisition catalogue entries for the authenticated
+        user. Supports filtering by AOI name, status, date range, and provider.
+      parameters:
+        - name: aoiName
+          in: query
+          schema:
+            type: string
+          description: Filter by AOI name (substring match, case-insensitive)
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [completed, partial, failed]
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter entries submitted on or after this ISO-8601 date
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter entries submitted on or before this ISO-8601 date
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10000
+            default: 0
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: Sort direction by submission date
+      responses:
+        "200":
+          description: Paginated catalogue entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogueListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /catalogue/{entryId}:
+    get:
+      operationId: catalogueDetail
+      tags: [catalogue]
+      summary: Get a single catalogue entry
+      parameters:
+        - name: entryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "Catalogue entry id ({runId}:{aoiSlug})"
+      responses:
+        "200":
+          description: Catalogue entry detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogueEntryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /catalogue/run/{runId}:
+    get:
+      operationId: catalogueByRun
+      tags: [catalogue]
+      summary: List catalogue entries for a pipeline run
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All catalogue entries for the run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogueListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /catalogue/aoi/{aoiName}:
+    get:
+      operationId: catalogueByAoi
+      tags: [catalogue]
+      summary: Acquisition history for a specific AOI (time-series)
+      parameters:
+        - name: aoiName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Time-series of acquisitions for the AOI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogueListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -702,6 +849,104 @@ components:
         enrichment_manifest:
           type: string
           description: Blob path to the enrichment manifest JSON
+
+    CatalogueEntryResponse:
+      type: object
+      description: A single acquisition catalogue entry (camelCase API contract)
+      properties:
+        id:
+          type: string
+          description: "Deterministic id: {runId}:{aoiSlug}"
+        userId:
+          type: string
+        runId:
+          type: string
+        aoiName:
+          type: string
+        sourceFile:
+          type: string
+        provider:
+          type: string
+        centroid:
+          type: array
+          items:
+            type: number
+          description: "[lon, lat]"
+        bbox:
+          type: array
+          items:
+            type: number
+          description: "[minLon, minLat, maxLon, maxLat]"
+        areaHa:
+          type: number
+        acquiredAt:
+          type: string
+          format: date-time
+          nullable: true
+        submittedAt:
+          type: string
+          format: date-time
+        cloudCoverPct:
+          type: number
+          nullable: true
+        spatialResolutionM:
+          type: number
+          nullable: true
+        collection:
+          type: string
+        status:
+          type: string
+          enum: [completed, partial, failed]
+        ndviMean:
+          type: number
+          nullable: true
+        ndviMin:
+          type: number
+          nullable: true
+        ndviMax:
+          type: number
+          nullable: true
+        changeLossPct:
+          type: number
+          nullable: true
+        changeGainPct:
+          type: number
+          nullable: true
+        changeMeanDelta:
+          type: number
+          nullable: true
+        imageryBlobPath:
+          type: string
+        metadataBlobPath:
+          type: string
+        enrichmentManifestPath:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, userId, runId, aoiName, status, submittedAt, createdAt, updatedAt]
+
+    CatalogueListResponse:
+      type: object
+      description: Paginated list of catalogue entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogueEntryResponse"
+        total:
+          type: integer
+          description: Total number of matching entries
+        offset:
+          type: integer
+        limit:
+          type: integer
+        hasMore:
+          type: boolean
+      required: [entries, total, offset, limit, hasMore]
 
   responses:
     BadRequest:

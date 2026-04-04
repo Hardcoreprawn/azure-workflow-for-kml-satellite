@@ -515,6 +515,71 @@ resource "azurerm_cosmosdb_sql_container" "users" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "catalogue" {
+  count                = var.enable_cosmos_db ? 1 : 0
+  name                 = "catalogue"
+  resource_group_name  = azurerm_resource_group.main.name
+  account_name         = azurerm_cosmosdb_account.main[0].name
+  database_name        = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths  = ["/user_id"]
+
+  # Queries served:
+  #   C1: SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC (paginated)
+  #   C2: ... AND c.aoi_name = @aoi ORDER BY c.submitted_at DESC
+  #   C3: ... AND c.status = @status ORDER BY c.submitted_at DESC
+  #   C4: ... AND c.run_id = @rid ORDER BY c.aoi_name ASC
+  #   C5: ... AND c.submitted_at >= @from AND c.submitted_at <= @to
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/submitted_at/?"
+    }
+
+    included_path {
+      path = "/aoi_name/?"
+    }
+
+    included_path {
+      path = "/status/?"
+    }
+
+    included_path {
+      path = "/run_id/?"
+    }
+
+    included_path {
+      path = "/provider/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+
+    composite_index {
+      index {
+        path  = "/submitted_at"
+        order = "descending"
+      }
+      index {
+        path  = "/status"
+        order = "ascending"
+      }
+    }
+
+    composite_index {
+      index {
+        path  = "/aoi_name"
+        order = "ascending"
+      }
+      index {
+        path  = "/submitted_at"
+        order = "descending"
+      }
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location

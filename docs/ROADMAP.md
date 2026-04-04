@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-02
+Last updated: 2026-04-04
 
 ---
 
@@ -21,7 +21,10 @@ Last updated: 2026-04-02
 
 ## In Flight
 
-*None — all PRs merged.*
+| PR | Branch | Feature |
+|----|--------|---------|
+| #393 | `fix/blob-storage-managed-identity` | Blob storage managed identity fix |
+| #394 | `feature/scheduled-monitoring` | 3.1 — Scheduled monitoring + change alerts |
 
 ---
 
@@ -65,7 +68,7 @@ Features that make Canopex a habit, not a one-off tool.
 
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|
-| 3.1 | #310 | Scheduled monitoring + change alerts | #314 | Timer Trigger → monthly re-run → alert on NDVI threshold breach |
+| 3.1 | #310 | Scheduled monitoring + change alerts | #314 | ✅ PR #394 — Timer Trigger (6 h), NDVI enrichment, threshold alerts via ACS email, Cosmos `monitors` container, Pro+ tier gated |
 | 3.2 | #78 | Temporal catalogue in Cosmos DB | #314 | Per-AOI acquisition history, date range queries |
 | 3.3 | #79 | Catalogue API endpoints | #78 | `GET /api/catalogue` — paginated, filterable |
 | 3.4 | — | Shareable analysis links | #312 | Viral loop: "look at this deforestation" → new visitor |
