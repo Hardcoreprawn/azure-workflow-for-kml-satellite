@@ -19,13 +19,14 @@ _MAX_ANALYSIS_BODY_BYTES = 131_072
 
 
 def _expected_blob_host() -> str:
-    """Derive the expected Azure Blob hostname from the connection string.
+    """Derive the expected Azure Blob hostname from the connection string
+    or the storage account name (managed identity).
 
     Returns the hostname of the configured storage account so callers
     can validate that an incoming blob URL belongs to *our* account,
     not just any ``*.blob.core.windows.net`` host.
     """
-    from treesight.config import STORAGE_CONNECTION_STRING
+    from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
 
     conn = STORAGE_CONNECTION_STRING or ""
 
@@ -43,6 +44,10 @@ def _expected_blob_host() -> str:
     m = re.search(r"AccountName=([^;]+)", conn, re.IGNORECASE)
     if m:
         return f"{m.group(1).lower()}.blob.core.windows.net"
+
+    # Managed identity: derive from account name
+    if STORAGE_ACCOUNT_NAME:
+        return f"{STORAGE_ACCOUNT_NAME.lower()}.blob.core.windows.net"
 
     return ""
 

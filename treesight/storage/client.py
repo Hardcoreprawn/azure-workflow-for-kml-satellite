@@ -8,7 +8,7 @@ from typing import Any, ClassVar, cast
 
 from azure.storage.blob import BlobServiceClient, ContentSettings, StorageStreamDownloader
 
-from treesight.config import STORAGE_CONNECTION_STRING
+from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
 from treesight.log import log_phase
 
 _client: BlobServiceClient | None = None
@@ -27,10 +27,25 @@ def _safe_blob_path(blob_path: str) -> str:
 
 
 def get_blob_service_client() -> BlobServiceClient:
-    """Return a module-level singleton ``BlobServiceClient``."""
+    """Return a module-level singleton ``BlobServiceClient``.
+
+    Uses a connection string when ``AzureWebJobsStorage`` is set, otherwise
+    falls back to managed identity via ``AzureWebJobsStorage__accountName``.
+    """
     global _client
     if _client is None:
-        _client = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
+        if STORAGE_CONNECTION_STRING:
+            _client = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
+        elif STORAGE_ACCOUNT_NAME:
+            from azure.identity import DefaultAzureCredential
+
+            account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+            _client = BlobServiceClient(account_url, credential=DefaultAzureCredential())
+        else:
+            raise RuntimeError(
+                "Storage is not configured: set AzureWebJobsStorage or "
+                "AzureWebJobsStorage__accountName"
+            )
     return _client
 
 

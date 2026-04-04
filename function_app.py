@@ -12,7 +12,7 @@ from blueprints.eudr import bp as eudr_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.pipeline import bp as pipeline_bp
-from treesight.config import STORAGE_CONNECTION_STRING, validate_config
+from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING, validate_config
 
 # Fail-fast config validation (§8.6)
 validate_config()
@@ -26,6 +26,21 @@ if STORAGE_CONNECTION_STRING:
     except Exception:
         logging.getLogger(__name__).warning(
             "Could not initialise Table replay store; falling back to in-memory",
+            exc_info=True,
+        )
+elif STORAGE_ACCOUNT_NAME:
+    try:
+        from azure.data.tables import TableServiceClient
+        from azure.identity import DefaultAzureCredential
+
+        from treesight.security import TableReplayStore, set_replay_store
+
+        table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
+        table_service_client = TableServiceClient(table_url, credential=DefaultAzureCredential())
+        set_replay_store(TableReplayStore(table_service_client=table_service_client))
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Could not initialise Table replay store via MI; falling back to in-memory",
             exc_info=True,
         )
 
