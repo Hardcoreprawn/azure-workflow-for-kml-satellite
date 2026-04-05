@@ -51,7 +51,7 @@ PLAN_CATALOG: dict[str, dict[str, Any]] = {
         "export": False,
         "retention_days": 30,
         "temporal_cadence": "seasonal",
-        "max_history_years": None,
+        "max_history_years": 2,
         "overage_rate": None,
     },
     "starter": {

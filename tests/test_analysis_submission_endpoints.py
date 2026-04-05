@@ -1,10 +1,10 @@
-"""Tests for signed-in and demo analysis submission endpoints."""
+"""Tests for signed-in analysis submission endpoints."""
 
 import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import azure.functions as func
 
@@ -20,6 +20,7 @@ def _make_req(
     *,
     method: str = "POST",
     params: dict[str, str] | None = None,
+    auth_header: str | None = "Bearer fake-token",
 ) -> func.HttpRequest:
     payload = body if body is not None else {"kml_content": "<kml></kml>"}
     return make_test_request(
@@ -28,6 +29,7 @@ def _make_req(
         body=payload,
         params=params,
         origin=TEST_LOCAL_ORIGIN,
+        auth_header=auth_header,
     )
 
 
@@ -78,7 +80,7 @@ class TestAnalysisSubmissionRoutes:
     def test_pipeline_declares_production_named_analysis_route(self):
         source = (PIPELINE_PKG / "submission.py").read_text()
         assert 'route="analysis/submit"' in source
-        assert 'route="demo-process"' in source
+        assert 'route="demo-process"' not in source
 
     def test_analysis_submit_uses_analysis_prefix(self):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -138,28 +140,68 @@ class TestAnalysisSubmissionRoutes:
         assert client.calls[0]["client_input"]["blob_name"].startswith("analysis/")
         assert client.calls[0]["client_input"]["user_id"] == "user-123"
 
-    def test_demo_process_keeps_demo_prefix(self):
+    def test_free_tier_submit_uses_analysis_prefix_and_limited_pipeline(self):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         client = _FakeDurableClient()
-        req = _make_req("/api/demo-process")
+        req = _make_req("/api/analysis/submit")
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
-            resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="demo"))
+            resp = asyncio.run(_submit_analysis_request(req, client))
 
         assert resp.status_code == 202
         data = json.loads(resp.get_body())
-        assert data["submission_prefix"] == "demo"
+        assert data["submission_prefix"] == "analysis"
 
         upload_args, _upload_kwargs = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_args[0] == DEFAULT_INPUT_CONTAINER
-        assert upload_args[1].startswith("demo/")
-        assert client.calls[0]["client_input"]["blob_name"].startswith("demo/")
-        mock_storage_cls.return_value.upload_json.assert_not_called()
+        assert upload_args[1].startswith("analysis/")
+        assert client.calls[0]["client_input"]["blob_name"].startswith("analysis/")
+        assert client.calls[0]["client_input"]["user_id"] == "user-123"
+        assert client.calls[0]["client_input"]["tier"] == "free"
+        assert client.calls[0]["client_input"]["cadence"] == "seasonal"
+        assert client.calls[0]["client_input"]["max_history_years"] == 2
+
+    def test_orchestrator_status_allows_anonymous_access(self):
+        from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+
+        client = _HistoryDurableClient(
+            {
+                "demo-run": _FakeDurableStatus(
+                    "demo-run",
+                    runtime_status="Completed",
+                    created_time=datetime(2026, 4, 5, 15, 11, 0, tzinfo=UTC),
+                    last_updated_time=datetime(2026, 4, 5, 15, 13, 0, tzinfo=UTC),
+                    output={"status": "completed", "message": "done"},
+                )
+            }
+        )
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/orchestrator/demo-run",
+            headers={"Origin": TEST_LOCAL_ORIGIN},
+            params={},
+            route_params={"instance_id": "demo-run"},
+            body=b"",
+        )
+
+        with patch(
+            "blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True
+        ):
+            resp = asyncio.run(_build_orchestrator_status_response(req, client))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["instanceId"] == "demo-run"
+        assert data["runtimeStatus"] == "Completed"
 
     def test_analysis_history_returns_recent_runs_and_active_run(self):
         from blueprints.pipeline.history import _build_analysis_history_response
@@ -269,6 +311,42 @@ class TestAnalysisSubmissionRoutes:
             "postProcess": 1,
         }
         assert data["runs"][1]["artifactCount"] == 1
+
+
+class TestBlobTriggerIngress:
+    def _make_blob_event(self, blob_name: str, event_id: str) -> MagicMock:
+        event = MagicMock()
+        event.id = event_id
+        event.event_time = datetime(2026, 4, 5, 15, 11, 35, tzinfo=UTC)
+        event.get_json.return_value = {
+            "url": f"https://devstoreaccount1.blob.core.windows.net/kml-input/{blob_name}",
+            "contentLength": 42,
+            "contentType": "application/vnd.google-earth.kml+xml",
+        }
+        return event
+
+    def test_blob_trigger_skips_direct_submission_blobs(self):
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("analysis/test-run.kml", "evt-analysis")
+
+        asyncio.run(_process_blob_trigger(event, client))
+
+        assert client.calls == []
+
+    def test_blob_trigger_starts_storage_native_uploads(self):
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("uploads/test-run.kml", "evt-upload")
+
+        asyncio.run(_process_blob_trigger(event, client))
+
+        assert len(client.calls) == 1
+        assert client.calls[0]["name"] == "treesight_orchestrator"
+        assert client.calls[0]["instance_id"] == "evt-upload"
+        assert client.calls[0]["client_input"]["blob_name"] == "uploads/test-run.kml"
 
 
 # ---------------------------------------------------------------------------

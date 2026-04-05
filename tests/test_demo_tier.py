@@ -4,7 +4,7 @@ Covers:
 - PLAN_CATALOG demo tier configuration
 - build_frame_plan() cadence filtering (seasonal, monthly, maximum)
 - build_frame_plan() max_history_years capping
-- _submit_demo_request rate limiting and anonymous access
+- signed-in free/demo submission tier controls
 """
 
 from __future__ import annotations
@@ -64,6 +64,9 @@ class TestDemoTierCatalog:
         assert caps["tier"] == "demo"
         assert caps["run_limit"] == 3
         assert caps["export"] is False
+
+    def test_free_max_history_years_matches_cost_control_window(self):
+        assert PLAN_CATALOG["free"]["max_history_years"] == 2
 
 
 class TestAllTiersHaveNewFields:
@@ -218,37 +221,42 @@ class TestBuildFramePlanMaxHistory:
 # ---------------------------------------------------------------------------
 
 
-class TestDemoSubmitEndpoint:
-    """Test _submit_demo_request behaviour via the demo_process route."""
+class TestSignedInLowCostSubmission:
+    """Test signed-in free/demo submission behaviour through the unified route."""
 
     def _make_request(
         self,
         body: dict[str, Any] | None = None,
-        *,
-        ip: str = "192.168.1.1",
     ) -> MagicMock:
         req = MagicMock()
         req.method = "POST"
-        req.headers = {"X-Forwarded-For": ip}
+        req.headers = {"Authorization": "Bearer fake-token"}
         if body is not None:
             req.get_json.return_value = body
         else:
             req.get_json.side_effect = ValueError("no json")
         return req
 
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
+    @patch("blueprints.pipeline.submission.get_effective_subscription")
+    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
-    async def test_valid_submission_returns_202(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
+    async def test_free_tier_submission_returns_202(
+        self,
+        mock_storage_cls,
+        mock_auth,
+        mock_quota,
+        mock_effective_subscription,
+    ):
+        from blueprints.pipeline.submission import _submit_analysis_request
 
-        mock_limiter.is_allowed.return_value = True
+        mock_effective_subscription.return_value = {"tier": "free", "status": "none"}
 
         client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_demo_request(req, client)
+        resp = await _submit_analysis_request(req, client)
 
         assert resp.status_code == 202
         client.start_new.assert_awaited_once()
@@ -256,92 +264,52 @@ class TestDemoSubmitEndpoint:
         orch_input = call_kwargs.kwargs.get("client_input", call_kwargs[1].get("client_input"))
         assert orch_input["cadence"] == "seasonal"
         assert orch_input["max_history_years"] == 2
-        assert orch_input["tier"] == "demo"
-        assert orch_input["user_id"].startswith("demo:")
+        assert orch_input["tier"] == "free"
+        assert orch_input["user_id"] == "user-123"
+        upload_call = mock_storage_cls.return_value.upload_bytes.call_args
+        assert upload_call[0][1].startswith("analysis/")
 
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
-    @pytest.mark.asyncio
-    async def test_rate_limited_returns_429(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
-
-        mock_limiter.is_allowed.return_value = False
-
-        client = AsyncMock()
-        req = self._make_request({"kml_content": "<kml>test</kml>"})
-
-        resp = await _submit_demo_request(req, client)
-
-        assert resp.status_code == 429
-
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
-    @pytest.mark.asyncio
-    async def test_invalid_json_returns_400(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
-
-        mock_limiter.is_allowed.return_value = True
-
-        client = AsyncMock()
-        req = self._make_request()  # no body → ValueError
-
-        resp = await _submit_demo_request(req, client)
-
-        assert resp.status_code == 400
-
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
-    @pytest.mark.asyncio
-    async def test_empty_kml_returns_400(self, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
-
-        mock_limiter.is_allowed.return_value = True
-
-        client = AsyncMock()
-        req = self._make_request({"kml_content": ""})
-
-        resp = await _submit_demo_request(req, client)
-
-        assert resp.status_code == 400
-
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="10.0.0.1")
+    @patch("blueprints.pipeline.submission.get_effective_subscription")
+    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
-    async def test_user_id_is_ip_hash(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
+    async def test_demo_emulation_uses_demo_controls(
+        self,
+        mock_storage_cls,
+        mock_auth,
+        mock_quota,
+        mock_effective_subscription,
+    ):
+        from blueprints.pipeline.submission import _submit_analysis_request
 
-        mock_limiter.is_allowed.return_value = True
+        mock_effective_subscription.return_value = {"tier": "demo", "status": "active"}
 
         client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_demo_request(req, client)
+        resp = await _submit_analysis_request(req, client)
 
         assert resp.status_code == 202
         call_kwargs = client.start_new.call_args
         orch_input = call_kwargs.kwargs.get("client_input", call_kwargs[1].get("client_input"))
-        user_id = orch_input["user_id"]
-        assert user_id.startswith("demo:")
-        # Hash portion should be 12 hex chars
-        assert len(user_id.split(":")[1]) == 12
+        assert orch_input["tier"] == "demo"
+        assert orch_input["cadence"] == "seasonal"
+        assert orch_input["max_history_years"] == 2
+        upload_call = mock_storage_cls.return_value.upload_bytes.call_args
+        assert upload_call[0][1].startswith("analysis/")
 
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
-    @patch("treesight.storage.client.BlobStorageClient")
+    @patch(
+        "blueprints.pipeline.submission.check_auth",
+        side_effect=ValueError("Missing or malformed Authorization header"),
+    )
     @pytest.mark.asyncio
-    async def test_blob_uploaded_to_demo_prefix(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
-
-        mock_limiter.is_allowed.return_value = True
-        mock_storage = mock_storage_cls.return_value
+    async def test_missing_auth_returns_401(self, mock_auth):
+        from blueprints.pipeline.submission import _submit_analysis_request
 
         client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        await _submit_demo_request(req, client)
+        resp = await _submit_analysis_request(req, client)
 
-        upload_call = mock_storage.upload_bytes.call_args
-        blob_name = upload_call[0][1]
-        assert blob_name.startswith("demo/")
-        assert blob_name.endswith(".kml")
+        assert resp.status_code == 401

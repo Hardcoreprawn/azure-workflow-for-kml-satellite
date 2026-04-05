@@ -148,8 +148,6 @@ def _process_monitor(monitor: Any) -> None:
 # --- HTTP endpoints: monitoring CRUD -----------------------------------
 
 
-@bp.route(route="monitoring", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-@require_auth
 def list_monitors_endpoint(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
@@ -169,8 +167,6 @@ def list_monitors_endpoint(
     )
 
 
-@bp.route(route="monitoring", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-@require_auth
 def create_monitor_endpoint(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
@@ -245,6 +241,23 @@ def create_monitor_endpoint(
         mimetype="application/json",
         headers=cors_headers(req),
     )
+
+
+@bp.route(
+    route="monitoring", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS
+)
+@require_auth
+def monitoring_endpoint(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """Dispatch `/api/monitoring` reads and creates through one registered route."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+    if req.method == "GET":
+        return list_monitors_endpoint(req, auth_claims=auth_claims, user_id=user_id)
+    if req.method == "POST":
+        return create_monitor_endpoint(req, auth_claims=auth_claims, user_id=user_id)
+    return error_response(405, "Method not allowed", req=req)
 
 
 def _apply_patch(

@@ -291,6 +291,18 @@
     }
   }
 
+  function clearDemoModeQueryParam() {
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get('mode') !== 'demo') return;
+      url.searchParams.delete('mode');
+      var nextUrl = url.pathname + (url.search || '') + (url.hash || '');
+      window.history.replaceState({}, '', nextUrl || '/app/');
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function discoverApiBase() {
     if (runningOnLocalDevOrigin()) {
       try {
@@ -658,6 +670,16 @@
     var modeEl = document.getElementById('app-hero-mode');
     var modeNoteEl = document.getElementById('app-hero-mode-note');
     if (!planEl || !planNoteEl || !runsEl || !runsNoteEl || !modeEl || !modeNoteEl) return;
+
+    if (data.preview_mode) {
+      planEl.textContent = 'Free plan preview';
+      planNoteEl.textContent = 'Sign in to turn this preview into a real workspace.';
+      runsEl.textContent = data.runs_remaining == null ? '—' : String(data.runs_remaining);
+      runsNoteEl.textContent = 'Free-plan limits shown here only activate after sign-in.';
+      modeEl.textContent = capabilityHeadline(caps);
+      modeNoteEl.textContent = role.label + ' • ' + preference.label + ' • Preview mode only until you authenticate.';
+      return;
+    }
 
     planEl.textContent = (caps.label || data.tier || 'Free') + (data.tier_source === 'emulated' ? ' (emulated)' : '');
     planNoteEl.textContent = data.tier_source === 'emulated'
@@ -2501,7 +2523,7 @@
   }
 
   async function submitAnalysis() {
-    if (!demoMode && !currentAccount) {
+    if (!currentAccount) {
       login();
       return;
     }
@@ -2536,7 +2558,7 @@
 
     try {
       await apiDiscoveryReady;
-      var endpoint = demoMode ? '/api/demo-process' : '/api/analysis/submit';
+      var endpoint = '/api/analysis/submit';
       var requestBody = { kml_content: kmlContent };
       if (!demoMode) {
         var submissionContext = preflight ? {
@@ -2840,6 +2862,10 @@
     }
 
     if (currentAccount) {
+      if (demoMode) {
+        demoMode = false;
+        clearDemoModeQueryParam();
+      }
       var displayName = currentAccount.name || currentAccount.username || 'User';
       var identifier = currentAccount.username || currentAccount.name || 'Signed in';
       userSpan.textContent = displayName;
@@ -2853,8 +2879,14 @@
       accountNote.textContent = 'This is now the dedicated signed-in home for Canopex. Choose the role view and work preference that match the job at hand.';
       var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
       var analysisFormFields = document.getElementById('app-analysis-form-fields');
+      var demoBanner = document.getElementById('app-demo-banner');
+      var samplePicker = document.getElementById('app-demo-sample-picker');
+      var historyCard = document.getElementById('app-history-card');
       if (analysisAuthGate) analysisAuthGate.hidden = true;
       if (analysisFormFields) analysisFormFields.hidden = false;
+      if (demoBanner) demoBanner.hidden = true;
+      if (samplePicker) samplePicker.hidden = true;
+      if (historyCard) historyCard.hidden = false;
       if (!analysisHistoryLoaded && !latestAnalysisRun) {
         setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
         updateHistorySummary(null);
@@ -2873,8 +2905,13 @@
       billingBtn.style.display = 'none';
       var unauthGate = document.getElementById('app-analysis-auth-gate');
       var unauthFormFields = document.getElementById('app-analysis-form-fields');
+      var analysisAuthSecondaryLink = document.getElementById('app-analysis-auth-secondary-link');
       if (unauthGate) unauthGate.hidden = false;
       if (unauthFormFields) unauthFormFields.hidden = true;
+      if (analysisAuthSecondaryLink) {
+        analysisAuthSecondaryLink.textContent = 'Preview the Free Plan';
+        analysisAuthSecondaryLink.href = '/app/?mode=demo';
+      }
       analysisHistoryRuns = [];
       analysisHistoryLoaded = false;
       selectedAnalysisRunId = null;
@@ -2892,37 +2929,44 @@
     var logoutBtn = document.getElementById('auth-logout-btn');
     var userSpan = document.getElementById('auth-user');
     var userName = document.getElementById('app-user-name');
+    var accountIdentifier = document.getElementById('app-account-identifier');
     var accountNote = document.getElementById('app-account-note');
     var billingBtn = document.getElementById('app-manage-billing-btn');
+    var analysisAuthSecondaryLink = document.getElementById('app-analysis-auth-secondary-link');
 
-    // Skip auth gate — show dashboard
+    // Skip the outer auth gate so demo mode can preview the signed-in workspace.
     gate.hidden = true;
     dashboard.hidden = false;
 
-    // In demo mode, show the analysis form (no auth gate)
+    // Demo mode previews the free plan, but still requires sign-in before spend.
     var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
     var analysisFormFields = document.getElementById('app-analysis-form-fields');
-    if (analysisAuthGate) analysisAuthGate.hidden = true;
-    if (analysisFormFields) analysisFormFields.hidden = false;
+    if (analysisAuthGate) analysisAuthGate.hidden = false;
+    if (analysisFormFields) analysisFormFields.hidden = true;
 
     // Show sign-in button instead of logout
     loginBtn.style.display = 'inline';
     logoutBtn.style.display = 'none';
-    userSpan.textContent = 'Demo';
+    userSpan.textContent = 'Preview';
     userSpan.style.display = 'inline';
-    userName.textContent = 'Demo visitor';
-    accountNote.textContent = 'Free demo — 1 AOI, seasonal snapshots, no exports. Sign in for full access.';
+    userName.textContent = 'Free plan preview';
+    if (accountIdentifier) accountIdentifier.textContent = 'Sign in required';
+    accountNote.textContent = 'Preview the free plan before you authenticate. No pipeline run starts until you sign in.';
     billingBtn.style.display = 'none';
+    if (analysisAuthSecondaryLink) {
+      analysisAuthSecondaryLink.textContent = 'View Plans';
+      analysisAuthSecondaryLink.href = '/#pricing';
+    }
 
-    // Apply demo billing status
+    // Apply free-plan preview status
     var demoCaps = {
-      label: 'Demo', tier: 'demo', run_limit: 3, aoi_limit: 1,
+      label: 'Free', tier: 'free', run_limit: 5, aoi_limit: 5,
       concurrency: 1, ai_insights: false, api_access: false,
-      export: false, retention_days: 0
+      export: false, retention_days: 30
     };
     latestBillingStatus = {
-      tier: 'demo', status: 'active', runs_remaining: 3,
-      capabilities: demoCaps, billing_configured: false
+      tier: 'free', status: 'preview', runs_remaining: 5,
+      capabilities: demoCaps, billing_configured: false, preview_mode: true
     };
 
     // Populate billing display
@@ -2930,10 +2974,10 @@
     var statusEl = document.getElementById('app-subscription-status');
     var remainingEl = document.getElementById('app-runs-remaining');
     var billingNoteEl = document.getElementById('app-billing-note');
-    if (tierEl) tierEl.textContent = 'Demo';
-    if (statusEl) statusEl.textContent = 'demo';
-    if (remainingEl) remainingEl.textContent = '3';
-    if (billingNoteEl) billingNoteEl.textContent = 'Sign in to unlock full features and billing';
+    if (tierEl) tierEl.textContent = 'Free preview';
+    if (statusEl) statusEl.textContent = 'preview';
+    if (remainingEl) remainingEl.textContent = '5';
+    if (billingNoteEl) billingNoteEl.textContent = 'Sign in to activate your free-plan quota and queue a run';
 
     updateHeroSummary(latestBillingStatus);
     updateCapabilityFields(demoCaps);
@@ -2942,7 +2986,7 @@
     var emulationCard = document.getElementById('app-tier-emulation-card');
     if (emulationCard) emulationCard.hidden = true;
 
-    // Show demo banner and sample picker
+    // Show preview banner and sample picker
     var demoBanner = document.getElementById('app-demo-banner');
     if (demoBanner) demoBanner.hidden = false;
     var samplePicker = document.getElementById('app-demo-sample-picker');
@@ -2986,11 +3030,6 @@
       }
     } catch { /* ignore */ }
 
-    if (demoMode) {
-      enterDemoMode();
-      return;
-    }
-
     if (!authEnabled()) {
       updateAuthUI();
       return;
@@ -3017,9 +3056,17 @@
         login();
         return;
       }
+      if (!currentAccount && demoMode) {
+        enterDemoMode();
+        return;
+      }
       updateAuthUI();
     }).catch(function(err) {
       console.warn('MSAL redirect error:', err);
+      if (demoMode) {
+        enterDemoMode();
+        return;
+      }
       updateAuthUI();
     });
   }

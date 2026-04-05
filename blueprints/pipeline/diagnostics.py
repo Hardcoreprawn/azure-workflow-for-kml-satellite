@@ -28,13 +28,16 @@ async def orchestrator_status(
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """GET /api/orchestrator/{instance_id} — direct JSON diagnostics (§4.3)."""
+    return await _build_orchestrator_status_response(req, client)
+
+
+async def _build_orchestrator_status_response(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """Build the anonymous orchestration status response after bindings resolve."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
-
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
 
     if not pipeline_limiter.is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded — try again later", req=req)
