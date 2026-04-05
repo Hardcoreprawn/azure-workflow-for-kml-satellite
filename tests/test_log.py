@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Callable
 
 from treesight.log import (
     APP_LOGGER_NAMES,
@@ -21,11 +22,12 @@ from treesight.log import (
 )
 
 
-def _capture_handler_payload(logger_name: str, emit: callable) -> dict[str, object]:
+def _capture_handler_payload(logger_name: str, emit: Callable[[], None]) -> dict[str, object]:
     logger = logging.getLogger(logger_name)
     handler = logger.handlers[0]
     stream = io.StringIO()
-    previous_stream = handler.setStream(stream)
+    previous_stream = handler.stream
+    handler.setStream(stream)
     try:
         emit()
         handler.flush()
