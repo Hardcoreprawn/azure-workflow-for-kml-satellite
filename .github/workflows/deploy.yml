@@ -164,7 +164,8 @@ jobs:
 
           python scripts/reset_dev_resource_group.py \
             --resource-group "$RG_NAME" \
-            --preserve-type "Microsoft.AzureActiveDirectory/ciamDirectories"
+            --preserve-type "Microsoft.AzureActiveDirectory/ciamDirectories" \
+            --preserve-type "Microsoft.KeyVault/vaults"
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1

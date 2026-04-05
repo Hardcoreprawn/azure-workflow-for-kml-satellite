@@ -400,6 +400,12 @@ class TestDeployWorkflowSettings:
             "deleting shared bootstrap resources"
         )
 
+    def test_deploy_preserves_key_vault_during_dev_reset(self, deploy_yml):
+        assert '"Microsoft.KeyVault/vaults"' in deploy_yml, (
+            "deploy.yml clean-slate path must preserve the Key Vault so "
+            "operator-managed secrets survive dev recreates"
+        )
+
     def test_deploy_drops_stale_azapi_state_after_dev_reset(self, deploy_yml):
         assert "Drop stale azapi state after dev reset" in deploy_yml, (
             "deploy.yml must clear stale azapi state after a manual dev "
