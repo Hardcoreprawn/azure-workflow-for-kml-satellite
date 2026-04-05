@@ -36,6 +36,8 @@ WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
+DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
+HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
@@ -219,6 +221,58 @@ class TestLogAnalyticsCap:
         tf = VARIABLES_TF.read_text()
         assert "log_daily_cap_gb" in tf, "variables.tf must define log_daily_cap_gb variable"
 
+    def test_dev_daily_cap_is_tight(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r"log_daily_cap_gb\s*=\s*([0-9.]+)", tfvars)
+        assert match, "dev.tfvars must set log_daily_cap_gb explicitly"
+        daily_cap_gb = float(match.group(1))
+        assert daily_cap_gb <= 0.1, (
+            f"dev log_daily_cap_gb is {daily_cap_gb} — keep it at 0.1 GB/day or lower "
+            "until Log Analytics proves its value"
+        )
+
+    def test_dev_custom_domain_is_disabled(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
+        assert match, "dev.tfvars must set custom_domain explicitly"
+        assert match.group(1) == "", (
+            "dev.tfvars must leave custom_domain empty so clean-slate dev "
+            "redeploys do not depend on public DNS"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5b. Host logging cost controls
+# ---------------------------------------------------------------------------
+
+
+class TestHostLoggingCostControls:
+    """Ensure low-value host/runtime telemetry is aggressively reduced."""
+
+    @pytest.fixture()
+    def host_config(self):
+        return json.loads(HOST_JSON.read_text())
+
+    def test_default_log_level_is_warning(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["default"] == "Warning", (
+            "host.json should default runtime logging to Warning to reduce console log ingest"
+        )
+
+    def test_durable_task_logs_are_warning_only(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["Host.Triggers.DurableTask"] == "Warning", (
+            "DurableTask lease-renewal/info chatter must be suppressed "
+            "to control Log Analytics cost"
+        )
+
+    def test_sampling_keeps_exceptions_unsampled(self, host_config):
+        sampling = host_config["logging"]["applicationInsights"]["samplingSettings"]
+        assert sampling["isEnabled"] is True
+        assert sampling["excludedTypes"] == "Exception", (
+            "App Insights sampling should preserve exceptions, not every request"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 6. detect-secrets in CI
@@ -333,6 +387,68 @@ class TestDeployWorkflowSettings:
         assert "ai-connection-string" in deploy_yml, (
             "deploy.yml must inject the App Insights connection string into "
             "HTML meta tags before SWA upload"
+        )
+
+    def test_workflow_dispatch_supports_clean_slate_delete(self, deploy_yml):
+        assert "destroy_dev_first" in deploy_yml, (
+            "deploy.yml manual dispatch must allow an explicit clean-slate dev recreate"
+        )
+
+    def test_deploy_uses_dev_reset_helper(self, deploy_yml):
+        assert "reset_dev_resource_group.py" in deploy_yml, (
+            "deploy.yml must reset app-managed dev resources without "
+            "deleting shared bootstrap resources"
+        )
+
+    def test_deploy_preserves_key_vault_during_dev_reset(self, deploy_yml):
+        assert '"Microsoft.KeyVault/vaults"' in deploy_yml, (
+            "deploy.yml clean-slate path must preserve the Key Vault so "
+            "operator-managed secrets survive dev recreates"
+        )
+
+    def test_deploy_drops_stale_azapi_state_after_dev_reset(self, deploy_yml):
+        assert "Drop stale azapi state after dev reset" in deploy_yml, (
+            "deploy.yml must clear stale azapi state after a manual dev "
+            "reset so tofu plan can recreate deleted resources"
+        )
+        assert "tofu state rm" in deploy_yml, (
+            "deploy.yml clean-slate path must prune stale azapi resources "
+            "from state before tofu plan"
+        )
+
+    def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
+        assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
+            "deploy.yml must reconcile the Event Grid webhook after "
+            "readiness so ingestion wiring is restored"
+        )
+
+    def test_deploy_validates_infra_gate(self, deploy_yml):
+        assert "validate_dev_infra_gate.py" in deploy_yml, (
+            "deploy.yml must validate the infra gate after reconciliation "
+            "so clean-slate redeploy failures stop the job"
+        )
+
+
+class TestStripeKeyVaultBootstrap:
+    """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
+
+    def test_time_provider_is_available_for_rbac_waits(self):
+        versions_tf = (INFRA / "versions.tf").read_text()
+        assert 'source  = "hashicorp/time"' in versions_tf, (
+            "versions.tf must include the time provider for RBAC propagation waits"
+        )
+
+    def test_stripe_secrets_wait_for_key_vault_rbac(self):
+        main_tf = MAIN_TF.read_text()
+        assert 'resource "time_sleep" "key_vault_secrets_officer_rbac"' in main_tf, (
+            "main.tf must wait after granting Key Vault Secrets Officer "
+            "before managing Stripe secrets"
+        )
+        assert 'create_duration = "60s"' in main_tf, (
+            "Key Vault RBAC propagation wait should be explicit in main.tf"
+        )
+        assert main_tf.count("depends_on   = [time_sleep.key_vault_secrets_officer_rbac]") >= 5, (
+            "All Stripe Key Vault secrets must wait for the RBAC propagation guard"
         )
 
     def test_appinsights_connection_string_output_exists(self):
