@@ -107,7 +107,7 @@ def delete_command(*, resource_group: str, resource: dict[str, Any], resource_id
             "--yes",
             "--no-wait",
         ]
-    return ["az", "resource", "delete", "--ids", resource_id]
+    return ["az", "resource", "delete", "--ids", resource_id, "--no-wait"]
 
 
 def delete_resources(*, resource_group: str, resources: list[dict[str, Any]]) -> None:

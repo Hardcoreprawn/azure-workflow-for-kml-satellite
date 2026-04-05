@@ -86,4 +86,4 @@ def test_delete_command_defaults_to_generic_resource_delete() -> None:
         resource_id=resource["id"],
     )
 
-    assert command == ["az", "resource", "delete", "--ids", resource["id"]]
+    assert command == ["az", "resource", "delete", "--ids", resource["id"], "--no-wait"]
