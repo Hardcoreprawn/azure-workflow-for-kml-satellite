@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-04
+Last updated: 2026-04-05
 
 ---
 
@@ -25,6 +25,7 @@ Last updated: 2026-04-04
 |----|--------|---------|
 | #393 | `fix/blob-storage-managed-identity` | Blob storage managed identity fix |
 | #394 | `feature/scheduled-monitoring` | 3.1 — Scheduled monitoring + change alerts |
+| #413 | `fix/signed-in-pipeline-preview` | Enforce signed-in pipeline submission, prevent duplicate starts, and clean the free-plan preview UX |
 
 ---
 
