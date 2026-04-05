@@ -66,11 +66,12 @@ tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.
 
 1. Open a PR with the infra/deploy changes you want to validate.
 2. Run the `Deploy` workflow on that PR branch using `workflow_dispatch` with `destroy_dev_first=true`.
-3. The workflow deletes `rg-kmlsat-dev`, reapplies `environments/dev.tfvars`, deploys the new image, reconciles the Event Grid webhook subscription, and validates the infra gate.
+3. The workflow deletes app-managed resources in `rg-kmlsat-dev` while preserving shared/bootstrap resources such as the CIAM directory, reapplies `environments/dev.tfvars`, deploys the new image, reconciles the Event Grid webhook subscription, and validates the infra gate.
 4. Confirm the website deployment completes and validate any product-path smoke checks you care about beyond the infra gate.
 
 Supporting helpers:
 
+- `scripts/reset_dev_resource_group.py` removes app-managed resources from the dev resource group while preserving shared/bootstrap resource types.
 - `scripts/reconcile_eventgrid_subscription.py` restores the blob-trigger webhook subscription using the current function host key.
 - `scripts/validate_dev_infra_gate.py` checks health/readiness, Event Grid endpoint wiring, and the Log Analytics daily cap.
 

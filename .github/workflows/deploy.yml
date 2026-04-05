@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       destroy_dev_first:
-        description: Delete the dev resource group before apply to prove a clean-slate recreate.
+        description: Reset dev app resources before apply while preserving shared bootstrap resources.
         required: false
         type: boolean
         default: false
@@ -153,20 +153,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Optional clean-slate dev delete
+      - name: Optional clean-slate dev reset
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
         run: |
           PROJECT_CODE=$(grep -oP '(?<=project_code\s{0,10}=\s{0,10}")[a-z0-9]+' infra/tofu/environments/dev.tfvars || echo "kmlsat")
           ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' infra/tofu/environments/dev.tfvars || echo "dev")
           RG_NAME="rg-${PROJECT_CODE}-${ENV_NAME}"
 
-          if [ "$(az group exists --name "$RG_NAME")" = "true" ]; then
-            echo "Deleting ${RG_NAME} before infra apply..."
-            az group delete --name "$RG_NAME" --yes --no-wait
-            az group wait --name "$RG_NAME" --deleted --interval 15 --timeout 3600
-          else
-            echo "Resource group ${RG_NAME} does not exist; continuing."
-          fi
+          python scripts/reset_dev_resource_group.py \
+            --resource-group "$RG_NAME" \
+            --preserve-type "Microsoft.AzureActiveDirectory/ciamDirectories"
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1

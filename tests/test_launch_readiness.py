@@ -384,6 +384,11 @@ class TestDeployWorkflowSettings:
             "deploy.yml manual dispatch must allow an explicit clean-slate dev recreate"
         )
 
+    def test_deploy_uses_dev_reset_helper(self, deploy_yml):
+        assert "reset_dev_resource_group.py" in deploy_yml, (
+            "deploy.yml must reset app-managed dev resources without deleting shared bootstrap resources"
+        )
+
     def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
         assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
             "deploy.yml must reconcile the Event Grid webhook after readiness so ingestion wiring is restored"
