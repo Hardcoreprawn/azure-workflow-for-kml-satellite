@@ -22,8 +22,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      destroy_dev_first:
-        description: Reset dev app resources before apply while preserving shared bootstrap resources.
+      rebuild_after_manual_teardown:
+        description: Recreate dev after app-managed resources were deleted manually outside the workflow.
         required: false
         type: boolean
         default: false
@@ -153,20 +153,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Optional clean-slate dev reset
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
-        run: |
-          PROJECT_CODE=$(awk -F '=' '/^project_code[[:space:]]*=/{gsub(/[[:space:]"]/, "", $2); print $2; exit}' infra/tofu/environments/dev.tfvars)
-          ENV_NAME=$(awk -F '=' '/^environment[[:space:]]*=/{gsub(/[[:space:]"]/, "", $2); print $2; exit}' infra/tofu/environments/dev.tfvars)
-          : "${PROJECT_CODE:=kmlsat}"
-          : "${ENV_NAME:=dev}"
-          RG_NAME="rg-${PROJECT_CODE}-${ENV_NAME}"
-
-          python scripts/reset_dev_resource_group.py \
-            --resource-group "$RG_NAME" \
-            --preserve-type "Microsoft.AzureActiveDirectory/ciamDirectories" \
-            --preserve-type "Microsoft.KeyVault/vaults"
-
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
         with:
@@ -206,8 +192,8 @@ jobs:
           echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
           exit 1
 
-      - name: Drop stale azapi state after dev reset
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
+      - name: Drop stale azapi state after manual teardown
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.rebuild_after_manual_teardown }}
         working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

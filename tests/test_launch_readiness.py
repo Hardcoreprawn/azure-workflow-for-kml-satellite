@@ -402,30 +402,32 @@ class TestDeployWorkflowSettings:
             "HTML meta tags before SWA upload"
         )
 
-    def test_workflow_dispatch_supports_clean_slate_delete(self, deploy_yml):
-        assert "destroy_dev_first" in deploy_yml, (
-            "deploy.yml manual dispatch must allow an explicit clean-slate dev recreate"
+    def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
+        assert "rebuild_after_manual_teardown" in deploy_yml, (
+            "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
         )
 
-    def test_deploy_uses_dev_reset_helper(self, deploy_yml):
-        assert "reset_dev_resource_group.py" in deploy_yml, (
-            "deploy.yml must reset app-managed dev resources without "
-            "deleting shared bootstrap resources"
+    def test_deploy_does_not_run_reset_helper(self, deploy_yml):
+        assert "reset_dev_resource_group.py" not in deploy_yml, (
+            "deploy.yml should no longer call the clean-reset helper once "
+            "manual teardown owns resource deletion"
         )
 
-    def test_deploy_preserves_key_vault_during_dev_reset(self, deploy_yml):
-        assert '"Microsoft.KeyVault/vaults"' in deploy_yml, (
-            "deploy.yml clean-slate path must preserve the Key Vault so "
-            "operator-managed secrets survive dev recreates"
+    def test_deploy_manual_teardown_path_only_prunes_state(self, deploy_yml):
+        assert "rebuild_after_manual_teardown" in deploy_yml, (
+            "deploy.yml must gate stale-state pruning behind the manual teardown input"
+        )
+        assert '"Microsoft.KeyVault/vaults"' not in deploy_yml, (
+            "deploy.yml should not embed bootstrap preservation rules once teardown is manual"
         )
 
-    def test_deploy_drops_stale_azapi_state_after_dev_reset(self, deploy_yml):
-        assert "Drop stale azapi state after dev reset" in deploy_yml, (
-            "deploy.yml must clear stale azapi state after a manual dev "
-            "reset so tofu plan can recreate deleted resources"
+    def test_deploy_drops_stale_azapi_state_after_manual_teardown(self, deploy_yml):
+        assert "Drop stale azapi state after manual teardown" in deploy_yml, (
+            "deploy.yml must clear stale azapi state after manual teardown so tofu plan "
+            "can recreate deleted resources"
         )
         assert "tofu state rm" in deploy_yml, (
-            "deploy.yml clean-slate path must prune stale azapi resources "
+            "deploy.yml manual teardown path must prune stale azapi resources "
             "from state before tofu plan"
         )
 
