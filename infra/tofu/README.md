@@ -64,18 +64,21 @@ tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.
 
 ## Clean-Slate Migration Sequence (dev)
 
-1. Delete existing `dev` resource group.
-2. Run `tofu apply` using `environments/dev.tfvars`.
-3. Deploy application image/workloads.
-4. Run the deploy workflow to prove runtime readiness and reconcile the Event Grid webhook subscription.
-5. Validate static site and lead form ingestion.
+1. Open a PR with the infra/deploy changes you want to validate.
+2. Manually delete the app-managed resources in `rg-kmlsat-dev` while preserving shared/bootstrap resources such as the CIAM directory and Key Vault.
+3. Run the `Deploy` workflow on that PR branch using `workflow_dispatch` with `rebuild_after_manual_teardown=true`.
+4. The workflow prunes stale `azapi` state for the manually deleted resources, reapplies `environments/dev.tfvars`, deploys the new image, reconciles the Event Grid webhook subscription, and validates the infra gate.
+5. Confirm the website deployment completes and validate any product-path smoke checks you care about beyond the infra gate.
 
-Optional helper script:
+Supporting helpers:
 
-- `scripts/redeploy_dev_tofu.ps1` executes delete + init + plan + apply in one flow.
+- `scripts/reconcile_eventgrid_subscription.py` restores the blob-trigger webhook subscription using the current function host key.
+- `scripts/validate_dev_infra_gate.py` checks health/readiness, Event Grid endpoint wiring, and the Log Analytics daily cap.
 
 ## Notes
 
 - Function App on Container Apps and the Event Grid system topic are created via `azapi` resources for parity with current ARM/Bicep behavior.
+- While the azapi identity-update bug remains, mutable Function App settings are applied via CLI from Terraform outputs so `infra/tofu` stays the single source of truth instead of the workflow reparsing tfvars.
 - The deploy workflow owns Event Grid webhook subscription reconciliation because it can verify host readiness, trigger indexing, and current webhook keys before making the subscription live.
 - `enable_event_grid_subscription` defaults to `false` to avoid OpenTofu racing runtime indexing or publishing a stale webhook key.
+- OpenTofu references Stripe secrets by stable Key Vault secret names only. The actual Stripe values are bootstrap/operator-managed by the setup scripts and must not be passed through tfvars or Terraform variables.

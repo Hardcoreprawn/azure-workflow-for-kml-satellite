@@ -18,6 +18,16 @@ output "function_app_default_hostname" {
   description = "Function app default hostname."
 }
 
+output "function_app_cli_app_settings" {
+  value       = local.function_app_cli_app_settings
+  description = "CLI-managed Function App app settings sourced from Terraform."
+}
+
+output "function_app_cli_maximum_instance_count" {
+  value       = var.function_max_instances
+  description = "CLI-managed Function App maximum instance count sourced from Terraform."
+}
+
 output "static_web_app_name" {
   value       = azurerm_static_web_app.main.name
   description = "Static Web App name."

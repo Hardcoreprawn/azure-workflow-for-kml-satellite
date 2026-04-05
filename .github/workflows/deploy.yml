@@ -21,6 +21,12 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rebuild_after_manual_teardown:
+        description: Recreate dev after app-managed resources were deleted manually outside the workflow.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -186,6 +192,26 @@ jobs:
           echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
           exit 1
 
+      - name: Drop stale azapi state after manual teardown
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.rebuild_after_manual_teardown }}
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          STATE_LIST=$(tofu state list 2>/dev/null || true)
+          for address in \
+            azapi_resource.function_app \
+            azapi_resource.event_grid_system_topic \
+            azapi_resource_action.function_host_keys \
+            azapi_resource.event_grid_subscription; do
+            if printf '%s\n' "$STATE_LIST" | grep -Fx "$address" >/dev/null; then
+              tofu state rm "$address"
+            fi
+          done
+
       - name: Tofu Plan
         working-directory: infra/tofu
         env:
@@ -249,30 +275,20 @@ jobs:
             --resource-group "$FUNC_RG" \
             --image "${{ needs.build-image.outputs.image_uri }}"
 
-          # Read CIAM config from tfvars (body is ignore_changes in tofu)
-          CIAM_TENANT=$(grep 'ciam_tenant_name' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
-          CIAM_CLIENT=$(grep 'ciam_client_id' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
-
-          # Set REQUIRE_AUTH based on environment (body is ignore_changes)
-          ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' environments/dev.tfvars || echo "dev")
-          REQUIRE_AUTH=""
-          if [ "$ENV_NAME" = "prd" ]; then REQUIRE_AUTH="true"; fi
+          # Keep Terraform as the source of truth for CLI-managed settings while
+          # the azapi identity bug still forces body ignore_changes on updates.
+          mapfile -t APP_SETTINGS < <(
+            tofu output -json function_app_cli_app_settings \
+              | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
+          )
 
           az webapp config appsettings set \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
-            --settings \
-              WEBSITES_ENABLE_APP_SERVICE_STORAGE=false \
-              AzureWebJobsStorage__accountName="$(tofu output -raw storage_account_name)" \
-              COSMOS_ENDPOINT="$(tofu output -raw cosmos_endpoint)" \
-              CIAM_TENANT_NAME="$CIAM_TENANT" \
-              CIAM_CLIENT_ID="$CIAM_CLIENT" \
-              CIAM_AUDIENCE="$CIAM_CLIENT" \
-              REQUIRE_AUTH="$REQUIRE_AUTH"
+            --settings "${APP_SETTINGS[@]}"
 
-          # Apply scaling cap (body is ignore_changes in tofu)
-          MAX_INSTANCES=$(grep -oP '(?<=function_max_instances\s{0,10}=\s{0,10})\d+' environments/dev.tfvars 2>/dev/null || echo "3")
-          : "${MAX_INSTANCES:=3}"
+          # Apply scaling cap from Terraform output (body is ignore_changes in tofu)
+          MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           az rest --method PATCH \
             --url "${FUNC_ID}?api-version=2024-04-01" \
@@ -363,6 +379,49 @@ jobs:
           echo "  - Route registration lag exceeded timeout"
           echo "  - The function app hostname has changed"
           exit 1
+
+      - name: Reconcile Event Grid subscription
+        id: reconcile-eventgrid
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+
+          python ../../scripts/reconcile_eventgrid_subscription.py \
+            --resource-group "$RG_NAME" \
+            --function-app "$FUNC_NAME" \
+            --hostname "$HOSTNAME" \
+            --system-topic-name "$TOPIC_NAME"
+
+      - name: Validate infra gate
+        id: validate-infra-gate
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+          EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/dev.tfvars)
+          : "${EXPECTED_CAP:=0.1}"
+
+          python ../../scripts/validate_dev_infra_gate.py \
+            --resource-group "$RG_NAME" \
+            --function-app "$FUNC_NAME" \
+            --hostname "$HOSTNAME" \
+            --system-topic-name "$TOPIC_NAME" \
+            --expected-daily-cap-gb "$EXPECTED_CAP"
 
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image

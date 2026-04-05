@@ -36,6 +36,8 @@ WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
+DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
+HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
@@ -189,9 +191,8 @@ class TestRequireAuth:
 
     def test_require_auth_conditional_on_environment(self):
         tf = MAIN_TF.read_text()
-        # The name and value are on separate lines in HCL
         match = re.search(
-            r'name\s*=\s*"REQUIRE_AUTH"\s*\n\s*value\s*=\s*(.+)',
+            r"REQUIRE_AUTH\s*=\s*(.+)",
             tf,
         )
         assert match, "REQUIRE_AUTH app setting not found"
@@ -218,6 +219,58 @@ class TestLogAnalyticsCap:
     def test_log_daily_cap_variable_exists(self):
         tf = VARIABLES_TF.read_text()
         assert "log_daily_cap_gb" in tf, "variables.tf must define log_daily_cap_gb variable"
+
+    def test_dev_daily_cap_is_tight(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r"log_daily_cap_gb\s*=\s*([0-9.]+)", tfvars)
+        assert match, "dev.tfvars must set log_daily_cap_gb explicitly"
+        daily_cap_gb = float(match.group(1))
+        assert daily_cap_gb <= 0.1, (
+            f"dev log_daily_cap_gb is {daily_cap_gb} — keep it at 0.1 GB/day or lower "
+            "until Log Analytics proves its value"
+        )
+
+    def test_dev_custom_domain_is_disabled(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
+        assert match, "dev.tfvars must set custom_domain explicitly"
+        assert match.group(1) == "", (
+            "dev.tfvars must leave custom_domain empty so clean-slate dev "
+            "redeploys do not depend on public DNS"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5b. Host logging cost controls
+# ---------------------------------------------------------------------------
+
+
+class TestHostLoggingCostControls:
+    """Ensure low-value host/runtime telemetry is aggressively reduced."""
+
+    @pytest.fixture()
+    def host_config(self):
+        return json.loads(HOST_JSON.read_text())
+
+    def test_default_log_level_is_warning(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["default"] == "Warning", (
+            "host.json should default runtime logging to Warning to reduce console log ingest"
+        )
+
+    def test_durable_task_logs_are_warning_only(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["Host.Triggers.DurableTask"] == "Warning", (
+            "DurableTask lease-renewal/info chatter must be suppressed "
+            "to control Log Analytics cost"
+        )
+
+    def test_sampling_keeps_exceptions_unsampled(self, host_config):
+        sampling = host_config["logging"]["applicationInsights"]["samplingSettings"]
+        assert sampling["isEnabled"] is True
+        assert sampling["excludedTypes"] == "Exception", (
+            "App Insights sampling should preserve exceptions, not every request"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -318,9 +371,10 @@ class TestDeployWorkflowSettings:
     def deploy_yml(self):
         return DEPLOY_YML.read_text()
 
-    def test_deploy_sets_require_auth_via_cli(self, deploy_yml):
-        assert "REQUIRE_AUTH" in deploy_yml, (
-            "deploy.yml must set REQUIRE_AUTH via az CLI because body is ignore_changes in tofu"
+    def test_deploy_sets_app_settings_via_cli(self, deploy_yml):
+        assert "az webapp config appsettings set" in deploy_yml, (
+            "deploy.yml must still apply Function App settings via az CLI while "
+            "body is ignore_changes in tofu"
         )
 
     def test_deploy_sets_max_instances_via_cli(self, deploy_yml):
@@ -329,11 +383,111 @@ class TestDeployWorkflowSettings:
             "body is ignore_changes in tofu"
         )
 
+    def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
+        assert "tofu output -json function_app_cli_app_settings" in deploy_yml, (
+            "deploy.yml must source CLI-managed Function App app settings from tofu outputs "
+            "to avoid drifting away from Terraform"
+        )
+        assert "tofu output -raw function_app_cli_maximum_instance_count" in deploy_yml, (
+            "deploy.yml must source the CLI-managed scale cap from tofu outputs "
+            "to avoid reparsing tfvars"
+        )
+        assert "grep 'ciam_tenant_name' environments/dev.tfvars" not in deploy_yml, (
+            "deploy.yml should not reparse CIAM settings from dev.tfvars once tofu outputs own them"
+        )
+
     def test_deploy_injects_analytics_connection_string(self, deploy_yml):
         assert "ai-connection-string" in deploy_yml, (
             "deploy.yml must inject the App Insights connection string into "
             "HTML meta tags before SWA upload"
         )
+
+    def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
+        assert "rebuild_after_manual_teardown" in deploy_yml, (
+            "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
+        )
+
+    def test_deploy_does_not_run_reset_helper(self, deploy_yml):
+        assert "reset_dev_resource_group.py" not in deploy_yml, (
+            "deploy.yml should no longer call the clean-reset helper once "
+            "manual teardown owns resource deletion"
+        )
+
+    def test_deploy_manual_teardown_path_only_prunes_state(self, deploy_yml):
+        assert "rebuild_after_manual_teardown" in deploy_yml, (
+            "deploy.yml must gate stale-state pruning behind the manual teardown input"
+        )
+        assert '"Microsoft.KeyVault/vaults"' not in deploy_yml, (
+            "deploy.yml should not embed bootstrap preservation rules once teardown is manual"
+        )
+
+    def test_deploy_drops_stale_azapi_state_after_manual_teardown(self, deploy_yml):
+        assert "Drop stale azapi state after manual teardown" in deploy_yml, (
+            "deploy.yml must clear stale azapi state after manual teardown so tofu plan "
+            "can recreate deleted resources"
+        )
+        assert "tofu state rm" in deploy_yml, (
+            "deploy.yml manual teardown path must prune stale azapi resources "
+            "from state before tofu plan"
+        )
+
+    def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
+        assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
+            "deploy.yml must reconcile the Event Grid webhook after "
+            "readiness so ingestion wiring is restored"
+        )
+
+    def test_deploy_validates_infra_gate(self, deploy_yml):
+        assert "validate_dev_infra_gate.py" in deploy_yml, (
+            "deploy.yml must validate the infra gate after reconciliation "
+            "so clean-slate redeploy failures stop the job"
+        )
+
+
+class TestStripeKeyVaultBootstrap:
+    """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
+
+    def test_outputs_expose_cli_managed_function_settings(self):
+        outputs_tf = (INFRA / "outputs.tf").read_text()
+        assert 'output "function_app_cli_app_settings"' in outputs_tf, (
+            "outputs.tf must expose the CLI-managed Function App app settings"
+        )
+        assert 'output "function_app_cli_maximum_instance_count"' in outputs_tf, (
+            "outputs.tf must expose the CLI-managed Function App scale cap"
+        )
+
+    def test_deployer_still_has_key_vault_secret_access(self):
+        main_tf = MAIN_TF.read_text()
+        assert 'role_definition_name = "Key Vault Secrets Officer"' in main_tf, (
+            "main.tf must still grant the deployer Key Vault Secrets Officer "
+            "for Stripe bootstrap scripts"
+        )
+
+    def test_stripe_app_settings_use_stable_key_vault_uris(self):
+        main_tf = MAIN_TF.read_text()
+        assert "stripe_secret_uris = {" in main_tf, (
+            "main.tf must derive Stripe Key Vault references from stable secret names"
+        )
+        assert "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})" in main_tf, (
+            "Function app settings must reference the stable Stripe API key URI"
+        )
+        assert 'resource "azurerm_key_vault_secret" "stripe_api_key"' not in main_tf, (
+            "Terraform should not recreate Stripe secrets that are already managed in Key Vault"
+        )
+
+    def test_tofu_does_not_accept_stripe_secret_values(self):
+        variables_tf = VARIABLES_TF.read_text()
+        for variable_name in [
+            "stripe_api_key",
+            "stripe_webhook_secret",
+            "stripe_price_id_pro_gbp",
+            "stripe_price_id_pro_usd",
+            "stripe_price_id_pro_eur",
+        ]:
+            assert f'variable "{variable_name}"' not in variables_tf, (
+                "variables.tf must not accept Stripe secret values once Key Vault "
+                "bootstrap owns those secrets"
+            )
 
     def test_appinsights_connection_string_output_exists(self):
         tf = (INFRA / "outputs.tf").read_text()
