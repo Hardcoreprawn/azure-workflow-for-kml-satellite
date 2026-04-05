@@ -35,6 +35,7 @@ Last updated: 2026-04-05
 | #413 | `fix/signed-in-pipeline-preview` | Require sign-in for pipeline submissions and clean preview UX |
 | #414 | `infra-gate-dev-redeploy` | Harden dev infra gate validation and rollback |
 | #415 | `fix/startup-json-logging` | Install startup JSON logging for Canopex app families |
+| #416 | `docs/release-safety-guardrails` | Add release-safety guardrails and rollout planning docs |
 
 **Priority call:** finish work already close to merge, but do not start more broad-exposure Stage 3 or Stage 4 work until the release-safety stage below is substantially complete. For Canopex, production should validate and gradually expose the same built artifact, not be the first unrestricted place we discover whether it works.
 
