@@ -105,6 +105,7 @@ def delete_command(*, resource_group: str, resource: dict[str, Any], resource_id
             "--resource-group",
             resource_group,
             "--yes",
+            "--no-wait",
         ]
     return ["az", "resource", "delete", "--ids", resource_id]
 

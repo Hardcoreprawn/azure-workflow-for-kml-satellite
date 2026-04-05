@@ -66,6 +66,7 @@ def test_delete_command_uses_cosmosdb_cli_for_accounts() -> None:
         "--resource-group",
         "rg-kmlsat-dev",
         "--yes",
+        "--no-wait",
     ]
 
 
