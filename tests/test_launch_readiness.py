@@ -231,6 +231,15 @@ class TestLogAnalyticsCap:
             "until Log Analytics proves its value"
         )
 
+    def test_dev_custom_domain_is_disabled(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
+        assert match, "dev.tfvars must set custom_domain explicitly"
+        assert match.group(1) == "", (
+            "dev.tfvars must leave custom_domain empty so clean-slate dev "
+            "redeploys do not depend on public DNS"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 5b. Host logging cost controls
@@ -411,6 +420,29 @@ class TestDeployWorkflowSettings:
         assert "validate_dev_infra_gate.py" in deploy_yml, (
             "deploy.yml must validate the infra gate after reconciliation "
             "so clean-slate redeploy failures stop the job"
+        )
+
+
+class TestStripeKeyVaultBootstrap:
+    """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
+
+    def test_time_provider_is_available_for_rbac_waits(self):
+        versions_tf = (INFRA / "versions.tf").read_text()
+        assert 'source  = "hashicorp/time"' in versions_tf, (
+            "versions.tf must include the time provider for RBAC propagation waits"
+        )
+
+    def test_stripe_secrets_wait_for_key_vault_rbac(self):
+        main_tf = MAIN_TF.read_text()
+        assert 'resource "time_sleep" "key_vault_secrets_officer_rbac"' in main_tf, (
+            "main.tf must wait after granting Key Vault Secrets Officer "
+            "before managing Stripe secrets"
+        )
+        assert 'create_duration = "60s"' in main_tf, (
+            "Key Vault RBAC propagation wait should be explicit in main.tf"
+        )
+        assert main_tf.count("depends_on   = [time_sleep.key_vault_secrets_officer_rbac]") >= 5, (
+            "All Stripe Key Vault secrets must wait for the RBAC propagation guard"
         )
 
     def test_appinsights_connection_string_output_exists(self):

@@ -264,6 +264,7 @@ resource "azurerm_key_vault_secret" "stripe_api_key" {
   value        = coalesce(var.stripe_api_key, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
 
   lifecycle { ignore_changes = [value] }
 }
@@ -274,6 +275,7 @@ resource "azurerm_key_vault_secret" "stripe_webhook_secret" {
   value        = coalesce(var.stripe_webhook_secret, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
 
   lifecycle { ignore_changes = [value] }
 }
@@ -284,6 +286,7 @@ resource "azurerm_key_vault_secret" "stripe_price_id_pro_gbp" {
   value        = coalesce(var.stripe_price_id_pro_gbp, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
 
   lifecycle { ignore_changes = [value] }
 }
@@ -294,6 +297,7 @@ resource "azurerm_key_vault_secret" "stripe_price_id_pro_usd" {
   value        = coalesce(var.stripe_price_id_pro_usd, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
 
   lifecycle { ignore_changes = [value] }
 }
@@ -304,6 +308,7 @@ resource "azurerm_key_vault_secret" "stripe_price_id_pro_eur" {
   value        = coalesce(var.stripe_price_id_pro_eur, "PLACEHOLDER")
   key_vault_id = azurerm_key_vault.main.id
   tags         = local.tags
+  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
 
   lifecycle { ignore_changes = [value] }
 }
@@ -862,6 +867,12 @@ resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "time_sleep" "key_vault_secrets_officer_rbac" {
+  count           = var.enable_stripe ? 1 : 0
+  depends_on      = [azurerm_role_assignment.key_vault_secrets_officer]
+  create_duration = "60s"
 }
 
 # Cosmos DB data-plane RBAC: Built-in Data Contributor (read/write all items)
