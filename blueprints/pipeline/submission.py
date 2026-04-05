@@ -91,6 +91,9 @@ async def _submit_analysis_request(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
+    if user_id == "anonymous":
+        return error_response(401, "Authentication is required for pipeline submissions", req=req)
+
     # Consume quota upfront (atomic reservation).  If storage is
     # transiently unavailable we log the error but still allow the
     # submission so a temporary outage doesn't block users.

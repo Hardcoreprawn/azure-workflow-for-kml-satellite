@@ -170,6 +170,25 @@ class TestAnalysisSubmissionRoutes:
         assert client.calls[0]["client_input"]["cadence"] == "seasonal"
         assert client.calls[0]["client_input"]["max_history_years"] == 2
 
+    def test_analysis_submit_rejects_anonymous_auth_fallback(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        client = _FakeDurableClient()
+        req = _make_req("/api/analysis/submit")
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "anonymous")),
+            patch("blueprints.pipeline.submission.consume_quota") as mock_consume_quota,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, client))
+
+        assert resp.status_code == 401
+        assert json.loads(resp.get_body()) == {
+            "error": "Authentication is required for pipeline submissions"
+        }
+        mock_consume_quota.assert_not_called()
+        assert client.calls == []
+
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
 
