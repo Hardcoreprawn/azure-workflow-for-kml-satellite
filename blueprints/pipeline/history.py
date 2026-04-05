@@ -19,6 +19,8 @@ from treesight.storage import cosmos as _cosmos_mod
 
 from ._helpers import _durable_status_payload
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -87,7 +89,7 @@ def _persist_submission_record(
             cosmos.upsert_item("runs", {"id": submission_id, **record})
             return
         except Exception:
-            logging.warning(
+            logger.warning(
                 "Cosmos upsert failed for instance=%s user=%s, falling back to blob",
                 submission_id,
                 user_id,
@@ -101,7 +103,7 @@ def _persist_submission_record(
             record,
         )
     except Exception:
-        logging.warning(
+        logger.warning(
             "Unable to persist analysis history record instance=%s user=%s",
             submission_id,
             user_id,
@@ -154,7 +156,7 @@ def _fetch_submission_records(
                 partition_key=user_id,
             )
         except Exception:
-            logging.warning(
+            logger.warning(
                 "Cosmos query failed for user=%s, falling back to blob",
                 user_id,
                 exc_info=True,
@@ -171,14 +173,14 @@ def _fetch_submission_records(
         if max_results:
             blob_names = blob_names[:max_results]
     except Exception:
-        logging.info("No analysis history found for user=%s prefix=%s", user_id, prefix)
+        logger.info("No analysis history found for user=%s prefix=%s", user_id, prefix)
 
     records: list[dict[str, Any]] = []
     for blob_name in blob_names:
         try:
             record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
         except Exception:
-            logging.warning("Skipping unreadable analysis history blob=%s", blob_name)
+            logger.warning("Skipping unreadable analysis history blob=%s", blob_name)
             continue
         if record.get("user_id") != user_id:
             continue

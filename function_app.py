@@ -1,8 +1,23 @@
 """Azure Functions entry point — registers all blueprints."""
 
+# ruff: noqa: E402
+
 import logging
 
 import azure.functions as func
+
+from treesight.config import (
+    APPINSIGHTS_CONNECTION_STRING,
+    STORAGE_ACCOUNT_NAME,
+    STORAGE_CONNECTION_STRING,
+    validate_config,
+)
+from treesight.log import configure_logging
+
+if APPINSIGHTS_CONNECTION_STRING:
+    configure_logging()
+
+logger = logging.getLogger(__name__)
 
 from blueprints.analysis import bp as analysis_bp
 from blueprints.billing import bp as billing_bp
@@ -14,7 +29,6 @@ from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.monitoring import bp as monitoring_bp
 from blueprints.pipeline import bp as pipeline_bp
-from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING, validate_config
 
 # Fail-fast config validation (§8.6)
 validate_config()
@@ -26,7 +40,7 @@ if STORAGE_CONNECTION_STRING:
 
         set_replay_store(TableReplayStore(STORAGE_CONNECTION_STRING))
     except Exception:
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "Could not initialise Table replay store; falling back to in-memory",
             exc_info=True,
         )
@@ -41,7 +55,7 @@ elif STORAGE_ACCOUNT_NAME:
         table_service_client = TableServiceClient(table_url, credential=DefaultAzureCredential())
         set_replay_store(TableReplayStore(table_service_client=table_service_client))
     except Exception:
-        logging.getLogger(__name__).warning(
+        logger.warning(
             "Could not initialise Table replay store via MI; falling back to in-memory",
             exc_info=True,
         )

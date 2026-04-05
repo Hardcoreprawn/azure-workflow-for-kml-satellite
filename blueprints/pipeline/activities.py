@@ -17,6 +17,8 @@ from treesight.constants import DEFAULT_OUTPUT_CONTAINER, DEFAULT_PROVIDER
 
 from . import bp
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     _Payload = dict[str, Any]
 else:
@@ -104,7 +106,7 @@ def write_metadata(payload: _Payload) -> dict[str, Any]:
         try:
             kml_bytes = storage.download_bytes(input_container, source_file)
         except Exception:
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Failed to download source KML %s/%s for metadata",
                 input_container,
                 source_file,
@@ -337,7 +339,7 @@ def release_quota(payload: _Payload) -> dict[str, Any]:
     user_id: str = payload["user_id"]
     instance_id: str = payload.get("instance_id", "")
     remaining = _release(user_id, instance_id=instance_id)
-    logging.info(
+    logger.info(
         "Quota released (run failed) user=%s instance=%s remaining=%d",
         user_id,
         instance_id,
