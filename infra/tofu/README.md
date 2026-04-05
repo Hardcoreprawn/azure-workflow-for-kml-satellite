@@ -64,15 +64,15 @@ tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.
 
 ## Clean-Slate Migration Sequence (dev)
 
-1. Delete existing `dev` resource group.
-2. Run `tofu apply` using `environments/dev.tfvars`.
-3. Deploy application image/workloads.
-4. Run the deploy workflow to prove runtime readiness and reconcile the Event Grid webhook subscription.
-5. Validate static site and lead form ingestion.
+1. Open a PR with the infra/deploy changes you want to validate.
+2. Run the `Deploy` workflow on that PR branch using `workflow_dispatch` with `destroy_dev_first=true`.
+3. The workflow deletes `rg-kmlsat-dev`, reapplies `environments/dev.tfvars`, deploys the new image, reconciles the Event Grid webhook subscription, and validates the infra gate.
+4. Confirm the website deployment completes and validate any product-path smoke checks you care about beyond the infra gate.
 
-Optional helper script:
+Supporting helpers:
 
-- `scripts/redeploy_dev_tofu.ps1` executes delete + init + plan + apply in one flow.
+- `scripts/reconcile_eventgrid_subscription.py` restores the blob-trigger webhook subscription using the current function host key.
+- `scripts/validate_dev_infra_gate.py` checks health/readiness, Event Grid endpoint wiring, and the Log Analytics daily cap.
 
 ## Notes
 

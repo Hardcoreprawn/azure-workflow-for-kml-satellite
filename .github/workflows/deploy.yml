@@ -21,6 +21,12 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      destroy_dev_first:
+        description: Delete the dev resource group before apply to prove a clean-slate recreate.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -146,6 +152,21 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Optional clean-slate dev delete
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
+        run: |
+          PROJECT_CODE=$(grep -oP '(?<=project_code\s{0,10}=\s{0,10}")[a-z0-9]+' infra/tofu/environments/dev.tfvars || echo "kmlsat")
+          ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' infra/tofu/environments/dev.tfvars || echo "dev")
+          RG_NAME="rg-${PROJECT_CODE}-${ENV_NAME}"
+
+          if [ "$(az group exists --name "$RG_NAME")" = "true" ]; then
+            echo "Deleting ${RG_NAME} before infra apply..."
+            az group delete --name "$RG_NAME" --yes --no-wait
+            az group wait --name "$RG_NAME" --deleted --interval 15 --timeout 3600
+          else
+            echo "Resource group ${RG_NAME} does not exist; continuing."
+          fi
 
       - name: Setup OpenTofu
         uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
@@ -363,6 +384,48 @@ jobs:
           echo "  - Route registration lag exceeded timeout"
           echo "  - The function app hostname has changed"
           exit 1
+
+      - name: Reconcile Event Grid subscription
+        id: reconcile-eventgrid
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+
+          python ../../scripts/reconcile_eventgrid_subscription.py \
+            --resource-group "$RG_NAME" \
+            --function-app "$FUNC_NAME" \
+            --hostname "$HOSTNAME" \
+            --system-topic-name "$TOPIC_NAME"
+
+      - name: Validate infra gate
+        id: validate-infra-gate
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+          EXPECTED_CAP=$(grep -oP '(?<=log_daily_cap_gb\s{0,10}=\s{0,10})[0-9.]+' environments/dev.tfvars || echo "0.1")
+
+          python ../../scripts/validate_dev_infra_gate.py \
+            --resource-group "$RG_NAME" \
+            --function-app "$FUNC_NAME" \
+            --hostname "$HOSTNAME" \
+            --system-topic-name "$TOPIC_NAME" \
+            --expected-daily-cap-gb "$EXPECTED_CAP"
 
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image

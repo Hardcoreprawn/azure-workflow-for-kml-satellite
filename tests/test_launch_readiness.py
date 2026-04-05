@@ -36,6 +36,8 @@ WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
+DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
+HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
@@ -219,6 +221,48 @@ class TestLogAnalyticsCap:
         tf = VARIABLES_TF.read_text()
         assert "log_daily_cap_gb" in tf, "variables.tf must define log_daily_cap_gb variable"
 
+    def test_dev_daily_cap_is_tight(self):
+        tfvars = DEV_TFVARS.read_text()
+        match = re.search(r"log_daily_cap_gb\s*=\s*([0-9.]+)", tfvars)
+        assert match, "dev.tfvars must set log_daily_cap_gb explicitly"
+        daily_cap_gb = float(match.group(1))
+        assert daily_cap_gb <= 0.1, (
+            f"dev log_daily_cap_gb is {daily_cap_gb} — keep it at 0.1 GB/day or lower "
+            "until Log Analytics proves its value"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5b. Host logging cost controls
+# ---------------------------------------------------------------------------
+
+
+class TestHostLoggingCostControls:
+    """Ensure low-value host/runtime telemetry is aggressively reduced."""
+
+    @pytest.fixture()
+    def host_config(self):
+        return json.loads(HOST_JSON.read_text())
+
+    def test_default_log_level_is_warning(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["default"] == "Warning", (
+            "host.json should default runtime logging to Warning to reduce console log ingest"
+        )
+
+    def test_durable_task_logs_are_warning_only(self, host_config):
+        levels = host_config["logging"]["logLevel"]
+        assert levels["Host.Triggers.DurableTask"] == "Warning", (
+            "DurableTask lease-renewal/info chatter must be suppressed to control Log Analytics cost"
+        )
+
+    def test_sampling_keeps_exceptions_unsampled(self, host_config):
+        sampling = host_config["logging"]["applicationInsights"]["samplingSettings"]
+        assert sampling["isEnabled"] is True
+        assert sampling["excludedTypes"] == "Exception", (
+            "App Insights sampling should preserve exceptions, not every request"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 6. detect-secrets in CI
@@ -333,6 +377,21 @@ class TestDeployWorkflowSettings:
         assert "ai-connection-string" in deploy_yml, (
             "deploy.yml must inject the App Insights connection string into "
             "HTML meta tags before SWA upload"
+        )
+
+    def test_workflow_dispatch_supports_clean_slate_delete(self, deploy_yml):
+        assert "destroy_dev_first" in deploy_yml, (
+            "deploy.yml manual dispatch must allow an explicit clean-slate dev recreate"
+        )
+
+    def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
+        assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
+            "deploy.yml must reconcile the Event Grid webhook after readiness so ingestion wiring is restored"
+        )
+
+    def test_deploy_validates_infra_gate(self, deploy_yml):
+        assert "validate_dev_infra_gate.py" in deploy_yml, (
+            "deploy.yml must validate the infra gate after reconciliation so clean-slate redeploy failures stop the job"
         )
 
     def test_appinsights_connection_string_output_exists(self):
