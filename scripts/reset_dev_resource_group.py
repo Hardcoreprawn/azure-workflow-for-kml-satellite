@@ -49,7 +49,9 @@ def is_preserved(resource: dict[str, Any], preserve_types: set[str]) -> bool:
     return isinstance(resource_type, str) and resource_type in preserve_types
 
 
-def deletable_resources(resources: list[dict[str, Any]], preserve_types: set[str]) -> list[dict[str, Any]]:
+def deletable_resources(
+    resources: list[dict[str, Any]], preserve_types: set[str]
+) -> list[dict[str, Any]]:
     """Return resources that should be deleted for a clean-slate app reset."""
     return [resource for resource in resources if not is_preserved(resource, preserve_types)]
 
@@ -89,7 +91,25 @@ def get_resource(resource_id: str) -> dict[str, Any] | None:
     return json.loads(stdout) if stdout else None
 
 
-def delete_resources(resources: list[dict[str, Any]]) -> None:
+def delete_command(*, resource_group: str, resource: dict[str, Any], resource_id: str) -> list[str]:
+    """Return the Azure CLI command that should delete the resource."""
+    resource_type = resource.get("type")
+    name = resource.get("name")
+    if resource_type == "Microsoft.DocumentDB/databaseAccounts" and isinstance(name, str) and name:
+        return [
+            "az",
+            "cosmosdb",
+            "delete",
+            "--name",
+            name,
+            "--resource-group",
+            resource_group,
+            "--yes",
+        ]
+    return ["az", "resource", "delete", "--ids", resource_id]
+
+
+def delete_resources(*, resource_group: str, resources: list[dict[str, Any]]) -> None:
     """Delete each resource individually via Azure CLI."""
     for resource in resources:
         resource_id = resource.get("id")
@@ -98,7 +118,9 @@ def delete_resources(resources: list[dict[str, Any]]) -> None:
             raise RuntimeError(f"Resource {name} is missing an id")
         print(f"Deleting {name} ({resource.get('type', 'unknown')})")
         completed = subprocess.run(
-            ["az", "resource", "delete", "--ids", resource_id],
+            delete_command(
+                resource_group=resource_group, resource=resource, resource_id=resource_id
+            ),
             capture_output=True,
             text=True,
         )
@@ -157,7 +179,7 @@ def reset_resource_group(
         print(f"No app-managed resources found in {resource_group}; nothing to reset.")
         return resources
 
-    delete_resources(to_delete)
+    delete_resources(resource_group=resource_group, resources=to_delete)
     return wait_for_reset(
         resource_group=resource_group,
         preserve_types=preserve_types,
@@ -200,7 +222,10 @@ def main() -> None:
         poll_interval_seconds=args.poll_interval_seconds,
     )
     if preserved:
-        print("Dev resource reset completed while preserving resource types:", ", ".join(sorted(preserved)))
+        print(
+            "Dev resource reset completed while preserving resource types:",
+            ", ".join(sorted(preserved)),
+        )
     else:
         print("Dev resource reset completed")
 
