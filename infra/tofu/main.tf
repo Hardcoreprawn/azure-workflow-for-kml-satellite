@@ -256,63 +256,6 @@ resource "azurerm_key_vault" "main" {
   tags                          = local.tags
 }
 
-# --- Stripe secrets in Key Vault (M4) ---
-
-resource "azurerm_key_vault_secret" "stripe_api_key" {
-  count        = var.enable_stripe ? 1 : 0
-  name         = "stripe-api-key"
-  value        = coalesce(var.stripe_api_key, "PLACEHOLDER")
-  key_vault_id = azurerm_key_vault.main.id
-  tags         = local.tags
-  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
-
-  lifecycle { ignore_changes = [value] }
-}
-
-resource "azurerm_key_vault_secret" "stripe_webhook_secret" {
-  count        = var.enable_stripe ? 1 : 0
-  name         = "stripe-webhook-secret"
-  value        = coalesce(var.stripe_webhook_secret, "PLACEHOLDER")
-  key_vault_id = azurerm_key_vault.main.id
-  tags         = local.tags
-  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
-
-  lifecycle { ignore_changes = [value] }
-}
-
-resource "azurerm_key_vault_secret" "stripe_price_id_pro_gbp" {
-  count        = var.enable_stripe ? 1 : 0
-  name         = "stripe-price-id-pro-gbp"
-  value        = coalesce(var.stripe_price_id_pro_gbp, "PLACEHOLDER")
-  key_vault_id = azurerm_key_vault.main.id
-  tags         = local.tags
-  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
-
-  lifecycle { ignore_changes = [value] }
-}
-
-resource "azurerm_key_vault_secret" "stripe_price_id_pro_usd" {
-  count        = var.enable_stripe ? 1 : 0
-  name         = "stripe-price-id-pro-usd"
-  value        = coalesce(var.stripe_price_id_pro_usd, "PLACEHOLDER")
-  key_vault_id = azurerm_key_vault.main.id
-  tags         = local.tags
-  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
-
-  lifecycle { ignore_changes = [value] }
-}
-
-resource "azurerm_key_vault_secret" "stripe_price_id_pro_eur" {
-  count        = var.enable_stripe ? 1 : 0
-  name         = "stripe-price-id-pro-eur"
-  value        = coalesce(var.stripe_price_id_pro_eur, "PLACEHOLDER")
-  key_vault_id = azurerm_key_vault.main.id
-  tags         = local.tags
-  depends_on   = [time_sleep.key_vault_secrets_officer_rbac]
-
-  lifecycle { ignore_changes = [value] }
-}
-
 # --- Azure Communication Services Email ---
 
 resource "azurerm_communication_service" "main" {
@@ -681,11 +624,8 @@ resource "azapi_resource" "function_app" {
           )
           supportCredentials = false
         }
-        appSettings = concat([
-          {
-            name  = "AzureWebJobsStorage__accountName"
-            value = azurerm_storage_account.main.name
-          },
+        appSettings = concat(
+          [
           {
             name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
             value = azurerm_application_insights.main.connection_string
@@ -721,12 +661,15 @@ resource "azapi_resource" "function_app" {
           {
             name  = "IMAGERY_PROVIDER"
             value = "planetary_computer"
-          },
-          {
-            name  = "REQUIRE_AUTH"
-            value = var.environment == "prd" ? "true" : ""
           }
-          ], var.enable_azure_ai ? [
+          ],
+          [
+            for name, value in local.function_app_cli_app_settings : {
+              name  = name
+              value = value
+            }
+          ],
+          var.enable_azure_ai ? [
           {
             name  = "AZURE_AI_ENDPOINT"
             value = azurerm_cognitive_account.openai[0].endpoint
@@ -739,41 +682,30 @@ resource "azapi_resource" "function_app" {
             name  = "AZURE_AI_DEPLOYMENT"
             value = "gpt-4o-mini"
           }
-          ] : [], var.ciam_tenant_name != "" ? [
-          {
-            name  = "CIAM_TENANT_NAME"
-            value = var.ciam_tenant_name
-          },
-          {
-            name  = "CIAM_CLIENT_ID"
-            value = var.ciam_client_id
-          },
-          {
-            name  = "CIAM_AUDIENCE"
-            value = var.ciam_client_id
-          }
-          ] : [], var.enable_stripe ? [
+          ] : [],
+          var.enable_stripe ? [
           {
             name  = "STRIPE_API_KEY"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_api_key[0].versionless_id})"
+            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
           },
           {
             name  = "STRIPE_WEBHOOK_SECRET"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_webhook_secret[0].versionless_id})"
+            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.webhook_secret})"
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_GBP"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_gbp[0].versionless_id})"
+            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_USD"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_usd[0].versionless_id})"
+            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
           },
           {
             name  = "STRIPE_PRICE_ID_PRO_EUR"
-            value = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.stripe_price_id_pro_eur[0].versionless_id})"
+            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
           }
-        ] : [], var.enable_email ? [
+        ] : [],
+          var.enable_email ? [
           {
             name  = "COMMUNICATION_SERVICES_CONNECTION_STRING"
             value = azurerm_communication_service.main[0].primary_connection_string
@@ -786,16 +718,8 @@ resource "azapi_resource" "function_app" {
             name  = "NOTIFICATION_EMAIL"
             value = var.notification_email
           }
-        ] : [], var.enable_cosmos_db ? [
-          {
-            name  = "COSMOS_ENDPOINT"
-            value = azurerm_cosmosdb_account.main[0].endpoint
-          },
-          {
-            name  = "COSMOS_DATABASE_NAME"
-            value = azurerm_cosmosdb_sql_database.main[0].name
-          }
-        ] : [])
+        ] : []
+        )
       }
     }
   }
@@ -869,12 +793,6 @@ resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-resource "time_sleep" "key_vault_secrets_officer_rbac" {
-  count           = var.enable_stripe ? 1 : 0
-  depends_on      = [azurerm_role_assignment.key_vault_secrets_officer]
-  create_duration = "60s"
-}
-
 # Cosmos DB data-plane RBAC: Built-in Data Contributor (read/write all items)
 resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
   count               = var.enable_cosmos_db ? 1 : 0
@@ -915,6 +833,31 @@ locals {
     try(azapi_resource_action.function_host_keys.output.systemKeys.eventgridextensionconfig_extension, null),
     try(azapi_resource_action.function_host_keys.output.masterKey, null)
   )
+
+  function_app_cli_app_settings = merge(
+    {
+      WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+      AzureWebJobsStorage__accountName    = azurerm_storage_account.main.name
+      REQUIRE_AUTH                        = var.environment == "prd" ? "true" : ""
+    },
+    var.ciam_tenant_name != "" ? {
+      CIAM_TENANT_NAME = var.ciam_tenant_name
+      CIAM_CLIENT_ID   = var.ciam_client_id
+      CIAM_AUDIENCE    = var.ciam_client_id
+    } : {},
+    var.enable_cosmos_db ? {
+      COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
+      COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
+    } : {}
+  )
+
+  stripe_secret_uris = {
+    api_key          = "${azurerm_key_vault.main.vault_uri}secrets/stripe-api-key"
+    webhook_secret   = "${azurerm_key_vault.main.vault_uri}secrets/stripe-webhook-secret"
+    price_id_pro_gbp = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-gbp"
+    price_id_pro_usd = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-usd"
+    price_id_pro_eur = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-eur"
+  }
 }
 
 resource "azapi_resource" "event_grid_subscription" {

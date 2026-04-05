@@ -191,9 +191,8 @@ class TestRequireAuth:
 
     def test_require_auth_conditional_on_environment(self):
         tf = MAIN_TF.read_text()
-        # The name and value are on separate lines in HCL
         match = re.search(
-            r'name\s*=\s*"REQUIRE_AUTH"\s*\n\s*value\s*=\s*(.+)',
+            r"REQUIRE_AUTH\s*=\s*(.+)",
             tf,
         )
         assert match, "REQUIRE_AUTH app setting not found"
@@ -372,15 +371,29 @@ class TestDeployWorkflowSettings:
     def deploy_yml(self):
         return DEPLOY_YML.read_text()
 
-    def test_deploy_sets_require_auth_via_cli(self, deploy_yml):
-        assert "REQUIRE_AUTH" in deploy_yml, (
-            "deploy.yml must set REQUIRE_AUTH via az CLI because body is ignore_changes in tofu"
+    def test_deploy_sets_app_settings_via_cli(self, deploy_yml):
+        assert "az webapp config appsettings set" in deploy_yml, (
+            "deploy.yml must still apply Function App settings via az CLI while "
+            "body is ignore_changes in tofu"
         )
 
     def test_deploy_sets_max_instances_via_cli(self, deploy_yml):
         assert "maximumInstanceCount" in deploy_yml, (
             "deploy.yml must apply maximumInstanceCount via az CLI because "
             "body is ignore_changes in tofu"
+        )
+
+    def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
+        assert "tofu output -json function_app_cli_app_settings" in deploy_yml, (
+            "deploy.yml must source CLI-managed Function App app settings from tofu outputs "
+            "to avoid drifting away from Terraform"
+        )
+        assert "tofu output -raw function_app_cli_maximum_instance_count" in deploy_yml, (
+            "deploy.yml must source the CLI-managed scale cap from tofu outputs "
+            "to avoid reparsing tfvars"
+        )
+        assert "grep 'ciam_tenant_name' environments/dev.tfvars" not in deploy_yml, (
+            "deploy.yml should not reparse CIAM settings from dev.tfvars once tofu outputs own them"
         )
 
     def test_deploy_injects_analytics_connection_string(self, deploy_yml):
@@ -432,24 +445,47 @@ class TestDeployWorkflowSettings:
 class TestStripeKeyVaultBootstrap:
     """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
 
-    def test_time_provider_is_available_for_rbac_waits(self):
-        versions_tf = (INFRA / "versions.tf").read_text()
-        assert 'source  = "hashicorp/time"' in versions_tf, (
-            "versions.tf must include the time provider for RBAC propagation waits"
+    def test_outputs_expose_cli_managed_function_settings(self):
+        outputs_tf = (INFRA / "outputs.tf").read_text()
+        assert 'output "function_app_cli_app_settings"' in outputs_tf, (
+            "outputs.tf must expose the CLI-managed Function App app settings"
+        )
+        assert 'output "function_app_cli_maximum_instance_count"' in outputs_tf, (
+            "outputs.tf must expose the CLI-managed Function App scale cap"
         )
 
-    def test_stripe_secrets_wait_for_key_vault_rbac(self):
+    def test_deployer_still_has_key_vault_secret_access(self):
         main_tf = MAIN_TF.read_text()
-        assert 'resource "time_sleep" "key_vault_secrets_officer_rbac"' in main_tf, (
-            "main.tf must wait after granting Key Vault Secrets Officer "
-            "before managing Stripe secrets"
+        assert 'role_definition_name = "Key Vault Secrets Officer"' in main_tf, (
+            "main.tf must still grant the deployer Key Vault Secrets Officer "
+            "for Stripe bootstrap scripts"
         )
-        assert 'create_duration = "60s"' in main_tf, (
-            "Key Vault RBAC propagation wait should be explicit in main.tf"
+
+    def test_stripe_app_settings_use_stable_key_vault_uris(self):
+        main_tf = MAIN_TF.read_text()
+        assert "stripe_secret_uris = {" in main_tf, (
+            "main.tf must derive Stripe Key Vault references from stable secret names"
         )
-        assert main_tf.count("depends_on   = [time_sleep.key_vault_secrets_officer_rbac]") >= 5, (
-            "All Stripe Key Vault secrets must wait for the RBAC propagation guard"
+        assert "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})" in main_tf, (
+            "Function app settings must reference the stable Stripe API key URI"
         )
+        assert 'resource "azurerm_key_vault_secret" "stripe_api_key"' not in main_tf, (
+            "Terraform should not recreate Stripe secrets that are already managed in Key Vault"
+        )
+
+    def test_tofu_does_not_accept_stripe_secret_values(self):
+        variables_tf = VARIABLES_TF.read_text()
+        for variable_name in [
+            "stripe_api_key",
+            "stripe_webhook_secret",
+            "stripe_price_id_pro_gbp",
+            "stripe_price_id_pro_usd",
+            "stripe_price_id_pro_eur",
+        ]:
+            assert f'variable "{variable_name}"' not in variables_tf, (
+                "variables.tf must not accept Stripe secret values once Key Vault "
+                "bootstrap owns those secrets"
+            )
 
     def test_appinsights_connection_string_output_exists(self):
         tf = (INFRA / "outputs.tf").read_text()

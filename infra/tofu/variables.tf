@@ -138,39 +138,7 @@ variable "ciam_client_id" {
 # --- Stripe billing (M4) ---
 
 variable "enable_stripe" {
-  description = "Enable Stripe billing infrastructure (Key Vault secrets, app settings)."
-  type        = bool
-  default     = false
-}
-
-variable "stripe_api_key" {
-  description = "Stripe secret API key. Stored in Key Vault, never in app settings."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "stripe_webhook_secret" {
-  description = "Stripe webhook signing secret. Stored in Key Vault."
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "stripe_price_id_pro_gbp" {
-  description = "Stripe Price ID for the Pro subscription plan (GBP)."
-  type        = string
-  default     = ""
-}
-
-variable "stripe_price_id_pro_usd" {
-  description = "Stripe Price ID for the Pro subscription plan (USD)."
-  type        = string
-  default     = ""
-}
-
-variable "stripe_price_id_pro_eur" {
-  description = "Stripe Price ID for the Pro subscription plan (EUR)."
+  description = "Enable Stripe billing app settings and stable Key Vault secret references."
   type        = string
   default     = ""
 }
