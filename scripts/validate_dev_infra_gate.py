@@ -111,6 +111,7 @@ def validate_gate(
             system_topic_name,
             "--name",
             subscription_name,
+            "--include-full-endpoint-url",
         ]
     )
     actual_endpoint = find_first_value(subscription, "endpointUrl")
