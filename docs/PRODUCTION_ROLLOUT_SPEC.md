@@ -24,12 +24,12 @@ This is a repo-specific implementation plan, not a generic feature-flag overview
 
 The current repository already contains useful rollout building blocks:
 
-- Live health and readiness checks with rollback in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
-- Per-user persisted state patterns in [treesight/security/billing.py](treesight/security/billing.py) and [treesight/security/quota.py](treesight/security/quota.py).
-- A narrow env-based feature gate in [treesight/security/feature_gate.py](treesight/security/feature_gate.py).
-- Structured logging and correlation fields in [treesight/log.py](treesight/log.py).
-- Production telemetry and alerts in [infra/tofu/main.tf](infra/tofu/main.tf).
-- Local end-to-end trigger scripts in [scripts/simulate_upload.py](scripts/simulate_upload.py) and [scripts/load_baseline.py](scripts/load_baseline.py).
+- Live health and readiness checks with rollback in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
+- Per-user persisted state patterns in [treesight/security/billing.py](../treesight/security/billing.py) and [treesight/security/quota.py](../treesight/security/quota.py).
+- A narrow env-based feature gate in [treesight/security/feature_gate.py](../treesight/security/feature_gate.py).
+- Structured logging and correlation fields in [treesight/log.py](../treesight/log.py).
+- Production telemetry and alerts in [infra/tofu/main.tf](../infra/tofu/main.tf).
+- Local end-to-end trigger scripts in [scripts/simulate_upload.py](../scripts/simulate_upload.py) and [scripts/load_baseline.py](../scripts/load_baseline.py).
 
 The current gaps are:
 
@@ -114,7 +114,7 @@ Fallback path when Cosmos is unavailable:
 - `pipeline-payloads/feature-flags/{feature_name}.json`
 - `pipeline-payloads/feature-flag-overrides/{user_id}.json`
 
-This mirrors the existing Cosmos-or-blob fallback pattern used in [treesight/security/billing.py](treesight/security/billing.py) and [treesight/security/quota.py](treesight/security/quota.py).
+This mirrors the existing Cosmos-or-blob fallback pattern used in [treesight/security/billing.py](../treesight/security/billing.py) and [treesight/security/quota.py](../treesight/security/quota.py).
 
 ### 5.2 Feature flag document
 
@@ -219,7 +219,7 @@ Minimum fields:
 
 ## 6. Feature Evaluation Rules
 
-Feature evaluation will be implemented in a shared runtime module that generalises the current logic in [treesight/security/feature_gate.py](treesight/security/feature_gate.py).
+Feature evaluation will be implemented in a shared runtime module that generalises the current logic in [treesight/security/feature_gate.py](../treesight/security/feature_gate.py).
 
 ### 6.1 Inputs
 
@@ -295,7 +295,7 @@ The local-only emulation endpoint in [blueprints/billing.py](blueprints/billing.
 
 ## 8. Post-Deploy Functional Smoke
 
-Current deployment already verifies `health` and `readiness` and rolls back the container on failure in [.github/workflows/deploy.yml](.github/workflows/deploy.yml).
+Current deployment already verifies `health` and `readiness` and rolls back the container on failure in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
 
 This specification extends deploy with a second gate: a real functional smoke transaction.
 
@@ -397,7 +397,7 @@ Per feature and environment, the controller must query:
 
 ### 9.4 Existing infra reuse
 
-The design must reuse existing Application Insights and Azure Monitor plumbing already defined in [infra/tofu/main.tf](infra/tofu/main.tf), adding queries and alerts rather than introducing a second observability stack.
+The design must reuse existing Application Insights and Azure Monitor plumbing already defined in [infra/tofu/main.tf](../infra/tofu/main.tf), adding queries and alerts rather than introducing a second observability stack.
 
 ---
 
@@ -469,11 +469,11 @@ The rollout system must fail closed.
 - No public endpoint may allow arbitrary feature enablement.
 - Override writes must be authenticated and auditable.
 - Telemetry must avoid leaking raw PII where not operationally required.
-- Preview-user assignment must use stable authenticated user ids from [treesight/security/auth.py](treesight/security/auth.py).
+- Preview-user assignment must use stable authenticated user ids from [treesight/security/auth.py](../treesight/security/auth.py).
 
 ### 11.3 Protected surface checks
 
-Deploy smoke must verify that protected runtime endpoints remain protected after rollout, consistent with the intent already documented in [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md).
+Deploy smoke must verify that protected runtime endpoints remain protected after rollout, consistent with the intent already documented in [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md).
 
 ---
 
@@ -487,11 +487,11 @@ Deploy smoke must verify that protected runtime endpoints remain protected after
 
 ### 12.2 Changes to existing modules
 
-- Generalise [treesight/security/feature_gate.py](treesight/security/feature_gate.py) or replace it with the new feature evaluator.
+- Generalise [treesight/security/feature_gate.py](../treesight/security/feature_gate.py) or replace it with the new feature evaluator.
 - Update feature-owning endpoints to call the shared evaluator.
-- Extend [treesight/log.py](treesight/log.py) call sites to include rollout fields.
-- Extend [.github/workflows/deploy.yml](.github/workflows/deploy.yml) with post-readiness functional smoke.
-- Add Cosmos containers and outputs in [infra/tofu/main.tf](infra/tofu/main.tf).
+- Extend [treesight/log.py](../treesight/log.py) call sites to include rollout fields.
+- Extend [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) with post-readiness functional smoke.
+- Add Cosmos containers and outputs in [infra/tofu/main.tf](../infra/tofu/main.tf).
 
 ### 12.3 New scripts
 
