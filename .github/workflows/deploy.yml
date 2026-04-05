@@ -156,8 +156,10 @@ jobs:
       - name: Optional clean-slate dev reset
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
         run: |
-          PROJECT_CODE=$(grep -oP '(?<=project_code\s{0,10}=\s{0,10}")[a-z0-9]+' infra/tofu/environments/dev.tfvars || echo "kmlsat")
-          ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' infra/tofu/environments/dev.tfvars || echo "dev")
+          PROJECT_CODE=$(awk -F '=' '/^project_code[[:space:]]*=/{gsub(/[[:space:]"]/, "", $2); print $2; exit}' infra/tofu/environments/dev.tfvars)
+          ENV_NAME=$(awk -F '=' '/^environment[[:space:]]*=/{gsub(/[[:space:]"]/, "", $2); print $2; exit}' infra/tofu/environments/dev.tfvars)
+          : "${PROJECT_CODE:=kmlsat}"
+          : "${ENV_NAME:=dev}"
           RG_NAME="rg-${PROJECT_CODE}-${ENV_NAME}"
 
           python scripts/reset_dev_resource_group.py \
@@ -271,7 +273,8 @@ jobs:
           CIAM_CLIENT=$(grep 'ciam_client_id' environments/dev.tfvars | sed 's/.*= *"\(.*\)"/\1/')
 
           # Set REQUIRE_AUTH based on environment (body is ignore_changes)
-          ENV_NAME=$(grep -oP '(?<=environment\s{0,10}=\s{0,10}")\w+' environments/dev.tfvars || echo "dev")
+          ENV_NAME=$(awk -F '=' '/^environment[[:space:]]*=/{gsub(/[[:space:]"]/, "", $2); print $2; exit}' environments/dev.tfvars)
+          : "${ENV_NAME:=dev}"
           REQUIRE_AUTH=""
           if [ "$ENV_NAME" = "prd" ]; then REQUIRE_AUTH="true"; fi
 
@@ -288,7 +291,7 @@ jobs:
               REQUIRE_AUTH="$REQUIRE_AUTH"
 
           # Apply scaling cap (body is ignore_changes in tofu)
-          MAX_INSTANCES=$(grep -oP '(?<=function_max_instances\s{0,10}=\s{0,10})\d+' environments/dev.tfvars 2>/dev/null || echo "3")
+          MAX_INSTANCES=$(awk -F '=' '/^function_max_instances[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/dev.tfvars)
           : "${MAX_INSTANCES:=3}"
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           az rest --method PATCH \
@@ -414,7 +417,8 @@ jobs:
           FUNC_NAME=$(tofu output -raw function_app_name)
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
-          EXPECTED_CAP=$(grep -oP '(?<=log_daily_cap_gb\s{0,10}=\s{0,10})[0-9.]+' environments/dev.tfvars || echo "0.1")
+          EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/dev.tfvars)
+          : "${EXPECTED_CAP:=0.1}"
 
           python ../../scripts/validate_dev_infra_gate.py \
             --resource-group "$RG_NAME" \

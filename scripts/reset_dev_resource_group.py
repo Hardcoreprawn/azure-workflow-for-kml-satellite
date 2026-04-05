@@ -54,6 +54,41 @@ def deletable_resources(resources: list[dict[str, Any]], preserve_types: set[str
     return [resource for resource in resources if not is_preserved(resource, preserve_types)]
 
 
+def resource_delete_state(resource: dict[str, Any] | None) -> str | None:
+    """Return the provisioning/deletion state for a resource when available."""
+    if not isinstance(resource, dict):
+        return None
+
+    props = resource.get("properties")
+    if isinstance(props, dict):
+        state = props.get("provisioningState")
+        if isinstance(state, str) and state:
+            return state
+
+    state = resource.get("provisioningState")
+    if isinstance(state, str) and state:
+        return state
+    return None
+
+
+def is_delete_in_progress(resource: dict[str, Any] | None) -> bool:
+    """Return whether the resource is already on a valid delete path."""
+    return resource_delete_state(resource) in {"Deleting", "ScheduledForDelete"}
+
+
+def get_resource(resource_id: str) -> dict[str, Any] | None:
+    """Return the live resource payload, or None when it no longer exists."""
+    completed = subprocess.run(
+        ["az", "resource", "show", "--ids", resource_id, "-o", "json"],
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    stdout = completed.stdout.strip()
+    return json.loads(stdout) if stdout else None
+
+
 def delete_resources(resources: list[dict[str, Any]]) -> None:
     """Delete each resource individually via Azure CLI."""
     for resource in resources:
@@ -62,7 +97,22 @@ def delete_resources(resources: list[dict[str, Any]]) -> None:
         if not isinstance(resource_id, str) or not resource_id:
             raise RuntimeError(f"Resource {name} is missing an id")
         print(f"Deleting {name} ({resource.get('type', 'unknown')})")
-        subprocess.run(["az", "resource", "delete", "--ids", resource_id], check=True)
+        completed = subprocess.run(
+            ["az", "resource", "delete", "--ids", resource_id],
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 0:
+            continue
+
+        current = get_resource(resource_id)
+        if current is None or is_delete_in_progress(current):
+            state = resource_delete_state(current) or "Deleted"
+            print(f"Delete already in progress for {name}; current state={state}. Continuing.")
+            continue
+
+        details = (completed.stderr or completed.stdout).strip()
+        raise RuntimeError(f"Failed to delete {name}: {details}")
 
 
 def wait_for_reset(

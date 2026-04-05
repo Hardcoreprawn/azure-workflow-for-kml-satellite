@@ -19,3 +19,15 @@ def test_deletable_resources_excludes_preserved_types() -> None:
     deletable = reset.deletable_resources(resources, {"Microsoft.AzureActiveDirectory/ciamDirectories"})
 
     assert [resource["name"] for resource in deletable] == ["func-kmlsat-dev", "cosmos-kmlsat-dev"]
+
+
+def test_resource_delete_state_prefers_nested_properties() -> None:
+    resource = {"properties": {"provisioningState": "Deleting"}}
+
+    assert reset.resource_delete_state(resource) == "Deleting"
+
+
+def test_is_delete_in_progress_matches_expected_states() -> None:
+    assert reset.is_delete_in_progress({"properties": {"provisioningState": "Deleting"}}) is True
+    assert reset.is_delete_in_progress({"properties": {"provisioningState": "ScheduledForDelete"}}) is True
+    assert reset.is_delete_in_progress({"properties": {"provisioningState": "Succeeded"}}) is False
