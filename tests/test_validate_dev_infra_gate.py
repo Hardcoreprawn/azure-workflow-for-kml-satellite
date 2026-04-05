@@ -124,3 +124,49 @@ def test_validate_gate_reports_redacted_endpoint_details_on_mismatch(monkeypatch
     assert "actual-secret" not in message
     assert "code=%2A%2A%2AREDACTED%2A%2A%2A" in message
     assert "functionName=blob_trigger" in message
+
+
+def test_validate_gate_can_skip_eventgrid_subscription_checks(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_fetch_json(url: str) -> dict[str, str]:
+        if url.endswith("/api/health"):
+            return {"status": "healthy"}
+        if url.endswith("/api/readiness"):
+            return {"status": "ready"}
+        raise AssertionError(url)
+
+    def fake_run_az_json(args: list[str]):
+        calls.append(args)
+        if args[:4] == ["monitor", "log-analytics", "workspace", "show"]:
+            return {"workspaceCapping": {"dailyQuotaGb": 0.1}}
+        raise AssertionError(args)
+
+    monkeypatch.setattr(validate, "fetch_json", fake_fetch_json)
+    monkeypatch.setattr(validate, "run_az_json", fake_run_az_json)
+    monkeypatch.setattr(validate, "resolve_workspace_name", lambda *_: "log-kmlsat-dev")
+
+    validate.validate_gate(
+        resource_group="rg-kmlsat-dev",
+        function_app="func-kmlsat-dev",
+        hostname="example.invalid",
+        system_topic_name="evgt-kmlsat-dev",
+        subscription_name=validate.reconcile.DEFAULT_SUBSCRIPTION_NAME,
+        function_name=validate.reconcile.DEFAULT_FUNCTION_NAME,
+        expected_daily_cap_gb=0.1,
+        workspace_name=None,
+        validate_eventgrid_subscription=False,
+    )
+
+    assert calls == [
+        [
+            "monitor",
+            "log-analytics",
+            "workspace",
+            "show",
+            "--resource-group",
+            "rg-kmlsat-dev",
+            "--workspace-name",
+            "log-kmlsat-dev",
+        ]
+    ]

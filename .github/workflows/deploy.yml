@@ -202,11 +202,9 @@ jobs:
           ARM_USE_OIDC: "true"
         run: |
           STATE_LIST=$(tofu state list 2>/dev/null || true)
-          for address in \
-            azapi_resource.function_app \
-            azapi_resource.event_grid_system_topic \
-            azapi_resource_action.function_host_keys \
-            azapi_resource.event_grid_subscription; do
+          mapfile -t AZAPI_ADDRESSES < <(printf '%s\n' "$STATE_LIST" | grep '^azapi_' || true)
+          for address in "${AZAPI_ADDRESSES[@]}"; do
+            [ -n "$address" ] || continue
             if printf '%s\n' "$STATE_LIST" | grep -Fx "$address" >/dev/null; then
               tofu state rm "$address"
             fi
@@ -267,6 +265,8 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
+          set -euo pipefail
+
           FUNC_RG=$(tofu output -raw resource_group_name)
           FUNC_NAME=$(tofu output -raw function_app_name)
 
@@ -380,6 +380,29 @@ jobs:
           echo "  - The function app hostname has changed"
           exit 1
 
+      - name: Validate infra gate prerequisites
+        id: validate-infra-prerequisites
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+          EXPECTED_CAP=$(tofu output -raw log_daily_cap_gb)
+
+          python ../../scripts/validate_dev_infra_gate.py \
+            --resource-group "$RG_NAME" \
+            --function-app "$FUNC_NAME" \
+            --hostname "$HOSTNAME" \
+            --system-topic-name "$TOPIC_NAME" \
+            --expected-daily-cap-gb "$EXPECTED_CAP" \
+            --skip-eventgrid-subscription
+
       - name: Reconcile Event Grid subscription
         id: reconcile-eventgrid
         working-directory: infra/tofu
@@ -413,8 +436,7 @@ jobs:
           FUNC_NAME=$(tofu output -raw function_app_name)
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
-          EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/dev.tfvars)
-          : "${EXPECTED_CAP:=0.1}"
+          EXPECTED_CAP=$(tofu output -raw log_daily_cap_gb)
 
           python ../../scripts/validate_dev_infra_gate.py \
             --resource-group "$RG_NAME" \
@@ -426,12 +448,15 @@ jobs:
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image
         if: failure() && steps.configure-app.outcome == 'success' && steps.current-image.outputs.image != ''
+        working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
+          set -euo pipefail
+
           PREV_IMAGE="${{ steps.current-image.outputs.image }}"
           FUNC_NAME="${{ steps.current-image.outputs.func_name }}"
           FUNC_RG="${{ steps.current-image.outputs.func_rg }}"
@@ -454,6 +479,13 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
             echo "  [${i}0s] health=${code}"
             if [ "$code" = "200" ]; then
+              TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+              echo "Re-reconciling Event Grid subscription for rolled-back image..."
+              python ../../scripts/reconcile_eventgrid_subscription.py \
+                --resource-group "$FUNC_RG" \
+                --function-app "$FUNC_NAME" \
+                --hostname "$HOSTNAME" \
+                --system-topic-name "$TOPIC_NAME"
               echo "✅ Rollback successful — previous image is healthy."
               exit 0
             fi

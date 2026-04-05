@@ -88,6 +88,7 @@ def validate_gate(
     function_name: str,
     expected_daily_cap_gb: float,
     workspace_name: str | None,
+    validate_eventgrid_subscription: bool = True,
 ) -> None:
     """Validate runtime health, Event Grid wiring, and Log Analytics cap."""
     health = fetch_json(f"https://{hostname}/api/health")
@@ -97,43 +98,44 @@ def validate_gate(
     if readiness.get("status") != "ready":
         raise RuntimeError(f"Readiness endpoint returned unexpected payload: {readiness}")
 
-    keys = run_az_json(
-        [
-            "functionapp",
-            "keys",
-            "list",
-            "--resource-group",
-            resource_group,
-            "--name",
-            function_app,
-        ]
-    )
-    expected_endpoint = reconcile.build_eventgrid_endpoint(
-        hostname=hostname,
-        function_name=function_name,
-        function_key=reconcile.select_eventgrid_key(keys),
-    )
-    subscription = run_az_json(
-        [
-            "eventgrid",
-            "system-topic",
-            "event-subscription",
-            "show",
-            "--resource-group",
-            resource_group,
-            "--system-topic-name",
-            system_topic_name,
-            "--name",
-            subscription_name,
-            "--include-full-endpoint-url",
-        ]
-    )
-    actual_endpoint = find_first_value(subscription, "endpointUrl")
-    if actual_endpoint != expected_endpoint:
-        raise RuntimeError(
-            "Event Grid subscription endpoint does not match the current function hostname/key: "
-            f"expected {redact_endpoint(expected_endpoint)}, got {redact_endpoint(actual_endpoint)}"
+    if validate_eventgrid_subscription:
+        keys = run_az_json(
+            [
+                "functionapp",
+                "keys",
+                "list",
+                "--resource-group",
+                resource_group,
+                "--name",
+                function_app,
+            ]
         )
+        expected_endpoint = reconcile.build_eventgrid_endpoint(
+            hostname=hostname,
+            function_name=function_name,
+            function_key=reconcile.select_eventgrid_key(keys),
+        )
+        subscription = run_az_json(
+            [
+                "eventgrid",
+                "system-topic",
+                "event-subscription",
+                "show",
+                "--resource-group",
+                resource_group,
+                "--system-topic-name",
+                system_topic_name,
+                "--name",
+                subscription_name,
+                "--include-full-endpoint-url",
+            ]
+        )
+        actual_endpoint = find_first_value(subscription, "endpointUrl")
+        if actual_endpoint != expected_endpoint:
+            raise RuntimeError(
+                "Event Grid subscription endpoint does not match the current function hostname/key: "
+                f"expected {redact_endpoint(expected_endpoint)}, got {redact_endpoint(actual_endpoint)}"
+            )
 
     workspace = run_az_json(
         [
@@ -182,6 +184,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workspace-name", default=None, help="Optional Log Analytics workspace name"
     )
+    parser.add_argument(
+        "--skip-eventgrid-subscription",
+        action="store_true",
+        help="Skip Event Grid endpoint validation when checking only pre-reconcile prerequisites.",
+    )
     return parser.parse_args()
 
 
@@ -196,6 +203,7 @@ def main() -> None:
         function_name=args.function_name,
         expected_daily_cap_gb=args.expected_daily_cap_gb,
         workspace_name=args.workspace_name,
+        validate_eventgrid_subscription=not args.skip_eventgrid_subscription,
     )
     print("Infra gate validated successfully")
 

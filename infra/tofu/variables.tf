@@ -93,6 +93,11 @@ variable "log_daily_cap_gb" {
   description = "Log Analytics daily ingestion cap in GB. -1 for unlimited."
   type        = number
   default     = 1
+
+  validation {
+    condition     = var.log_daily_cap_gb > 0
+    error_message = "log_daily_cap_gb must stay greater than 0; unlimited ingestion is not allowed for Canopex release-safety environments."
+  }
 }
 
 variable "custom_domain" {

@@ -220,6 +220,13 @@ class TestLogAnalyticsCap:
         tf = VARIABLES_TF.read_text()
         assert "log_daily_cap_gb" in tf, "variables.tf must define log_daily_cap_gb variable"
 
+    def test_log_daily_cap_variable_rejects_unlimited_ingestion(self):
+        tf = VARIABLES_TF.read_text()
+        assert "var.log_daily_cap_gb > 0" in tf, (
+            "variables.tf must reject unlimited Log Analytics ingestion "
+            "for release-safety environments"
+        )
+
     def test_dev_daily_cap_is_tight(self):
         tfvars = DEV_TFVARS.read_text()
         match = re.search(r"log_daily_cap_gb\s*=\s*([0-9.]+)", tfvars)
@@ -382,6 +389,9 @@ class TestDeployWorkflowSettings:
             "deploy.yml must apply maximumInstanceCount via az CLI because "
             "body is ignore_changes in tofu"
         )
+        assert "set -euo pipefail" in deploy_yml, (
+            "deploy.yml shell blocks must fail explicitly on command errors or unset values"
+        )
 
     def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
         assert "tofu output -json function_app_cli_app_settings" in deploy_yml, (
@@ -426,6 +436,10 @@ class TestDeployWorkflowSettings:
             "deploy.yml must clear stale azapi state after manual teardown so tofu plan "
             "can recreate deleted resources"
         )
+        assert "grep '^azapi_'" in deploy_yml, (
+            "deploy.yml manual teardown path must discover azapi resources dynamically "
+            "instead of relying on a stale hardcoded list"
+        )
         assert "tofu state rm" in deploy_yml, (
             "deploy.yml manual teardown path must prune stale azapi resources "
             "from state before tofu plan"
@@ -441,6 +455,33 @@ class TestDeployWorkflowSettings:
         assert "validate_dev_infra_gate.py" in deploy_yml, (
             "deploy.yml must validate the infra gate after reconciliation "
             "so clean-slate redeploy failures stop the job"
+        )
+
+    def test_deploy_validates_prerequisites_before_reconcile(self, deploy_yml):
+        assert "--skip-eventgrid-subscription" in deploy_yml, (
+            "deploy.yml must validate health, readiness, and log cap before "
+            "publishing the Event Grid webhook for the new runtime"
+        )
+
+    def test_deploy_sources_log_daily_cap_from_tofu_output(self, deploy_yml):
+        assert "tofu output -raw log_daily_cap_gb" in deploy_yml, (
+            "deploy.yml must source the log daily cap from Terraform outputs "
+            "so infra validation checks the deployed source of truth"
+        )
+
+    def test_rollback_reconciles_event_grid_after_health_recovers(self, deploy_yml):
+        assert "Re-reconciling Event Grid subscription for rolled-back image" in deploy_yml, (
+            "deploy.yml rollback path must restore the Event Grid webhook "
+            "after the previous image recovers"
+        )
+
+
+class TestInfraOutputs:
+    def test_outputs_expose_log_daily_cap(self):
+        outputs_tf = (INFRA / "outputs.tf").read_text()
+        assert 'output "log_daily_cap_gb"' in outputs_tf, (
+            "outputs.tf must expose log_daily_cap_gb so workflow validation "
+            "reads the deployed source of truth"
         )
 
 
