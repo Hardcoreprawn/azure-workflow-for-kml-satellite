@@ -253,7 +253,8 @@ class TestHostLoggingCostControls:
     def test_durable_task_logs_are_warning_only(self, host_config):
         levels = host_config["logging"]["logLevel"]
         assert levels["Host.Triggers.DurableTask"] == "Warning", (
-            "DurableTask lease-renewal/info chatter must be suppressed to control Log Analytics cost"
+            "DurableTask lease-renewal/info chatter must be suppressed "
+            "to control Log Analytics cost"
         )
 
     def test_sampling_keeps_exceptions_unsampled(self, host_config):
@@ -386,17 +387,30 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_uses_dev_reset_helper(self, deploy_yml):
         assert "reset_dev_resource_group.py" in deploy_yml, (
-            "deploy.yml must reset app-managed dev resources without deleting shared bootstrap resources"
+            "deploy.yml must reset app-managed dev resources without "
+            "deleting shared bootstrap resources"
+        )
+
+    def test_deploy_drops_stale_azapi_state_after_dev_reset(self, deploy_yml):
+        assert "Drop stale azapi state after dev reset" in deploy_yml, (
+            "deploy.yml must clear stale azapi state after a manual dev "
+            "reset so tofu plan can recreate deleted resources"
+        )
+        assert "tofu state rm" in deploy_yml, (
+            "deploy.yml clean-slate path must prune stale azapi resources "
+            "from state before tofu plan"
         )
 
     def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
         assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
-            "deploy.yml must reconcile the Event Grid webhook after readiness so ingestion wiring is restored"
+            "deploy.yml must reconcile the Event Grid webhook after "
+            "readiness so ingestion wiring is restored"
         )
 
     def test_deploy_validates_infra_gate(self, deploy_yml):
         assert "validate_dev_infra_gate.py" in deploy_yml, (
-            "deploy.yml must validate the infra gate after reconciliation so clean-slate redeploy failures stop the job"
+            "deploy.yml must validate the infra gate after reconciliation "
+            "so clean-slate redeploy failures stop the job"
         )
 
     def test_appinsights_connection_string_output_exists(self):

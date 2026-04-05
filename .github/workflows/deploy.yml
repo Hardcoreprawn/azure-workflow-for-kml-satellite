@@ -205,6 +205,26 @@ jobs:
           echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
           exit 1
 
+      - name: Drop stale azapi state after dev reset
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.destroy_dev_first }}
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          STATE_LIST=$(tofu state list 2>/dev/null || true)
+          for address in \
+            azapi_resource.function_app \
+            azapi_resource.event_grid_system_topic \
+            azapi_resource_action.function_host_keys \
+            azapi_resource.event_grid_subscription; do
+            if printf '%s\n' "$STATE_LIST" | grep -Fx "$address" >/dev/null; then
+              tofu state rm "$address"
+            fi
+          done
+
       - name: Tofu Plan
         working-directory: infra/tofu
         env:
