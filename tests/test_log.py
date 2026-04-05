@@ -21,7 +21,15 @@ class TestLogPhase:
         msg = log_phase("ingestion", "parse_kml", feature_count=5)
         assert "phase=ingestion" in msg
         assert "step=parse_kml" in msg
-        assert "feature_count=5" in msg
+        # Extras must NOT appear in the clear-text msg (security: CodeQL #2722)
+        assert "feature_count" not in msg
+
+    def test_extras_in_custom_properties(self, caplog):
+        with caplog.at_level(logging.INFO, logger="treesight"):
+            log_phase("ingestion", "parse_kml", feature_count=5)
+        record = caplog.records[-1]
+        props = record.custom_properties
+        assert props["feature_count"] == 5
 
     def test_includes_instance_id(self):
         msg = log_phase("pipeline", "start", instance_id="abc-123")
@@ -121,7 +129,8 @@ class TestLogDuration:
         started = time.monotonic() - 0.150  # simulate 150ms ago
         with caplog.at_level(logging.INFO, logger="treesight"):
             msg = log_duration("enrichment", "ndvi", started)
-        assert "duration_ms=" in msg
+        # duration_ms is an extra — must NOT appear in clear-text msg
+        assert "duration_ms=" not in msg
         props = caplog.records[0].custom_properties  # type: ignore[attr-defined]
         assert props["duration_ms"] >= 100  # at least ~150ms
 

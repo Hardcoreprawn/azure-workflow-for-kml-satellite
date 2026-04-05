@@ -81,14 +81,15 @@ def log_phase(
     if cid:
         props["correlation_id"] = cid
     # Human-readable message for console / backward compat.
+    # Extra kwargs are deliberately excluded from the clear-text msg to
+    # avoid logging potentially sensitive data (CodeQL alert #2722).
+    # They remain available in structured custom_properties above.
     parts = [f"phase={phase} step={step}"]
     if instance_id:
         parts.append(f"instance={instance_id}")
-    for k, v in extra.items():
-        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
     if blob_name:
         parts.append(f"blob={blob_name}")
-    msg = " | ".join(parts)  # lgtm[py/clear-text-logging-sensitive-data]
+    msg = " | ".join(parts)
     logger.info(msg, extra={"custom_properties": props})
     return msg
 
