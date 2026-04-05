@@ -77,6 +77,52 @@ def subscription_exists(
     return completed.returncode == 0
 
 
+def build_subscription_command(
+    *,
+    action: str,
+    resource_group: str,
+    system_topic_name: str,
+    subscription_name: str,
+    endpoint: str,
+) -> list[str]:
+    """Build the Azure CLI command for creating or updating the webhook subscription."""
+    command = [
+        "az",
+        "eventgrid",
+        "system-topic",
+        "event-subscription",
+        action,
+        "--resource-group",
+        resource_group,
+        "--system-topic-name",
+        system_topic_name,
+        "--name",
+        subscription_name,
+        "--endpoint",
+        endpoint,
+        "--endpoint-type",
+        "webhook",
+        "--included-event-types",
+        DEFAULT_EVENT_TYPE,
+        "--subject-ends-with",
+        DEFAULT_SUBJECT_SUFFIX,
+    ]
+    if action == "create":
+        command.extend(
+            [
+                "--max-delivery-attempts",
+                "30",
+                "--event-ttl",
+                "1440",
+                "--max-events-per-batch",
+                "1",
+                "--preferred-batch-size-in-kilobytes",
+                "64",
+            ]
+        )
+    return command
+
+
 def reconcile_subscription(
     *,
     resource_group: str,
@@ -104,45 +150,19 @@ def reconcile_subscription(
         function_key=select_eventgrid_key(keys),
     )
 
-    common_args = [
-        "--resource-group",
-        resource_group,
-        "--system-topic-name",
-        system_topic_name,
-        "--name",
-        subscription_name,
-        "--endpoint",
-        endpoint,
-        "--endpoint-type",
-        "webhook",
-        "--included-event-types",
-        DEFAULT_EVENT_TYPE,
-        "--subject-ends-with",
-        DEFAULT_SUBJECT_SUFFIX,
-        "--max-delivery-attempts",
-        "30",
-        "--event-ttl",
-        "1440",
-        "--max-events-per-batch",
-        "1",
-        "--preferred-batch-size-in-kilobytes",
-        "64",
-    ]
-
     action = (
         "update"
         if subscription_exists(resource_group, system_topic_name, subscription_name)
         else "create"
     )
     subprocess.run(
-        [
-            "az",
-            "eventgrid",
-            "system-topic",
-            "event-subscription",
-            action,
-            *common_args,
-        ],
+        build_subscription_command(
+            action=action,
+            resource_group=resource_group,
+            system_topic_name=system_topic_name,
+            subscription_name=subscription_name,
+            endpoint=endpoint,
+        ),
         check=True,
     )
     return endpoint

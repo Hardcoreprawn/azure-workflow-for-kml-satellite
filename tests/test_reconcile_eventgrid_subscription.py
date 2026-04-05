@@ -32,3 +32,33 @@ def test_build_eventgrid_endpoint_url_encodes_key() -> None:
         "https://func-kmlsat-dev.example.com/runtime/webhooks/eventgrid"
         "?functionName=blob_trigger&code=abc%2B%2F%3D123"
     )
+
+
+def test_build_subscription_command_includes_create_only_delivery_flags() -> None:
+    command = reconcile.build_subscription_command(
+        action="create",
+        resource_group="rg-kmlsat-dev",
+        system_topic_name="evgt-kmlsat-dev",
+        subscription_name="evgs-kml-upload",
+        endpoint="https://example.invalid/runtime/webhooks/eventgrid?functionName=blob_trigger&code=test",
+    )
+
+    assert "--max-delivery-attempts" in command
+    assert "--event-ttl" in command
+    assert "--max-events-per-batch" in command
+    assert "--preferred-batch-size-in-kilobytes" in command
+
+
+def test_build_subscription_command_omits_create_only_delivery_flags_for_update() -> None:
+    command = reconcile.build_subscription_command(
+        action="update",
+        resource_group="rg-kmlsat-dev",
+        system_topic_name="evgt-kmlsat-dev",
+        subscription_name="evgs-kml-upload",
+        endpoint="https://example.invalid/runtime/webhooks/eventgrid?functionName=blob_trigger&code=test",
+    )
+
+    assert "--max-delivery-attempts" not in command
+    assert "--event-ttl" not in command
+    assert "--max-events-per-batch" not in command
+    assert "--preferred-batch-size-in-kilobytes" not in command
