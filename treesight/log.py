@@ -86,6 +86,8 @@ def log_phase(
         parts.append(f"instance={instance_id}")
     if blob_name:
         parts.append(f"blob={blob_name}")
+    for k, v in extra.items():
+        parts.append(f"{_sanitise(k)}={_sanitise(v)}")
     msg = " | ".join(parts)
     logger.info(msg, extra={"custom_properties": props})
     return msg
