@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-04
+Last updated: 2026-04-05
 
 ---
 
@@ -12,10 +12,19 @@ Last updated: 2026-04-04
 | Milestone | Summary |
 |-----------|---------|
 | **M1 — Deployable Product** | CI/CD, Azure deployment, App Insights, cost alerts, AI Foundry, KMZ support |
-| **M2 — Free Tier Launch** | Auth (Entra CIAM), onboarding, KML guide, file upload, terms/privacy, structured logging |
+| **M2 — Free Tier Launch** | Auth (Entra CIAM), onboarding, KML guide, file upload, terms/privacy, structured logging helpers |
 | **M3 — Core Analysis Value** | NDVI, weather overlay, AI summaries, change detection, multi-polygon KML, enrichment split, site review fixes |
 | **M4 — Revenue (12/13)** | Stripe billing, quota enforcement, pricing page, export (PDF/GeoJSON/CSV), EUDR mode, WorldCover, WDPA, circuit breaker |
 | **Stage 1 — Launch Readiness** | Cosmos state migration, billing gate, user dashboard, pipeline modularisation, SSO providers, branding due diligence |
+
+---
+
+## Recently Landed
+
+| PR | Summary | Why It Matters |
+|----|---------|----------------|
+| #394 | Scheduled monitoring + change alerts (#310) | First Stage 3 capability landed, but subsequent risky growth work should ship behind the Stage 2A rollout model rather than directly to the live site. |
+| #393 | Blob storage + replay store managed identity | Important runtime hardening for storage access and multi-instance token replay; useful foundation for a clean redeploy/rebuild check. |
 
 ---
 
@@ -23,8 +32,13 @@ Last updated: 2026-04-04
 
 | PR | Branch | Feature |
 |----|--------|---------|
-| #393 | `fix/blob-storage-managed-identity` | Blob storage managed identity fix |
-| #394 | `feature/scheduled-monitoring` | 3.1 — Scheduled monitoring + change alerts |
+| #413 | `fix/signed-in-pipeline-preview` | Require sign-in for pipeline submissions and clean preview UX |
+| #414 | `infra-gate-dev-redeploy` | Harden dev infra gate validation and rollback |
+| #415 | `fix/startup-json-logging` | Install startup JSON logging for Canopex app families |
+
+**Priority call:** finish work already close to merge, but do not start more broad-exposure Stage 3 or Stage 4 work until the release-safety stage below is substantially complete. For Canopex, production should validate and gradually expose the same built artifact, not be the first unrestricted place we discover whether it works.
+
+**Infra gate before Stage 2A execution:** the live estate is still a single `dev` environment. `canopex.hrdcrprwn.com` is bound to `stapp-kmlsat-dev-site`, the checked-in deploy workflow still applies `environments/dev.tfvars` only, and the live Event Grid system topic currently has no event subscription even though the upload pipeline depends on `blob_trigger`. Before Stage 2A.1 is considered underway, prove a clean-slate `dev` recreate from OpenTofu state, restore verified ingestion wiring, and make `prd` a real promotion target.
 
 ---
 
@@ -62,13 +76,32 @@ Handle bulk workloads (200+ AOIs). Build once, then ship product features on top
 
 ---
 
+## Stage 2A — Release Safety & Promotion
+
+Make production safe to promote into. Build once in CI, promote the same immutable artifact dev -> prod, verify it live, then expose features gradually.
+
+| Order | Issue | Title | Depends On | Notes |
+|-------|-------|-------|------------|-------|
+| 2A.1 | #401 | Separate dev and prod deployment flows while promoting one immutable artifact | — | Start by proving a clean-slate `dev` rebuild and explicit domain cutover path. Prod should promote the same built image/site bundle, not rebuild. |
+| 2A.2 | #404 | Install structured JSON logging at Azure Functions startup | — | Make App Insights evidence and rollout telemetry trustworthy. |
+| 2A.3 | #405 | Reduce Function App config drift between OpenTofu and az CLI patching | #401 | Clarify ownership of live runtime config before prod promotion becomes stricter. |
+| 2A.4 | #402 | Gate production deploys on security workflow results and blocking image scan policy | #401 | Production deploy should wait for required security checks and use explicit exception paths. |
+| 2A.5 | #406 | Reconcile README, runbook, and API contracts with live routes and auth behavior | #401 | Remove responder and integrator drift before rollout and smoke automation widen. |
+| 2A.6 | #403 | `production_rollout`: preview users, smoke gates, and automated promotion/demotion | #401, #402, #404, #405 | Implement [PRODUCTION_ROLLOUT_SPEC.md](PRODUCTION_ROLLOUT_SPEC.md) in phases. |
+
+**Exit criteria:** Dev/prod promotion path explicit. Deploy runs a real functional smoke after readiness. Preview-user rollout exists. Production deploy is security-gated. Docs/contracts match code. New risky features default to off and can be promoted gradually.
+
+---
+
 ## Stage 3 — Growth & Retention
 
 Features that make Canopex a habit, not a one-off tool.
 
+Do not open more Stage 3 work beyond what is already in flight until Stage 2A is materially complete. Growth features are safer to ship once rollout controls and post-deploy smoke exist.
+
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|
-| 3.1 | #310 | Scheduled monitoring + change alerts | #314 | Timer Trigger (6 h) → NDVI enrichment → threshold alerts via ACS email. Cosmos `monitors` container, Pro+ tier gated. |
+| 3.1 | #310 | Scheduled monitoring + change alerts | #314 | ✅ PR #394 merged. Timer Trigger (6 h) → NDVI enrichment → threshold alerts via ACS email. Cosmos `monitors` container, Pro+ tier gated. Keep subsequent risky Stage 3 features behind the rollout model from #403 rather than shipping them directly. |
 | 3.2 | #78 | Temporal catalogue in Cosmos DB | #314 | Per-AOI acquisition history, date range queries |
 | 3.3 | #79 | Catalogue API endpoints | #78 | `GET /api/catalogue` — paginated, filterable |
 | 3.4 | — | Shareable analysis links | #312 | Viral loop: "look at this deforestation" → new visitor |
@@ -78,6 +111,8 @@ Features that make Canopex a habit, not a one-off tool.
 | 3.8 | — | ALOS Forest/Non-Forest | — | PC `alos-fnf-mosaic`, 25 m SAR-based, annual |
 | 3.9 | — | GFW deforestation alerts | — | WRI GLAD + RADD alerts REST API |
 | 3.10 | #177 | H3-derived imagery/stat products | — | Optional H3 analytical layer alongside AOI outputs |
+| 3.11a | #400 | Pipeline run telemetry | #314 | Log per-run stats (AOI count, area, spread, enrichments, duration) to Cosmos. Start early so data accumulates. |
+| 3.11b | #399 | Pipeline ETA estimator | #400 | Regression model from historical runs → predict completion time from KML/KMZ profile. Show ETA at job submission. Needs ~100 runs before activation. |
 
 **Exit criteria:** Users on monitoring subs. Catalogue browsable. 3+ enrichment data sources added.
 
@@ -90,7 +125,7 @@ Unlock Team tier (£149/mo) and programmatic access. Higher LTV, lower churn.
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|
 | 4.1 | #313 | Team workspaces + tenant segregation | #314, #312 | Shared analyses, org billing, CIAM group claims |
-| 4.2 | — | API documentation (interactive) | — | OpenAPI spec exists; needs dev portal + onboarding |
+| 4.2 | — | API documentation (interactive) | #406 | OpenAPI and reference docs must be reconciled before building a developer portal around them |
 | 4.3 | — | Webhook / Slack notifications | #310 | Enterprise integration pattern |
 | 4.4 | — | Long-term historical baselines (Landsat 40-yr) | — | USGS/EE, 1985–present |
 | 4.5 | — | Regional climate & land-use history | — | NOAA/ECMWF/MODIS historical context |
