@@ -373,10 +373,11 @@ All endpoints return JSON unless otherwise specified.
 **Trigger behaviour:**
 
 1. Receives Event Grid BlobCreated event for `*-input` containers
-2. Validates: blob name non-empty, `.kml` extension, container ends with `-input`, 0 < size ≤ 10 MiB
-3. Builds canonical orchestrator input (BlobEvent → OrchestratorInput dict)
-4. Starts durable orchestration with `instance_id = correlation_id`
-5. Returns orchestration management URLs
+2. Ignores direct submission prefixes (`analysis/`, `demo/`) because `/api/analysis/submit` already starts those orchestrations synchronously
+3. Validates: blob name non-empty, `.kml` extension, container ends with `-input`, 0 < size ≤ 10 MiB
+4. Builds canonical orchestrator input (BlobEvent → OrchestratorInput dict)
+5. Starts durable orchestration with `instance_id = correlation_id`
+6. Returns orchestration management URLs
 
 ### 4.3 Orchestration Status
 
@@ -449,38 +450,37 @@ All endpoints return JSON unless otherwise specified.
 
 **Response:** 200 with `{"status": "received", "submission_id": "..."}`
 
-### 4.6 Demo Submission
+### 4.6 Unified Submission
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/api/demo-submit` | anonymous | Accepts email + KML for demo processing |
-| OPTIONS | `/api/demo-submit` | anonymous | Returns 204 (CORS preflight) |
+| POST | `/api/analysis/submit` | bearer | Accepts KML content and queues a signed-in analysis run |
+| OPTIONS | `/api/analysis/submit` | anonymous | Returns 204 (CORS preflight) |
 
 **Request body:**
 
 ```json
 {
-    "email": "string (required, validated)",
     "kml_content": "string (required, non-empty KML text)"
 }
 ```
 
 **Behaviour:**
 
-1. Validates email format and KML content presence
+1. Validates KML content presence
 2. Generates `submission_id` (UUID v4)
-3. Stores KML to: `kml-input/demo/{submission_id}.kml`
-4. Stores submission record to: `pipeline-payloads/demo-submissions/{submission_id}.json`
-5. Returns 200 with `{"status": "submitted", "submission_id": "..."}`
+3. Requires a valid bearer token before any pipeline work begins
+4. Stores KML to `kml-input/analysis/{submission_id}.kml`, applies accounting/quota, and persists analysis history metadata
+5. Applies low-cost submission controls for the signed-in free tier (`seasonal` cadence, `max_history_years = 2`)
+6. Starts the durable orchestration immediately and returns 202 with `{"instance_id": "...", "submission_prefix": "analysis"}`
 
 **Submission record shape:**
 
 ```json
 {
     "submission_id": "string",
-    "email": "string",
     "submitted_at": "ISO 8601",
-    "kml_blob_name": "demo/{submission_id}.kml",
+    "kml_blob_name": "analysis/{submission_id}.kml",
     "kml_size_bytes": 0,
     "status": "submitted"
 }
@@ -827,11 +827,29 @@ When a download fails, the error dict has 13 fields:
 
 ### 10.1 Structured Logging
 
-All log messages use structured format:
+Deployed/runtime-hosted Canopex application logs use a single-line JSON envelope.
+The startup path installs JSON logging for the `treesight`, `blueprints`, and
+`function_app` logger families so startup warnings and pipeline logs share the
+same structure in App Insights.
 
-```text
-phase={phase} step={step} | instance={id} | {key}={value} | blob={name}
+```json
+{
+    "timestamp": "2026-04-05 13:20:47,123",
+    "level": "INFO",
+    "logger": "treesight.pipeline.fulfilment",
+    "message": "phase=fulfilment step=download_complete | instance=abc-123 | blob=demo/file.kml",
+    "correlation_id": "abc-123",
+    "properties": {
+        "phase": "fulfilment",
+        "step": "download_complete",
+        "instance_id": "abc-123",
+        "blob_name": "demo/file.kml"
+    }
+}
 ```
+
+Local development may still surface the helper-generated human-readable message
+format when the startup installer is not enabled.
 
 **Phase-level logging:**
 
@@ -873,7 +891,7 @@ Every pipeline run carries a `correlation_id` (sourced from Event Grid event ID)
 | Health/readiness | Anonymous |
 | Contract | Anonymous |
 | Contact form | Anonymous |
-| Demo submit | Anonymous |
+| Pipeline submit | Bearer |
 | Orchestrator diagnostics | Anonymous |
 | Demo valet token minting | Function key |
 | Demo artifact download | Valet token (query parameter) |
@@ -917,14 +935,14 @@ Every pipeline run carries a `correlation_id` (sourced from Event Grid event ID)
 
 1. **Hero** — status badge (polls `/api/readiness`), CTA buttons
 2. **Problem/Solution** — 4-card grid + 6-feature capability grid
-3. **Live Demo** — email + KML textarea form → `/api/demo-submit`; timelapse visualiser (Leaflet.js map with animated AOI overlays)
+3. **Free Plan Preview** — signed-in workspace preview, KML guidance, and sample locations before authentication; real pipeline runs still require sign-in
 4. **Timeline** — 6-step workflow visualisation
 5. **FAQ** — 8 Q&A pairs
 6. **Early Access** — org + use case + email → `/api/contact-form`
 
 ### 12.3 API Integration
 
-- **Contract enforcement**: On load, fetches `/api/contract` and checks `api_version == "2026-03-15.1"`. Disables demo submit button on mismatch.
+- **Contract enforcement**: On load, fetches `/api/contract` and checks `api_version == "2026-03-15.1"`. Keeps preview messaging aligned with the live API contract.
 - **Fallback origin**: If relative `/api/*` fails, falls back to hardcoded Function App URL (`DEFAULT_FALLBACK_ORIGIN`)
 - **Status badge**: Polls `/api/readiness`, shows "Online"/"Offline" badge with animation
 

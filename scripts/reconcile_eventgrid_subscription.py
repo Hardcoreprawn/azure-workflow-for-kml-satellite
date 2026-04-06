@@ -6,7 +6,7 @@ import argparse
 import json
 import subprocess
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import quote
 
 DEFAULT_FUNCTION_NAME = "blob_trigger"
 DEFAULT_SUBSCRIPTION_NAME = "evgs-kml-upload"
@@ -32,8 +32,11 @@ def select_eventgrid_key(payload: dict[str, Any]) -> str:
 
 def build_eventgrid_endpoint(hostname: str, function_name: str, function_key: str) -> str:
     """Build the runtime webhook endpoint for Event Grid delivery."""
-    query = urlencode({"functionName": function_name, "code": function_key})
-    return f"https://{hostname}/runtime/webhooks/eventgrid?{query}"
+    encoded_key = quote(function_key, safe="")
+    return (
+        f"https://{hostname}/runtime/webhooks/eventgrid"
+        f"?functionName={function_name}&code={encoded_key}"
+    )
 
 
 def run_az_json(args: list[str]) -> dict[str, Any]:
@@ -117,7 +120,6 @@ def build_subscription_command(
                 "64",
             ]
         )
-    command.extend(["--only-show-errors", "-o", "none"])
     return command
 
 

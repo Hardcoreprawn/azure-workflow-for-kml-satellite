@@ -39,7 +39,7 @@ def _make_request(
 
 
 class TestSubmissionCORSPreflight:
-    """Both submission endpoints must respond to OPTIONS preflight requests.
+    """The submission endpoint must respond to OPTIONS preflight requests.
 
     The ``@bp.durable_client_input`` decorator makes it hard to call the
     endpoint directly in tests, so we verify:
@@ -71,13 +71,12 @@ class TestSubmissionCORSPreflight:
             "analysis/submit route must accept OPTIONS for CORS preflight"
         )
 
-    def test_demo_process_has_options_guard(self):
+    def test_submit_route_uses_cors_preflight(self):
         import inspect
 
         import blueprints.pipeline.submission as mod
 
         src = inspect.getsource(mod)
-        # Both routes must call cors_preflight on OPTIONS
         assert "cors_preflight" in src, "submission endpoints must call cors_preflight"
 
 
@@ -187,27 +186,6 @@ class TestAnalysisSubmitCORS:
         assert "Access-Control-Allow-Origin" in resp.headers, (
             "CORS headers missing on 400 missing kml_content"
         )
-
-
-class TestDemoSubmitCORSParity:
-    """Demo endpoint already has CORS — verify it stays that way (regression guard)."""
-
-    @patch("blueprints.pipeline.submission.demo_limiter")
-    @patch("blueprints.pipeline.submission.get_client_ip", return_value="127.0.0.1")
-    @patch("treesight.storage.client.BlobStorageClient")
-    @pytest.mark.asyncio
-    async def test_demo_success_has_cors_headers(self, mock_storage_cls, mock_get_ip, mock_limiter):
-        from blueprints.pipeline.submission import _submit_demo_request
-
-        mock_limiter.is_allowed.return_value = True
-
-        client = AsyncMock()
-        req = _make_request({"kml_content": "<kml>test</kml>"}, auth_header=None)
-
-        resp = await _submit_demo_request(req, client)
-
-        assert resp.status_code == 202
-        assert "Access-Control-Allow-Origin" in resp.headers
 
 
 class TestErrorResponseCORS:

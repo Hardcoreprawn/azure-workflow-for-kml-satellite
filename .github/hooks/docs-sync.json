@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "python3 .github/hooks/scripts/docs_sync_hook.py",
+        "timeout": 15
+      }
+    ]
+  }
+}

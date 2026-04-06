@@ -8,6 +8,8 @@ Issue: #18
 2. Deploy infrastructure and app via GitHub Actions deploy workflow.
 3. Verify Function host readiness using /api/health.
 4. Verify Event Grid subscription reconciliation succeeds.
+5. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
+6. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
 
 Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
@@ -76,11 +78,21 @@ Primary telemetry:
 - Durable orchestration status endpoint
 - Azure Monitor alerts for failed requests and latency
 
+Expected Canopex application log shape in App Insights traces:
+
+- Single-line JSON for the `treesight`, `blueprints`, and `function_app` logger families
+- Stable top-level keys: `timestamp`, `level`, `logger`, `message`
+- Optional correlation keys: `correlation_id`, `properties`, `exception`
+- Pipeline helper fields appear under `properties`, including values such as `phase`, `step`, `instance_id`, and `blob_name`
+
 Operational checks:
 
 1. Query failed orchestration runs by instance_id.
 2. Correlate instance_id with activity logs.
 3. Verify artifact presence in output blob container.
+
+If startup evidence is missing, query for `logger=function_app` first to confirm
+the startup logging installer ran before config validation and replay-store setup.
 
 ## Troubleshoot Common Failures
 

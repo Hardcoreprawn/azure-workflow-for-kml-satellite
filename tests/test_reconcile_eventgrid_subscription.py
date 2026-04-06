@@ -21,16 +21,16 @@ def test_select_eventgrid_key_falls_back_to_master_key() -> None:
     assert reconcile.select_eventgrid_key(payload) == "master"
 
 
-def test_build_eventgrid_endpoint_url_encodes_query_values() -> None:
+def test_build_eventgrid_endpoint_url_encodes_key() -> None:
     endpoint = reconcile.build_eventgrid_endpoint(
         hostname="func-kmlsat-dev.example.com",
-        function_name="blob trigger/v1",
+        function_name="blob_trigger",
         function_key="abc+/=123",
     )
 
     assert endpoint == (
         "https://func-kmlsat-dev.example.com/runtime/webhooks/eventgrid"
-        "?functionName=blob+trigger%2Fv1&code=abc%2B%2F%3D123"
+        "?functionName=blob_trigger&code=abc%2B%2F%3D123"
     )
 
 
@@ -47,8 +47,6 @@ def test_build_subscription_command_includes_create_only_delivery_flags() -> Non
     assert "--event-ttl" in command
     assert "--max-events-per-batch" in command
     assert "--preferred-batch-size-in-kilobytes" in command
-    assert "--only-show-errors" in command
-    assert command[-2:] == ["-o", "none"]
 
 
 def test_build_subscription_command_omits_create_only_delivery_flags_for_update() -> None:
@@ -64,5 +62,3 @@ def test_build_subscription_command_omits_create_only_delivery_flags_for_update(
     assert "--event-ttl" not in command
     assert "--max-events-per-batch" not in command
     assert "--preferred-batch-size-in-kilobytes" not in command
-    assert "--only-show-errors" in command
-    assert command[-2:] == ["-o", "none"]

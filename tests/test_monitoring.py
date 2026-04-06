@@ -399,17 +399,17 @@ class TestAlertSending:
 
 class TestMonitoringEndpoints:
     def test_list_monitors_empty(self, _mock_cosmos, _mock_auth):
-        from blueprints.monitoring import list_monitors_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         req = make_test_request("/api/monitoring", method="GET")
-        resp = list_monitors_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["count"] == 0
         assert data["monitors"] == []
 
     def test_create_monitor_success(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         body = {
             "aoi_name": "Test Forest",
@@ -417,7 +417,7 @@ class TestMonitoringEndpoints:
             "cadence_days": 30,
         }
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 201
         data = json.loads(resp.get_body())
         assert data["aoi_name"] == "Test Forest"
@@ -425,23 +425,23 @@ class TestMonitoringEndpoints:
         assert data["enabled"] is True
 
     def test_create_monitor_no_aoi_name(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         body = {"aoi_geometry": _SAMPLE_GEOMETRY}
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_no_geometry(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         body = {"aoi_name": "Test"}
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         body = {
             "aoi_name": "Test",
@@ -449,11 +449,11 @@ class TestMonitoringEndpoints:
             "cadence_days": 0,
         }
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_free_tier_rejected(self, _mock_cosmos, _mock_auth):
-        from blueprints.monitoring import create_monitor_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         with patch(
             "blueprints.monitoring.get_effective_subscription",
@@ -464,11 +464,11 @@ class TestMonitoringEndpoints:
                 "aoi_geometry": _SAMPLE_GEOMETRY,
             }
             req = make_test_request("/api/monitoring", method="POST", body=body)
-            resp = create_monitor_endpoint(req)
+            resp = monitoring_endpoint(req)
             assert resp.status_code == 403
 
     def test_get_monitor_detail(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint, monitor_detail_endpoint
+        from blueprints.monitoring import monitor_detail_endpoint, monitoring_endpoint
 
         # Create first
         body = {
@@ -476,7 +476,7 @@ class TestMonitoringEndpoints:
             "aoi_geometry": _SAMPLE_GEOMETRY,
         }
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         data = json.loads(resp.get_body())
         monitor_id = data["id"]
 
@@ -498,12 +498,12 @@ class TestMonitoringEndpoints:
         assert detail["aoi_name"] == "Detail Test"
 
     def test_patch_monitor(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint, monitor_detail_endpoint
+        from blueprints.monitoring import monitor_detail_endpoint, monitoring_endpoint
 
         # Create
         body = {"aoi_name": "Patch Test", "aoi_geometry": _SAMPLE_GEOMETRY}
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         data = json.loads(resp.get_body())
         monitor_id = data["id"]
 
@@ -528,12 +528,12 @@ class TestMonitoringEndpoints:
         assert updated["enabled"] is False
 
     def test_delete_monitor(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
-        from blueprints.monitoring import create_monitor_endpoint, monitor_detail_endpoint
+        from blueprints.monitoring import monitor_detail_endpoint, monitoring_endpoint
 
         # Create
         body = {"aoi_name": "Delete Test", "aoi_geometry": _SAMPLE_GEOMETRY}
         req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = create_monitor_endpoint(req)
+        resp = monitoring_endpoint(req)
         data = json.loads(resp.get_body())
         monitor_id = data["id"]
 
@@ -639,8 +639,8 @@ class TestMonitoringScheduler:
             _process_monitor(m)
 
     def test_cors_preflight_monitoring(self, _mock_auth):
-        from blueprints.monitoring import list_monitors_endpoint
+        from blueprints.monitoring import monitoring_endpoint
 
         req = make_test_request("/api/monitoring", method="OPTIONS")
-        resp = list_monitors_endpoint(req)
+        resp = monitoring_endpoint(req)
         assert resp.status_code == 204

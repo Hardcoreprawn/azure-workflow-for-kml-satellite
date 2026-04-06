@@ -138,15 +138,21 @@ paths:
                     example: v1
                 required: [api_version]
 
-  # ── Demo ──────────────────────────────────────────────────
-  /demo-submit:
+  # ── Submission ────────────────────────────────────────────
+  /analysis/submit:
     post:
-      operationId: demoSubmit
-      summary: Submit a KML for demo pipeline processing
+      operationId: submitAnalysis
+      summary: Submit a KML for signed-in analysis processing
       description: |
         Accepts raw KML text, uploads it to blob storage and triggers
-        the analysis pipeline.  Consumes one quota unit per call.
-      tags: [demo]
+        the analysis pipeline.
+
+        Every pipeline submission requires a valid Authorization header.
+        Signed-in users participate in quota/history accounting, and free-tier
+        accounts are routed through the cheaper seasonal two-year pipeline.
+      tags: [analysis]
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -157,6 +163,9 @@ paths:
                 kml_content:
                   type: string
                   description: Raw KML/KMZ XML content
+                submission_context:
+                  type: object
+                  description: Optional signed-in submission metadata for analysis history
               required: [kml_content]
       responses:
         "202":
@@ -166,16 +175,13 @@ paths:
               schema:
                 type: object
                 properties:
-                  submission_id:
-                    type: string
-                    description: Unique identifier for this submission
                   instance_id:
                     type: string
                     description: Durable Functions orchestration instance ID
-                  status:
+                  submission_prefix:
                     type: string
-                    example: accepted
-                required: [submission_id, instance_id, status]
+                    example: analysis
+                required: [instance_id, submission_prefix]
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -184,46 +190,12 @@ paths:
           $ref: "#/components/responses/QuotaExhausted"
         "429":
           $ref: "#/components/responses/TooManyRequests"
-
-  /demo-process:
-    post:
-      operationId: demoProcess
-      summary: Start a demo pipeline run
-      description: |
-        Triggers a pipeline run for a previously uploaded KML.
-        Consumes one quota unit.
-      tags: [demo]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                blob_name:
-                  type: string
-                  description: Blob name of the uploaded KML
-              required: [blob_name]
-      responses:
-        "202":
-          description: Pipeline started
+        "502":
+          description: Upstream storage or orchestration startup is temporarily unavailable
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  instance_id:
-                    type: string
-                  status:
-                    type: string
-                    example: accepted
-                required: [instance_id, status]
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/QuotaExhausted"
+                $ref: "#/components/schemas/Error"
 
   /demo-valet-tokens:
     post:
@@ -317,6 +289,7 @@ paths:
         Returns the current status of a Durable Functions orchestration,
         including progress updates and final output when complete.
       tags: [pipeline]
+      security: []
       parameters:
         - $ref: "#/components/parameters/instanceId"
       responses:
@@ -337,8 +310,6 @@ paths:
                     description: Final pipeline output (present when Completed)
                     $ref: "#/components/schemas/PipelineSummary"
                 required: [runtimeStatus]
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           description: Instance not found
           content:
