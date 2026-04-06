@@ -1,10 +1,9 @@
-"""Submission HTTP endpoints: demo and authenticated analysis requests.
+"""Submission HTTP endpoints for signed-in analysis requests.
 
 NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
-import hashlib
 import json
 import logging
 import uuid
@@ -16,11 +15,13 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.security.billing import get_effective_subscription, plan_capabilities
 from treesight.security.quota import consume_quota, release_quota
-from treesight.security.rate_limit import demo_limiter, get_client_ip
 
 from . import bp
 from .history import _extract_submission_context, _persist_submission_record
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_release_quota(user_id: str) -> None:
@@ -28,19 +29,42 @@ def _safe_release_quota(user_id: str) -> None:
     try:
         release_quota(user_id)
     except Exception:
-        logging.exception("Failed to release quota for user=%s", user_id)
+        logger.exception("Failed to release quota for user=%s", user_id)
 
 
-@bp.route(route="demo-process", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-@bp.durable_client_input(client_name="client")
-async def demo_process(
-    req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
-) -> func.HttpResponse:
-    """POST /api/demo-process — anonymous demo submission with tier limits."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-    return await _submit_demo_request(req, client)
+def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
+    """Return orchestration input overrides for the signed-in user's tier."""
+    try:
+        subscription = get_effective_subscription(user_id)
+        plan = plan_capabilities(subscription.get("tier"))
+    except Exception:
+        logger.exception(
+            "Billing lookup unavailable for user=%s — defaulting to free-tier controls",
+            user_id,
+        )
+        plan = plan_capabilities("free")
+
+    tier = plan.get("tier", "free")
+    overrides: dict[str, Any] = {"tier": tier}
+    if tier in {"free", "demo"}:
+        overrides["cadence"] = plan.get("temporal_cadence", "seasonal")
+        max_history_years = plan.get("max_history_years")
+        if max_history_years is not None:
+            overrides["max_history_years"] = max_history_years
+    return overrides
+
+
+def _validated_kml_bytes(req: func.HttpRequest, body: Any) -> bytes | func.HttpResponse:
+    """Return validated KML bytes or an error response."""
+    kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
+    if not isinstance(kml_content, str) or not kml_content.strip():
+        return error_response(400, "kml_content is required", req=req)
+
+    kml_bytes = kml_content.encode("utf-8")
+    if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
+        return error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", req=req)
+
+    return kml_bytes
 
 
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -49,52 +73,19 @@ async def analysis_submit(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
-    """POST /api/analysis/submit — authenticated analysis submission."""
+    """POST /api/analysis/submit — signed-in KML submission entry point."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
-    return await _submit_analysis_request(req, client, blob_prefix="analysis")
-
-
-async def _submit_demo_request(
-    req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
-) -> func.HttpResponse:
-    """Validate, persist, and enqueue an anonymous demo KML submission."""
-    client_ip = get_client_ip(req)
-
-    if not demo_limiter.is_allowed(client_ip):
-        return error_response(429, "Demo rate limit exceeded — try again later", req=req)
-
-    try:
-        body = req.get_json()
-    except ValueError:
-        return error_response(400, "Invalid JSON body", req=req)
-
-    ip_hash = hashlib.sha256(client_ip.encode()).hexdigest()[:12]
-    demo_user_id = f"demo:{ip_hash}"
-
-    return await _submit_kml(
-        req,
-        client,
-        body,
-        blob_prefix="demo",
-        extra_input={
-            "cadence": "seasonal",
-            "max_history_years": 2,
-            "user_id": demo_user_id,
-            "tier": "demo",
-        },
-        log_tag=f"Demo process started user={demo_user_id}",
-    )
+    return await _submit_analysis_request(req, client)
 
 
 async def _submit_analysis_request(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
     *,
-    blob_prefix: str,
+    blob_prefix: str = "analysis",
 ) -> func.HttpResponse:
-    """Validate, persist, and enqueue a KML analysis submission."""
+    """Validate, persist, and enqueue a signed-in KML analysis submission."""
     try:
         _claims, user_id = check_auth(req)
     except ValueError as exc:
@@ -111,7 +102,7 @@ async def _submit_analysis_request(
         # Quota genuinely exhausted — hard block.
         return error_response(403, str(exc), req=req)
     except Exception:
-        logging.exception("Quota storage unavailable for user=%s — allowing submission", user_id)
+        logger.exception("Quota storage unavailable for user=%s — allowing submission", user_id)
 
     try:
         body = req.get_json()
@@ -123,13 +114,18 @@ async def _submit_analysis_request(
     submission_context = _extract_submission_context(body)
 
     effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
+    plan_overrides = _submission_plan_overrides(user_id)
 
     resp = await _submit_kml(
         req,
         client,
         body,
         blob_prefix=blob_prefix,
-        extra_input={"provider_name": effective_provider, "user_id": user_id},
+        extra_input={
+            "provider_name": effective_provider,
+            "user_id": user_id,
+            **plan_overrides,
+        },
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
@@ -173,13 +169,9 @@ async def _submit_kml(
     log_tag: str = "",
 ) -> func.HttpResponse:
     """Shared KML validation, upload, and orchestrator start."""
-    kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
-    if not isinstance(kml_content, str) or not kml_content.strip():
-        return error_response(400, "kml_content is required", req=req)
-
-    kml_bytes = kml_content.encode("utf-8")
-    if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
-        return error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", req=req)
+    kml_bytes = _validated_kml_bytes(req, body)
+    if isinstance(kml_bytes, func.HttpResponse):
+        return kml_bytes
 
     submission_id = str(uuid.uuid4())
     safe_prefix = blob_prefix.strip("/") or "analysis"
@@ -196,7 +188,7 @@ async def _submit_kml(
             content_type="application/vnd.google-earth.kml+xml",
         )
     except Exception:
-        logging.exception("KML upload failed for %s", kml_blob_name)
+        logger.exception("KML upload failed for %s", kml_blob_name)
         return error_response(
             502,
             "Storage service temporarily unavailable — please retry in a moment.",
@@ -224,14 +216,14 @@ async def _submit_kml(
             client_input=orchestrator_input,
         )
     except Exception:
-        logging.exception("Orchestrator start failed for %s", submission_id)
+        logger.exception("Orchestrator start failed for %s", submission_id)
         return error_response(
             502,
             "Pipeline service temporarily unavailable — please retry in a moment.",
             req=req,
         )
 
-    logging.info("%s instance=%s", log_tag, submission_id)
+    logger.info("%s instance=%s", log_tag, submission_id)
 
     return func.HttpResponse(
         json.dumps({"instance_id": submission_id, "submission_prefix": safe_prefix}),

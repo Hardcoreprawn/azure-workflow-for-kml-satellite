@@ -14,3 +14,7 @@ MD036: false
 # Allow duplicate headings in different sections
 MD024:
   siblings_only: true
+
+# Agent & prompt files use `name:` in YAML front matter instead of `title:`
+MD041:
+  front_matter_title: "^\\s*(title|name)\\s*[:=]"

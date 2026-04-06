@@ -6,7 +6,6 @@ import argparse
 import json
 import urllib.request
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 try:
     from scripts import reconcile_eventgrid_subscription as reconcile
@@ -45,19 +44,6 @@ def fetch_json(url: str) -> dict[str, Any]:
         if response.status != 200:
             raise RuntimeError(f"Expected HTTP 200 from {url}, got {response.status}")
         return json.load(response)
-
-
-def redact_endpoint(endpoint: str | None) -> str:
-    """Redact the Event Grid function key in an endpoint URL for safe diagnostics."""
-    if not endpoint:
-        return "<missing>"
-
-    parts = urlsplit(endpoint)
-    query_items = []
-    for key, value in parse_qsl(parts.query, keep_blank_values=True):
-        query_items.append((key, "***REDACTED***" if key == "code" else value))
-
-    return urlunsplit(parts._replace(query=urlencode(query_items)))
 
 
 def resolve_workspace_name(resource_group: str, workspace_name: str | None) -> str:
@@ -130,9 +116,15 @@ def validate_gate(
     )
     actual_endpoint = find_first_value(subscription, "endpointUrl")
     if actual_endpoint != expected_endpoint:
+        # Redact the function key (code= query param) to avoid leaking
+        # secrets while still providing useful diagnostic detail.
+        import re
+
+        redact = re.compile(r"code=[^&]+")
         raise RuntimeError(
-            "Event Grid subscription endpoint does not match the current function hostname/key: "
-            f"expected {redact_endpoint(expected_endpoint)}, got {redact_endpoint(actual_endpoint)}"
+            "Event Grid subscription endpoint mismatch:\n"
+            f"  expected: {redact.sub('code=***', expected_endpoint)}\n"
+            f"  actual:   {redact.sub('code=***', actual_endpoint or '<missing>')}"
         )
 
     workspace = run_az_json(

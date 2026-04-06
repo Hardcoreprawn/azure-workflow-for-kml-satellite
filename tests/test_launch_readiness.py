@@ -5,7 +5,7 @@ accidentally removed or misconfigured.  They cover:
 
 1. Container Apps scaling limits (maxReplicas)
 2. App Insights browser analytics on all pages
-3. Rate limiting on demo-process endpoint
+3. Auth enforcement on pipeline submission endpoint
 4. REQUIRE_AUTH wired into production app settings
 5. Log Analytics daily ingestion cap
 6. detect-secrets in CI security workflow
@@ -135,43 +135,37 @@ class TestBrowserAnalytics:
 
 
 # ---------------------------------------------------------------------------
-# 3. Rate limiter on demo-process
+# 3. Submission auth enforcement
 # ---------------------------------------------------------------------------
 
 
-class TestDemoProcessRateLimiter:
-    """Ensure the demo-process endpoint has rate limiting to prevent abuse."""
+class TestSubmissionAuthRequirement:
+    """Ensure pipeline execution cannot proceed anonymously."""
 
-    def test_demo_process_imports_limiter(self):
+    def test_submission_imports_auth_check(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
-        assert "demo_limiter" in src, (
-            "submission.py must import demo_limiter to rate-limit demo-process"
+        assert "check_auth" in src, (
+            "submission.py must import check_auth so pipeline submission requires sign-in"
         )
 
-    def test_demo_process_calls_rate_limiter(self):
+    def test_analysis_submit_routes_to_signed_in_handler(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
         func_match = re.search(
-            r"def _submit_demo_request\(.*?\n(.*?)(?=\ndef |\Z)",
+            r"def analysis_submit\(.*?\n(.*?)(?=\ndef |\Z)",
             src,
             re.DOTALL,
         )
-        assert func_match, "_submit_demo_request function not found"
+        assert func_match, "analysis_submit function not found"
         body = func_match.group(1)
-        assert "demo_limiter.is_allowed" in body, (
-            "_submit_demo_request must call demo_limiter.is_allowed() before processing"
+        assert "_submit_analysis_request" in body, (
+            "analysis_submit must delegate to the signed-in submission handler"
         )
 
-    def test_rate_limit_returns_429(self):
-        """Rate-limited requests must get a 429 response."""
+    def test_no_anonymous_submit_handler_remains(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
-        func_match = re.search(
-            r"def _submit_demo_request\(.*?\n(.*?)(?=\ndef |\Z)",
-            src,
-            re.DOTALL,
+        assert "_submit_demo_request" not in src, (
+            "submission.py must not keep an anonymous pipeline submission path"
         )
-        assert func_match
-        body = func_match.group(1)
-        assert "429" in body, "_submit_demo_request must return HTTP 429 when rate limited"
 
 
 # ---------------------------------------------------------------------------

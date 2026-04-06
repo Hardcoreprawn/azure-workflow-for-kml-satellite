@@ -14,6 +14,8 @@ import re
 import time
 from typing import Any
 
+APP_LOGGER_NAMES = ("treesight", "blueprints", "function_app")
+
 # Correlation ID propagated through async call chains.
 correlation_id: contextvars.ContextVar[str] = contextvars.ContextVar("correlation_id", default="")
 
@@ -50,14 +52,23 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(*, level: int = logging.INFO) -> None:
-    """Install the JSON formatter on the root ``treesight`` logger."""
+def _install_json_handler(logger_name: str, *, level: int) -> None:
+    logger = logging.getLogger(logger_name)
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
-    root = logging.getLogger("treesight")
-    root.handlers.clear()
-    root.addHandler(handler)
-    root.setLevel(level)
+    logger.addHandler(handler)
+    logger.setLevel(level)
+    logger.propagate = False
+
+
+def configure_logging(*, level: int = logging.INFO) -> None:
+    """Install the JSON formatter on Canopex application logger families."""
+    for logger_name in APP_LOGGER_NAMES:
+        _install_json_handler(logger_name, level=level)
 
 
 def log_phase(
