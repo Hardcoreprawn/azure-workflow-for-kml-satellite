@@ -139,8 +139,8 @@ variable "ciam_client_id" {
 
 variable "enable_stripe" {
   description = "Enable Stripe billing app settings and stable Key Vault secret references."
-  type        = string
-  default     = ""
+  type        = bool
+  default     = false
 }
 
 # --- Email notifications (Azure Communication Services) ---

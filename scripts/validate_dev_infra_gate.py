@@ -116,8 +116,15 @@ def validate_gate(
     )
     actual_endpoint = find_first_value(subscription, "endpointUrl")
     if actual_endpoint != expected_endpoint:
+        # Redact the function key (code= query param) to avoid leaking
+        # secrets while still providing useful diagnostic detail.
+        import re
+
+        redact = re.compile(r"code=[^&]+")
         raise RuntimeError(
-            "Event Grid subscription endpoint does not match the current function hostname/key"
+            "Event Grid subscription endpoint mismatch:\n"
+            f"  expected: {redact.sub('code=***', expected_endpoint)}\n"
+            f"  actual:   {redact.sub('code=***', actual_endpoint or '<missing>')}"
         )
 
     workspace = run_az_json(

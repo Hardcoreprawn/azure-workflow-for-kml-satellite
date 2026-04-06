@@ -120,6 +120,8 @@ def build_subscription_command(
                 "64",
             ]
         )
+    # Suppress CLI output to avoid leaking the function key in --endpoint
+    command.extend(["-o", "none", "--only-show-errors"])
     return command
 
 

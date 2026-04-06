@@ -111,12 +111,6 @@ async def _submit_analysis_request(
             _safe_release_quota(user_id)
         return error_response(400, "Invalid JSON body", req=req)
 
-    kml_bytes = _validated_kml_bytes(req, body)
-    if isinstance(kml_bytes, func.HttpResponse):
-        if quota_consumed:
-            _safe_release_quota(user_id)
-        return kml_bytes
-
     submission_context = _extract_submission_context(body)
 
     effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
