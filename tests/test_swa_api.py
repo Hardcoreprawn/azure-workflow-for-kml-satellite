@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 import sys
+import typing
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -74,6 +75,7 @@ def _mock_request(
     headers: dict | None = None,
     body: bytes | None = None,
     route_params: dict | None = None,
+    params: dict | None = None,
 ) -> MagicMock:
     """Build a mock HttpRequest."""
     req = MagicMock()
@@ -82,6 +84,7 @@ def _mock_request(
     req.headers = headers or {}
     req.get_body.return_value = body or b""
     req.route_params = route_params or {}
+    req.params = params or {}
     return req
 
 
@@ -433,3 +436,198 @@ class TestUploadStatus:
         )
         resp = mod.upload_status(req)
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /api/analysis/history
+# ---------------------------------------------------------------------------
+
+
+class TestAnalysisHistory:
+    """Tests for the SWA analysis_history endpoint."""
+
+    @patch("swa_function_app._get_cosmos_container")
+    @patch("swa_function_app._validate_token")
+    def test_returns_empty_history(self, mock_auth, mock_cosmos, _reload_module):
+        """User with no runs gets empty list."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims(sub="user-empty")
+
+        container = MagicMock()
+        container.query_items.return_value = []
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history",
+            headers={"Authorization": "Bearer valid"},
+        )
+        resp = mod.analysis_history(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["runs"] == []
+        assert body["activeRun"] is None
+        assert body["offset"] == 0
+        assert body["limit"] == 8
+
+    @patch("swa_function_app._get_cosmos_container")
+    @patch("swa_function_app._validate_token")
+    def test_returns_completed_run(self, mock_auth, mock_cosmos, _reload_module):
+        """Returns a completed run with correct field mapping."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims(sub="user-1")
+
+        container = MagicMock()
+        container.query_items.return_value = [
+            {
+                "id": "sub-001",
+                "user_id": "user-1",
+                "submission_id": "sub-001",
+                "instance_id": "inst-001",
+                "submitted_at": "2026-04-07T10:00:00Z",
+                "status": "Completed",
+                "provider_name": "planetary-computer",
+                "feature_count": 3,
+                "aoi_count": 2,
+            }
+        ]
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history",
+            headers={"Authorization": "Bearer valid"},
+        )
+        resp = mod.analysis_history(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert len(body["runs"]) == 1
+        run = body["runs"][0]
+        assert run["submissionId"] == "sub-001"
+        assert run["instanceId"] == "inst-001"
+        assert run["runtimeStatus"] == "Completed"
+        assert run["featureCount"] == 3
+        assert run["aoiCount"] == 2
+        assert body["activeRun"] is None
+
+    @patch("swa_function_app._get_cosmos_container")
+    @patch("swa_function_app._validate_token")
+    def test_detects_active_run(self, mock_auth, mock_cosmos, _reload_module):
+        """An in-progress run is flagged as activeRun."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims(sub="user-2")
+
+        container = MagicMock()
+        container.query_items.return_value = [
+            {
+                "id": "sub-active",
+                "user_id": "user-2",
+                "submission_id": "sub-active",
+                "instance_id": "inst-active",
+                "submitted_at": "2026-04-07T12:00:00Z",
+                "status": "Running",
+            }
+        ]
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history",
+            headers={"Authorization": "Bearer valid"},
+        )
+        resp = mod.analysis_history(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["activeRun"] is not None
+        assert body["activeRun"]["instanceId"] == "inst-active"
+
+    def test_rejects_unauthenticated(self, _reload_module):
+        """Analysis history requires authentication."""
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history",
+            headers={},
+        )
+        resp = mod.analysis_history(req)
+        assert resp.status_code == 401
+
+    @patch("swa_function_app._get_cosmos_container")
+    @patch("swa_function_app._validate_token")
+    def test_respects_limit_param(self, mock_auth, mock_cosmos, _reload_module):
+        """Limit query parameter is passed through to Cosmos."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims(sub="user-3")
+
+        container = MagicMock()
+        container.query_items.return_value = []
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history?limit=3",
+            headers={"Authorization": "Bearer valid"},
+            params={"limit": "3"},
+        )
+        resp = mod.analysis_history(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["limit"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Contract tests — verify response shapes match what the frontend reads
+# ---------------------------------------------------------------------------
+
+
+class TestResponseContracts:
+    """Ensure SWA endpoints return every field the frontend consumes."""
+
+    # Fields read by normalizeAnalysisRun() in app-shell.js
+    _HISTORY_RUN_REQUIRED: typing.ClassVar[set[str]] = {
+        "submissionId",
+        "instanceId",
+        "submittedAt",
+        "submissionPrefix",
+        "providerName",
+        "featureCount",
+        "aoiCount",
+        "runtimeStatus",
+        "createdTime",
+        "lastUpdatedTime",
+        "output",
+        "artifactCount",
+        "partialFailures",
+    }
+
+    @patch("swa_function_app._get_cosmos_container")
+    @patch("swa_function_app._validate_token")
+    def test_analysis_history_shape(self, mock_auth, mock_cosmos, _reload_module):
+        """analysis_history returns all fields the frontend reads per run."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        container = MagicMock()
+        container.query_items.return_value = [
+            {
+                "id": "sub-c",
+                "user_id": "user-123",
+                "submission_id": "sub-c",
+                "instance_id": "inst-c",
+                "submitted_at": "2026-04-07T10:00:00Z",
+                "status": "Completed",
+            }
+        ]
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/analysis/history",
+            headers={"Authorization": "Bearer valid"},
+        )
+        body = json.loads(mod.analysis_history(req).get_body())
+        assert "runs" in body
+        assert "activeRun" in body
+        assert len(body["runs"]) == 1
+        run = body["runs"][0]
+        missing = self._HISTORY_RUN_REQUIRED - run.keys()
+        assert not missing, f"Missing history run fields: {missing}"

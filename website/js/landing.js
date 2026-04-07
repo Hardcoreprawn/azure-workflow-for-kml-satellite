@@ -14,6 +14,11 @@
   let accessToken = null;
   let apiBase = '';
 
+  // Endpoints served by SWA managed functions (same-origin).
+  // Keep in sync with app-shell.js swaEndpoints.
+  const swaEndpoints = [
+  ];
+
   function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
 
   function initAuth() {
@@ -105,6 +110,11 @@
     }
   }
 
+  function isSwaEndpoint(path) {
+    const bare = path.split('?')[0];
+    return swaEndpoints.some(p => bare === p || bare.startsWith(p));
+  }
+
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
@@ -112,7 +122,8 @@
       const token = accessToken || await acquireToken();
       if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
     }
-    try { return await fetch(apiBase + path, opts); } catch { return null; }
+    const base = isSwaEndpoint(path) ? '' : apiBase;
+    try { return await fetch(base + path, opts); } catch { return null; }
   }
 
   async function discoverApiBase() {
