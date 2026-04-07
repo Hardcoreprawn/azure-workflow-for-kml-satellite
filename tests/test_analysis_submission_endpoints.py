@@ -355,8 +355,9 @@ class TestBlobTriggerIngress:
         """After event-driven unification, blob_trigger processes ALL blobs."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
+        sub_id = "550e8400-e29b-41d4-a716-446655440000"
         client = _FakeDurableClient()
-        event = self._make_blob_event("analysis/test-run.kml", "evt-analysis")
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-analysis")
 
         with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
             mock_storage_cls.return_value.download_json.return_value = {
@@ -368,16 +369,17 @@ class TestBlobTriggerIngress:
 
         assert len(client.calls) == 1
         assert client.calls[0]["name"] == "treesight_orchestrator"
-        # Uses submission_id from blob path, not event.id
-        assert client.calls[0]["instance_id"] == "test-run"
-        assert client.calls[0]["client_input"]["blob_name"] == "analysis/test-run.kml"
+        # Uses submission_id (UUID) from blob path, not event.id
+        assert client.calls[0]["instance_id"] == sub_id
+        assert client.calls[0]["client_input"]["blob_name"] == f"analysis/{sub_id}.kml"
 
     def test_blob_trigger_enriches_from_ticket(self):
         """Blob trigger reads ticket blob for user metadata."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
-        event = self._make_blob_event("analysis/abc-123.kml", "evt-1")
+        sub_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-1")
 
         ticket = {
             "user_id": "user-xyz",
@@ -404,7 +406,8 @@ class TestBlobTriggerIngress:
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
-        event = self._make_blob_event("analysis/pre-resolved.kml", "evt-pre")
+        sub_id = "deadbeef-dead-beef-dead-beefdeadbeef"
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-pre")
 
         ticket = {
             "user_id": "user-pre",
@@ -448,7 +451,8 @@ class TestBlobTriggerIngress:
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
-        event = self._make_blob_event("analysis/free-run.kml", "evt-free")
+        sub_id = "12345678-1234-1234-1234-123456789012"
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-free")
 
         ticket = {"user_id": "free-user", "created_at": "2026-04-05T15:00:00Z"}
         with (
@@ -473,7 +477,9 @@ class TestDeriveInstanceId:
     def test_analysis_prefix_uses_stem(self):
         from blueprints.pipeline.blob_trigger import _derive_instance_id
 
-        assert _derive_instance_id("analysis/abc-123.kml", "evt-1") == "abc-123"
+        # Valid UUID stem → used as instance_id
+        test_uuid = "550e8400-e29b-41d4-a716-446655440000"
+        assert _derive_instance_id(f"analysis/{test_uuid}.kml", "evt-1") == test_uuid
 
     def test_non_analysis_prefix_uses_event_id(self):
         from blueprints.pipeline.blob_trigger import _derive_instance_id
@@ -485,10 +491,18 @@ class TestDeriveInstanceId:
 
         assert _derive_instance_id("orphan.kml", "evt-3") == "evt-3"
 
-    def test_nested_analysis_path(self):
+    def test_nested_analysis_path_uses_event_id(self):
         from blueprints.pipeline.blob_trigger import _derive_instance_id
 
-        assert _derive_instance_id("analysis/sub/deep.kml", "evt-4") == "deep"
+        # Nested paths (analysis/sub/deep.kml) are not
+        # direct submissions — fall back to event_id
+        assert _derive_instance_id("analysis/sub/deep.kml", "evt-4") == "evt-4"
+
+    def test_non_uuid_stem_uses_event_id(self):
+        from blueprints.pipeline.blob_trigger import _derive_instance_id
+
+        # Non-UUID stem should not be used as instance_id
+        assert _derive_instance_id("analysis/not-a-uuid.kml", "evt-5") == "evt-5"
 
 
 class TestEnrichFromTicket:

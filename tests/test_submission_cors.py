@@ -62,7 +62,7 @@ class TestSubmissionCORSPreflight:
     def test_analysis_submit_has_options_guard(self):
         import inspect
 
-        import blueprints.pipeline.submission as mod
+        from blueprints.pipeline import submission as mod
 
         src = inspect.getsource(mod)
         # Route must accept OPTIONS
@@ -73,7 +73,7 @@ class TestSubmissionCORSPreflight:
     def test_submit_route_uses_cors_preflight(self):
         import inspect
 
-        import blueprints.pipeline.submission as mod
+        from blueprints.pipeline import submission as mod
 
         src = inspect.getsource(mod)
         assert "cors_preflight" in src, "submission endpoints must call cors_preflight"

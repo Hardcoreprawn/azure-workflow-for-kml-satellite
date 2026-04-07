@@ -5,6 +5,7 @@ See blueprints/pipeline/__init__.py for details.
 """
 
 import logging
+import uuid
 from pathlib import PurePosixPath
 
 import azure.durable_functions as df
@@ -23,6 +24,7 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
     """Read the ticket blob written by SWA API or submission endpoint.
 
     Returns ``None`` if no ticket is found (e.g. storage-native uploads).
+    Logs a warning on transient errors to make billing/tier failures visible.
     """
     parts = PurePosixPath(blob_name).parts
     if len(parts) < 2:
@@ -34,8 +36,15 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
 
         storage = BlobStorageClient()
         return storage.download_json(container_name, ticket_path)
-    except Exception:
-        logger.debug("No ticket found for blob=%s (path=%s)", blob_name, ticket_path)
+    except Exception as exc:
+        # Distinguish "not found" from transient/unexpected errors.
+        exc_name = type(exc).__name__
+        if "NotFound" in exc_name or "ResourceNotFound" in exc_name:
+            logger.debug("No ticket found for blob=%s (path=%s)", blob_name, ticket_path)
+        else:
+            logger.warning(
+                "Ticket read failed for blob=%s (path=%s): %s", blob_name, ticket_path, exc_name
+            )
         return None
 
 
@@ -45,11 +54,20 @@ def _derive_instance_id(blob_name: str, event_id: str) -> str:
     For ``analysis/{submission_id}.kml`` blobs (submitted via the SWA API
     or submission endpoint), use the submission_id so the frontend can
     poll status by the ID it received at upload time.
+
+    Only uses the stem if it is a valid UUID (matching the submission_id
+    format), preventing arbitrary instance ID injection.
+
     For other blobs (storage-native uploads), use the Event Grid event ID.
     """
     parts = PurePosixPath(blob_name).parts
-    if len(parts) >= 2 and parts[0] == "analysis":
-        return PurePosixPath(parts[-1]).stem
+    if len(parts) == 2 and parts[0] == "analysis":
+        stem = PurePosixPath(parts[-1]).stem
+        try:
+            uuid.UUID(stem)
+            return stem
+        except ValueError:
+            pass
     return event_id
 
 

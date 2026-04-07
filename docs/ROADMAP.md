@@ -142,7 +142,7 @@ Unlock Team tier (£149/mo) and programmatic access. Higher LTV, lower churn.
 |-------|-------|-------|------------|-------|
 | 4.1 | #313 | Team workspaces + tenant segregation | #314, #312 | Shared analyses, org billing, CIAM group claims |
 | 4.2 | — | API documentation (interactive) | #406 | OpenAPI and reference docs must be reconciled before building a developer portal around them |
-  | 4.3 | — | Webhook / Slack notifications | #310 | Enterprise integration pattern |
+| 4.3 | — | Webhook / Slack notifications | #310 | Enterprise integration pattern |
 | 4.4 | — | Long-term historical baselines (Landsat 40-yr) | — | USGS/EE, 1985–present |
 | 4.5 | — | Regional climate & land-use history | — | NOAA/ECMWF/MODIS historical context |
 | 4.6 | — | ESA CCI Biomass integration | — | Self-hosted COGs (not on PC); carbon/biomass MRV |

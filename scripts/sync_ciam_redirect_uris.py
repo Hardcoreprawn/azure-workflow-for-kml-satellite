@@ -182,7 +182,7 @@ def _acquire_token() -> str:
     except FileNotFoundError:
         pass  # az CLI not installed
     except subprocess.TimeoutExpired:
-        pass
+        pass  # az CLI unresponsive — fall through to return empty
 
     return ""
 

@@ -25,6 +25,7 @@ import jwt
 from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
+    ContentSettings,
     generate_blob_sas,
 )
 
@@ -138,8 +139,8 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         claims = _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("Token validation failed: %s", exc)
+    except (ValueError, jwt.PyJWTError, RuntimeError):
+        logger.warning("Upload auth validation failed")
         return _error(401, "Unauthorized")
 
     user_id = claims.get("sub", "")
@@ -186,7 +187,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         ticket_blob.upload_blob(
             json.dumps(ticket).encode(),
             overwrite=True,
-            content_type="application/json",
+            content_settings=ContentSettings(content_type="application/json"),
         )
     except Exception:
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
@@ -209,8 +210,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     logger.info(
-        "SAS token minted user_id=%s submission_id=%s blob=%s",
-        user_id,
+        "Upload URL minted submission_id=%s blob=%s",
         submission_id,
         blob_name,
     )
@@ -249,8 +249,8 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("Token validation failed: %s", exc)
+    except (ValueError, jwt.PyJWTError, RuntimeError):
+        logger.warning("Status auth validation failed")
         return _error(401, "Unauthorized")
 
     submission_id = req.route_params.get("submission_id", "")

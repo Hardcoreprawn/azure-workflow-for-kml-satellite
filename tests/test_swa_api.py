@@ -142,8 +142,11 @@ class TestUploadToken:
         assert body["max_bytes"] == 10_485_760
         assert body["expires_minutes"] == 15
         # SAS URL points to the correct storage account
-        assert "teststorage.blob.core.windows.net" in body["sas_url"]
-        assert "kml-input/analysis/" in body["sas_url"]
+        from urllib.parse import urlparse
+
+        parsed = urlparse(body["sas_url"])
+        assert parsed.hostname == "teststorage.blob.core.windows.net"
+        assert "/kml-input/analysis/" in parsed.path
 
     @patch("swa_function_app.BlobServiceClient")
     @patch("swa_function_app._validate_token")

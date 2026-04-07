@@ -20,7 +20,9 @@ from blueprints._helpers import (
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 
 from . import bp
-from ._helpers import _MAX_ANALYSIS_BODY_BYTES, _reshape_output
+from ._helpers import _reshape_output
+
+_MAX_ANALYSIS_BODY_BYTES = 131_072
 
 
 @bp.route(

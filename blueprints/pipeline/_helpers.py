@@ -15,8 +15,6 @@ from treesight.errors import ContractError
 # Constants
 # ---------------------------------------------------------------------------
 
-_MAX_ANALYSIS_BODY_BYTES = 131_072
-
 
 def _expected_blob_host() -> str:
     """Derive the expected Azure Blob hostname from the connection string
