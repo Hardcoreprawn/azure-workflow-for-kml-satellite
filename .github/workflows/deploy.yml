@@ -514,8 +514,8 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: /website
+          api_location: /website/api
           skip_app_build: true
-          skip_api_build: true
 
       - name: Login to CIAM tenant (OIDC)
         if: ${{ vars.CIAM_TENANT_ID != '' }}
