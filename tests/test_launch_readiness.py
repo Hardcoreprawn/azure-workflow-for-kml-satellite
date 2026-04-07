@@ -354,6 +354,24 @@ class TestCspAppInsights:
             for src in sources
         ), "CSP connect-src must allow App Insights telemetry ingestion endpoint"
 
+    def test_connect_src_allows_monitor_config(self, csp):
+        """Azure Monitor SDK fetches config from js.monitor.azure.com at runtime."""
+        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
+        assert connect_match, "CSP missing connect-src"
+        sources = connect_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "js.monitor.azure.com") for src in sources), (
+            "CSP connect-src must allow js.monitor.azure.com for App Insights config fetch"
+        )
+
+    def test_no_inline_event_handlers_in_app_html(self):
+        """CSP without unsafe-inline in script-src blocks onclick= handlers."""
+        html = (ROOT / "website" / "app" / "index.html").read_text()
+        inline_pattern = re.compile(r'\bon\w+\s*=\s*["\']', re.IGNORECASE)
+        matches = inline_pattern.findall(html)
+        assert not matches, (
+            f"Found inline event handler(s) in app/index.html that CSP will block: {matches}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 9. Deploy workflow applies CLI-managed settings

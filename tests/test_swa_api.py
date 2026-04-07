@@ -249,6 +249,20 @@ class TestUploadToken:
         assert resp.status_code == 401
 
     @patch("swa_function_app._validate_token")
+    def test_expired_token_returns_reason(self, mock_auth, _reload_module):
+        """401 for expired tokens must include reason=token_expired so the
+        frontend can distinguish genuine expiry from config errors."""
+        import jwt as _jwt
+
+        mod = _reload_module
+        mock_auth.side_effect = _jwt.ExpiredSignatureError("Signature has expired")
+        req = _mock_request(headers={"Authorization": "Bearer expired-token"})
+        resp = mod.upload_token(req)
+        assert resp.status_code == 401
+        body = json.loads(resp.get_body())
+        assert body["reason"] == "token_expired"
+
+    @patch("swa_function_app._validate_token")
     def test_rejects_empty_subject(self, mock_auth, _reload_module):
         mod = _reload_module
         mock_auth.return_value = {"sub": "", "aud": "test", "exp": 0}
@@ -389,6 +403,23 @@ class TestUploadStatus:
         )
         resp = mod.upload_status(req)
         assert resp.status_code == 401
+
+    @patch("swa_function_app._validate_token")
+    def test_expired_token_returns_reason(self, mock_auth, _reload_module):
+        """401 for expired tokens must include reason=token_expired (mirrors upload_token)."""
+        import jwt as _jwt
+
+        mod = _reload_module
+        mock_auth.side_effect = _jwt.ExpiredSignatureError("Signature has expired")
+        req = _mock_request(
+            method="GET",
+            headers={"Authorization": "Bearer expired"},
+            route_params={"submission_id": str(uuid.uuid4())},
+        )
+        resp = mod.upload_status(req)
+        assert resp.status_code == 401
+        body = json.loads(resp.get_body())
+        assert body["reason"] == "token_expired"
 
     @patch("swa_function_app._validate_token")
     def test_rejects_missing_submission_id(self, mock_auth, _reload_module):
