@@ -94,6 +94,24 @@ def _error(status: int, message: str) -> func.HttpResponse:
     )
 
 
+def _sanitise_submission_context(ctx: dict) -> dict:
+    """Allow-list filter for submission_context — mirrors _extract_submission_context."""
+    clean: dict = {}
+    for field in ("feature_count", "aoi_count"):
+        value = ctx.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            clean[field] = int(value)
+    for field in ("max_spread_km", "total_area_ha", "largest_area_ha"):
+        value = ctx.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            clean[field] = round(float(value), 2)
+    for field in ("processing_mode", "provider_name", "workspace_role", "workspace_preference"):
+        value = ctx.get(field)
+        if isinstance(value, str) and value.strip():
+            clean[field] = value.strip()[:80]
+    return clean
+
+
 def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
     """Return a JSON success response."""
     return func.HttpResponse(
@@ -134,6 +152,10 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         return _error(503, "Service not configured")
 
     # --- mint SAS ---
+    # NOTE: Quota enforcement is handled by the Container Apps submission
+    # endpoint (submission.py).  The SWA API path bypasses quota because
+    # this module deliberately avoids importing treesight.  Slice 4 will
+    # add quota checking to blob_trigger so both paths are gated.
     submission_id = str(uuid.uuid4())
     blob_name = f"analysis/{submission_id}.kml"
 
@@ -153,7 +175,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         ticket["provider_name"] = provider.strip()[:80]
     ctx = body.get("submission_context")
     if isinstance(ctx, dict):
-        ticket["submission_context"] = ctx
+        ticket["submission_context"] = _sanitise_submission_context(ctx)
 
     try:
         account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"

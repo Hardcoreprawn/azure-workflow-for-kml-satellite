@@ -2656,7 +2656,8 @@
       selectAnalysisRun(data.instance_id, { focus: 'run', resume: true });
       setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
       if (!demoMode) loadBillingStatus();
-    } catch {
+    } catch (err) {
+      console.error('submitAnalysis failed:', err);
       setAnalysisStatus('Could not queue analysis request.', 'error');
       resetAnalysisProgress();
     } finally {

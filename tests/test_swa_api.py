@@ -256,6 +256,53 @@ class TestUploadToken:
         resp = mod.upload_token(req)
         assert resp.status_code == 503
 
+    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_returns_502_on_ticket_write_failure(
+        self, mock_sas, mock_auth, mock_blob_svc, _reload_module
+    ):
+        """When ticket blob write fails, return 502."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        mock_blob_svc.return_value.get_blob_client.return_value.upload_blob.side_effect = (
+            RuntimeError("storage down")
+        )
+
+        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        resp = mod.upload_token(req)
+        assert resp.status_code == 502
+
+    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_sanitises_submission_context(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+        """submission_context is allow-list filtered, not passed through raw."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        mock_sas.return_value = "sig=test"
+
+        malicious_ctx = {
+            "feature_count": 5,
+            "evil_key": "should be dropped",
+            "aoi_count": -1,  # negative — should be dropped
+            "__proto__": "injection",
+        }
+        req = _mock_request(
+            headers={"Authorization": "Bearer valid"},
+            body=json.dumps({"submission_context": malicious_ctx}).encode(),
+        )
+        resp = mod.upload_token(req)
+        assert resp.status_code == 200
+
+        upload_call = mock_blob_svc.return_value.get_blob_client.return_value.upload_blob
+        ticket_data = json.loads(upload_call.call_args[0][0])
+        ctx = ticket_data.get("submission_context", {})
+        assert ctx.get("feature_count") == 5
+        assert "evil_key" not in ctx
+        assert "aoi_count" not in ctx  # negative filtered out
+        assert "__proto__" not in ctx
+
 
 # ---------------------------------------------------------------------------
 # GET /api/upload/status/{submission_id}

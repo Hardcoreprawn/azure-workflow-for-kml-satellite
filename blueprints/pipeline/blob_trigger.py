@@ -56,16 +56,25 @@ def _derive_instance_id(blob_name: str, event_id: str) -> str:
 def _enrich_from_ticket(orchestrator_input: dict, ticket: dict) -> None:
     """Add user metadata and billing tier to the orchestrator input."""
     user_id = ticket.get("user_id", "")
-    if user_id:
+    if isinstance(user_id, str) and user_id:
         orchestrator_input["user_id"] = user_id
 
-    # Copy through fields already resolved by submission endpoint
-    for key in ("tier", "cadence", "max_history_years", "provider_name"):
-        if key in ticket:
-            orchestrator_input[key] = ticket[key]
+    # Copy through typed fields already resolved by submission endpoint
+    tier = ticket.get("tier")
+    if isinstance(tier, str) and tier:
+        orchestrator_input["tier"] = tier
+    cadence = ticket.get("cadence")
+    if isinstance(cadence, str) and cadence:
+        orchestrator_input["cadence"] = cadence
+    max_hist = ticket.get("max_history_years")
+    if isinstance(max_hist, (int, float)) and max_hist >= 0:
+        orchestrator_input["max_history_years"] = int(max_hist)
+    provider = ticket.get("provider_name")
+    if isinstance(provider, str) and provider:
+        orchestrator_input["provider_name"] = provider
 
     # If tier was not pre-resolved, look it up from billing
-    if "tier" not in orchestrator_input and user_id:
+    if "tier" not in orchestrator_input and orchestrator_input.get("user_id"):
         try:
             subscription = get_effective_subscription(user_id)
             plan = plan_capabilities(subscription.get("tier"))
@@ -122,6 +131,8 @@ async def _process_blob_trigger(
             orchestrator_input[key] = data[key]
 
     # Read submission ticket for user metadata enrichment
+    # TODO: Add lifecycle policy or post-orchestration cleanup for
+    # .tickets/ blobs to prevent indefinite accumulation.
     ticket = _read_submission_ticket(container_name, blob_name)
     if ticket:
         _enrich_from_ticket(orchestrator_input, ticket)

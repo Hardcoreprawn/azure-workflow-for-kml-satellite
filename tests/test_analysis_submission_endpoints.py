@@ -399,6 +399,32 @@ class TestBlobTriggerIngress:
         assert orch_input["provider_name"] == "planetary_computer"
         assert orch_input["tier"] == "pro"
 
+    def test_blob_trigger_enriches_with_pre_resolved_tier(self):
+        """When ticket already has tier, billing lookup is skipped."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("analysis/pre-resolved.kml", "evt-pre")
+
+        ticket = {
+            "user_id": "user-pre",
+            "tier": "pro",
+            "cadence": "monthly",
+            "max_history_years": 5,
+            "provider_name": "planetary_computer",
+            "created_at": "2026-04-05T15:00:00Z",
+        }
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = ticket
+            # No billing mock — should NOT be called
+            asyncio.run(_process_blob_trigger(event, client))
+
+        orch_input = client.calls[0]["client_input"]
+        assert orch_input["user_id"] == "user-pre"
+        assert orch_input["tier"] == "pro"
+        assert orch_input["cadence"] == "monthly"
+        assert orch_input["max_history_years"] == 5
+
     def test_blob_trigger_works_without_ticket(self):
         """Storage-native uploads (no ticket) still work."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
@@ -439,6 +465,84 @@ class TestBlobTriggerIngress:
         assert orch_input["tier"] == "free"
         assert orch_input["cadence"] == "seasonal"
         assert orch_input["max_history_years"] == 2
+
+
+class TestDeriveInstanceId:
+    """Unit tests for _derive_instance_id (pure function)."""
+
+    def test_analysis_prefix_uses_stem(self):
+        from blueprints.pipeline.blob_trigger import _derive_instance_id
+
+        assert _derive_instance_id("analysis/abc-123.kml", "evt-1") == "abc-123"
+
+    def test_non_analysis_prefix_uses_event_id(self):
+        from blueprints.pipeline.blob_trigger import _derive_instance_id
+
+        assert _derive_instance_id("uploads/test.kml", "evt-2") == "evt-2"
+
+    def test_single_part_path_uses_event_id(self):
+        from blueprints.pipeline.blob_trigger import _derive_instance_id
+
+        assert _derive_instance_id("orphan.kml", "evt-3") == "evt-3"
+
+    def test_nested_analysis_path(self):
+        from blueprints.pipeline.blob_trigger import _derive_instance_id
+
+        assert _derive_instance_id("analysis/sub/deep.kml", "evt-4") == "deep"
+
+
+class TestEnrichFromTicket:
+    """Unit tests for _enrich_from_ticket type validation."""
+
+    def test_rejects_non_string_user_id(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch = {}
+        _enrich_from_ticket(orch, {"user_id": 12345})
+        assert "user_id" not in orch
+
+    @patch(
+        "blueprints.pipeline.blob_trigger.get_effective_subscription",
+        return_value={"tier": "free", "status": "none"},
+    )
+    def test_rejects_non_string_tier(self, _mock_billing):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "tier": 999})
+        # tier 999 rejected; billing lookup sets "free"
+        assert orch["tier"] == "free"
+
+    @patch(
+        "blueprints.pipeline.blob_trigger.get_effective_subscription",
+        return_value={"tier": "free", "status": "none"},
+    )
+    def test_rejects_non_numeric_max_history_years(self, _mock_billing):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "max_history_years": "unlimited"})
+        assert "max_history_years" not in orch or isinstance(orch.get("max_history_years"), int)
+
+    def test_accepts_valid_typed_fields(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch = {}
+        _enrich_from_ticket(
+            orch,
+            {
+                "user_id": "u1",
+                "tier": "pro",
+                "cadence": "monthly",
+                "max_history_years": 5,
+                "provider_name": "planetary_computer",
+            },
+        )
+        assert orch["user_id"] == "u1"
+        assert orch["tier"] == "pro"
+        assert orch["cadence"] == "monthly"
+        assert orch["max_history_years"] == 5
+        assert orch["provider_name"] == "planetary_computer"
 
 
 # ---------------------------------------------------------------------------
