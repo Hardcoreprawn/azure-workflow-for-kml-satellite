@@ -14,6 +14,11 @@ MAX_KML_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
 MAX_FEATURES_PER_KML = 500
 PAYLOAD_OFFLOAD_THRESHOLD_BYTES = 49_152  # 48 KiB
 
+# --- KMZ decompression safety ---
+MAX_KMZ_DECOMPRESSED_BYTES = 50_000_000  # 50 MiB — reject zip bombs
+MAX_KMZ_COMPRESSION_RATIO = 100  # compressed-to-decompressed ratio ceiling
+MAX_KMZ_FILE_COUNT = 50  # max entries in a KMZ archive
+
 # --- Imagery defaults ---
 DEFAULT_IMAGERY_RESOLUTION_TARGET_M = 0.5
 DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT = 20.0
