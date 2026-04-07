@@ -1,0 +1,59 @@
+# Infracost usage file — observed-data baseline for cost estimation.
+#
+# Values here represent usage-based parameters that Infracost cannot
+# infer from HCL alone. Update periodically by running:
+#
+#   python scripts/collect_infracost_usage.py --lookback 31
+#
+# See https://www.infracost.io/docs/features/usage_based_resources/
+
+version: 0.1
+
+resource_usage:
+
+  # ── Log Analytics ──────────────────────────────────────────
+  azurerm_log_analytics_workspace.main:
+    monthly_data_ingestion_gb: 0.5          # App Insights + container logs
+
+  # ── Application Insights ──────────────────────────────────
+  # Billed through the linked Log Analytics workspace.
+  # The standard web test is billed per-test; frequency/locations
+  # are inferred from the resource definition.
+
+  # ── Storage Account ───────────────────────────────────────
+  azurerm_storage_account.main:
+    storage_gb: 1                            # blobs + tables + queues
+    monthly_tier_to_cool_storage_gb: 0       # no tier transitions yet
+    monthly_tier_to_archive_storage_gb: 0
+
+  # ── Key Vault ─────────────────────────────────────────────
+  azurerm_key_vault.main:
+    monthly_secrets_operations: 500          # Stripe refs + deploy reads  # pragma: allowlist secret
+    monthly_keys_operations: 0
+    monthly_certificate_operations: 0
+
+  # ── Cosmos DB (serverless) ────────────────────────────────
+  # Serverless billing: per-RU consumed + per-GB stored.
+  azurerm_cosmosdb_sql_container.runs[0]:
+    monthly_request_units: 50000             # point reads + queries
+    storage_gb: 0.1
+  azurerm_cosmosdb_sql_container.subscriptions[0]:
+    monthly_request_units: 20000
+    storage_gb: 0.01
+  azurerm_cosmosdb_sql_container.users[0]:
+    monthly_request_units: 10000
+    storage_gb: 0.01
+  azurerm_cosmosdb_sql_container.monitors[0]:
+    monthly_request_units: 10000
+    storage_gb: 0.01
+  azurerm_cosmosdb_sql_container.catalogue[0]:
+    monthly_request_units: 30000
+    storage_gb: 0.1
+
+  # ── Azure OpenAI (optional, disabled in dev) ──────────────
+  # azurerm_cognitive_account.openai[0]:
+  #   monthly_requests: 100
+
+  # ── Communication Services (email, optional) ──────────────
+  # azurerm_communication_service.main[0]:
+  #   monthly_emails: 50
