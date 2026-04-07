@@ -56,7 +56,8 @@ jobs:
 
       - name: Install metrics collection dependencies
         run: |
-          pip install \
+          python -m pip install --upgrade pip
+          python -m pip install \
             azure-identity \
             azure-monitor-query \
             azure-mgmt-monitor \
@@ -65,6 +66,7 @@ jobs:
 
       - name: Collect Azure usage metrics
         run: |
+          python -c "from azure.identity import DefaultAzureCredential; print('SDK import OK')"
           python scripts/collect_infracost_usage.py \
             --subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             --resource-group "${{ secrets.DEV_RESOURCE_GROUP }}" \

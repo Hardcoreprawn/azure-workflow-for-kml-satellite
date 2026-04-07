@@ -37,9 +37,10 @@ try:
     from azure.mgmt.monitor import MonitorManagementClient
     from azure.mgmt.storage import StorageManagementClient
     from azure.monitor.query import MetricAggregationType, MetricsQueryClient
-except ImportError:
+except ImportError as exc:
     print(
-        "Missing Azure SDK packages. Install with:\n"
+        f"Missing Azure SDK package: {exc}\n"
+        "Install with:\n"
         "  pip install azure-identity azure-monitor-query "
         "azure-mgmt-monitor azure-mgmt-storage",
         file=sys.stderr,
