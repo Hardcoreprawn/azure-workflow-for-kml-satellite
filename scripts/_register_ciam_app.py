@@ -1,4 +1,8 @@
-"""One-time script: Register the Canopex SPA app in the CIAM tenant."""
+"""One-time script: Register the Canopex SPA app in the CIAM tenant.
+
+After initial registration, redirect URIs are kept in sync automatically
+by sync_ciam_redirect_uris.py (called from the deploy workflow).
+"""
 
 import json
 import sys
@@ -21,7 +25,7 @@ def main():
                 # TODO: parameterise redirect URIs per environment instead of hardcoding
                 "redirectUris": [
                     "http://localhost:4280",
-                    "https://polite-glacier-0d6885003.4.azurestaticapps.net",
+                    "https://green-moss-0e849ac03.2.azurestaticapps.net",
                     "https://canopex.hrdcrprwn.com",
                 ]
             },

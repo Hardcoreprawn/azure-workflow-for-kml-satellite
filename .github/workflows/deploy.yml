@@ -12,6 +12,11 @@
 #   TF_STATE_CONTAINER      — Blob container name for tfstate
 #   TF_STATE_KEY            — Blob key for the state file
 #   SWA_DEPLOYMENT_TOKEN    — Static Web App deployment token
+#
+# Optional secrets (CIAM redirect URI sync):
+#   CIAM_TENANT_ID          — CIAM tenant ID (enables OIDC login to CIAM tenant)
+#                              Once set, redirect URIs are synced automatically on deploy.
+#                              Requires one-time setup: scripts/setup_ciam_deploy_access.py
 # ─────────────────────────────────────────────────────────────
 name: Deploy
 
@@ -143,6 +148,8 @@ jobs:
     outputs:
       function_app_hostname: ${{ steps.hostname.outputs.hostname }}
       appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
+      swa_hostname: ${{ steps.swa-hostname.outputs.hostname }}
+      custom_domain: ${{ steps.swa-hostname.outputs.custom_domain }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -305,6 +312,20 @@ jobs:
         run: |
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Export SWA hostname
+        id: swa-hostname
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          HOSTNAME=$(tofu output -raw static_web_app_default_hostname)
+          CUSTOM_DOMAIN=$(tofu output -raw custom_domain)
+          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+          echo "custom_domain=${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Export App Insights connection string
         id: appinsights
@@ -495,3 +516,21 @@ jobs:
           app_location: /website
           skip_app_build: true
           skip_api_build: true
+
+      - name: Login to CIAM tenant (OIDC)
+        if: ${{ vars.CIAM_TENANT_ID != '' }}
+        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.CIAM_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Sync CIAM redirect URIs
+        if: ${{ vars.CIAM_TENANT_ID != '' }}
+        run: |
+          CUSTOM_DOMAIN="${{ needs.deploy-infra.outputs.custom_domain }}"
+          ARGS=("${{ needs.deploy-infra.outputs.swa_hostname }}")
+          if [ -n "$CUSTOM_DOMAIN" ]; then
+            ARGS+=("--custom-domain" "$CUSTOM_DOMAIN")
+          fi
+          python scripts/sync_ciam_redirect_uris.py "${ARGS[@]}"

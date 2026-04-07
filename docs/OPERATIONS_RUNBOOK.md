@@ -2,6 +2,22 @@
 
 Issue: #18
 
+## Quick Reference — Dev Environment
+
+| Resource | Value |
+| --- | --- |
+| Site URL | `https://green-moss-0e849ac03.2.azurestaticapps.net` |
+| Function App URL | `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io` |
+| Health check | `curl -sS https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/health` |
+| Readiness check | `curl -sS https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/readiness` |
+| API config | `curl -sS https://green-moss-0e849ac03.2.azurestaticapps.net/api-config.json` |
+| Resource Group | `rg-kmlsat-dev` |
+| Cosmos DB | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
+| CIAM Tenant | `treesightauth.ciamlogin.com` |
+| Container image | `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:{sha}` |
+
+**Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details).
+
 ## Deploy
 
 1. Run CI checks.

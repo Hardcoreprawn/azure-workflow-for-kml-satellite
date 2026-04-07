@@ -15,6 +15,7 @@
 
 ## Delivery Workflow
 
+- Always start new work on a clean branch from `main`. Before creating the branch, verify the working tree is clean (`git status`). Do not pile unrelated changes onto an existing feature branch.
 - Start planned work from a GitHub issue whenever practical.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - Update `docs/ROADMAP.md` when PR state, stage status, or milestone status changes.
@@ -35,6 +36,7 @@
 
 ## Validation
 
+- Write the test first. The test defines the contract; the implementation makes it pass.
 - Run the narrowest meaningful executable validation first.
 - Prefer behavior-scoped tests over broad suite runs when iterating.
 - For cross-cutting, deploy, auth, billing, API, or runtime changes, run the `Code Review Critic` after local validation and before requesting PR review.
