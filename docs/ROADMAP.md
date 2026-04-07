@@ -23,24 +23,23 @@ Last updated: 2026-04-07
 
 | PR | Summary | Why It Matters |
 |----|---------|----------------|
-| #425 | KML/KMZ input sanitisation — zip bomb protection + `validate_kml_bytes()` (#421) | Slice 1 of event-driven pipeline. Hardens `maybe_unzip()` with decompression limits and adds structural XML validation. OWASP-grade input defence before the upload path moves event-driven. |
+| #427 | SWA managed API functions — SAS token minting + status polling (#422) | Slice 2 of event-driven pipeline. Always-warm endpoints for upload flow, zero cold-start delay. |
+| #425 | KML/KMZ input sanitisation — zip bomb protection + `validate_kml_bytes()` (#421) | Slice 1. Hardens `maybe_unzip()` with decompression limits and adds structural XML validation. |
+| #426 | Docs, tooling, roadmap update | Engineering standards, CIAM automation, Code Review Critic update. |
 | #419 | Redesign metric alerts for scale-to-zero Container Apps (#418) | Alerting no longer fires on cold-start 503s. New Event Grid dropped-events Sev1 alert. |
 | #417 | Stage 2A release safety — consolidated (#407–#412) | CIAM automation, deploy workflow hardening, docs reconciliation. |
-| #394 | Scheduled monitoring + change alerts (#310) | First Stage 3 capability landed. |
-| #393 | Blob storage + replay store managed identity | Runtime hardening for storage access. |
 
 ---
 
 ## In Flight
 
 | PR | Branch | Summary |
-|----|--------|--------|
-| #425 | `feat/kml-input-sanitisation` | Slice 1 — input sanitisation (awaiting review) |
-| #419 | `fix/scale-to-zero-alerts` | Alert redesign (awaiting review) |
+|----|--------|---------|
+| — | `feat/event-driven-unification` | Slice 3 (#423): Remove direct orchestrator start, unify on event-driven path. |
 
-**Priority call:** the event-driven pipeline restructure (#420) is the current focus. Work the slices in order (#421 → #422 → #423 → #424). Do not open more Stage 3 or Stage 4 work until the event-driven pipeline is reliably wired and Stage 2A release-safety work is materially complete.
+**Current focus:** Stage 2B event-driven pipeline (#420). Slices 1–2 merged; Slice 3 (#423) in progress.
 
-**Infra gate before Stage 2A execution:** the live estate is still a single `dev` environment. `canopex.hrdcrprwn.com` is bound to `stapp-kmlsat-dev-site`, the checked-in deploy workflow still applies `environments/dev.tfvars` only. Before Stage 2A.1 is considered underway, prove a clean-slate `dev` recreate from OpenTofu state and make `prd` a real promotion target.
+**Infra gate before Stage 2A execution:** the live estate is still a single `dev` environment. Before Stage 2A.1 is considered underway, prove a clean-slate `dev` recreate from OpenTofu state and make `prd` a real promotion target.
 
 ---
 
@@ -101,9 +100,9 @@ Decouple the KML upload path from the orchestrator. Make the pipeline fully even
 
 | Order | Issue | Title | Depends On | Status |
 |-------|-------|-------|------------|--------|
-| 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | — | ✅ PR #425 — awaiting review |
-| 2B.2 | #422 | SWA API function for SAS token minting + status polling | — | 🔜 Next |
-| 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | #421, #422 | — |
+| 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | — | ✅ PR #425 merged |
+| 2B.2 | #422 | SWA API function for SAS token minting + status polling | — | ✅ PR #427 merged |
+| 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | #421, #422 | 🔜 Next |
 | 2B.4 | #424 | Migrate read-only endpoints to SWA functions + cold start optimisation | #423 | — |
 
 **Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Function app has zero direct-submission paths. Read-only endpoints served from SWA managed functions (always warm).
@@ -143,7 +142,7 @@ Unlock Team tier (£149/mo) and programmatic access. Higher LTV, lower churn.
 |-------|-------|-------|------------|-------|
 | 4.1 | #313 | Team workspaces + tenant segregation | #314, #312 | Shared analyses, org billing, CIAM group claims |
 | 4.2 | — | API documentation (interactive) | #406 | OpenAPI and reference docs must be reconciled before building a developer portal around them |
-| 4.3 | — | Webhook / Slack notifications | #310 | Enterprise integration pattern |
+  | 4.3 | — | Webhook / Slack notifications | #310 | Enterprise integration pattern |
 | 4.4 | — | Long-term historical baselines (Landsat 40-yr) | — | USGS/EE, 1985–present |
 | 4.5 | — | Regional climate & land-use history | — | NOAA/ECMWF/MODIS historical context |
 | 4.6 | — | ESA CCI Biomass integration | — | Self-hosted COGs (not on PC); carbon/biomass MRV |

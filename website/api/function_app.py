@@ -24,6 +24,7 @@ import azure.functions as func
 import jwt
 from azure.storage.blob import (
     BlobSasPermissions,
+    BlobServiceClient,
     generate_blob_sas,
 )
 
@@ -135,6 +136,39 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     # --- mint SAS ---
     submission_id = str(uuid.uuid4())
     blob_name = f"analysis/{submission_id}.kml"
+
+    # --- parse optional submission context ---
+    try:
+        body = json.loads(req.get_body()) if req.get_body() else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        body = {}
+
+    # --- write ticket blob (trusted server-side record) ---
+    ticket: dict = {
+        "user_id": user_id,
+        "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
+    }
+    provider = body.get("provider_name")
+    if isinstance(provider, str) and provider.strip():
+        ticket["provider_name"] = provider.strip()[:80]
+    ctx = body.get("submission_context")
+    if isinstance(ctx, dict):
+        ticket["submission_context"] = ctx
+
+    try:
+        account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        blob_service = BlobServiceClient(account_url=account_url, credential=STORAGE_ACCOUNT_KEY)
+        ticket_blob = blob_service.get_blob_client(
+            INPUT_CONTAINER, f".tickets/{submission_id}.json"
+        )
+        ticket_blob.upload_blob(
+            json.dumps(ticket).encode(),
+            overwrite=True,
+            content_type="application/json",
+        )
+    except Exception:
+        logger.exception("Failed to write ticket for submission_id=%s", submission_id)
+        return _error(502, "Storage service temporarily unavailable")
 
     sas_token = generate_blob_sas(
         account_name=STORAGE_ACCOUNT_NAME,

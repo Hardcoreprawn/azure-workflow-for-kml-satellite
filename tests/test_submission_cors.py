@@ -11,7 +11,7 @@ See also: the pipeline progress animation must be reset on API error
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,8 +41,7 @@ def _make_request(
 class TestSubmissionCORSPreflight:
     """The submission endpoint must respond to OPTIONS preflight requests.
 
-    The ``@bp.durable_client_input`` decorator makes it hard to call the
-    endpoint directly in tests, so we verify:
+    We verify:
       1. cors_preflight produces the expected 204 with full CORS headers,
       2. the route source contains the OPTIONS guard (structural assertion).
     """
@@ -96,10 +95,9 @@ class TestAnalysisSubmitCORS:
     ):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 202
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -115,10 +113,9 @@ class TestAnalysisSubmitCORS:
     async def test_auth_error_has_cors_headers(self, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 401
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -137,10 +134,9 @@ class TestAnalysisSubmitCORS:
     async def test_quota_error_has_cors_headers(self, mock_quota, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 403
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -157,10 +153,9 @@ class TestAnalysisSubmitCORS:
     async def test_invalid_json_error_has_cors_headers(self, mock_release, mock_quota, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request()  # no body → ValueError
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 400
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -173,14 +168,19 @@ class TestAnalysisSubmitCORS:
     )
     @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
     @patch("blueprints.pipeline.submission.release_quota")
+    @patch(
+        "blueprints.pipeline.submission.get_effective_subscription",
+        return_value={"tier": "free", "status": "none"},
+    )
     @pytest.mark.asyncio
-    async def test_missing_kml_error_has_cors_headers(self, mock_release, mock_quota, mock_auth):
+    async def test_missing_kml_error_has_cors_headers(
+        self, mock_sub, mock_release, mock_quota, mock_auth
+    ):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": ""})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 400
         assert "Access-Control-Allow-Origin" in resp.headers, (
@@ -214,17 +214,20 @@ class TestSubmissionResilience:
         return_value=({"sub": "user-1"}, "user-1"),
     )
     @patch("treesight.storage.client.BlobStorageClient")
+    @patch(
+        "blueprints.pipeline.submission.get_effective_subscription",
+        return_value={"tier": "free", "status": "none"},
+    )
     @pytest.mark.asyncio
     async def test_quota_storage_error_still_allows_submission(
-        self, mock_storage_cls, mock_auth, mock_quota, mock_persist
+        self, mock_sub, mock_storage_cls, mock_auth, mock_quota, mock_persist
     ):
         """If quota storage is transiently unavailable, submit anyway."""
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 202, "Transient quota storage error should not block submission"
 
@@ -241,45 +244,20 @@ class TestSubmissionResilience:
         side_effect=ConnectionError("Storage down"),
     )
     @patch("blueprints.pipeline.submission.release_quota")
+    @patch(
+        "blueprints.pipeline.submission.get_effective_subscription",
+        return_value={"tier": "free", "status": "none"},
+    )
     @pytest.mark.asyncio
     async def test_storage_failure_returns_502_and_refunds_quota(
-        self, mock_release, mock_storage_cls, mock_auth, mock_quota
+        self, mock_sub, mock_release, mock_storage_cls, mock_auth, mock_quota
     ):
         """If KML upload fails, return 502 with CORS and refund quota."""
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
-
-        assert resp.status_code == 502
-        assert "Access-Control-Allow-Origin" in resp.headers
-        mock_release.assert_called_once_with("user-1")
-
-    @patch("blueprints.pipeline.submission._persist_submission_record")
-    @patch(
-        "blueprints.pipeline.submission.consume_quota",
-        return_value=5,
-    )
-    @patch(
-        "blueprints.pipeline.submission.check_auth",
-        return_value=({"sub": "user-1"}, "user-1"),
-    )
-    @patch("treesight.storage.client.BlobStorageClient")
-    @patch("blueprints.pipeline.submission.release_quota")
-    @pytest.mark.asyncio
-    async def test_orchestrator_failure_returns_502_and_refunds_quota(
-        self, mock_release, mock_storage_cls, mock_auth, mock_quota, mock_persist
-    ):
-        """If orchestrator start fails, return 502 with CORS and refund quota."""
-        from blueprints.pipeline.submission import _submit_analysis_request
-
-        client = AsyncMock()
-        client.start_new.side_effect = RuntimeError("Durable runtime unavailable")
-        req = _make_request({"kml_content": "<kml>test</kml>"})
-
-        resp = await _submit_analysis_request(req, client, blob_prefix="analysis")
+        resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 502
         assert "Access-Control-Allow-Origin" in resp.headers

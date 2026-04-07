@@ -85,7 +85,6 @@ class TestAnalysisSubmissionRoutes:
     def test_analysis_submit_uses_analysis_prefix(self):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = _FakeDurableClient()
         req = _make_req(
             "/api/analysis/submit",
             {
@@ -107,21 +106,45 @@ class TestAnalysisSubmissionRoutes:
             patch("blueprints.pipeline.submission.consume_quota", return_value=5),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
-            resp = asyncio.run(_submit_analysis_request(req, client, blob_prefix="analysis"))
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
         data = json.loads(resp.get_body())
         assert data["submission_prefix"] == "analysis"
         assert data["instance_id"]
 
-        upload_args, upload_kwargs = mock_storage_cls.return_value.upload_bytes.call_args
+        # Verify KML upload
+        upload_calls = list(mock_storage_cls.return_value.upload_bytes.call_args_list)
+        assert len(upload_calls) >= 1
+        upload_args, upload_kwargs = upload_calls[0]
         assert upload_args[0] == DEFAULT_INPUT_CONTAINER
         assert upload_args[1].startswith("analysis/")
         assert upload_args[1].endswith(".kml")
         assert upload_args[2] == b"<kml></kml>"
         assert upload_kwargs["content_type"] == "application/vnd.google-earth.kml+xml"
 
-        record_args, _record_kwargs = mock_storage_cls.return_value.upload_json.call_args
+        # Verify ticket blob written
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        assert len(ticket_calls) >= 1
+        ticket_args = ticket_calls[0][0]
+        assert ticket_args[0] == DEFAULT_INPUT_CONTAINER  # same container
+        assert ticket_args[1].startswith(".tickets/")
+        assert ticket_args[1].endswith(".json")
+        ticket_data = ticket_args[2]
+        assert ticket_data["user_id"] == "user-123"
+
+        # Verify submission history record
+        history_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if "analysis-submissions/" in str(c)
+        ]
+        assert len(history_calls) >= 1
+        record_args = history_calls[0][0]
         assert record_args[0] == PIPELINE_PAYLOADS_CONTAINER
         assert record_args[1] == f"analysis-submissions/user-123/{data['instance_id']}.json"
         assert record_args[2]["instance_id"] == data["instance_id"]
@@ -134,16 +157,11 @@ class TestAnalysisSubmissionRoutes:
         assert record_args[2]["workspace_role"] == "portfolio"
         assert record_args[2]["workspace_preference"] == "report"
 
-        assert len(client.calls) == 1
-        assert client.calls[0]["name"] == "treesight_orchestrator"
-        assert client.calls[0]["instance_id"] == data["instance_id"]
-        assert client.calls[0]["client_input"]["blob_name"].startswith("analysis/")
-        assert client.calls[0]["client_input"]["user_id"] == "user-123"
+        # No direct orchestrator start — Event Grid handles it now
 
     def test_free_tier_submit_uses_analysis_prefix_and_limited_pipeline(self):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = _FakeDurableClient()
         req = _make_req("/api/analysis/submit")
 
         with (
@@ -155,7 +173,7 @@ class TestAnalysisSubmissionRoutes:
             ),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
-            resp = asyncio.run(_submit_analysis_request(req, client))
+            resp = asyncio.run(_submit_analysis_request(req))
 
         assert resp.status_code == 202
         data = json.loads(resp.get_body())
@@ -164,11 +182,19 @@ class TestAnalysisSubmissionRoutes:
         upload_args, _upload_kwargs = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_args[0] == DEFAULT_INPUT_CONTAINER
         assert upload_args[1].startswith("analysis/")
-        assert client.calls[0]["client_input"]["blob_name"].startswith("analysis/")
-        assert client.calls[0]["client_input"]["user_id"] == "user-123"
-        assert client.calls[0]["client_input"]["tier"] == "free"
-        assert client.calls[0]["client_input"]["cadence"] == "seasonal"
-        assert client.calls[0]["client_input"]["max_history_years"] == 2
+
+        # Verify ticket includes tier info for blob_trigger to read
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        assert len(ticket_calls) >= 1
+        ticket_data = ticket_calls[0][0][2]
+        assert ticket_data["user_id"] == "user-123"
+        assert ticket_data["tier"] == "free"
+        assert ticket_data["cadence"] == "seasonal"
+        assert ticket_data["max_history_years"] == 2
 
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
@@ -325,28 +351,94 @@ class TestBlobTriggerIngress:
         }
         return event
 
-    def test_blob_trigger_skips_direct_submission_blobs(self):
+    def test_blob_trigger_processes_analysis_prefix_blobs(self):
+        """After event-driven unification, blob_trigger processes ALL blobs."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
         event = self._make_blob_event("analysis/test-run.kml", "evt-analysis")
 
-        asyncio.run(_process_blob_trigger(event, client))
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {
+                "user_id": "user-abc",
+                "provider_name": "planetary_computer",
+                "created_at": "2026-04-05T15:11:00Z",
+            }
+            asyncio.run(_process_blob_trigger(event, client))
 
-        assert client.calls == []
+        assert len(client.calls) == 1
+        assert client.calls[0]["name"] == "treesight_orchestrator"
+        # Uses submission_id from blob path, not event.id
+        assert client.calls[0]["instance_id"] == "test-run"
+        assert client.calls[0]["client_input"]["blob_name"] == "analysis/test-run.kml"
 
-    def test_blob_trigger_starts_storage_native_uploads(self):
+    def test_blob_trigger_enriches_from_ticket(self):
+        """Blob trigger reads ticket blob for user metadata."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("analysis/abc-123.kml", "evt-1")
+
+        ticket = {
+            "user_id": "user-xyz",
+            "provider_name": "planetary_computer",
+            "created_at": "2026-04-05T15:00:00Z",
+        }
+        with (
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch(
+                "blueprints.pipeline.blob_trigger.get_effective_subscription",
+                return_value={"tier": "pro", "status": "active"},
+            ),
+        ):
+            mock_storage_cls.return_value.download_json.return_value = ticket
+            asyncio.run(_process_blob_trigger(event, client))
+
+        orch_input = client.calls[0]["client_input"]
+        assert orch_input["user_id"] == "user-xyz"
+        assert orch_input["provider_name"] == "planetary_computer"
+        assert orch_input["tier"] == "pro"
+
+    def test_blob_trigger_works_without_ticket(self):
+        """Storage-native uploads (no ticket) still work."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
         event = self._make_blob_event("uploads/test-run.kml", "evt-upload")
 
-        asyncio.run(_process_blob_trigger(event, client))
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.side_effect = Exception("not found")
+            asyncio.run(_process_blob_trigger(event, client))
 
         assert len(client.calls) == 1
         assert client.calls[0]["name"] == "treesight_orchestrator"
         assert client.calls[0]["instance_id"] == "evt-upload"
         assert client.calls[0]["client_input"]["blob_name"] == "uploads/test-run.kml"
+        # No user_id when no ticket
+        assert "user_id" not in client.calls[0]["client_input"]
+
+    def test_blob_trigger_applies_free_tier_limits(self):
+        """Free tier ticket should apply cadence and history limits."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("analysis/free-run.kml", "evt-free")
+
+        ticket = {"user_id": "free-user", "created_at": "2026-04-05T15:00:00Z"}
+        with (
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch(
+                "blueprints.pipeline.blob_trigger.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+        ):
+            mock_storage_cls.return_value.download_json.return_value = ticket
+            asyncio.run(_process_blob_trigger(event, client))
+
+        orch_input = client.calls[0]["client_input"]
+        assert orch_input["tier"] == "free"
+        assert orch_input["cadence"] == "seasonal"
+        assert orch_input["max_history_years"] == 2
 
 
 # ---------------------------------------------------------------------------

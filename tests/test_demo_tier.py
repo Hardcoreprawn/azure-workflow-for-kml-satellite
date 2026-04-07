@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -253,21 +253,25 @@ class TestSignedInLowCostSubmission:
 
         mock_effective_subscription.return_value = {"tier": "free", "status": "none"}
 
-        client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client)
+        resp = await _submit_analysis_request(req)
 
         assert resp.status_code == 202
-        client.start_new.assert_awaited_once()
-        call_kwargs = client.start_new.call_args
-        orch_input = call_kwargs.kwargs.get("client_input", call_kwargs[1].get("client_input"))
-        assert orch_input["cadence"] == "seasonal"
-        assert orch_input["max_history_years"] == 2
-        assert orch_input["tier"] == "free"
-        assert orch_input["user_id"] == "user-123"
         upload_call = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_call[0][1].startswith("analysis/")
+        # Verify ticket carries tier info for blob_trigger
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        assert len(ticket_calls) >= 1
+        ticket_data = ticket_calls[0][0][2]
+        assert ticket_data["cadence"] == "seasonal"
+        assert ticket_data["max_history_years"] == 2
+        assert ticket_data["tier"] == "free"
+        assert ticket_data["user_id"] == "user-123"
 
     @patch("blueprints.pipeline.submission.get_effective_subscription")
     @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
@@ -285,19 +289,24 @@ class TestSignedInLowCostSubmission:
 
         mock_effective_subscription.return_value = {"tier": "demo", "status": "active"}
 
-        client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client)
+        resp = await _submit_analysis_request(req)
 
         assert resp.status_code == 202
-        call_kwargs = client.start_new.call_args
-        orch_input = call_kwargs.kwargs.get("client_input", call_kwargs[1].get("client_input"))
-        assert orch_input["tier"] == "demo"
-        assert orch_input["cadence"] == "seasonal"
-        assert orch_input["max_history_years"] == 2
         upload_call = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_call[0][1].startswith("analysis/")
+        # Verify ticket carries tier info for blob_trigger
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        assert len(ticket_calls) >= 1
+        ticket_data = ticket_calls[0][0][2]
+        assert ticket_data["tier"] == "demo"
+        assert ticket_data["cadence"] == "seasonal"
+        assert ticket_data["max_history_years"] == 2
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
@@ -307,9 +316,8 @@ class TestSignedInLowCostSubmission:
     async def test_missing_auth_returns_401(self, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
-        client = AsyncMock()
         req = self._make_request({"kml_content": "<kml>test</kml>"})
 
-        resp = await _submit_analysis_request(req, client)
+        resp = await _submit_analysis_request(req)
 
         assert resp.status_code == 401
