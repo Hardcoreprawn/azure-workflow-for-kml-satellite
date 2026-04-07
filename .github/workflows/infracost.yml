@@ -107,7 +107,7 @@ jobs:
 
       # ── Infracost ──────────────────────────────────────────
       - name: Setup Infracost
-        uses: infracost/actions/setup@7ac0e1e5e33e10bbcef04a47ab3d145debef42cb # v3
+        uses: infracost/actions/setup@9accc4137ae3f13ede9182e0afa2bed39a23c4c0 # v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
