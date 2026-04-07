@@ -156,8 +156,14 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         claims = _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError):
-        logger.warning("Upload auth validation failed")
+    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
+        has_bearer = auth_header.startswith("Bearer ") if auth_header else False
+        logger.warning(
+            "Upload auth validation failed: %s (has_bearer=%s, ciam_client_id=%s)",
+            exc,
+            has_bearer,
+            bool(CIAM_CLIENT_ID),
+        )
         return _error(401, "Unauthorized")
 
     user_id = claims.get("sub", "")
@@ -276,8 +282,8 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError):
-        logger.warning("Status auth validation failed")
+    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
+        logger.warning("Status auth validation failed: %s", exc)
         return _error(401, "Unauthorized")
 
     submission_id = req.route_params.get("submission_id", "")

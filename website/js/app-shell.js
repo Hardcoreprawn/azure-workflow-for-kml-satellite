@@ -2590,6 +2590,25 @@
         headers: tokenHeaders,
         body: JSON.stringify(tokenBody)
       });
+      // Retry once with a force-refreshed token on 401 — the cached
+      // token may have expired or the silent acquisition may have failed.
+      if (tokenRes && tokenRes.status === 401 && currentAccount && msalInstance) {
+        try {
+          var freshResp = await msalInstance.acquireTokenSilent({
+            scopes: CIAM_SCOPES, account: currentAccount, forceRefresh: true
+          });
+          token = selectApiBearerToken(freshResp);
+          if (token) {
+            accessToken = token;
+            tokenHeaders.Authorization = 'Bearer ' + token;
+            tokenRes = await fetch('/api/upload/token', {
+              method: 'POST',
+              headers: tokenHeaders,
+              body: JSON.stringify(tokenBody)
+            });
+          }
+        } catch { /* retry failed — fall through to 401 handling below */ }
+      }
       if (!tokenRes || !tokenRes.ok) {
         if (tokenRes && tokenRes.status === 401) {
           resetAnalysisProgress();
