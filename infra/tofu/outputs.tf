@@ -73,3 +73,8 @@ output "cosmos_database_name" {
   value       = var.enable_cosmos_db ? azurerm_cosmosdb_sql_database.main[0].name : ""
   description = "Cosmos DB database name."
 }
+
+output "swa_api_app_settings" {
+  value       = local.swa_api_app_settings
+  description = "CLI-managed SWA managed API app settings sourced from Terraform."
+}

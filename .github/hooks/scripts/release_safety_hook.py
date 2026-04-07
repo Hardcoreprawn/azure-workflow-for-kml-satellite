@@ -23,6 +23,19 @@ RELEASE_COMMAND_MARKERS = [
     "az staticwebapp",
 ]
 
+# Read-only tools that should never be gated — searching and reading are always safe.
+READ_ONLY_TOOLS = {
+    "read_file",
+    "grep_search",
+    "file_search",
+    "semantic_search",
+    "list_dir",
+    "view_image",
+    "get_errors",
+    "search_subagent",
+    "vscode_listCodeUsages",
+}
+
 
 def flatten_strings(value: Any) -> list[str]:
     if isinstance(value, str):
@@ -42,6 +55,11 @@ def flatten_strings(value: Any) -> list[str]:
 
 def main() -> int:
     payload = json.load(sys.stdin)
+
+    tool_name = payload.get("tool_name", "")
+    if tool_name in READ_ONLY_TOOLS:
+        return 0
+
     haystack = "\n".join(flatten_strings(payload)).lower()
 
     should_gate = any(marker.lower() in haystack for marker in RELEASE_PATH_MARKERS)

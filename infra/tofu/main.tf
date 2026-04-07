@@ -897,6 +897,20 @@ locals {
     price_id_pro_usd = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-usd"
     price_id_pro_eur = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-eur"
   }
+
+  # SWA managed API settings (upload/token, upload/status endpoints).
+  # STORAGE_ACCOUNT_KEY is injected at deploy time via az CLI because it
+  # must not be stored in Terraform state.
+  swa_api_app_settings = merge(
+    {
+      STORAGE_ACCOUNT_NAME = azurerm_storage_account.main.name
+      INPUT_CONTAINER      = "kml-input"
+    },
+    var.ciam_tenant_name != "" ? {
+      CIAM_TENANT_NAME = var.ciam_tenant_name
+      CIAM_CLIENT_ID   = var.ciam_client_id
+    } : {}
+  )
 }
 
 resource "azapi_resource" "event_grid_subscription" {

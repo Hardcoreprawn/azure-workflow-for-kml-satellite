@@ -402,6 +402,24 @@ class TestDeployWorkflowSettings:
             "(upload/token, upload/status) are deployed"
         )
 
+    def test_swa_app_settings_configured_in_deploy(self, deploy_yml):
+        assert "az staticwebapp appsettings set" in deploy_yml, (
+            "deploy.yml must configure SWA managed API app settings via az CLI "
+            "after SWA deploy (STORAGE_ACCOUNT_NAME, CIAM_*, etc.)"
+        )
+
+    def test_swa_app_settings_sourced_from_tofu(self, deploy_yml):
+        assert "swa_api_app_settings" in deploy_yml, (
+            "deploy.yml must source SWA managed API app settings from tofu outputs "
+            "to stay in sync with infrastructure"
+        )
+
+    def test_swa_managed_api_smoke_check(self, deploy_yml):
+        assert "upload/token" in deploy_yml, (
+            "deploy.yml must smoke-check the SWA managed API after deploy "
+            "to catch missing app settings or startup failures"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
@@ -454,6 +472,23 @@ class TestStripeKeyVaultBootstrap:
         )
         assert 'output "function_app_cli_maximum_instance_count"' in outputs_tf, (
             "outputs.tf must expose the CLI-managed Function App scale cap"
+        )
+
+    def test_outputs_expose_swa_api_app_settings(self):
+        outputs_tf = (INFRA / "outputs.tf").read_text()
+        assert 'output "swa_api_app_settings"' in outputs_tf, (
+            "outputs.tf must expose the SWA managed API app settings so "
+            "deploy.yml can configure them via az CLI"
+        )
+
+    def test_iac_defines_swa_api_app_settings(self):
+        main_tf = MAIN_TF.read_text()
+        assert "swa_api_app_settings" in main_tf, (
+            "main.tf must define swa_api_app_settings local to keep SWA "
+            "managed API config in sync with infrastructure"
+        )
+        assert "STORAGE_ACCOUNT_NAME" in main_tf, (
+            "main.tf swa_api_app_settings must include STORAGE_ACCOUNT_NAME"
         )
 
     def test_deployer_still_has_key_vault_secret_access(self):

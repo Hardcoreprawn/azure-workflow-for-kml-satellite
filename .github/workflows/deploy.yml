@@ -150,6 +150,9 @@ jobs:
       appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
       swa_hostname: ${{ steps.swa-hostname.outputs.hostname }}
       custom_domain: ${{ steps.swa-hostname.outputs.custom_domain }}
+      swa_name: ${{ steps.swa-meta.outputs.swa_name }}
+      resource_group: ${{ steps.swa-meta.outputs.resource_group }}
+      swa_api_app_settings: ${{ steps.swa-meta.outputs.swa_api_app_settings }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -326,6 +329,20 @@ jobs:
           CUSTOM_DOMAIN=$(tofu output -raw custom_domain)
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
           echo "custom_domain=${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Export SWA metadata for app settings
+        id: swa-meta
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          echo "swa_name=$(tofu output -raw static_web_app_name)" >> "$GITHUB_OUTPUT"
+          echo "resource_group=$(tofu output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
+          # JSON blob — deploy-website will unpack this with jq
+          echo "swa_api_app_settings=$(tofu output -json swa_api_app_settings | jq -c .)" >> "$GITHUB_OUTPUT"
 
       - name: Export App Insights connection string
         id: appinsights
@@ -516,6 +533,58 @@ jobs:
           app_location: /website
           api_location: /website/api
           skip_app_build: true
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure SWA managed API app settings
+        run: |
+          SWA_NAME="${{ needs.deploy-infra.outputs.swa_name }}"
+          RG="${{ needs.deploy-infra.outputs.resource_group }}"
+
+          # Unpack tofu-sourced settings (STORAGE_ACCOUNT_NAME, CIAM_*, INPUT_CONTAINER)
+          mapfile -t SETTINGS < <(
+            echo '${{ needs.deploy-infra.outputs.swa_api_app_settings }}' \
+              | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
+          )
+
+          # STORAGE_ACCOUNT_KEY must come from az CLI — not stored in state.
+          STORAGE_KEY=$(az storage account keys list \
+            --account-name "$(echo '${{ needs.deploy-infra.outputs.swa_api_app_settings }}' | jq -r '.STORAGE_ACCOUNT_NAME')" \
+            --resource-group "$RG" \
+            --query '[0].value' -o tsv)
+          SETTINGS+=("STORAGE_ACCOUNT_KEY=${STORAGE_KEY}")
+
+          az staticwebapp appsettings set \
+            --name "$SWA_NAME" \
+            --resource-group "$RG" \
+            --setting-names "${SETTINGS[@]}"
+
+      - name: Smoke-check SWA managed API
+        run: |
+          SWA_HOSTNAME="${{ needs.deploy-infra.outputs.swa_hostname }}"
+          BASE_URL="https://${SWA_HOSTNAME}"
+          echo "Checking SWA managed API at ${BASE_URL}..."
+          # Allow cold-start time for the managed function
+          for i in $(seq 1 6); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              -X POST "${BASE_URL}/api/upload/token" \
+              -H "Content-Type: application/json" 2>/dev/null || echo "000")
+            echo "  [attempt ${i}] POST /api/upload/token → HTTP ${CODE}"
+            if [ "$CODE" = "401" ]; then
+              echo "✅ SWA managed API is responding (auth gate working)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ SWA managed API did not return 401 within 60s (got ${CODE})"
+          echo "  Expected 401 (auth required), got ${CODE}."
+          echo "  If 503: check app settings. If 404: check api_location."
+          exit 1
 
       - name: Login to CIAM tenant (OIDC)
         if: ${{ vars.CIAM_TENANT_ID != '' }}
