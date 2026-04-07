@@ -396,6 +396,12 @@ class TestDeployWorkflowSettings:
             "HTML meta tags before SWA upload"
         )
 
+    def test_swa_deploy_includes_api_location(self, deploy_yml):
+        assert "api_location" in deploy_yml, (
+            "deploy.yml SWA deploy must set api_location so managed functions "
+            "(upload/token, upload/status) are deployed"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
