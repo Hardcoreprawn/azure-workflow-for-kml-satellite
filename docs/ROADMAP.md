@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-05
+Last updated: 2026-04-07
 
 ---
 
@@ -23,18 +23,24 @@ Last updated: 2026-04-05
 
 | PR | Summary | Why It Matters |
 |----|---------|----------------|
-| #394 | Scheduled monitoring + change alerts (#310) | First Stage 3 capability landed, but subsequent risky growth work should ship behind the Stage 2A rollout model rather than directly to the live site. |
-| #393 | Blob storage + replay store managed identity | Important runtime hardening for storage access and multi-instance token replay; useful foundation for a clean redeploy/rebuild check. |
+| #425 | KML/KMZ input sanitisation — zip bomb protection + `validate_kml_bytes()` (#421) | Slice 1 of event-driven pipeline. Hardens `maybe_unzip()` with decompression limits and adds structural XML validation. OWASP-grade input defence before the upload path moves event-driven. |
+| #419 | Redesign metric alerts for scale-to-zero Container Apps (#418) | Alerting no longer fires on cold-start 503s. New Event Grid dropped-events Sev1 alert. |
+| #417 | Stage 2A release safety — consolidated (#407–#412) | CIAM automation, deploy workflow hardening, docs reconciliation. |
+| #394 | Scheduled monitoring + change alerts (#310) | First Stage 3 capability landed. |
+| #393 | Blob storage + replay store managed identity | Runtime hardening for storage access. |
 
 ---
 
 ## In Flight
 
-No open PRs right now.
+| PR | Branch | Summary |
+|----|--------|--------|
+| #425 | `feat/kml-input-sanitisation` | Slice 1 — input sanitisation (awaiting review) |
+| #419 | `fix/scale-to-zero-alerts` | Alert redesign (awaiting review) |
 
-**Priority call:** finish work already close to merge, but do not start more broad-exposure Stage 3 or Stage 4 work until the release-safety stage below is substantially complete. For Canopex, production should validate and gradually expose the same built artifact, not be the first unrestricted place we discover whether it works.
+**Priority call:** the event-driven pipeline restructure (#420) is the current focus. Work the slices in order (#421 → #422 → #423 → #424). Do not open more Stage 3 or Stage 4 work until the event-driven pipeline is reliably wired and Stage 2A release-safety work is materially complete.
 
-**Infra gate before Stage 2A execution:** the live estate is still a single `dev` environment. `canopex.hrdcrprwn.com` is bound to `stapp-kmlsat-dev-site`, the checked-in deploy workflow still applies `environments/dev.tfvars` only, and the live Event Grid system topic currently has no event subscription even though the upload pipeline depends on `blob_trigger`. Before Stage 2A.1 is considered underway, prove a clean-slate `dev` recreate from OpenTofu state, restore verified ingestion wiring, and make `prd` a real promotion target.
+**Infra gate before Stage 2A execution:** the live estate is still a single `dev` environment. `canopex.hrdcrprwn.com` is bound to `stapp-kmlsat-dev-site`, the checked-in deploy workflow still applies `environments/dev.tfvars` only. Before Stage 2A.1 is considered underway, prove a clean-slate `dev` recreate from OpenTofu state and make `prd` a real promotion target.
 
 ---
 
@@ -89,11 +95,26 @@ Make production safe to promote into. Build once in CI, promote the same immutab
 
 ---
 
+## Stage 2B — Event-Driven Pipeline Restructure
+
+Decouple the KML upload path from the orchestrator. Make the pipeline fully event-driven so the function app can scale to zero reliably. Parent issue: #420.
+
+| Order | Issue | Title | Depends On | Status |
+|-------|-------|-------|------------|--------|
+| 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | — | ✅ PR #425 — awaiting review |
+| 2B.2 | #422 | SWA API function for SAS token minting + status polling | — | 🔜 Next |
+| 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | #421, #422 | — |
+| 2B.4 | #424 | Migrate read-only endpoints to SWA functions + cold start optimisation | #423 | — |
+
+**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Function app has zero direct-submission paths. Read-only endpoints served from SWA managed functions (always warm).
+
+---
+
 ## Stage 3 — Growth & Retention
 
 Features that make Canopex a habit, not a one-off tool.
 
-Do not open more Stage 3 work beyond what is already in flight until Stage 2A is materially complete. Growth features are safer to ship once rollout controls and post-deploy smoke exist.
+Do not open more Stage 3 work beyond what is already in flight until Stage 2A and 2B are materially complete. Growth features are safer to ship once rollout controls, post-deploy smoke, and reliable event-driven ingestion exist.
 
 | Order | Issue | Title | Depends On | Notes |
 |-------|-------|-------|------------|-------|
