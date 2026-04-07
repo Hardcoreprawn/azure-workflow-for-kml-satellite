@@ -2611,13 +2611,22 @@
       }
       if (!tokenRes || !tokenRes.ok) {
         if (tokenRes && tokenRes.status === 401) {
+          var authBody = await tokenRes.json().catch(function(){ return {}; });
           resetAnalysisProgress();
-          currentAccount = null;
-          var expiredAuthGate = document.getElementById('app-analysis-auth-gate');
-          var expiredFormFields = document.getElementById('app-analysis-form-fields');
-          if (expiredAuthGate) expiredAuthGate.hidden = false;
-          if (expiredFormFields) expiredFormFields.hidden = true;
-          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
+          if (authBody.reason === 'token_expired') {
+            // Token genuinely expired and forceRefresh couldn't recover —
+            // the refresh token is likely gone.  Clear session state so the
+            // user can re-authenticate via interactive login.
+            currentAccount = null;
+            updateAuthUI();
+            setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
+          } else {
+            // Backend rejected the token for a non-expiry reason (audience
+            // mismatch, JWKS fetch failure, config error, etc.).  Don't
+            // nuke the MSAL account — the user may just need to retry.
+            console.warn('[canopex] Upload token 401 — reason:', authBody.reason || 'unknown', authBody.error || '');
+            setAnalysisStatus('Unable to verify your session. Please try again, or sign out and back in.', 'error');
+          }
           return;
         }
         var tokenErr = tokenRes ? await tokenRes.json().catch(function(){ return {}; }) : {};
@@ -3156,6 +3165,13 @@
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   document.getElementById('app-sign-in-btn').addEventListener('click', login);
   document.getElementById('app-analysis-sign-in-btn').addEventListener('click', login);
+  document.getElementById('app-demo-signin-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    document.getElementById('auth-login-btn').click();
+  });
+  document.getElementById('app-demo-banner-dismiss').addEventListener('click', function() {
+    document.getElementById('app-demo-banner').hidden = true;
+  });
   document.getElementById('app-manage-billing-btn').addEventListener('click', manageBilling);
   document.getElementById('app-apply-tier-emulation-btn').addEventListener('click', saveTierEmulation);
   document.getElementById('app-guided-primary-btn').addEventListener('click', function() {

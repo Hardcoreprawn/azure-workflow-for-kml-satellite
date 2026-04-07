@@ -103,10 +103,13 @@ def _validate_token(auth_header: str) -> dict:
     return claims
 
 
-def _error(status: int, message: str) -> func.HttpResponse:
+def _error(status: int, message: str, *, reason: str = "") -> func.HttpResponse:
     """Return a JSON error response."""
+    body: dict = {"error": message}
+    if reason:
+        body["reason"] = reason
     return func.HttpResponse(
-        json.dumps({"error": message}),
+        json.dumps(body),
         status_code=status,
         mimetype="application/json",
     )
@@ -156,6 +159,13 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         claims = _validate_token(auth_header)
+    except jwt.ExpiredSignatureError as exc:
+        logger.warning(
+            "Upload JWT expired: %s (ciam_configured=%s)",
+            exc,
+            bool(CIAM_CLIENT_ID),
+        )
+        return _error(401, "Token expired", reason="token_expired")
     except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
         has_bearer = auth_header.startswith("Bearer ") if auth_header else False
         logger.warning(
@@ -282,6 +292,9 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         _validate_token(auth_header)
+    except jwt.ExpiredSignatureError as exc:
+        logger.warning("Status JWT expired: %s", exc)
+        return _error(401, "Token expired", reason="token_expired")
     except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
         logger.warning("Status auth validation failed: %s", exc)
         return _error(401, "Unauthorized")
