@@ -161,7 +161,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         claims = _validate_token(auth_header)
     except jwt.ExpiredSignatureError as exc:
         logger.warning(
-            "Upload auth token expired: %s (ciam_client_id=%s)",
+            "Upload JWT expired: %s (ciam_configured=%s)",
             exc,
             bool(CIAM_CLIENT_ID),
         )
@@ -293,7 +293,7 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     try:
         _validate_token(auth_header)
     except jwt.ExpiredSignatureError as exc:
-        logger.warning("Status auth token expired: %s", exc)
+        logger.warning("Status JWT expired: %s", exc)
         return _error(401, "Token expired", reason="token_expired")
     except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
         logger.warning("Status auth validation failed: %s", exc)
