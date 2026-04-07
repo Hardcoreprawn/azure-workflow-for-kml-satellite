@@ -11,6 +11,7 @@ locals {
     event_grid_system_topic    = "evgt-${local.name_suffix}"
     event_grid_subscription    = "evgs-kml-upload"
     static_web_app             = "stapp-${local.name_suffix}-site"
+    swa_identity               = "id-${local.name_suffix}-swa"
     communication_service      = "acs-${local.name_suffix}"
     email_service              = "ecs-${local.name_suffix}"
     cosmos_account             = "cosmos-${local.name_suffix}"
