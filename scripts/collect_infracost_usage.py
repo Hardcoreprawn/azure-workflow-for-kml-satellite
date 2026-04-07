@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 try:
@@ -255,7 +255,7 @@ def _find_resources(
 def _generate_usage_yaml(metrics: dict) -> str:
     """Render infracost-usage.yml from collected metrics."""
     lookback = metrics.get("lookback_days", 31)
-    timestamp = metrics.get("collected_at", datetime.now(datetime.UTC).isoformat())
+    timestamp = metrics.get("collected_at", datetime.now(UTC).isoformat())
 
     lines = [
         "# Infracost usage file — generated from observed Azure metrics.",
@@ -327,7 +327,7 @@ def main() -> None:
     sub_id = args.subscription_id
     rg = args.resource_group
 
-    end = datetime.now(datetime.UTC)
+    end = datetime.now(UTC)
     start = end - timedelta(days=args.lookback)
 
     print(f"Collecting Azure metrics (lookback: {args.lookback}d, rg: {rg})")
@@ -401,7 +401,7 @@ def main() -> None:
 
     collected = {
         "lookback_days": args.lookback,
-        "collected_at": datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "collected_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "log_analytics_ingestion_gb": la_gb,
         "storage": storage_metrics,
         "keyvault_operations": kv_ops,
