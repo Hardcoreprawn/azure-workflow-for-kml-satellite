@@ -24,12 +24,12 @@ Last updated: 2026-04-07
 
 | PR | Summary |
 |----|---------|
+| #442 | CSP violations + auth loop resilience (fixes #408, #409, partial #438) |
+| #441 | Roadmap overhaul + issue tracking discipline |
 | #435 | Auth retry on 401 + web test cost reduction |
 | #436 | Infracost CI cost gate with live Azure usage metrics |
 | #427 | SWA managed API functions — SAS token minting + status polling (#422) |
 | #425 | KML/KMZ input sanitisation — zip bomb protection + `validate_kml_bytes()` (#421) |
-| #426 | Docs, tooling, roadmap update |
-| #419 | Redesign metric alerts for scale-to-zero Container Apps (#418) |
 
 ---
 
@@ -37,13 +37,13 @@ Last updated: 2026-04-07
 
 Work items are ordered by dependency and impact. Complete each group before starting the next, unless explicitly overridden.
 
-### P0 — Live Site Fixes (do first)
+### P0 — Live Site Fixes ✅
 
 Bugs visible to real users right now.
 
-| Order | Issue | Title | PR-sized? |
-|-------|-------|-------|-----------|
-| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | Single PR — bundles #367, #408, #409 |
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 (CSP + auth); #367 already resolved |
 
 **Exit criteria:** Deploy succeeds. No CSP console errors. Demo dismiss works. Azure Monitor telemetry flows.
 
