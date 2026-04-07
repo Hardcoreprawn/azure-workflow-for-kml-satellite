@@ -773,6 +773,12 @@ resource "azurerm_static_web_app" "main" {
   sku_tier            = "Standard"
   sku_size            = "Standard"
   tags                = local.tags
+
+  app_settings = local.swa_api_app_settings
+
+  identity {
+    type = "SystemAssigned"
+  }
 }
 
 # --- Linked backend (disabled): the linkedBackends ARM API returns 500
@@ -798,6 +804,19 @@ resource "azurerm_role_assignment" "storage_blob_data_owner" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Owner"
   principal_id         = azapi_resource.function_app.identity[0].principal_id
+}
+
+# SWA managed identity — blob writes (ticket blobs) + user delegation SAS
+resource "azurerm_role_assignment" "swa_storage_blob_data_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_static_web_app.main.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "swa_storage_blob_delegator" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Blob Delegator"
+  principal_id         = azurerm_static_web_app.main.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "storage_queue_data_contributor" {
@@ -899,8 +918,7 @@ locals {
   }
 
   # SWA managed API settings (upload/token, upload/status endpoints).
-  # STORAGE_ACCOUNT_KEY is injected at deploy time via az CLI because it
-  # must not be stored in Terraform state.
+  # Auth uses managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
       STORAGE_ACCOUNT_NAME = azurerm_storage_account.main.name

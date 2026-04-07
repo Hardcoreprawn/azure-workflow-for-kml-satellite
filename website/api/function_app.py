@@ -6,10 +6,12 @@ so the main Container Apps function app can scale to zero without affecting UX.
 
 Environment variables (set via SWA app_settings in OpenTofu):
   STORAGE_ACCOUNT_NAME   — storage account for SAS token generation
-  STORAGE_ACCOUNT_KEY    — storage account key (for SAS signing)
   CIAM_TENANT_NAME       — e.g. "treesightauth"
   CIAM_CLIENT_ID         — CIAM app registration client ID
   SAS_TOKEN_EXPIRY_MINUTES — SAS token lifetime (default: 15)
+
+Authentication to Azure Storage uses the SWA's system-assigned managed
+identity (DefaultAzureCredential) — no shared secrets.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ import uuid
 
 import azure.functions as func
 import jwt
+from azure.identity import DefaultAzureCredential
 from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
@@ -37,7 +40,6 @@ logger = logging.getLogger("swa-api")
 # ---------------------------------------------------------------------------
 
 STORAGE_ACCOUNT_NAME = os.environ.get("STORAGE_ACCOUNT_NAME", "")
-STORAGE_ACCOUNT_KEY = os.environ.get("STORAGE_ACCOUNT_KEY", "")
 CIAM_TENANT_NAME = os.environ.get("CIAM_TENANT_NAME", "")
 CIAM_CLIENT_ID = os.environ.get("CIAM_CLIENT_ID", "")
 INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
@@ -52,6 +54,21 @@ _JWKS_URI = (
     else ""
 )
 _jwks_client: jwt.PyJWKClient | None = None
+_blob_service: BlobServiceClient | None = None
+
+
+def _get_blob_service() -> BlobServiceClient:
+    """Lazy-init BlobServiceClient with managed identity credential."""
+    global _blob_service
+    if _blob_service is None:
+        if not STORAGE_ACCOUNT_NAME:
+            raise RuntimeError("STORAGE_ACCOUNT_NAME is not configured")
+        account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        _blob_service = BlobServiceClient(
+            account_url=account_url,
+            credential=DefaultAzureCredential(),
+        )
+    return _blob_service
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:
@@ -148,7 +165,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         return _error(401, "Token missing subject claim")
 
     # --- config check ---
-    if not STORAGE_ACCOUNT_NAME or not STORAGE_ACCOUNT_KEY:
+    if not STORAGE_ACCOUNT_NAME:
         logger.error("Storage account not configured for SAS generation")
         return _error(503, "Service not configured")
 
@@ -179,8 +196,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         ticket["submission_context"] = _sanitise_submission_context(ctx)
 
     try:
-        account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
-        blob_service = BlobServiceClient(account_url=account_url, credential=STORAGE_ACCOUNT_KEY)
+        blob_service = _get_blob_service()
         ticket_blob = blob_service.get_blob_client(
             INPUT_CONTAINER, f".tickets/{submission_id}.json"
         )
@@ -193,14 +209,25 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
         return _error(502, "Storage service temporarily unavailable")
 
+    now = datetime.datetime.now(datetime.UTC)
+    expiry = now + datetime.timedelta(minutes=SAS_TOKEN_EXPIRY_MINUTES)
+
+    try:
+        delegation_key = blob_service.get_user_delegation_key(
+            key_start_time=now,
+            key_expiry_time=expiry,
+        )
+    except Exception:
+        logger.exception("Failed to obtain user delegation key")
+        return _error(502, "Storage service temporarily unavailable")
+
     sas_token = generate_blob_sas(
         account_name=STORAGE_ACCOUNT_NAME,
         container_name=INPUT_CONTAINER,
         blob_name=blob_name,
-        account_key=STORAGE_ACCOUNT_KEY,
+        user_delegation_key=delegation_key,
         permission=BlobSasPermissions(create=True, write=True),
-        expiry=datetime.datetime.now(datetime.UTC)
-        + datetime.timedelta(minutes=SAS_TOKEN_EXPIRY_MINUTES),
+        expiry=expiry,
         content_type="application/vnd.google-earth.kml+xml",
     )
 

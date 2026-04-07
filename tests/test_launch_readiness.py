@@ -402,16 +402,10 @@ class TestDeployWorkflowSettings:
             "(upload/token, upload/status) are deployed"
         )
 
-    def test_swa_app_settings_configured_in_deploy(self, deploy_yml):
-        assert "az staticwebapp appsettings set" in deploy_yml, (
-            "deploy.yml must configure SWA managed API app settings via az CLI "
-            "after SWA deploy (STORAGE_ACCOUNT_NAME, CIAM_*, etc.)"
-        )
-
-    def test_swa_app_settings_sourced_from_tofu(self, deploy_yml):
-        assert "swa_api_app_settings" in deploy_yml, (
-            "deploy.yml must source SWA managed API app settings from tofu outputs "
-            "to stay in sync with infrastructure"
+    def test_swa_app_settings_managed_by_tofu(self, deploy_yml):
+        assert "az staticwebapp appsettings set" not in deploy_yml, (
+            "deploy.yml must NOT configure SWA app settings via CLI — "
+            "tofu manages them inline via app_settings on the resource"
         )
 
     def test_swa_managed_api_smoke_check(self, deploy_yml):
@@ -474,21 +468,28 @@ class TestStripeKeyVaultBootstrap:
             "outputs.tf must expose the CLI-managed Function App scale cap"
         )
 
-    def test_outputs_expose_swa_api_app_settings(self):
-        outputs_tf = (INFRA / "outputs.tf").read_text()
-        assert 'output "swa_api_app_settings"' in outputs_tf, (
-            "outputs.tf must expose the SWA managed API app settings so "
-            "deploy.yml can configure them via az CLI"
+    def test_swa_uses_managed_identity(self):
+        main_tf = MAIN_TF.read_text()
+        assert "identity" in main_tf, (
+            "SWA resource must have identity block for managed identity auth"
+        )
+        assert "swa_storage_blob_delegator" in main_tf, (
+            "SWA must have Storage Blob Delegator role for user delegation SAS"
+        )
+        assert "swa_storage_blob_data_contributor" in main_tf, (
+            "SWA must have Storage Blob Data Contributor role for ticket blob writes"
         )
 
-    def test_iac_defines_swa_api_app_settings(self):
-        main_tf = MAIN_TF.read_text()
-        assert "swa_api_app_settings" in main_tf, (
-            "main.tf must define swa_api_app_settings local to keep SWA "
-            "managed API config in sync with infrastructure"
+    def test_swa_api_uses_default_credential(self):
+        api_code = (ROOT / "website" / "api" / "function_app.py").read_text()
+        assert "DefaultAzureCredential" in api_code, (
+            "SWA API must use DefaultAzureCredential (managed identity), not storage keys"
         )
-        assert "STORAGE_ACCOUNT_NAME" in main_tf, (
-            "main.tf swa_api_app_settings must include STORAGE_ACCOUNT_NAME"
+        assert "STORAGE_ACCOUNT_KEY" not in api_code, (
+            "SWA API must not reference STORAGE_ACCOUNT_KEY — use managed identity"
+        )
+        assert "user_delegation_key" in api_code, (
+            "SWA API must use user delegation SAS, not account-key SAS"
         )
 
     def test_deployer_still_has_key_vault_secret_access(self):
