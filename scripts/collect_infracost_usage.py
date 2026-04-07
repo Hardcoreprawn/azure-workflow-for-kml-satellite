@@ -34,15 +34,14 @@ from pathlib import Path
 
 try:
     from azure.identity import DefaultAzureCredential
-    from azure.mgmt.monitor import MonitorManagementClient
-    from azure.mgmt.storage import StorageManagementClient
+    from azure.mgmt.resource import ResourceManagementClient
     from azure.monitor.query import MetricAggregationType, MetricsQueryClient
 except ImportError as exc:
     print(
         f"Missing Azure SDK package: {exc}\n"
         "Install with:\n"
         "  pip install azure-identity azure-monitor-query "
-        "azure-mgmt-monitor azure-mgmt-storage",
+        "azure-mgmt-resource",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -141,21 +140,6 @@ def collect_log_analytics_ingestion(
     return round(monthly_gb, 3)
 
 
-def collect_storage_used_gb(
-    storage_client: StorageManagementClient,
-    resource_group: str,
-    account_name: str,
-) -> float:
-    """Return current used capacity in GB from the storage account."""
-    try:
-        storage_client.storage_accounts.get_properties(resource_group, account_name)
-        # The REST API doesn't directly expose used capacity inline.
-        # Fall back to a reasonable estimate from blob service stats.
-        return 1.0  # placeholder — real implementation uses metrics below
-    except Exception:
-        return 1.0
-
-
 def collect_storage_metrics(
     client: MetricsQueryClient,
     resource_uri: str,
@@ -232,21 +216,6 @@ def collect_cosmos_storage_gb(
     if total_bytes is None or total_bytes == 0:
         return 0.1
     return round(total_bytes / (1024**3), 3)
-
-
-# ── Resource discovery ───────────────────────────────────────
-
-
-def _find_resources(
-    monitor_client: MonitorManagementClient,
-    subscription_id: str,
-    resource_group: str,
-) -> dict:
-    """Discover resource IDs by type within the resource group."""
-    prefix = f"/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers"
-    # We construct known resource URIs based on naming conventions.
-    # In practice, you could also use Resource Graph queries here.
-    return {"prefix": prefix}
 
 
 # ── YAML generation ──────────────────────────────────────────
@@ -332,24 +301,27 @@ def main() -> None:
 
     print(f"Collecting Azure metrics (lookback: {args.lookback}d, rg: {rg})")
 
-    # We need the actual resource names. Use azure.mgmt.resource to list them.
-    from azure.mgmt.resource import ResourceManagementClient
-
+    # Discover resources by type. Use a list per type to avoid collisions
+    # when multiple resources share the same provider type.
     resource_client = ResourceManagementClient(credential, sub_id)
-    resources = {r.type: r for r in resource_client.resources.list_by_resource_group(rg)}
+    resources: dict[str, list] = {}
+    for r in resource_client.resources.list_by_resource_group(rg):
+        resources.setdefault(r.type, []).append(r)
 
     # Build resource URIs from discovered resources
-    la_resource = resources.get("Microsoft.OperationalInsights/workspaces")
-    la_uri = la_resource.id if la_resource else None
+    # Pick the first resource of each type (there is typically one per type
+    # in our resource group; if multiples exist, the first is used).
+    la_list = resources.get("Microsoft.OperationalInsights/workspaces", [])
+    la_uri = la_list[0].id if la_list else None
 
-    storage_resource = resources.get("Microsoft.Storage/storageAccounts")
-    storage_uri = storage_resource.id if storage_resource else None
+    storage_list = resources.get("Microsoft.Storage/storageAccounts", [])
+    storage_uri = storage_list[0].id if storage_list else None
 
-    kv_resource = resources.get("Microsoft.KeyVault/vaults")
-    kv_uri = kv_resource.id if kv_resource else None
+    kv_list = resources.get("Microsoft.KeyVault/vaults", [])
+    kv_uri = kv_list[0].id if kv_list else None
 
-    cosmos_resource = resources.get("Microsoft.DocumentDB/databaseAccounts")
-    cosmos_uri = cosmos_resource.id if cosmos_resource else None
+    cosmos_list = resources.get("Microsoft.DocumentDB/databaseAccounts", [])
+    cosmos_uri = cosmos_list[0].id if cosmos_list else None
 
     # ── Collect metrics ──────────────────────────────────────
     print("  Log Analytics ingestion…")

@@ -6,15 +6,15 @@
 # a PR comment with the diff vs current baseline.
 #
 # Required GitHub Secrets (set in 'dev' environment):
-#   AZURE_CLIENT_ID         — SP / managed identity client ID (OIDC)
-#   AZURE_TENANT_ID         — Azure AD tenant
-#   AZURE_SUBSCRIPTION_ID   — Target subscription
-#   TF_STATE_RESOURCE_GROUP — Resource group holding tfstate storage
-#   TF_STATE_STORAGE_ACCOUNT— Storage account name for tfstate
-#   TF_STATE_CONTAINER      — Blob container name for tfstate
-#   TF_STATE_KEY            — Blob key for the state file
-#   INFRACOST_API_KEY       — Infracost Cloud API key (free tier)
-#   DEV_RESOURCE_GROUP      — Resource group name for usage metrics
+#   AZURE_CLIENT_ID           — SP / managed identity client ID (OIDC)
+#   AZURE_TENANT_ID           — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID     — Target subscription
+#   TF_STATE_RESOURCE_GROUP   — Resource group holding tfstate storage
+#   TF_STATE_STORAGE_ACCOUNT  — Storage account name for tfstate
+#   TF_STATE_CONTAINER_DEV    — Blob container name for tfstate (dev)
+#   TF_STATE_KEY_DEV          — Blob key for the state file (dev)
+#   INFRACOST_API_KEY         — Infracost Cloud API key (free tier)
+#   DEV_RESOURCE_GROUP        — Resource group name for usage metrics
 # ─────────────────────────────────────────────────────────────
 name: Infracost
 
@@ -32,6 +32,7 @@ permissions:
 env:
   TOFU_VERSION: "1.8.0"
   PYTHON_VERSION: "3.12"
+  BUDGET_GBP: "10"
 
 jobs:
   infracost:
@@ -60,8 +61,6 @@ jobs:
           python -m pip install \
             azure-identity \
             'azure-monitor-query>=1.4,<2' \
-            azure-mgmt-monitor \
-            azure-mgmt-storage \
             azure-mgmt-resource
 
       - name: Collect Azure usage metrics
@@ -119,24 +118,15 @@ jobs:
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
-      - name: Generate Infracost baseline
+      - name: Generate Infracost breakdown
         working-directory: infra/tofu
         run: |
           infracost breakdown \
             --path=plan.json \
             --usage-file=infracost-usage.yml \
+            --currency=GBP \
             --format=json \
             --out-file=/tmp/infracost-base.json
-
-      - name: Generate Infracost diff
-        working-directory: infra/tofu
-        run: |
-          infracost diff \
-            --path=plan.json \
-            --usage-file=infracost-usage.yml \
-            --format=json \
-            --compare-to=/tmp/infracost-base.json \
-            --out-file=/tmp/infracost-diff.json || true
 
       - name: Post PR comment
         run: |
@@ -156,12 +146,11 @@ jobs:
             --format=json \
             | jq -r '.totalMonthlyCost // "0"')
 
-          BUDGET=10
           echo "Estimated monthly cost: £${MONTHLY}"
-          echo "Budget threshold: £${BUDGET}"
+          echo "Budget threshold: £${{ env.BUDGET_GBP }}"
 
-          if (( $(echo "$MONTHLY > $BUDGET" | bc -l) )); then
-            echo "::warning::Estimated cost (£${MONTHLY}) exceeds budget (£${BUDGET}/month)"
+          if (( $(echo "$MONTHLY > ${{ env.BUDGET_GBP }}" | bc -l) )); then
+            echo "::warning::Estimated cost (£${MONTHLY}) exceeds budget (£${{ env.BUDGET_GBP }}/month)"
             # Warn but don't fail — cost estimates have uncertainty.
             # Change to exit 1 to hard-gate deploys on budget.
           fi
