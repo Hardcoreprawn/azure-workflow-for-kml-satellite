@@ -318,7 +318,7 @@ class TestAvailabilityTest:
 
     def test_web_test_has_geo_locations(self):
         tf = MAIN_TF.read_text()
-        assert "geo_locations" in tf, "The web test must ping from multiple geographic locations"
+        assert "geo_locations" in tf, "The web test must specify at least one geographic location"
 
 
 # ---------------------------------------------------------------------------

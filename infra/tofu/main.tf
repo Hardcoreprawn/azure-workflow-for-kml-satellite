@@ -222,16 +222,18 @@ resource "azurerm_monitor_metric_alert" "eventgrid_dropped_events" {
   tags = local.tags
 }
 
-# --- Availability test: ping the site every 5 minutes from 5 regions ---
+# --- Availability test: ping the site periodically ---
 resource "azurerm_application_insights_standard_web_test" "site_ping" {
   name                    = "webtest-${local.name_suffix}-site-ping"
   resource_group_name     = azurerm_resource_group.main.name
   location                = azurerm_resource_group.main.location
   application_insights_id = azurerm_application_insights.main.id
-  frequency               = 300 # seconds (5 minutes)
+  frequency               = 600 # seconds (10 minutes)
   timeout                 = 30
   enabled                 = true
-  geo_locations           = ["emea-nl-ams-azr", "emea-gb-db3-azr", "us-va-ash-azr", "us-il-ch1-azr", "apac-sg-sin-azr"]
+  # Dev: single region to minimise Standard Web Test cost (~£0.35/month vs £18).
+  # Prod should use 3–5 geo_locations for meaningful availability coverage.
+  geo_locations           = ["emea-gb-db3-azr"]
   tags                    = local.tags
 
   request {
