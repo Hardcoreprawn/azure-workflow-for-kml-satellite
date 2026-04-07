@@ -766,6 +766,13 @@ resource "azapi_resource" "function_app" {
   response_export_values = ["id", "name", "properties.defaultHostName"]
 }
 
+resource "azurerm_user_assigned_identity" "swa" {
+  name                = local.names.swa_identity
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.tags
+}
+
 resource "azurerm_static_web_app" "main" {
   name                = local.names.static_web_app
   location            = var.static_web_app_location
@@ -777,7 +784,8 @@ resource "azurerm_static_web_app" "main" {
   app_settings = local.swa_api_app_settings
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.swa.id]
   }
 }
 
@@ -808,17 +816,15 @@ resource "azurerm_role_assignment" "storage_blob_data_owner" {
 
 # SWA managed identity — blob writes (ticket blobs) + user delegation SAS
 resource "azurerm_role_assignment" "swa_storage_blob_data_contributor" {
-  count                = length(try(azurerm_static_web_app.main.identity, [])) > 0 ? 1 : 0
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_static_web_app.main.identity[0].principal_id
+  principal_id         = azurerm_user_assigned_identity.swa.principal_id
 }
 
 resource "azurerm_role_assignment" "swa_storage_blob_delegator" {
-  count                = length(try(azurerm_static_web_app.main.identity, [])) > 0 ? 1 : 0
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Delegator"
-  principal_id         = azurerm_static_web_app.main.identity[0].principal_id
+  principal_id         = azurerm_user_assigned_identity.swa.principal_id
 }
 
 resource "azurerm_role_assignment" "storage_queue_data_contributor" {
@@ -920,11 +926,12 @@ locals {
   }
 
   # SWA managed API settings (upload/token, upload/status endpoints).
-  # Auth uses managed identity — no storage key needed.
+  # Auth uses user-assigned managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
       STORAGE_ACCOUNT_NAME = azurerm_storage_account.main.name
       INPUT_CONTAINER      = "kml-input"
+      AZURE_CLIENT_ID      = azurerm_user_assigned_identity.swa.client_id
     },
     var.ciam_tenant_name != "" ? {
       CIAM_TENANT_NAME = var.ciam_tenant_name
