@@ -133,14 +133,28 @@ resource "azurerm_monitor_action_group" "ops" {
   }
 }
 
+# ---------- Alerting strategy (scale-to-zero tolerant) ----------
+#
+# The function app scales to zero on Container Apps. Cold starts
+# produce a handful of 503s and a latency spike that resolve within
+# ~60 s. Alerts must tolerate this transient noise while catching
+# sustained breakage and pipeline data-loss.
+#
+# Signal                    | What it tells us
+# --------------------------|-------------------------------------------------
+# failed_requests (15 min)  | Function app is broken, not just cold-starting
+# high_latency   (15 min)   | Sustained slow responses, not one-off cold start
+# eg_dropped_events         | Pipeline lost data (Event Grid gave up)
+# site_ping                 | Static frontend is unreachable (SWA, always-on)
+
 resource "azurerm_monitor_metric_alert" "failed_requests" {
   name                = "alert-${local.name_suffix}-failed-requests"
   resource_group_name = azurerm_resource_group.main.name
   scopes              = [azurerm_application_insights.main.id]
-  description         = "Alert when failed request volume exceeds threshold."
+  description         = "Sustained failed-request volume (scale-to-zero tolerant)."
   severity            = 2
   frequency           = "PT5M"
-  window_size         = "PT5M"
+  window_size         = "PT15M"
   enabled             = true
 
   criteria {
@@ -148,7 +162,7 @@ resource "azurerm_monitor_metric_alert" "failed_requests" {
     metric_name      = "requests/failed"
     aggregation      = "Count"
     operator         = "GreaterThan"
-    threshold        = 5
+    threshold        = 25
   }
 
   action {
@@ -162,10 +176,10 @@ resource "azurerm_monitor_metric_alert" "high_latency" {
   name                = "alert-${local.name_suffix}-high-latency"
   resource_group_name = azurerm_resource_group.main.name
   scopes              = [azurerm_application_insights.main.id]
-  description         = "Alert when average request latency is elevated."
+  description         = "Sustained elevated latency (scale-to-zero tolerant)."
   severity            = 3
   frequency           = "PT5M"
-  window_size         = "PT5M"
+  window_size         = "PT15M"
   enabled             = true
 
   criteria {
@@ -174,6 +188,31 @@ resource "azurerm_monitor_metric_alert" "high_latency" {
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 5000
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.ops.id
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_monitor_metric_alert" "eventgrid_dropped_events" {
+  name                = "alert-${local.name_suffix}-eg-dropped-events"
+  resource_group_name = azurerm_resource_group.main.name
+  scopes              = [azapi_resource.event_grid_system_topic.id]
+  description         = "Event Grid dropped events — pipeline data loss."
+  severity            = 1
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  enabled             = true
+
+  criteria {
+    metric_namespace = "Microsoft.EventGrid/systemTopics"
+    metric_name      = "DroppedEventCount"
+    aggregation      = "Total"
+    operator         = "GreaterThan"
+    threshold        = 0
   }
 
   action {
