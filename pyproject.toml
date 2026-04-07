@@ -36,6 +36,13 @@ dev = [
     "ruff>=0.8.0",
     "pip-audit>=2.7.0",
 ]
+infracost = [
+    "azure-identity>=1.19.0",
+    "azure-monitor-query>=1.4.0",
+    "azure-mgmt-monitor>=6.0.0",
+    "azure-mgmt-storage>=21.0.0",
+    "azure-mgmt-resource>=23.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]

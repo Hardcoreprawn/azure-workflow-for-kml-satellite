@@ -40,6 +40,8 @@ DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
+INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
+INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 
@@ -791,4 +793,65 @@ class TestFrontendProgressReset:
         assert "resetAnalysisProgress" in error_block, (
             "submitAnalysis error branch must call resetAnalysisProgress() "
             "to hide the pipeline spinner on API failure"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 13. Infracost cost-gate workflow and usage file
+# ---------------------------------------------------------------------------
+
+
+class TestInfracostCostGate:
+    """Verify Infracost CI gate is properly configured."""
+
+    def test_infracost_workflow_exists(self):
+        assert INFRACOST_YML.exists(), (
+            "Infracost workflow missing at .github/workflows/infracost.yml"
+        )
+
+    def test_infracost_usage_file_exists(self):
+        assert INFRACOST_USAGE.exists(), (
+            "Infracost usage file missing at infra/tofu/infracost-usage.yml"
+        )
+
+    def test_infracost_workflow_triggers_on_infra_changes(self):
+        content = INFRACOST_YML.read_text()
+        assert "infra/tofu/**" in content, (
+            "Infracost workflow must trigger on infra/tofu/** changes"
+        )
+
+    def test_infracost_workflow_has_budget_check(self):
+        content = INFRACOST_YML.read_text()
+        assert "budget" in content.lower(), (
+            "Infracost workflow must include a budget threshold check"
+        )
+
+    def test_infracost_usage_file_has_version(self):
+        content = INFRACOST_USAGE.read_text()
+        assert "version:" in content, "Infracost usage file must declare a version"
+
+    def test_infracost_usage_file_covers_key_resources(self):
+        content = INFRACOST_USAGE.read_text()
+        expected = [
+            "azurerm_log_analytics_workspace.main",
+            "azurerm_storage_account.main",
+            "azurerm_key_vault.main",
+        ]
+        for resource in expected:
+            assert resource in content, (
+                f"Infracost usage file must have usage parameters for {resource}"
+            )
+
+    def test_collection_script_exists(self):
+        script = ROOT / "scripts" / "collect_infracost_usage.py"
+        assert script.exists(), (
+            "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
+        )
+
+    def test_infracost_optional_deps_defined(self):
+        pyproject = ROOT / "pyproject.toml"
+        content = pyproject.read_text()
+        assert "[project.optional-dependencies]" in content
+        assert "infracost" in content, (
+            "pyproject.toml must define an 'infracost' optional dep group"
         )

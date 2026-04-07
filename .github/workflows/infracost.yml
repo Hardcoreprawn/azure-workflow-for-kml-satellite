@@ -1,0 +1,159 @@
+# ─────────────────────────────────────────────────────────────
+# Infracost — Cost estimation for infrastructure changes
+#
+# Runs on PRs that touch infra/tofu/** files. Collects live
+# Azure usage metrics, generates a cost estimate, and posts
+# a PR comment with the diff vs current baseline.
+#
+# Required GitHub Secrets (set in 'dev' environment):
+#   AZURE_CLIENT_ID         — SP / managed identity client ID (OIDC)
+#   AZURE_TENANT_ID         — Azure AD tenant
+#   AZURE_SUBSCRIPTION_ID   — Target subscription
+#   TF_STATE_RESOURCE_GROUP — Resource group holding tfstate storage
+#   TF_STATE_STORAGE_ACCOUNT— Storage account name for tfstate
+#   TF_STATE_CONTAINER      — Blob container name for tfstate
+#   TF_STATE_KEY            — Blob key for the state file
+#   INFRACOST_API_KEY       — Infracost Cloud API key (free tier)
+#   DEV_RESOURCE_GROUP      — Resource group name for usage metrics
+# ─────────────────────────────────────────────────────────────
+name: Infracost
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/tofu/**"
+
+permissions:
+  contents: read
+  id-token: write          # OIDC auth to Azure
+  pull-requests: write     # post PR comment
+
+env:
+  TOFU_VERSION: "1.8.0"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  infracost:
+    name: Cost Estimate
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # ── Azure auth (OIDC) — needed for tofu plan + metrics ──
+      - name: Azure Login (OIDC)
+        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Collect live usage metrics ─────────────────────────
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install metrics collection dependencies
+        run: pip install '.[infracost]'
+
+      - name: Collect Azure usage metrics
+        run: |
+          python scripts/collect_infracost_usage.py \
+            --subscription-id "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            --resource-group "${{ secrets.DEV_RESOURCE_GROUP }}" \
+            --lookback 31 \
+            --output infra/tofu/infracost-usage.yml
+
+      # ── OpenTofu plan ──────────────────────────────────────
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: Cache OpenTofu providers
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        with:
+          path: infra/tofu/.terraform/providers
+          key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
+          restore-keys: tofu-providers-
+
+      - name: Tofu Init
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          tofu init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
+            -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"
+
+      - name: Tofu Plan (JSON)
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          tofu plan -out=tfplan \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var-file="environments/dev.tfvars"
+          tofu show -json tfplan > plan.json
+
+      # ── Infracost ──────────────────────────────────────────
+      - name: Setup Infracost
+        uses: infracost/actions/setup@7ac0e1e5e33e10bbcef04a47ab3d145debef42cb # v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Infracost baseline
+        working-directory: infra/tofu
+        run: |
+          infracost breakdown \
+            --path=plan.json \
+            --usage-file=infracost-usage.yml \
+            --format=json \
+            --out-file=/tmp/infracost-base.json
+
+      - name: Generate Infracost diff
+        working-directory: infra/tofu
+        run: |
+          infracost diff \
+            --path=plan.json \
+            --usage-file=infracost-usage.yml \
+            --format=json \
+            --compare-to=/tmp/infracost-base.json \
+            --out-file=/tmp/infracost-diff.json || true
+
+      - name: Post PR comment
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost-base.json \
+            --repo="${{ github.repository }}" \
+            --github-token="${{ github.token }}" \
+            --pull-request="${{ github.event.pull_request.number }}" \
+            --behavior=update \
+            --tag=infracost
+
+      # ── Budget gate ────────────────────────────────────────
+      - name: Check budget threshold
+        run: |
+          MONTHLY=$(infracost output \
+            --path=/tmp/infracost-base.json \
+            --format=json \
+            | jq -r '.totalMonthlyCost // "0"')
+
+          BUDGET=10
+          echo "Estimated monthly cost: £${MONTHLY}"
+          echo "Budget threshold: £${BUDGET}"
+
+          if (( $(echo "$MONTHLY > $BUDGET" | bc -l) )); then
+            echo "::warning::Estimated cost (£${MONTHLY}) exceeds budget (£${BUDGET}/month)"
+            # Warn but don't fail — cost estimates have uncertainty.
+            # Change to exit 1 to hard-gate deploys on budget.
+          fi
