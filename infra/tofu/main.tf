@@ -816,14 +816,12 @@ resource "azurerm_role_assignment" "storage_blob_data_owner" {
 
 # SWA managed identity — blob writes (ticket blobs) + user delegation SAS
 resource "azurerm_role_assignment" "swa_storage_blob_data_contributor" {
-  count                = length(try(azurerm_static_web_app.main.identity, [])) > 0 ? 1 : 0
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_user_assigned_identity.swa.principal_id
 }
 
 resource "azurerm_role_assignment" "swa_storage_blob_delegator" {
-  count                = length(try(azurerm_static_web_app.main.identity, [])) > 0 ? 1 : 0
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Delegator"
   principal_id         = azurerm_user_assigned_identity.swa.principal_id
