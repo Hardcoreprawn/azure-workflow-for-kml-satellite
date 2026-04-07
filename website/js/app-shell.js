@@ -2558,10 +2558,9 @@
 
     try {
       await apiDiscoveryReady;
-      var endpoint = '/api/analysis/submit';
-      var requestBody = { kml_content: kmlContent };
-      if (!demoMode) {
-        var submissionContext = preflight ? {
+      var submissionContext = null;
+      if (!demoMode && preflight) {
+        submissionContext = {
           feature_count: preflight.featureCount,
           aoi_count: preflight.aoiCount,
           max_spread_km: preflight.maxSpreadKm,
@@ -2571,16 +2570,28 @@
           provider_name: 'planetary_computer',
           workspace_role: workspaceRole,
           workspace_preference: workspacePreference
-        } : null;
-        requestBody.submission_context = submissionContext;
+        };
       }
-      var res = await apiFetch(endpoint, {
+
+      // Step 1: Get SAS token from SWA managed API
+      var token = accessToken;
+      if (!token || tokenExpired(token, 60)) token = await acquireToken();
+      var tokenHeaders = { 'Content-Type': 'application/json' };
+      if (token) tokenHeaders.Authorization = 'Bearer ' + token;
+
+      var tokenBody = {};
+      if (submissionContext) {
+        tokenBody.provider_name = submissionContext.provider_name;
+        tokenBody.submission_context = submissionContext;
+      }
+
+      var tokenRes = await fetch('/api/upload/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        headers: tokenHeaders,
+        body: JSON.stringify(tokenBody)
       });
-      if (!res || !res.ok) {
-        if (res && res.status === 401) {
+      if (!tokenRes || !tokenRes.ok) {
+        if (tokenRes && tokenRes.status === 401) {
           resetAnalysisProgress();
           currentAccount = null;
           var expiredAuthGate = document.getElementById('app-analysis-auth-gate');
@@ -2590,14 +2601,38 @@
           setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           return;
         }
-        var err = res ? await res.json().catch(function(){ return {}; }) : {};
-        setAnalysisStatus(err.error || 'Could not queue analysis request.', 'error');
+        var tokenErr = tokenRes ? await tokenRes.json().catch(function(){ return {}; }) : {};
+        setAnalysisStatus(tokenErr.error || 'Could not prepare upload. Please try again.', 'error');
         updateContentSummary(null);
         resetAnalysisProgress();
         return;
       }
 
-      var data = await res.json();
+      var tokenData = await tokenRes.json();
+      var submissionId = tokenData.submission_id;
+      var sasUrl = tokenData.sas_url;
+
+      // Step 2: Upload KML directly to blob storage via SAS URL
+      button.textContent = 'Uploading…';
+      setAnalysisStep('submit', 'active');
+
+      var kmlBytes = new TextEncoder().encode(kmlContent);
+      var uploadRes = await fetch(sasUrl, {
+        method: 'PUT',
+        headers: {
+          'x-ms-blob-type': 'BlockBlob',
+          'Content-Type': 'application/vnd.google-earth.kml+xml'
+        },
+        body: kmlBytes
+      });
+      if (!uploadRes || !uploadRes.ok) {
+        setAnalysisStatus('Upload failed. Please try again.', 'error');
+        resetAnalysisProgress();
+        return;
+      }
+
+      // Step 3: Track the submission
+      var data = { instance_id: submissionId };
       analysisHistoryLoaded = true;
       applyFirstRunLayout();
       var queuedAt = new Date().toISOString();
@@ -2621,7 +2656,8 @@
       selectAnalysisRun(data.instance_id, { focus: 'run', resume: true });
       setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
       if (!demoMode) loadBillingStatus();
-    } catch {
+    } catch (err) {
+      console.error('submitAnalysis failed:', err);
       setAnalysisStatus('Could not queue analysis request.', 'error');
       resetAnalysisProgress();
     } finally {

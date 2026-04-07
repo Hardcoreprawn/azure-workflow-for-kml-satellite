@@ -24,6 +24,8 @@ import azure.functions as func
 import jwt
 from azure.storage.blob import (
     BlobSasPermissions,
+    BlobServiceClient,
+    ContentSettings,
     generate_blob_sas,
 )
 
@@ -93,6 +95,24 @@ def _error(status: int, message: str) -> func.HttpResponse:
     )
 
 
+def _sanitise_submission_context(ctx: dict) -> dict:
+    """Allow-list filter for submission_context — mirrors _extract_submission_context."""
+    clean: dict = {}
+    for field in ("feature_count", "aoi_count"):
+        value = ctx.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            clean[field] = int(value)
+    for field in ("max_spread_km", "total_area_ha", "largest_area_ha"):
+        value = ctx.get(field)
+        if isinstance(value, (int, float)) and value >= 0:
+            clean[field] = round(float(value), 2)
+    for field in ("processing_mode", "provider_name", "workspace_role", "workspace_preference"):
+        value = ctx.get(field)
+        if isinstance(value, str) and value.strip():
+            clean[field] = value.strip()[:80]
+    return clean
+
+
 def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
     """Return a JSON success response."""
     return func.HttpResponse(
@@ -119,8 +139,8 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         claims = _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("Token validation failed: %s", exc)
+    except (ValueError, jwt.PyJWTError, RuntimeError):
+        logger.warning("Upload auth validation failed")
         return _error(401, "Unauthorized")
 
     user_id = claims.get("sub", "")
@@ -133,8 +153,45 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         return _error(503, "Service not configured")
 
     # --- mint SAS ---
+    # NOTE: Quota enforcement is handled by the Container Apps submission
+    # endpoint (submission.py).  The SWA API path bypasses quota because
+    # this module deliberately avoids importing treesight.  Slice 4 will
+    # add quota checking to blob_trigger so both paths are gated.
     submission_id = str(uuid.uuid4())
     blob_name = f"analysis/{submission_id}.kml"
+
+    # --- parse optional submission context ---
+    try:
+        body = json.loads(req.get_body()) if req.get_body() else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        body = {}
+
+    # --- write ticket blob (trusted server-side record) ---
+    ticket: dict = {
+        "user_id": user_id,
+        "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
+    }
+    provider = body.get("provider_name")
+    if isinstance(provider, str) and provider.strip():
+        ticket["provider_name"] = provider.strip()[:80]
+    ctx = body.get("submission_context")
+    if isinstance(ctx, dict):
+        ticket["submission_context"] = _sanitise_submission_context(ctx)
+
+    try:
+        account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+        blob_service = BlobServiceClient(account_url=account_url, credential=STORAGE_ACCOUNT_KEY)
+        ticket_blob = blob_service.get_blob_client(
+            INPUT_CONTAINER, f".tickets/{submission_id}.json"
+        )
+        ticket_blob.upload_blob(
+            json.dumps(ticket).encode(),
+            overwrite=True,
+            content_settings=ContentSettings(content_type="application/json"),
+        )
+    except Exception:
+        logger.exception("Failed to write ticket for submission_id=%s", submission_id)
+        return _error(502, "Storage service temporarily unavailable")
 
     sas_token = generate_blob_sas(
         account_name=STORAGE_ACCOUNT_NAME,
@@ -153,8 +210,7 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     )
 
     logger.info(
-        "SAS token minted user_id=%s submission_id=%s blob=%s",
-        user_id,
+        "Upload URL minted submission_id=%s blob=%s",
         submission_id,
         blob_name,
     )
@@ -193,8 +249,8 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_header = req.headers.get("Authorization", "")
     try:
         _validate_token(auth_header)
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("Token validation failed: %s", exc)
+    except (ValueError, jwt.PyJWTError, RuntimeError):
+        logger.warning("Status auth validation failed")
         return _error(401, "Unauthorized")
 
     submission_id = req.route_params.get("submission_id", "")

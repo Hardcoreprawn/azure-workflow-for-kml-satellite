@@ -723,7 +723,7 @@ class TestFrontendProgressReset:
     APP_SHELL = WEBSITE / "js" / "app-shell.js"
 
     def test_submit_error_branch_resets_progress(self):
-        """The '!res || !res.ok' branch must call resetAnalysisProgress()."""
+        """Error branches in submitAnalysis must call resetAnalysisProgress()."""
         content = self.APP_SHELL.read_text()
         # Find the submitAnalysis function
         fn_start = content.find("async function submitAnalysis()")
@@ -735,13 +735,15 @@ class TestFrontendProgressReset:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
 
-        # Find the error handling block: 'if (!res || !res.ok)'
+        # Find error handling blocks: 'if (!tokenRes || !tokenRes.ok)' or
+        # 'if (!uploadRes || !uploadRes.ok)' — the event-driven flow has
+        # two error check points (token + upload)
         error_branch = re.search(
-            r"if\s*\(\s*!res\s*\|\|\s*!res\.ok\s*\)(.*?)(?:}\s*$|}\s*\n)",
+            r"if\s*\(\s*!\w+Res\s*\|\|\s*!\w+Res\.ok\s*\)(.*?)(?:}\s*$|}\s*\n)",
             fn_body,
             flags=re.DOTALL,
         )
-        assert error_branch, "Error branch 'if (!res || !res.ok)' not found in submitAnalysis"
+        assert error_branch, "Error branch 'if (!...Res || !...Res.ok)' not found in submitAnalysis"
         error_block = error_branch.group(1)
 
         assert "resetAnalysisProgress" in error_block, (

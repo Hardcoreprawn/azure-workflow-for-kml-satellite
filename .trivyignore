@@ -20,3 +20,9 @@ CVE-2026-27142
 # Expires 2026-05-01 — re-check monthly; tracked in #355.
 CVE-2026-33416 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
 CVE-2026-33636 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
+
+# pip 25.0.1 CVEs in base container image — not exploitable at runtime.
+# We do not install arbitrary wheels in production; pip is only used during
+# image build. Upgrade when Microsoft publishes a patched Functions base image.
+CVE-2025-8869 # pip symlink extraction — medium
+CVE-2026-1703 # pip path traversal via crafted wheels — low

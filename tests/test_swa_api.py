@@ -123,9 +123,10 @@ class TestTokenValidation:
 class TestUploadToken:
     """Tests for the upload_token endpoint."""
 
+    @patch("swa_function_app.BlobServiceClient")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_returns_sas_url(self, mock_sas, mock_auth, _reload_module):
+    def test_returns_sas_url(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
         mod = _reload_module
         mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sv=2024-01-01&sig=test"
@@ -141,12 +142,16 @@ class TestUploadToken:
         assert body["max_bytes"] == 10_485_760
         assert body["expires_minutes"] == 15
         # SAS URL points to the correct storage account
-        assert "teststorage.blob.core.windows.net" in body["sas_url"]
-        assert "kml-input/analysis/" in body["sas_url"]
+        from urllib.parse import urlparse
 
+        parsed = urlparse(body["sas_url"])
+        assert parsed.hostname == "teststorage.blob.core.windows.net"
+        assert "/kml-input/analysis/" in parsed.path
+
+    @patch("swa_function_app.BlobServiceClient")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_submission_id_is_uuid(self, mock_sas, mock_auth, _reload_module):
+    def test_submission_id_is_uuid(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
         mod = _reload_module
         mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
@@ -157,9 +162,10 @@ class TestUploadToken:
         # Should be a valid UUID
         uuid.UUID(body["submission_id"])
 
+    @patch("swa_function_app.BlobServiceClient")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_sas_permissions_write_only(self, mock_sas, mock_auth, _reload_module):
+    def test_sas_permissions_write_only(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
         mod = _reload_module
         mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
@@ -175,9 +181,10 @@ class TestUploadToken:
         assert perms.read is not True
         assert perms.delete is not True
 
+    @patch("swa_function_app.BlobServiceClient")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_sas_expiry_matches_config(self, mock_sas, mock_auth, _reload_module):
+    def test_sas_expiry_matches_config(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
         mod = _reload_module
         mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
@@ -191,6 +198,42 @@ class TestUploadToken:
         # Expiry should be ~15 minutes from now
         delta = (expiry - now).total_seconds()
         assert 800 < delta < 1000  # roughly 14-16 min window
+
+    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_writes_ticket_blob(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+        """upload_token must write a ticket blob with user metadata."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims(sub="user-456")
+        mock_sas.return_value = "sig=test"
+
+        req = _mock_request(
+            headers={"Authorization": "Bearer valid"},
+            body=json.dumps(
+                {
+                    "provider_name": "planetary_computer",
+                    "submission_context": {"feature_count": 5},
+                }
+            ).encode(),
+        )
+        resp = mod.upload_token(req)
+
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        sid = body["submission_id"]
+
+        # Verify ticket blob was written
+        mock_blob_svc.return_value.get_blob_client.assert_called_once_with(
+            "kml-input", f".tickets/{sid}.json"
+        )
+        upload_call = mock_blob_svc.return_value.get_blob_client.return_value.upload_blob
+        upload_call.assert_called_once()
+        ticket_data = json.loads(upload_call.call_args[0][0])
+        assert ticket_data["user_id"] == "user-456"
+        assert ticket_data["provider_name"] == "planetary_computer"
+        assert ticket_data["submission_context"]["feature_count"] == 5
+        assert "created_at" in ticket_data
 
     def test_rejects_missing_auth_header(self, _reload_module):
         mod = _reload_module
@@ -215,6 +258,53 @@ class TestUploadToken:
         req = _mock_request(headers={"Authorization": "Bearer valid"})
         resp = mod.upload_token(req)
         assert resp.status_code == 503
+
+    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_returns_502_on_ticket_write_failure(
+        self, mock_sas, mock_auth, mock_blob_svc, _reload_module
+    ):
+        """When ticket blob write fails, return 502."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        mock_blob_svc.return_value.get_blob_client.return_value.upload_blob.side_effect = (
+            RuntimeError("storage down")
+        )
+
+        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        resp = mod.upload_token(req)
+        assert resp.status_code == 502
+
+    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_sanitises_submission_context(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+        """submission_context is allow-list filtered, not passed through raw."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        mock_sas.return_value = "sig=test"
+
+        malicious_ctx = {
+            "feature_count": 5,
+            "evil_key": "should be dropped",
+            "aoi_count": -1,  # negative — should be dropped
+            "__proto__": "injection",
+        }
+        req = _mock_request(
+            headers={"Authorization": "Bearer valid"},
+            body=json.dumps({"submission_context": malicious_ctx}).encode(),
+        )
+        resp = mod.upload_token(req)
+        assert resp.status_code == 200
+
+        upload_call = mock_blob_svc.return_value.get_blob_client.return_value.upload_blob
+        ticket_data = json.loads(upload_call.call_args[0][0])
+        ctx = ticket_data.get("submission_context", {})
+        assert ctx.get("feature_count") == 5
+        assert "evil_key" not in ctx
+        assert "aoi_count" not in ctx  # negative filtered out
+        assert "__proto__" not in ctx
 
 
 # ---------------------------------------------------------------------------

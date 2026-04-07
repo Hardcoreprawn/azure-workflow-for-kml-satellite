@@ -10,7 +10,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
@@ -68,20 +67,17 @@ def _validated_kml_bytes(req: func.HttpRequest, body: Any) -> bytes | func.HttpR
 
 
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-@bp.durable_client_input(client_name="client")
 async def analysis_submit(
     req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """POST /api/analysis/submit — signed-in KML submission entry point."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
-    return await _submit_analysis_request(req, client)
+    return await _submit_analysis_request(req)
 
 
 async def _submit_analysis_request(
     req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
     *,
     blob_prefix: str = "analysis",
 ) -> func.HttpResponse:
@@ -118,7 +114,6 @@ async def _submit_analysis_request(
 
     resp = await _submit_kml(
         req,
-        client,
         body,
         blob_prefix=blob_prefix,
         extra_input={
@@ -161,14 +156,18 @@ async def _submit_analysis_request(
 
 async def _submit_kml(
     req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
     body: Any,
     *,
     blob_prefix: str,
     extra_input: dict[str, Any] | None = None,
     log_tag: str = "",
 ) -> func.HttpResponse:
-    """Shared KML validation, upload, and orchestrator start."""
+    """Validate KML, write ticket, upload blob.
+
+    The orchestrator is started by the Event Grid blob trigger, not here.
+    The ticket blob at ``.tickets/{id}.json`` carries user metadata so
+    that ``blob_trigger`` can enrich the orchestrator input.
+    """
     kml_bytes = _validated_kml_bytes(req, body)
     if isinstance(kml_bytes, func.HttpResponse):
         return kml_bytes
@@ -181,7 +180,20 @@ async def _submit_kml(
 
     try:
         storage = BlobStorageClient()
-        blob_url = storage.upload_bytes(
+
+        # Write ticket blob so blob_trigger can read user metadata
+        ticket: dict[str, Any] = {
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        if extra_input:
+            ticket.update(extra_input)
+        storage.upload_json(
+            DEFAULT_INPUT_CONTAINER,
+            f".tickets/{submission_id}.json",
+            ticket,
+        )
+
+        storage.upload_bytes(
             DEFAULT_INPUT_CONTAINER,
             kml_blob_name,
             kml_bytes,
@@ -195,35 +207,7 @@ async def _submit_kml(
             req=req,
         )
 
-    orchestrator_input: dict[str, Any] = {
-        "blob_url": blob_url,
-        "container_name": DEFAULT_INPUT_CONTAINER,
-        "blob_name": kml_blob_name,
-        "content_length": len(kml_bytes),
-        "content_type": "application/vnd.google-earth.kml+xml",
-        "event_time": datetime.now(UTC).isoformat(),
-        "correlation_id": submission_id,
-        "composite_search": True,
-        "provider_name": DEFAULT_PROVIDER,
-    }
-    if extra_input:
-        orchestrator_input.update(extra_input)
-
-    try:
-        await client.start_new(
-            "treesight_orchestrator",
-            instance_id=submission_id,
-            client_input=orchestrator_input,
-        )
-    except Exception:
-        logger.exception("Orchestrator start failed for %s", submission_id)
-        return error_response(
-            502,
-            "Pipeline service temporarily unavailable — please retry in a moment.",
-            req=req,
-        )
-
-    logger.info("%s instance=%s", log_tag, submission_id)
+    logger.info("%s submission_id=%s blob=%s", log_tag, submission_id, kml_blob_name)
 
     return func.HttpResponse(
         json.dumps({"instance_id": submission_id, "submission_prefix": safe_prefix}),
