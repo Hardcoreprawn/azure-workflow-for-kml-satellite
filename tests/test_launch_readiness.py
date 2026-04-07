@@ -402,6 +402,18 @@ class TestDeployWorkflowSettings:
             "(upload/token, upload/status) are deployed"
         )
 
+    def test_swa_app_settings_managed_by_tofu(self, deploy_yml):
+        assert "az staticwebapp appsettings set" not in deploy_yml, (
+            "deploy.yml must NOT configure SWA app settings via CLI — "
+            "tofu manages them inline via app_settings on the resource"
+        )
+
+    def test_swa_managed_api_smoke_check(self, deploy_yml):
+        assert "upload/token" in deploy_yml, (
+            "deploy.yml must smoke-check the SWA managed API after deploy "
+            "to catch missing app settings or startup failures"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
@@ -454,6 +466,30 @@ class TestStripeKeyVaultBootstrap:
         )
         assert 'output "function_app_cli_maximum_instance_count"' in outputs_tf, (
             "outputs.tf must expose the CLI-managed Function App scale cap"
+        )
+
+    def test_swa_uses_managed_identity(self):
+        main_tf = MAIN_TF.read_text()
+        assert "identity" in main_tf, (
+            "SWA resource must have identity block for managed identity auth"
+        )
+        assert "swa_storage_blob_delegator" in main_tf, (
+            "SWA must have Storage Blob Delegator role for user delegation SAS"
+        )
+        assert "swa_storage_blob_data_contributor" in main_tf, (
+            "SWA must have Storage Blob Data Contributor role for ticket blob writes"
+        )
+
+    def test_swa_api_uses_default_credential(self):
+        api_code = (ROOT / "website" / "api" / "function_app.py").read_text()
+        assert "DefaultAzureCredential" in api_code, (
+            "SWA API must use DefaultAzureCredential (managed identity), not storage keys"
+        )
+        assert "STORAGE_ACCOUNT_KEY" not in api_code, (
+            "SWA API must not reference STORAGE_ACCOUNT_KEY — use managed identity"
+        )
+        assert "user_delegation_key" in api_code, (
+            "SWA API must use user delegation SAS, not account-key SAS"
         )
 
     def test_deployer_still_has_key_vault_secret_access(self):

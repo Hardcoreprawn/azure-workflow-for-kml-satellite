@@ -35,7 +35,6 @@ _SWA_MODULE_NAME = "swa_function_app"
 def _swa_env(monkeypatch):
     """Set environment variables for the SWA API module."""
     monkeypatch.setenv("STORAGE_ACCOUNT_NAME", "teststorage")
-    monkeypatch.setenv("STORAGE_ACCOUNT_KEY", "dGVzdGtleQ==")  # base64 "testkey"
     monkeypatch.setenv("CIAM_TENANT_NAME", "treesightauth")
     monkeypatch.setenv("CIAM_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("INPUT_CONTAINER", "kml-input")
@@ -56,6 +55,7 @@ def _reload_module(_swa_env):
     sys.modules[_SWA_MODULE_NAME] = mod
     spec.loader.exec_module(mod)
     mod._jwks_client = None
+    mod._blob_service = None
     return mod
 
 
@@ -123,7 +123,7 @@ class TestTokenValidation:
 class TestUploadToken:
     """Tests for the upload_token endpoint."""
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_returns_sas_url(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
@@ -148,7 +148,7 @@ class TestUploadToken:
         assert parsed.hostname == "teststorage.blob.core.windows.net"
         assert "/kml-input/analysis/" in parsed.path
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_submission_id_is_uuid(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
@@ -162,7 +162,7 @@ class TestUploadToken:
         # Should be a valid UUID
         uuid.UUID(body["submission_id"])
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_sas_permissions_write_only(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
@@ -180,8 +180,15 @@ class TestUploadToken:
         assert perms.write is True
         assert perms.read is not True
         assert perms.delete is not True
+        # Must use user delegation key, not account key
+        assert "user_delegation_key" in call_kwargs, (
+            "SAS must be generated with user_delegation_key (managed identity)"
+        )
+        assert "account_key" not in call_kwargs, (
+            "SAS must NOT use account_key — use managed identity delegation"
+        )
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_sas_expiry_matches_config(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
@@ -199,7 +206,7 @@ class TestUploadToken:
         delta = (expiry - now).total_seconds()
         assert 800 < delta < 1000  # roughly 14-16 min window
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_writes_ticket_blob(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
@@ -259,7 +266,7 @@ class TestUploadToken:
         resp = mod.upload_token(req)
         assert resp.status_code == 503
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_returns_502_on_ticket_write_failure(
@@ -276,7 +283,24 @@ class TestUploadToken:
         resp = mod.upload_token(req)
         assert resp.status_code == 502
 
-    @patch("swa_function_app.BlobServiceClient")
+    @patch("swa_function_app._get_blob_service")
+    @patch("swa_function_app._validate_token")
+    @patch("swa_function_app.generate_blob_sas")
+    def test_returns_502_on_delegation_key_failure(
+        self, mock_sas, mock_auth, mock_blob_svc, _reload_module
+    ):
+        """When user delegation key request fails, return 502."""
+        mod = _reload_module
+        mock_auth.return_value = _make_claims()
+        mock_blob_svc.return_value.get_user_delegation_key.side_effect = RuntimeError(
+            "identity not ready"
+        )
+
+        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        resp = mod.upload_token(req)
+        assert resp.status_code == 502
+
+    @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
     def test_sanitises_submission_context(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):

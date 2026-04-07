@@ -517,6 +517,28 @@ jobs:
           api_location: /website/api
           skip_app_build: true
 
+      - name: Smoke-check SWA managed API
+        run: |
+          SWA_HOSTNAME="${{ needs.deploy-infra.outputs.swa_hostname }}"
+          BASE_URL="https://${SWA_HOSTNAME}"
+          echo "Checking SWA managed API at ${BASE_URL}..."
+          # Allow cold-start time for the managed function
+          for i in $(seq 1 6); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              -X POST "${BASE_URL}/api/upload/token" \
+              -H "Content-Type: application/json" 2>/dev/null || echo "000")
+            echo "  [attempt ${i}] POST /api/upload/token → HTTP ${CODE}"
+            if [ "$CODE" = "401" ]; then
+              echo "✅ SWA managed API is responding (auth gate working)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ SWA managed API did not return 401 within 60s (got ${CODE})"
+          echo "  Expected 401 (auth required), got ${CODE}."
+          echo "  If 503: check app settings. If 404: check api_location."
+          exit 1
+
       - name: Login to CIAM tenant (OIDC)
         if: ${{ vars.CIAM_TENANT_ID != '' }}
         uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
