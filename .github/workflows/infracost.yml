@@ -55,7 +55,13 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install metrics collection dependencies
-        run: pip install '.[infracost]'
+        run: |
+          pip install \
+            azure-identity \
+            azure-monitor-query \
+            azure-mgmt-monitor \
+            azure-mgmt-storage \
+            azure-mgmt-resource
 
       - name: Collect Azure usage metrics
         run: |
