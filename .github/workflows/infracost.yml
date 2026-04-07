@@ -120,11 +120,12 @@ jobs:
 
       - name: Generate Infracost breakdown
         working-directory: infra/tofu
+        env:
+          INFRACOST_CURRENCY: GBP
         run: |
           infracost breakdown \
             --path=plan.json \
             --usage-file=infracost-usage.yml \
-            --currency=GBP \
             --format=json \
             --out-file=/tmp/infracost-base.json
 
