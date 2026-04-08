@@ -20,6 +20,7 @@ import datetime
 import json
 import logging
 import os
+import urllib.request
 import uuid
 
 import azure.functions as func
@@ -57,7 +58,15 @@ _JWKS_URI = (
     if CIAM_TENANT_NAME
     else ""
 )
+# OIDC discovery URL — used to fetch the canonical issuer at startup
+_OIDC_CONFIG_URL = (
+    f"https://{CIAM_TENANT_NAME}.ciamlogin.com/"
+    f"{CIAM_TENANT_NAME}.onmicrosoft.com/v2.0/.well-known/openid-configuration"
+    if CIAM_TENANT_NAME
+    else ""
+)
 _jwks_client: jwt.PyJWKClient | None = None
+_cached_issuer: str = ""
 _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
 
@@ -99,6 +108,22 @@ def _get_jwks_client() -> jwt.PyJWKClient:
     return _jwks_client
 
 
+def _get_issuer() -> str:
+    """Fetch and cache the OIDC issuer from the discovery endpoint."""
+    global _cached_issuer
+    if _cached_issuer:
+        return _cached_issuer
+    if not _OIDC_CONFIG_URL:
+        raise RuntimeError("CIAM_TENANT_NAME is not configured")
+    try:
+        with urllib.request.urlopen(_OIDC_CONFIG_URL, timeout=10) as resp:  # noqa: S310 — trusted CIAM URL
+            config = json.loads(resp.read())
+        _cached_issuer = config.get("issuer", "")
+    except Exception:
+        logger.warning("Failed to fetch OIDC config from %s", _OIDC_CONFIG_URL)
+    return _cached_issuer
+
+
 def _validate_token(auth_header: str) -> dict:
     """Validate a CIAM JWT and return its claims.
 
@@ -111,12 +136,23 @@ def _validate_token(auth_header: str) -> dict:
     client = _get_jwks_client()
     signing_key = client.get_signing_key_from_jwt(token)
 
+    decode_options: dict = {
+        "algorithms": ["RS256"],
+        "audience": CIAM_CLIENT_ID,
+        "options": {"require": ["sub", "exp", "aud"]},
+    }
+
+    issuer = _get_issuer()
+    if issuer:
+        decode_options["issuer"] = issuer
+        decode_options["options"]["require"].append("iss")
+    else:
+        logger.warning("OIDC issuer unavailable — skipping issuer validation")
+
     claims = jwt.decode(
         token,
         signing_key.key,
-        algorithms=["RS256"],
-        audience=CIAM_CLIENT_ID,
-        options={"require": ["sub", "exp", "aud"]},
+        **decode_options,
     )
     return claims
 

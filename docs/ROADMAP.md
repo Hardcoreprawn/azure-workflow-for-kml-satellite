@@ -37,15 +37,16 @@ Last updated: 2026-04-07
 
 Work items are ordered by dependency and impact. Complete each group before starting the next, unless explicitly overridden.
 
-### P0 — Live Site Fixes ✅
+### P0 — Live Site Fixes
 
 Bugs visible to real users right now.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 (CSP + auth); #367 already resolved |
+| 0.2 | #446 | Fix auth reliability: MSAL config mismatches, token selection, issuer validation | 🔄 In progress |
 
-**Exit criteria:** Deploy succeeds. No CSP console errors. Demo dismiss works. Azure Monitor telemetry flows.
+**Exit criteria:** Deploy succeeds. No CSP console errors. Demo dismiss works. Azure Monitor telemetry flows. Auth works reliably from both landing page and app shell.
 
 ---
 
