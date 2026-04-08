@@ -130,6 +130,16 @@ class TestComputeChange:
         assert stats["loss_pct"] == 50.0
         assert stats["gain_pct"] == 50.0
 
+    def test_min_delta_is_smallest_per_pixel_change(self):
+        """Regression: min_delta must be the smallest single-pixel delta,
+        not min(running_sum, min_delta) which compared unrelated values."""
+        a = np.array([[0.8, 0.2, 0.5]], dtype=np.float32)
+        b = np.array([[0.5, 0.6, 0.4]], dtype=np.float32)
+        # deltas: -0.3, +0.4, -0.1
+        _delta, stats = rs.compute_change(a, b, 0.01, -0.5, 0.5)
+        assert pytest.approx(stats["min_delta"], abs=1e-4) == -0.3
+        assert pytest.approx(stats["max_delta"], abs=1e-4) == 0.4
+
 
 # ---------------------------------------------------------------------------
 # §5 — apply_scl_mask

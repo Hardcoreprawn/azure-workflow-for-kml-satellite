@@ -1,7 +1,21 @@
+#![deny(warnings)]
+#![warn(clippy::all)]
+
 use numpy::ndarray::{Array2, Zip};
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray2};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+
+/// Helper: extract a contiguous slice from a 2-D array, returning a Python
+/// ValueError instead of panicking if the array is not contiguous.
+fn contiguous_slice<'a, T: numpy::Element>(
+    arr: &'a numpy::ndarray::ArrayView2<'a, T>,
+    name: &str,
+) -> PyResult<&'a [T]> {
+    arr.as_slice().ok_or_else(|| {
+        pyo3::exceptions::PyValueError::new_err(format!("{name} array is not contiguous"))
+    })
+}
 
 // ---------------------------------------------------------------------------
 // NDVI band math  (hotspot #1)
@@ -29,8 +43,8 @@ fn compute_ndvi_array<'py>(
     let mut ndvi_buf = vec![f32::NAN; size];
     let mut valid_buf = vec![false; size];
 
-    let red_slice = red.as_slice().expect("red array not contiguous");
-    let nir_slice = nir.as_slice().expect("nir array not contiguous");
+    let red_slice = contiguous_slice(&red, "red")?;
+    let nir_slice = contiguous_slice(&nir, "nir")?;
 
     ndvi_buf
         .par_iter_mut()
@@ -147,7 +161,7 @@ fn resample_nearest<'py>(
     let row_scale = src_rows as f64 / target_rows as f64;
     let col_scale = src_cols as f64 / target_cols as f64;
 
-    let src_slice = src.as_slice().expect("src array not contiguous");
+    let src_slice = contiguous_slice(&src, "src")?;
 
     // Build row and column index lookup tables
     let row_idx: Vec<usize> = (0..target_rows)
@@ -185,6 +199,98 @@ fn resample_nearest<'py>(
 // Change detection pixel math  (hotspot #2)
 // ---------------------------------------------------------------------------
 
+/// Thread-local accumulator for parallel delta computation.
+#[derive(Clone)]
+struct DeltaAccum {
+    sum: f64,
+    sq_sum: f64,
+    min_v: f64,
+    max_v: f64,
+    n_valid: u64,
+    n_loss: u64,
+    n_gain: u64,
+    n_stable: u64,
+}
+
+impl DeltaAccum {
+    fn new() -> Self {
+        Self {
+            sum: 0.0, sq_sum: 0.0,
+            min_v: f64::INFINITY, max_v: f64::NEG_INFINITY,
+            n_valid: 0, n_loss: 0, n_gain: 0, n_stable: 0,
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.sum += other.sum;
+        self.sq_sum += other.sq_sum;
+        self.min_v = self.min_v.min(other.min_v);
+        self.max_v = self.max_v.max(other.max_v);
+        self.n_valid += other.n_valid;
+        self.n_loss += other.n_loss;
+        self.n_gain += other.n_gain;
+        self.n_stable += other.n_stable;
+        self
+    }
+
+    /// Classify a single valid delta and accumulate stats.
+    fn record(&mut self, df: f64, loss_threshold: f64, gain_threshold: f64) {
+        self.sum += df;
+        self.sq_sum += df * df;
+        if df < self.min_v { self.min_v = df; }
+        if df > self.max_v { self.max_v = df; }
+        self.n_valid += 1;
+        if df < loss_threshold { self.n_loss += 1; }
+        else if df > gain_threshold { self.n_gain += 1; }
+        else { self.n_stable += 1; }
+    }
+}
+
+/// Round a float to 4 decimal places.
+fn round4(v: f64) -> f64 {
+    (v * 10000.0).round() / 10000.0
+}
+
+/// Compute the median of a sorted f32 slice (as f64).
+fn sorted_median(vals: &[f32]) -> f64 {
+    if vals.len() % 2 == 0 {
+        let mid = vals.len() / 2;
+        (vals[mid - 1] as f64 + vals[mid] as f64) / 2.0
+    } else {
+        vals[vals.len() / 2] as f64
+    }
+}
+
+/// Build the stats dict from accumulated delta statistics.
+fn build_change_dict(
+    py: Python<'_>,
+    acc: &DeltaAccum,
+    median: f64,
+    pixel_area_ha: f64,
+) -> PyResult<PyObject> {
+    let nf = acc.n_valid as f64;
+    let mean = acc.sum / nf;
+    let std = ((acc.sq_sum / nf) - mean * mean).abs().sqrt();
+
+    let ha = |count: u64| (count as f64 * pixel_area_ha * 100.0).round() / 100.0;
+    let pct = |count: u64| if nf > 0.0 { (count as f64 / nf * 1000.0).round() / 10.0 } else { 0.0 };
+
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("mean_delta", round4(mean))?;
+    dict.set_item("median_delta", round4(median))?;
+    dict.set_item("std_delta", round4(std))?;
+    dict.set_item("min_delta", round4(acc.min_v))?;
+    dict.set_item("max_delta", round4(acc.max_v))?;
+    dict.set_item("loss_ha", ha(acc.n_loss))?;
+    dict.set_item("gain_ha", ha(acc.n_gain))?;
+    dict.set_item("stable_ha", ha(acc.n_stable))?;
+    dict.set_item("total_ha", ha(acc.n_valid))?;
+    dict.set_item("loss_pct", pct(acc.n_loss))?;
+    dict.set_item("gain_pct", pct(acc.n_gain))?;
+    dict.set_item("valid_pixels", acc.n_valid)?;
+    Ok(dict.into())
+}
+
 /// Compute per-pixel NDVI change and aggregate statistics.
 ///
 /// Accepts two float32 NDVI arrays (earlier and later) and thresholds.
@@ -201,107 +307,42 @@ fn compute_change<'py>(
 ) -> PyResult<(Bound<'py, PyArray2<f32>>, PyObject)> {
     let a = ndvi_a.as_array();
     let b = ndvi_b.as_array();
-
     let rows = a.nrows().min(b.nrows());
     let cols = a.ncols().min(b.ncols());
-
     let size = rows * cols;
     let mut delta_buf = vec![f32::NAN; size];
 
-    let a_slice = a.as_slice().expect("ndvi_a not contiguous");
-    let b_slice = b.as_slice().expect("ndvi_b not contiguous");
+    let a_slice = contiguous_slice(&a, "ndvi_a")?;
+    let b_slice = contiguous_slice(&b, "ndvi_b")?;
 
-    // Parallel pixel-level delta + classification
-    // Use thread-local accumulators, then reduce
-    let (sum, sq_sum, min_v, max_v, n_valid, n_loss, n_gain, n_stable) = delta_buf
+    let acc = delta_buf
         .par_iter_mut()
         .enumerate()
-        .fold(
-            || (0.0f64, 0.0f64, f64::INFINITY, f64::NEG_INFINITY, 0u64, 0u64, 0u64, 0u64),
-            |mut acc, (i, out)| {
-                let row = i / cols;
-                let col = i % cols;
-                let ai = a_slice[row * a.ncols() + col];
-                let bi = b_slice[row * b.ncols() + col];
-                if ai.is_finite() && bi.is_finite() {
-                    let d = bi - ai;
-                    *out = d;
-                    let df = d as f64;
-                    acc.0 += df;
-                    acc.1 += df * df;
-                    if df < acc.2 { acc.2 = df; }
-                    if df > acc.3 { acc.3 = df; }
-                    acc.4 += 1;
-                    if df < loss_threshold { acc.5 += 1; }
-                    else if df > gain_threshold { acc.6 += 1; }
-                    else { acc.7 += 1; }
-                }
-                acc
-            },
-        )
-        .reduce(
-            || (0.0, 0.0, f64::INFINITY, f64::NEG_INFINITY, 0, 0, 0, 0),
-            |a, b| (
-                a.0 + b.0,
-                a.1 + b.1,
-                a.2.min(b.2),
-                a.3.max(b.3),
-                a.4 + b.4,
-                a.5 + b.5,
-                a.6 + b.6,
-                a.7 + b.7,
-            ),
-        );
+        .fold(DeltaAccum::new, |mut acc, (i, out)| {
+            let ai = a_slice[(i / cols) * a.ncols() + (i % cols)];
+            let bi = b_slice[(i / cols) * b.ncols() + (i % cols)];
+            if ai.is_finite() && bi.is_finite() {
+                let d = bi - ai;
+                *out = d;
+                acc.record(d as f64, loss_threshold, gain_threshold);
+            }
+            acc
+        })
+        .reduce(DeltaAccum::new, DeltaAccum::merge);
 
-    if n_valid == 0 {
-        return Ok((
-            Array2::from_shape_vec((rows, cols), delta_buf)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?
-                .into_pyarray(py),
-            py.None(),
-        ));
+    let to_array = |buf| Array2::from_shape_vec((rows, cols), buf)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()));
+
+    if acc.n_valid == 0 {
+        return Ok((to_array(delta_buf)?.into_pyarray(py), py.None()));
     }
 
-    let nf = n_valid as f64;
-    let mean = sum / nf;
-    let std = ((sq_sum / nf) - mean * mean).abs().sqrt();
-
-    // Median requires collecting valid values and sorting
-    let mut valid_vals: Vec<f32> = Vec::with_capacity(n_valid as usize);
-    for i in 0..size {
-        if delta_buf[i].is_finite() {
-            valid_vals.push(delta_buf[i]);
-        }
-    }
+    let mut valid_vals: Vec<f32> = delta_buf.iter().copied().filter(|v| v.is_finite()).collect();
     valid_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = if valid_vals.len() % 2 == 0 {
-        let mid = valid_vals.len() / 2;
-        (valid_vals[mid - 1] as f64 + valid_vals[mid] as f64) / 2.0
-    } else {
-        valid_vals[valid_vals.len() / 2] as f64
-    };
+    let median = sorted_median(&valid_vals);
 
-    let round4 = |v: f64| (v * 10000.0).round() / 10000.0;
-
-    let dict = pyo3::types::PyDict::new(py);
-    dict.set_item("mean_delta", round4(mean))?;
-    dict.set_item("median_delta", round4(median))?;
-    dict.set_item("std_delta", round4(std))?;
-    dict.set_item("min_delta", round4(sum.min(min_v)))?;  // guard
-    dict.set_item("min_delta", round4(min_v))?;
-    dict.set_item("max_delta", round4(max_v))?;
-    dict.set_item("loss_ha", (n_loss as f64 * pixel_area_ha * 100.0).round() / 100.0)?;
-    dict.set_item("gain_ha", (n_gain as f64 * pixel_area_ha * 100.0).round() / 100.0)?;
-    dict.set_item("stable_ha", (n_stable as f64 * pixel_area_ha * 100.0).round() / 100.0)?;
-    dict.set_item("total_ha", (nf * pixel_area_ha * 100.0).round() / 100.0)?;
-    dict.set_item("loss_pct", if nf > 0.0 { (n_loss as f64 / nf * 1000.0).round() / 10.0 } else { 0.0 })?;
-    dict.set_item("gain_pct", if nf > 0.0 { (n_gain as f64 / nf * 1000.0).round() / 10.0 } else { 0.0 })?;
-    dict.set_item("valid_pixels", n_valid)?;
-
-    let delta = Array2::from_shape_vec((rows, cols), delta_buf)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-
-    Ok((delta.into_pyarray(py), dict.into()))
+    let stats = build_change_dict(py, &acc, median, pixel_area_ha)?;
+    Ok((to_array(delta_buf)?.into_pyarray(py), stats))
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +361,9 @@ fn apply_scl_mask(
     use numpy::PyArrayMethods;
 
     let scl = scl.as_array();
+    // SAFETY: No other thread accesses this array during execution.
+    // PyO3 holds the GIL, so Python cannot touch it concurrently.
+    // We only write `false` (narrowing the valid set), never `true`.
     let mut valid_rw = unsafe { valid.as_array_mut() };
 
     let mut masked_count = 0u64;
