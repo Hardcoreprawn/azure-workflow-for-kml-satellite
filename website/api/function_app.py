@@ -101,6 +101,9 @@ def _parse_client_principal(req: func.HttpRequest) -> dict:
     except Exception as exc:
         raise ValueError(f"Malformed client principal: {exc}") from exc
 
+    if not isinstance(principal, dict):
+        raise ValueError("Client principal is not a JSON object")
+
     user_id: str = principal.get("userId", "")
     if not user_id:
         raise ValueError("Client principal missing userId")

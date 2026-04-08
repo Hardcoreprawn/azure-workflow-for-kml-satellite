@@ -141,6 +141,14 @@ class TestClientPrincipalParsing:
         with pytest.raises(ValueError, match="userId"):
             mod._parse_client_principal(req)
 
+    def test_rejects_non_dict_payload(self, _reload_module):
+        """Valid JSON that is not an object must be rejected (defence-in-depth)."""
+        mod = _reload_module
+        encoded = base64.b64encode(b'["hi"]').decode()
+        req = _mock_request(headers={"x-ms-client-principal": encoded})
+        with pytest.raises(ValueError, match="not a JSON object"):
+            mod._parse_client_principal(req)
+
     def test_parses_valid_principal(self, _reload_module):
         mod = _reload_module
         req = _mock_request(headers=_auth_headers(user_id="user-abc"))
