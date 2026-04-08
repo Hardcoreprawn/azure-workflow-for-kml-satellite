@@ -14,6 +14,7 @@ from treesight.constants import (
     DEFAULT_POLL_INTERVAL_SECONDS,
     DEFAULT_POLL_TIMEOUT_SECONDS,
     DEFAULT_RETRY_BASE_SECONDS,
+    MAX_POLL_ITERATIONS,
 )
 from treesight.log import log_error, log_phase
 from treesight.models.aoi import AOI
@@ -137,7 +138,7 @@ def poll_order(
     poll_count = 0
     retries = 0
 
-    while True:
+    for _iteration in range(MAX_POLL_ITERATIONS):
         elapsed = time.monotonic() - start
         if elapsed >= poll_timeout:
             return ImageryOutcome(
@@ -193,6 +194,16 @@ def poll_order(
             continue
 
         time.sleep(poll_interval)
+
+    # Exhausted MAX_POLL_ITERATIONS without reaching timeout or terminal state
+    return ImageryOutcome(
+        state="acquisition_timeout",
+        order_id=order_id,
+        provider=provider.name,
+        poll_count=poll_count,
+        elapsed_seconds=time.monotonic() - start,
+        error=f"Exceeded {MAX_POLL_ITERATIONS} poll iterations",
+    )
 
 
 def poll_orders_batch(

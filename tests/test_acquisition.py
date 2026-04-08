@@ -215,6 +215,26 @@ class TestPollOrder:
         assert outcome.state == "failed"
         assert outcome.poll_count == 1
 
+    def test_max_iterations_cap(self) -> None:
+        """Loop exits after MAX_POLL_ITERATIONS even if timeout hasn't fired."""
+        from unittest.mock import patch
+
+        from treesight.pipeline.acquisition import poll_order
+
+        provider = _StubProvider(
+            poll_sequence=[OrderStatus(state="pending", is_terminal=False)],
+        )
+        with patch("treesight.pipeline.acquisition.MAX_POLL_ITERATIONS", 3):
+            outcome = poll_order(
+                "order-cap",
+                provider,
+                poll_interval=0,
+                poll_timeout=9999,
+            )
+
+        assert outcome.state == "acquisition_timeout"
+        assert "poll iterations" in outcome.error.lower()
+
 
 # ---------------------------------------------------------------------------
 # poll_orders_batch
