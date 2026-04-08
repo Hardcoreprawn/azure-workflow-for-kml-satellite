@@ -46,6 +46,10 @@ INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
 SAS_TOKEN_EXPIRY_MINUTES = int(os.environ.get("SAS_TOKEN_EXPIRY_MINUTES", "15"))
 MAX_UPLOAD_BYTES = 10_485_760  # 10 MiB — matches treesight MAX_KML_FILE_SIZE_BYTES
 
+# Cosmos DB (for billing/status, analysis/history)
+COSMOS_ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "")
+COSMOS_DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME", "canopex")
+
 # JWKS URI for CIAM token validation
 _JWKS_URI = (
     f"https://{CIAM_TENANT_NAME}.ciamlogin.com/"
@@ -55,6 +59,7 @@ _JWKS_URI = (
 )
 _jwks_client: jwt.PyJWKClient | None = None
 _blob_service: BlobServiceClient | None = None
+_cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
 
 
 def _get_blob_service() -> BlobServiceClient:
@@ -69,6 +74,19 @@ def _get_blob_service() -> BlobServiceClient:
             credential=DefaultAzureCredential(),
         )
     return _blob_service
+
+
+def _get_cosmos_container(container_name: str):
+    """Return a Cosmos DB container proxy, lazily initialising the database client."""
+    global _cosmos_db
+    if _cosmos_db is None:
+        if not COSMOS_ENDPOINT:
+            raise RuntimeError("COSMOS_ENDPOINT is not configured")
+        from azure.cosmos import CosmosClient
+
+        client = CosmosClient(COSMOS_ENDPOINT, credential=DefaultAzureCredential())
+        _cosmos_db = client.get_database_client(COSMOS_DATABASE_NAME)
+    return _cosmos_db.get_container_client(container_name)
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:
@@ -318,5 +336,133 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
             "submission_id": submission_id,
             "status": "pending",
             "message": "Status polling endpoint active — pipeline status will be wired in Slice 3",
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/analysis/history — recent signed-in analysis runs
+# ---------------------------------------------------------------------------
+
+_DEFAULT_HISTORY_LIMIT = 8
+_MAX_HISTORY_LIMIT = 20
+_MAX_HISTORY_OFFSET = 200
+_DEFAULT_PROVIDER = "planetary-computer"
+
+_ACTIVE_STATUSES = frozenset({"submitted", "pending", "running", "continuedasnew"})
+
+
+def _parse_int_param(raw: str, default: int, lo: int, hi: int) -> int:
+    """Parse and clamp an integer query parameter."""
+    try:
+        return max(lo, min(int(raw), hi))
+    except (TypeError, ValueError):
+        return default
+
+
+def _history_entry(record: dict) -> dict:
+    """Transform a Cosmos runs record into the frontend history entry shape."""
+    instance_id = str(record.get("instance_id") or record.get("submission_id") or "")
+    runtime_status = record.get("status", "submitted")
+
+    return {
+        "submissionId": record.get("submission_id", instance_id),
+        "instanceId": instance_id,
+        "submittedAt": record.get("submitted_at", ""),
+        "submissionPrefix": record.get("submission_prefix", "analysis"),
+        "providerName": record.get("provider_name", _DEFAULT_PROVIDER),
+        "featureCount": record.get("feature_count"),
+        "aoiCount": record.get("aoi_count"),
+        "processingMode": record.get("processing_mode"),
+        "maxSpreadKm": record.get("max_spread_km"),
+        "totalAreaHa": record.get("total_area_ha"),
+        "largestAreaHa": record.get("largest_area_ha"),
+        "workspaceRole": record.get("workspace_role"),
+        "workspacePreference": record.get("workspace_preference"),
+        "runtimeStatus": runtime_status,
+        "createdTime": record.get("submitted_at", ""),
+        "lastUpdatedTime": record.get("submitted_at", ""),
+        "customStatus": None,
+        "output": None,
+        "artifactCount": 0,
+        "partialFailures": {"imagery": 0, "downloads": 0, "postProcess": 0},
+        "kmlBlobName": record.get("kml_blob_name", ""),
+        "kmlSizeBytes": record.get("kml_size_bytes", 0),
+    }
+
+
+@app.function_name("analysis_history")
+@app.route(
+    route="analysis/history",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def analysis_history(req: func.HttpRequest) -> func.HttpResponse:
+    """Lightweight analysis history — reads runs from Cosmos without DF status.
+
+    The Container Apps version enriches each run with live Durable Functions
+    status.  This SWA version returns Cosmos-only data (status field from the
+    record).  For in-flight runs the status may lag, but the active polling
+    endpoint (upload/status) covers that path.
+    """
+    auth_header = req.headers.get("Authorization", "")
+    try:
+        claims = _validate_token(auth_header)
+    except jwt.ExpiredSignatureError as exc:
+        logger.warning("History JWT expired: %s", exc)
+        return _error(401, "Token expired", reason="token_expired")
+    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
+        logger.warning("History auth validation failed: %s", exc)
+        return _error(401, "Unauthorized")
+
+    user_id: str = claims.get("sub", "")
+    if not user_id:
+        return _error(401, "Missing user identity")
+
+    params = getattr(req, "params", {}) or {}
+    limit = _parse_int_param(params.get("limit", ""), _DEFAULT_HISTORY_LIMIT, 1, _MAX_HISTORY_LIMIT)
+    offset = _parse_int_param(params.get("offset", ""), 0, 0, _MAX_HISTORY_OFFSET)
+
+    try:
+        container = _get_cosmos_container("runs")
+        query = (
+            "SELECT c.submission_id, c.instance_id, c.submitted_at,"
+            " c.status, c.submission_prefix, c.provider_name,"
+            " c.feature_count, c.aoi_count, c.processing_mode,"
+            " c.max_spread_km, c.total_area_ha, c.largest_area_ha,"
+            " c.workspace_role, c.workspace_preference,"
+            " c.kml_blob_name, c.kml_size_bytes"
+            " FROM c WHERE c.user_id = @uid"
+            " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
+        )
+        records = list(
+            container.query_items(
+                query=query,
+                parameters=[
+                    {"name": "@uid", "value": user_id},
+                    {"name": "@off", "value": offset},
+                    {"name": "@lim", "value": limit},
+                ],
+                partition_key=user_id,
+            )
+        )
+    except RuntimeError:
+        return _error(503, "Analysis history temporarily unavailable")
+    except Exception:
+        logger.exception("Cosmos query failed for analysis history")
+        return _error(503, "Analysis history temporarily unavailable")
+
+    runs = [_history_entry(r) for r in records]
+    active_run = next(
+        (r for r in runs if r["runtimeStatus"].strip().lower() in _ACTIVE_STATUSES),
+        None,
+    )
+
+    return _json_response(
+        {
+            "runs": runs,
+            "activeRun": active_run,
+            "offset": offset,
+            "limit": limit,
         }
     )

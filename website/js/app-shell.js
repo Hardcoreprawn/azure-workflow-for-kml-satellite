@@ -163,6 +163,13 @@
 
   var apiBase = '';
   var apiDiscoveryReady = null;
+
+  // Endpoints served by SWA managed functions (same-origin).
+  // To migrate an endpoint from Container Apps → SWA, add its prefix here.
+  var swaEndpoints = [
+    '/api/upload/',
+    '/api/analysis/history',
+  ];
   var msalInstance = null;
   var currentAccount = null;
   var accessToken = null;
@@ -420,6 +427,11 @@
     }
   }
 
+  function isSwaEndpoint(path) {
+    var bare = path.split('?')[0];
+    return swaEndpoints.some(function(p) { return bare === p || bare.startsWith(p); });
+  }
+
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
@@ -428,7 +440,8 @@
       if (!token || tokenExpired(token, 60)) token = await acquireToken();
       if (token) opts.headers.Authorization = 'Bearer ' + token;
     }
-    try { return await fetch(apiBase + path, opts); } catch { return null; }
+    var base = isSwaEndpoint(path) ? '' : apiBase;
+    try { return await fetch(base + path, opts); } catch { return null; }
   }
 
   function setAnalysisStatus(message, tone) {

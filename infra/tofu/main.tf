@@ -871,6 +871,16 @@ resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
   scope               = azurerm_cosmosdb_account.main[0].id
 }
 
+# Cosmos DB data-plane RBAC for SWA managed API (read-only: analysis/history)
+resource "azurerm_cosmosdb_sql_role_assignment" "swa" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001"
+  principal_id        = azurerm_user_assigned_identity.swa.principal_id
+  scope               = azurerm_cosmosdb_account.main[0].id
+}
+
 resource "azapi_resource" "event_grid_system_topic" {
   type      = "Microsoft.EventGrid/systemTopics@2024-06-01-preview"
   parent_id = azurerm_resource_group.main.id
@@ -927,7 +937,8 @@ locals {
     price_id_pro_eur = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-eur"
   }
 
-  # SWA managed API settings (upload/token, upload/status endpoints).
+  # SWA managed API settings (upload/token, upload/status, billing/status,
+  # analysis/history endpoints).
   # Auth uses user-assigned managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
@@ -938,6 +949,10 @@ locals {
     var.ciam_tenant_name != "" ? {
       CIAM_TENANT_NAME = var.ciam_tenant_name
       CIAM_CLIENT_ID   = var.ciam_client_id
+    } : {},
+    var.enable_cosmos_db ? {
+      COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
+      COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
     } : {}
   )
 }
