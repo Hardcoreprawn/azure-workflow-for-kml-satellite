@@ -2,12 +2,16 @@
   'use strict';
 
   const CIAM_TENANT_NAME = 'treesightauth';
+  const CIAM_TENANT_DOMAIN = CIAM_TENANT_NAME ? CIAM_TENANT_NAME + '.onmicrosoft.com' : '';
   const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
   const CIAM_AUTHORITY = CIAM_TENANT_NAME
-    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/'
+    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/' + CIAM_TENANT_DOMAIN + '/'
     : '';
-  const CIAM_KNOWN_AUTHORITY = CIAM_AUTHORITY;
+  const CIAM_KNOWN_AUTHORITY = CIAM_TENANT_NAME
+    ? CIAM_TENANT_NAME + '.ciamlogin.com'
+    : '';
   const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
+  const IDENTITY_ONLY_SCOPES = ['openid', 'profile', 'email', 'offline_access'];
 
   let msalInstance = null;
   let currentAccount = null;
@@ -17,6 +21,8 @@
   // Endpoints served by SWA managed functions (same-origin).
   // Keep in sync with app-shell.js swaEndpoints.
   const swaEndpoints = [
+    '/api/upload/',
+    '/api/analysis/history',
   ];
 
   function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
@@ -73,12 +79,40 @@
     if (!msalInstance || !currentAccount) return null;
     try {
       const resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount });
-      accessToken = resp.accessToken || resp.idToken;
+      accessToken = selectApiBearerToken(resp);
       return accessToken;
     } catch {
       try { msalInstance.acquireTokenRedirect({ scopes: CIAM_SCOPES }); } catch { }
       return null;
     }
+  }
+
+  function parseJwtPayload(token) {
+    if (!token) return null;
+    try {
+      var parts = token.split('.');
+      if (parts.length < 2) return null;
+      return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldUseIdTokenForApi(resp) {
+    if (!resp || !resp.accessToken || !resp.idToken) return false;
+    var payload = parseJwtPayload(resp.accessToken);
+    if (!payload) return false;
+    if (String(payload.aud || '') === '00000003-0000-0000-c000-000000000000') return true;
+    var scopes = String(payload.scp || '').split(/\s+/).filter(Boolean);
+    return scopes.length > 0 && scopes.every(function(scope) {
+      return IDENTITY_ONLY_SCOPES.indexOf(scope) > -1;
+    });
+  }
+
+  function selectApiBearerToken(resp) {
+    if (!resp) return null;
+    if (shouldUseIdTokenForApi(resp)) return resp.idToken;
+    return resp.accessToken || resp.idToken || null;
   }
 
   function updateAuthUI() {

@@ -57,6 +57,7 @@ def _reload_module(_swa_env):
     spec.loader.exec_module(mod)
     mod._jwks_client = None
     mod._blob_service = None
+    mod._issuer_cache = {"value": "", "failed_at": 0.0}
     return mod
 
 
@@ -116,6 +117,121 @@ class TestTokenValidation:
         with patch("swa_function_app.jwt.decode", return_value=_make_claims()):
             claims = mod._validate_token("Bearer valid-token")
             assert claims["sub"] == "user-123"
+
+    @patch("swa_function_app._get_jwks_client")
+    @patch("swa_function_app._get_issuer")
+    def test_passes_issuer_to_jwt_decode(self, mock_issuer, mock_jwks, _reload_module):
+        """When OIDC issuer is available, _validate_token must pass it to jwt.decode."""
+        mod = _reload_module
+        mock_key = MagicMock()
+        mock_key.key = "test-key"
+        mock_jwks.return_value.get_signing_key_from_jwt.return_value = mock_key
+        mock_issuer.return_value = "https://92001438.ciamlogin.com/92001438/v2.0"
+
+        with patch("swa_function_app.jwt.decode", return_value=_make_claims()) as mock_decode:
+            mod._validate_token("Bearer valid-token")
+            _, kwargs = mock_decode.call_args
+            assert kwargs["issuer"] == "https://92001438.ciamlogin.com/92001438/v2.0"
+            assert "iss" in kwargs["options"]["require"]
+
+    @patch("swa_function_app._get_jwks_client")
+    @patch("swa_function_app._get_issuer")
+    def test_skips_issuer_check_when_unavailable(
+        self,
+        mock_issuer,
+        mock_jwks,
+        _reload_module,
+        caplog,
+    ):
+        """When OIDC issuer is empty, _validate_token decodes without issuer and logs a warning."""
+        mod = _reload_module
+        mock_key = MagicMock()
+        mock_key.key = "test-key"
+        mock_jwks.return_value.get_signing_key_from_jwt.return_value = mock_key
+        mock_issuer.return_value = ""
+
+        with patch("swa_function_app.jwt.decode", return_value=_make_claims()) as mock_decode:
+            mod._validate_token("Bearer valid-token")
+            _, kwargs = mock_decode.call_args
+            assert "issuer" not in kwargs
+        assert "issuer" in caplog.text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Issuer fetching
+# ---------------------------------------------------------------------------
+
+
+class TestIssuerFetch:
+    """Tests for ``_get_issuer``."""
+
+    def test_returns_cached_issuer(self, _reload_module):
+        mod = _reload_module
+        mod._issuer_cache["value"] = "https://example.com/v2.0"
+        assert mod._get_issuer() == "https://example.com/v2.0"
+
+    @patch("swa_function_app.urllib.request.urlopen")
+    def test_fetches_from_oidc_discovery(self, mock_urlopen, _reload_module):
+        mod = _reload_module
+        mod._issuer_cache["value"] = ""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(
+            {"issuer": "https://tenant.ciamlogin.com/tenant/v2.0"}
+        ).encode()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+
+        result = mod._get_issuer()
+        assert result == "https://tenant.ciamlogin.com/tenant/v2.0"
+        assert mod._issuer_cache["value"] == result
+
+    @patch("swa_function_app.urllib.request.urlopen")
+    def test_returns_empty_on_fetch_failure(self, mock_urlopen, _reload_module):
+        mod = _reload_module
+        mod._issuer_cache["value"] = ""
+        mod._issuer_cache["failed_at"] = 0.0
+        mock_urlopen.side_effect = Exception("network error")
+
+        result = mod._get_issuer()
+        assert result == ""
+        assert mod._issuer_cache["failed_at"] > 0
+
+    @patch("swa_function_app.urllib.request.urlopen")
+    def test_skips_retry_during_cooldown(self, mock_urlopen, _reload_module):
+        """After a failed fetch, _get_issuer skips retries within the cooldown window."""
+        import time
+
+        mod = _reload_module
+        mod._issuer_cache["value"] = ""
+        mod._issuer_cache["failed_at"] = time.monotonic()  # just failed
+
+        result = mod._get_issuer()
+        assert result == ""
+        mock_urlopen.assert_not_called()
+
+    def test_raises_when_ciam_not_configured(self, _reload_module, monkeypatch):
+        mod = _reload_module
+        mod._issuer_cache["value"] = ""
+        mod._OIDC_CONFIG_URL = ""
+        with pytest.raises(RuntimeError, match="CIAM_TENANT_NAME"):
+            mod._get_issuer()
+
+
+class TestOidcConfigUrls:
+    """Verify OIDC discovery and JWKS URIs use the tenant-qualified path."""
+
+    def test_jwks_uri_includes_tenant_domain(self, _reload_module):
+        mod = _reload_module
+        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
+        assert mod._JWKS_URI.startswith(expected_prefix)
+        assert mod._JWKS_URI.endswith("/discovery/v2.0/keys")
+
+    def test_oidc_config_includes_tenant_domain(self, _reload_module):
+        mod = _reload_module
+        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
+        assert mod._OIDC_CONFIG_URL.startswith(expected_prefix)
+        assert mod._OIDC_CONFIG_URL.endswith("/v2.0/.well-known/openid-configuration")
 
 
 # ---------------------------------------------------------------------------
