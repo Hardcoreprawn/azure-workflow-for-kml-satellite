@@ -784,7 +784,7 @@ class TestFrontendProgressReset:
 
     APP_SHELL = WEBSITE / "js" / "app-shell.js"
 
-    def test_submit_error_branch_resets_progress(self):
+    def test_queue_error_branch_resets_progress(self):
         """Error branches in queueAnalysis must call resetAnalysisProgress()."""
         content = self.APP_SHELL.read_text()
         # Find the queueAnalysis function

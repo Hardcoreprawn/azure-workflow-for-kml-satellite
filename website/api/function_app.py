@@ -46,6 +46,7 @@ CIAM_CLIENT_ID = os.environ.get("CIAM_CLIENT_ID", "")
 INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
 SAS_TOKEN_EXPIRY_MINUTES = int(os.environ.get("SAS_TOKEN_EXPIRY_MINUTES", "15"))
 MAX_UPLOAD_BYTES = 10_485_760  # 10 MiB — matches treesight MAX_KML_FILE_SIZE_BYTES
+DIAG_ENABLED = os.environ.get("DIAG_ENABLED", "").lower() in ("1", "true", "yes")
 
 # Cosmos DB (for billing/status, analysis/history)
 COSMOS_ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "")
@@ -219,6 +220,8 @@ def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
 @app.route(route="health/diag", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health_diag(req: func.HttpRequest) -> func.HttpResponse:
     """Temporary diagnostics — remove after auth debugging."""
+    if not DIAG_ENABLED:
+        return _error(404, "Not found")
     import sys
 
     diag: dict = {
@@ -286,7 +289,8 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
             bool(CIAM_CLIENT_ID),
         )
         # TEMPORARY: include debug detail in response for diagnosis
-        return _error(401, "Unauthorized", reason=f"debug:{type(exc).__name__}:{exc!s:.120}")
+        reason = f"debug:{type(exc).__name__}:{exc!s:.120}" if DIAG_ENABLED else "auth_failed"
+        return _error(401, "Unauthorized", reason=reason)
 
     user_id = claims.get("sub", "")
     if not user_id:
