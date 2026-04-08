@@ -141,7 +141,7 @@ paths:
   # ── Submission ────────────────────────────────────────────
   /analysis/submit:
     post:
-      operationId: submitAnalysis
+      operationId: queueAnalysis
       summary: Submit a KML for signed-in analysis processing
       description: |
         Accepts raw KML text, uploads it to blob storage and triggers

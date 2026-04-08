@@ -777,7 +777,7 @@ class TestSubmissionCORSParity:
 class TestFrontendProgressReset:
     """The pipeline progress animation must be hidden when submission fails.
 
-    Bug: submitAnalysis() showed the progress spinner before the API call
+    Bug: queueAnalysis() showed the progress spinner before the API call
     but did not reset it in the error branch (only in the catch block),
     leaving a spinning animation on a failed submission.
     """
@@ -785,11 +785,11 @@ class TestFrontendProgressReset:
     APP_SHELL = WEBSITE / "js" / "app-shell.js"
 
     def test_submit_error_branch_resets_progress(self):
-        """Error branches in submitAnalysis must call resetAnalysisProgress()."""
+        """Error branches in queueAnalysis must call resetAnalysisProgress()."""
         content = self.APP_SHELL.read_text()
-        # Find the submitAnalysis function
-        fn_start = content.find("async function submitAnalysis()")
-        assert fn_start != -1, "submitAnalysis function not found in app-shell.js"
+        # Find the queueAnalysis function
+        fn_start = content.find("async function queueAnalysis()")
+        assert fn_start != -1, "queueAnalysis function not found in app-shell.js"
 
         # Extract until next top-level function (heuristic: next 'async function' or '  function')
         fn_end = content.find("\n  async function ", fn_start + 1)
@@ -805,11 +805,11 @@ class TestFrontendProgressReset:
             fn_body,
             flags=re.DOTALL,
         )
-        assert error_branch, "Error branch 'if (!...Res || !...Res.ok)' not found in submitAnalysis"
+        assert error_branch, "Error branch 'if (!...Res || !...Res.ok)' not found in queueAnalysis"
         error_block = error_branch.group(1)
 
         assert "resetAnalysisProgress" in error_block, (
-            "submitAnalysis error branch must call resetAnalysisProgress() "
+            "queueAnalysis error branch must call resetAnalysisProgress() "
             "to hide the pipeline spinner on API failure"
         )
 
