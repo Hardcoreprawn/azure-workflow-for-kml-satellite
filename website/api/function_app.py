@@ -224,6 +224,20 @@ def health_diag(req: func.HttpRequest) -> func.HttpResponse:
         return _error(404, "Not found")
     import sys
 
+    # Show which headers the managed API actually receives (sanitized)
+    received_headers: dict = {}
+    for name in sorted(req.headers.keys()):
+        low = name.lower()
+        if low in ("cookie", "x-ms-client-principal"):
+            received_headers[name] = f"(present, {len(req.headers[name])} chars)"
+        elif low == "authorization":
+            val = req.headers[name]
+            received_headers[name] = (
+                f"(present, {len(val)} chars, starts={val[:15]}...)" if val else "(empty)"
+            )
+        else:
+            received_headers[name] = req.headers[name][:80]
+
     diag: dict = {
         "python_version": sys.version,
         "ciam_client_id_set": bool(CIAM_CLIENT_ID),
@@ -232,6 +246,7 @@ def health_diag(req: func.HttpRequest) -> func.HttpResponse:
         "jwks_uri": _JWKS_URI[:60] if _JWKS_URI else "",
         "oidc_config_url": _OIDC_CONFIG_URL[:60] if _OIDC_CONFIG_URL else "",
         "storage_account_set": bool(STORAGE_ACCOUNT_NAME),
+        "received_headers": received_headers,
     }
     # Test JWKS reachability
     try:
@@ -282,14 +297,29 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
         return _error(401, "Token expired", reason="token_expired")
     except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
         has_bearer = auth_header.startswith("Bearer ") if auth_header else False
+        token_part = auth_header[7:] if has_bearer else ""
         logger.warning(
-            "Upload auth validation failed: %s (has_bearer=%s, ciam_client_id=%s)",
+            "Upload auth validation failed: %s (has_bearer=%s, token_len=%d, ciam_client_id=%s)",
             exc,
             has_bearer,
+            len(token_part),
             bool(CIAM_CLIENT_ID),
         )
-        # TEMPORARY: include debug detail in response for diagnosis
-        reason = f"debug:{type(exc).__name__}:{exc!s:.120}" if DIAG_ENABLED else "auth_failed"
+        if DIAG_ENABLED:
+            # TEMPORARY: include debug detail in response for diagnosis
+            diag_parts = [
+                f"exc:{type(exc).__name__}:{exc!s:.120}",
+                f"has_bearer:{has_bearer}",
+                f"token_len:{len(token_part)}",
+                f"has_auth_hdr:{bool(auth_header)}",
+                f"auth_hdr_len:{len(auth_header)}",
+            ]
+            if token_part and len(token_part) > 10:
+                diag_parts.append(f"token_start:{token_part[:8]}...")
+                diag_parts.append(f"dot_count:{token_part.count('.')}")
+            reason = "|".join(diag_parts)
+        else:
+            reason = "auth_failed"
         return _error(401, "Unauthorized", reason=reason)
 
     user_id = claims.get("sub", "")
