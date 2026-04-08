@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08
 
 ---
 
@@ -24,6 +24,7 @@ Last updated: 2026-04-07
 
 | PR | Summary |
 |----|---------|
+| #444 | Migrate analysis/history to SWA managed function (partial #424) |
 | #442 | CSP violations + auth loop resilience (fixes #408, #409, partial #438) |
 | #441 | Roadmap overhaul + issue tracking discipline |
 | #435 | Auth retry on 401 + web test cost reduction |
@@ -59,7 +60,7 @@ Finish the event-driven restructure. Parent issue: #420.
 | 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | ✅ PR #425 |
 | 2B.2 | #422 | SWA API function for SAS token minting + status polling | ✅ PR #427 |
 | 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
-| 2B.4 | #424 | Migrate read-only endpoints to SWA functions + cold start optimisation | 🔜 Next |
+| 2B.4 | #424 | Migrate read-only endpoints to SWA functions + cold start optimisation | � PR #444 merged (analysis/history) |
 
 **Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Function app has zero direct-submission paths. Read-only endpoints served from SWA managed functions (always warm).
 

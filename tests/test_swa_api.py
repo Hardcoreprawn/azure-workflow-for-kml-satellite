@@ -57,8 +57,7 @@ def _reload_module(_swa_env):
     spec.loader.exec_module(mod)
     mod._jwks_client = None
     mod._blob_service = None
-    mod._cached_issuer = ""
-    mod._issuer_fetch_failed_at = 0.0
+    mod._issuer_cache = {"value": "", "failed_at": 0.0}
     return mod
 
 
@@ -168,13 +167,13 @@ class TestIssuerFetch:
 
     def test_returns_cached_issuer(self, _reload_module):
         mod = _reload_module
-        mod._cached_issuer = "https://example.com/v2.0"
+        mod._issuer_cache["value"] = "https://example.com/v2.0"
         assert mod._get_issuer() == "https://example.com/v2.0"
 
     @patch("swa_function_app.urllib.request.urlopen")
     def test_fetches_from_oidc_discovery(self, mock_urlopen, _reload_module):
         mod = _reload_module
-        mod._cached_issuer = ""
+        mod._issuer_cache["value"] = ""
         mock_resp = MagicMock()
         mock_resp.read.return_value = json.dumps(
             {"issuer": "https://tenant.ciamlogin.com/tenant/v2.0"}
@@ -185,18 +184,18 @@ class TestIssuerFetch:
 
         result = mod._get_issuer()
         assert result == "https://tenant.ciamlogin.com/tenant/v2.0"
-        assert mod._cached_issuer == result
+        assert mod._issuer_cache["value"] == result
 
     @patch("swa_function_app.urllib.request.urlopen")
     def test_returns_empty_on_fetch_failure(self, mock_urlopen, _reload_module):
         mod = _reload_module
-        mod._cached_issuer = ""
-        mod._issuer_fetch_failed_at = 0.0
+        mod._issuer_cache["value"] = ""
+        mod._issuer_cache["failed_at"] = 0.0
         mock_urlopen.side_effect = Exception("network error")
 
         result = mod._get_issuer()
         assert result == ""
-        assert mod._issuer_fetch_failed_at > 0
+        assert mod._issuer_cache["failed_at"] > 0
 
     @patch("swa_function_app.urllib.request.urlopen")
     def test_skips_retry_during_cooldown(self, mock_urlopen, _reload_module):
@@ -204,8 +203,8 @@ class TestIssuerFetch:
         import time
 
         mod = _reload_module
-        mod._cached_issuer = ""
-        mod._issuer_fetch_failed_at = time.monotonic()  # just failed
+        mod._issuer_cache["value"] = ""
+        mod._issuer_cache["failed_at"] = time.monotonic()  # just failed
 
         result = mod._get_issuer()
         assert result == ""
@@ -213,7 +212,7 @@ class TestIssuerFetch:
 
     def test_raises_when_ciam_not_configured(self, _reload_module, monkeypatch):
         mod = _reload_module
-        mod._cached_issuer = ""
+        mod._issuer_cache["value"] = ""
         mod._OIDC_CONFIG_URL = ""
         with pytest.raises(RuntimeError, match="CIAM_TENANT_NAME"):
             mod._get_issuer()

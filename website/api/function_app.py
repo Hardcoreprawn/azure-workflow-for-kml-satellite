@@ -66,8 +66,7 @@ _OIDC_CONFIG_URL = (
     else ""
 )
 _jwks_client: jwt.PyJWKClient | None = None
-_cached_issuer: str = ""
-_issuer_fetch_failed_at: float = 0.0
+_issuer_cache: dict = {"value": "", "failed_at": 0.0}
 _ISSUER_RETRY_INTERVAL: float = 300.0  # retry OIDC discovery after 5 min on failure
 _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
@@ -112,28 +111,31 @@ def _get_jwks_client() -> jwt.PyJWKClient:
 
 def _get_issuer() -> str:
     """Fetch and cache the OIDC issuer from the discovery endpoint."""
-    global _cached_issuer, _issuer_fetch_failed_at
-    if _cached_issuer:
-        return _cached_issuer
+    if _issuer_cache["value"]:
+        return _issuer_cache["value"]
     if not _OIDC_CONFIG_URL:
         raise RuntimeError("CIAM_TENANT_NAME is not configured")
     # Negative cache: skip retry if the last failure was recent
     import time
 
     now = time.monotonic()
-    if _issuer_fetch_failed_at and (now - _issuer_fetch_failed_at) < _ISSUER_RETRY_INTERVAL:
+    if _issuer_cache["failed_at"] and (now - _issuer_cache["failed_at"]) < _ISSUER_RETRY_INTERVAL:
         return ""
     # Validate scheme to satisfy static analysis (Semgrep S310)
     if not _OIDC_CONFIG_URL.startswith("https://"):
         raise RuntimeError("OIDC config URL must use HTTPS")
     try:
-        with urllib.request.urlopen(_OIDC_CONFIG_URL, timeout=10) as resp:  # noqa: S310
+        # nosemgrep: dynamic-urllib-use-detected
+        with urllib.request.urlopen(  # noqa: S310
+            _OIDC_CONFIG_URL,
+            timeout=10,
+        ) as resp:
             config = json.loads(resp.read())
-        _cached_issuer = config.get("issuer", "")
+        _issuer_cache["value"] = config.get("issuer", "")
     except Exception:
-        _issuer_fetch_failed_at = now
+        _issuer_cache["failed_at"] = now
         logger.warning("Failed to fetch OIDC config from %s", _OIDC_CONFIG_URL, exc_info=True)
-    return _cached_issuer
+    return _issuer_cache["value"]
 
 
 def _validate_token(auth_header: str) -> dict:
