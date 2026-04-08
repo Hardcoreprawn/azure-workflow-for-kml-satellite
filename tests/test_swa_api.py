@@ -692,6 +692,46 @@ class TestAnalysisHistory:
 
 
 # ---------------------------------------------------------------------------
+# Diagnostic endpoint (temporary — remove with endpoint)
+# ---------------------------------------------------------------------------
+
+
+class TestHealthDiag:
+    """Tests for the temporary ``health_diag`` endpoint."""
+
+    def test_returns_404_when_disabled(self, _reload_module):
+        """Diag endpoint returns 404 when DIAG_ENABLED is not set."""
+        mod = _reload_module
+        mod.DIAG_ENABLED = False
+        req = _mock_request(method="GET", url="https://example.com/api/health/diag")
+        resp = mod.health_diag(req)
+        assert resp.status_code == 404
+
+    def test_returns_json_when_enabled(self, _reload_module):
+        """Diag endpoint returns JSON with expected keys, no full secrets."""
+        mod = _reload_module
+        mod.DIAG_ENABLED = True
+        req = _mock_request(method="GET", url="https://example.com/api/health/diag")
+        with (
+            patch("swa_function_app._get_jwks_client") as mock_jwks,
+            patch("swa_function_app._get_issuer") as mock_issuer,
+        ):
+            mock_client = MagicMock()
+            mock_client.fetch_data.return_value = {"keys": [{"kid": "k1"}]}
+            mock_jwks.return_value = mock_client
+            mock_issuer.return_value = "https://example.com/issuer"
+            resp = mod.health_diag(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert "python_version" in body
+        assert body["ciam_client_id_set"] is True
+        assert body["jwks_reachable"] is True
+        assert body["jwks_key_count"] == 1
+        # Must not expose full client ID
+        assert body["ciam_client_id_prefix"] == "test-cli"
+
+
+# ---------------------------------------------------------------------------
 # Contract tests — verify response shapes match what the frontend reads
 # ---------------------------------------------------------------------------
 

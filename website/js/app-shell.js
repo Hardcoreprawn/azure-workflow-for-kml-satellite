@@ -2535,7 +2535,7 @@
     }, 3000);
   }
 
-  async function submitAnalysis() {
+  async function queueAnalysis() {
     if (!currentAccount) {
       login();
       return;
@@ -2698,7 +2698,7 @@
       setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
       if (!demoMode) loadBillingStatus();
     } catch (err) {
-      console.error('submitAnalysis failed:', err);
+      console.error('queueAnalysis failed:', err);
       setAnalysisStatus('Could not queue analysis request.', 'error');
       resetAnalysisProgress();
     } finally {
@@ -3193,7 +3193,7 @@
   document.getElementById('app-guided-secondary-btn').addEventListener('click', function() {
     revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().secondaryTarget);
   });
-  document.getElementById('app-analysis-submit-btn').addEventListener('click', submitAnalysis);
+  document.getElementById('app-analysis-submit-btn').addEventListener('click', queueAnalysis);
   document.querySelectorAll('[data-export-format]').forEach(function(button) {
     button.addEventListener('click', function(event) {
       event.stopPropagation();

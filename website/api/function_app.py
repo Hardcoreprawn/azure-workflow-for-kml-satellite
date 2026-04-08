@@ -46,6 +46,7 @@ CIAM_CLIENT_ID = os.environ.get("CIAM_CLIENT_ID", "")
 INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
 SAS_TOKEN_EXPIRY_MINUTES = int(os.environ.get("SAS_TOKEN_EXPIRY_MINUTES", "15"))
 MAX_UPLOAD_BYTES = 10_485_760  # 10 MiB — matches treesight MAX_KML_FILE_SIZE_BYTES
+DIAG_ENABLED = os.environ.get("DIAG_ENABLED", "").lower() in ("1", "true", "yes")
 
 # Cosmos DB (for billing/status, analysis/history)
 COSMOS_ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "")
@@ -211,6 +212,51 @@ def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/health/diag — temporary diagnostic endpoint (remove after debugging)
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("health_diag")
+@app.route(route="health/diag", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def health_diag(req: func.HttpRequest) -> func.HttpResponse:
+    """Temporary diagnostics — remove after auth debugging."""
+    if not DIAG_ENABLED:
+        return _error(404, "Not found")
+    import sys
+
+    diag: dict = {
+        "python_version": sys.version,
+        "ciam_client_id_set": bool(CIAM_CLIENT_ID),
+        "ciam_client_id_prefix": CIAM_CLIENT_ID[:8] if CIAM_CLIENT_ID else "",
+        "ciam_tenant_name_set": bool(CIAM_TENANT_NAME),
+        "jwks_uri": _JWKS_URI[:60] if _JWKS_URI else "",
+        "oidc_config_url": _OIDC_CONFIG_URL[:60] if _OIDC_CONFIG_URL else "",
+        "storage_account_set": bool(STORAGE_ACCOUNT_NAME),
+    }
+    # Test JWKS reachability
+    try:
+        client = _get_jwks_client()
+        # Try to fetch the JWKS (cached after first call)
+        jwks_data = client.fetch_data()
+        diag["jwks_reachable"] = True
+        diag["jwks_key_count"] = len(jwks_data.get("keys", []))
+    except Exception as exc:
+        diag["jwks_reachable"] = False
+        diag["jwks_error"] = str(exc)[:200]
+    # Test OIDC discovery
+    try:
+        issuer = _get_issuer()
+        diag["oidc_issuer"] = issuer[:80] if issuer else "(empty)"
+    except Exception as exc:
+        diag["oidc_issuer_error"] = str(exc)[:200]
+    return func.HttpResponse(
+        json.dumps(diag, indent=2),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
 # POST /api/upload/token — mint a time-limited, write-only SAS URL
 # ---------------------------------------------------------------------------
 
@@ -242,7 +288,9 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
             has_bearer,
             bool(CIAM_CLIENT_ID),
         )
-        return _error(401, "Unauthorized")
+        # TEMPORARY: include debug detail in response for diagnosis
+        reason = f"debug:{type(exc).__name__}:{exc!s:.120}" if DIAG_ENABLED else "auth_failed"
+        return _error(401, "Unauthorized", reason=reason)
 
     user_id = claims.get("sub", "")
     if not user_id:
