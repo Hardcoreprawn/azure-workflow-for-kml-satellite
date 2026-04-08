@@ -69,7 +69,7 @@ This means:
 - No CORS complexity — everything is same-origin under the SWA hostname
 - Container Apps can be network-locked to reject direct browser calls
 
-The legacy `apiBase` in `/api-config.json` is retained for any unauthenticated endpoints (e.g. Durable Functions external status polling) but auth-gated operations never use it.
+No unauthenticated endpoints are exposed to browsers. Infrastructure probes (`/health`, `/readiness`) are internal to Container Apps (network-locked). The Stripe billing webhook uses its own signature verification. The `contact-form` and `demo-artifacts` endpoints are pre-login use cases served through SWA, rate-limited, and carry no user data.
 
 ### Auth — SWA Built-in Custom Auth
 
