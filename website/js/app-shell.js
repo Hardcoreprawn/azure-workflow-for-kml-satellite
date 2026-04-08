@@ -2,17 +2,6 @@
   'use strict';
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
-  const CIAM_TENANT_NAME = 'treesightauth';
-  const CIAM_TENANT_DOMAIN = CIAM_TENANT_NAME ? CIAM_TENANT_NAME + '.onmicrosoft.com' : '';
-  const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
-  const CIAM_AUTHORITY = CIAM_TENANT_NAME
-    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/' + CIAM_TENANT_DOMAIN + '/'
-    : '';
-  const CIAM_KNOWN_AUTHORITY = CIAM_TENANT_NAME
-    ? CIAM_TENANT_NAME + '.ciamlogin.com'
-    : '';
-  const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
-  const IDENTITY_ONLY_SCOPES = ['openid', 'profile', 'email', 'offline_access'];
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
   const WORKSPACE_PREFERENCE_STORAGE_KEY = 'canopex-workspace-preference';
   const WORKSPACE_ROLES = {
@@ -164,15 +153,8 @@
   var apiBase = '';
   var apiDiscoveryReady = null;
 
-  // Endpoints served by SWA managed functions (same-origin).
-  // To migrate an endpoint from Container Apps → SWA, add its prefix here.
-  var swaEndpoints = [
-    '/api/upload/',
-    '/api/analysis/history',
-  ];
-  var msalInstance = null;
-  var currentAccount = null;
-  var accessToken = null;
+  // All endpoints are now served through SWA (BFF pattern).
+  var currentAccount = null;   // populated by /.auth/me
   var latestBillingStatus = null;
   var latestAnalysisRun = null;
   var analysisHistoryRuns = [];
@@ -255,7 +237,7 @@
 
   function isDemoMode() { return demoMode; }
 
-  function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
+  function authEnabled() { return true; /* SWA built-in auth — always available */ }
 
   function rememberPostLoginDestination() {
     try { sessionStorage.setItem(POST_LOGIN_DESTINATION_KEY, 'app'); } catch { /* ignore */ }
@@ -272,32 +254,6 @@
     return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   }
 
-  function ciamRedirectOrigin() {
-    return runningOnLocalDevOrigin() ? 'http://localhost:4280' : window.location.origin;
-  }
-
-  function localLoginTransitionUrl() {
-    var url = new URL(window.location.href);
-    url.protocol = 'http:';
-    url.hostname = 'localhost';
-    url.port = '4280';
-    url.searchParams.set('localLogin', '1');
-    return url.toString();
-  }
-
-  function consumeLocalLoginRequest() {
-    try {
-      var url = new URL(window.location.href);
-      if (url.searchParams.get('localLogin') !== '1') return false;
-      url.searchParams.delete('localLogin');
-      var nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-      window.history.replaceState({}, '', nextUrl || '/app/');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   function clearDemoModeQueryParam() {
     try {
       var url = new URL(window.location.href);
@@ -311,137 +267,35 @@
   }
 
   async function discoverApiBase() {
-    if (runningOnLocalDevOrigin()) {
-      try {
-        var localRes = await fetch('/api/health');
-        if (localRes.ok) {
-          apiBase = '';
-          setServiceStatus('Online', 'online');
-          return;
-        }
-      } catch { /* local proxy unavailable */ }
-    }
-
-    try {
-      var cfgRes = await fetch('/api-config.json');
-      if (cfgRes.ok) {
-        var cfg = await cfgRes.json();
-        if (cfg.apiBase && cfg.apiBase !== 'http://localhost:7071') {
-          apiBase = cfg.apiBase;
-          setServiceStatus('Verified', 'verified');
-          fetch(cfg.apiBase + '/api/health').then(function(resp) {
-            if (resp.ok) setServiceStatus('Online', 'online');
-          }).catch(function() { /* verified is enough */ });
-          return;
-        }
-        if (cfg.apiBase) {
-          try {
-            var probe = await fetch(cfg.apiBase + '/api/health');
-            if (probe.ok) {
-              apiBase = cfg.apiBase;
-              setServiceStatus('Online', 'online');
-              return;
-            }
-          } catch { /* fall through */ }
-        }
-      }
-    } catch { /* fall through */ }
-
+    // All API calls go through the SWA managed API (BFF pattern).
+    // No external apiBase needed — everything is same-origin.
+    apiBase = '';
     try {
       var res = await fetch('/api/health');
       if (res.ok) {
-        apiBase = '';
         setServiceStatus('Online', 'online');
         return;
       }
     } catch { /* ignore */ }
-
     setServiceStatus('Unavailable', 'offline');
   }
 
   function login() {
-    if (window.location.hostname === '127.0.0.1') {
-      window.location.replace(localLoginTransitionUrl());
-      return;
-    }
-    if (!msalInstance) return;
     rememberPostLoginDestination();
-    msalInstance.loginRedirect({ scopes: CIAM_SCOPES });
+    window.location.href = '/.auth/login/aad';
   }
 
   function logout() {
-    if (!msalInstance) return;
     try { sessionStorage.removeItem(POST_LOGIN_DESTINATION_KEY); } catch { /* ignore */ }
-    msalInstance.logoutRedirect({ account: currentAccount });
-  }
-
-  function parseJwtPayload(token) {
-    if (!token) return null;
-    try {
-      var parts = token.split('.');
-      if (parts.length < 2) return null;
-      return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    } catch {
-      return null;
-    }
-  }
-
-  function tokenExpired(token, skewSeconds) {
-    var payload = parseJwtPayload(token);
-    if (!payload || !payload.exp) return false;
-    return payload.exp <= Math.floor(Date.now() / 1000) + (skewSeconds || 0);
-  }
-
-  function shouldUseIdTokenForApi(resp) {
-    if (!resp || !resp.accessToken || !resp.idToken) return false;
-    var payload = parseJwtPayload(resp.accessToken);
-    if (!payload) return false;
-    var scopes = String(payload.scp || '').split(/\s+/).filter(Boolean);
-    if (String(payload.aud || '') === '00000003-0000-0000-c000-000000000000') return true;
-    return scopes.length > 0 && scopes.every(function(scope) {
-      return IDENTITY_ONLY_SCOPES.indexOf(scope) > -1;
-    });
-  }
-
-  function selectApiBearerToken(resp) {
-    if (!resp) return null;
-    if (shouldUseIdTokenForApi(resp)) return resp.idToken;
-    return resp.accessToken || resp.idToken || null;
-  }
-
-  async function acquireToken() {
-    if (!msalInstance || !currentAccount) return null;
-    try {
-      var resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount });
-      if (shouldUseIdTokenForApi(resp) && tokenExpired(resp.idToken, 60)) {
-        resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount, forceRefresh: true });
-      }
-      accessToken = selectApiBearerToken(resp);
-      return accessToken;
-    } catch {
-      try {
-        rememberPostLoginDestination();
-        msalInstance.acquireTokenRedirect({ scopes: CIAM_SCOPES });
-      } catch { /* redirect will navigate away */ }
-      return null;
-    }
-  }
-
-  function isSwaEndpoint(path) {
-    var bare = path.split('?')[0];
-    return swaEndpoints.some(function(p) { return bare === p || bare.startsWith(p); });
+    window.location.href = '/.auth/logout';
   }
 
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
-    if (currentAccount && authEnabled()) {
-      var token = accessToken;
-      if (!token || tokenExpired(token, 60)) token = await acquireToken();
-      if (token) opts.headers.Authorization = 'Bearer ' + token;
-    }
-    var base = isSwaEndpoint(path) ? '' : apiBase;
-    try { return await fetch(base + path, opts); } catch { return null; }
+    // SWA built-in auth: session cookie is sent automatically.
+    // No Authorization header needed — SWA injects x-ms-client-principal.
+    try { return await fetch(path, opts); } catch { return null; }
   }
 
   function setAnalysisStatus(message, tone) {
@@ -2587,11 +2441,8 @@
       }
 
       // Step 1: Get SAS token from SWA managed API
-      var token = accessToken;
-      if (!token || tokenExpired(token, 60)) token = await acquireToken();
-      var tokenHeaders = { 'Content-Type': 'application/json' };
-      if (token) tokenHeaders.Authorization = 'Bearer ' + token;
-
+      // SWA built-in auth handles authentication via session cookie —
+      // no Bearer token needed.
       var tokenBody = {};
       if (submissionContext) {
         tokenBody.provider_name = submissionContext.provider_name;
@@ -2600,46 +2451,17 @@
 
       var tokenRes = await fetch('/api/upload/token', {
         method: 'POST',
-        headers: tokenHeaders,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tokenBody)
       });
-      // Retry once with a force-refreshed token on 401 — the cached
-      // token may have expired or the silent acquisition may have failed.
-      if (tokenRes && tokenRes.status === 401 && currentAccount && msalInstance) {
-        try {
-          var freshResp = await msalInstance.acquireTokenSilent({
-            scopes: CIAM_SCOPES, account: currentAccount, forceRefresh: true
-          });
-          token = selectApiBearerToken(freshResp);
-          if (token) {
-            accessToken = token;
-            tokenHeaders.Authorization = 'Bearer ' + token;
-            tokenRes = await fetch('/api/upload/token', {
-              method: 'POST',
-              headers: tokenHeaders,
-              body: JSON.stringify(tokenBody)
-            });
-          }
-        } catch { /* retry failed — fall through to 401 handling below */ }
-      }
       if (!tokenRes || !tokenRes.ok) {
         if (tokenRes && tokenRes.status === 401) {
-          var authBody = await tokenRes.json().catch(function(){ return {}; });
+          // SWA session expired or user not authenticated —
+          // redirect to login so SWA can re-establish the session.
           resetAnalysisProgress();
-          if (authBody.reason === 'token_expired') {
-            // Token genuinely expired and forceRefresh couldn't recover —
-            // the refresh token is likely gone.  Clear session state so the
-            // user can re-authenticate via interactive login.
-            currentAccount = null;
-            updateAuthUI();
-            setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
-          } else {
-            // Backend rejected the token for a non-expiry reason (audience
-            // mismatch, JWKS fetch failure, config error, etc.).  Don't
-            // nuke the MSAL account — the user may just need to retry.
-            console.warn('[canopex] Upload token 401 — reason:', authBody.reason || 'unknown', authBody.error || '');
-            setAnalysisStatus('Unable to verify your session. Please try again, or sign out and back in.', 'error');
-          }
+          currentAccount = null;
+          updateAuthUI();
+          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           return;
         }
         var tokenErr = tokenRes ? await tokenRes.json().catch(function(){ return {}; }) : {};
@@ -2943,8 +2765,8 @@
         demoMode = false;
         clearDemoModeQueryParam();
       }
-      var displayName = currentAccount.name || currentAccount.username || 'User';
-      var identifier = currentAccount.username || currentAccount.name || 'Signed in';
+      var displayName = currentAccount.name || currentAccount.userId || 'User';
+      var identifier = currentAccount.userId || currentAccount.name || 'Signed in';
       userSpan.textContent = displayName;
       userSpan.style.display = 'inline';
       loginBtn.style.display = 'none';
@@ -3107,31 +2929,19 @@
       }
     } catch { /* ignore */ }
 
-    if (!authEnabled()) {
-      updateAuthUI();
-      return;
-    }
-
-    var redirectOrigin = ciamRedirectOrigin();
-
-    msalInstance = new msal.PublicClientApplication({
-      auth: {
-        clientId: CIAM_CLIENT_ID,
-        authority: CIAM_AUTHORITY,
-        knownAuthorities: [CIAM_KNOWN_AUTHORITY],
-        redirectUri: redirectOrigin,
-        postLogoutRedirectUri: redirectOrigin,
-      },
-      cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
-    });
-
-    msalInstance.handleRedirectPromise().then(function(resp) {
-      if (resp && resp.account) msalInstance.setActiveAccount(resp.account);
-      currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
-      if (currentAccount) msalInstance.setActiveAccount(currentAccount);
-      if (!currentAccount && consumeLocalLoginRequest()) {
-        login();
-        return;
+    // SWA built-in auth: fetch /.auth/me to check if the user is signed in.
+    fetch('/.auth/me').then(function(resp) {
+      if (!resp.ok) throw new Error('auth/me failed');
+      return resp.json();
+    }).then(function(payload) {
+      var principal = payload && payload.clientPrincipal;
+      if (principal && principal.userId) {
+        currentAccount = {
+          userId: principal.userId,
+          name: principal.userDetails || '',
+          identityProvider: principal.identityProvider || 'aad',
+          userRoles: principal.userRoles || [],
+        };
       }
       if (!currentAccount && demoMode) {
         enterDemoMode();
@@ -3139,11 +2949,13 @@
       }
       updateAuthUI();
     }).catch(function(err) {
-      console.warn('MSAL redirect error:', err);
+      console.warn('SWA auth check failed:', err);
       if (demoMode) {
         enterDemoMode();
         return;
       }
+      // When running locally without SWA CLI, auth/me won't exist.
+      // Fall back to unauthenticated state — updateAuthUI handles it.
       updateAuthUI();
     });
   }
