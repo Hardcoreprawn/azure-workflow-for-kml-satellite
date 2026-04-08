@@ -69,7 +69,21 @@ This means:
 - No CORS complexity — everything is same-origin under the SWA hostname
 - Container Apps can be network-locked to reject direct browser calls
 
-No unauthenticated endpoints are exposed to browsers. Infrastructure probes (`/health`, `/readiness`) are internal to Container Apps (network-locked). The Stripe billing webhook uses its own signature verification. The `contact-form` and `demo-artifacts` endpoints are pre-login use cases served through SWA, rate-limited, and carry no user data.
+No unauthenticated endpoints are exposed to browsers. Infrastructure probes (`/health`, `/readiness`) are internal to Container Apps (network-locked). The Stripe billing webhook uses its own signature verification. The `contact-form` endpoint is a pre-login rate-limited form carrying no user data.
+
+#### Showcase vs Tiers
+
+Two distinct concepts serve different purposes — do not conflate them:
+
+| Concept | Auth | Processing | Purpose |
+|---------|------|-----------|---------|
+| **Showcase** | None (anonymous) | None — pre-computed static blobs from stock AOIs | Marketing. Let visitors see real output quality before signing up. |
+| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, low-res, seasonal cadence | Try the product. 5 runs, ≤5 AOIs, 30-day retention, no alerts, all manual. Negligible compute cost. |
+| **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans with increasing AOI counts, cadence, retention, exports, API access. |
+
+The **showcase** is served from `imagery/clipped/showcase/` blobs via valet tokens — no billing tier, no quota tracking, no user record. It exists purely to answer "what does Canopex actually produce?" for anonymous visitors.
+
+The "demo" billing tier is deprecated — it overlapped with Free but was strictly worse (1 AOI, 0 retention). New unauthenticated users see the showcase; new authenticated users land on Free.
 
 ### Auth — SWA Built-in Custom Auth
 
