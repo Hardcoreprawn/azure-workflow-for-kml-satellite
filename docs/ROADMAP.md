@@ -24,13 +24,26 @@ Last updated: 2026-04-08
 
 | PR | Summary |
 |----|---------|
+| #461 | Python Power-of-10 safety fixes (#453, #454, #455, #456) |
+| #460 | Rust Power-of-10 compliance — min_delta bug, expect→PyResult, refactor (#450, #451) |
+| #449 | Code simplicity instruction files — NASA Power-of-10 rules |
 | #444 | Migrate analysis/history to SWA managed function (partial #424) |
 | #442 | CSP violations + auth loop resilience (fixes #408, #409, partial #438) |
-| #441 | Roadmap overhaul + issue tracking discipline |
-| #435 | Auth retry on 401 + web test cost reduction |
-| #436 | Infracost CI cost gate with live Azure usage metrics |
 | #427 | SWA managed API functions — SAS token minting + status polling (#422) |
-| #425 | KML/KMZ input sanitisation — zip bomb protection + `validate_kml_bytes()` (#421) |
+
+---
+
+## Architecture Direction
+
+**3-tier serverless split** (tracking issue: #463, spec: `docs/3-tier-architecture.md`).
+
+| Tier | Runtime | Python | Purpose |
+|------|---------|--------|---------|
+| **T1 — SWA Functions** | SWA managed API | 3.11 | Always-warm: auth, reads, status, SAS minting |
+| **T2 — Orchestrator** | Container Apps (Functions) | 3.12 | Scale-to-zero: Durable orchestration, triggers |
+| **T3 — Compute** | Container Apps (Activities → Jobs) | 3.12+ | Scale-to-zero: GDAL, rasterio, Rust/PyO3 |
+
+Migration is phased across P1–P5 below. Each phase is independently shippable.
 
 ---
 
@@ -44,46 +57,64 @@ Bugs visible to real users right now.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 (CSP + auth); #367 already resolved |
-| 0.2 | #446 | Fix auth reliability: MSAL config mismatches, token selection, issuer validation | 🔄 In progress |
+| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 |
+| 0.2 | #446 | Fix auth reliability: MSAL config mismatches, token selection, issuer validation | 🔄 PR #462 (diagnostics deployed) |
 
-**Exit criteria:** Deploy succeeds. No CSP console errors. Demo dismiss works. Azure Monitor telemetry flows. Auth works reliably from both landing page and app shell.
+**Exit criteria:** Auth works reliably. No CSP errors. Demo dismiss works. Telemetry flows.
 
 ---
 
-### P1 — Stage 2B Completion (event-driven pipeline)
+### P1 — Stage 2B Completion + SWA Observability
 
-Finish the event-driven restructure. Parent issue: #420.
+Finish the event-driven restructure and make SWA observable. Parent issues: #420, #463.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | ✅ PR #425 |
 | 2B.2 | #422 | SWA API function for SAS token minting + status polling | ✅ PR #427 |
 | 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
-| 2B.4 | #424 | Migrate read-only endpoints to SWA functions + cold start optimisation | � PR #444 merged (analysis/history) |
+| 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | 🔄 PR #444 merged (partial) |
+| 2B.5 | #464 | Add Application Insights instrumentation to SWA managed API | Open |
 
-**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Function app has zero direct-submission paths. Read-only endpoints served from SWA managed functions (always warm).
-
----
-
-### P2 — Validation & Tech Debt
-
-Prove claims, close scanning alerts, clean up code quality debt. Each is one PR.
-
-| Order | Issue | Title | PR-sized? |
-|-------|-------|-------|-----------|
-| V.1 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Single PR — test + baseline docs |
-| V.2 | #439 | Close remaining code scanning alerts (CodeQL false positives + Trivy IaC) | Single PR — suppress/fix 7 alerts |
-| V.3 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | Single PR — partial fix batch |
-| V.4 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Single PR if fix landed; close if not |
-
-**Exit criteria:** Scale claim has evidence. Code scanning dashboard shows zero open (or explicitly suppressed with rationale).
+**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from SWA. SWA API has full App Insights telemetry.
 
 ---
 
-### P3 — Stage 2A: Release Safety & Promotion
+### P2 — Code Quality & Validation
 
-Make production safe to promote into. Build once in CI, promote the same immutable artifact dev → prod, verify it live.
+Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| Q.1 | #452 | Decompose 338-line orchestrator into phase functions | Open |
+| Q.2 | #457 | Chained .get() patterns with fragile fallbacks | Open |
+| Q.3 | #458 | app-shell.js — fetch swallowing, innerHTML XSS, code quality | Open |
+| Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | Open |
+| Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Open |
+| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | Open |
+| Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | Open |
+| Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Open |
+
+**Exit criteria:** Orchestrator decomposed (prerequisite for #466). Scale claim proven. Code scanning clean. Simplicity violations fixed.
+
+---
+
+### P3 — 3-Tier Phase 1: SWA as Primary API (T1)
+
+Expand SWA managed API to serve all user-facing reads. Part of #463.
+
+| Order | Issue | Title | Depends On |
+|-------|-------|-------|------------|
+| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | #464, #446 |
+| T1.2 | #424 | Complete remaining SWA endpoint migration | #465 |
+
+**Exit criteria:** SWA serves all read + lightweight write endpoints. Container App only wakes for pipeline execution and write paths. No GDAL in SWA image.
+
+---
+
+### P4 — Stage 2A: Release Safety & Promotion
+
+Make production safe to promote into. Build once in CI, promote the same immutable artifact dev → prod.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
@@ -94,13 +125,25 @@ Make production safe to promote into. Build once in CI, promote the same immutab
 | 2A.5 | #406 | Reconcile README, runbook, and API contracts with live routes | Open — depends #401 |
 | 2A.6 | #403 | Production rollout: preview users, smoke gates, promotion/demotion | Open — depends #401, #402, #405 |
 
-**Exit criteria:** Dev/prod promotion path explicit. Deploy runs functional smoke after readiness. Preview-user rollout exists. Production deploy is security-gated. Docs/contracts match code.
+**Exit criteria:** Dev/prod promotion path explicit. Preview-user rollout exists. Production deploy security-gated. Docs match code.
 
 ---
 
-### P4 — Stage 3: Growth & Retention
+### P5 — 3-Tier Phase 2: Split Orchestrator + Compute (T2/T3)
 
-Features that make Canopex a habit. **Do not open Stage 3 work until P1–P3 are materially complete.**
+Separate the Container Apps function app into two images. Part of #463.
+
+| Order | Issue | Title | Depends On |
+|-------|-------|-------|------------|
+| T2.1 | #466 | Split Container Apps into orchestrator + compute images | #452, #401, #465 |
+
+**Exit criteria:** Orchestrator image &lt;300 MB (no GDAL). Compute image has full stack. Both share Durable task hub. Cold-start &lt;3s for orchestrator.
+
+---
+
+### P6 — Stage 3: Growth & Retention
+
+Features that make Canopex a habit. **Do not open Stage 3 work until P1–P5 are materially complete.**
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
@@ -124,7 +167,7 @@ Features that make Canopex a habit. **Do not open Stage 3 work until P1–P3 are
 
 ---
 
-### P5 — Stage 4: Team & API
+### P7 — Stage 4: Team & API
 
 Unlock Team tier (£149/mo) and programmatic access.
 
@@ -138,17 +181,18 @@ Unlock Team tier (£149/mo) and programmatic access.
 
 ---
 
-### P6 — Stage 5: Enterprise & ML (Horizon)
+### P8 — Stage 5: Enterprise, ML & Burst Compute (Horizon)
 
 Advanced features, enterprise deals, competitive moats. **Do not start until Stage 4 is generating revenue.**
 
 | Order | Issue | Title |
 |-------|-------|-------|
-| 5.1 | #82 | Tree detection model + inference pipeline |
-| 5.2 | #83 | Tree health classification + temporal tracking |
-| 5.3 | #84 | Annotation-driven model fine-tuning |
-| 5.4 | #87 | Annotation tools and storage |
-| 5.5 | #86 | Web frontend (React / Next.js) |
+| 5.1 | #467 | Container Apps Jobs for burst compute (3-tier Phase 3) |
+| 5.2 | #82 | Tree detection model + inference pipeline |
+| 5.3 | #83 | Tree health classification + temporal tracking |
+| 5.4 | #84 | Annotation-driven model fine-tuning |
+| 5.5 | #87 | Annotation tools and storage |
+| 5.6 | #86 | Web frontend (React / Next.js) |
 
 ---
 
