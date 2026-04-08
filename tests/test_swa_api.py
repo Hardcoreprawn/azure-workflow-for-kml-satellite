@@ -57,6 +57,8 @@ def _reload_module(_swa_env):
     spec.loader.exec_module(mod)
     mod._jwks_client = None
     mod._blob_service = None
+    mod._cached_issuer = ""
+    mod._issuer_fetch_failed_at = 0.0
     return mod
 
 
@@ -135,8 +137,14 @@ class TestTokenValidation:
 
     @patch("swa_function_app._get_jwks_client")
     @patch("swa_function_app._get_issuer")
-    def test_warns_when_issuer_unavailable(self, mock_issuer, mock_jwks, _reload_module):
-        """When OIDC issuer is empty, _validate_token still decodes but without issuer check."""
+    def test_skips_issuer_check_when_unavailable(
+        self,
+        mock_issuer,
+        mock_jwks,
+        _reload_module,
+        caplog,
+    ):
+        """When OIDC issuer is empty, _validate_token decodes without issuer and logs a warning."""
         mod = _reload_module
         mock_key = MagicMock()
         mock_key.key = "test-key"
@@ -147,6 +155,7 @@ class TestTokenValidation:
             mod._validate_token("Bearer valid-token")
             _, kwargs = mock_decode.call_args
             assert "issuer" not in kwargs
+        assert "issuer" in caplog.text.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -182,10 +191,25 @@ class TestIssuerFetch:
     def test_returns_empty_on_fetch_failure(self, mock_urlopen, _reload_module):
         mod = _reload_module
         mod._cached_issuer = ""
+        mod._issuer_fetch_failed_at = 0.0
         mock_urlopen.side_effect = Exception("network error")
 
         result = mod._get_issuer()
         assert result == ""
+        assert mod._issuer_fetch_failed_at > 0
+
+    @patch("swa_function_app.urllib.request.urlopen")
+    def test_skips_retry_during_cooldown(self, mock_urlopen, _reload_module):
+        """After a failed fetch, _get_issuer skips retries within the cooldown window."""
+        import time
+
+        mod = _reload_module
+        mod._cached_issuer = ""
+        mod._issuer_fetch_failed_at = time.monotonic()  # just failed
+
+        result = mod._get_issuer()
+        assert result == ""
+        mock_urlopen.assert_not_called()
 
     def test_raises_when_ciam_not_configured(self, _reload_module, monkeypatch):
         mod = _reload_module
@@ -200,12 +224,14 @@ class TestOidcConfigUrls:
 
     def test_jwks_uri_includes_tenant_domain(self, _reload_module):
         mod = _reload_module
-        assert "treesightauth.onmicrosoft.com" in mod._JWKS_URI
+        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
+        assert mod._JWKS_URI.startswith(expected_prefix)
         assert mod._JWKS_URI.endswith("/discovery/v2.0/keys")
 
     def test_oidc_config_includes_tenant_domain(self, _reload_module):
         mod = _reload_module
-        assert "treesightauth.onmicrosoft.com" in mod._OIDC_CONFIG_URL
+        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
+        assert mod._OIDC_CONFIG_URL.startswith(expected_prefix)
         assert mod._OIDC_CONFIG_URL.endswith("/v2.0/.well-known/openid-configuration")
 
 

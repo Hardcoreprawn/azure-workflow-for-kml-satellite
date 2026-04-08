@@ -67,6 +67,8 @@ _OIDC_CONFIG_URL = (
 )
 _jwks_client: jwt.PyJWKClient | None = None
 _cached_issuer: str = ""
+_issuer_fetch_failed_at: float = 0.0
+_ISSUER_RETRY_INTERVAL: float = 300.0  # retry OIDC discovery after 5 min on failure
 _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
 
@@ -110,17 +112,27 @@ def _get_jwks_client() -> jwt.PyJWKClient:
 
 def _get_issuer() -> str:
     """Fetch and cache the OIDC issuer from the discovery endpoint."""
-    global _cached_issuer
+    global _cached_issuer, _issuer_fetch_failed_at
     if _cached_issuer:
         return _cached_issuer
     if not _OIDC_CONFIG_URL:
         raise RuntimeError("CIAM_TENANT_NAME is not configured")
+    # Negative cache: skip retry if the last failure was recent
+    import time
+
+    now = time.monotonic()
+    if _issuer_fetch_failed_at and (now - _issuer_fetch_failed_at) < _ISSUER_RETRY_INTERVAL:
+        return ""
+    # Validate scheme to satisfy static analysis (Semgrep S310)
+    if not _OIDC_CONFIG_URL.startswith("https://"):
+        raise RuntimeError("OIDC config URL must use HTTPS")
     try:
-        with urllib.request.urlopen(_OIDC_CONFIG_URL, timeout=10) as resp:  # noqa: S310 — trusted CIAM URL
+        with urllib.request.urlopen(_OIDC_CONFIG_URL, timeout=10) as resp:  # noqa: S310
             config = json.loads(resp.read())
         _cached_issuer = config.get("issuer", "")
     except Exception:
-        logger.warning("Failed to fetch OIDC config from %s", _OIDC_CONFIG_URL)
+        _issuer_fetch_failed_at = now
+        logger.warning("Failed to fetch OIDC config from %s", _OIDC_CONFIG_URL, exc_info=True)
     return _cached_issuer
 
 
