@@ -79,3 +79,14 @@ The `rust/` crate (`treesight_rs`) is a PyO3 extension for performance-critical 
 - No `unsafe` unless required by FFI. Justify every `unsafe` block with a safety comment.
 - Test via Python-side tests in `tests/test_rust_accel.py` — the Rust functions are consumed as a Python module, so test the interface users see.
 - Keep the crate small and single-purpose. If a new operation doesn't need native speed, write it in Python.
+
+### Rust Simplicity (Power of 10, adapted)
+
+The original NASA rules were written for C — Rust already enforces several of them via the type system. Apply the rest explicitly:
+
+- **Simple control flow.** No recursion. Prefer `match` with explicit arms over nested `if let` chains. Avoid `loop` without a bounded exit condition.
+- **Short functions.** Target ≤40 lines per function. Extract compute kernels into named helpers.
+- **No `unwrap()` or `expect()` at the PyO3 boundary.** Use `PyResult` and `?` to propagate errors. `unwrap()` is acceptable only inside pure compute where the invariant is already validated at the boundary.
+- **One nesting level inside iterators.** If a `.map()` or `.for_each()` closure needs nested conditionals, extract the inner logic to a named function.
+- **Zero warnings.** `#![deny(warnings)]` in the crate root. Every `#[allow(...)]` requires an inline comment justifying why.
+- **No trait magic for dispatch.** Keep the call graph grep-able. If you can't find a function by searching for its name, it's too indirect. Use concrete types over dynamic dispatch (`dyn Trait`) unless the design requires it.
