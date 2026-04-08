@@ -181,7 +181,7 @@ def list_entries(
     order = "DESC" if sort == "desc" else "ASC"
 
     # Count query for pagination metadata
-    count_query = f"SELECT VALUE COUNT(1) FROM c WHERE {where_clause}"  # noqa: S608
+    count_query = f"SELECT VALUE COUNT(1) FROM c WHERE {where_clause}"  # noqa: S608  — Cosmos SQL with parameterised @-bindings, not user-interpolated
     count_result = query_items(
         CATALOGUE_CONTAINER,
         count_query,
@@ -192,7 +192,7 @@ def list_entries(
 
     # Data query with pagination
     data_query = (
-        f"SELECT * FROM c WHERE {where_clause}"  # noqa: S608
+        f"SELECT * FROM c WHERE {where_clause}"  # noqa: S608  — same parameterised Cosmos SQL as count_query above
         f" ORDER BY c.submitted_at {order}"
         f" OFFSET @off LIMIT @lim"
     )

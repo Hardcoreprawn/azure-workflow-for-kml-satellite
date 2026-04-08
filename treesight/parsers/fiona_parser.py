@@ -15,7 +15,7 @@ _NAME_KEYS = frozenset({"name", "description"})
 
 def parse_kml_fiona(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using Fiona (GDAL driver). Returns list of Features."""
-    import fiona  # type: ignore[import-untyped]
+    import fiona  # type: ignore[import-untyped]  — fiona has no py.typed / type stubs
 
     features: list[Feature] = []
 

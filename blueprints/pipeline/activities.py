@@ -45,6 +45,9 @@ def _load_aoi(payload: dict[str, Any], storage: Any = None) -> Any:
 
 @bp.activity_trigger(input_name="payload")
 def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise TypeError(f"parse_kml expects dict payload, got {type(payload).__name__}")
+
     from treesight.models.blob_event import BlobEvent
     from treesight.pipeline.ingestion import parse_kml_from_blob
     from treesight.storage.client import BlobStorageClient

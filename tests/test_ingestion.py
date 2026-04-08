@@ -90,6 +90,67 @@ class TestParseKmlFromBlob:
 
         assert features[0].source_file == "my-farm.kml"
 
+    def test_rejects_empty_container_name(self) -> None:
+        """parse_kml_from_blob raises when container_name is empty."""
+        import pytest
+
+        from treesight.pipeline.ingestion import parse_kml_from_blob
+
+        event = BlobEvent(
+            blob_url="https://store.blob.core.windows.net/kml-input/f.kml",
+            container_name="",
+            blob_name="uploads/farm.kml",
+            content_length=4096,
+            content_type="application/vnd.google-earth.kml+xml",
+            event_time="2026-03-18T12:00:00Z",
+            correlation_id="evt-test-empty",
+        )
+        with pytest.raises(ValueError, match="container_name"):
+            parse_kml_from_blob(event, _mock_storage(b"<kml/>"))
+
+    def test_rejects_empty_blob_name(self) -> None:
+        """parse_kml_from_blob raises when blob_name is empty."""
+        import pytest
+
+        from treesight.pipeline.ingestion import parse_kml_from_blob
+
+        event = BlobEvent(
+            blob_url="https://store.blob.core.windows.net/kml-input/",
+            container_name="kml-input",
+            blob_name="",
+            content_length=4096,
+            content_type="application/vnd.google-earth.kml+xml",
+            event_time="2026-03-18T12:00:00Z",
+            correlation_id="evt-test-empty",
+        )
+        with pytest.raises(ValueError, match="blob_name"):
+            parse_kml_from_blob(event, _mock_storage(b"<kml/>"))
+
+
+# ---------------------------------------------------------------------------
+# parse_kml activity input validation
+# ---------------------------------------------------------------------------
+
+
+class TestParseKmlActivityValidation:
+    """Activity boundary rejects non-dict payloads."""
+
+    def test_rejects_none_payload(self) -> None:
+        import pytest
+
+        from blueprints.pipeline.activities import parse_kml
+
+        with pytest.raises(TypeError, match="expects dict"):
+            parse_kml(None)
+
+    def test_rejects_string_payload(self) -> None:
+        import pytest
+
+        from blueprints.pipeline.activities import parse_kml
+
+        with pytest.raises(TypeError, match="expects dict"):
+            parse_kml("not-a-dict")
+
 
 # ---------------------------------------------------------------------------
 # prepare_aois

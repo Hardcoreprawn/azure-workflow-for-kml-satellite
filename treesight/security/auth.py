@@ -46,11 +46,16 @@ def _fetch_jwks() -> dict[str, Any]:
             _jwks_cache["fetched_at"] = time.monotonic()
             _jwks_cache["issuer"] = oidc.get("issuer", "")
         return jwks
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to fetch CIAM JWKS", exc_info=True)
-        # Return stale cache if available
+        # Return stale cache if a previous fetch succeeded (graceful degradation).
+        # If no stale cache exists, raise — fail closed rather than silently
+        # bypassing auth.
         with _jwks_lock:
-            return _jwks_cache.get("keys", {})
+            stale = _jwks_cache.get("keys")
+            if stale:
+                return stale
+            raise ValueError("Cannot retrieve signing keys and no cached keys available") from exc
 
 
 def _get_issuer() -> str:

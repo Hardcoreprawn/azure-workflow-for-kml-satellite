@@ -174,6 +174,17 @@ class TestJwksCache:
             result = _fetch_jwks()
             assert result == stale_keys
 
+    def test_fetch_failure_raises_when_no_stale_cache(self):
+        """Fail closed: if JWKS fetch fails and no cached keys exist, raise."""
+        _jwks_cache.clear()
+
+        with (
+            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
+            patch("treesight.security.auth.requests.get", side_effect=Exception("network")),
+            pytest.raises(ValueError, match="Cannot retrieve signing keys"),
+        ):
+            _fetch_jwks()
+
 
 # ---------------------------------------------------------------------------
 # check_auth helper (from _helpers.py)
