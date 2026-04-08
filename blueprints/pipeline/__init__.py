@@ -15,11 +15,11 @@ bp = df.Blueprint()
 
 # Import submodules to trigger decorator registration on ``bp``.
 # Order does not matter — each module imports ``bp`` from this package.
-from . import (  # noqa: E402
-    activities,  # noqa: F401
-    blob_trigger,  # noqa: F401
-    diagnostics,  # noqa: F401
-    enrichment,  # noqa: F401
-    orchestrator,  # noqa: F401
-    submission,  # noqa: F401
+from . import (  # noqa: E402  — must follow bp = df.Blueprint()
+    activities,  # noqa: F401  — registers activity triggers
+    blob_trigger,  # noqa: F401  — registers blob trigger
+    diagnostics,  # noqa: F401  — registers diagnostic endpoints
+    enrichment,  # noqa: F401  — registers enrichment activities
+    orchestrator,  # noqa: F401  — registers orchestrator
+    submission,  # noqa: F401  — registers submission endpoint
 )

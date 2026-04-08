@@ -24,6 +24,11 @@ logger = logging.getLogger(__name__)
 
 def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> list[Feature]:
     """Download KML/KMZ from blob storage and parse it."""
+    if not blob_event.container_name:
+        raise ValueError("blob_event.container_name must not be empty")
+    if not blob_event.blob_name:
+        raise ValueError("blob_event.blob_name must not be empty")
+
     from treesight.parsers import maybe_unzip
 
     raw_bytes = storage.download_bytes(blob_event.container_name, blob_event.blob_name)

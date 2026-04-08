@@ -18,7 +18,7 @@ def read_with_fallback(cosmos_read, blob_read):
         try:
             return cosmos_read()
         except Exception:
-            logger.debug("Cosmos read failed, falling back to blob", exc_info=True)
+            logger.warning("Cosmos read failed, falling back to blob", exc_info=True)
     return blob_read()
 
 
@@ -29,5 +29,5 @@ def write_with_fallback(cosmos_write, blob_write):
             cosmos_write()
             return
         except Exception:
-            logger.debug("Cosmos write failed, falling back to blob", exc_info=True)
+            logger.warning("Cosmos write failed, falling back to blob", exc_info=True)
     blob_write()
