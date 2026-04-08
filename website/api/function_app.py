@@ -349,7 +349,7 @@ _MAX_HISTORY_LIMIT = 20
 _MAX_HISTORY_OFFSET = 200
 _DEFAULT_PROVIDER = "planetary-computer"
 
-_ACTIVE_STATUSES = frozenset({"submitted", "pending", "running", "continueasnew"})
+_ACTIVE_STATUSES = frozenset({"submitted", "pending", "running", "continuedasnew"})
 
 
 def _parse_int_param(raw: str, default: int, lo: int, hi: int) -> int:
@@ -426,7 +426,13 @@ def analysis_history(req: func.HttpRequest) -> func.HttpResponse:
     try:
         container = _get_cosmos_container("runs")
         query = (
-            "SELECT * FROM c WHERE c.user_id = @uid"
+            "SELECT c.submission_id, c.instance_id, c.submitted_at,"
+            " c.status, c.submission_prefix, c.provider_name,"
+            " c.feature_count, c.aoi_count, c.processing_mode,"
+            " c.max_spread_km, c.total_area_ha, c.largest_area_ha,"
+            " c.workspace_role, c.workspace_preference,"
+            " c.kml_blob_name, c.kml_size_bytes"
+            " FROM c WHERE c.user_id = @uid"
             " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
         )
         records = list(
@@ -444,7 +450,7 @@ def analysis_history(req: func.HttpRequest) -> func.HttpResponse:
         return _error(503, "Analysis history temporarily unavailable")
     except Exception:
         logger.exception("Cosmos query failed for analysis history")
-        records = []
+        return _error(503, "Analysis history temporarily unavailable")
 
     runs = [_history_entry(r) for r in records]
     active_run = next(

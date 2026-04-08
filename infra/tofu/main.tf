@@ -871,12 +871,12 @@ resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
   scope               = azurerm_cosmosdb_account.main[0].id
 }
 
-# Cosmos DB data-plane RBAC for SWA managed API (billing/status, analysis/history)
+# Cosmos DB data-plane RBAC for SWA managed API (read-only: analysis/history)
 resource "azurerm_cosmosdb_sql_role_assignment" "swa" {
   count               = var.enable_cosmos_db ? 1 : 0
   resource_group_name = azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main[0].name
-  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001"
   principal_id        = azurerm_user_assigned_identity.swa.principal_id
   scope               = azurerm_cosmosdb_account.main[0].id
 }
