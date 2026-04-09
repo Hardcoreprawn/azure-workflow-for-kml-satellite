@@ -4,8 +4,8 @@
       "azureActiveDirectory": {
         "registration": {
           "openIdIssuer": "https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0",
-          "clientIdSettingName": "AZURE_CLIENT_ID",
-          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
+          "clientIdSettingName": "CIAM_CLIENT_ID",
+          "clientSecretSettingName": "CIAM_CLIENT_SECRET"
         }
       }
     }

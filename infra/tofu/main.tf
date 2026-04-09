@@ -967,8 +967,9 @@ locals {
       AZURE_CLIENT_ID      = azurerm_user_assigned_identity.swa.client_id
     },
     var.ciam_tenant_name != "" ? {
-      CIAM_TENANT_NAME = var.ciam_tenant_name
-      CIAM_CLIENT_ID   = var.ciam_client_id
+      CIAM_TENANT_NAME   = var.ciam_tenant_name
+      CIAM_CLIENT_ID     = var.ciam_client_id
+      CIAM_CLIENT_SECRET = var.ciam_client_secret
     } : {},
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
