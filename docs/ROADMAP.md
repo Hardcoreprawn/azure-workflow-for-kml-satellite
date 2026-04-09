@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 ---
 
@@ -24,6 +24,8 @@ Last updated: 2026-04-08
 
 | PR | Summary |
 |----|---------|
+| #471 | Cryptography CVE fix (dependabot) |
+| #462 | SWA auth diagnostics + queueAnalysis rename (partial #446) |
 | #461 | Python Power-of-10 safety fixes (#453, #454, #455, #456) |
 | #460 | Rust Power-of-10 compliance — min_delta bug, expect→PyResult, refactor (#450, #451) |
 | #449 | Code simplicity instruction files — NASA Power-of-10 rules |
