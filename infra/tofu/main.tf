@@ -873,6 +873,14 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
+# SWA managed identity — Key Vault secret access for Stripe env vars
+resource "azurerm_role_assignment" "swa_key_vault_secrets_user" {
+  count                = var.enable_stripe ? 1 : 0
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.swa.principal_id
+}
+
 # Allow the deployer (tofu apply / setup scripts) to manage secrets
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   count                = var.enable_stripe ? 1 : 0
@@ -958,7 +966,7 @@ locals {
   }
 
   # SWA managed API settings (upload/token, upload/status, billing/status,
-  # analysis/history endpoints).
+  # billing/checkout, billing/portal, analysis/history endpoints).
   # Auth uses user-assigned managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
@@ -976,6 +984,13 @@ locals {
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
+    } : {},
+    var.enable_stripe ? {
+      STRIPE_API_KEY           = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
+      STRIPE_PRICE_ID_PRO_GBP  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
+      STRIPE_PRICE_ID_PRO_USD  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
+      STRIPE_PRICE_ID_PRO_EUR  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
+      BILLING_ALLOWED_USERS    = var.billing_allowed_users
     } : {}
   )
 }

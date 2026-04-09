@@ -150,6 +150,13 @@ variable "enable_stripe" {
   default     = false
 }
 
+variable "billing_allowed_users" {
+  description = "Comma-separated user IDs allowed to use real Stripe billing (feature gate)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # --- Email notifications (Azure Communication Services) ---
 
 variable "enable_email" {

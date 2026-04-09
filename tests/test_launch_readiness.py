@@ -934,3 +934,50 @@ class TestSwaAppInsights:
         assert "Exception" in excluded, (
             "website/api/host.json must exclude Exception from sampling so all errors are captured"
         )
+
+
+# 17. SWA Billing Endpoints (#465 / #474)
+class TestSwaBillingInfra:
+    """Ensure SWA managed API has Stripe env vars for billing endpoints."""
+
+    @pytest.fixture()
+    def main_tf(self):
+        return MAIN_TF.read_text()
+
+    def test_swa_app_settings_include_stripe_api_key(self, main_tf):
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        assert "STRIPE_API_KEY" in swa_block, (
+            "swa_api_app_settings must include STRIPE_API_KEY for billing checkout/portal"
+        )
+
+    def test_swa_app_settings_include_stripe_price_ids(self, main_tf):
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        for currency in ("GBP", "USD", "EUR"):
+            assert f"STRIPE_PRICE_ID_PRO_{currency}" in swa_block, (
+                f"swa_api_app_settings must include STRIPE_PRICE_ID_PRO_{currency}"
+            )
+
+    def test_swa_app_settings_include_billing_allowed_users(self, main_tf):
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        assert "BILLING_ALLOWED_USERS" in swa_block, (
+            "swa_api_app_settings must include BILLING_ALLOWED_USERS for feature gating"
+        )
+
+    def test_swa_has_key_vault_secrets_user_role(self, main_tf):
+        assert "swa_key_vault_secrets_user" in main_tf, (
+            "SWA managed identity must have Key Vault Secrets User role "
+            "to resolve @Microsoft.KeyVault() Stripe secret references"
+        )
+
+    def test_swa_billing_endpoints_in_function_app(self):
+        source = (ROOT / "website" / "api" / "function_app.py").read_text()
+        for endpoint in ("billing_status", "billing_checkout", "billing_portal"):
+            assert endpoint in source, (
+                f"website/api/function_app.py must define {endpoint} endpoint"
+            )
+
+    def test_swa_requirements_include_stripe(self):
+        reqs = (ROOT / "website" / "api" / "requirements.txt").read_text()
+        assert "stripe" in reqs, (
+            "website/api/requirements.txt must include stripe SDK for billing endpoints"
+        )
