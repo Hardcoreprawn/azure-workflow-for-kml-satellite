@@ -1,4 +1,15 @@
 {
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0",
+          "clientIdSettingName": "AZURE_CLIENT_ID",
+          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
+        }
+      }
+    }
+  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html"]
@@ -15,11 +26,23 @@
       "statusCode": 301
     },
     {
-      "route": "/api/*",
+      "route": "/api/health",
       "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/api/health/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/api/*",
+      "allowedRoles": ["authenticated"]
     }
   ],
   "responseOverrides": {
+    "401": {
+      "redirect": "/.auth/login/aad",
+      "statusCode": 302
+    },
     "404": {
       "rewrite": "/index.html"
     }
@@ -30,6 +53,6 @@
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self' https://unpkg.com https://js.monitor.azure.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://planetarycomputer.microsoft.com https://server.arcgisonline.com; connect-src 'self' https://*.azurecontainerapps.io https://*.blob.core.windows.net https://treesightauth.ciamlogin.com https://login.microsoftonline.com https://planetarycomputer.microsoft.com https://archive-api.open-meteo.com https://firms.modaps.eosdis.nasa.gov https://environment.data.gov.uk https://waterdata.usgs.gov https://api.open-meteo.com https://dc.services.visualstudio.com https://*.in.applicationinsights.azure.com https://js.monitor.azure.com; frame-src https://treesightauth.ciamlogin.com https://login.microsoftonline.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' https://unpkg.com https://js.monitor.azure.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://planetarycomputer.microsoft.com https://server.arcgisonline.com; connect-src 'self' https://*.azurecontainerapps.io https://*.blob.core.windows.net https://planetarycomputer.microsoft.com https://archive-api.open-meteo.com https://firms.modaps.eosdis.nasa.gov https://environment.data.gov.uk https://waterdata.usgs.gov https://api.open-meteo.com https://dc.services.visualstudio.com https://*.in.applicationinsights.azure.com https://js.monitor.azure.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
   }
 }

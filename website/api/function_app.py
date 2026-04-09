@@ -4,10 +4,13 @@ These functions run inside the Static Web App's managed function runtime.
 They handle user-interactive requests (SAS token minting, status polling)
 so the main Container Apps function app can scale to zero without affecting UX.
 
+Authentication is handled by the SWA platform using built-in custom auth
+(Azure AD / Entra External ID).  SWA injects user identity via the
+``x-ms-client-principal`` header — a Base64-encoded JSON payload containing
+``identityProvider``, ``userId``, ``userDetails``, and ``userRoles``.
+
 Environment variables (set via SWA app_settings in OpenTofu):
   STORAGE_ACCOUNT_NAME   — storage account for SAS token generation
-  CIAM_TENANT_NAME       — e.g. "treesightauth"
-  CIAM_CLIENT_ID         — CIAM app registration client ID
   SAS_TOKEN_EXPIRY_MINUTES — SAS token lifetime (default: 15)
 
 Authentication to Azure Storage uses the SWA's system-assigned managed
@@ -16,15 +19,14 @@ identity (DefaultAzureCredential) — no shared secrets.
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import logging
 import os
-import urllib.request
 import uuid
 
 import azure.functions as func
-import jwt
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import (
     BlobSasPermissions,
@@ -41,36 +43,36 @@ logger = logging.getLogger("swa-api")
 # ---------------------------------------------------------------------------
 
 STORAGE_ACCOUNT_NAME = os.environ.get("STORAGE_ACCOUNT_NAME", "")
-CIAM_TENANT_NAME = os.environ.get("CIAM_TENANT_NAME", "")
-CIAM_CLIENT_ID = os.environ.get("CIAM_CLIENT_ID", "")
 INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
 SAS_TOKEN_EXPIRY_MINUTES = int(os.environ.get("SAS_TOKEN_EXPIRY_MINUTES", "15"))
 MAX_UPLOAD_BYTES = 10_485_760  # 10 MiB — matches treesight MAX_KML_FILE_SIZE_BYTES
-DIAG_ENABLED = os.environ.get("DIAG_ENABLED", "").lower() in ("1", "true", "yes")
 
 # Cosmos DB (for billing/status, analysis/history)
 COSMOS_ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "")
 COSMOS_DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME", "canopex")
 
-# JWKS URI for CIAM token validation
-_JWKS_URI = (
-    f"https://{CIAM_TENANT_NAME}.ciamlogin.com/"
-    f"{CIAM_TENANT_NAME}.onmicrosoft.com/discovery/v2.0/keys"
-    if CIAM_TENANT_NAME
-    else ""
-)
-# OIDC discovery URL — used to fetch the canonical issuer at startup
-_OIDC_CONFIG_URL = (
-    f"https://{CIAM_TENANT_NAME}.ciamlogin.com/"
-    f"{CIAM_TENANT_NAME}.onmicrosoft.com/v2.0/.well-known/openid-configuration"
-    if CIAM_TENANT_NAME
-    else ""
-)
-_jwks_client: jwt.PyJWKClient | None = None
-_issuer_cache: dict = {"value": "", "failed_at": 0.0}
-_ISSUER_RETRY_INTERVAL: float = 300.0  # retry OIDC discovery after 5 min on failure
 _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
+
+
+# ---------------------------------------------------------------------------
+# GET /api/health — anonymous lightweight liveness probe
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("health")
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def health(req: func.HttpRequest) -> func.HttpResponse:
+    """Lightweight liveness probe — always returns 200.
+
+    Used by the frontend ``discoverApiBase()`` to determine whether the
+    SWA managed API is reachable.  Intentionally anonymous (no auth).
+    """
+    return func.HttpResponse(
+        json.dumps({"status": "ok"}),
+        status_code=200,
+        mimetype="application/json",
+    )
 
 
 def _get_blob_service() -> BlobServiceClient:
@@ -100,76 +102,35 @@ def _get_cosmos_container(container_name: str):
     return _cosmos_db.get_container_client(container_name)
 
 
-def _get_jwks_client() -> jwt.PyJWKClient:
-    """Lazy-init JWKS client (caches keys across invocations)."""
-    global _jwks_client
-    if _jwks_client is None:
-        if not _JWKS_URI:
-            raise RuntimeError("CIAM_TENANT_NAME is not configured")
-        _jwks_client = jwt.PyJWKClient(_JWKS_URI)
-    return _jwks_client
+def _parse_client_principal(req: func.HttpRequest) -> dict:
+    """Extract user identity from the SWA ``x-ms-client-principal`` header.
 
+    Returns a dict with ``userId``, ``userDetails``, ``identityProvider``,
+    ``userRoles``, and a ``sub`` alias (for compatibility with code that
+    reads ``claims["sub"]``).
 
-def _get_issuer() -> str:
-    """Fetch and cache the OIDC issuer from the discovery endpoint."""
-    if _issuer_cache["value"]:
-        return _issuer_cache["value"]
-    if not _OIDC_CONFIG_URL:
-        raise RuntimeError("CIAM_TENANT_NAME is not configured")
-    # Negative cache: skip retry if the last failure was recent
-    import time
-
-    now = time.monotonic()
-    if _issuer_cache["failed_at"] and (now - _issuer_cache["failed_at"]) < _ISSUER_RETRY_INTERVAL:
-        return ""
-    # Validate scheme to satisfy static analysis (Semgrep S310)
-    if not _OIDC_CONFIG_URL.startswith("https://"):
-        raise RuntimeError("OIDC config URL must use HTTPS")
-    try:
-        # nosemgrep: dynamic-urllib-use-detected
-        with urllib.request.urlopen(  # noqa: S310
-            _OIDC_CONFIG_URL,
-            timeout=10,
-        ) as resp:
-            config = json.loads(resp.read())
-        _issuer_cache["value"] = config.get("issuer", "")
-    except Exception:
-        _issuer_cache["failed_at"] = now
-        logger.warning("Failed to fetch OIDC config from %s", _OIDC_CONFIG_URL, exc_info=True)
-    return _issuer_cache["value"]
-
-
-def _validate_token(auth_header: str) -> dict:
-    """Validate a CIAM JWT and return its claims.
-
-    Raises ``ValueError`` on any validation failure.
+    Raises ``ValueError`` when the header is missing or malformed.
     """
-    if not auth_header.startswith("Bearer "):
-        raise ValueError("Missing Bearer token")
+    raw = req.headers.get("x-ms-client-principal", "")
+    if not raw:
+        raise ValueError("Missing x-ms-client-principal header")
 
-    token = auth_header[7:]
-    client = _get_jwks_client()
-    signing_key = client.get_signing_key_from_jwt(token)
+    try:
+        decoded = base64.b64decode(raw)
+        principal = json.loads(decoded)
+    except Exception as exc:
+        raise ValueError(f"Malformed client principal: {exc}") from exc
 
-    decode_options: dict = {
-        "algorithms": ["RS256"],
-        "audience": CIAM_CLIENT_ID,
-        "options": {"require": ["sub", "exp", "aud"]},
-    }
+    if not isinstance(principal, dict):
+        raise ValueError("Client principal is not a JSON object")
 
-    issuer = _get_issuer()
-    if issuer:
-        decode_options["issuer"] = issuer
-        decode_options["options"]["require"].append("iss")
-    else:
-        logger.warning("OIDC issuer unavailable — skipping issuer validation")
+    user_id: str = principal.get("userId", "")
+    if not user_id:
+        raise ValueError("Client principal missing userId")
 
-    claims = jwt.decode(
-        token,
-        signing_key.key,
-        **decode_options,
-    )
-    return claims
+    # Provide 'sub' alias so callers can use claims["sub"] unchanged
+    principal["sub"] = user_id
+    return principal
 
 
 def _error(status: int, message: str, *, reason: str = "") -> func.HttpResponse:
@@ -212,51 +173,6 @@ def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/health/diag — temporary diagnostic endpoint (remove after debugging)
-# ---------------------------------------------------------------------------
-
-
-@app.function_name("health_diag")
-@app.route(route="health/diag", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def health_diag(req: func.HttpRequest) -> func.HttpResponse:
-    """Temporary diagnostics — remove after auth debugging."""
-    if not DIAG_ENABLED:
-        return _error(404, "Not found")
-    import sys
-
-    diag: dict = {
-        "python_version": sys.version,
-        "ciam_client_id_set": bool(CIAM_CLIENT_ID),
-        "ciam_client_id_prefix": CIAM_CLIENT_ID[:8] if CIAM_CLIENT_ID else "",
-        "ciam_tenant_name_set": bool(CIAM_TENANT_NAME),
-        "jwks_uri": _JWKS_URI[:60] if _JWKS_URI else "",
-        "oidc_config_url": _OIDC_CONFIG_URL[:60] if _OIDC_CONFIG_URL else "",
-        "storage_account_set": bool(STORAGE_ACCOUNT_NAME),
-    }
-    # Test JWKS reachability
-    try:
-        client = _get_jwks_client()
-        # Try to fetch the JWKS (cached after first call)
-        jwks_data = client.fetch_data()
-        diag["jwks_reachable"] = True
-        diag["jwks_key_count"] = len(jwks_data.get("keys", []))
-    except Exception as exc:
-        diag["jwks_reachable"] = False
-        diag["jwks_error"] = str(exc)[:200]
-    # Test OIDC discovery
-    try:
-        issuer = _get_issuer()
-        diag["oidc_issuer"] = issuer[:80] if issuer else "(empty)"
-    except Exception as exc:
-        diag["oidc_issuer_error"] = str(exc)[:200]
-    return func.HttpResponse(
-        json.dumps(diag, indent=2),
-        status_code=200,
-        mimetype="application/json",
-    )
-
-
-# ---------------------------------------------------------------------------
 # POST /api/upload/token — mint a time-limited, write-only SAS URL
 # ---------------------------------------------------------------------------
 
@@ -269,32 +185,16 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     Requires a valid CIAM JWT in the Authorization header.
     Returns a pre-signed URL scoped to a single blob in kml-input/.
     """
-    # --- auth ---
-    auth_header = req.headers.get("Authorization", "")
+    # --- auth (SWA built-in — x-ms-client-principal) ---
     try:
-        claims = _validate_token(auth_header)
-    except jwt.ExpiredSignatureError as exc:
-        logger.warning(
-            "Upload JWT expired: %s (ciam_configured=%s)",
-            exc,
-            bool(CIAM_CLIENT_ID),
-        )
-        return _error(401, "Token expired", reason="token_expired")
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        has_bearer = auth_header.startswith("Bearer ") if auth_header else False
-        logger.warning(
-            "Upload auth validation failed: %s (has_bearer=%s, ciam_client_id=%s)",
-            exc,
-            has_bearer,
-            bool(CIAM_CLIENT_ID),
-        )
-        # TEMPORARY: include debug detail in response for diagnosis
-        reason = f"debug:{type(exc).__name__}:{exc!s:.120}" if DIAG_ENABLED else "auth_failed"
-        return _error(401, "Unauthorized", reason=reason)
+        claims = _parse_client_principal(req)
+    except ValueError as exc:
+        logger.warning("Upload auth failed: %s", exc)
+        return _error(401, "Unauthorized")
 
     user_id = claims.get("sub", "")
     if not user_id:
-        return _error(401, "Token missing subject claim")
+        return _error(401, "Missing user identity")
 
     # --- config check ---
     if not STORAGE_ACCOUNT_NAME:
@@ -405,14 +305,11 @@ def upload_status(req: func.HttpRequest) -> func.HttpResponse:
     function app.  This keeps the status-polling path always-warm via SWA
     while the heavy pipeline work runs on Container Apps.
     """
-    auth_header = req.headers.get("Authorization", "")
+    # --- auth (SWA built-in — x-ms-client-principal) ---
     try:
-        _validate_token(auth_header)
-    except jwt.ExpiredSignatureError as exc:
-        logger.warning("Status JWT expired: %s", exc)
-        return _error(401, "Token expired", reason="token_expired")
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("Status auth validation failed: %s", exc)
+        _parse_client_principal(req)
+    except ValueError as exc:
+        logger.warning("Status auth failed: %s", exc)
         return _error(401, "Unauthorized")
 
     submission_id = req.route_params.get("submission_id", "")
@@ -503,14 +400,11 @@ def analysis_history(req: func.HttpRequest) -> func.HttpResponse:
     record).  For in-flight runs the status may lag, but the active polling
     endpoint (upload/status) covers that path.
     """
-    auth_header = req.headers.get("Authorization", "")
+    # --- auth (SWA built-in — x-ms-client-principal) ---
     try:
-        claims = _validate_token(auth_header)
-    except jwt.ExpiredSignatureError as exc:
-        logger.warning("History JWT expired: %s", exc)
-        return _error(401, "Token expired", reason="token_expired")
-    except (ValueError, jwt.PyJWTError, RuntimeError) as exc:
-        logger.warning("History auth validation failed: %s", exc)
+        claims = _parse_client_principal(req)
+    except ValueError as exc:
+        logger.warning("History auth failed: %s", exc)
         return _error(401, "Unauthorized")
 
     user_id: str = claims.get("sub", "")

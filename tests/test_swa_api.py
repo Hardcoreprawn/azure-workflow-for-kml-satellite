@@ -3,10 +3,13 @@
 These tests verify the SWA API function logic — SAS token minting and
 status polling — without requiring the Azure Functions runtime.  We
 import the module directly and call the helper functions + route handlers.
+
+Auth is handled by SWA built-in custom auth (x-ms-client-principal header).
 """
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import sys
@@ -36,8 +39,6 @@ _SWA_MODULE_NAME = "swa_function_app"
 def _swa_env(monkeypatch):
     """Set environment variables for the SWA API module."""
     monkeypatch.setenv("STORAGE_ACCOUNT_NAME", "teststorage")
-    monkeypatch.setenv("CIAM_TENANT_NAME", "treesightauth")
-    monkeypatch.setenv("CIAM_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("INPUT_CONTAINER", "kml-input")
     monkeypatch.setenv("SAS_TOKEN_EXPIRY_MINUTES", "15")
 
@@ -55,19 +56,24 @@ def _reload_module(_swa_env):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[_SWA_MODULE_NAME] = mod
     spec.loader.exec_module(mod)
-    mod._jwks_client = None
     mod._blob_service = None
-    mod._issuer_cache = {"value": "", "failed_at": 0.0}
     return mod
 
 
-def _make_claims(sub: str = "user-123", aud: str = "test-client-id") -> dict:
-    """Build a minimal valid JWT claims dict."""
-    return {
-        "sub": sub,
-        "aud": aud,
-        "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
+def _encode_principal(
+    user_id: str = "user-123",
+    user_details: str = "user@example.com",
+    identity_provider: str = "aad",
+    user_roles: list[str] | None = None,
+) -> str:
+    """Build a Base64-encoded x-ms-client-principal header value."""
+    principal = {
+        "identityProvider": identity_provider,
+        "userId": user_id,
+        "userDetails": user_details,
+        "userRoles": user_roles or ["anonymous", "authenticated"],
     }
+    return base64.b64encode(json.dumps(principal).encode()).decode()
 
 
 def _mock_request(
@@ -89,149 +95,104 @@ def _mock_request(
     return req
 
 
-# ---------------------------------------------------------------------------
-# Token validation
-# ---------------------------------------------------------------------------
-
-
-class TestTokenValidation:
-    """Tests for ``_validate_token``."""
-
-    def test_rejects_missing_bearer(self, _reload_module):
-        mod = _reload_module
-        with pytest.raises(ValueError, match="Bearer"):
-            mod._validate_token("")
-
-    def test_rejects_non_bearer(self, _reload_module):
-        mod = _reload_module
-        with pytest.raises(ValueError, match="Bearer"):
-            mod._validate_token("Basic abc123")
-
-    @patch("swa_function_app._get_jwks_client")
-    def test_accepts_valid_token(self, mock_jwks, _reload_module):
-        mod = _reload_module
-        mock_key = MagicMock()
-        mock_key.key = "test-key"
-        mock_jwks.return_value.get_signing_key_from_jwt.return_value = mock_key
-
-        with patch("swa_function_app.jwt.decode", return_value=_make_claims()):
-            claims = mod._validate_token("Bearer valid-token")
-            assert claims["sub"] == "user-123"
-
-    @patch("swa_function_app._get_jwks_client")
-    @patch("swa_function_app._get_issuer")
-    def test_passes_issuer_to_jwt_decode(self, mock_issuer, mock_jwks, _reload_module):
-        """When OIDC issuer is available, _validate_token must pass it to jwt.decode."""
-        mod = _reload_module
-        mock_key = MagicMock()
-        mock_key.key = "test-key"
-        mock_jwks.return_value.get_signing_key_from_jwt.return_value = mock_key
-        mock_issuer.return_value = "https://92001438.ciamlogin.com/92001438/v2.0"
-
-        with patch("swa_function_app.jwt.decode", return_value=_make_claims()) as mock_decode:
-            mod._validate_token("Bearer valid-token")
-            _, kwargs = mock_decode.call_args
-            assert kwargs["issuer"] == "https://92001438.ciamlogin.com/92001438/v2.0"
-            assert "iss" in kwargs["options"]["require"]
-
-    @patch("swa_function_app._get_jwks_client")
-    @patch("swa_function_app._get_issuer")
-    def test_skips_issuer_check_when_unavailable(
-        self,
-        mock_issuer,
-        mock_jwks,
-        _reload_module,
-        caplog,
-    ):
-        """When OIDC issuer is empty, _validate_token decodes without issuer and logs a warning."""
-        mod = _reload_module
-        mock_key = MagicMock()
-        mock_key.key = "test-key"
-        mock_jwks.return_value.get_signing_key_from_jwt.return_value = mock_key
-        mock_issuer.return_value = ""
-
-        with patch("swa_function_app.jwt.decode", return_value=_make_claims()) as mock_decode:
-            mod._validate_token("Bearer valid-token")
-            _, kwargs = mock_decode.call_args
-            assert "issuer" not in kwargs
-        assert "issuer" in caplog.text.lower()
+def _auth_headers(user_id: str = "user-123", **kwargs) -> dict:
+    """Build headers dict with a valid x-ms-client-principal."""
+    return {"x-ms-client-principal": _encode_principal(user_id=user_id, **kwargs)}
 
 
 # ---------------------------------------------------------------------------
-# Issuer fetching
+# Client principal parsing
 # ---------------------------------------------------------------------------
 
 
-class TestIssuerFetch:
-    """Tests for ``_get_issuer``."""
+class TestClientPrincipalParsing:
+    """Tests for ``_parse_client_principal``."""
 
-    def test_returns_cached_issuer(self, _reload_module):
+    def test_rejects_missing_header(self, _reload_module):
         mod = _reload_module
-        mod._issuer_cache["value"] = "https://example.com/v2.0"
-        assert mod._get_issuer() == "https://example.com/v2.0"
+        req = _mock_request(headers={})
+        with pytest.raises(ValueError, match="Missing"):
+            mod._parse_client_principal(req)
 
-    @patch("swa_function_app.urllib.request.urlopen")
-    def test_fetches_from_oidc_discovery(self, mock_urlopen, _reload_module):
+    def test_rejects_empty_header(self, _reload_module):
         mod = _reload_module
-        mod._issuer_cache["value"] = ""
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(
-            {"issuer": "https://tenant.ciamlogin.com/tenant/v2.0"}
-        ).encode()
-        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_urlopen.return_value = mock_resp
+        req = _mock_request(headers={"x-ms-client-principal": ""})
+        with pytest.raises(ValueError, match="Missing"):
+            mod._parse_client_principal(req)
 
-        result = mod._get_issuer()
-        assert result == "https://tenant.ciamlogin.com/tenant/v2.0"
-        assert mod._issuer_cache["value"] == result
-
-    @patch("swa_function_app.urllib.request.urlopen")
-    def test_returns_empty_on_fetch_failure(self, mock_urlopen, _reload_module):
+    def test_rejects_invalid_base64(self, _reload_module):
         mod = _reload_module
-        mod._issuer_cache["value"] = ""
-        mod._issuer_cache["failed_at"] = 0.0
-        mock_urlopen.side_effect = Exception("network error")
+        req = _mock_request(headers={"x-ms-client-principal": "not-base64!!!"})
+        with pytest.raises(ValueError, match="Malformed"):
+            mod._parse_client_principal(req)
 
-        result = mod._get_issuer()
-        assert result == ""
-        assert mod._issuer_cache["failed_at"] > 0
-
-    @patch("swa_function_app.urllib.request.urlopen")
-    def test_skips_retry_during_cooldown(self, mock_urlopen, _reload_module):
-        """After a failed fetch, _get_issuer skips retries within the cooldown window."""
-        import time
-
+    def test_rejects_invalid_json(self, _reload_module):
         mod = _reload_module
-        mod._issuer_cache["value"] = ""
-        mod._issuer_cache["failed_at"] = time.monotonic()  # just failed
+        encoded = base64.b64encode(b"not json").decode()
+        req = _mock_request(headers={"x-ms-client-principal": encoded})
+        with pytest.raises(ValueError, match="Malformed"):
+            mod._parse_client_principal(req)
 
-        result = mod._get_issuer()
-        assert result == ""
-        mock_urlopen.assert_not_called()
-
-    def test_raises_when_ciam_not_configured(self, _reload_module, monkeypatch):
+    def test_rejects_missing_user_id(self, _reload_module):
         mod = _reload_module
-        mod._issuer_cache["value"] = ""
-        mod._OIDC_CONFIG_URL = ""
-        with pytest.raises(RuntimeError, match="CIAM_TENANT_NAME"):
-            mod._get_issuer()
+        principal = {"identityProvider": "aad", "userId": "", "userDetails": "x"}
+        encoded = base64.b64encode(json.dumps(principal).encode()).decode()
+        req = _mock_request(headers={"x-ms-client-principal": encoded})
+        with pytest.raises(ValueError, match="userId"):
+            mod._parse_client_principal(req)
 
-
-class TestOidcConfigUrls:
-    """Verify OIDC discovery and JWKS URIs use the tenant-qualified path."""
-
-    def test_jwks_uri_includes_tenant_domain(self, _reload_module):
+    def test_rejects_non_dict_payload(self, _reload_module):
+        """Valid JSON that is not an object must be rejected (defence-in-depth)."""
         mod = _reload_module
-        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
-        assert mod._JWKS_URI.startswith(expected_prefix)
-        assert mod._JWKS_URI.endswith("/discovery/v2.0/keys")
+        encoded = base64.b64encode(b'["hi"]').decode()
+        req = _mock_request(headers={"x-ms-client-principal": encoded})
+        with pytest.raises(ValueError, match="not a JSON object"):
+            mod._parse_client_principal(req)
 
-    def test_oidc_config_includes_tenant_domain(self, _reload_module):
+    def test_parses_valid_principal(self, _reload_module):
         mod = _reload_module
-        expected_prefix = "https://treesightauth.ciamlogin.com/treesightauth.onmicrosoft.com/"
-        assert mod._OIDC_CONFIG_URL.startswith(expected_prefix)
-        assert mod._OIDC_CONFIG_URL.endswith("/v2.0/.well-known/openid-configuration")
+        req = _mock_request(headers=_auth_headers(user_id="user-abc"))
+        result = mod._parse_client_principal(req)
+        assert result["userId"] == "user-abc"
+        assert result["sub"] == "user-abc"  # compatibility alias
+        assert result["identityProvider"] == "aad"
+
+    def test_preserves_user_roles(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            headers=_auth_headers(user_id="u1", user_roles=["authenticated", "admin"])
+        )
+        result = mod._parse_client_principal(req)
+        assert "admin" in result["userRoles"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/health
+# ---------------------------------------------------------------------------
+
+
+class TestHealth:
+    """Tests for the anonymous health probe endpoint."""
+
+    def test_returns_200(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        assert resp.status_code == 200
+
+    def test_returns_json(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        body = json.loads(resp.get_body())
+        assert body["status"] == "ok"
+
+    def test_no_auth_required(self, _reload_module):
+        """Health endpoint must work without x-ms-client-principal."""
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -243,14 +204,12 @@ class TestUploadToken:
     """Tests for the upload_token endpoint."""
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_returns_sas_url(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_returns_sas_url(self, mock_sas, mock_blob_svc, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sv=2024-01-01&sig=test"
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         resp = mod.upload_token(req)
 
         assert resp.status_code == 200
@@ -268,28 +227,24 @@ class TestUploadToken:
         assert "/kml-input/analysis/" in parsed.path
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_submission_id_is_uuid(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_submission_id_is_uuid(self, mock_sas, mock_blob_svc, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         resp = mod.upload_token(req)
         body = json.loads(resp.get_body())
         # Should be a valid UUID
         uuid.UUID(body["submission_id"])
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_sas_permissions_write_only(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_sas_permissions_write_only(self, mock_sas, mock_blob_svc, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         mod.upload_token(req)
 
         # Verify SAS was requested with write-only permissions
@@ -308,14 +263,12 @@ class TestUploadToken:
         )
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_sas_expiry_matches_config(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_sas_expiry_matches_config(self, mock_sas, mock_blob_svc, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         mod.upload_token(req)
 
         call_kwargs = mock_sas.call_args[1]
@@ -326,16 +279,14 @@ class TestUploadToken:
         assert 800 < delta < 1000  # roughly 14-16 min window
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_writes_ticket_blob(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_writes_ticket_blob(self, mock_sas, mock_blob_svc, _reload_module):
         """upload_token must write a ticket blob with user metadata."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims(sub="user-456")
         mock_sas.return_value = "sig=test"
 
         req = _mock_request(
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(user_id="user-456"),
             body=json.dumps(
                 {
                     "provider_name": "planetary_computer",
@@ -367,79 +318,53 @@ class TestUploadToken:
         resp = mod.upload_token(req)
         assert resp.status_code == 401
 
-    @patch("swa_function_app._validate_token")
-    def test_expired_token_returns_reason(self, mock_auth, _reload_module):
-        """401 for expired tokens must include reason=token_expired so the
-        frontend can distinguish genuine expiry from config errors."""
-        import jwt as _jwt
-
+    def test_rejects_empty_user_id(self, _reload_module):
+        """Principal with empty userId must be rejected."""
         mod = _reload_module
-        mock_auth.side_effect = _jwt.ExpiredSignatureError("Signature has expired")
-        req = _mock_request(headers={"Authorization": "Bearer expired-token"})
-        resp = mod.upload_token(req)
-        assert resp.status_code == 401
-        body = json.loads(resp.get_body())
-        assert body["reason"] == "token_expired"
-
-    @patch("swa_function_app._validate_token")
-    def test_rejects_empty_subject(self, mock_auth, _reload_module):
-        mod = _reload_module
-        mock_auth.return_value = {"sub": "", "aud": "test", "exp": 0}
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        principal = {"identityProvider": "aad", "userId": "", "userDetails": "x"}
+        encoded = base64.b64encode(json.dumps(principal).encode()).decode()
+        req = _mock_request(headers={"x-ms-client-principal": encoded})
         resp = mod.upload_token(req)
         assert resp.status_code == 401
 
-    @patch("swa_function_app._validate_token")
-    def test_returns_503_when_storage_not_configured(self, mock_auth, _reload_module, monkeypatch):
+    def test_returns_503_when_storage_not_configured(self, _reload_module, monkeypatch):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         monkeypatch.setattr(mod, "STORAGE_ACCOUNT_NAME", "")
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         resp = mod.upload_token(req)
         assert resp.status_code == 503
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
-    @patch("swa_function_app.generate_blob_sas")
-    def test_returns_502_on_ticket_write_failure(
-        self, mock_sas, mock_auth, mock_blob_svc, _reload_module
-    ):
+    def test_returns_502_on_ticket_write_failure(self, mock_blob_svc, _reload_module):
         """When ticket blob write fails, return 502."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_blob_svc.return_value.get_blob_client.return_value.upload_blob.side_effect = (
             RuntimeError("storage down")
         )
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         resp = mod.upload_token(req)
         assert resp.status_code == 502
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_returns_502_on_delegation_key_failure(
-        self, mock_sas, mock_auth, mock_blob_svc, _reload_module
-    ):
+    def test_returns_502_on_delegation_key_failure(self, mock_sas, mock_blob_svc, _reload_module):
         """When user delegation key request fails, return 502."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_blob_svc.return_value.get_user_delegation_key.side_effect = RuntimeError(
             "identity not ready"
         )
 
-        req = _mock_request(headers={"Authorization": "Bearer valid"})
+        req = _mock_request(headers=_auth_headers())
         resp = mod.upload_token(req)
         assert resp.status_code == 502
 
     @patch("swa_function_app._get_blob_service")
-    @patch("swa_function_app._validate_token")
     @patch("swa_function_app.generate_blob_sas")
-    def test_sanitises_submission_context(self, mock_sas, mock_auth, mock_blob_svc, _reload_module):
+    def test_sanitises_submission_context(self, mock_sas, mock_blob_svc, _reload_module):
         """submission_context is allow-list filtered, not passed through raw."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         mock_sas.return_value = "sig=test"
 
         malicious_ctx = {
@@ -449,7 +374,7 @@ class TestUploadToken:
             "__proto__": "injection",
         }
         req = _mock_request(
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
             body=json.dumps({"submission_context": malicious_ctx}).encode(),
         )
         resp = mod.upload_token(req)
@@ -472,16 +397,14 @@ class TestUploadToken:
 class TestUploadStatus:
     """Tests for the upload_status endpoint."""
 
-    @patch("swa_function_app._validate_token")
-    def test_returns_status_for_valid_id(self, mock_auth, _reload_module):
+    def test_returns_status_for_valid_id(self, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         sub_id = str(uuid.uuid4())
 
         req = _mock_request(
             method="GET",
             url=f"https://example.com/api/upload/status/{sub_id}",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
             route_params={"submission_id": sub_id},
         )
         resp = mod.upload_status(req)
@@ -489,27 +412,23 @@ class TestUploadStatus:
         body = json.loads(resp.get_body())
         assert body["submission_id"] == sub_id
 
-    @patch("swa_function_app._validate_token")
-    def test_rejects_invalid_uuid(self, mock_auth, _reload_module):
+    def test_rejects_invalid_uuid(self, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
 
         req = _mock_request(
             method="GET",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
             route_params={"submission_id": "not-a-uuid"},
         )
         resp = mod.upload_status(req)
         assert resp.status_code == 400
 
-    @patch("swa_function_app._validate_token")
-    def test_rejects_path_traversal_in_id(self, mock_auth, _reload_module):
+    def test_rejects_path_traversal_in_id(self, _reload_module):
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
 
         req = _mock_request(
             method="GET",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
             route_params={"submission_id": "../../../etc/passwd"},
         )
         resp = mod.upload_status(req)
@@ -523,31 +442,12 @@ class TestUploadStatus:
         resp = mod.upload_status(req)
         assert resp.status_code == 401
 
-    @patch("swa_function_app._validate_token")
-    def test_expired_token_returns_reason(self, mock_auth, _reload_module):
-        """401 for expired tokens must include reason=token_expired (mirrors upload_token)."""
-        import jwt as _jwt
-
+    def test_rejects_missing_submission_id(self, _reload_module):
         mod = _reload_module
-        mock_auth.side_effect = _jwt.ExpiredSignatureError("Signature has expired")
-        req = _mock_request(
-            method="GET",
-            headers={"Authorization": "Bearer expired"},
-            route_params={"submission_id": str(uuid.uuid4())},
-        )
-        resp = mod.upload_status(req)
-        assert resp.status_code == 401
-        body = json.loads(resp.get_body())
-        assert body["reason"] == "token_expired"
-
-    @patch("swa_function_app._validate_token")
-    def test_rejects_missing_submission_id(self, mock_auth, _reload_module):
-        mod = _reload_module
-        mock_auth.return_value = _make_claims()
 
         req = _mock_request(
             method="GET",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
             route_params={},
         )
         resp = mod.upload_status(req)
@@ -563,11 +463,9 @@ class TestAnalysisHistory:
     """Tests for the SWA analysis_history endpoint."""
 
     @patch("swa_function_app._get_cosmos_container")
-    @patch("swa_function_app._validate_token")
-    def test_returns_empty_history(self, mock_auth, mock_cosmos, _reload_module):
+    def test_returns_empty_history(self, mock_cosmos, _reload_module):
         """User with no runs gets empty list."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims(sub="user-empty")
 
         container = MagicMock()
         container.query_items.return_value = []
@@ -576,7 +474,7 @@ class TestAnalysisHistory:
         req = _mock_request(
             method="GET",
             url="https://example.com/api/analysis/history",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(user_id="user-empty"),
         )
         resp = mod.analysis_history(req)
         assert resp.status_code == 200
@@ -587,11 +485,9 @@ class TestAnalysisHistory:
         assert body["limit"] == 8
 
     @patch("swa_function_app._get_cosmos_container")
-    @patch("swa_function_app._validate_token")
-    def test_returns_completed_run(self, mock_auth, mock_cosmos, _reload_module):
+    def test_returns_completed_run(self, mock_cosmos, _reload_module):
         """Returns a completed run with correct field mapping."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims(sub="user-1")
 
         container = MagicMock()
         container.query_items.return_value = [
@@ -612,7 +508,7 @@ class TestAnalysisHistory:
         req = _mock_request(
             method="GET",
             url="https://example.com/api/analysis/history",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(user_id="user-1"),
         )
         resp = mod.analysis_history(req)
         assert resp.status_code == 200
@@ -627,11 +523,9 @@ class TestAnalysisHistory:
         assert body["activeRun"] is None
 
     @patch("swa_function_app._get_cosmos_container")
-    @patch("swa_function_app._validate_token")
-    def test_detects_active_run(self, mock_auth, mock_cosmos, _reload_module):
+    def test_detects_active_run(self, mock_cosmos, _reload_module):
         """An in-progress run is flagged as activeRun."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims(sub="user-2")
 
         container = MagicMock()
         container.query_items.return_value = [
@@ -649,7 +543,7 @@ class TestAnalysisHistory:
         req = _mock_request(
             method="GET",
             url="https://example.com/api/analysis/history",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(user_id="user-2"),
         )
         resp = mod.analysis_history(req)
         assert resp.status_code == 200
@@ -669,11 +563,9 @@ class TestAnalysisHistory:
         assert resp.status_code == 401
 
     @patch("swa_function_app._get_cosmos_container")
-    @patch("swa_function_app._validate_token")
-    def test_respects_limit_param(self, mock_auth, mock_cosmos, _reload_module):
+    def test_respects_limit_param(self, mock_cosmos, _reload_module):
         """Limit query parameter is passed through to Cosmos."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims(sub="user-3")
 
         container = MagicMock()
         container.query_items.return_value = []
@@ -682,53 +574,13 @@ class TestAnalysisHistory:
         req = _mock_request(
             method="GET",
             url="https://example.com/api/analysis/history?limit=3",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(user_id="user-3"),
             params={"limit": "3"},
         )
         resp = mod.analysis_history(req)
         assert resp.status_code == 200
         body = json.loads(resp.get_body())
         assert body["limit"] == 3
-
-
-# ---------------------------------------------------------------------------
-# Diagnostic endpoint (temporary — remove with endpoint)
-# ---------------------------------------------------------------------------
-
-
-class TestHealthDiag:
-    """Tests for the temporary ``health_diag`` endpoint."""
-
-    def test_returns_404_when_disabled(self, _reload_module):
-        """Diag endpoint returns 404 when DIAG_ENABLED is not set."""
-        mod = _reload_module
-        mod.DIAG_ENABLED = False
-        req = _mock_request(method="GET", url="https://example.com/api/health/diag")
-        resp = mod.health_diag(req)
-        assert resp.status_code == 404
-
-    def test_returns_json_when_enabled(self, _reload_module):
-        """Diag endpoint returns JSON with expected keys, no full secrets."""
-        mod = _reload_module
-        mod.DIAG_ENABLED = True
-        req = _mock_request(method="GET", url="https://example.com/api/health/diag")
-        with (
-            patch("swa_function_app._get_jwks_client") as mock_jwks,
-            patch("swa_function_app._get_issuer") as mock_issuer,
-        ):
-            mock_client = MagicMock()
-            mock_client.fetch_data.return_value = {"keys": [{"kid": "k1"}]}
-            mock_jwks.return_value = mock_client
-            mock_issuer.return_value = "https://example.com/issuer"
-            resp = mod.health_diag(req)
-        assert resp.status_code == 200
-        body = json.loads(resp.get_body())
-        assert "python_version" in body
-        assert body["ciam_client_id_set"] is True
-        assert body["jwks_reachable"] is True
-        assert body["jwks_key_count"] == 1
-        # Must not expose full client ID
-        assert body["ciam_client_id_prefix"] == "test-cli"
 
 
 # ---------------------------------------------------------------------------
@@ -757,11 +609,9 @@ class TestResponseContracts:
     }
 
     @patch("swa_function_app._get_cosmos_container")
-    @patch("swa_function_app._validate_token")
-    def test_analysis_history_shape(self, mock_auth, mock_cosmos, _reload_module):
+    def test_analysis_history_shape(self, mock_cosmos, _reload_module):
         """analysis_history returns all fields the frontend reads per run."""
         mod = _reload_module
-        mock_auth.return_value = _make_claims()
         container = MagicMock()
         container.query_items.return_value = [
             {
@@ -778,7 +628,7 @@ class TestResponseContracts:
         req = _mock_request(
             method="GET",
             url="https://example.com/api/analysis/history",
-            headers={"Authorization": "Bearer valid"},
+            headers=_auth_headers(),
         )
         body = json.loads(mod.analysis_history(req).get_body())
         assert "runs" in body

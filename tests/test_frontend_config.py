@@ -2,10 +2,9 @@
 
 These validate that the static website files are self-consistent and
 correctly configured, catching the class of bugs that caused:
-- MSAL CDN 404 → auth silently broken (#289)
-- Missing CORS → site shows Offline (#291)
-- CSP blocking MSAL iframes → silent token renewal fails
-- Redirect URI mismatch → AADSTS50011
+- SWA auth misconfiguration → login redirect fails
+- CSP blocking required domains → silent failures
+- CORS misconfiguration → site shows Offline
 """
 
 import json
@@ -19,9 +18,7 @@ from treesight.security.url import csp_token_matches_host as _csp_token_matches_
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
-MSAL_BUNDLE = WEBSITE / "js" / "msal-browser.min.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
-API_CONFIG = WEBSITE / "api-config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
 
 
@@ -41,58 +38,124 @@ def swa_config():
 
 
 # ---------------------------------------------------------------------------
-# MSAL library — must be self-hosted, not from a dead CDN
+# SWA auth configuration — built-in auth via azureActiveDirectory provider
 # ---------------------------------------------------------------------------
 
 
-class TestMsalBundle:
-    def test_msal_bundle_exists(self):
-        """The self-hosted MSAL UMD bundle must be present."""
-        assert MSAL_BUNDLE.exists(), (
-            "website/js/msal-browser.min.js is missing — "
-            "MSAL must be self-hosted (Microsoft CDN is deprecated)"
+class TestSwaAuth:
+    def test_aad_provider_configured(self, swa_config):
+        """SWA config must have azureActiveDirectory identity provider."""
+        providers = swa_config.get("auth", {}).get("identityProviders", {})
+        assert "azureActiveDirectory" in providers, (
+            "auth.identityProviders.azureActiveDirectory missing from staticwebapp.config.json"
         )
 
-    def test_msal_bundle_not_empty(self):
-        assert MSAL_BUNDLE.stat().st_size > 10_000, "MSAL bundle looks too small"
+    def test_openid_issuer_set(self, swa_config):
+        """openIdIssuer must point to the CIAM tenant OIDC endpoint."""
+        from urllib.parse import urlparse
 
-    def test_index_references_local_msal(self, index_html):
-        """index.html must load MSAL from a local path, not a CDN."""
-        assert "alcdn.msauth.net" not in index_html, (
-            "index.html still references the deprecated Microsoft MSAL CDN"
+        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
+        reg = aad.get("registration", {})
+        issuer = reg.get("openIdIssuer", "")
+        parsed = urlparse(issuer)
+        valid = (
+            parsed.scheme == "https"
+            and (
+                parsed.hostname is not None
+                and (
+                    parsed.hostname.endswith(".ciamlogin.com")
+                    or parsed.hostname.endswith(".login.microsoftonline.com")
+                )
+            )
+            and parsed.path.endswith("/v2.0")
         )
-        assert "/js/msal-browser.min.js" in index_html
+        assert valid, (
+            "openIdIssuer must be a full https URL pointing to a valid Azure OIDC v2.0 endpoint"
+        )
 
-    def test_no_external_msal_cdn(self, index_html):
-        """Ensure no CDN URL is used for MSAL (all known CDNs removed it)."""
+    def test_client_id_setting_name(self, swa_config):
+        """clientIdSettingName must reference an app setting name."""
+        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
+        reg = aad.get("registration", {})
+        assert reg.get("clientIdSettingName"), "clientIdSettingName must be set"
+
+    def test_client_secret_setting_name(self, swa_config):
+        """clientSecretSettingName must reference an app setting name."""
+        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
+        reg = aad.get("registration", {})
+        assert reg.get("clientSecretSettingName"), "clientSecretSettingName must be set"
+
+    def test_api_routes_require_auth(self, swa_config):
+        """API routes (except health) must require authentication."""
+        routes = swa_config.get("routes", [])
+        api_routes = [
+            r
+            for r in routes
+            if r.get("route", "").startswith("/api/") and "health" not in r.get("route", "")
+        ]
+        for route in api_routes:
+            roles = route.get("allowedRoles", [])
+            assert "authenticated" in roles, (
+                f"Route {route['route']} must allow the authenticated role"
+            )
+            assert "anonymous" not in roles, (
+                f"Route {route['route']} must not allow anonymous access"
+            )
+
+    def test_health_route_anonymous(self, swa_config):
+        """Health endpoint must be accessible without authentication."""
+        routes = swa_config.get("routes", [])
+        health_routes = [r for r in routes if "health" in r.get("route", "")]
+        assert health_routes, "No health route found in SWA config"
+        for route in health_routes:
+            roles = route.get("allowedRoles", [])
+            assert "anonymous" in roles, (
+                f"Health route {route['route']} must allow anonymous access"
+            )
+
+    def test_health_exact_route_exists(self, swa_config):
+        """Exact /api/health route must exist (not just /api/health/*)."""
+        routes = swa_config.get("routes", [])
+        exact = [r for r in routes if r.get("route") == "/api/health"]
+        assert exact, (
+            "Exact /api/health route needed — /api/health/* alone may not match /api/health"
+        )
+
+    def test_no_msal_script_in_html(self, index_html):
+        """MSAL.js must not be loaded — SWA built-in auth replaces it."""
+        assert "msal-browser" not in index_html, (
+            "index.html still loads msal-browser.min.js — remove it"
+        )
+
+    def test_no_msal_cdn_references(self, index_html):
+        """No external MSAL CDN references should remain."""
         for cdn in ["alcdn.msauth.net", "cdn.jsdelivr.net/@azure/msal-browser"]:
             assert cdn not in index_html, f"Dead MSAL CDN reference found: {cdn}"
 
 
 # ---------------------------------------------------------------------------
-# CSP — must allow MSAL iframes and not reference dead CDNs
+# CSP — must not reference MSAL domains (SWA auth is server-side)
 # ---------------------------------------------------------------------------
 
 
 class TestCsp:
-    def test_frame_src_allows_ciam(self, swa_config):
-        """CSP frame-src must allow CIAM login for MSAL silent token renewal."""
+    def test_frame_src_none(self, swa_config):
+        """CSP frame-src should be 'none' — SWA auth uses redirects, not iframes."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         frame_match = re.search(r"frame-src\s+([^;]+)", csp)
         assert frame_match, "CSP missing frame-src directive"
-        sources = frame_match.group(1).split()
-        assert any(
-            _csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in sources
-        ), "frame-src must include treesightauth.ciamlogin.com for MSAL iframes"
-        assert any(_csp_token_matches_host(src, "login.microsoftonline.com") for src in sources)
+        assert "'none'" in frame_match.group(1), (
+            "frame-src should be 'none' — MSAL iframes no longer needed"
+        )
 
-    def test_frame_src_not_none(self, swa_config):
-        """frame-src 'none' breaks MSAL silent token renewal."""
+    def test_connect_src_no_msal_domains(self, swa_config):
+        """CSP connect-src must not include MSAL-specific domains."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
-        frame_match = re.search(r"frame-src\s+([^;]+)", csp)
-        assert frame_match, "CSP missing frame-src directive"
-        assert "'none'" not in frame_match.group(1), (
-            "frame-src 'none' will block MSAL silent token renewal iframes"
+        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
+        assert connect_match, "CSP missing connect-src directive"
+        sources = connect_match.group(1)
+        assert "ciamlogin.com" not in sources, (
+            "connect-src still references ciamlogin.com — remove (SWA handles auth)"
         )
 
     def test_script_src_no_dead_cdn(self, swa_config):
@@ -105,43 +168,30 @@ class TestCsp:
             "CSP still references deprecated alcdn.msauth.net CDN"
         )
 
-    def test_connect_src_allows_ciam(self, swa_config):
-        """CSP connect-src must allow CIAM token endpoint calls."""
-        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
-        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
-        assert connect_match, "CSP missing connect-src directive"
-        sources = connect_match.group(1).split()
-        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in sources)
-        assert any(_csp_token_matches_host(src, "login.microsoftonline.com") for src in sources)
-
 
 # ---------------------------------------------------------------------------
-# Auth config — MSAL redirectUri must match app registration (no trailing /)
+# Auth integration — login/logout use SWA routes
 # ---------------------------------------------------------------------------
 
 
 class TestAuthConfig:
-    def test_redirect_uri_no_trailing_slash(self, landing_js):
-        """MSAL redirectUri must use window.location.origin without trailing slash.
-
-        The CIAM app registration has URIs without trailing slash.
-        A mismatch causes AADSTS50011.
-        """
-        assert "window.location.origin + '/'" not in landing_js, (
-            "redirectUri has trailing slash — will cause AADSTS50011 mismatch with app registration"
+    def test_login_uses_swa_route(self, landing_js):
+        """login() must redirect to /.auth/login/aad."""
+        assert "/.auth/login/aad" in landing_js, (
+            "login() must use SWA built-in auth route /.auth/login/aad"
         )
 
-    def test_ciam_tenant_configured(self, landing_js):
-        """CIAM tenant name must be set in landing.js."""
-        match = re.search(r"CIAM_TENANT_NAME\s*=\s*'(\w+)'", landing_js)
-        assert match, "CIAM_TENANT_NAME not found in landing.js"
-        assert match.group(1) != "", "CIAM_TENANT_NAME is empty"
+    def test_logout_uses_swa_route(self, landing_js):
+        """logout() must redirect to /.auth/logout."""
+        assert "/.auth/logout" in landing_js, (
+            "logout() must use SWA built-in auth route /.auth/logout"
+        )
 
-    def test_ciam_client_id_configured(self, landing_js):
-        """CIAM client ID must be set in landing.js."""
-        match = re.search(r"CIAM_CLIENT_ID\s*=\s*'([^']+)'", landing_js)
-        assert match, "CIAM_CLIENT_ID not found in landing.js"
-        assert len(match.group(1)) > 10, "CIAM_CLIENT_ID looks too short"
+    def test_no_msal_instance(self, landing_js):
+        """landing.js must not create an MSAL PublicClientApplication."""
+        assert "PublicClientApplication" not in landing_js, (
+            "landing.js still creates MSAL instance — must use SWA built-in auth"
+        )
 
 
 # ---------------------------------------------------------------------------

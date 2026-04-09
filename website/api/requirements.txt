@@ -2,4 +2,3 @@ azure-functions
 azure-identity
 azure-storage-blob
 azure-cosmos
-PyJWT[crypto]

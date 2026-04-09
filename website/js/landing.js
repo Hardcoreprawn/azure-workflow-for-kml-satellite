@@ -1,118 +1,39 @@
 (function() {
   'use strict';
 
-  const CIAM_TENANT_NAME = 'treesightauth';
-  const CIAM_TENANT_DOMAIN = CIAM_TENANT_NAME ? CIAM_TENANT_NAME + '.onmicrosoft.com' : '';
-  const CIAM_CLIENT_ID = '6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6';
-  const CIAM_AUTHORITY = CIAM_TENANT_NAME
-    ? 'https://' + CIAM_TENANT_NAME + '.ciamlogin.com/' + CIAM_TENANT_DOMAIN + '/'
-    : '';
-  const CIAM_KNOWN_AUTHORITY = CIAM_TENANT_NAME
-    ? CIAM_TENANT_NAME + '.ciamlogin.com'
-    : '';
-  const CIAM_SCOPES = CIAM_CLIENT_ID ? ['openid', 'profile'] : [];
-  const IDENTITY_ONLY_SCOPES = ['openid', 'profile', 'email', 'offline_access'];
-
-  let msalInstance = null;
   let currentAccount = null;
-  let accessToken = null;
-  let apiBase = '';
 
-  // Endpoints served by SWA managed functions (same-origin).
-  // Keep in sync with app-shell.js swaEndpoints.
-  const swaEndpoints = [
-    '/api/upload/',
-    '/api/analysis/history',
-  ];
+  function authEnabled() { return true; }
 
-  function authEnabled() { return !!(CIAM_TENANT_NAME && CIAM_CLIENT_ID && typeof msal !== 'undefined'); }
-
-  function initAuth() {
-    if (!authEnabled()) {
-      updateAuthUI();
-      return;
+  async function initAuth() {
+    try {
+      var res = await fetch('/.auth/me');
+      if (!res.ok) { updateAuthUI(); return; }
+      var data = await res.json();
+      var principal = data && data.clientPrincipal;
+      if (principal && principal.userId) {
+        currentAccount = {
+          userId: principal.userId,
+          name: principal.userDetails || principal.userId,
+          identityProvider: principal.identityProvider,
+          userRoles: principal.userRoles || []
+        };
+      }
+    } catch (err) {
+      console.warn('[canopex] SWA auth check failed:', err);
     }
-
-    const msalConfig = {
-      auth: {
-        clientId: CIAM_CLIENT_ID,
-        authority: CIAM_AUTHORITY,
-        knownAuthorities: [CIAM_KNOWN_AUTHORITY],
-        redirectUri: window.location.origin,
-        postLogoutRedirectUri: window.location.origin,
-      },
-      cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false },
-    };
-    msalInstance = new msal.PublicClientApplication(msalConfig);
-
-    msalInstance.handleRedirectPromise().then(function(resp) {
-      if (resp && resp.account) {
-        msalInstance.setActiveAccount(resp.account);
-        // User just completed auth redirect — send them to the dashboard
-        window.location.href = '/app/';
-        return;
-      }
-      currentAccount = msalInstance.getActiveAccount() || (msalInstance.getAllAccounts()[0] || null);
-      if (currentAccount) { msalInstance.setActiveAccount(currentAccount); }
-      updateAuthUI();
-      // Load billing status after auth — ungates pricing for allowed users
-      if (window.canopexBilling && window.canopexBilling.loadStatus) {
-        window.canopexBilling.loadStatus();
-      }
-    }).catch(function(err) {
-      console.warn('MSAL redirect error:', err);
-      updateAuthUI();
-    });
+    updateAuthUI();
+    if (window.canopexBilling && window.canopexBilling.loadStatus) {
+      window.canopexBilling.loadStatus();
+    }
   }
 
   function login() {
-    if (!msalInstance) return;
-    msalInstance.loginRedirect({ scopes: CIAM_SCOPES });
+    window.location.href = '/.auth/login/aad';
   }
 
   function logout() {
-    if (!msalInstance) return;
-    msalInstance.logoutRedirect({ account: currentAccount });
-  }
-
-  async function acquireToken() {
-    if (!msalInstance || !currentAccount) return null;
-    try {
-      const resp = await msalInstance.acquireTokenSilent({ scopes: CIAM_SCOPES, account: currentAccount });
-      accessToken = selectApiBearerToken(resp);
-      return accessToken;
-    } catch {
-      try { msalInstance.acquireTokenRedirect({ scopes: CIAM_SCOPES }); } catch { }
-      return null;
-    }
-  }
-
-  function parseJwtPayload(token) {
-    if (!token) return null;
-    try {
-      var parts = token.split('.');
-      if (parts.length < 2) return null;
-      return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    } catch {
-      return null;
-    }
-  }
-
-  function shouldUseIdTokenForApi(resp) {
-    if (!resp || !resp.accessToken || !resp.idToken) return false;
-    var payload = parseJwtPayload(resp.accessToken);
-    if (!payload) return false;
-    if (String(payload.aud || '') === '00000003-0000-0000-c000-000000000000') return true;
-    var scopes = String(payload.scp || '').split(/\s+/).filter(Boolean);
-    return scopes.length > 0 && scopes.every(function(scope) {
-      return IDENTITY_ONLY_SCOPES.indexOf(scope) > -1;
-    });
-  }
-
-  function selectApiBearerToken(resp) {
-    if (!resp) return null;
-    if (shouldUseIdTokenForApi(resp)) return resp.idToken;
-    return resp.accessToken || resp.idToken || null;
+    window.location.href = '/.auth/logout';
   }
 
   function updateAuthUI() {
@@ -130,7 +51,7 @@
     }
 
     if (currentAccount) {
-      const name = currentAccount.name || currentAccount.username || 'User';
+      const name = currentAccount.name || currentAccount.userId || 'User';
       if (userSpan) userSpan.textContent = name;
       if (userSpan) userSpan.style.display = 'inline';
       if (loginBtn) loginBtn.style.display = 'none';
@@ -144,20 +65,10 @@
     }
   }
 
-  function isSwaEndpoint(path) {
-    const bare = path.split('?')[0];
-    return swaEndpoints.some(p => bare === p || bare.startsWith(p));
-  }
-
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
-    if (currentAccount && authEnabled()) {
-      const token = accessToken || await acquireToken();
-      if (token) { opts.headers['Authorization'] = 'Bearer ' + token; }
-    }
-    const base = isSwaEndpoint(path) ? '' : apiBase;
-    try { return await fetch(base + path, opts); } catch { return null; }
+    try { return await fetch(path, opts); } catch { return null; }
   }
 
   async function discoverApiBase() {
@@ -165,52 +76,17 @@
     if (!badge) return;
 
     try {
-      const cfgRes = await fetch('/api-config.json');
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        if (cfg.apiBase && cfg.apiBase !== 'http://localhost:7071') {
-          apiBase = cfg.apiBase;
-          if (cfg.lastVerified) {
-            badge.textContent = 'Verified';
-            badge.className = 'verified';
-            badge.title = 'Deploy-time verified: ' + cfg.lastVerified;
-          } else {
-            badge.textContent = 'Verified';
-            badge.className = 'verified';
-          }
-          fetch(cfg.apiBase + '/api/health').then(function(r) {
-            if (r.ok && badge) { badge.textContent = 'Online'; badge.className = 'online'; badge.title = ''; }
-          }).catch(function() { });
-          return;
-        }
-
-        if (cfg.apiBase) {
-          try {
-            const probe = await fetch(cfg.apiBase + '/api/health');
-            if (probe.ok) {
-              apiBase = cfg.apiBase;
-              if (badge) { badge.textContent = 'Online'; badge.className = 'online'; }
-              return;
-            }
-          } catch { }
-        }
-      }
-    } catch { }
-
-    try {
       const res = await fetch('/api/health');
       if (res.ok) {
-        apiBase = '';
-        if (badge) { badge.textContent = 'Online'; badge.className = 'online'; }
+        badge.textContent = 'Online';
+        badge.className = 'online';
         return;
       }
     } catch { }
 
-    if (badge) {
-      badge.textContent = 'Unavailable';
-      badge.className = 'offline';
-    }
-    console.warn('Backend not reachable — check SWA backend configuration or api-config.json');
+    badge.textContent = 'Unavailable';
+    badge.className = 'offline';
+    console.warn('Backend not reachable — SWA managed API health check failed');
   }
 
   /* --- Early Access form --- */
