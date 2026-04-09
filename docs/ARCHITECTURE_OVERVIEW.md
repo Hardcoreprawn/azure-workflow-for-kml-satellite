@@ -48,7 +48,11 @@ The Function App runs on Azure Container Apps in `uksouth`; the SWA is in `weste
 
 ### API Routing — SWA as BFF (Backend-for-Frontend)
 
-The SWA managed API is the **only public-facing API surface**. All browser API calls go through `/api/*` on the SWA. The Container Apps function app is never directly exposed to the browser for auth-gated operations.
+> **Target architecture** (PR #472). During migration, some endpoints remain
+> on the Container Apps function app with direct browser access. See #474 for
+> endpoint migration tracking.
+
+The SWA managed API is the **target public-facing API surface**. All browser API calls go through `/api/*` on the SWA. The Container Apps function app is never directly exposed to the browser for auth-gated operations.
 
 ```text
 Browser ─── /api/* ──→ SWA Managed API (T1, always-warm)
@@ -87,7 +91,10 @@ The "demo" billing tier is deprecated — it overlapped with Free but was strict
 
 ### Auth — SWA Built-in Custom Auth
 
-Authentication uses SWA's built-in custom auth with our CIAM tenant. **There is no MSAL.js in the frontend.** SWA handles the full OAuth flow server-side.
+> **Target auth flow** (PR #472). Replaces MSAL.js with SWA built-in auth.
+> Once merged, there is no MSAL.js in the frontend.
+
+Authentication uses SWA's built-in custom auth with our CIAM tenant. SWA handles the full OAuth flow server-side.
 
 - **Provider:** Entra External ID (CIAM) tenant `treesightauth`
 - **Client ID:** `6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6`
@@ -119,6 +126,10 @@ Concurrency: serialized per ref (no cancellation of in-progress deploys).
 Config: `.github/workflows/deploy.yml`
 
 ## Data Flow
+
+> **Target flow** (PR #472). Steps 1–3 and 8 use the SWA managed API.
+> During migration, some status/billing calls may still route to the
+> Container Apps function app.
 
 1. User authenticates via `/.auth/login/aad` (SWA handles the OAuth redirect).
 2. Frontend calls `POST /api/upload/token` — SWA managed API validates `x-ms-client-principal`, mints a write-only SAS URL.
