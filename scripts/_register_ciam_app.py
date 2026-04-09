@@ -1,8 +1,16 @@
-"""One-time script: Register the Canopex SPA app in the CIAM tenant.
+"""One-time script: Register the Canopex app in the CIAM tenant.
 
-After initial registration, redirect URIs are kept in sync automatically
-by sync_ciam_redirect_uris.py (called from the deploy workflow).
+SWA built-in auth uses the server-side OpenID Connect flow, so the app
+must be registered as a **web** application (not SPA).  The redirect URI
+``/.auth/login/aad/callback`` is handled by the SWA platform.
+
+This script bootstraps the initial web application registration only.
+If SWA hostnames change later, update the CIAM app's web redirect URIs
+and related auth settings separately; this module does not keep them in
+sync automatically.
 """
+
+from __future__ import annotations
 
 import json
 import sys
@@ -10,7 +18,7 @@ import sys
 from _graph import TOKEN, graph
 
 
-def main():
+def main() -> None:
     if not TOKEN:
         print("ERROR: Set CIAM_TOKEN env var first")
         sys.exit(1)
@@ -19,15 +27,20 @@ def main():
         "POST",
         "/applications",
         {
-            "displayName": "Canopex SPA",
+            "displayName": "Canopex",
             "signInAudience": "AzureADandPersonalMicrosoftAccount",
-            "spa": {
+            # SWA built-in auth uses server-side OIDC — register as "web", not "spa".
+            # The /.auth/login/aad/callback path is managed by the SWA platform.
+            "web": {
                 # TODO: parameterise redirect URIs per environment instead of hardcoding
                 "redirectUris": [
-                    "http://localhost:4280",
-                    "https://green-moss-0e849ac03.2.azurestaticapps.net",
-                    "https://canopex.hrdcrprwn.com",
-                ]
+                    "http://localhost:4280/.auth/login/aad/callback",
+                    "https://green-moss-0e849ac03.2.azurestaticapps.net/.auth/login/aad/callback",
+                    "https://canopex.hrdcrprwn.com/.auth/login/aad/callback",
+                ],
+                "implicitGrantSettings": {
+                    "enableIdTokenIssuance": True,
+                },
             },
             "requiredResourceAccess": [
                 {

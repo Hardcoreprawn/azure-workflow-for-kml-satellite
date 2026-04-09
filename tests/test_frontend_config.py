@@ -231,3 +231,47 @@ class TestCorsConfig:
         assert re.search(r'["\']https://canopex\.hrdcrprwn\.com["\']', src), (
             "_ALLOWED_ORIGINS must contain the custom domain"
         )
+
+
+# ---------------------------------------------------------------------------
+# CIAM app registration — must use web platform, not SPA
+# ---------------------------------------------------------------------------
+
+REGISTER_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "_register_ciam_app.py"
+
+
+class TestCiamAppRegistration:
+    """Guard against AADSTS700054 regression.
+
+    SWA built-in auth uses server-side OIDC (response_type=id_token).
+    The CIAM app registration must use the 'web' platform with
+    enableIdTokenIssuance, not the 'spa' platform.
+    """
+
+    @pytest.fixture()
+    def script(self):
+        return REGISTER_SCRIPT.read_text()
+
+    def test_uses_web_platform_not_spa(self, script):
+        assert '"web"' in script, (
+            "_register_ciam_app.py must register as a 'web' app, not 'spa' — "
+            "SWA built-in auth uses server-side OIDC"
+        )
+        # The Graph API body must not contain "spa": { — only "web": {
+        assert '"spa": {' not in script, (
+            "_register_ciam_app.py must not use the 'spa' platform — "
+            "SWA built-in auth sends response_type=id_token which requires "
+            "the web platform (AADSTS700054)"
+        )
+
+    def test_enables_id_token_issuance(self, script):
+        assert "enableIdTokenIssuance" in script, (
+            "_register_ciam_app.py must enable ID token issuance — "
+            "SWA built-in auth requires response_type=id_token"
+        )
+
+    def test_redirect_uris_use_swa_callback_path(self, script):
+        assert "/.auth/login/aad/callback" in script, (
+            "Redirect URIs must use the SWA callback path "
+            "/.auth/login/aad/callback, not bare domain roots"
+        )
