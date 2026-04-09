@@ -46,28 +46,68 @@ Additional fixed names:
 The SWA hostname is Azure-assigned (no custom domain currently configured).
 The Function App runs on Azure Container Apps in `uksouth`; the SWA is in `westeurope`.
 
-### API Routing
+### API Routing — SWA as BFF (Backend-for-Frontend)
 
-The SWA linked-backend integration is **disabled** (see `infra/tofu/main.tf` line ~739) because Azure's `linkedBackends` ARM API returns 500 for Function Apps on Container Apps.
+> **Target architecture** (PR #472). During migration, some endpoints remain
+> on the Container Apps function app with direct browser access. See #474 for
+> endpoint migration tracking.
 
-Instead, the frontend calls the Function App directly using the hostname injected into `/api-config.json` at deploy time:
+The SWA managed API is the **target public-facing API surface**. All browser API calls go through `/api/*` on the SWA. The Container Apps function app is never directly exposed to the browser for auth-gated operations.
 
 ```text
-GET https://green-moss-0e849ac03.2.azurestaticapps.net/api-config.json
-→ {"apiBase": "https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io", ...}
+Browser ─── /api/* ──→ SWA Managed API (T1, always-warm)
+                          │
+                          ├── reads: Cosmos DB (analysis/history, billing/status)
+                          ├── writes: Blob Storage SAS minting (upload/token)
+                          └── async: Queue/Event Grid → Container Apps (T2/T3)
+                                                          │
+                                                          ├── Orchestrator (T2, scale-to-zero)
+                                                          └── Compute (T3, heavy processing)
 ```
 
 This means:
 
-- `/api/*` routes through the SWA return **404** (expected)
-- All API calls go directly to the Function App hostname
-- CORS and CSP in `website/staticwebapp.config.json` allow `*.azurecontainerapps.io`
+- `/api/*` routes are served by the SWA managed API — always warm, no cold-start
+- All user-facing responses return fast — expensive backend work is async (queue/Event Grid)
+- Container Apps only receives work via Event Grid blob triggers or queue messages
+- No CORS complexity — everything is same-origin under the SWA hostname
+- Container Apps can be network-locked to reject direct browser calls
 
-### Auth (CIAM)
+No unauthenticated endpoints are exposed to browsers. Infrastructure probes (`/health`, `/readiness`) are internal to Container Apps (network-locked). The Stripe billing webhook uses its own signature verification. The `contact-form` endpoint is a pre-login rate-limited form carrying no user data.
 
-- Tenant: `treesightauth.ciamlogin.com`
-- Client ID: `6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6`
-- Provider: Azure AD B2C / CIAM (MSAL.js in frontend)
+#### Showcase vs Tiers
+
+Two distinct concepts serve different purposes — do not conflate them:
+
+| Concept | Auth | Processing | Purpose |
+|---------|------|-----------|---------|
+| **Showcase** | None (anonymous) | None — pre-computed static blobs from stock AOIs | Marketing. Let visitors see real output quality before signing up. |
+| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, low-res, seasonal cadence | Try the product. 5 runs, ≤5 AOIs, 30-day retention, no alerts, all manual. Negligible compute cost. |
+| **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans with increasing AOI counts, cadence, retention, exports, API access. |
+
+The **showcase** is served from `imagery/clipped/showcase/` blobs via valet tokens — no billing tier, no quota tracking, no user record. It exists purely to answer "what does Canopex actually produce?" for anonymous visitors.
+
+The "demo" billing tier is deprecated — it overlapped with Free but was strictly worse (1 AOI, 0 retention). New unauthenticated users see the showcase; new authenticated users land on Free.
+
+### Auth — SWA Built-in Custom Auth
+
+> **Target auth flow** (PR #472). Replaces MSAL.js with SWA built-in auth.
+> Once merged, there is no MSAL.js in the frontend.
+
+Authentication uses SWA's built-in custom auth with our CIAM tenant. SWA handles the full OAuth flow server-side.
+
+- **Provider:** Entra External ID (CIAM) tenant `treesightauth`
+- **Client ID:** `6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6`
+- **Login:** `/.auth/login/aad` (SWA handles redirect + callback)
+- **Logout:** `/.auth/logout`
+- **User info:** `/.auth/me` → JSON with `clientPrincipal`
+- **API auth:** SWA injects `x-ms-client-principal` header into all `/api/*` requests
+- **Session:** managed by SWA via `StaticWebAppsAuthCookie` — no client-side token management
+- **Route protection:** `staticwebapp.config.json` `routes[].allowedRoles` enforced by SWA before the request reaches the managed API
+
+The managed API reads `x-ms-client-principal` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. No PyJWT / JWKS validation is needed — SWA has already validated the token server-side.
+
+Container Apps does not perform browser-facing auth. When the SWA managed API proxies work to Container Apps, it uses managed identity (DefaultAzureCredential) for server-to-server calls.
 
 ### Deploy Pipeline
 
@@ -87,15 +127,21 @@ Config: `.github/workflows/deploy.yml`
 
 ## Data Flow
 
-1. User uploads KML into input blob container.
-2. Event Grid emits a BlobCreated event.
-3. kml_blob_trigger validates event payload and starts kml_processing_orchestrator.
-4. Orchestrator runs phase pipeline:
+> **Target flow** (PR #472). Steps 1–3 and 8 use the SWA managed API.
+> During migration, some status/billing calls may still route to the
+> Container Apps function app.
+
+1. User authenticates via `/.auth/login/aad` (SWA handles the OAuth redirect).
+2. Frontend calls `POST /api/upload/token` — SWA managed API validates `x-ms-client-principal`, mints a write-only SAS URL.
+3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
+4. Event Grid emits a BlobCreated event.
+5. kml_blob_trigger (Container Apps) validates event payload and starts kml_processing_orchestrator.
+6. Orchestrator runs phase pipeline:
    - parse_kml
    - prepare_aoi + write_metadata
    - acquire_imagery + poll_order_suborchestrator + download_imagery + post_process_imagery
-5. Metadata and imagery artifacts are written to output blob paths.
-6. Operational diagnostics are available at /api/orchestrator/{instance_id}.
+7. Metadata and imagery artifacts are written to output blob paths.
+8. Frontend polls `GET /api/upload/status/{id}` via SWA managed API for progress.
 
 ## Imagery Output Framing Policy (2026-03-12)
 

@@ -24,6 +24,8 @@ Last updated: 2026-04-08
 
 | PR | Summary |
 |----|---------|
+| #471 | Cryptography CVE fix (dependabot) |
+| #462 | SWA auth diagnostics + queueAnalysis rename (partial #446) |
 | #461 | Python Power-of-10 safety fixes (#453, #454, #455, #456) |
 | #460 | Rust Power-of-10 compliance — min_delta bug, expect→PyResult, refactor (#450, #451) |
 | #449 | Code simplicity instruction files — NASA Power-of-10 rules |
@@ -57,16 +59,18 @@ Bugs visible to real users right now.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 |
-| 0.2 | #446 | Fix auth reliability: MSAL config mismatches, token selection, issuer validation | 🔄 PR #462 (diagnostics deployed) |
+| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 (CSP + auth); #367 already resolved |
+| 0.2 | #446 | Fix auth: SWA strips Authorization header → switch to built-in auth (BFF) | 🔄 Root cause found; architecture decision taken |
 
 **Exit criteria:** Auth works reliably. No CSP errors. Demo dismiss works. Telemetry flows.
 
+**Architecture decision (2026-04-08):** SWA built-in custom auth is the single auth mechanism. MSAL.js is dropped. The SWA managed API is the BFF — the only public API surface. Container Apps receives work only via Event Grid/queue, never directly from the browser for auth-gated operations. See `docs/ARCHITECTURE_OVERVIEW.md`.
+
 ---
 
-### P1 — Stage 2B Completion + SWA Observability
+### P1 — Stage 2B Completion (event-driven pipeline + BFF)
 
-Finish the event-driven restructure and make SWA observable. Parent issues: #420, #463.
+Finish the event-driven restructure. SWA becomes the sole public API surface (BFF). Parent issues: #420, #463.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
@@ -74,9 +78,10 @@ Finish the event-driven restructure and make SWA observable. Parent issues: #420
 | 2B.2 | #422 | SWA API function for SAS token minting + status polling | ✅ PR #427 |
 | 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
 | 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | 🔄 PR #444 merged (partial) |
-| 2B.5 | #464 | Add Application Insights instrumentation to SWA managed API | Open |
+| 2B.5 | #446 | Switch SWA auth to built-in custom auth — drop MSAL.js | 🔄 PR #472 |
+| 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | Open |
 
-**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from SWA. SWA API has full App Insights telemetry.
+**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from SWA managed functions. All browser API calls go through SWA `/api/*` — Container Apps never directly serves auth-gated browser requests. SWA API has full App Insights telemetry.
 
 ---
 
