@@ -12,19 +12,20 @@ resource "random_string" "storage_suffix" {
   special = false
 }
 
+# trivy:ignore:AVD-AZU-0009 Dev environment — LRS is sufficient, GRS adds cost with no benefit
 resource "azurerm_storage_account" "main" {
-  name                            = substr(replace("st${var.project_code}${var.environment}${random_string.storage_suffix.result}", "-", ""), 0, 24)
-  resource_group_name             = azurerm_resource_group.main.name
-  location                        = azurerm_resource_group.main.location
-  account_tier                    = "Standard"
-  account_replication_type        = "LRS"
-  account_kind                    = "StorageV2"
-  access_tier                     = "Hot"
-  min_tls_version                 = "TLS1_2"
+  name                              = substr(replace("st${var.project_code}${var.environment}${random_string.storage_suffix.result}", "-", ""), 0, 24)
+  resource_group_name               = azurerm_resource_group.main.name
+  location                          = azurerm_resource_group.main.location
+  account_tier                      = "Standard"
+  account_replication_type          = "LRS"
+  account_kind                      = "StorageV2"
+  access_tier                       = "Hot"
+  min_tls_version                   = "TLS1_2"
   infrastructure_encryption_enabled = true
-  allow_nested_items_to_be_public = false
-  shared_access_key_enabled       = true
-  tags                            = local.tags
+  allow_nested_items_to_be_public   = false
+  shared_access_key_enabled         = true
+  tags                              = local.tags
 }
 
 resource "azurerm_storage_container" "kml_input" {
@@ -94,6 +95,25 @@ resource "azurerm_storage_management_policy" "main" {
         tier_to_archive_after_days_since_modification_greater_than = 365
       }
     }
+  }
+}
+
+# ---------- Storage diagnostics (write + delete, no read/audit) ----------
+resource "azurerm_monitor_diagnostic_setting" "storage_blob" {
+  name                       = "diag-blob-${local.name_suffix}"
+  target_resource_id         = "${azurerm_storage_account.main.id}/blobServices/default"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+
+  enabled_log {
+    category = "StorageWrite"
+  }
+
+  enabled_log {
+    category = "StorageDelete"
+  }
+
+  enabled_metric {
+    category = "Transaction"
   }
 }
 
@@ -233,8 +253,8 @@ resource "azurerm_application_insights_standard_web_test" "site_ping" {
   enabled                 = true
   # Dev: single region to minimise Standard Web Test cost (~£0.35/month vs £18).
   # Prod should use 3–5 geo_locations for meaningful availability coverage.
-  geo_locations           = ["emea-gb-db3-azr"]
-  tags                    = local.tags
+  geo_locations = ["emea-gb-db3-azr"]
+  tags          = local.tags
 
   request {
     url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
@@ -397,11 +417,11 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   # --- Security hardening ---
-  local_authentication_disabled = true            # Disable key-based auth; RBAC only
-  public_network_access_enabled = false           # No public internet access
-  minimal_tls_version           = "Tls12"
-  network_acl_bypass_for_azure_services = true    # Allow Azure services (Functions, Portal diagnostics)
-  ip_range_filter                       = []      # No IP allowlist needed — private access only
+  local_authentication_disabled         = true  # Disable key-based auth; RBAC only
+  public_network_access_enabled         = false # No public internet access
+  minimal_tls_version                   = "Tls12"
+  network_acl_bypass_for_azure_services = true # Allow Azure services (Functions, Portal diagnostics)
+  ip_range_filter                       = []   # No IP allowlist needed — private access only
 }
 
 resource "azurerm_cosmosdb_sql_database" "main" {
@@ -412,13 +432,13 @@ resource "azurerm_cosmosdb_sql_database" "main" {
 }
 
 resource "azurerm_cosmosdb_sql_container" "runs" {
-  count                = var.enable_cosmos_db ? 1 : 0
-  name                 = "runs"
-  resource_group_name  = azurerm_resource_group.main.name
-  account_name         = azurerm_cosmosdb_account.main[0].name
-  database_name        = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths  = ["/user_id"]
-  default_ttl          = -1 # per-item TTL enabled (set ttl field on docs to expire)
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "runs"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
+  default_ttl         = -1 # per-item TTL enabled (set ttl field on docs to expire)
 
   # Queries served:
   #   R1: SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC (LIMIT)
@@ -453,12 +473,12 @@ resource "azurerm_cosmosdb_sql_container" "runs" {
 }
 
 resource "azurerm_cosmosdb_sql_container" "subscriptions" {
-  count                = var.enable_cosmos_db ? 1 : 0
-  name                 = "subscriptions"
-  resource_group_name  = azurerm_resource_group.main.name
-  account_name         = azurerm_cosmosdb_account.main[0].name
-  database_name        = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths  = ["/user_id"]
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "subscriptions"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
 
   # Queries served:
   #   S1: Point read by (user_id, user_id) — hot path, every page load
@@ -481,12 +501,12 @@ resource "azurerm_cosmosdb_sql_container" "subscriptions" {
 }
 
 resource "azurerm_cosmosdb_sql_container" "users" {
-  count                = var.enable_cosmos_db ? 1 : 0
-  name                 = "users"
-  resource_group_name  = azurerm_resource_group.main.name
-  account_name         = azurerm_cosmosdb_account.main[0].name
-  database_name        = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths  = ["/user_id"]
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "users"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
 
   # Queries served:
   #   U1: Point read by (user_id, user_id)
@@ -505,12 +525,12 @@ resource "azurerm_cosmosdb_sql_container" "users" {
 }
 
 resource "azurerm_cosmosdb_sql_container" "monitors" {
-  count                = var.enable_cosmos_db ? 1 : 0
-  name                 = "monitors"
-  resource_group_name  = azurerm_resource_group.main.name
-  account_name         = azurerm_cosmosdb_account.main[0].name
-  database_name        = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths  = ["/user_id"]
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "monitors"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
 
   # Queries served:
   #   M1: Point read by (monitor_id, user_id) — single monitor detail
@@ -549,12 +569,12 @@ resource "azurerm_cosmosdb_sql_container" "monitors" {
 }
 
 resource "azurerm_cosmosdb_sql_container" "catalogue" {
-  count                = var.enable_cosmos_db ? 1 : 0
-  name                 = "catalogue"
-  resource_group_name  = azurerm_resource_group.main.name
-  account_name         = azurerm_cosmosdb_account.main[0].name
-  database_name        = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths  = ["/user_id"]
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "catalogue"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
 
   # Queries served:
   #   C1: SELECT * FROM c ORDER BY c.submitted_at DESC (paginated, partition_key scopes)
@@ -667,42 +687,42 @@ resource "azapi_resource" "function_app" {
         }
         appSettings = concat(
           [
-          {
-            name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
-            value = azurerm_application_insights.main.connection_string
-          },
-          {
-            name  = "FUNCTIONS_WORKER_RUNTIME"
-            value = "python"
-          },
-          {
-            name  = "FUNCTIONS_EXTENSION_VERSION"
-            value = "~4"
-          },
-          {
-            name  = "AzureFunctionsJobHost__extensions__durableTask__storageProvider__type"
-            value = "AzureStorage"
-          },
-          {
-            name  = "KEY_VAULT_URI"
-            value = azurerm_key_vault.main.vault_uri
-          },
-          {
-            name  = "KEYVAULT_URL"
-            value = azurerm_key_vault.main.vault_uri
-          },
-          {
-            name  = "DEFAULT_INPUT_CONTAINER"
-            value = "kml-input"
-          },
-          {
-            name  = "DEFAULT_OUTPUT_CONTAINER"
-            value = "kml-output"
-          },
-          {
-            name  = "IMAGERY_PROVIDER"
-            value = "planetary_computer"
-          }
+            {
+              name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+              value = azurerm_application_insights.main.connection_string
+            },
+            {
+              name  = "FUNCTIONS_WORKER_RUNTIME"
+              value = "python"
+            },
+            {
+              name  = "FUNCTIONS_EXTENSION_VERSION"
+              value = "~4"
+            },
+            {
+              name  = "AzureFunctionsJobHost__extensions__durableTask__storageProvider__type"
+              value = "AzureStorage"
+            },
+            {
+              name  = "KEY_VAULT_URI"
+              value = azurerm_key_vault.main.vault_uri
+            },
+            {
+              name  = "KEYVAULT_URL"
+              value = azurerm_key_vault.main.vault_uri
+            },
+            {
+              name  = "DEFAULT_INPUT_CONTAINER"
+              value = "kml-input"
+            },
+            {
+              name  = "DEFAULT_OUTPUT_CONTAINER"
+              value = "kml-output"
+            },
+            {
+              name  = "IMAGERY_PROVIDER"
+              value = "planetary_computer"
+            }
           ],
           [
             for name, value in local.function_app_cli_app_settings : {
@@ -711,55 +731,55 @@ resource "azapi_resource" "function_app" {
             }
           ],
           var.enable_azure_ai ? [
-          {
-            name  = "AZURE_AI_ENDPOINT"
-            value = azurerm_cognitive_account.openai[0].endpoint
-          },
-          {
-            name  = "AZURE_AI_API_KEY"
-            value = azurerm_cognitive_account.openai[0].primary_access_key
-          },
-          {
-            name  = "AZURE_AI_DEPLOYMENT"
-            value = "gpt-4o-mini"
-          }
+            {
+              name  = "AZURE_AI_ENDPOINT"
+              value = azurerm_cognitive_account.openai[0].endpoint
+            },
+            {
+              name  = "AZURE_AI_API_KEY"
+              value = azurerm_cognitive_account.openai[0].primary_access_key
+            },
+            {
+              name  = "AZURE_AI_DEPLOYMENT"
+              value = "gpt-4o-mini"
+            }
           ] : [],
           var.enable_stripe ? [
-          {
-            name  = "STRIPE_API_KEY"
-            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
-          },
-          {
-            name  = "STRIPE_WEBHOOK_SECRET"
-            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.webhook_secret})"
-          },
-          {
-            name  = "STRIPE_PRICE_ID_PRO_GBP"
-            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
-          },
-          {
-            name  = "STRIPE_PRICE_ID_PRO_USD"
-            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
-          },
-          {
-            name  = "STRIPE_PRICE_ID_PRO_EUR"
-            value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
-          }
-        ] : [],
+            {
+              name  = "STRIPE_API_KEY"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
+            },
+            {
+              name  = "STRIPE_WEBHOOK_SECRET"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.webhook_secret})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_GBP"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_USD"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_EUR"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
+            }
+          ] : [],
           var.enable_email ? [
-          {
-            name  = "COMMUNICATION_SERVICES_CONNECTION_STRING"
-            value = azurerm_communication_service.main[0].primary_connection_string
-          },
-          {
-            name  = "EMAIL_SENDER_ADDRESS"
-            value = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
-          },
-          {
-            name  = "NOTIFICATION_EMAIL"
-            value = var.notification_email
-          }
-        ] : []
+            {
+              name  = "COMMUNICATION_SERVICES_CONNECTION_STRING"
+              value = azurerm_communication_service.main[0].primary_connection_string
+            },
+            {
+              name  = "EMAIL_SENDER_ADDRESS"
+              value = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
+            },
+            {
+              name  = "NOTIFICATION_EMAIL"
+              value = var.notification_email
+            }
+          ] : []
         )
       }
     }
