@@ -9,6 +9,8 @@ speech.  Every function, model, test fixture, and data contract must follow
 this convention.
 """
 
+import os
+
 # --- Size limits ---
 MAX_KML_FILE_SIZE_BYTES = 10_485_760  # 10 MiB
 MAX_FEATURES_PER_KML = 500
@@ -41,7 +43,9 @@ DEFAULT_DOWNLOAD_BATCH_SIZE = 10
 DEFAULT_POST_PROCESS_BATCH_SIZE = 10
 DEFAULT_ACQUISITION_BATCH_SIZE = 25
 BATCH_POLL_INTERVAL_SECONDS = 60
-DEFAULT_ENRICHMENT_CONCURRENCY = 8  # max parallel STAC/COG requests in enrichment
+DEFAULT_ENRICHMENT_CONCURRENCY = int(
+    os.environ.get("ENRICHMENT_CONCURRENCY", "8")
+)  # max parallel STAC/COG requests in enrichment
 
 # --- API ---
 API_CONTRACT_VERSION = "2026-03-15.1"

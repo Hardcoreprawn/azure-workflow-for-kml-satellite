@@ -119,7 +119,6 @@ def _run_mosaic_ndvi_phase(
     """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback)."""
     # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
-    http_client = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
     search_ids: list[str | None] = [None] * len(frame_plan)
     ndvi_search_ids: list[str | None] = [None] * len(frame_plan)
 
@@ -129,25 +128,28 @@ def _run_mosaic_ndvi_phase(
             if f["collection"] == "sentinel-2-l2a"
             else []
         )
-        cl = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
-        sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
-        nsid = sid
-        if f["is_naip"]:
-            nsid = register_mosaic(
-                "sentinel-2-l2a",
-                f["start"],
-                f["end"],
-                bbox,
-                [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
-                cl,
-            )
-        cl.close()
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
+            sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+            nsid = sid
+            if f["is_naip"]:
+                nsid = register_mosaic(
+                    "sentinel-2-l2a",
+                    f["start"],
+                    f["end"],
+                    bbox,
+                    [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
+                    cl,
+                )
         return idx, sid, nsid
 
     with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
         futures = [pool.submit(_register_one, i, f) for i, f in enumerate(frame_plan)]
         for fut in as_completed(futures):
-            idx, sid, nsid = fut.result()
+            try:
+                idx, sid, nsid = fut.result()
+            except Exception:
+                logger.warning("mosaic registration failed for one frame", exc_info=True)
+                continue
             search_ids[idx] = sid
             ndvi_search_ids[idx] = nsid
 
@@ -189,20 +191,21 @@ def _run_mosaic_ndvi_phase(
         # Fallback: tile-based sampling
         nsid = ndvi_search_ids[idx]
         if nsid:
-            cl = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
-            stat = fetch_ndvi_stat(nsid, coords, cl)
-            cl.close()
+            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
+                stat = fetch_ndvi_stat(nsid, coords, cl)
             return idx, stat, None
         return idx, None, None
 
     with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
         futures = [pool.submit(_compute_one_ndvi, i, f) for i, f in enumerate(frame_plan)]
         for fut in as_completed(futures):
-            idx, stat, rpath = fut.result()
+            try:
+                idx, stat, rpath = fut.result()
+            except Exception:
+                logger.warning("NDVI computation failed for one frame", exc_info=True)
+                continue
             ndvi_stats[idx] = stat
             ndvi_raster_paths[idx] = rpath
-
-    http_client.close()
 
     results["ndvi_stats"] = ndvi_stats
     results["ndvi_raster_paths"] = ndvi_raster_paths
