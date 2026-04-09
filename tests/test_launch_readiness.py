@@ -1035,3 +1035,18 @@ class TestSwaContactHealthInfra:
             "website/api/requirements.txt must include azure-communication-email "
             "for contact form notifications"
         )
+
+
+# 19. SWA Catalogue Endpoints (#465)
+class TestSwaCatalogueInfra:
+    """Ensure SWA managed API has catalogue endpoints."""
+
+    def test_swa_catalogue_endpoints_in_function_app(self):
+        source = (ROOT / "website" / "api" / "function_app.py").read_text()
+        for fn in (
+            "catalogue_list",
+            "catalogue_detail",
+            "catalogue_by_run",
+            "catalogue_by_aoi",
+        ):
+            assert fn in source, f"website/api/function_app.py must define {fn} endpoint"
