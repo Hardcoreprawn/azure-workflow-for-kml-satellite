@@ -1545,3 +1545,376 @@ class TestGetClientIp:
         mod = _reload_module
         req = _mock_request(headers={"X-Azure-ClientIP": "  5.6.7.8  "})
         assert mod._get_client_ip(req) == "5.6.7.8"
+
+
+# ---------------------------------------------------------------------------
+# Catalogue endpoints
+# ---------------------------------------------------------------------------
+
+_SAMPLE_CATALOGUE_DOC = {
+    "id": "run-1:farm-north",
+    "user_id": "user-123",
+    "run_id": "run-1",
+    "aoi_name": "Farm North",
+    "source_file": "upload.kml",
+    "provider": "sentinel-2",
+    "centroid": [1.5, 51.0],
+    "bbox": [1.0, 50.5, 2.0, 51.5],
+    "area_ha": 42.7,
+    "acquired_at": "2026-03-01T00:00:00+00:00",
+    "submitted_at": "2026-03-15T12:00:00+00:00",
+    "cloud_cover_pct": 12.5,
+    "spatial_resolution_m": 10.0,
+    "collection": "sentinel-2-l2a",
+    "status": "completed",
+    "ndvi_mean": 0.65,
+    "ndvi_min": 0.12,
+    "ndvi_max": 0.89,
+    "change_loss_pct": 2.1,
+    "change_gain_pct": 5.3,
+    "change_mean_delta": 0.03,
+    "imagery_blob_path": "results/run-1/imagery.tif",
+    "metadata_blob_path": "results/run-1/meta.json",
+    "enrichment_manifest_path": "results/run-1/enrichment.json",
+    "created_at": "2026-03-15T12:00:00+00:00",
+    "updated_at": "2026-03-15T12:05:00+00:00",
+}
+
+
+class TestCatalogueList:
+    """Tests for GET /api/catalogue."""
+
+    def test_returns_200_with_entries(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [
+            iter([3]),  # count query
+            iter([_SAMPLE_CATALOGUE_DOC]),  # data query
+        ]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["total"] == 3
+        assert len(body["entries"]) == 1
+        assert body["entries"][0]["aoiName"] == "Farm North"
+        assert body["entries"][0]["ndviMean"] == 0.65
+
+    def test_pagination_params(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([0]), iter([])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={"limit": "5", "offset": "10", "sort": "asc"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["offset"] == 10
+        assert body["limit"] == 5
+
+    def test_limit_clamped_to_max(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([0]), iter([])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={"limit": "999"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        body = json.loads(resp.get_body())
+        assert body["limit"] == mod._CATALOGUE_MAX_LIMIT
+
+    def test_filter_by_aoi_name(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([1]), iter([_SAMPLE_CATALOGUE_DOC])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={"aoiName": "Farm"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        assert resp.status_code == 200
+        # Verify the count query included the aoi filter
+        count_call = container.query_items.call_args_list[0]
+        assert "@aoi_name" in count_call.kwargs.get("query", count_call[1].get("query", ""))
+
+    def test_filter_by_status(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([0]), iter([])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={"status": "completed"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        assert resp.status_code == 200
+        count_call = container.query_items.call_args_list[0]
+        assert "@status" in count_call.kwargs.get("query", count_call[1].get("query", ""))
+
+    def test_401_without_auth(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers={},
+        )
+        resp = mod.catalogue_list(req)
+        assert resp.status_code == 401
+
+    def test_503_on_cosmos_error(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+        )
+        with patch.object(mod, "_get_cosmos_container", side_effect=RuntimeError("no cosmos")):
+            resp = mod.catalogue_list(req)
+        assert resp.status_code == 503
+
+    def test_has_more_flag(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([50]), iter([_SAMPLE_CATALOGUE_DOC])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+            params={"limit": "20", "offset": "0"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        body = json.loads(resp.get_body())
+        assert body["hasMore"] is True
+
+    def test_camel_case_response_keys(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.side_effect = [iter([1]), iter([_SAMPLE_CATALOGUE_DOC])]
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue",
+            headers=_auth_headers(),
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_list(req)
+        body = json.loads(resp.get_body())
+        entry = body["entries"][0]
+        # All keys should be camelCase
+        assert "runId" in entry
+        assert "cloudCoverPct" in entry
+        assert "spatialResolutionM" in entry
+        assert "changeLossPct" in entry
+        assert "imageryBlobPath" in entry
+        assert "createdAt" in entry
+        # Snake_case keys should NOT appear
+        assert "run_id" not in entry
+        assert "cloud_cover_pct" not in entry
+
+
+class TestCatalogueDetail:
+    """Tests for GET /api/catalogue/{entryId}."""
+
+    def test_returns_200(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.read_item.return_value = _SAMPLE_CATALOGUE_DOC
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/run-1:farm-north",
+            headers=_auth_headers(),
+            route_params={"entryId": "run-1:farm-north"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_detail(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["id"] == "run-1:farm-north"
+        assert body["aoiName"] == "Farm North"
+
+    def test_returns_404_when_missing(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+        container.read_item.side_effect = CosmosResourceNotFoundError(
+            status_code=404, message="Not found"
+        )
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/no-such-entry",
+            headers=_auth_headers(),
+            route_params={"entryId": "no-such-entry"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_detail(req)
+        assert resp.status_code == 404
+
+    def test_returns_400_without_entry_id(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/",
+            headers=_auth_headers(),
+            route_params={},
+        )
+        resp = mod.catalogue_detail(req)
+        assert resp.status_code == 400
+
+    def test_401_without_auth(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/run-1:farm-north",
+            headers={},
+            route_params={"entryId": "run-1:farm-north"},
+        )
+        resp = mod.catalogue_detail(req)
+        assert resp.status_code == 401
+
+
+class TestCatalogueByRun:
+    """Tests for GET /api/catalogue/run/{runId}."""
+
+    def test_returns_200(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.return_value = iter([_SAMPLE_CATALOGUE_DOC])
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/run/run-1",
+            headers=_auth_headers(),
+            route_params={"runId": "run-1"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_by_run(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["total"] == 1
+        assert body["entries"][0]["runId"] == "run-1"
+
+    def test_returns_400_without_run_id(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/run/",
+            headers=_auth_headers(),
+            route_params={},
+        )
+        resp = mod.catalogue_by_run(req)
+        assert resp.status_code == 400
+
+    def test_401_without_auth(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/run/run-1",
+            headers={},
+            route_params={"runId": "run-1"},
+        )
+        resp = mod.catalogue_by_run(req)
+        assert resp.status_code == 401
+
+
+class TestCatalogueByAoi:
+    """Tests for GET /api/catalogue/aoi/{aoiName}."""
+
+    def test_returns_200(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.return_value = iter([_SAMPLE_CATALOGUE_DOC])
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/aoi/Farm%20North",
+            headers=_auth_headers(),
+            route_params={"aoiName": "Farm North"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_by_aoi(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["total"] == 1
+        assert body["entries"][0]["aoiName"] == "Farm North"
+
+    def test_limit_param(self, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.query_items.return_value = iter([])
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/aoi/Farm%20North",
+            headers=_auth_headers(),
+            route_params={"aoiName": "Farm North"},
+            params={"limit": "5"},
+        )
+        with patch.object(mod, "_get_cosmos_container", return_value=container):
+            resp = mod.catalogue_by_aoi(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["limit"] == 5
+
+    def test_returns_400_without_aoi_name(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/aoi/",
+            headers=_auth_headers(),
+            route_params={},
+        )
+        resp = mod.catalogue_by_aoi(req)
+        assert resp.status_code == 400
+
+    def test_401_without_auth(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="GET",
+            url="https://example.com/api/catalogue/aoi/Farm",
+            headers={},
+            route_params={"aoiName": "Farm"},
+        )
+        resp = mod.catalogue_by_aoi(req)
+        assert resp.status_code == 401
+
+
+class TestCatalogueContractSync:
+    """Verify SWA catalogue constants match stable treesight contracts."""
+
+    def test_max_limit_matches(self, _reload_module):
+        from treesight.catalogue.contracts import CatalogueQueryParams
+
+        schema = CatalogueQueryParams.model_json_schema()
+        mod = _reload_module
+        assert schema["properties"]["limit"]["maximum"] == mod._CATALOGUE_MAX_LIMIT
+
+    def test_max_offset_matches(self, _reload_module):
+        from treesight.catalogue.contracts import CatalogueQueryParams
+
+        schema = CatalogueQueryParams.model_json_schema()
+        mod = _reload_module
+        assert schema["properties"]["offset"]["maximum"] == mod._CATALOGUE_MAX_OFFSET
+
+    def test_cosmos_container_name_matches(self, _reload_module):
+        from treesight.catalogue.repository import CATALOGUE_CONTAINER
+
+        mod = _reload_module
+        assert mod._CATALOGUE_CONTAINER == CATALOGUE_CONTAINER

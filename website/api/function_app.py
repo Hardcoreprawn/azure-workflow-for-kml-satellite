@@ -2,8 +2,8 @@
 
 These functions run inside the Static Web App's managed function runtime.
 They handle user-interactive requests (SAS token minting, status polling,
-billing status/checkout/portal, contact form, readiness) so the main
-Container Apps function app can scale to zero without affecting UX.
+billing status/checkout/portal, contact form, readiness, catalogue) so the
+main Container Apps function app can scale to zero without affecting UX.
 
 Authentication is handled by the SWA platform using built-in custom auth
 (Azure AD / Entra External ID).  SWA injects user identity via the
@@ -1134,3 +1134,309 @@ def readiness(req: func.HttpRequest) -> func.HttpResponse:
 def contract(req: func.HttpRequest) -> func.HttpResponse:
     """Return the current API contract version."""
     return _json_response({"api_version": API_CONTRACT_VERSION})
+
+
+# ---------------------------------------------------------------------------
+# Catalogue constants (mirrored from treesight — SWA cannot import it)
+# ---------------------------------------------------------------------------
+
+_CATALOGUE_CONTAINER = "catalogue"
+_CATALOGUE_MAX_LIMIT = 100
+_CATALOGUE_MAX_OFFSET = 10_000
+
+# ---------------------------------------------------------------------------
+# Catalogue helpers
+# ---------------------------------------------------------------------------
+
+# Map from Cosmos snake_case field names to camelCase API keys.
+_CATALOGUE_CAMEL_MAP: list[tuple[str, str]] = [
+    ("id", "id"),
+    ("run_id", "runId"),
+    ("aoi_name", "aoiName"),
+    ("source_file", "sourceFile"),
+    ("provider", "provider"),
+    ("centroid", "centroid"),
+    ("bbox", "bbox"),
+    ("area_ha", "areaHa"),
+    ("acquired_at", "acquiredAt"),
+    ("submitted_at", "submittedAt"),
+    ("cloud_cover_pct", "cloudCoverPct"),
+    ("spatial_resolution_m", "spatialResolutionM"),
+    ("collection", "collection"),
+    ("status", "status"),
+    ("ndvi_mean", "ndviMean"),
+    ("ndvi_min", "ndviMin"),
+    ("ndvi_max", "ndviMax"),
+    ("change_loss_pct", "changeLossPct"),
+    ("change_gain_pct", "changeGainPct"),
+    ("change_mean_delta", "changeMeanDelta"),
+    ("imagery_blob_path", "imageryBlobPath"),
+    ("metadata_blob_path", "metadataBlobPath"),
+    ("enrichment_manifest_path", "enrichmentManifestPath"),
+    ("created_at", "createdAt"),
+    ("updated_at", "updatedAt"),
+]
+
+
+def _catalogue_entry(doc: dict) -> dict:
+    """Transform a Cosmos catalogue document to a camelCase API entry."""
+    return {camel: doc.get(snake) for snake, camel in _CATALOGUE_CAMEL_MAP}
+
+
+def _catalogue_list_body(
+    entries: list[dict],
+    total: int,
+    offset: int,
+    limit: int,
+) -> dict:
+    """Build the paginated catalogue list response."""
+    return {
+        "entries": [_catalogue_entry(doc) for doc in entries],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "hasMore": offset + limit < total,
+    }
+
+
+def _parse_iso(value: str | None) -> str | None:
+    """Validate an ISO-8601 date string, returning None on failure."""
+    if not value:
+        return None
+    try:
+        datetime.datetime.fromisoformat(value)
+        return value
+    except (ValueError, TypeError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/catalogue — paginated list with filters
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("catalogue_list")
+@app.route(
+    route="catalogue",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def catalogue_list(req: func.HttpRequest) -> func.HttpResponse:
+    """List catalogue entries with optional filters and pagination."""
+    try:
+        claims = _parse_client_principal(req)
+    except ValueError:
+        return _error(401, "Unauthorized")
+    user_id: str = claims.get("sub", "")
+    if not user_id:
+        return _error(401, "Missing user identity")
+
+    params = req.params or {}
+    limit = _parse_int_param(params.get("limit", ""), 20, 1, _CATALOGUE_MAX_LIMIT)
+    offset = _parse_int_param(params.get("offset", ""), 0, 0, _CATALOGUE_MAX_OFFSET)
+    sort = params.get("sort", "desc")
+    if sort not in ("asc", "desc"):
+        sort = "desc"
+
+    # Build dynamic Cosmos SQL filters (parameterised)
+    conditions: list[str] = []
+    query_params: list[dict] = []
+
+    aoi_name = params.get("aoiName")
+    if aoi_name:
+        conditions.append("CONTAINS(LOWER(c.aoi_name), @aoi_name)")
+        query_params.append({"name": "@aoi_name", "value": aoi_name.lower()})
+
+    status_filter = params.get("status")
+    if status_filter:
+        conditions.append("c.status = @status")
+        query_params.append({"name": "@status", "value": status_filter})
+
+    date_from = _parse_iso(params.get("dateFrom"))
+    if date_from:
+        conditions.append("c.submitted_at >= @date_from")
+        query_params.append({"name": "@date_from", "value": date_from})
+
+    date_to = _parse_iso(params.get("dateTo"))
+    if date_to:
+        conditions.append("c.submitted_at <= @date_to")
+        query_params.append({"name": "@date_to", "value": date_to})
+
+    provider = params.get("provider")
+    if provider:
+        conditions.append("c.provider = @provider")
+        query_params.append({"name": "@provider", "value": provider})
+
+    where = " AND ".join(conditions) if conditions else "true"
+    order = "DESC" if sort == "desc" else "ASC"
+
+    try:
+        container = _get_cosmos_container(_CATALOGUE_CONTAINER)
+
+        count_result = list(
+            container.query_items(
+                query=f"SELECT VALUE COUNT(1) FROM c WHERE {where}",  # noqa: S608
+                parameters=query_params,
+                partition_key=user_id,
+            )
+        )
+        total: int = int(count_result[0]) if count_result else 0
+
+        data_params = [
+            *query_params,
+            {"name": "@off", "value": offset},
+            {"name": "@lim", "value": limit},
+        ]
+        docs = list(
+            container.query_items(
+                query=(
+                    f"SELECT * FROM c WHERE {where}"  # noqa: S608
+                    f" ORDER BY c.submitted_at {order}"
+                    f" OFFSET @off LIMIT @lim"
+                ),
+                parameters=data_params,
+                partition_key=user_id,
+            )
+        )
+    except RuntimeError:
+        return _error(503, "Catalogue temporarily unavailable")
+    except Exception:
+        logger.exception("Cosmos query failed for catalogue list")
+        return _error(503, "Catalogue temporarily unavailable")
+
+    return _json_response(_catalogue_list_body(docs, total, offset, limit))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/catalogue/{entryId} — single entry
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("catalogue_detail")
+@app.route(
+    route="catalogue/{entryId}",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def catalogue_detail(req: func.HttpRequest) -> func.HttpResponse:
+    """Get a single catalogue entry by id."""
+    try:
+        claims = _parse_client_principal(req)
+    except ValueError:
+        return _error(401, "Unauthorized")
+    user_id: str = claims.get("sub", "")
+    if not user_id:
+        return _error(401, "Missing user identity")
+
+    entry_id = req.route_params.get("entryId", "")
+    if not entry_id:
+        return _error(400, "Missing entryId")
+
+    try:
+        container = _get_cosmos_container(_CATALOGUE_CONTAINER)
+        doc = container.read_item(item=entry_id, partition_key=user_id)
+    except RuntimeError:
+        return _error(503, "Catalogue temporarily unavailable")
+    except Exception as exc:
+        # CosmosResourceNotFoundError has status_code 404
+        if getattr(exc, "status_code", None) == 404:
+            return _error(404, "Catalogue entry not found")
+        logger.exception("Cosmos read failed for catalogue detail")
+        return _error(503, "Catalogue temporarily unavailable")
+
+    return _json_response(_catalogue_entry(doc))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/catalogue/run/{runId} — entries for a pipeline run
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("catalogue_by_run")
+@app.route(
+    route="catalogue/run/{runId}",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def catalogue_by_run(req: func.HttpRequest) -> func.HttpResponse:
+    """List all catalogue entries for a specific pipeline run."""
+    try:
+        claims = _parse_client_principal(req)
+    except ValueError:
+        return _error(401, "Unauthorized")
+    user_id: str = claims.get("sub", "")
+    if not user_id:
+        return _error(401, "Missing user identity")
+
+    run_id = req.route_params.get("runId", "")
+    if not run_id:
+        return _error(400, "Missing runId")
+
+    try:
+        container = _get_cosmos_container(_CATALOGUE_CONTAINER)
+        docs = list(
+            container.query_items(
+                query=("SELECT * FROM c WHERE c.run_id = @rid ORDER BY c.aoi_name ASC"),
+                parameters=[{"name": "@rid", "value": run_id}],
+                partition_key=user_id,
+            )
+        )
+    except RuntimeError:
+        return _error(503, "Catalogue temporarily unavailable")
+    except Exception:
+        logger.exception("Cosmos query failed for catalogue by run")
+        return _error(503, "Catalogue temporarily unavailable")
+
+    return _json_response(_catalogue_list_body(docs, len(docs), 0, len(docs)))
+
+
+# ---------------------------------------------------------------------------
+# GET /api/catalogue/aoi/{aoiName} — time-series for an AOI
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("catalogue_by_aoi")
+@app.route(
+    route="catalogue/aoi/{aoiName}",
+    methods=["GET"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def catalogue_by_aoi(req: func.HttpRequest) -> func.HttpResponse:
+    """List acquisition history for a specific AOI (time-series)."""
+    try:
+        claims = _parse_client_principal(req)
+    except ValueError:
+        return _error(401, "Unauthorized")
+    user_id: str = claims.get("sub", "")
+    if not user_id:
+        return _error(401, "Missing user identity")
+
+    aoi_name = req.route_params.get("aoiName", "")
+    if not aoi_name:
+        return _error(400, "Missing aoiName")
+
+    limit = _parse_int_param((req.params or {}).get("limit", ""), 20, 1, _CATALOGUE_MAX_LIMIT)
+
+    try:
+        container = _get_cosmos_container(_CATALOGUE_CONTAINER)
+        docs = list(
+            container.query_items(
+                query=(
+                    "SELECT * FROM c WHERE c.aoi_name = @aoi"
+                    " ORDER BY c.submitted_at DESC"
+                    " OFFSET 0 LIMIT @lim"
+                ),
+                parameters=[
+                    {"name": "@aoi", "value": aoi_name},
+                    {"name": "@lim", "value": limit},
+                ],
+                partition_key=user_id,
+            )
+        )
+    except RuntimeError:
+        return _error(503, "Catalogue temporarily unavailable")
+    except Exception:
+        logger.exception("Cosmos query failed for catalogue by AOI")
+        return _error(503, "Catalogue temporarily unavailable")
+
+    return _json_response(_catalogue_list_body(docs, len(docs), 0, limit))
