@@ -58,17 +58,11 @@ class TestSwaAuth:
         reg = aad.get("registration", {})
         issuer = reg.get("openIdIssuer", "")
         parsed = urlparse(issuer)
-        valid = (
-            parsed.scheme == "https"
-            and (
-                parsed.hostname is not None
-                and (
-                    parsed.hostname.endswith(".ciamlogin.com")
-                    or parsed.hostname.endswith(".login.microsoftonline.com")
-                )
-            )
-            and parsed.path.endswith("/v2.0")
-        )
+        hostname = parsed.hostname or ""
+        host_labels = hostname.split(".")
+        is_ciam = len(host_labels) >= 3 and host_labels[-2:] == ["ciamlogin", "com"]
+        is_aad = len(host_labels) >= 4 and host_labels[-3:] == ["login", "microsoftonline", "com"]
+        valid = parsed.scheme == "https" and (is_ciam or is_aad) and parsed.path.endswith("/v2.0")
         assert valid, (
             "openIdIssuer must be a full https URL pointing to a valid Azure OIDC v2.0 endpoint"
         )
@@ -171,8 +165,8 @@ class TestCsp:
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
-        sources = connect_match.group(1)
-        assert "ciamlogin.com" not in sources, (
+        tokens = connect_match.group(1).split()
+        assert not any(_csp_token_matches_host(src, "ciamlogin.com") for src in tokens), (
             "connect-src still references ciamlogin.com — remove (SWA handles auth)"
         )
 

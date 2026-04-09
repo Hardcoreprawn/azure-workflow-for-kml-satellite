@@ -7,12 +7,8 @@ import time
 
 import pytest
 
-from treesight.security.replay import InMemoryReplayStore
-from treesight.security.valet import (
-    mint_valet_token,
-    set_replay_store,
-    verify_valet_token,
-)
+import treesight.security.replay as replay_mod
+import treesight.security.valet as valet_mod
 
 SECRET = "test-valet-secret-32chars-min!!"  # pragma: allowlist secret
 
@@ -20,15 +16,15 @@ SECRET = "test-valet-secret-32chars-min!!"  # pragma: allowlist secret
 @pytest.fixture(autouse=True)
 def _clear_replay():
     """Reset replay store to a fresh InMemoryReplayStore between tests."""
-    store = InMemoryReplayStore()
-    set_replay_store(store)
+    store = replay_mod.InMemoryReplayStore()
+    valet_mod.set_replay_store(store)
     yield
-    set_replay_store(InMemoryReplayStore())
+    valet_mod.set_replay_store(replay_mod.InMemoryReplayStore())
 
 
 class TestMintValetToken:
     def test_returns_string(self):
-        token = mint_valet_token(
+        token = valet_mod.mint_valet_token(
             submission_id="sub-1",
             submission_blob_name="demo/sub-1.kml",
             artifact_path="imagery/raw/test.tif",
@@ -42,13 +38,13 @@ class TestMintValetToken:
     def test_no_secret_raises(self, monkeypatch):
         monkeypatch.setenv("DEMO_VALET_TOKEN_SECRET", "")
         config_mod = importlib.import_module("treesight.config")
-        valet_mod = importlib.import_module("treesight.security.valet")
+        reloaded_valet = importlib.import_module("treesight.security.valet")
 
         importlib.reload(config_mod)
-        importlib.reload(valet_mod)
+        importlib.reload(reloaded_valet)
         try:
             with pytest.raises(ValueError, match="not configured"):
-                valet_mod.mint_valet_token(
+                reloaded_valet.mint_valet_token(
                     submission_id="sub-1",
                     submission_blob_name="demo/sub-1.kml",
                     artifact_path="test.tif",
@@ -59,7 +55,7 @@ class TestMintValetToken:
         finally:
             monkeypatch.setenv("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
             importlib.reload(config_mod)
-            importlib.reload(valet_mod)
+            importlib.reload(reloaded_valet)
 
 
 class TestVerifyValetToken:
@@ -73,11 +69,11 @@ class TestVerifyValetToken:
             "secret": SECRET,
         }
         defaults.update(kwargs)
-        return mint_valet_token(**defaults)
+        return valet_mod.mint_valet_token(**defaults)
 
     def test_valid_token(self):
         token = self._mint()
-        claims = verify_valet_token(token, secret=SECRET)
+        claims = valet_mod.verify_valet_token(token, secret=SECRET)
         assert claims["submission_id"] == "sub-1"
         assert claims["artifact_path"] == "imagery/raw/test.tif"
 
@@ -87,34 +83,35 @@ class TestVerifyValetToken:
         parts = token.split(".")
         tampered = parts[0] + ".AAAA" + parts[1][4:]
         with pytest.raises(ValueError):
-            verify_valet_token(tampered, secret=SECRET)
+            valet_mod.verify_valet_token(tampered, secret=SECRET)
 
     def test_wrong_secret_rejected(self):
         token = self._mint()
+        wrong = "wrong-secret-entirely"  # pragma: allowlist secret
         with pytest.raises(ValueError, match="Invalid token signature"):
-            verify_valet_token(token, secret="wrong-secret-entirely")  # pragma: allowlist secret
+            valet_mod.verify_valet_token(token, secret=wrong)
 
     def test_expired_token_rejected(self):
         token = self._mint(ttl_seconds=0)
         time.sleep(0.1)
         with pytest.raises(ValueError, match="expired"):
-            verify_valet_token(token, secret=SECRET)
+            valet_mod.verify_valet_token(token, secret=SECRET)
 
     def test_replay_limit(self):
         token = self._mint(max_uses=2)
         # First two uses succeed
-        verify_valet_token(token, secret=SECRET)
-        verify_valet_token(token, secret=SECRET)
+        valet_mod.verify_valet_token(token, secret=SECRET)
+        valet_mod.verify_valet_token(token, secret=SECRET)
         # Third use fails
         with pytest.raises(ValueError, match="replay limit"):
-            verify_valet_token(token, secret=SECRET)
+            valet_mod.verify_valet_token(token, secret=SECRET)
 
     def test_malformed_token(self):
         with pytest.raises(ValueError, match="Malformed"):
-            verify_valet_token("no-dot-separator", secret=SECRET)
+            valet_mod.verify_valet_token("no-dot-separator", secret=SECRET)
 
     def test_recipient_email_hashed(self):
         token = self._mint()
-        claims = verify_valet_token(token, secret=SECRET)
+        claims = valet_mod.verify_valet_token(token, secret=SECRET)
         assert "recipient_hash" in claims
         assert "@" not in claims.get("recipient_hash", "")

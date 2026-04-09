@@ -72,7 +72,7 @@ class TestOidcConfigUrl:
             path_segments = parsed.path.strip("/").split("/")
             # First path segment must be the exact tenant domain
             assert path_segments[0] == "mytenant.onmicrosoft.com"
-            assert url.endswith("/v2.0/.well-known/openid-configuration")
+            assert parsed.path.endswith("/v2.0/.well-known/openid-configuration")
 
 
 # ---------------------------------------------------------------------------
