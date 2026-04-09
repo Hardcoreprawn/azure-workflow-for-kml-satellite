@@ -294,11 +294,11 @@
     opts.headers = opts.headers || {};
     // SWA built-in auth: session cookie is sent automatically.
     // No Authorization header needed — SWA injects x-ms-client-principal.
-    var resp = await fetch(path, opts);
+    const resp = await fetch(path, opts);
     if (!resp.ok) {
-      var body = await resp.json().catch(function () { return {}; });
-      var msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      var err = new Error(msg);
+      const body = await resp.json().catch(function () { return {}; });
+      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      const err = new Error(msg);
       err.status = resp.status;
       err.body = body;
       throw err;
@@ -1000,16 +1000,16 @@
     if (aiBlock) {
       if (demoMode) {
         aiBlock.hidden = false;
-        var aiContent = document.getElementById('app-evidence-ai-content');
-        var aiBtn = aiBlock.querySelector('button');
+        const aiContent = document.getElementById('app-evidence-ai-content');
+        const aiBtn = aiBlock.querySelector('button');
         if (aiBtn) aiBtn.disabled = true;
         if (aiContent) {
           aiContent.textContent = '';
-          var callout = document.createElement('div');
+          const callout = document.createElement('div');
           callout.className = 'app-callout';
           callout.dataset.tone = 'info';
           callout.appendChild(document.createTextNode('AI analysis is available on Pro plans and above. '));
-          var planLink = document.createElement('a');
+          const planLink = document.createElement('a');
           planLink.href = '/#pricing';
           planLink.textContent = 'View Plans';
           callout.appendChild(planLink);
@@ -1024,12 +1024,12 @@
       if (demoMode) {
         footerEl.textContent = '';
         footerEl.appendChild(document.createTextNode('Your analysis is ready. '));
-        var signInLink = document.createElement('a');
+        const signInLink = document.createElement('a');
         signInLink.href = '/app/';
         signInLink.textContent = 'Sign in';
         signInLink.addEventListener('click', function (e) {
           e.preventDefault();
-          var loginBtn = document.getElementById('auth-login-btn');
+          const loginBtn = document.getElementById('auth-login-btn');
           if (loginBtn) loginBtn.click();
         });
         footerEl.appendChild(signInLink);

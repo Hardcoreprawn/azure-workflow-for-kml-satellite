@@ -490,9 +490,13 @@ class TestOrchestratorCoordinatorSize:
 
     def test_orchestrator_body_within_limit(self):
         import ast
+        import inspect
         from pathlib import Path
 
-        src = Path("blueprints/pipeline/orchestrator.py").read_text()
+        import blueprints.pipeline.orchestrator as orch_mod
+
+        src_path = Path(inspect.getfile(orch_mod))
+        src = src_path.read_text()
         tree = ast.parse(src)
 
         for node in ast.walk(tree):

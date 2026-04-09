@@ -295,6 +295,7 @@ def _handle_event(event: dict) -> None:
     event_type = event.get("type", "")
     event_data = event.get("data", {})
     obj = event_data.get("object", {}) if isinstance(event_data, dict) else {}
+    obj = obj if isinstance(obj, dict) else {}
 
     # Map Stripe customer to our user_id via client_reference_id or metadata
     metadata = obj.get("metadata", {})
