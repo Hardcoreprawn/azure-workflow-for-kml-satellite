@@ -1,4 +1,4 @@
-# Architecture Specification: Serverless Geospatial Processing Pipeline**
+# Architecture Specification: Serverless Geospatial Processing Pipeline
 
 ## **1. Overview**
 
@@ -8,7 +8,7 @@ The architecture separates concerns into three layers:
 
 1. **Frontend/API Layer** — Always‑on, lightweight endpoints  
 2. **Orchestration Layer** — Scale‑to‑zero Durable Functions  
-3. **Compute Layer** — High‑CPU/RAM Container Apps Jobs  
+3. **Compute Layer** — High‑CPU/RAM Activity Functions (with Container Apps Jobs as a horizon option)  
 
 This ensures predictable cost, clean boundaries, and the ability to burst into high‑performance compute only when required.
 
@@ -139,7 +139,7 @@ This ensures predictable cost, clean boundaries, and the ability to burst into h
 
 ### **SWA Functions**
 
-- Must not contain business logic  
+- May contain lightweight, request-scoped business logic (auth/authz, billing/quota checks, read/status lookups, SAS minting) but must not perform heavy compute or long-running processing  
 - Must not perform geospatial operations  
 - Must not call compute containers directly  
 
@@ -192,13 +192,3 @@ This ensures predictable cost, clean boundaries, and the ability to burst into h
 - **No VM or cluster management**  
 
 ---
-
-If you want, I can also generate:
-
-- A **sequence diagram**  
-- A **Bicep/Terraform folder structure**  
-- A **README.md** version of this spec  
-- A **developer onboarding guide**  
-- A **Copilot prompt template** for generating code in this architecture  
-
-Just tell me what you want next.

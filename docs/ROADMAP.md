@@ -43,7 +43,7 @@ Last updated: 2026-04-08
 | **T2 — Orchestrator** | Container Apps (Functions) | 3.12 | Scale-to-zero: Durable orchestration, triggers |
 | **T3 — Compute** | Container Apps (Activities → Jobs) | 3.12+ | Scale-to-zero: GDAL, rasterio, Rust/PyO3 |
 
-Migration is phased across P1–P5 below. Each phase is independently shippable.
+Migration is phased across P1/P3/P5/P8 below. Each phase is independently shippable.
 
 ---
 
