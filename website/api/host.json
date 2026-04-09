@@ -1,5 +1,20 @@
 {
   "version": "2.0",
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Function": "Information",
+      "Host.Aggregator": "Warning",
+      "Host.Results": "Information"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "maxTelemetryItemsPerSecond": 1,
+        "excludedTypes": "Exception"
+      }
+    }
+  },
   "extensionBundle": {
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
     "version": "[4.*, 5.0.0)"

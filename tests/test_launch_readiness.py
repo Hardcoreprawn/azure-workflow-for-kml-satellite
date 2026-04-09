@@ -873,3 +873,64 @@ class TestInfracostCostGate:
         assert "infracost" in content, (
             "pyproject.toml must define an 'infracost' optional dep group"
         )
+
+
+# ---------------------------------------------------------------------------
+# 16. SWA managed API — Application Insights instrumentation
+# ---------------------------------------------------------------------------
+
+
+SWA_API_HOST_JSON = WEBSITE / "api" / "host.json"
+
+
+class TestSwaAppInsights:
+    """Ensure SWA managed API has Application Insights observability (#464)."""
+
+    @pytest.fixture()
+    def main_tf(self):
+        return MAIN_TF.read_text()
+
+    def test_swa_app_settings_include_appinsights_connection_string(self, main_tf):
+        # The local definition is the last occurrence of swa_api_app_settings
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in swa_block, (
+            "swa_api_app_settings must include APPLICATIONINSIGHTS_CONNECTION_STRING "
+            "so the SWA managed API sends telemetry to App Insights"
+        )
+        assert "azurerm_application_insights.main.connection_string" in swa_block, (
+            "APPLICATIONINSIGHTS_CONNECTION_STRING must reference "
+            "azurerm_application_insights.main.connection_string"
+        )
+
+    def test_swa_app_settings_include_otel_service_name(self, main_tf):
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        assert '"canopex-swa-api"' in swa_block, (
+            "swa_api_app_settings must set OTEL_SERVICE_NAME to 'canopex-swa-api' "
+            "so cloud_RoleName distinguishes SWA API from Container Apps function app"
+        )
+
+    def test_swa_api_host_json_has_appinsights_logging(self):
+        host = json.loads(SWA_API_HOST_JSON.read_text())
+        logging_cfg = host.get("logging", {})
+        ai_cfg = logging_cfg.get("applicationInsights", {})
+        sampling = ai_cfg.get("samplingSettings", {})
+        assert sampling.get("isEnabled") is True, (
+            "website/api/host.json must enable Application Insights sampling "
+            "to control telemetry volume"
+        )
+        assert sampling.get("maxTelemetryItemsPerSecond") == 1, (
+            "website/api/host.json maxTelemetryItemsPerSecond must be 1 "
+            "to match the Container Apps host.json sampling rate"
+        )
+
+    def test_swa_api_host_json_excludes_exceptions_from_sampling(self):
+        host = json.loads(SWA_API_HOST_JSON.read_text())
+        excluded = (
+            host.get("logging", {})
+            .get("applicationInsights", {})
+            .get("samplingSettings", {})
+            .get("excludedTypes", "")
+        )
+        assert "Exception" in excluded, (
+            "website/api/host.json must exclude Exception from sampling so all errors are captured"
+        )
