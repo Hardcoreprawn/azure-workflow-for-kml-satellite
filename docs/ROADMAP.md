@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-09 (PR #484 — catalogue migration)
+Last updated: 2026-04-09 (PR #484 merged — T1.1 complete)
 
 ---
 
@@ -24,12 +24,12 @@ Last updated: 2026-04-09 (PR #484 — catalogue migration)
 
 | PR | Summary |
 |----|---------|
+| #484 | SWA catalogue endpoints — list, detail, by_run, by_aoi (completes #465 / T1.1) |
 | #483 | SWA contact form, readiness, contract endpoints + deploy smoke-check fix (partial #465) |
 | #481 | SWA billing endpoints — billing/status, billing/checkout, billing/portal (partial #465, #474) |
 | #478 | SWA API App Insights instrumentation — connection string, OTEL service name, sampling (fixes #464) |
 | #477 | SWA auth fix: use CIAM_CLIENT_ID/SECRET instead of managed-identity refs |
 | #476 | Trivy IaC false-positive suppressions + triage policy |
-| #475 | Roadmap update — post-merge sweep |
 
 ---
 
@@ -108,7 +108,7 @@ Expand SWA managed API to serve all user-facing reads. Part of #463.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | 🔄 PR #481 (billing), #483 (contact, readiness, contract), #484 (catalogue) |
+| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | ✅ PR #481 (billing), #483 (contact, readiness, contract), #484 (catalogue) |
 | T1.2 | #424 | Complete remaining SWA endpoint migration | #465 |
 
 **Exit criteria:** SWA serves all read + lightweight write endpoints. Container App only wakes for pipeline execution and write paths. No GDAL in SWA image.
