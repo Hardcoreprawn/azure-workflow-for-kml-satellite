@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-09 (PR #484 merged — T1.1 complete)
+Last updated: 2026-04-09 (PR #487 — P2 Q.1–Q.4 complete)
 
 ---
 
@@ -89,12 +89,12 @@ Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| Q.1 | #452 | Decompose 338-line orchestrator into phase functions | Open |
-| Q.2 | #457 | Chained .get() patterns with fragile fallbacks | Open |
-| Q.3 | #458 | app-shell.js — fetch swallowing, innerHTML XSS, code quality | Open |
-| Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | Open |
+| Q.1 | #452 | Decompose 338-line orchestrator into phase functions | ✅ PR #487 |
+| Q.2 | #457 | Chained .get() patterns with fragile fallbacks | ✅ PR #487 |
+| Q.3 | #458 | app-shell.js — fetch swallowing, innerHTML XSS, code quality | ✅ PR #487 |
+| Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | ✅ PR #487 |
 | Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Open |
-| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | 🔄 PR #476 (Trivy IaC partial) |
+| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | ✅ Closed |
 | Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | Open |
 | Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Open |
 

@@ -150,24 +150,24 @@
     }
   };
 
-  var apiDiscoveryReady = null;
+  let apiDiscoveryReady = null;
 
   // SWA BFF pattern: all API calls are same-origin (/api/*).
   // Endpoints not yet migrated to the SWA managed API will return 404.
   // See ROADMAP.md P1 2B.4 for endpoint migration tracking.
-  var currentAccount = null;   // populated by /.auth/me
-  var latestBillingStatus = null;
-  var latestAnalysisRun = null;
-  var analysisHistoryRuns = [];
-  var analysisHistoryLoaded = false;
-  var selectedAnalysisRunId = null;
-  var analysisDraftSummary = null;
-  var workspaceRole = 'conservation';
-  var workspacePreference = 'investigate';
-  var activeAnalysisPoll = null;
-  var demoMode = false;
-  var ANALYSIS_PHASES = ['submit', 'ingestion', 'acquisition', 'fulfilment', 'enrichment', 'complete'];
-  var ANALYSIS_PHASE_DETAILS = {
+  let currentAccount = null;   // populated by /.auth/me
+  let latestBillingStatus = null;
+  let latestAnalysisRun = null;
+  let analysisHistoryRuns = [];
+  let analysisHistoryLoaded = false;
+  let selectedAnalysisRunId = null;
+  let analysisDraftSummary = null;
+  let workspaceRole = 'conservation';
+  let workspacePreference = 'investigate';
+  let activeAnalysisPoll = null;
+  let demoMode = false;
+  const ANALYSIS_PHASES = ['submit', 'ingestion', 'acquisition', 'fulfilment', 'enrichment', 'complete'];
+  const ANALYSIS_PHASE_DETAILS = {
     submit: 'Uploading your KML and reserving a pipeline worker for this run.',
     ingestion: 'Parsing the file, validating AOI geometry, and preparing the analysis package.',
     acquisition: 'Searching NAIP and Sentinel-2 coverage to find the best imagery for each AOI.',
@@ -177,7 +177,7 @@
   };
 
   /* --- Sample KML locations (shared with landing page demo) --- */
-  var SAMPLE_KMLS = {
+  const SAMPLE_KMLS = {
     madera: {
       name: 'Madera County Orchards',
       placemark: 'Block A — Almond Grove',
@@ -294,7 +294,16 @@
     opts.headers = opts.headers || {};
     // SWA built-in auth: session cookie is sent automatically.
     // No Authorization header needed — SWA injects x-ms-client-principal.
-    try { return await fetch(path, opts); } catch { return null; }
+    const resp = await fetch(path, opts);
+    if (!resp.ok) {
+      const body = await resp.json().catch(function () { return {}; });
+      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      const err = new Error(msg);
+      err.status = resp.status;
+      err.body = body;
+      throw err;
+    }
+    return resp;
   }
 
   function setAnalysisStatus(message, tone) {
@@ -882,15 +891,15 @@
   /*  Evidence surface — fetches and renders real data for completed runs */
   /* ------------------------------------------------------------------ */
 
-  var evidenceMap = null;
-  var evidenceMapLayers = [];
-  var evidenceFrameIndex = 0;
-  var evidenceLayerMode = 'rgb'; // 'rgb' | 'ndvi'
-  var evidencePlayInterval = null;
-  var evidenceManifest = null;
-  var evidenceAnalysis = null;
-  var evidenceInstanceId = null;
-  var evidenceMapExpanded = false;
+  let evidenceMap = null;
+  let evidenceMapLayers = [];
+  let evidenceFrameIndex = 0;
+  let evidenceLayerMode = 'rgb'; // 'rgb' | 'ndvi'
+  let evidencePlayInterval = null;
+  let evidenceManifest = null;
+  let evidenceAnalysis = null;
+  let evidenceInstanceId = null;
+  let evidenceMapExpanded = false;
 
   function expandEvidenceMap() {
     var mapEl = document.getElementById('app-evidence-map');
@@ -967,7 +976,6 @@
     try {
       await apiDiscoveryReady;
       var manifestRes = await apiFetch('/api/timelapse-data/' + encodeURIComponent(instanceId));
-      if (!manifestRes || !manifestRes.ok) throw new Error('Could not load enrichment manifest.');
       evidenceManifest = await manifestRes.json();
     } catch (err) {
       if (footerEl) footerEl.textContent = 'Could not load enrichment data: ' + ((err && err.message) || 'unknown error');
@@ -992,10 +1000,21 @@
     if (aiBlock) {
       if (demoMode) {
         aiBlock.hidden = false;
-        var aiContent = document.getElementById('app-evidence-ai-content');
-        var aiBtn = aiBlock.querySelector('button');
+        const aiContent = document.getElementById('app-evidence-ai-content');
+        const aiBtn = aiBlock.querySelector('button');
         if (aiBtn) aiBtn.disabled = true;
-        if (aiContent) aiContent.innerHTML = '<div class="app-callout" data-tone="info">AI analysis is available on Pro plans and above. <a href="/#pricing">View Plans</a></div>';
+        if (aiContent) {
+          aiContent.textContent = '';
+          const callout = document.createElement('div');
+          callout.className = 'app-callout';
+          callout.dataset.tone = 'info';
+          callout.appendChild(document.createTextNode('AI analysis is available on Pro plans and above. '));
+          const planLink = document.createElement('a');
+          planLink.href = '/#pricing';
+          planLink.textContent = 'View Plans';
+          callout.appendChild(planLink);
+          aiContent.appendChild(callout);
+        }
       } else {
         aiBlock.hidden = !(latestBillingStatus && latestBillingStatus.capabilities && latestBillingStatus.capabilities.ai_insights);
       }
@@ -1003,7 +1022,18 @@
 
     if (footerEl) {
       if (demoMode) {
-        footerEl.innerHTML = 'Your analysis is ready. <a href="/app/" onclick="event.preventDefault(); document.getElementById(\'auth-login-btn\').click();">Sign in</a> to save it, unlock AI insights, and export evidence.';
+        footerEl.textContent = '';
+        footerEl.appendChild(document.createTextNode('Your analysis is ready. '));
+        const signInLink = document.createElement('a');
+        signInLink.href = '/app/';
+        signInLink.textContent = 'Sign in';
+        signInLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          const loginBtn = document.getElementById('auth-login-btn');
+          if (loginBtn) loginBtn.click();
+        });
+        footerEl.appendChild(signInLink);
+        footerEl.appendChild(document.createTextNode(' to save it, unlock AI insights, and export evidence.'));
       } else {
         footerEl.textContent = 'Evidence loaded for run ' + instanceId.slice(0, 8) + '.';
       }
@@ -1024,12 +1054,15 @@
   }
 
   function createStatEl(label, value, tone) {
-    var cls = tone === 'positive' ? ' positive' : tone === 'negative' ? ' negative' : ' neutral';
-    var div = document.createElement('div');
+    let cls;
+    if (tone === 'positive') cls = ' positive';
+    else if (tone === 'negative') cls = ' negative';
+    else cls = ' neutral';
+    const div = document.createElement('div');
     div.className = 'app-evidence-stat';
-    var span = document.createElement('span');
+    const span = document.createElement('span');
     span.textContent = label;
-    var strong = document.createElement('strong');
+    const strong = document.createElement('strong');
     strong.className = cls;
     strong.textContent = value;
     div.appendChild(span);
@@ -1092,9 +1125,15 @@
       else if (delta < -0.05) { trajectory = 'Declining ↓'; trajectoryTone = 'negative'; }
     }
 
+    var meanLabel = overallMean != null ? overallMean.toFixed(3) : '\u2014';
+    var meanTone = '';
+    if (overallMean != null && overallMean > 0.4) meanTone = 'positive';
+    else if (overallMean != null && overallMean < 0.2) meanTone = 'negative';
+    var rangeLabel = overallMin != null ? overallMin.toFixed(2) + ' \u2013 ' + overallMax.toFixed(2) : '\u2014';
+
     setStatGrid(grid, [
-      ['Mean NDVI', overallMean != null ? overallMean.toFixed(3) : '\u2014', overallMean > 0.4 ? 'positive' : overallMean < 0.2 ? 'negative' : ''],
-      ['Range', overallMin != null ? overallMin.toFixed(2) + ' \u2013 ' + overallMax.toFixed(2) : '\u2014', ''],
+      ['Mean NDVI', meanLabel, meanTone],
+      ['Range', rangeLabel, ''],
       ['Trajectory', trajectory, trajectoryTone]
     ]);
 
@@ -1500,12 +1539,10 @@
     try {
       await apiDiscoveryReady;
       var res = await apiFetch('/api/timelapse-analysis-load/' + encodeURIComponent(instanceId));
-      if (res && res.ok) {
-        evidenceAnalysis = await res.json();
-        if (evidenceAnalysis && (evidenceAnalysis.observations || evidenceAnalysis.summary)) {
-          aiBlock.hidden = false;
-          renderEvidenceAnalysis(evidenceAnalysis);
-        }
+      evidenceAnalysis = await res.json();
+      if (evidenceAnalysis && (evidenceAnalysis.observations || evidenceAnalysis.summary)) {
+        aiBlock.hidden = false;
+        renderEvidenceAnalysis(evidenceAnalysis);
       }
     } catch (e) { /* ignore — no saved analysis yet */ }
   }
@@ -1565,11 +1602,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-
-      if (!res || !res.ok) {
-        var err = res ? await res.json().catch(function() { return {}; }) : {};
-        throw new Error(err.error || 'AI analysis failed.');
-      }
 
       evidenceAnalysis = await res.json();
       renderEvidenceAnalysis(evidenceAnalysis);
@@ -1672,11 +1704,6 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-
-      if (!res || !res.ok) {
-        var err = res ? await res.json().catch(function() { return {}; }) : {};
-        throw new Error(err.error || 'EUDR assessment failed.');
-      }
 
       var result = await res.json();
       var cls = (result.compliant || result.deforestation_free) ? 'compliant' : 'non-compliant';
@@ -1894,10 +1921,6 @@
     try {
       await apiDiscoveryReady;
       var res = await apiFetch('/api/export/' + encodeURIComponent(instanceId) + '/' + format);
-      if (!res || !res.ok) {
-        var err = res ? await res.json().catch(function() { return {}; }) : {};
-        throw new Error(err.error || 'Could not prepare the export.');
-      }
       var blob = await res.blob();
       var blobUrl = URL.createObjectURL(blob);
       var link = document.createElement('a');
@@ -1974,7 +1997,9 @@
       el.className = 'pipeline-step';
 
       if (stepPhase === phase) {
-        el.classList.add(state === 'failed' ? 'failed' : state === 'done' ? 'done' : 'active');
+        if (state === 'failed') el.classList.add('failed');
+        else if (state === 'done') el.classList.add('done');
+        else el.classList.add('active');
         if (!icon) return;
         if (state === 'done') {
           icon.textContent = '✓';
@@ -2346,7 +2371,6 @@
     async function refreshRun() {
       try {
         var res = await apiFetch('/api/orchestrator/' + instanceId);
-        if (!res || !res.ok) return null;
         var data = await res.json();
         upsertAnalysisHistoryRun(data);
         updateAnalysisRun(data);
@@ -2543,15 +2567,10 @@
     await apiDiscoveryReady;
     try {
       var res = await apiFetch('/api/billing/portal', { method: 'POST' });
-      if (!res || !res.ok) {
-        var err = res ? await res.json().catch(function(){ return {}; }) : {};
-        alert(err.error || 'Could not open billing portal. Please try again.');
-        return;
-      }
       var data = await res.json();
       if (data.portal_url) window.location.href = data.portal_url;
-    } catch {
-      alert('Could not open billing portal. Please try again.');
+    } catch (err) {
+      alert((err && err.message) || 'Could not open billing portal. Please try again.');
     }
   }
 
@@ -2663,14 +2682,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tier: select.value })
       });
-      if (!res || !res.ok) {
-        var err = res ? await res.json().catch(function(){ return {}; }) : {};
-        alert(err.error || 'Could not update plan emulation. Please try again.');
-        return;
-      }
       applyBillingStatus(await res.json());
-    } catch {
-      alert('Could not update plan emulation. Please try again.');
+    } catch (err) {
+      alert((err && err.message) || 'Could not update plan emulation. Please try again.');
     } finally {
       button.disabled = false;
       button.textContent = 'Apply';
@@ -2683,7 +2697,6 @@
 
     try {
       var res = await apiFetch('/api/billing/status');
-      if (!res || !res.ok) throw new Error('status unavailable');
       applyBillingStatus(await res.json());
     } catch {
       document.getElementById('app-tier').textContent = 'Unknown';
@@ -2702,7 +2715,6 @@
 
     try {
       var res = await apiFetch('/api/analysis/history?limit=6');
-      if (!res || !res.ok) throw new Error('history unavailable');
       analysisHistoryLoaded = true;
       applyAnalysisHistory(await res.json(), options || {});
       applyFirstRunLayout();

@@ -96,24 +96,28 @@ def fetch_usgs_streamflow(
         resp = httpx.get(USGS_NWIS_API, params=params, timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
-        ts_list = data.get("value", {}).get("timeSeries", [])
+        value_block = data.get("value", {})
+        ts_list = value_block.get("timeSeries", []) if isinstance(value_block, dict) else []
         events: list[dict[str, Any]] = []
         for ts in ts_list[:20]:  # Limit to 20 gauges
             site_info = ts.get("sourceInfo", {})
-            values = ts.get("values", [{}])
-            latest_values = values[0].get("value", []) if values else []
-            latest = latest_values[-1] if latest_values else {}
+            values = ts.get("values", [])
+            first_values = values[0].get("value", []) if values else []
+            latest = first_values[-1] if first_values else {}
+
+            site_codes = site_info.get("siteCode", [])
+            site_code = site_codes[0].get("value", "") if site_codes else ""
+
+            geo_loc = site_info.get("geoLocation", {})
+            geog = geo_loc.get("geogLocation", {})
+
             events.append(
                 {
                     "source": "usgs",
                     "site_name": site_info.get("siteName", ""),
-                    "site_code": site_info.get("siteCode", [{}])[0].get("value", ""),
-                    "latitude": site_info.get("geoLocation", {})
-                    .get("geogLocation", {})
-                    .get("latitude"),
-                    "longitude": site_info.get("geoLocation", {})
-                    .get("geogLocation", {})
-                    .get("longitude"),
+                    "site_code": site_code,
+                    "latitude": geog.get("latitude"),
+                    "longitude": geog.get("longitude"),
                     "discharge_cfs": float(latest["value"]) if latest.get("value") else None,
                     "datetime": latest.get("dateTime", ""),
                 }

@@ -7,10 +7,10 @@
 
   async function initAuth() {
     try {
-      var res = await fetch('/.auth/me');
+      const res = await fetch('/.auth/me');
       if (!res.ok) { updateAuthUI(); return; }
-      var data = await res.json();
-      var principal = data && data.clientPrincipal;
+      const data = await res.json();
+      const principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
         currentAccount = {
           userId: principal.userId,
@@ -68,7 +68,16 @@
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
-    try { return await fetch(path, opts); } catch { return null; }
+    const resp = await fetch(path, opts);
+    if (!resp.ok) {
+      const body = await resp.json().catch(function () { return {}; });
+      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      const err = new Error(msg);
+      err.status = resp.status;
+      err.body = body;
+      throw err;
+    }
+    return resp;
   }
 
   async function discoverApiBase() {
@@ -82,7 +91,9 @@
         badge.className = 'online';
         return;
       }
-    } catch { }
+    } catch (err) {
+      console.warn('[canopex] Health check failed:', err);
+    }
 
     badge.textContent = 'Unavailable';
     badge.className = 'offline';
@@ -127,20 +138,13 @@
           })
         });
 
-        if (res && res.ok) {
-          if (status) {
-            status.textContent = 'Thanks! We\'ll be in touch.';
-            status.style.color = 'var(--c-green)';
-          }
-        } else {
-          if (status) {
-            status.textContent = 'Submission failed. Please try again.';
-            status.style.color = 'var(--c-red)';
-          }
-        }
-      } catch {
         if (status) {
-          status.textContent = 'Failed to reach API.';
+          status.textContent = 'Thanks! We\'ll be in touch.';
+          status.style.color = 'var(--c-green)';
+        }
+      } catch (err) {
+        if (status) {
+          status.textContent = (err && err.message) || 'Submission failed. Please try again.';
           status.style.color = 'var(--c-red)';
         }
       }
@@ -162,13 +166,13 @@
   /* --- Apply gated pricing (hide real prices when billing is restricted) --- */
 
   // Capture original pricing card state at init for safe restoration
-  var _originalCardState = {};
+  const _originalCardState = {};
   document.addEventListener('DOMContentLoaded', function() {
-    var cards = document.querySelectorAll('.pricing-card[data-tier]');
+    const cards = document.querySelectorAll('.pricing-card[data-tier]');
     cards.forEach(function(card) {
-      var tier = card.getAttribute('data-tier');
-      var priceEl = card.querySelector('.tier-price');
-      var cta = card.querySelector('.pricing-cta');
+      const tier = card.getAttribute('data-tier');
+      const priceEl = card.querySelector('.tier-price');
+      const cta = card.querySelector('.pricing-cta');
       _originalCardState[tier] = {
         priceNode: priceEl ? priceEl.cloneNode(true) : null,
         ctaText: cta ? cta.textContent : '',
@@ -179,28 +183,28 @@
   });
 
   function applyGatedPricing(gated, priceLabels) {
-    var cards = document.querySelectorAll('.pricing-card[data-tier]');
-    var subtitle = document.getElementById('pricing-subtitle');
+    const cards = document.querySelectorAll('.pricing-card[data-tier]');
+    const subtitle = document.getElementById('pricing-subtitle');
 
     cards.forEach(function(card) {
-      var tier = card.getAttribute('data-tier');
-      var priceEl = card.querySelector('.tier-price');
+      const tier = card.getAttribute('data-tier');
+      const priceEl = card.querySelector('.tier-price');
       if (!priceEl) return;
 
       if (gated && priceLabels && priceLabels[tier]) {
         priceEl.textContent = priceLabels[tier];
       } else {
         // Restore original price DOM from captured clone (avoids innerHTML)
-        var orig = _originalCardState[tier];
+        const orig = _originalCardState[tier];
         if (orig && orig.priceNode) {
-          var restored = orig.priceNode.cloneNode(true);
+          const restored = orig.priceNode.cloneNode(true);
           priceEl.parentNode.replaceChild(restored, priceEl);
         }
       }
     });
 
     // Swap "Get Pro" checkout button with "Express Interest" when gated
-    var proBtn = document.getElementById('btn-upgrade-pro');
+    const proBtn = document.getElementById('btn-upgrade-pro');
     if (proBtn && gated) {
       proBtn.textContent = 'Express Interest';
       proBtn.onclick = function() { window.canopexBilling.expressInterest(); };
@@ -218,16 +222,16 @@
 
     // Swap paid tier CTAs to "Express Interest" when gated, restore when ungated
     cards.forEach(function(card) {
-      var tier = card.getAttribute('data-tier');
+      const tier = card.getAttribute('data-tier');
       if (tier === 'free' || tier === 'enterprise') return;
-      var cta = card.querySelector('.pricing-cta');
+      const cta = card.querySelector('.pricing-cta');
       if (!cta || cta.id === 'btn-upgrade-pro') return;
 
       if (gated) {
         cta.textContent = 'Express Interest';
         cta.href = '#early-access';
       } else {
-        var orig = _originalCardState[tier];
+        const orig = _originalCardState[tier];
         if (orig) {
           cta.textContent = orig.ctaText;
           if (orig.ctaHref) cta.href = orig.ctaHref;
@@ -245,16 +249,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tier: 'pro' })
         });
-        if (!res || !res.ok) {
-          const err = res ? await res.json().catch(function(){return {};}) : {};
-          alert(err.error || 'Could not connect to billing. Please try again.');
-          return;
-        }
         const data = await res.json();
         if (data.checkout_url) { window.location.href = data.checkout_url; }
       } catch(e) {
         console.error('Checkout error:', e);
-        alert('Could not connect to billing. Please try again later.');
+        alert((e && e.message) || 'Could not connect to billing. Please try again later.');
       }
     },
 
@@ -262,25 +261,20 @@
       if (!currentAccount && authEnabled()) { login(); return; }
       try {
         const res = await apiFetch('/api/billing/portal', { method: 'POST' });
-        if (!res || !res.ok) {
-          const err = res ? await res.json().catch(function(){return {};}) : {};
-          alert(err.error || 'Could not open billing portal. Please try again.');
-          return;
-        }
         const data = await res.json();
         if (data.portal_url) { window.location.href = data.portal_url; }
       } catch(e) {
         console.error('Portal error:', e);
-        alert('Could not connect to billing. Please try again later.');
+        alert((e && e.message) || 'Could not connect to billing. Please try again later.');
       }
     },
 
     expressInterest: function() {
       // Scroll to the early-access / contact form section
-      var section = document.getElementById('early-access');
+      const section = document.getElementById('early-access');
       if (section) {
         section.scrollIntoView({ behavior: 'smooth' });
-        var emailInput = document.getElementById('ea-email');
+        const emailInput = document.getElementById('ea-email');
         if (emailInput) setTimeout(function() { emailInput.focus(); }, 400);
       }
     },
@@ -293,7 +287,6 @@
       }
       try {
         const res = await apiFetch('/api/billing/status');
-        if (!res || !res.ok) return;
         const data = await res.json();
 
         // Apply gated pricing if billing is restricted for this user
