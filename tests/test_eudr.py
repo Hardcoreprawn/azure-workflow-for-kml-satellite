@@ -179,6 +179,53 @@ class TestWdpaCheck:
         assert result["protected_areas"] == []
 
 
+class TestWdpaAreaParsing:
+    """Verify safe extraction of nested WDPA attributes (#457)."""
+
+    def _parse_area(self, area: dict) -> dict:
+        """Call the internal area-parsing logic."""
+        from treesight.pipeline.eudr import _parse_wdpa_area
+
+        return _parse_wdpa_area(area)
+
+    def test_extracts_country_from_populated_list(self):
+        area = {
+            "id": 1,
+            "attributes": {
+                "name": "Park",
+                "countries": [{"name": "Kenya"}],
+            },
+        }
+        result = self._parse_area(area)
+        assert result["country"] == "Kenya"
+
+    def test_empty_countries_list(self):
+        area = {"id": 1, "attributes": {"name": "Park", "countries": []}}
+        result = self._parse_area(area)
+        assert result["country"] == ""
+
+    def test_missing_countries_key(self):
+        area = {"id": 1, "attributes": {"name": "Park"}}
+        result = self._parse_area(area)
+        assert result["country"] == ""
+
+    def test_missing_designation_nested(self):
+        area = {"id": 1, "attributes": {"name": "Park"}}
+        result = self._parse_area(area)
+        assert result["designation"] == ""
+
+    def test_designation_name_extracted(self):
+        area = {
+            "id": 1,
+            "attributes": {
+                "name": "Park",
+                "designation": {"name": "National Park"},
+            },
+        }
+        result = self._parse_area(area)
+        assert result["designation"] == "National Park"
+
+
 # ---------------------------------------------------------------------------
 # §4 — WorldCover classes
 # ---------------------------------------------------------------------------

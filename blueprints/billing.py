@@ -293,12 +293,14 @@ def _handle_event(event: dict) -> None:
     from treesight.security.billing import save_subscription
 
     event_type = event.get("type", "")
-    obj = event.get("data", {}).get("object", {})
+    event_data = event.get("data", {})
+    obj = event_data.get("object", {}) if isinstance(event_data, dict) else {}
 
     # Map Stripe customer to our user_id via client_reference_id or metadata
+    metadata = obj.get("metadata", {})
     user_id = (
         obj.get("client_reference_id")
-        or obj.get("metadata", {}).get("user_id")
+        or (metadata.get("user_id") if isinstance(metadata, dict) else None)
         or _user_id_from_customer(obj.get("customer"))
     )
 

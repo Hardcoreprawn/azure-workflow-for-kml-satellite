@@ -139,6 +139,29 @@ def _xml_escape(text: str) -> str:
 _WDPA_API_BASE = "https://api.protectedplanet.net/v3"
 
 
+def _parse_wdpa_area(area: dict[str, Any]) -> dict[str, Any]:
+    """Extract a flat dict from a single WDPA API area response."""
+    attrs = area.get("attributes", {})
+
+    designation = attrs.get("designation", {})
+    designation_name = designation.get("name", "") if isinstance(designation, dict) else ""
+
+    iucn = attrs.get("iucn_category", {})
+    iucn_name = iucn.get("name", "") if isinstance(iucn, dict) else ""
+
+    countries = attrs.get("countries", [])
+    country_name = countries[0].get("name", "") if countries else ""
+
+    return {
+        "name": attrs.get("name", "Unknown"),
+        "wdpa_id": area.get("id"),
+        "designation": designation_name,
+        "iucn_category": iucn_name,
+        "status": attrs.get("legal_status", ""),
+        "country": country_name,
+    }
+
+
 def check_wdpa_overlap(
     lon: float,
     lat: float,
@@ -179,21 +202,7 @@ def check_wdpa_overlap(
         data = resp.json()
         areas = data.get("protected_areas", [])
 
-        results: list[dict[str, Any]] = []
-        for area in areas:
-            attrs = area.get("attributes", {})
-            results.append(
-                {
-                    "name": attrs.get("name", "Unknown"),
-                    "wdpa_id": area.get("id"),
-                    "designation": attrs.get("designation", {}).get("name", ""),
-                    "iucn_category": attrs.get("iucn_category", {}).get("name", ""),
-                    "status": attrs.get("legal_status", ""),
-                    "country": attrs.get("countries", [{}])[0].get("name", "")
-                    if attrs.get("countries")
-                    else "",
-                }
-            )
+        results = [_parse_wdpa_area(area) for area in areas]
 
         return {
             "checked": True,

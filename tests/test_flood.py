@@ -106,6 +106,66 @@ class TestFetchUsgsStreamflow:
         assert events[0]["site_name"] == "Test River"
         assert events[0]["discharge_cfs"] == 1500.0
 
+    def test_handles_empty_site_code(self):
+        """siteCode may be an empty list — should not crash."""
+        mock_json = {
+            "value": {
+                "timeSeries": [
+                    {
+                        "sourceInfo": {
+                            "siteName": "Empty Site",
+                            "siteCode": [],
+                            "geoLocation": {
+                                "geogLocation": {"latitude": 40.0, "longitude": -100.0}
+                            },
+                        },
+                        "values": [
+                            {"value": [{"value": "500", "dateTime": "2024-01-15T10:00:00"}]}
+                        ],
+                    }
+                ]
+            }
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = mock_json
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("treesight.pipeline.enrichment.flood.httpx.get", return_value=mock_resp):
+            events = fetch_usgs_streamflow(39.0, -101.0, 41.0, -99.0)
+
+        assert len(events) == 1
+        assert events[0]["site_code"] == ""
+
+    def test_handles_missing_values_list(self):
+        """values may be an empty list — should not crash."""
+        mock_json = {
+            "value": {
+                "timeSeries": [
+                    {
+                        "sourceInfo": {
+                            "siteName": "No Values",
+                            "siteCode": [{"value": "99999"}],
+                            "geoLocation": {
+                                "geogLocation": {"latitude": 40.0, "longitude": -100.0}
+                            },
+                        },
+                        "values": [],
+                    }
+                ]
+            }
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = mock_json
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("treesight.pipeline.enrichment.flood.httpx.get", return_value=mock_resp):
+            events = fetch_usgs_streamflow(39.0, -101.0, 41.0, -99.0)
+
+        assert len(events) == 1
+        assert events[0]["discharge_cfs"] is None
+
     def test_returns_error_on_failure(self):
         with patch(
             "treesight.pipeline.enrichment.flood.httpx.get",
