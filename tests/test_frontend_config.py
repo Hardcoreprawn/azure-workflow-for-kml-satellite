@@ -79,11 +79,29 @@ class TestSwaAuth:
         reg = aad.get("registration", {})
         assert reg.get("clientIdSettingName"), "clientIdSettingName must be set"
 
+    def test_client_id_not_azure_client_id(self, swa_config):
+        """clientIdSettingName must NOT be AZURE_CLIENT_ID (used by managed identity)."""
+        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
+        reg = aad.get("registration", {})
+        assert reg.get("clientIdSettingName") != "AZURE_CLIENT_ID", (
+            "clientIdSettingName must not be AZURE_CLIENT_ID — that setting "
+            "holds the managed identity client ID, not the CIAM app registration"
+        )
+
     def test_client_secret_setting_name(self, swa_config):
         """clientSecretSettingName must reference an app setting name."""
         aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
         reg = aad.get("registration", {})
         assert reg.get("clientSecretSettingName"), "clientSecretSettingName must be set"
+
+    def test_client_secret_not_azure_client_secret(self, swa_config):
+        """clientSecretSettingName must NOT be AZURE_CLIENT_SECRET (ambiguous with MI)."""
+        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
+        reg = aad.get("registration", {})
+        assert reg.get("clientSecretSettingName") != "AZURE_CLIENT_SECRET", (
+            "clientSecretSettingName must not be AZURE_CLIENT_SECRET — use a "
+            "CIAM-specific setting name to avoid confusion with managed identity"
+        )
 
     def test_api_routes_require_auth(self, swa_config):
         """API routes (except health) must require authentication."""

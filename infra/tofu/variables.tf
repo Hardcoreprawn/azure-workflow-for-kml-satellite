@@ -135,6 +135,13 @@ variable "ciam_client_id" {
   default     = ""
 }
 
+variable "ciam_client_secret" {
+  description = "CIAM app registration client secret for SWA built-in auth OIDC code flow. Must be set when ciam_tenant_name is non-empty."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # --- Stripe billing (M4) ---
 
 variable "enable_stripe" {
