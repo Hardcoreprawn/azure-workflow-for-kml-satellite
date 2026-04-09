@@ -24,12 +24,12 @@ Last updated: 2026-04-09 (post-merge sweep)
 
 | PR | Summary |
 |----|---------|
+| #481 | SWA billing endpoints — billing/status, billing/checkout, billing/portal (partial #465, #474) |
 | #478 | SWA API App Insights instrumentation — connection string, OTEL service name, sampling (fixes #464) |
 | #477 | SWA auth fix: use CIAM_CLIENT_ID/SECRET instead of managed-identity refs |
 | #476 | Trivy IaC false-positive suppressions + triage policy |
 | #475 | Roadmap update — post-merge sweep |
 | #472 | SWA built-in auth — drop MSAL.js, add health endpoint, urlparse issuer (fixes #446) |
-| #473 | Storage diagnostic logging + CodeQL abstract-method fix |
 
 ---
 
@@ -108,7 +108,7 @@ Expand SWA managed API to serve all user-facing reads. Part of #463.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | #464, #446 |
+| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | 🔄 PR #481 (billing done); health, catalogue, contact remain |
 | T1.2 | #424 | Complete remaining SWA endpoint migration | #465 |
 
 **Exit criteria:** SWA serves all read + lightweight write endpoints. Container App only wakes for pipeline execution and write paths. No GDAL in SWA image.
