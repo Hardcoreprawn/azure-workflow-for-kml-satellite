@@ -62,9 +62,4 @@ resource "azuread_application" "ciam" {
     }
   }
 
-  lifecycle {
-    # The client secret is managed outside this resource (var.ciam_client_secret).
-    # Prevent tofu from interfering with password rotation.
-    ignore_changes = [password]
-  }
 }

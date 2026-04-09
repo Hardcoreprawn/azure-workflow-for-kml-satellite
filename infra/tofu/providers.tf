@@ -8,7 +8,7 @@ provider "azurerm" {
 # either via Azure CLI (`az login --tenant <ciam_tenant_id>`) or a
 # service principal with Application.ReadWrite.OwnedBy in that tenant.
 provider "azuread" {
-  tenant_id = var.ciam_tenant_id
+  tenant_id = var.ciam_tenant_id != "" ? var.ciam_tenant_id : null
 }
 
 provider "azapi" {
