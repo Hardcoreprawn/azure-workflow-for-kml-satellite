@@ -48,3 +48,6 @@ Current temporary exceptions:
 
 - `AZU-0012` (Storage account network default deny policy)
 - `AZU-0013` (Key Vault network ACL strictness)
+- `AVD-AZU-0016` (Key Vault purge protection — variable defaults to `true`; Trivy cannot resolve variable refs)
+- `AVD-AZU-0057` (Storage Analytics logging — superseded by `azurerm_monitor_diagnostic_setting`)
+- `AVD-AZU-0061` (Infrastructure encryption — already enabled; Trivy false positive)
