@@ -962,9 +962,11 @@ locals {
   # Auth uses user-assigned managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
-      STORAGE_ACCOUNT_NAME = azurerm_storage_account.main.name
-      INPUT_CONTAINER      = "kml-input"
-      AZURE_CLIENT_ID      = azurerm_user_assigned_identity.swa.client_id
+      STORAGE_ACCOUNT_NAME                  = azurerm_storage_account.main.name
+      INPUT_CONTAINER                       = "kml-input"
+      AZURE_CLIENT_ID                       = azurerm_user_assigned_identity.swa.client_id
+      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
+      OTEL_SERVICE_NAME                     = "canopex-swa-api"
     },
     var.ciam_tenant_name != "" ? {
       CIAM_TENANT_NAME   = var.ciam_tenant_name
