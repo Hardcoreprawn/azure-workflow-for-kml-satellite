@@ -132,7 +132,7 @@ def _try_cache_read(cache_key: str) -> dict[str, Any] | None:
             logger.info("AI cache hit: %s", cache_key)
             result["_cached"] = True
             return result
-    except Exception:
+    except Exception:  # broad: cache is best-effort, any failure is non-fatal
         logger.debug("Cache read failed for %s", cache_key, exc_info=True)
     return None
 
@@ -148,7 +148,7 @@ def _cache_write(cache_key: str, result: dict[str, Any]) -> None:
         blob_path = f"{AI_CACHE_PREFIX}{cache_key}.json"
         client.upload_json(AI_CACHE_CONTAINER, blob_path, result)
         logger.info("AI cache write: %s", cache_key)
-    except Exception:
+    except Exception:  # broad: cache is best-effort, any failure is non-fatal
         logger.debug("Cache write failed for %s", cache_key, exc_info=True)
 
 
@@ -192,7 +192,7 @@ def _call_azure_ai(prompt: str) -> str | None:
             data = resp.json()
             _azure_circuit.record_success()
             return data["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception:  # broad: Azure AI is optional, failures produce None
         logger.warning("Azure AI call failed", exc_info=True)
         _azure_circuit.record_failure()
         return None
@@ -218,7 +218,7 @@ def _call_ollama(prompt: str) -> str | None:
             resp.raise_for_status()
             _ollama_circuit.record_success()
             return resp.json().get("response", "")
-    except Exception:
+    except Exception:  # broad: Ollama is optional fallback, failures produce None
         logger.warning("Ollama call failed", exc_info=True)
         _ollama_circuit.record_failure()
         return None
