@@ -966,7 +966,8 @@ locals {
   }
 
   # SWA managed API settings (upload/token, upload/status, billing/status,
-  # billing/checkout, billing/portal, analysis/history endpoints).
+  # billing/checkout, billing/portal, contact-form, readiness, contract,
+  # analysis/history endpoints).
   # Auth uses user-assigned managed identity — no storage key needed.
   swa_api_app_settings = merge(
     {
@@ -991,6 +992,11 @@ locals {
       STRIPE_PRICE_ID_PRO_USD  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
       STRIPE_PRICE_ID_PRO_EUR  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
       BILLING_ALLOWED_USERS    = var.billing_allowed_users
+    } : {},
+    var.enable_email ? {
+      COMMUNICATION_SERVICES_CONNECTION_STRING = azurerm_communication_service.main[0].primary_connection_string
+      EMAIL_SENDER_ADDRESS                     = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
+      NOTIFICATION_EMAIL                       = var.notification_email
     } : {}
   )
 }

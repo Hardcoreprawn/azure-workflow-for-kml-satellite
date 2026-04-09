@@ -2,8 +2,8 @@
 
 These functions run inside the Static Web App's managed function runtime.
 They handle user-interactive requests (SAS token minting, status polling,
-billing status/checkout/portal) so the main Container Apps function app
-can scale to zero without affecting UX.
+billing status/checkout/portal, contact form, readiness) so the main
+Container Apps function app can scale to zero without affecting UX.
 
 Authentication is handled by the SWA platform using built-in custom auth
 (Azure AD / Entra External ID).  SWA injects user identity via the
@@ -16,18 +16,25 @@ Environment variables (set via SWA app_settings in OpenTofu):
   STRIPE_API_KEY         — Stripe secret key (Key Vault reference)
   STRIPE_PRICE_ID_PRO_*  — Stripe Price IDs per currency
   BILLING_ALLOWED_USERS  — comma-separated user IDs allowed to use billing
+  COMMUNICATION_SERVICES_CONNECTION_STRING — ACS connection string (email)
+  EMAIL_SENDER_ADDRESS   — sender address for email notifications
+  NOTIFICATION_EMAIL     — recipient for contact-form notifications
 
-Authentication to Azure Storage uses the SWA's system-assigned managed
-identity (DefaultAzureCredential) — no shared secrets.
+Authentication to Azure Storage uses the SWA's user-assigned managed
+identity (DefaultAzureCredential + AZURE_CLIENT_ID) — no shared secrets.
 """
 
 from __future__ import annotations
 
 import base64
 import datetime
+import html
 import json
 import logging
 import os
+import re
+import threading
+import time
 import uuid
 
 import azure.functions as func
@@ -159,6 +166,68 @@ GATED_PRICE_LABELS: dict[str, str] = {
     "team": "$$$",
     "enterprise": "Price on Enquiry",
 }
+
+# Contact form — Azure Communication Services email
+COMMUNICATION_SERVICES_CONNECTION_STRING = os.environ.get(
+    "COMMUNICATION_SERVICES_CONNECTION_STRING", ""
+)
+EMAIL_SENDER_ADDRESS = os.environ.get("EMAIL_SENDER_ADDRESS", "")
+NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL", "")
+CONTACT_SUBMISSIONS_CONTAINER = "pipeline-payloads"
+
+# Email validation — same pattern as blueprints/_helpers.py
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_MAX_FIELD_LEN = 2000
+
+# API contract version — mirrors treesight.constants.API_CONTRACT_VERSION.
+# Intentionally duplicated: SWA functions must not import treesight.
+API_CONTRACT_VERSION = "2026-03-15.1"
+
+# Rate limiter — 5 requests per 60s per IP (mirrors treesight form_limiter)
+_RATE_LIMIT_MAX = 5
+_RATE_LIMIT_WINDOW = 60
+_rate_hits: dict[str, list[float]] = {}
+_rate_lock = threading.Lock()
+
+
+def _rate_limit_allowed(key: str) -> bool:
+    """Sliding-window rate limiter for contact form."""
+    now = time.monotonic()
+    cutoff = now - _RATE_LIMIT_WINDOW
+    with _rate_lock:
+        timestamps = _rate_hits.get(key, [])
+        timestamps = [t for t in timestamps if t > cutoff]
+        if len(timestamps) >= _RATE_LIMIT_MAX:
+            _rate_hits[key] = timestamps
+            return False
+        timestamps.append(now)
+        _rate_hits[key] = timestamps
+        # Evict stale keys to prevent unbounded memory growth
+        stale = [k for k, ts in _rate_hits.items() if not ts or ts[-1] <= cutoff]
+        for k in stale:
+            del _rate_hits[k]
+        return True
+
+
+def _get_client_ip(req: func.HttpRequest) -> str:
+    """Extract client IP from Azure request headers.
+
+    Prefers ``X-Azure-ClientIP`` (set by SWA / Container Apps).
+    Falls back to the rightmost ``X-Forwarded-For`` entry — Azure
+    platforms append the real client IP as the last entry, unlike the
+    standard convention where it is first.  This resists spoofing by
+    ignoring client-supplied entries earlier in the chain.
+    """
+    azure_ip = req.headers.get("X-Azure-ClientIP", "")
+    if azure_ip:
+        return azure_ip.strip()
+    forwarded = req.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
+    return "unknown"
+
 
 _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
@@ -902,3 +971,166 @@ def billing_portal(req: func.HttpRequest) -> func.HttpResponse:
 
     logger.info("Portal session created user=%s", user_id)
     return _json_response({"portal_url": session.url})
+
+
+# ---------------------------------------------------------------------------
+# POST /api/contact-form — anonymous early-access / contact submission
+# ---------------------------------------------------------------------------
+
+
+def _sanitise(value: str) -> str:
+    """Strip and truncate a user-supplied string field."""
+    return value.strip()[:_MAX_FIELD_LEN] if isinstance(value, str) else ""
+
+
+def _send_contact_notification(record: dict) -> bool:
+    """Forward a contact-form submission to the notification address via ACS.
+
+    Returns True on success, False on failure.  Never raises.
+    """
+    if not NOTIFICATION_EMAIL:
+        logger.info("NOTIFICATION_EMAIL not set — skipping contact notification")
+        return False
+    if not COMMUNICATION_SERVICES_CONNECTION_STRING or not EMAIL_SENDER_ADDRESS:
+        logger.warning("Email not configured — skipping contact notification")
+        return False
+
+    # Escape user-supplied values before embedding in HTML
+    email_val = html.escape(record.get("email", "unknown"))
+    org = html.escape(record.get("organization", "\u2014"))
+    use_case = html.escape(record.get("use_case", "\u2014"))
+    submitted = html.escape(record.get("submitted_at", "\u2014"))
+    submission_id = html.escape(record.get("submission_id", "\u2014"))
+
+    raw_subject = f"Canopex contact: {record.get('organization') or record.get('email', 'unknown')}"
+    subject = raw_subject.replace("\r", "").replace("\n", " ")[:200]
+    body_html = (
+        "<h2>New Contact Form Submission</h2>"
+        "<table>"
+        f"<tr><td><strong>Email:</strong></td><td>{email_val}</td></tr>"
+        f"<tr><td><strong>Organisation:</strong></td><td>{org}</td></tr>"
+        f"<tr><td><strong>Use Case:</strong></td><td>{use_case}</td></tr>"
+        f"<tr><td><strong>Submitted:</strong></td><td>{submitted}</td></tr>"
+        f"<tr><td><strong>ID:</strong></td><td>{submission_id}</td></tr>"
+        "</table>"
+    )
+    dash = "\u2014"
+    body_text = (
+        "New Contact Form Submission\n\n"
+        f"Email: {record.get('email', 'unknown')}\n"
+        f"Organisation: {record.get('organization', dash)}\n"
+        f"Use Case: {record.get('use_case', dash)}\n"
+        f"Submitted: {record.get('submitted_at', dash)}\n"
+        f"ID: {record.get('submission_id', dash)}\n"
+    )
+
+    try:
+        from azure.communication.email import EmailClient
+
+        client = EmailClient.from_connection_string(COMMUNICATION_SERVICES_CONNECTION_STRING)
+        message = {
+            "senderAddress": EMAIL_SENDER_ADDRESS,
+            "recipients": {"to": [{"address": NOTIFICATION_EMAIL}]},
+            "content": {
+                "subject": subject,
+                "html": body_html,
+                "plainText": body_text,
+            },
+        }
+        poller = client.begin_send(message)
+        result = poller.result()
+        logger.info("Contact notification sent: id=%s", result.get("id"))
+        return True
+    except Exception:
+        logger.exception("Failed to send contact notification")
+        return False
+
+
+@app.function_name("contact_form")
+@app.route(route="contact-form", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def contact_form(req: func.HttpRequest) -> func.HttpResponse:
+    """Accept a contact-form submission: validate, store, notify."""
+    # Rate limit by client IP
+    client_ip = _get_client_ip(req)
+    if not _rate_limit_allowed(client_ip):
+        return _error(429, "Rate limit exceeded \u2014 try again later")
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return _error(400, "Invalid JSON body")
+
+    if not isinstance(body, dict):
+        return _error(400, "Expected JSON object")
+
+    email = _sanitise(body.get("email", ""))
+    if not email or not _EMAIL_RE.match(email):
+        return _error(400, "Valid email is required")
+
+    # Accept both British and American spelling
+    organization = _sanitise(body.get("organisation", "") or body.get("organization", ""))
+    use_case = _sanitise(body.get("use_case", ""))
+
+    submission_id = str(uuid.uuid4())
+    record = {
+        "submission_id": submission_id,
+        "email": email,
+        "organization": organization,
+        "use_case": use_case,
+        "submitted_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "source": "marketing_website",
+        "ip_forwarded_for": _sanitise(req.headers.get("X-Forwarded-For", "")),
+    }
+
+    # Store submission in blob storage
+    try:
+        blob_service = _get_blob_service()
+        blob_client = blob_service.get_blob_client(
+            CONTACT_SUBMISSIONS_CONTAINER,
+            f"contact-submissions/{submission_id}.json",
+        )
+        blob_client.upload_blob(
+            json.dumps(record).encode(),
+            overwrite=False,
+            content_settings=ContentSettings(content_type="application/json"),
+        )
+    except Exception:
+        logger.exception("Failed to store contact submission %s", submission_id)
+        return _error(502, "Submission storage temporarily unavailable")
+
+    # Best-effort email notification (failure doesn't affect user response)
+    _send_contact_notification(record)
+
+    logger.info("Contact form submitted submission_id=%s", submission_id)
+    return _json_response({"status": "received", "submission_id": submission_id})
+
+
+# ---------------------------------------------------------------------------
+# GET /api/readiness — anonymous service readiness probe
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("readiness")
+@app.route(route="readiness", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def readiness(req: func.HttpRequest) -> func.HttpResponse:
+    """Readiness probe — returns API version, version, and commit SHA."""
+    return _json_response(
+        {
+            "status": "ready",
+            "api_version": API_CONTRACT_VERSION,
+            "version": os.environ.get("BUILD_VERSION", "swa-managed"),
+            "commit": os.environ.get("BUILD_SHA", "unknown"),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/contract — API contract version
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("contract")
+@app.route(route="contract", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def contract(req: func.HttpRequest) -> func.HttpResponse:
+    """Return the current API contract version."""
+    return _json_response({"api_version": API_CONTRACT_VERSION})

@@ -434,6 +434,20 @@ class TestDeployWorkflowSettings:
             "to catch missing app settings or startup failures"
         )
 
+    def test_swa_smoke_check_accepts_302_redirect(self, deploy_yml):
+        """SWA returns 302 (redirect to login) for auth-gated routes, not 401."""
+        assert "302" in deploy_yml, (
+            "deploy.yml smoke check must accept HTTP 302 — SWA auth returns "
+            "a redirect to login, not a 401 rejection"
+        )
+
+    def test_swa_smoke_check_tests_health_endpoint(self, deploy_yml):
+        """Smoke check should verify /api/health to confirm functions loaded."""
+        assert "/api/health" in deploy_yml, (
+            "deploy.yml smoke check must test /api/health to verify "
+            "SWA managed functions are loaded before checking auth gates"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
@@ -980,4 +994,44 @@ class TestSwaBillingInfra:
         reqs = (ROOT / "website" / "api" / "requirements.txt").read_text()
         assert "stripe" in reqs, (
             "website/api/requirements.txt must include stripe SDK for billing endpoints"
+        )
+
+
+# 18. SWA Contact + Health Endpoints (#465)
+class TestSwaContactHealthInfra:
+    """Ensure SWA managed API has email env vars and contact/health endpoints."""
+
+    @pytest.fixture()
+    def main_tf(self):
+        return MAIN_TF.read_text()
+
+    def test_swa_app_settings_include_email_vars(self, main_tf):
+        swa_block = main_tf.split("swa_api_app_settings")[-1]
+        for var in (
+            "COMMUNICATION_SERVICES_CONNECTION_STRING",
+            "EMAIL_SENDER_ADDRESS",
+            "NOTIFICATION_EMAIL",
+        ):
+            assert var in swa_block, (
+                f"swa_api_app_settings must include {var} for contact form notifications"
+            )
+
+    def test_swa_contact_endpoint_in_function_app(self):
+        source = (ROOT / "website" / "api" / "function_app.py").read_text()
+        assert "contact_form" in source, (
+            "website/api/function_app.py must define contact_form endpoint"
+        )
+
+    def test_swa_readiness_endpoint_in_function_app(self):
+        source = (ROOT / "website" / "api" / "function_app.py").read_text()
+        for endpoint in ("readiness", "contract"):
+            assert endpoint in source, (
+                f"website/api/function_app.py must define {endpoint} endpoint"
+            )
+
+    def test_swa_requirements_include_email_sdk(self):
+        reqs = (ROOT / "website" / "api" / "requirements.txt").read_text()
+        assert "azure-communication-email" in reqs, (
+            "website/api/requirements.txt must include azure-communication-email "
+            "for contact form notifications"
         )
