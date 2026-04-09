@@ -24,12 +24,12 @@ Last updated: 2026-04-09 (post-merge sweep)
 
 | PR | Summary |
 |----|---------|
+| #478 | SWA API App Insights instrumentation — connection string, OTEL service name, sampling (fixes #464) |
 | #477 | SWA auth fix: use CIAM_CLIENT_ID/SECRET instead of managed-identity refs |
 | #476 | Trivy IaC false-positive suppressions + triage policy |
 | #475 | Roadmap update — post-merge sweep |
 | #472 | SWA built-in auth — drop MSAL.js, add health endpoint, urlparse issuer (fixes #446) |
 | #473 | Storage diagnostic logging + CodeQL abstract-method fix |
-| #470 | BFF target-architecture callouts in ARCHITECTURE_OVERVIEW |
 
 ---
 
@@ -77,7 +77,7 @@ Finish the event-driven restructure. SWA becomes the sole public API surface (BF
 | 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
 | 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | 🔄 PR #444 merged (partial) |
 | 2B.5 | #446 | Switch SWA auth to built-in custom auth — drop MSAL.js | ✅ PR #472 |
-| 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | 🔄 |
+| 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | ✅ PR #478 |
 
 **Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from SWA managed functions. All browser API calls go through SWA `/api/*` — Container Apps never directly serves auth-gated browser requests. SWA API has full App Insights telemetry.
 

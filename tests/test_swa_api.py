@@ -1,8 +1,9 @@
 """Tests for the SWA managed API functions (§2B.2).
 
-These tests verify the SWA API function logic — SAS token minting and
-status polling — without requiring the Azure Functions runtime.  We
-import the module directly and call the helper functions + route handlers.
+These tests verify the SWA API function logic — SAS token minting, status
+polling, analysis history, and billing endpoints — without requiring the
+Azure Functions runtime.  We import the module directly and call the helper
+functions + route handlers.
 
 Auth is handled by SWA built-in custom auth (x-ms-client-principal header).
 """
@@ -14,6 +15,7 @@ import datetime
 import json
 import sys
 import typing
+import unittest.mock
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -637,3 +639,557 @@ class TestResponseContracts:
         run = body["runs"][0]
         missing = self._HISTORY_RUN_REQUIRED - run.keys()
         assert not missing, f"Missing history run fields: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/billing/status
+# ---------------------------------------------------------------------------
+
+
+class TestSwaBillingStatus:
+    """Tests for the SWA billing_status endpoint."""
+
+    def test_rejects_unauthenticated(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="/api/billing/status", headers={})
+        resp = mod.billing_status(req)
+        assert resp.status_code == 401
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_free_user_returns_default_status(self, mock_cosmos, _reload_module):
+        """A new user with no subscription gets free-tier defaults."""
+        mod = _reload_module
+        container = MagicMock()
+        # No subscription or user doc — all reads raise
+        container.read_item.side_effect = Exception("Not found")
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers=_auth_headers(user_id="user-free"),
+        )
+        resp = mod.billing_status(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["tier"] == "free"
+        assert body["status"] == "none"
+        assert body["runs_remaining"] >= 0
+        assert body["runs_used"] == 0
+        assert body["billing_gated"] is True
+        assert body["tier_source"] == "billing"
+        assert "capabilities" in body
+        assert body["capabilities"]["run_limit"] == 5
+        assert body["emulation"]["available"] is False
+        assert body["emulation"]["active"] is False
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_pro_user_returns_pro_status(self, mock_cosmos, _reload_module):
+        """A subscribed Pro user gets pro-tier status."""
+        mod = _reload_module
+
+        def _read_item(item, partition_key):
+            if item == "user-pro":
+                return {
+                    "id": "user-pro",
+                    "user_id": "user-pro",
+                    "tier": "pro",
+                    "status": "active",
+                    "stripe_customer_id": "cus_abc",
+                }
+            raise Exception("Not found")
+
+        container = MagicMock()
+        container.read_item.side_effect = _read_item
+        mock_cosmos.return_value = container
+
+        # Allow billing for this user
+        mod.BILLING_ALLOWED_USERS = frozenset({"user-pro"})
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers=_auth_headers(user_id="user-pro"),
+        )
+        resp = mod.billing_status(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["tier"] == "pro"
+        assert body["status"] == "active"
+        assert body["capabilities"]["run_limit"] == 50
+        assert body["billing_gated"] is False
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_local_origin_shows_emulation_available(self, mock_cosmos, _reload_module):
+        """Emulation is only available from local origins."""
+        mod = _reload_module
+        container = MagicMock()
+        container.read_item.side_effect = Exception("Not found")
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers={
+                **_auth_headers(user_id="dev-user"),
+                "Origin": "http://localhost:4280",
+            },
+        )
+        resp = mod.billing_status(req)
+        body = json.loads(resp.get_body())
+        assert body["emulation"]["available"] is True
+        assert body["emulation"]["tiers"] == list(mod.PLAN_CATALOG.keys())
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_gated_user_gets_price_labels(self, mock_cosmos, _reload_module):
+        """Billing-gated users receive price labels for the paywall UI."""
+        mod = _reload_module
+        container = MagicMock()
+        container.read_item.side_effect = Exception("Not found")
+        mock_cosmos.return_value = container
+        mod.BILLING_ALLOWED_USERS = frozenset()  # nobody allowed
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers=_auth_headers(user_id="gated-user"),
+        )
+        resp = mod.billing_status(req)
+        body = json.loads(resp.get_body())
+        assert body["billing_gated"] is True
+        assert "price_labels" in body
+        assert body["price_labels"]["pro"] == "$$"
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_usage_reflects_cosmos_quota(self, mock_cosmos, _reload_module):
+        """runs_remaining reflects actual Cosmos usage data."""
+        mod = _reload_module
+
+        def _read_item(item, partition_key):
+            if item == "user-used" and partition_key == "user-used":
+                return {
+                    "id": "user-used",
+                    "user_id": "user-used",
+                    "quota": {"used": 3},
+                }
+            raise Exception("Not found")
+
+        container = MagicMock()
+        container.read_item.side_effect = _read_item
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers=_auth_headers(user_id="user-used"),
+        )
+        resp = mod.billing_status(req)
+        body = json.loads(resp.get_body())
+        assert body["runs_used"] == 3
+        assert body["runs_remaining"] == 2  # free tier: 5 - 3
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/checkout
+# ---------------------------------------------------------------------------
+
+
+class TestSwaBillingCheckout:
+    """Tests for the SWA billing_checkout endpoint."""
+
+    def test_rejects_unauthenticated(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="POST", url="/api/billing/checkout", headers={})
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 401
+
+    def test_rejects_gated_user(self, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset()  # nobody allowed
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers=_auth_headers(user_id="gated-user"),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 403
+
+    def test_returns_503_when_stripe_not_configured(self, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = ""
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 503
+
+    @patch("stripe.checkout.Session.create")
+    def test_creates_checkout_session(self, mock_create, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+        mod.STRIPE_PRICE_ID_PRO_USD = "price_usd"
+        mod.STRIPE_PRICE_ID_PRO_EUR = "price_eur"
+
+        mock_session = MagicMock()
+        mock_session.url = "https://checkout.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers={
+                **_auth_headers(user_id="test-user"),
+                "Origin": "https://canopex.hrdcrprwn.com",
+            },
+            body=json.dumps({"currency": "GBP"}).encode(),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["checkout_url"] == "https://checkout.stripe.com/session/test"
+
+        # Verify Stripe was called with the correct price
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["line_items"] == [{"price": "price_gbp", "quantity": 1}]
+        assert call_kwargs["client_reference_id"] == "test-user"
+
+    @patch("stripe.checkout.Session.create")
+    def test_defaults_to_gbp_currency(self, mock_create, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        mock_session = MagicMock()
+        mock_session.url = "https://checkout.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 200
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["line_items"] == [{"price": "price_gbp", "quantity": 1}]
+
+    def test_returns_503_when_currency_price_id_empty(self, _reload_module):
+        """503 when Stripe is configured but the selected currency has no price."""
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+        mod.STRIPE_PRICE_ID_PRO_USD = ""  # USD not configured
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers=_auth_headers(user_id="test-user"),
+            body=json.dumps({"currency": "USD"}).encode(),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 503
+        assert "USD" in json.loads(resp.get_body())["error"]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/portal
+# ---------------------------------------------------------------------------
+
+
+class TestSwaBillingPortal:
+    """Tests for the SWA billing_portal endpoint."""
+
+    def test_rejects_unauthenticated(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="POST", url="/api/billing/portal", headers={})
+        resp = mod.billing_portal(req)
+        assert resp.status_code == 401
+
+    def test_rejects_gated_user(self, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset()
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/portal",
+            headers=_auth_headers(user_id="gated-user"),
+        )
+        resp = mod.billing_portal(req)
+        assert resp.status_code == 403
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_returns_404_when_no_subscription(self, mock_cosmos, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        container = MagicMock()
+        container.read_item.side_effect = Exception("Not found")
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/portal",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_portal(req)
+        assert resp.status_code == 404
+
+    @patch("stripe.billing_portal.Session.create")
+    @patch("swa_function_app._get_cosmos_container")
+    def test_creates_portal_session(self, mock_cosmos, mock_create, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        container = MagicMock()
+        container.read_item.return_value = {
+            "id": "test-user",
+            "tier": "pro",
+            "status": "active",
+            "stripe_customer_id": "cus_portal_test",
+        }
+        mock_cosmos.return_value = container
+
+        mock_session = MagicMock()
+        mock_session.url = "https://billing.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/portal",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_portal(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["portal_url"] == "https://billing.stripe.com/session/test"
+        mock_create.assert_called_once_with(
+            customer="cus_portal_test",
+            return_url=unittest.mock.ANY,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Contract tests — billing status response shape
+# ---------------------------------------------------------------------------
+
+
+class TestBillingStatusContract:
+    """Ensure billing status response has all fields the frontend reads."""
+
+    _REQUIRED_FIELDS: typing.ClassVar[set[str]] = {
+        "tier",
+        "status",
+        "runs_remaining",
+        "runs_used",
+        "billing_configured",
+        "billing_gated",
+        "tier_source",
+        "capabilities",
+        "subscription",
+        "emulation",
+    }
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_response_shape(self, mock_cosmos, _reload_module):
+        mod = _reload_module
+        container = MagicMock()
+        container.read_item.side_effect = Exception("Not found")
+        mock_cosmos.return_value = container
+
+        req = _mock_request(
+            method="GET",
+            url="/api/billing/status",
+            headers=_auth_headers(),
+        )
+        body = json.loads(mod.billing_status(req).get_body())
+        missing = self._REQUIRED_FIELDS - body.keys()
+        assert not missing, f"Missing billing status fields: {missing}"
+
+    @patch("swa_function_app._get_cosmos_container")
+    def test_plan_catalog_matches_treesight(self, mock_cosmos, _reload_module):
+        """SWA PLAN_CATALOG tier keys match treesight PLAN_CATALOG."""
+        mod = _reload_module
+        from treesight.security.billing import PLAN_CATALOG as TS_CATALOG
+
+        assert set(mod.PLAN_CATALOG.keys()) == set(TS_CATALOG.keys()), (
+            "SWA PLAN_CATALOG tiers diverged from treesight"
+        )
+        # Verify run limits match
+        for tier in TS_CATALOG:
+            assert mod.PLAN_CATALOG[tier]["run_limit"] == TS_CATALOG[tier]["run_limit"], (
+                f"Run limit mismatch for tier {tier}"
+            )
+            # Verify all capability keys match
+            assert set(mod.PLAN_CATALOG[tier].keys()) == set(TS_CATALOG[tier].keys()), (
+                f"Capability key mismatch for tier {tier}"
+            )
+            for key, value in TS_CATALOG[tier].items():
+                assert mod.PLAN_CATALOG[tier][key] == value, (
+                    f"Value mismatch for tier {tier}, key {key}: "
+                    f"SWA={mod.PLAN_CATALOG[tier][key]!r} vs treesight={value!r}"
+                )
+
+
+# ---------------------------------------------------------------------------
+# Origin validation — Stripe redirect URLs must use allowlisted origins
+# ---------------------------------------------------------------------------
+
+
+class TestOriginValidation:
+    """Ensure Stripe redirect URLs use allow-listed origins only."""
+
+    @patch("stripe.checkout.Session.create")
+    def test_checkout_uses_allowed_origin(self, mock_create, _reload_module):
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        mock_session = MagicMock()
+        mock_session.url = "https://checkout.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers={
+                **_auth_headers(user_id="test-user"),
+                "Origin": "https://canopex.hrdcrprwn.com",
+            },
+        )
+        mod.billing_checkout(req)
+        call_kwargs = mock_create.call_args[1]
+        assert call_kwargs["success_url"] == "https://canopex.hrdcrprwn.com?billing=success"
+
+    @patch("stripe.checkout.Session.create")
+    def test_checkout_rejects_evil_origin(self, mock_create, _reload_module):
+        """Attacker-controlled Origin must not appear in redirect URLs."""
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        mock_session = MagicMock()
+        mock_session.url = "https://checkout.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers={
+                **_auth_headers(user_id="test-user"),
+                "Origin": "https://evil.com",
+            },
+        )
+        mod.billing_checkout(req)
+        call_kwargs = mock_create.call_args[1]
+        assert "evil.com" not in call_kwargs["success_url"]
+        assert "evil.com" not in call_kwargs["cancel_url"]
+        # Falls back to default production origin
+        assert call_kwargs["success_url"] == "https://canopex.hrdcrprwn.com?billing=success"
+        assert call_kwargs["cancel_url"] == "https://canopex.hrdcrprwn.com?billing=cancel"
+
+    @patch("stripe.billing_portal.Session.create")
+    @patch("swa_function_app._get_cosmos_container")
+    def test_portal_rejects_evil_origin(self, mock_cosmos, mock_create, _reload_module):
+        """Portal return_url must not use attacker-controlled origin."""
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        container = MagicMock()
+        container.read_item.return_value = {
+            "id": "test-user",
+            "tier": "pro",
+            "status": "active",
+            "stripe_customer_id": "cus_test",
+        }
+        mock_cosmos.return_value = container
+
+        mock_session = MagicMock()
+        mock_session.url = "https://billing.stripe.com/session/test"
+        mock_create.return_value = mock_session
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/portal",
+            headers={
+                **_auth_headers(user_id="test-user"),
+                "Origin": "https://evil.com",
+            },
+        )
+        mod.billing_portal(req)
+        call_kwargs = mock_create.call_args[1]
+        assert "evil.com" not in call_kwargs["return_url"]
+        assert call_kwargs["return_url"] == "https://canopex.hrdcrprwn.com?billing=portal-return"
+
+
+# ---------------------------------------------------------------------------
+# Stripe failure paths — 502 when Stripe SDK raises
+# ---------------------------------------------------------------------------
+
+
+class TestStripeFailurePaths:
+    """Verify billing endpoints return 502 on Stripe SDK errors."""
+
+    @patch("stripe.checkout.Session.create")
+    def test_checkout_returns_502_on_stripe_error(self, mock_create, _reload_module):
+        import stripe as stripe_mod
+
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        mock_create.side_effect = stripe_mod.StripeError("Card declined")
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/checkout",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_checkout(req)
+        assert resp.status_code == 502
+
+    @patch("stripe.billing_portal.Session.create")
+    @patch("swa_function_app._get_cosmos_container")
+    def test_portal_returns_502_on_stripe_error(self, mock_cosmos, mock_create, _reload_module):
+        import stripe as stripe_mod
+
+        mod = _reload_module
+        mod.BILLING_ALLOWED_USERS = frozenset({"test-user"})
+        mod.STRIPE_API_KEY = "sk_test_xxx"  # pragma: allowlist secret
+        mod.STRIPE_PRICE_ID_PRO_GBP = "price_gbp"
+
+        container = MagicMock()
+        container.read_item.return_value = {
+            "id": "test-user",
+            "tier": "pro",
+            "status": "active",
+            "stripe_customer_id": "cus_test",
+        }
+        mock_cosmos.return_value = container
+
+        mock_create.side_effect = stripe_mod.StripeError("Network error")
+
+        req = _mock_request(
+            method="POST",
+            url="/api/billing/portal",
+            headers=_auth_headers(user_id="test-user"),
+        )
+        resp = mod.billing_portal(req)
+        assert resp.status_code == 502
