@@ -4,9 +4,13 @@ SWA built-in auth uses the server-side OpenID Connect flow, so the app
 must be registered as a **web** application (not SPA).  The redirect URI
 ``/.auth/login/aad/callback`` is handled by the SWA platform.
 
-After initial registration, redirect URIs are kept in sync automatically
-by sync_ciam_redirect_uris.py (called from the deploy workflow).
+This script bootstraps the initial web application registration only.
+If SWA hostnames change later, update the CIAM app's web redirect URIs
+and related auth settings separately; this module does not keep them in
+sync automatically.
 """
+
+from __future__ import annotations
 
 import json
 import sys
@@ -14,7 +18,7 @@ import sys
 from _graph import TOKEN, graph
 
 
-def main():
+def main() -> None:
     if not TOKEN:
         print("ERROR: Set CIAM_TOKEN env var first")
         sys.exit(1)
