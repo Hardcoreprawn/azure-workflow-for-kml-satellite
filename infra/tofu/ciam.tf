@@ -31,6 +31,10 @@ resource "azuread_application" "ciam" {
   display_name     = "Canopex"
   sign_in_audience = "AzureADandPersonalMicrosoftAccount"
 
+  api {
+    requested_access_token_version = 2
+  }
+
   web {
     redirect_uris = local.ciam_redirect_uris
 
