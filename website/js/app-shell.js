@@ -150,10 +150,11 @@
     }
   };
 
-  var apiBase = '';
   var apiDiscoveryReady = null;
 
-  // All endpoints are now served through SWA (BFF pattern).
+  // SWA BFF pattern: all API calls are same-origin (/api/*).
+  // Endpoints not yet migrated to the SWA managed API will return 404.
+  // See ROADMAP.md P1 2B.4 for endpoint migration tracking.
   var currentAccount = null;   // populated by /.auth/me
   var latestBillingStatus = null;
   var latestAnalysisRun = null;
@@ -267,9 +268,7 @@
   }
 
   async function discoverApiBase() {
-    // All API calls go through the SWA managed API (BFF pattern).
-    // No external apiBase needed — everything is same-origin.
-    apiBase = '';
+    // Probe the SWA managed API health endpoint.
     try {
       var res = await fetch('/api/health');
       if (res.ok) {

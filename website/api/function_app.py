@@ -55,6 +55,26 @@ _blob_service: BlobServiceClient | None = None
 _cosmos_db: object | None = None  # Azure Cosmos DatabaseProxy
 
 
+# ---------------------------------------------------------------------------
+# GET /api/health — anonymous lightweight liveness probe
+# ---------------------------------------------------------------------------
+
+
+@app.function_name("health")
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def health(req: func.HttpRequest) -> func.HttpResponse:
+    """Lightweight liveness probe — always returns 200.
+
+    Used by the frontend ``discoverApiBase()`` to determine whether the
+    SWA managed API is reachable.  Intentionally anonymous (no auth).
+    """
+    return func.HttpResponse(
+        json.dumps({"status": "ok"}),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
 def _get_blob_service() -> BlobServiceClient:
     """Lazy-init BlobServiceClient with managed identity credential."""
     global _blob_service

@@ -55,8 +55,13 @@ class TestSwaAuth:
         aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
         reg = aad.get("registration", {})
         issuer = reg.get("openIdIssuer", "")
-        assert "ciamlogin.com" in issuer or "login.microsoftonline.com" in issuer, (
-            "openIdIssuer must point to a valid Azure OIDC endpoint"
+        valid = (
+            issuer.startswith("https://")
+            and (".ciamlogin.com/" in issuer or ".login.microsoftonline.com/" in issuer)
+            and issuer.endswith("/v2.0")
+        )
+        assert valid, (
+            "openIdIssuer must be a full https URL pointing to a valid Azure OIDC v2.0 endpoint"
         )
 
     def test_client_id_setting_name(self, swa_config):
@@ -81,8 +86,11 @@ class TestSwaAuth:
         ]
         for route in api_routes:
             roles = route.get("allowedRoles", [])
-            assert "anonymous" not in roles or "authenticated" in roles, (
-                f"Route {route['route']} should require authenticated role"
+            assert "authenticated" in roles, (
+                f"Route {route['route']} must allow the authenticated role"
+            )
+            assert "anonymous" not in roles, (
+                f"Route {route['route']} must not allow anonymous access"
             )
 
     def test_health_route_anonymous(self, swa_config):
@@ -95,6 +103,14 @@ class TestSwaAuth:
             assert "anonymous" in roles, (
                 f"Health route {route['route']} must allow anonymous access"
             )
+
+    def test_health_exact_route_exists(self, swa_config):
+        """Exact /api/health route must exist (not just /api/health/*)."""
+        routes = swa_config.get("routes", [])
+        exact = [r for r in routes if r.get("route") == "/api/health"]
+        assert exact, (
+            "Exact /api/health route needed — /api/health/* alone may not match /api/health"
+        )
 
     def test_no_msal_script_in_html(self, index_html):
         """MSAL.js must not be loaded — SWA built-in auth replaces it."""

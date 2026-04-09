@@ -167,6 +167,35 @@ class TestClientPrincipalParsing:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/health
+# ---------------------------------------------------------------------------
+
+
+class TestHealth:
+    """Tests for the anonymous health probe endpoint."""
+
+    def test_returns_200(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        assert resp.status_code == 200
+
+    def test_returns_json(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        body = json.loads(resp.get_body())
+        assert body["status"] == "ok"
+
+    def test_no_auth_required(self, _reload_module):
+        """Health endpoint must work without x-ms-client-principal."""
+        mod = _reload_module
+        req = _mock_request(method="GET", url="https://example.com/api/health", headers={})
+        resp = mod.health(req)
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # POST /api/upload/token
 # ---------------------------------------------------------------------------
 
