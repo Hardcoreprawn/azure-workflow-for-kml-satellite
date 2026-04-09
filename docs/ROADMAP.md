@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-09 (PR #487 merged — P2 Q.1–Q.4 + enrichment parallelisation)
+Last updated: 2026-04-09 (PR #490 merged — Q.7 code scanning alerts resolved)
 
 ---
 
@@ -24,12 +24,12 @@ Last updated: 2026-04-09 (PR #487 merged — P2 Q.1–Q.4 + enrichment paralleli
 
 | PR | Summary |
 |----|---------|
+| #490 | Code scanning alerts: URL sanitisation, mixed imports, except comments (fixes #381) |
 | #487 | P2 Code Quality: orchestrator decomposition, .get() fixes, JS hardening, enrichment parallelisation |
 | #484 | SWA catalogue endpoints — list, detail, by_run, by_aoi (completes #465 / T1.1) |
 | #483 | SWA contact form, readiness, contract endpoints + deploy smoke-check fix (partial #465) |
 | #481 | SWA billing endpoints — billing/status, billing/checkout, billing/portal (partial #465, #474) |
 | #478 | SWA API App Insights instrumentation — connection string, OTEL service name, sampling (fixes #464) |
-| #477 | SWA auth fix: use CIAM_CLIENT_ID/SECRET instead of managed-identity refs |
 
 ---
 
@@ -95,7 +95,7 @@ Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
 | Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | ✅ PR #487 |
 | Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Partial — enrichment parallelised in #487; deeper optimisation tracked in #488 |
 | Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | ✅ Closed |
-| Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | Open |
+| Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | ✅ PR #490 |
 | Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Open |
 
 **Exit criteria:** Orchestrator decomposed (prerequisite for #466). Scale claim proven. Code scanning clean. Simplicity violations fixed.
