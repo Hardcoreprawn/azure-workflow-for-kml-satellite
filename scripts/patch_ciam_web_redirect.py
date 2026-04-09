@@ -1,5 +1,9 @@
 """Patch the CIAM app registration for SWA built-in auth.
 
+DEPRECATED: The CIAM app registration is now managed by OpenTofu
+(infra/tofu/ciam.tf).  Use ``tofu apply`` instead of running this script.
+This script is retained only as a break-glass fallback.
+
 The original registration used the SPA platform, but SWA built-in auth
 uses server-side OIDC which sends ``response_type=id_token``.  This
 requires:

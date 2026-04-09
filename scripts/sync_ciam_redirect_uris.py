@@ -1,5 +1,10 @@
 """Sync CIAM app registration redirect URIs with the current SWA hostname.
 
+DEPRECATED: The CIAM app registration is now managed by OpenTofu
+(infra/tofu/ciam.tf) which derives redirect URIs from the SWA hostname
+automatically.  Use ``tofu apply`` instead of running this script.
+This script is retained only as a break-glass fallback.
+
 Ensures the CIAM app registration always has the correct redirect URIs
 for the deployed Static Web App, preventing AADSTS50011 errors when the
 SWA hostname changes after infrastructure recreation.

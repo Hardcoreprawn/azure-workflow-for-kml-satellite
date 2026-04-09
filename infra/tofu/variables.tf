@@ -123,6 +123,12 @@ variable "enable_cosmos_db" {
 
 # --- Entra External ID (CIAM) authentication (M2.1) ---
 
+variable "ciam_tenant_id" {
+  description = "CIAM (Entra External ID) tenant ID. Required for managing the app registration via the azuread provider."
+  type        = string
+  default     = ""
+}
+
 variable "ciam_tenant_name" {
   description = "CIAM tenant name (the prefix before .onmicrosoft.com). Empty to disable auth."
   type        = string
