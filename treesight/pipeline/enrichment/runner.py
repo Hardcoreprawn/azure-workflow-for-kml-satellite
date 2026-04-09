@@ -115,7 +115,7 @@ def _run_mosaic_ndvi_phase(
     output_container: str,
     storage: BlobStorageClient,
     results: dict[str, Any],
-) -> tuple[list[dict[str, float] | None], list[str | None]]:
+) -> tuple[list[dict[str, Any] | None], list[str | None]]:
     """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback)."""
     # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))

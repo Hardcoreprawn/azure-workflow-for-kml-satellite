@@ -80,9 +80,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        _stats, _raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         # At least 2 of 3 search_ids should be populated (one frame failed)
         populated = [s for s in results["search_ids"] if s is not None]
@@ -110,7 +108,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, _raster_paths = _run_mosaic_ndvi_phase(
+        stats, _ = _run_mosaic_ndvi_phase(
             BBOX, COORDS, frames, "proj", "ts", "out", storage, results
         )
 

@@ -1054,15 +1054,15 @@
   }
 
   function createStatEl(label, value, tone) {
-    var cls;
+    let cls;
     if (tone === 'positive') cls = ' positive';
     else if (tone === 'negative') cls = ' negative';
     else cls = ' neutral';
-    var div = document.createElement('div');
+    const div = document.createElement('div');
     div.className = 'app-evidence-stat';
-    var span = document.createElement('span');
+    const span = document.createElement('span');
     span.textContent = label;
-    var strong = document.createElement('strong');
+    const strong = document.createElement('strong');
     strong.className = cls;
     strong.textContent = value;
     div.appendChild(span);

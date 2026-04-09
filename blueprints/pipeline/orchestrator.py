@@ -11,6 +11,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import logging
 from collections.abc import Generator
 from typing import Any, cast
 
@@ -24,6 +25,7 @@ from treesight.constants import (
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
+    MAX_POLL_ITERATIONS,
 )
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
@@ -37,6 +39,8 @@ from ._helpers import (
     _post_process_payload,
     _split_batch_routing,
 )
+
+logger = logging.getLogger(__name__)
 
 # Type alias for phase generator functions.  Each yields Durable tasks
 # to the orchestrator runtime and returns a result dict.
@@ -249,7 +253,12 @@ def _fulfil_batch(
 
     # Poll Batch tasks until all complete (or fail)
     pending = [t for t in batch_tracking if t.get("state") == "submitted"]
+    poll_iteration = 0
     while pending:
+        poll_iteration += 1
+        if poll_iteration > MAX_POLL_ITERATIONS:
+            logger.warning("batch poll exceeded %d iterations — aborting", MAX_POLL_ITERATIONS)
+            break
         context.set_custom_status(
             {"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)}
         )
