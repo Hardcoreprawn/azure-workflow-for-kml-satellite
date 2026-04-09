@@ -2,4 +2,5 @@ azure-functions
 azure-identity
 azure-storage-blob
 azure-cosmos
+azure-communication-email
 stripe

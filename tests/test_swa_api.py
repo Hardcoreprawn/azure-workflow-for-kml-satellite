@@ -1193,3 +1193,355 @@ class TestStripeFailurePaths:
         )
         resp = mod.billing_portal(req)
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# POST /api/contact-form
+# ---------------------------------------------------------------------------
+
+
+class TestContactForm:
+    """Tests for the SWA contact_form endpoint."""
+
+    def _submit(self, mod, body: dict, *, headers: dict | None = None):
+        req = _mock_request(
+            method="POST",
+            url="/api/contact-form",
+            body=json.dumps(body).encode(),
+            headers=headers or {"X-Forwarded-For": "10.0.0.1"},
+        )
+        req.get_json.return_value = body
+        return mod.contact_form(req)
+
+    @patch("swa_function_app._get_blob_service")
+    def test_accepts_valid_submission(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        resp = self._submit(mod, {"email": "user@example.com", "organisation": "Acme"})
+
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["status"] == "received"
+        assert "submission_id" in body
+        blob_client.upload_blob.assert_called_once()
+
+    @patch("swa_function_app._get_blob_service")
+    def test_accepts_organization_american_spelling(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        resp = self._submit(mod, {"email": "u@x.com", "organization": "Corp"})
+        assert resp.status_code == 200
+
+        uploaded = blob_client.upload_blob.call_args[0][0]
+        record = json.loads(uploaded.decode())
+        assert record["organization"] == "Corp"
+
+    def test_rejects_missing_email(self, _reload_module):
+        resp = self._submit(_reload_module, {"organisation": "Acme"})
+        assert resp.status_code == 400
+
+    def test_rejects_invalid_email(self, _reload_module):
+        resp = self._submit(_reload_module, {"email": "not-an-email"})
+        assert resp.status_code == 400
+
+    def test_rejects_empty_email(self, _reload_module):
+        resp = self._submit(_reload_module, {"email": ""})
+        assert resp.status_code == 400
+
+    def test_rejects_non_dict_body(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="POST",
+            url="/api/contact-form",
+            body=b'"just a string"',
+            headers={"X-Forwarded-For": "10.0.0.99"},
+        )
+        req.get_json.return_value = "just a string"
+        resp = mod.contact_form(req)
+        assert resp.status_code == 400
+
+    def test_rejects_invalid_json(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(
+            method="POST",
+            url="/api/contact-form",
+            body=b"not json",
+            headers={"X-Forwarded-For": "10.0.0.98"},
+        )
+        req.get_json.side_effect = ValueError("bad json")
+        resp = mod.contact_form(req)
+        assert resp.status_code == 400
+
+    @patch("swa_function_app._get_blob_service")
+    def test_returns_502_when_blob_storage_fails(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        blob_client.upload_blob.side_effect = RuntimeError("storage down")
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        resp = self._submit(mod, {"email": "u@x.com"})
+        assert resp.status_code == 502
+
+    def test_rate_limits_excessive_requests(self, _reload_module):
+        mod = _reload_module
+        # Reset rate limiter state
+        with mod._rate_lock:
+            mod._rate_hits.clear()
+
+        # Exceed the limit from same IP
+        for _ in range(mod._RATE_LIMIT_MAX):
+            req = _mock_request(
+                method="POST",
+                url="/api/contact-form",
+                body=b'{"email": "bad"}',
+                headers={"X-Forwarded-For": "10.0.0.50"},
+            )
+            req.get_json.return_value = {"email": "bad"}
+            mod.contact_form(req)
+
+        req = _mock_request(
+            method="POST",
+            url="/api/contact-form",
+            body=b'{"email": "u@x.com"}',
+            headers={"X-Forwarded-For": "10.0.0.50"},
+        )
+        req.get_json.return_value = {"email": "u@x.com"}
+        resp = mod.contact_form(req)
+        assert resp.status_code == 429
+
+    @patch("swa_function_app._get_blob_service")
+    def test_stores_submission_in_correct_container(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        self._submit(mod, {"email": "user@acme.co", "organisation": "Acme", "use_case": "EUDR"})
+
+        call_args = mock_blob.return_value.get_blob_client.call_args
+        assert call_args[0][0] == "pipeline-payloads"
+        blob_path = call_args[0][1]
+        assert blob_path.startswith("contact-submissions/")
+        assert blob_path.endswith(".json")
+
+    @patch("swa_function_app._get_blob_service")
+    def test_record_contains_expected_fields(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        self._submit(mod, {"email": "u@x.com", "organisation": "Org", "use_case": "Testing"})
+
+        uploaded = blob_client.upload_blob.call_args[0][0]
+        record = json.loads(uploaded.decode())
+        assert record["email"] == "u@x.com"
+        assert record["organization"] == "Org"
+        assert record["use_case"] == "Testing"
+        assert record["source"] == "marketing_website"
+        assert "submission_id" in record
+        assert "submitted_at" in record
+
+    @patch("swa_function_app._send_contact_notification")
+    @patch("swa_function_app._get_blob_service")
+    def test_sends_notification_on_success(self, mock_blob, mock_notify, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+        mock_notify.return_value = True
+
+        self._submit(mod, {"email": "u@x.com"})
+        mock_notify.assert_called_once()
+        record = mock_notify.call_args[0][0]
+        assert record["email"] == "u@x.com"
+
+    @patch("swa_function_app._get_blob_service")
+    def test_truncates_long_fields(self, mock_blob, _reload_module):
+        mod = _reload_module
+        blob_client = MagicMock()
+        mock_blob.return_value.get_blob_client.return_value = blob_client
+
+        long_org = "A" * 5000
+        self._submit(mod, {"email": "u@x.com", "organisation": long_org})
+
+        uploaded = blob_client.upload_blob.call_args[0][0]
+        record = json.loads(uploaded.decode())
+        assert len(record["organization"]) == 2000
+
+
+# ---------------------------------------------------------------------------
+# Contact notification email
+# ---------------------------------------------------------------------------
+
+
+class TestSendContactNotification:
+    """Tests for _send_contact_notification."""
+
+    def test_returns_false_when_notification_email_not_set(self, _reload_module):
+        mod = _reload_module
+        mod.NOTIFICATION_EMAIL = ""
+        assert mod._send_contact_notification({"email": "u@x.com"}) is False
+
+    def test_returns_false_when_acs_not_configured(self, _reload_module):
+        mod = _reload_module
+        mod.NOTIFICATION_EMAIL = "admin@example.com"
+        mod.COMMUNICATION_SERVICES_CONNECTION_STRING = ""
+        assert mod._send_contact_notification({"email": "u@x.com"}) is False
+
+    def test_escapes_html_in_record(self, _reload_module):
+        """User-supplied values are HTML-escaped in notification body."""
+        import sys
+
+        mod = _reload_module
+        mod.NOTIFICATION_EMAIL = "admin@example.com"
+        mod.COMMUNICATION_SERVICES_CONNECTION_STRING = "endpoint=https://x;accesskey=y"
+        mod.EMAIL_SENDER_ADDRESS = "DoNotReply@test.com"
+
+        mock_module = MagicMock()
+        mock_client = MagicMock()
+        mock_poller = MagicMock()
+        mock_poller.result.return_value = {"id": "msg-1"}
+        mock_client.begin_send.return_value = mock_poller
+        mock_module.EmailClient.from_connection_string.return_value = mock_client
+
+        with patch.dict(sys.modules, {"azure.communication.email": mock_module}):
+            result = mod._send_contact_notification(
+                {
+                    "email": "<script>alert('xss')</script>",
+                    "organization": "Evil<Corp>",
+                }
+            )
+
+        assert result is True
+        message = mock_client.begin_send.call_args[0][0]
+        assert "<script>" not in message["content"]["html"]
+        assert "&lt;script&gt;" in message["content"]["html"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/readiness
+# ---------------------------------------------------------------------------
+
+
+class TestReadiness:
+    """Tests for the SWA readiness endpoint."""
+
+    def test_returns_ready_status(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="/api/readiness")
+        resp = mod.readiness(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["status"] == "ready"
+        assert "api_version" in body
+        assert "version" in body
+        assert "commit" in body
+
+    def test_returns_build_version_when_set(self, _reload_module, monkeypatch):
+        mod = _reload_module
+        monkeypatch.setenv("BUILD_VERSION", "1.2.3")
+        monkeypatch.setenv("BUILD_SHA", "abc123")
+        req = _mock_request(method="GET", url="/api/readiness")
+        resp = mod.readiness(req)
+        body = json.loads(resp.get_body())
+        assert body["version"] == "1.2.3"
+        assert body["commit"] == "abc123"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/contract
+# ---------------------------------------------------------------------------
+
+
+class TestContract:
+    """Tests for the SWA contract endpoint."""
+
+    def test_returns_api_version(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(method="GET", url="/api/contract")
+        resp = mod.contract(req)
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert "api_version" in body
+        assert body["api_version"] == mod.API_CONTRACT_VERSION
+
+
+# ---------------------------------------------------------------------------
+# Contract test — SWA API_CONTRACT_VERSION matches treesight
+# ---------------------------------------------------------------------------
+
+
+class TestApiContractVersionSync:
+    """SWA API_CONTRACT_VERSION must match treesight.constants."""
+
+    def test_api_contract_version_matches_treesight(self, _reload_module):
+        from treesight.constants import API_CONTRACT_VERSION as TREESIGHT_VERSION
+
+        mod = _reload_module
+        assert mod.API_CONTRACT_VERSION == TREESIGHT_VERSION, (
+            f"SWA API_CONTRACT_VERSION ({mod.API_CONTRACT_VERSION}) "
+            f"does not match treesight ({TREESIGHT_VERSION})"
+        )
+
+    def test_contact_container_matches_treesight(self, _reload_module):
+        from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
+
+        mod = _reload_module
+        assert mod.CONTACT_SUBMISSIONS_CONTAINER == PIPELINE_PAYLOADS_CONTAINER, (
+            f"SWA CONTACT_SUBMISSIONS_CONTAINER ({mod.CONTACT_SUBMISSIONS_CONTAINER}) "
+            f"does not match treesight ({PIPELINE_PAYLOADS_CONTAINER})"
+        )
+
+    def test_rate_limit_matches_treesight(self, _reload_module):
+        from treesight.constants import RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW
+
+        mod = _reload_module
+        assert mod._RATE_LIMIT_MAX == RATE_LIMIT_FORM_MAX, (
+            f"SWA _RATE_LIMIT_MAX ({mod._RATE_LIMIT_MAX}) "
+            f"does not match treesight ({RATE_LIMIT_FORM_MAX})"
+        )
+        assert mod._RATE_LIMIT_WINDOW == RATE_LIMIT_FORM_WINDOW, (
+            f"SWA _RATE_LIMIT_WINDOW ({mod._RATE_LIMIT_WINDOW}) "
+            f"does not match treesight ({RATE_LIMIT_FORM_WINDOW})"
+        )
+
+    def test_email_regex_matches_helpers(self, _reload_module):
+        from blueprints._helpers import EMAIL_RE
+
+        mod = _reload_module
+        assert mod._EMAIL_RE.pattern == EMAIL_RE.pattern, (
+            f"SWA _EMAIL_RE ({mod._EMAIL_RE.pattern}) "
+            f"does not match blueprints/_helpers.py ({EMAIL_RE.pattern})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# _get_client_ip — IP extraction for rate limiting
+# ---------------------------------------------------------------------------
+
+
+class TestGetClientIp:
+    """Tests for _get_client_ip used by rate limiter."""
+
+    def test_prefers_azure_client_ip(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(headers={"X-Azure-ClientIP": "1.2.3.4", "X-Forwarded-For": "9.8.7.6"})
+        assert mod._get_client_ip(req) == "1.2.3.4"
+
+    def test_falls_back_to_x_forwarded_for(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(headers={"X-Forwarded-For": "10.0.0.1, 10.0.0.2"})
+        # Azure appends real client IP as last entry
+        assert mod._get_client_ip(req) == "10.0.0.2"
+
+    def test_returns_unknown_when_no_headers(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(headers={})
+        assert mod._get_client_ip(req) == "unknown"
+
+    def test_strips_whitespace_from_azure_header(self, _reload_module):
+        mod = _reload_module
+        req = _mock_request(headers={"X-Azure-ClientIP": "  5.6.7.8  "})
+        assert mod._get_client_ip(req) == "5.6.7.8"
