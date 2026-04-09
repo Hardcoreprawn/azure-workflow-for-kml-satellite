@@ -36,16 +36,21 @@ class ImageryProvider(ABC):
 
     @property
     @abstractmethod
-    def name(self) -> str: ...
+    def name(self) -> str:
+        pass
 
     @abstractmethod
-    def search(self, aoi: AOI, filters: ImageryFilters) -> list[SearchResult]: ...
+    def search(self, aoi: AOI, filters: ImageryFilters) -> list[SearchResult]:
+        pass
 
     @abstractmethod
-    def order(self, scene_id: str) -> str: ...
+    def order(self, scene_id: str) -> str:
+        pass
 
     @abstractmethod
-    def poll(self, order_id: str) -> OrderStatus: ...
+    def poll(self, order_id: str) -> OrderStatus:
+        pass
 
     @abstractmethod
-    def download(self, order_id: str) -> BlobReference: ...
+    def download(self, order_id: str) -> BlobReference:
+        pass
