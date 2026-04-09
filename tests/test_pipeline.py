@@ -426,3 +426,79 @@ class TestPipelineSummaryPerAoi:
         assert len(result["per_aoi_summaries"]) == 2
         names = {s["feature_name"] for s in result["per_aoi_summaries"]}
         assert names == {"a", "b"}
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator phase decomposition (§Q.1 — #452)
+# ---------------------------------------------------------------------------
+
+
+class TestOrchestratorPhaseFunctions:
+    """Verify the orchestrator is decomposed into phase generator functions."""
+
+    def test_phase_ingestion_exists(self):
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        assert callable(_phase_ingestion)
+
+    def test_phase_acquisition_exists(self):
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        assert callable(_phase_acquisition)
+
+    def test_phase_fulfilment_exists(self):
+        from blueprints.pipeline.orchestrator import _phase_fulfilment
+
+        assert callable(_phase_fulfilment)
+
+    def test_phase_enrichment_exists(self):
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        assert callable(_phase_enrichment)
+
+    def test_phase_ingestion_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        assert inspect.isgeneratorfunction(_phase_ingestion)
+
+    def test_phase_acquisition_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        assert inspect.isgeneratorfunction(_phase_acquisition)
+
+    def test_phase_fulfilment_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.orchestrator import _phase_fulfilment
+
+        assert inspect.isgeneratorfunction(_phase_fulfilment)
+
+    def test_phase_enrichment_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        assert inspect.isgeneratorfunction(_phase_enrichment)
+
+
+class TestOrchestratorCoordinatorSize:
+    """The main orchestrator should be a thin coordinator ≤40 lines."""
+
+    def test_orchestrator_body_within_limit(self):
+        import ast
+        from pathlib import Path
+
+        src = Path("blueprints/pipeline/orchestrator.py").read_text()
+        tree = ast.parse(src)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "treesight_orchestrator":
+                body_lines = node.end_lineno - node.lineno  # type: ignore[operator]
+                assert body_lines <= 40, f"Orchestrator has {body_lines} lines (max 40)"
+                return
+
+        raise AssertionError("treesight_orchestrator not found in source")
