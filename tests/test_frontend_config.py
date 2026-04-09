@@ -52,13 +52,22 @@ class TestSwaAuth:
 
     def test_openid_issuer_set(self, swa_config):
         """openIdIssuer must point to the CIAM tenant OIDC endpoint."""
+        from urllib.parse import urlparse
+
         aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
         reg = aad.get("registration", {})
         issuer = reg.get("openIdIssuer", "")
+        parsed = urlparse(issuer)
         valid = (
-            issuer.startswith("https://")
-            and (".ciamlogin.com/" in issuer or ".login.microsoftonline.com/" in issuer)
-            and issuer.endswith("/v2.0")
+            parsed.scheme == "https"
+            and (
+                parsed.hostname is not None
+                and (
+                    parsed.hostname.endswith(".ciamlogin.com")
+                    or parsed.hostname.endswith(".login.microsoftonline.com")
+                )
+            )
+            and parsed.path.endswith("/v2.0")
         )
         assert valid, (
             "openIdIssuer must be a full https URL pointing to a valid Azure OIDC v2.0 endpoint"
