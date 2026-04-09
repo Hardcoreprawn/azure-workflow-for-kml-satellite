@@ -94,7 +94,7 @@ Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
 | Q.3 | #458 | app-shell.js — fetch swallowing, innerHTML XSS, code quality | ✅ PR #487 |
 | Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | ✅ PR #487 |
 | Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Open |
-| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | 🔄 PR #476 (Trivy IaC partial) |
+| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | ✅ Closed |
 | Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | Open |
 | Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Open |
 
