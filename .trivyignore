@@ -1,28 +1,40 @@
 # Temporary accepted-risk findings to keep the stack low-cost in dev.
 # Do not remove without replacing with an equivalent security control.
+# All entries must have an exp: date. Review any entry older than 30 days.
 #
 # AZU-0012 / AZU-0013 are tied to strict network ACL posture for Storage/Key Vault.
 # The low-cost dev setup currently keeps public endpoints enabled to avoid private
 # endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
-AZU-0012
-AZU-0013
+AZU-0012 # exp:2026-07-09 Storage network ACL — accepted dev risk
+AZU-0013 # exp:2026-07-09 Key Vault network ACL — accepted dev risk
+
+# AVD-AZU-0016: Trivy cannot resolve variable references. purge_protection_enabled
+# defaults to true via var.enable_key_vault_purge_protection.
+AVD-AZU-0016 # exp:2026-07-09 false positive — variable defaults to true
+
+# AVD-AZU-0057: Classic Storage Analytics logging superseded by
+# azurerm_monitor_diagnostic_setting.storage_blob (modern Log Analytics).
+AVD-AZU-0057 # exp:2026-07-09 false positive — using modern diagnostic settings
+
+# AVD-AZU-0061: False positive — infrastructure_encryption_enabled = true is set
+# on the storage account resource. Trivy's dual-pass config scanner misses it.
+AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
 
 # Go stdlib CVEs in the .NET Functions host binary (compiled into the host by Microsoft).
 # We cannot patch these — they require a rebuilt host from Microsoft.
 # Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
 # Review: remove these entries once Microsoft ships a patched Functions host image.
-CVE-2026-25679
-CVE-2026-27139
-CVE-2026-27142
+CVE-2026-25679 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
+CVE-2026-27139 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
+CVE-2026-27142 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
 
 # libpng16-16: fix version 1.6.39-2+deb12u4 not yet in Debian bookworm mirrors.
 # apt-get upgrade cannot pull what the mirror doesn't have yet.
-# Expires 2026-05-01 — re-check monthly; tracked in #355.
 CVE-2026-33416 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
 CVE-2026-33636 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
 
 # pip 25.0.1 CVEs in base container image — not exploitable at runtime.
 # We do not install arbitrary wheels in production; pip is only used during
 # image build. Upgrade when Microsoft publishes a patched Functions base image.
-CVE-2025-8869 # pip symlink extraction — medium
-CVE-2026-1703 # pip path traversal via crafted wheels — low
+CVE-2025-8869 # exp:2026-05-09 pip symlink extraction — medium
+CVE-2026-1703 # exp:2026-05-09 pip path traversal via crafted wheels — low
