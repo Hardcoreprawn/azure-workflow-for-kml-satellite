@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
 
-from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, EUDR_CUTOFF_DATE
+from treesight.constants import (
+    DEFAULT_ENRICHMENT_CONCURRENCY,
+    DEFAULT_HTTP_TIMEOUT_SECONDS,
+    EUDR_CUTOFF_DATE,
+)
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.aoi_metrics import (
     compute_aoi_metrics,
@@ -112,41 +117,39 @@ def _run_mosaic_ndvi_phase(
     results: dict[str, Any],
 ) -> tuple[list[dict[str, float] | None], list[str | None]]:
     """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback)."""
-    # 2. Mosaic registration
+    # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
     http_client = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
-    search_ids: list[str | None] = []
-    ndvi_search_ids: list[str | None] = []
+    search_ids: list[str | None] = [None] * len(frame_plan)
+    ndvi_search_ids: list[str | None] = [None] * len(frame_plan)
 
-    for f in frame_plan:
+    def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None]:
         extra: list[dict[str, Any]] = (
             [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}]
             if f["collection"] == "sentinel-2-l2a"
             else []
         )
-        sid = register_mosaic(
-            f["collection"],
-            f["start"],
-            f["end"],
-            bbox,
-            extra,
-            http_client,
-        )
-        search_ids.append(sid)
-
-        # S2 search ID for NDVI on NAIP frames
+        cl = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+        sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+        nsid = sid
         if f["is_naip"]:
-            s2_sid = register_mosaic(
+            nsid = register_mosaic(
                 "sentinel-2-l2a",
                 f["start"],
                 f["end"],
                 bbox,
                 [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
-                http_client,
+                cl,
             )
-            ndvi_search_ids.append(s2_sid)
-        else:
-            ndvi_search_ids.append(sid)
+        cl.close()
+        return idx, sid, nsid
+
+    with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+        futures = [pool.submit(_register_one, i, f) for i, f in enumerate(frame_plan)]
+        for fut in as_completed(futures):
+            idx, sid, nsid = fut.result()
+            search_ids[idx] = sid
+            ndvi_search_ids[idx] = nsid
 
     results["search_ids"] = search_ids
     results["ndvi_search_ids"] = ndvi_search_ids
@@ -157,18 +160,20 @@ def _run_mosaic_ndvi_phase(
         total=len(search_ids),
     )
 
-    # 3. NDVI computation
+    # 3. NDVI computation (parallel — each frame is independent I/O)
     flat_bbox = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
     log_phase("enrichment", "ndvi_start", frames=len(frame_plan))
-    ndvi_stats: list[dict[str, float] | None] = []
-    ndvi_raster_paths: list[str | None] = []
+    ndvi_stats: list[dict[str, float] | None] = [None] * len(frame_plan)
+    ndvi_raster_paths: list[str | None] = [None] * len(frame_plan)
 
-    for i, f in enumerate(frame_plan):
+    def _compute_one_ndvi(
+        idx: int, f: dict[str, Any]
+    ) -> tuple[int, dict[str, Any] | None, str | None]:
         if f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
             cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
             if cog_result is not None:
                 geotiff_bytes = cog_result.pop("geotiff_bytes", None)
-                ndvi_stats.append(cog_result)
+                raster_path = None
                 if geotiff_bytes:
                     raster_path = (
                         f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
@@ -179,19 +184,23 @@ def _run_mosaic_ndvi_phase(
                         geotiff_bytes,
                         content_type="image/tiff",
                     )
-                    ndvi_raster_paths.append(raster_path)
-                else:
-                    ndvi_raster_paths.append(None)
-                continue
+                return idx, cog_result, raster_path
 
         # Fallback: tile-based sampling
-        nsid = ndvi_search_ids[i] if i < len(ndvi_search_ids) else None
+        nsid = ndvi_search_ids[idx]
         if nsid:
-            stat = fetch_ndvi_stat(nsid, coords, http_client)
-            ndvi_stats.append(stat)
-        else:
-            ndvi_stats.append(None)
-        ndvi_raster_paths.append(None)
+            cl = httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+            stat = fetch_ndvi_stat(nsid, coords, cl)
+            cl.close()
+            return idx, stat, None
+        return idx, None, None
+
+    with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+        futures = [pool.submit(_compute_one_ndvi, i, f) for i, f in enumerate(frame_plan)]
+        for fut in as_completed(futures):
+            idx, stat, rpath = fut.result()
+            ndvi_stats[idx] = stat
+            ndvi_raster_paths[idx] = rpath
 
     http_client.close()
 
