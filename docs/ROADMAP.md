@@ -75,7 +75,7 @@ Finish the event-driven restructure. SWA becomes the sole public API surface (BF
 | 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | ✅ PR #425 |
 | 2B.2 | #422 | SWA API function for SAS token minting + status polling | ✅ PR #427 |
 | 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
-| 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | 🔄 PR #444 merged (partial) |
+| 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | ✅ PR #444, #481, #483, #484 |
 | 2B.5 | #446 | Switch SWA auth to built-in custom auth — drop MSAL.js | ✅ PR #472 |
 | 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | ✅ PR #478 |
 
