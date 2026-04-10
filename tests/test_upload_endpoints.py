@@ -1,0 +1,272 @@
+"""Tests for upload BFF endpoints (blueprints/upload.py).
+
+Covers:
+- POST /api/upload/token — SAS token minting
+- GET  /api/upload/status/{submission_id} — pipeline status polling
+
+Note: endpoints decorated with @require_auth must be called with just (req).
+The decorator extracts auth_claims/user_id from X-MS-CLIENT-PRINCIPAL.
+"""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import MagicMock, patch
+
+import azure.functions as func
+
+from tests.conftest import TEST_ORIGIN, encode_test_principal
+
+_REQUIRE_AUTH = patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_req(
+    url: str,
+    *,
+    method: str = "GET",
+    body: dict | None = None,
+    params: dict[str, str] | None = None,
+    route_params: dict[str, str] | None = None,
+    principal_user_id: str | None = "test-user",
+) -> func.HttpRequest:
+    """Build an authenticated HttpRequest for upload blueprint."""
+    h: dict[str, str] = {"Origin": TEST_ORIGIN}
+    if principal_user_id:
+        h["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(user_id=principal_user_id)
+
+    raw_body = b""
+    if body is not None:
+        h["Content-Type"] = "application/json"
+        raw_body = json.dumps(body).encode()
+
+    return func.HttpRequest(
+        method=method,
+        url=url,
+        headers=h,
+        params=params or {},
+        route_params=route_params or {},
+        body=raw_body,
+    )
+
+
+# ===================================================================
+# POST /api/upload/token
+# ===================================================================
+
+
+class TestUploadToken:
+    """SAS token minting endpoint."""
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_returns_sas_url_for_authenticated_user(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert "submissionId" in data
+        assert "sasUrl" in data
+        assert data["sasUrl"].startswith("https://teststorage.blob.core.windows.net/")
+        assert "blobName" in data
+        assert data["container"] == "kml-input"
+        assert data["expiresMinutes"] > 0
+        assert data["maxBytes"] == 10_485_760
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_writes_ticket_blob(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_blob_client = MagicMock()
+        mock_bsc.return_value.get_blob_client.return_value = mock_blob_client
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"submission_context": {"feature_count": 5, "aoi_count": 3}}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        mock_blob_client.upload_blob.assert_called_once()
+        ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
+        assert ticket_data["user_id"] == "test-user"
+        assert "created_at" in ticket_data
+        assert ticket_data["submission_context"]["feature_count"] == 5
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_sas_uses_user_delegation_key(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_delegation_key = MagicMock()
+        mock_bsc.return_value.get_user_delegation_key.return_value = mock_delegation_key
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            upload_token(req)
+
+        call_kwargs = mock_gen_sas.call_args[1]
+        assert call_kwargs["user_delegation_key"] is mock_delegation_key
+        assert call_kwargs["permission"].create is True
+        assert call_kwargs["permission"].write is True
+        assert call_kwargs["permission"].read is False
+
+    @_REQUIRE_AUTH
+    def test_rejects_unauthenticated_request(self):
+        from blueprints.upload import upload_token
+
+        req = _make_req("/api/upload/token", method="POST", principal_user_id=None)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 401
+
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_returns_503_when_storage_not_configured(self, mock_bsc):
+        from blueprints.upload import upload_token
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", ""):
+            resp = upload_token(req)
+
+        assert resp.status_code == 503
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_delegation_key_failure_returns_502(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.side_effect = RuntimeError("timeout")
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 502
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_sanitises_submission_context(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_blob_client = MagicMock()
+        mock_bsc.return_value.get_blob_client.return_value = mock_blob_client
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {
+            "submission_context": {
+                "feature_count": 5,
+                "evil_field": "should be stripped",
+                "total_area_ha": -999,  # negative — should be stripped
+            }
+        }
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            upload_token(req)
+
+        ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
+        ctx = ticket_data.get("submission_context", {})
+        assert "evil_field" not in ctx
+        assert ctx["feature_count"] == 5
+        assert "total_area_ha" not in ctx  # negative rejected
+
+
+# ===================================================================
+# GET /api/upload/status/{submission_id}
+# ===================================================================
+
+
+class TestUploadStatus:
+    """Pipeline status polling endpoint."""
+
+    _VALID_SID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    @patch("blueprints.upload._cosmos_mod")
+    def test_returns_status_from_cosmos(self, mock_cosmos):
+        from blueprints.upload import upload_status
+
+        mock_cosmos.query_items.return_value = [
+            {
+                "submission_id": self._VALID_SID,
+                "status": "running",
+                "submitted_at": "2026-04-10T10:00:00Z",
+                "feature_count": 5,
+            }
+        ]
+
+        req = _make_req(
+            f"/api/upload/status/{self._VALID_SID}",
+            route_params={"submission_id": self._VALID_SID},
+        )
+        resp = upload_status(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["submissionId"] == self._VALID_SID
+        assert data["status"] == "running"
+
+    @patch("blueprints.upload._cosmos_mod")
+    def test_returns_pending_when_not_found(self, mock_cosmos):
+        from blueprints.upload import upload_status
+
+        mock_cosmos.query_items.return_value = []
+
+        req = _make_req(
+            f"/api/upload/status/{self._VALID_SID}",
+            route_params={"submission_id": self._VALID_SID},
+        )
+        resp = upload_status(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["status"] == "pending"
+
+    def test_rejects_invalid_uuid(self):
+        from blueprints.upload import upload_status
+
+        req = _make_req(
+            "/api/upload/status/not-a-uuid",
+            route_params={"submission_id": "not-a-uuid"},
+        )
+        resp = upload_status(req)
+
+        assert resp.status_code == 400
+
+    def test_rejects_empty_submission_id(self):
+        from blueprints.upload import upload_status
+
+        req = _make_req(
+            "/api/upload/status/",
+            route_params={"submission_id": ""},
+        )
+        resp = upload_status(req)
+
+        assert resp.status_code == 400
+
+    @_REQUIRE_AUTH
+    def test_rejects_unauthenticated_request(self):
+        from blueprints.upload import upload_status
+
+        req = _make_req(
+            f"/api/upload/status/{self._VALID_SID}",
+            route_params={"submission_id": self._VALID_SID},
+            principal_user_id=None,
+        )
+        resp = upload_status(req)
+
+        assert resp.status_code == 401
