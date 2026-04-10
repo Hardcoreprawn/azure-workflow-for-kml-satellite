@@ -15,16 +15,8 @@
       "statusCode": 301
     },
     {
-      "route": "/api/health",
+      "route": "/api-config.json",
       "allowedRoles": ["anonymous"]
-    },
-    {
-      "route": "/api/health/*",
-      "allowedRoles": ["anonymous"]
-    },
-    {
-      "route": "/api/*",
-      "allowedRoles": ["authenticated"]
     }
   ],
   "responseOverrides": {

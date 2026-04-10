@@ -152,9 +152,11 @@
 
   let apiDiscoveryReady = null;
 
-  // SWA BFF pattern: all API calls are same-origin (/api/*).
-  // Endpoints not yet migrated to the SWA managed API will return 404.
-  // See ROADMAP.md P1 2B.4 for endpoint migration tracking.
+  // Container Apps FA: API calls go cross-origin to the Function App
+  // hostname discovered from /api-config.json (injected at deploy time).
+  // Auth principal is forwarded via X-MS-CLIENT-PRINCIPAL header.
+  let _apiBase = '';          // Container Apps FA hostname, e.g. 'https://func-kmlsat-dev.azurecontainerapps.io'
+  let _clientPrincipal = null; // raw clientPrincipal from /.auth/me — base64-encoded for X-MS-CLIENT-PRINCIPAL
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
@@ -268,9 +270,22 @@
   }
 
   async function discoverApiBase() {
-    // Probe the SWA managed API health endpoint.
+    // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
+    // Falls back to same-origin for local dev (func start serves /api/* locally).
     try {
-      var res = await fetch('/api/health');
+      const cfgRes = await fetch('/api-config.json');
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        if (cfg.apiBase) {
+          _apiBase = cfg.apiBase.replace(/\/+$/, ''); // strip trailing slashes
+        }
+      }
+    } catch { /* local dev — no api-config.json, use same-origin */ }
+
+    // Probe health to confirm the API is reachable.
+    try {
+      const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
+      const res = await fetch(healthUrl);
       if (res.ok) {
         setServiceStatus('Online', 'online');
         return;
@@ -292,9 +307,13 @@
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
-    // SWA built-in auth: session cookie is sent automatically.
-    // No Authorization header needed — SWA injects x-ms-client-principal.
-    const resp = await fetch(path, opts);
+    // Forward the SWA client principal to Container Apps FA so the
+    // require_auth decorator can identify the user on cross-origin calls.
+    if (_clientPrincipal) {
+      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(JSON.stringify(_clientPrincipal));
+    }
+    const url = _apiBase ? _apiBase + path : path;
+    const resp = await fetch(url, opts);
     if (!resp.ok) {
       const body = await resp.json().catch(function () { return {}; });
       const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
@@ -2463,40 +2482,39 @@
         };
       }
 
-      // Step 1: Get SAS token from SWA managed API
-      // SWA built-in auth handles authentication via session cookie —
-      // no Bearer token needed.
+      // Step 1: Get SAS token from Container Apps FA.
+      // apiFetch handles cross-origin routing and auth forwarding.
       var tokenBody = {};
       if (submissionContext) {
         tokenBody.provider_name = submissionContext.provider_name;
         tokenBody.submission_context = submissionContext;
       }
 
-      var tokenRes = await fetch('/api/upload/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tokenBody)
-      });
-      if (!tokenRes || !tokenRes.ok) {
-        if (tokenRes && tokenRes.status === 401) {
-          // SWA session expired or user not authenticated —
-          // redirect to login so SWA can re-establish the session.
+      var tokenRes;
+      try {
+        tokenRes = await apiFetch('/api/upload/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tokenBody)
+        });
+      } catch (tokenFetchErr) {
+        if (tokenFetchErr.status === 401) {
+          // Session expired — redirect to login.
           resetAnalysisProgress();
           currentAccount = null;
           updateAuthUI();
           setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           return;
         }
-        var tokenErr = tokenRes ? await tokenRes.json().catch(function(){ return {}; }) : {};
-        setAnalysisStatus(tokenErr.error || 'Could not prepare upload. Please try again.', 'error');
+        setAnalysisStatus(tokenFetchErr.body && tokenFetchErr.body.error || 'Could not prepare upload. Please try again.', 'error');
         updateContentSummary(null);
         resetAnalysisProgress();
         return;
       }
 
       var tokenData = await tokenRes.json();
-      var submissionId = tokenData.submission_id;
-      var sasUrl = tokenData.sas_url;
+      var submissionId = tokenData.submissionId || tokenData.submission_id;
+      var sasUrl = tokenData.sasUrl || tokenData.sas_url;
 
       // Step 2: Upload KML directly to blob storage via SAS URL
       button.textContent = 'Uploading…';
@@ -2947,6 +2965,7 @@
     }).then(function(payload) {
       var principal = payload && payload.clientPrincipal;
       if (principal && principal.userId) {
+        _clientPrincipal = principal; // store raw for X-MS-CLIENT-PRINCIPAL forwarding
         currentAccount = {
           userId: principal.userId,
           name: principal.userDetails || '',
