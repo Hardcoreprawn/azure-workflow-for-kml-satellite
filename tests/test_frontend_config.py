@@ -141,6 +141,18 @@ class TestAuthConfig:
             "landing.js still creates MSAL instance — must use SWA built-in auth"
         )
 
+    def test_landing_uses_api_config_json(self, landing_js):
+        """landing.js must discover the Container Apps FA via /api-config.json."""
+        assert "api-config.json" in landing_js, (
+            "landing.js must read /api-config.json for BYOF hostname discovery"
+        )
+
+    def test_landing_forwards_client_principal(self, landing_js):
+        """landing.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
+        assert "X-MS-CLIENT-PRINCIPAL" in landing_js, (
+            "landing.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CORS — backend must include all frontend origins

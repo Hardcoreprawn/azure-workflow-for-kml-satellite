@@ -416,10 +416,9 @@ class TestDeployWorkflowSettings:
             "HTML meta tags before SWA upload"
         )
 
-    def test_swa_app_settings_managed_by_tofu(self, deploy_yml):
+    def test_swa_app_settings_not_managed_by_cli(self, deploy_yml):
         assert "az staticwebapp appsettings set" not in deploy_yml, (
-            "deploy.yml must NOT configure SWA app settings via CLI — "
-            "tofu manages them inline via app_settings on the resource"
+            "deploy.yml must NOT configure SWA app settings via CLI"
         )
 
     def test_deploy_smoke_checks_container_apps_fa(self, deploy_yml):

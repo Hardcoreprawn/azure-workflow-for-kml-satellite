@@ -163,6 +163,12 @@ class TestCorsPreflight:
         resp = cors_preflight(req)
         assert "Access-Control-Allow-Origin" not in resp.headers
 
+    def test_cors_headers_include_client_principal(self):
+        """CORS must allow X-MS-CLIENT-PRINCIPAL for BYOF auth forwarding."""
+        req = self._make_req()
+        hdrs = cors_headers(req)
+        assert "X-MS-CLIENT-PRINCIPAL" in hdrs["Access-Control-Allow-Headers"]
+
 
 # ---------------------------------------------------------------------------
 # EMAIL_RE

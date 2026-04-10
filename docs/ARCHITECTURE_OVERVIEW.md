@@ -46,34 +46,54 @@ Additional fixed names:
 The SWA hostname is Azure-assigned (no custom domain currently configured).
 The Function App runs on Azure Container Apps in `uksouth`; the SWA is in `westeurope`.
 
-### API Routing — SWA as BFF (Backend-for-Frontend)
+### API Routing — BYOF (Bring Your Own Function App)
 
-> **Target architecture** (PR #472). During migration, some endpoints remain
-> on the Container Apps function app with direct browser access. See #474 for
-> endpoint migration tracking.
+> **Architecture:** All `/api/*` calls go cross-origin from SWA to the
+> Container Apps Function App. SWA serves only static files and auth.
 
-The SWA managed API is the **target public-facing API surface**. All browser API calls go through `/api/*` on the SWA. The Container Apps function app is never directly exposed to the browser for auth-gated operations.
+The Container Apps Function App is the **sole API surface**. All browser API
+calls go cross-origin to the FA hostname discovered from `/api-config.json`
+(injected at deploy time). SWA no longer hosts any managed functions.
 
 ```text
-Browser ─── /api/* ──→ SWA Managed API (T1, always-warm)
+Browser ─── /.auth/* ──→ SWA (built-in Azure AD auth)
+        │
+        └── /api/* ──→ Container Apps FA (all endpoints)
                           │
                           ├── reads: Cosmos DB (analysis/history, billing/status)
                           ├── writes: Blob Storage SAS minting (upload/token)
-                          └── async: Queue/Event Grid → Container Apps (T2/T3)
-                                                          │
-                                                          ├── Orchestrator (T2, scale-to-zero)
-                                                          └── Compute (T3, heavy processing)
+                          ├── sync: billing, catalogue, contact, health, export
+                          └── async: Queue/Event Grid → Orchestrator + Activities
 ```
 
 This means:
 
-- `/api/*` routes are served by the SWA managed API — always warm, no cold-start
-- All user-facing responses return fast — expensive backend work is async (queue/Event Grid)
-- Container Apps only receives work via Event Grid blob triggers or queue messages
-- No CORS complexity — everything is same-origin under the SWA hostname
-- Container Apps can be network-locked to reject direct browser calls
+- `/api/*` routes are served by the Container Apps Function App
+- SWA handles only static hosting and Azure AD auth (login/logout/me)
+- Auth forwarding: frontend reads `clientPrincipal` from `/.auth/me`, base64-encodes it, and sends it as `X-MS-CLIENT-PRINCIPAL` header on cross-origin calls
+- The FA `require_auth` decorator parses `X-MS-CLIENT-PRINCIPAL` to identify the user
+- CORS is configured on the FA to allow requests from the SWA hostname
+- Container Apps FA uses managed identity for Blob, Cosmos, Key Vault access
 
-No unauthenticated endpoints are exposed to browsers. Infrastructure probes (`/health`, `/readiness`) are internal to Container Apps (network-locked). The Stripe billing webhook uses its own signature verification. The `contact-form` endpoint is a pre-login rate-limited form carrying no user data.
+No unauthenticated endpoints are exposed to browsers except health and
+contact-form (rate-limited). The Stripe billing webhook uses its own
+signature verification.
+
+#### Auth Forwarding (BYOF)
+
+With BYOF, the browser makes cross-origin API calls to the Container Apps FA.
+Auth works as follows:
+
+1. User logs in via `/.auth/login/aad` (SWA built-in auth)
+2. Frontend calls `/.auth/me` to get `clientPrincipal` (validated by SWA)
+3. Frontend base64-encodes the raw `clientPrincipal` JSON
+4. Frontend sends it as `X-MS-CLIENT-PRINCIPAL` header on each cross-origin API call
+5. Container Apps FA `require_auth` decorator decodes and reads `userId`/`userRoles`
+
+**Known limitation:** The `X-MS-CLIENT-PRINCIPAL` header is client-supplied
+and not cryptographically verified by the FA. A direct HTTP client (not bound
+by CORS) could forge this header. Mitigations planned for a future phase
+include JWT validation or a shared HMAC between SWA and FA.
 
 #### Showcase vs Tiers
 
@@ -89,7 +109,7 @@ The **showcase** is served from `imagery/clipped/showcase/` blobs via valet toke
 
 The "demo" billing tier is deprecated — it overlapped with Free but was strictly worse (1 AOI, 0 retention). New unauthenticated users see the showcase; new authenticated users land on Free.
 
-### Auth — SWA Built-in Custom Auth
+### Auth — SWA Built-in Custom Auth + BYOF Forwarding
 
 Authentication uses SWA's built-in pre-configured Azure AD provider. SWA handles the full OAuth flow server-side with zero app registration or client secrets.
 
@@ -97,13 +117,11 @@ Authentication uses SWA's built-in pre-configured Azure AD provider. SWA handles
 - **Login:** `/.auth/login/aad` (SWA handles redirect + callback)
 - **Logout:** `/.auth/logout`
 - **User info:** `/.auth/me` → JSON with `clientPrincipal`
-- **API auth:** SWA injects `x-ms-client-principal` header into all `/api/*` requests
+- **API auth:** Frontend reads `clientPrincipal` from `/.auth/me` and forwards it as `X-MS-CLIENT-PRINCIPAL` header to the Container Apps FA
 - **Session:** managed by SWA via `StaticWebAppsAuthCookie` — no client-side token management
-- **Route protection:** `staticwebapp.config.json` `routes[].allowedRoles` enforced by SWA before the request reaches the managed API
+- **Route protection:** `staticwebapp.config.json` routes enforce SWA auth for protected pages; API auth is enforced by the FA `require_auth` decorator
 
-The managed API reads `x-ms-client-principal` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. No PyJWT / JWKS validation is needed — SWA has already validated the token server-side.
-
-Container Apps does not perform browser-facing auth. When the SWA managed API proxies work to Container Apps, it uses managed identity (DefaultAzureCredential) for server-to-server calls.
+The FA reads `X-MS-CLIENT-PRINCIPAL` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. The FA uses managed identity (DefaultAzureCredential) for all data-plane operations (Blob, Cosmos, Key Vault).
 
 ### Deploy Pipeline
 
@@ -123,12 +141,8 @@ Config: `.github/workflows/deploy.yml`
 
 ## Data Flow
 
-> **Target flow** (PR #472). Steps 1–3 and 8 use the SWA managed API.
-> During migration, some status/billing calls may still route to the
-> Container Apps function app.
-
 1. User authenticates via `/.auth/login/aad` (SWA handles the OAuth redirect).
-2. Frontend calls `POST /api/upload/token` — SWA managed API validates `x-ms-client-principal`, mints a write-only SAS URL.
+2. Frontend calls `POST /api/upload/token` on the Container Apps FA — `require_auth` validates `X-MS-CLIENT-PRINCIPAL`, mints a write-only SAS URL.
 3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
 4. Event Grid emits a BlobCreated event.
 5. kml_blob_trigger (Container Apps) validates event payload and starts kml_processing_orchestrator.
@@ -137,7 +151,7 @@ Config: `.github/workflows/deploy.yml`
    - prepare_aoi + write_metadata
    - acquire_imagery + poll_order_suborchestrator + download_imagery + post_process_imagery
 7. Metadata and imagery artifacts are written to output blob paths.
-8. Frontend polls `GET /api/upload/status/{id}` via SWA managed API for progress.
+8. Frontend polls `GET /api/upload/status/{id}` on the Container Apps FA for progress.
 
 ## Imagery Output Framing Policy (2026-03-12)
 
