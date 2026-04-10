@@ -683,7 +683,6 @@ resource "azapi_resource" "function_app" {
             ],
             var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
           )
-          allowedHeaders     = ["Content-Type", "Authorization", "X-MS-CLIENT-PRINCIPAL"]
           supportCredentials = false
         }
         appSettings = concat(
