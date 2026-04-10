@@ -24,7 +24,7 @@ Last updated: 2026-04-10 (architecture topology redesign — BYOF consolidation 
 
 | PR | Summary |
 |----|---------|
-| #511 | P3 BYOF: Delete SWA managed API, route all /api/* to Container Apps FA |
+| #512 | P3 BYOF consolidation: delete SWA API, frontend BYOF routing, infracost resilience |
 | #510 | Upload BFF endpoints: upload/token + upload/status on Container Apps FA |
 | #497 | Fix deploy: Key Vault purge protection one-way toggle |
 | #496 | Replace CIAM with SWA pre-configured auth providers (fixes #495) |
