@@ -97,7 +97,7 @@ def require_auth(fn):
 
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if not principal_header:
-            if not os.environ.get("REQUIRE_AUTH"):
+            if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
                 return fn(req, auth_claims={}, user_id="anonymous")
             return error_response(401, "Authentication required", req=req)
 
@@ -125,7 +125,7 @@ def check_auth(req: func.HttpRequest) -> tuple:
     """
     principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
     if not principal_header:
-        if not os.environ.get("REQUIRE_AUTH"):
+        if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
             return {}, "anonymous"
         raise ValueError("Authentication required")
     principal = parse_client_principal(principal_header)

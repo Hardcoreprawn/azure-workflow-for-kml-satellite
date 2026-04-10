@@ -153,7 +153,7 @@ paths:
         accounts are routed through the cheaper seasonal two-year pipeline.
       tags: [analysis]
       security:
-        - bearerAuth: []
+        - swaAuth: []
       requestBody:
         required: true
         content:
@@ -862,11 +862,14 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: SWA session auth (X-MS-CLIENT-PRINCIPAL header injected by Azure Static Web Apps)
+    swaAuth:
+      type: apiKey
+      in: cookie
+      name: StaticWebAppsAuthCookie
+      description: |
+        SWA built-in auth session cookie.  Users authenticate via
+        /.auth/login/{provider} and the SWA reverse proxy injects
+        X-MS-CLIENT-PRINCIPAL on every /api/* request.
     functionKey:
       type: apiKey
       in: header
@@ -1145,4 +1148,4 @@ components:
             error: "Rate limit exceeded. Try again later."
 
 security:
-  - bearerAuth: []
+  - swaAuth: []
