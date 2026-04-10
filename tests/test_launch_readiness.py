@@ -423,12 +423,16 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_smoke_checks_container_apps_fa(self, deploy_yml):
         """Deploy must smoke-check the Container Apps FA health endpoint."""
-        assert "Container Apps" in deploy_yml, (
-            "deploy.yml smoke check must target the Container Apps FA, not SWA managed functions"
+        assert "Smoke-check Container Apps Function App" in deploy_yml, (
+            "deploy.yml must have a named smoke check step targeting Container Apps FA"
+        )
+        assert "function_app_hostname" in deploy_yml, (
+            "deploy.yml smoke check must use function_app_hostname output"
         )
         assert "/api/health" in deploy_yml, (
             "deploy.yml smoke check must test /api/health on the Container Apps FA"
         )
+        assert "curl" in deploy_yml, "deploy.yml smoke check must curl the FA health endpoint"
 
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (

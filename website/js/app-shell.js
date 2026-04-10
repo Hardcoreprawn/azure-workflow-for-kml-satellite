@@ -310,7 +310,11 @@
     // Forward the SWA client principal to Container Apps FA so the
     // require_auth decorator can identify the user on cross-origin calls.
     if (_clientPrincipal) {
-      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(JSON.stringify(_clientPrincipal));
+      // UTF-8 safe base64: encode to bytes first, then btoa on Latin-1 string.
+      var jsonStr = JSON.stringify(_clientPrincipal);
+      var bytes = new TextEncoder().encode(jsonStr);
+      var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
+      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
     const url = _apiBase ? _apiBase + path : path;
     const resp = await fetch(url, opts);

@@ -72,7 +72,11 @@
     opts = opts || {};
     opts.headers = opts.headers || {};
     if (_clientPrincipal) {
-      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(JSON.stringify(_clientPrincipal));
+      // UTF-8 safe base64: encode to bytes first, then btoa on Latin-1 string.
+      var jsonStr = JSON.stringify(_clientPrincipal);
+      var bytes = new TextEncoder().encode(jsonStr);
+      var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
+      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
     var url = _apiBase ? _apiBase + path : path;
     var resp = await fetch(url, opts);
