@@ -18,6 +18,7 @@ from treesight.security.url import csp_token_matches_host as _csp_token_matches_
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
+APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
 
@@ -30,6 +31,11 @@ def index_html():
 @pytest.fixture()
 def landing_js():
     return LANDING_JS.read_text()
+
+
+@pytest.fixture()
+def app_shell_js():
+    return APP_SHELL_JS.read_text()
 
 
 @pytest.fixture()
@@ -151,6 +157,30 @@ class TestAuthConfig:
         """landing.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
         assert "X-MS-CLIENT-PRINCIPAL" in landing_js, (
             "landing.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+        )
+
+    def test_landing_uses_utf8_safe_base64(self, landing_js):
+        """landing.js must use TextEncoder for UTF-8 safe base64 encoding."""
+        assert "TextEncoder" in landing_js, (
+            "landing.js must use TextEncoder for UTF-8 safe base64 of client principal"
+        )
+
+    def test_app_shell_forwards_client_principal(self, app_shell_js):
+        """app-shell.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
+        assert "X-MS-CLIENT-PRINCIPAL" in app_shell_js, (
+            "app-shell.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+        )
+
+    def test_app_shell_uses_utf8_safe_base64(self, app_shell_js):
+        """app-shell.js must use TextEncoder for UTF-8 safe base64 encoding."""
+        assert "TextEncoder" in app_shell_js, (
+            "app-shell.js must use TextEncoder for UTF-8 safe base64 of client principal"
+        )
+
+    def test_app_shell_uses_api_config_json(self, app_shell_js):
+        """app-shell.js must discover the Container Apps FA via /api-config.json."""
+        assert "api-config.json" in app_shell_js, (
+            "app-shell.js must read /api-config.json for BYOF hostname discovery"
         )
 
 

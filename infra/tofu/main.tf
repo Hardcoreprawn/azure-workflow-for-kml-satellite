@@ -788,13 +788,6 @@ resource "azapi_resource" "function_app" {
   response_export_values = ["id", "name", "properties.defaultHostName"]
 }
 
-resource "azurerm_user_assigned_identity" "swa" {
-  name                = local.names.swa_identity
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  tags                = local.tags
-}
-
 resource "azurerm_static_web_app" "main" {
   name                = local.names.static_web_app
   location            = var.static_web_app_location
@@ -802,11 +795,6 @@ resource "azurerm_static_web_app" "main" {
   sku_tier            = "Standard"
   sku_size            = "Standard"
   tags                = local.tags
-
-  identity {
-    type         = "UserAssigned"
-    identity_ids = [azurerm_user_assigned_identity.swa.id]
-  }
 }
 
 # --- Linked backend (disabled): the linkedBackends ARM API returns 500

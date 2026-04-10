@@ -148,9 +148,9 @@ Cosmos documents and blob JSON — the BFF handles all translation.
 |-------|-------|-------|--------|
 | B.1 | #498 | Root cause: SWA managed functions don't support managed identity | ✅ Superseded by BYOF |
 | B.2 | #506 | Stripe Key Vault refs don't resolve in SWA managed functions | ✅ Superseded by BYOF |
-| B.3 | #511 | Delete `website/api/` managed function code | ✅ PR #511 |
-| B.4 | #511 | Configure `api-config.json` to route `/api/*` to Container Apps FA | ✅ PR #511 |
-| B.5 | #511 | Update deploy workflow to skip SWA managed API build | ✅ PR #511 |
+| B.3 | #511 | Delete `website/api/` managed function code | ✅ PR #512 |
+| B.4 | #511 | Configure `api-config.json` to route `/api/*` to Container Apps FA | ✅ PR #512 |
+| B.5 | #511 | Update deploy workflow to skip SWA managed API build | ✅ PR #512 |
 | B.6 | #499 | Add orchestrator status endpoint (on Container Apps) | ✅ Already exists |
 | B.7 | #500 | Add timelapse-data read endpoint (on Container Apps) | ✅ Already exists |
 | B.8 | #501 | Add timelapse-analysis-load endpoint (on Container Apps) | ✅ Already exists |
