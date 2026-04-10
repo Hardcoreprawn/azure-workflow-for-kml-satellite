@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-10 (PR #496 merged — replace CIAM with SWA built-in auth)
+Last updated: 2026-04-10 (architecture topology redesign — BYOF consolidation replaces SWA managed API)
 
 ---
 
@@ -24,26 +24,47 @@ Last updated: 2026-04-10 (PR #496 merged — replace CIAM with SWA built-in auth
 
 | PR | Summary |
 |----|---------|
+| #497 | Fix deploy: Key Vault purge protection one-way toggle |
 | #496 | Replace CIAM with SWA pre-configured auth providers (fixes #495) |
 | #490 | Code scanning alerts: URL sanitisation, mixed imports, except comments (fixes #381) |
 | #487 | P2 Code Quality: orchestrator decomposition, .get() fixes, JS hardening, enrichment parallelisation |
 | #484 | SWA catalogue endpoints — list, detail, by_run, by_aoi (completes #465 / T1.1) |
 | #483 | SWA contact form, readiness, contract endpoints + deploy smoke-check fix (partial #465) |
-| #481 | SWA billing endpoints — billing/status, billing/checkout, billing/portal (partial #465, #474) |
 
 ---
 
 ## Architecture Direction
 
-**3-tier serverless split** (tracking issue: #463, spec: `docs/3-tier-architecture.md`).
+**2-tier Container Apps split** (tracking issue: #463).
 
-| Tier | Runtime | Python | Purpose |
-|------|---------|--------|---------|
-| **T1 — SWA Functions** | SWA managed API | 3.11 | Always-warm: auth, reads, status, SAS minting |
-| **T2 — Orchestrator** | Container Apps (Functions) | 3.12 | Scale-to-zero: Durable orchestration, triggers |
-| **T3 — Compute** | Container Apps (Activities → Jobs) | 3.12+ | Scale-to-zero: GDAL, rasterio, Rust/PyO3 |
+SWA managed functions are deprecated — they lack managed identity, Key Vault
+refs, Durable Functions, and are pinned to Python ≤3.11. All API endpoints
+consolidate onto the Container Apps Function App (BYOF via `api-config.json`
+hostname injection). The split is driven by **resource density**: BFF endpoints
+need 0.25 vCPU always-on; compute activities need 4 vCPU occasionally.
 
-Migration is phased across P1/P3/P5/P8 below. Each phase is independently shippable.
+| Phase | Topology | Baseline cost | Notes |
+|-------|----------|---------------|-------|
+| **Phase 1 (P3)** | Single Container Apps FA — all endpoints + pipeline | ~£20/mo (min 1 replica, 2 vCPU / 4 GiB) | Delete SWA managed API (~900 lines). One codebase. |
+| **Phase 2 (P5)** | T2 (API+orchestrator) + T3 (compute, scale-to-zero) | ~£8/mo (T2 min 1 @ 0.5 vCPU) | Shared Durable task hub. T3 pays only when running. |
+| **Phase 3 (P8)** | T2 + Container Apps Jobs for burst compute | ~£8/mo + ~£0.80/500-AOI run | 50 concurrent Jobs vs 10 replicas = 3× faster. |
+
+**Scale target (500-AOI KMZ):** ~45 min wall-clock with Jobs (Phase 3) vs
+~2.5 hours with replicas (Phase 2). Azure Batch stays for AOIs ≥50k ha.
+
+### Resource demand summary
+
+| Component | CPU | RAM | Duration |
+|-----------|-----|-----|----------|
+| BFF endpoints | <0.25 vCPU | <128 MiB | <100ms |
+| Orchestrator | negligible | <1 MiB | coordinates only |
+| Ingestion (parse + prepare) | 100–500ms burst | 10–50 MiB | <10s |
+| Acquisition (STAC + polling) | minimal | <5 MiB | 10–30 min (I/O) |
+| Post-process (rasterio) | **2–30s per scene** | **50–500 MiB** | 5–30s per AOI |
+| Enrichment NDVI (Rust) | **500ms–2s per frame** | **500 MiB–1 GiB** | 2–5 min (8 threads) |
+| Change detection (Rust) | 100–500ms per pair | 100 MiB | 30s–2 min |
+
+Migration is phased across P3/P5/P8. Each phase is independently shippable and reversible.
 
 ---
 
@@ -62,7 +83,12 @@ Bugs visible to real users right now.
 
 **Exit criteria:** Auth works reliably. No CSP errors. Demo dismiss works. Telemetry flows.
 
-**Architecture decision (2026-04-08):** SWA built-in custom auth is the single auth mechanism. MSAL.js is dropped. The SWA managed API is the BFF — the only public API surface. Container Apps receives work only via Event Grid/queue, never directly from the browser for auth-gated operations. See `docs/ARCHITECTURE_OVERVIEW.md`.
+**Architecture decision (2026-04-08, revised 2026-04-10):** SWA built-in
+custom auth is the single auth mechanism. MSAL.js is dropped. The Container
+Apps Function App is the BFF — the only API surface. SWA routes `/api/*` to
+it via `api-config.json` hostname injection. SWA managed functions are
+deprecated (no managed identity, no Key Vault refs, no Durable Functions,
+Python ≤3.11). See `docs/ARCHITECTURE_OVERVIEW.md`.
 
 ---
 
@@ -79,7 +105,7 @@ Finish the event-driven restructure. SWA becomes the sole public API surface (BF
 | 2B.5 | #446 | Switch SWA auth to built-in custom auth — drop MSAL.js | ✅ PR #472 |
 | 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | ✅ PR #478 |
 
-**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from SWA managed functions. All browser API calls go through SWA `/api/*` — Container Apps never directly serves auth-gated browser requests. SWA API has full App Insights telemetry.
+**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from Container Apps FA (formerly SWA managed functions, now consolidated). All browser API calls go through SWA `/api/*` → Container Apps FA. SWA API has full App Insights telemetry.
 
 ---
 
@@ -96,22 +122,50 @@ Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
 | Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Partial — enrichment parallelised in #487; deeper optimisation tracked in #488 |
 | Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | ✅ Closed |
 | Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | ✅ PR #490 |
-| Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | Open |
+| Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | ✅ Closed — CVE fixed via apt-get upgrade |
 
 **Exit criteria:** Orchestrator decomposed (prerequisite for #466). Scale claim proven. Code scanning clean. Simplicity violations fixed.
 
 ---
 
-### P3 — 3-Tier Phase 1: SWA as Primary API (T1)
+### P3 — BYOF Consolidation: Delete SWA Managed API
 
-Expand SWA managed API to serve all user-facing reads. Part of #463.
+Consolidate all BFF endpoints onto the Container Apps Function App. Delete
+the SWA managed API (~900 lines of duplicated code). SWA serves static files
+only; all `/api/*` calls route to Container Apps via `api-config.json`
+hostname injection.
 
-| Order | Issue | Title | Depends On |
-|-------|-------|-------|------------|
-| T1.1 | #465 | Move health, billing/status, catalogue, contact to SWA | ✅ PR #481 (billing), #483 (contact, readiness, contract), #484 (catalogue) |
-| T1.2 | #424 | Complete remaining SWA endpoint migration | #465 |
+**Why:** SWA managed functions lack managed identity (#498), Key Vault refs
+(#506), Durable Functions, and are pinned to Python ≤3.11. Every capability
+must be re-implemented. The Container Apps FA already has all 15+ endpoints,
+managed identity, Key Vault, Python 3.12, and Durable Functions.
 
-**Exit criteria:** SWA serves all read + lightweight write endpoints. Container App only wakes for pipeline execution and write paths. No GDAL in SWA image.
+**BFF contract:** All endpoints use the stable camelCase API contract defined
+in `docs/openapi.yaml` v2.0.0. Response shapes are decoupled from internal
+Cosmos documents and blob JSON — the BFF handles all translation.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| B.1 | #498 | Root cause: SWA managed functions don't support managed identity | ✅ PR #507 (account-key workaround) — superseded by BYOF |
+| B.2 | #506 | Stripe Key Vault refs don't resolve in SWA managed functions | Superseded by BYOF |
+| B.3 | — | Delete `website/api/` managed function code | Open |
+| B.4 | — | Configure `api-config.json` to route `/api/*` to Container Apps FA | Open |
+| B.5 | — | Update deploy workflow to skip SWA managed API build | Open |
+| B.6 | #499 | Add orchestrator status endpoint (on Container Apps) | Open |
+| B.7 | #500 | Add timelapse-data read endpoint (on Container Apps) | Open |
+| B.8 | #501 | Add timelapse-analysis-load endpoint (on Container Apps) | Open |
+| B.9 | #503 | Add timelapse-analysis-save endpoint (on Container Apps) | Open |
+| B.10 | #502 | Add timelapse-analysis compute endpoint (on Container Apps) | Open |
+| B.11 | #504 | Add EUDR assessment endpoint (on Container Apps) | Open |
+| B.12 | #505 | Add export endpoint — SAS redirect for large files (on Container Apps) | Open |
+
+**Container Apps FA sizing (Phase 1):** 2 vCPU, 4 GiB, min 1 replica (warm
+BFF), max 10 replicas (KEDA on activity queue depth). ~£20/month baseline.
+
+**Exit criteria:** SWA managed API deleted. All `/api/*` endpoints served by
+Container Apps FA. Frontend uses single camelCase shape. Auth via SWA built-in
+→ `x-ms-client-principal` header forwarded to Container Apps. No #498/#506
+blockers.
 
 ---
 
@@ -132,15 +186,34 @@ Make production safe to promote into. Build once in CI, promote the same immutab
 
 ---
 
-### P5 — 3-Tier Phase 2: Split Orchestrator + Compute (T2/T3)
+### P5 — Split T2 (API + Orchestrator) / T3 (Compute)
 
-Separate the Container Apps function app into two images. Part of #463.
+Split the single Container Apps FA into two apps for resource efficiency.
+Both share the same Durable Functions task hub (`KmlSatelliteHub`) and
+storage account. Activities auto-route via the shared work queue.
+
+**T2 — API + Orchestrator** (`func-kmlsat-{env}-api`)
+
+- Image: ~300 MB (no GDAL, no rasterio, no Rust)
+- Functions: BFF endpoints, orchestrator, parse_kml, prepare_aoi, acquire_imagery, poll_order
+- Resources: 0.5 vCPU, 1 GiB, **min 1 replica** (always-warm BFF)
+- Cost: ~£8/month (mostly idle rate)
+
+**T3 — Compute** (`func-kmlsat-{env}-compute`)
+
+- Image: ~1.2 GB (GDAL + rasterio + Rust/PyO3)
+- Functions: download_imagery, post_process_imagery, run_enrichment
+- Resources: 4 vCPU, 8 GiB, **min 0** (scale-to-zero), max 10 replicas
+- KEDA trigger: Durable Functions activity queue depth
+- Cost: £0 idle, ~£0.40–1.60/hour during pipeline runs
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| T2.1 | #466 | Split Container Apps into orchestrator + compute images | #452, #401, #465 |
+| T2.1 | #466 | Split Container Apps into API + compute images | #452, #401 |
 
-**Exit criteria:** Orchestrator image &lt;300 MB (no GDAL). Compute image has full stack. Both share Durable task hub. Cold-start &lt;3s for orchestrator.
+**Exit criteria:** T2 image <300 MB (no GDAL). T3 image has full GDAL+Rust
+stack. Both share Durable task hub. T2 cold-start <3s. T3 scales to zero
+when no pipeline work. Baseline cost drops from ~£20 → ~£8/month.
 
 ---
 
@@ -190,12 +263,18 @@ Advanced features, enterprise deals, competitive moats. **Do not start until Sta
 
 | Order | Issue | Title |
 |-------|-------|-------|
-| 5.1 | #467 | Container Apps Jobs for burst compute (3-tier Phase 3) |
+| 5.1 | #467 | Container Apps Jobs for burst compute (Phase 3 — replaces T3 replicas with per-AOI jobs) |
 | 5.2 | #82 | Tree detection model + inference pipeline |
 | 5.3 | #83 | Tree health classification + temporal tracking |
 | 5.4 | #84 | Annotation-driven model fine-tuning |
 | 5.5 | #87 | Annotation tools and storage |
 | 5.6 | #86 | Web frontend (React / Next.js) |
+
+**Container Apps Jobs detail (#467):** Replace T3 activity replicas with
+event-triggered Jobs (one per AOI). 4 vCPU / 8 GiB per Job, max 50
+concurrent. Orchestrator dispatches via storage queue, polls blob for
+completion. 500-AOI run: ~45 min (50 Jobs) vs ~2.5 hours (10 T3 replicas).
+Azure Batch stays for AOIs ≥50k ha and future GPU workloads.
 
 ---
 
