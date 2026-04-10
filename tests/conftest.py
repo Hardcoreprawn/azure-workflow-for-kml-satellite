@@ -170,6 +170,24 @@ def tenant_blob_event_dict() -> dict:
 # ---------------------------------------------------------------------------
 
 
+def encode_test_principal(
+    user_id: str = "test-user",
+    user_details: str = "user@example.com",
+    identity_provider: str = "aad",
+    user_roles: list[str] | None = None,
+) -> str:
+    """Build a Base64-encoded X-MS-CLIENT-PRINCIPAL header value for tests."""
+    import base64
+
+    principal = {
+        "identityProvider": identity_provider,
+        "userId": user_id,
+        "userDetails": user_details,
+        "userRoles": user_roles or ["anonymous", "authenticated"],
+    }
+    return base64.b64encode(json.dumps(principal).encode()).decode()
+
+
 def make_test_request(
     url: str = "/api/test",
     *,
@@ -179,6 +197,7 @@ def make_test_request(
     params: dict[str, str] | None = None,
     origin: str | None = TEST_ORIGIN,
     auth_header: str | None = "Bearer fake-token",
+    principal_user_id: str | None = "test-user",
 ) -> func.HttpRequest:
     """Build an ``azure.functions.HttpRequest`` for endpoint tests.
 
@@ -191,6 +210,8 @@ def make_test_request(
         h["Origin"] = origin
     if auth_header:
         h["Authorization"] = auth_header
+    if principal_user_id:
+        h["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(user_id=principal_user_id)
     if headers:
         h.update(headers)
 

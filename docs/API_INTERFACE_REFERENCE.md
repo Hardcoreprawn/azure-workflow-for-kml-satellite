@@ -13,23 +13,23 @@ Function App base URL (dev): `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.
 | GET | /api/health | anonymous | 200 JSON | Liveness probe |
 | GET | /api/readiness | anonymous | 200 JSON | Dependency readiness probe |
 | GET | /api/contract | anonymous | 200 JSON | OpenAPI/contract metadata |
-| GET | /api/catalogue | bearer token | 401 | User analysis catalogue |
-| POST | /api/analysis/submit | bearer token | 401 | KML upload + pipeline start |
+| GET | /api/catalogue | SWA session | 401 | User analysis catalogue |
+| POST | /api/analysis/submit | SWA session | 401 | KML upload + pipeline start |
 | POST | /api/frame-analysis | anonymous | — | Single-frame analysis |
-| POST | /api/timelapse-analysis | bearer token | 401 | Timelapse analysis |
-| POST | /api/eudr-assessment | bearer token | 401 | EUDR compliance assessment |
-| GET | /api/monitoring | bearer token | 401 | AOI monitoring |
-| GET | /api/billing/status | bearer token | 401 | Billing status |
-| POST | /api/billing/checkout | bearer token | 401 | Stripe checkout |
+| POST | /api/timelapse-analysis | SWA session | 401 | Timelapse analysis |
+| POST | /api/eudr-assessment | SWA session | 401 | EUDR compliance assessment |
+| GET | /api/monitoring | SWA session | 401 | AOI monitoring |
+| GET | /api/billing/status | SWA session | 401 | Billing status |
+| POST | /api/billing/checkout | SWA session | 401 | Stripe checkout |
 | POST | /api/billing/portal | anonymous | — | Stripe portal redirect |
 | POST | /api/billing/webhook | anonymous | — | Stripe webhook |
 | GET | /api/demo-artifacts | anonymous | 400 (no params) | Demo artifact listing |
 | GET | /api/proxy | anonymous | — | Tile proxy |
 | POST | /api/contact-form | anonymous | — | Contact form |
 | GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics |
-| GET | /api/analysis/history | bearer token | 401 | Analysis history |
-| POST | /api/convert-coordinates | bearer token | 401 | Coordinate conversion |
-| GET | /api/export/{id}/{fmt} | bearer token | 401 | Export artifacts |
+| GET | /api/analysis/history | SWA session | 401 | Analysis history |
+| POST | /api/convert-coordinates | SWA session | 401 | Coordinate conversion |
+| GET | /api/export/{id}/{fmt} | SWA session | 401 | Export artifacts |
 
 ## Trigger and Orchestrator Entry Points
 

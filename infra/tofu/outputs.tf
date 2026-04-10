@@ -73,13 +73,3 @@ output "cosmos_database_name" {
   value       = var.enable_cosmos_db ? azurerm_cosmosdb_sql_database.main[0].name : ""
   description = "Cosmos DB database name."
 }
-
-output "ciam_application_client_id" {
-  value       = local.ciam_enabled ? azuread_application.ciam[0].client_id : ""
-  description = "CIAM app registration client ID (managed by OpenTofu)."
-}
-
-output "ciam_redirect_uris" {
-  value       = local.ciam_redirect_uris
-  description = "CIAM app registration redirect URIs (derived from SWA hostname)."
-}

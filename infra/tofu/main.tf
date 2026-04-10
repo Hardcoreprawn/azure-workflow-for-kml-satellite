@@ -946,11 +946,6 @@ locals {
       AzureWebJobsStorage__accountName    = azurerm_storage_account.main.name
       REQUIRE_AUTH                        = var.environment == "prd" ? "true" : ""
     },
-    var.ciam_tenant_name != "" ? {
-      CIAM_TENANT_NAME = var.ciam_tenant_name
-      CIAM_CLIENT_ID   = var.ciam_client_id
-      CIAM_AUDIENCE    = var.ciam_client_id
-    } : {},
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
@@ -977,11 +972,6 @@ locals {
       APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
       OTEL_SERVICE_NAME                     = "canopex-swa-api"
     },
-    var.ciam_tenant_name != "" ? {
-      CIAM_TENANT_NAME   = var.ciam_tenant_name
-      CIAM_CLIENT_ID     = var.ciam_client_id
-      CIAM_CLIENT_SECRET = var.ciam_client_secret
-    } : {},
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name

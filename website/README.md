@@ -31,7 +31,7 @@ website/
 ## Local Development
 
 No build step required. For full local behavior, run the proxy dev server from
-the repository root so `/api/*` stays same-origin and CIAM sign-in uses the
+the repository root so `/api/*` stays same-origin and SWA auth uses the
 registered localhost redirect URI:
 
 ```bash
@@ -50,8 +50,8 @@ For static-only layout work, any simple HTTP server is still fine:
 cd website && python -m http.server 8000
 ```
 
-That static-only setup will not proxy `/api/*` and will not match the CIAM app
-registration used for local sign-in.
+That static-only setup will not proxy `/api/*` and will not support the SWA
+auth flow used for local sign-in.
 
 ## Deployment to Azure Static Web Apps
 

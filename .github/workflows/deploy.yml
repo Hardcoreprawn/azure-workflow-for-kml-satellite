@@ -13,10 +13,6 @@
 #   TF_STATE_KEY            — Blob key for the state file
 #   SWA_DEPLOYMENT_TOKEN    — Static Web App deployment token
 #
-# Optional secrets (CIAM redirect URI sync):
-#   CIAM_TENANT_ID          — CIAM tenant ID (enables OIDC login to CIAM tenant)
-#                              Once set, redirect URIs are synced automatically on deploy.
-#                              Requires one-time setup: scripts/setup_ciam_deploy_access.py
 # ─────────────────────────────────────────────────────────────
 name: Deploy
 
@@ -551,21 +547,3 @@ jobs:
             echo "❌ Expected 401 or 302 for unauthed request, got ${CODE}"
             exit 1
           fi
-
-      - name: Login to CIAM tenant (OIDC)
-        if: ${{ vars.CIAM_TENANT_ID != '' }}
-        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.CIAM_TENANT_ID }}
-          allow-no-subscriptions: true
-
-      - name: Sync CIAM redirect URIs
-        if: ${{ vars.CIAM_TENANT_ID != '' }}
-        run: |
-          CUSTOM_DOMAIN="${{ needs.deploy-infra.outputs.custom_domain }}"
-          ARGS=("${{ needs.deploy-infra.outputs.swa_hostname }}")
-          if [ -n "$CUSTOM_DOMAIN" ]; then
-            ARGS+=("--custom-domain" "$CUSTOM_DOMAIN")
-          fi
-          python scripts/sync_ciam_redirect_uris.py "${ARGS[@]}"

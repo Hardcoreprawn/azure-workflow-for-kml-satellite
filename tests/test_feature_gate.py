@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+from tests.conftest import encode_test_principal
+
 
 class TestBillingAllowed:
     def test_anonymous_always_gated(self):
@@ -67,9 +69,7 @@ class TestBillingStatusGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "gated-user"})
-    def test_gated_user_sees_gated_flag(self, _tok, _auth, _blob):
+    def test_gated_user_sees_gated_flag(self, _blob):
         import json
 
         import azure.functions as func
@@ -83,7 +83,7 @@ class TestBillingStatusGating:
             url="/api/billing/status",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="gated-user"),
             },
             body=b"",
         )
@@ -100,12 +100,7 @@ class TestBillingStatusGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch(
-        "blueprints._helpers.validate_token",
-        return_value={"sub": "allowed-user"},
-    )
-    def test_allowed_user_sees_ungated(self, _tok, _auth, _blob):
+    def test_allowed_user_sees_ungated(self, _blob):
         import json
 
         import azure.functions as func
@@ -119,7 +114,7 @@ class TestBillingStatusGating:
             url="/api/billing/status",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="allowed-user"),
             },
             body=b"",
         )
@@ -136,9 +131,7 @@ class TestCheckoutGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "gated-user"})
-    def test_gated_user_gets_403(self, _tok, _auth):
+    def test_gated_user_gets_403(self):
         import json
 
         import azure.functions as func
@@ -150,7 +143,7 @@ class TestCheckoutGating:
             url="/api/billing/checkout",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="gated-user"),
             },
             body=json.dumps({"tier": "pro"}).encode(),
         )
@@ -167,12 +160,7 @@ class TestCheckoutGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch(
-        "blueprints._helpers.validate_token",
-        return_value={"sub": "allowed-user"},
-    )
-    def test_allowed_user_can_checkout(self, _tok, _auth, _blob):
+    def test_allowed_user_can_checkout(self, _blob):
         """Allowed user passes the gate (will fail at Stripe, which is expected)."""
         import json
 
@@ -185,7 +173,7 @@ class TestCheckoutGating:
             url="/api/billing/checkout",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="allowed-user"),
             },
             body=json.dumps({"tier": "pro"}).encode(),
         )
@@ -201,9 +189,7 @@ class TestPortalGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "gated-user"})
-    def test_gated_user_gets_403(self, _tok, _auth):
+    def test_gated_user_gets_403(self):
         import azure.functions as func
 
         from blueprints.billing import billing_portal
@@ -213,7 +199,7 @@ class TestPortalGating:
             url="/api/billing/portal",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="gated-user"),
             },
             body=b"",
         )
@@ -226,12 +212,7 @@ class TestBillingInterest:
 
     @patch("treesight.storage.client.BlobStorageClient")
     @patch("treesight.email.send_contact_notification")
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch(
-        "blueprints._helpers.validate_token",
-        return_value={"sub": "interested-user"},
-    )
-    def test_valid_submission_returns_200(self, _tok, _auth, _email, _blob):
+    def test_valid_submission_returns_200(self, _email, _blob):
         import json
 
         import azure.functions as func
@@ -243,7 +224,7 @@ class TestBillingInterest:
             url="/api/billing/interest",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="interested-user"),
                 "Content-Type": "application/json",
             },
             body=json.dumps(
@@ -266,12 +247,7 @@ class TestBillingInterest:
         assert stored["user_id"] == "interested-user"
         assert stored["email"] == "test@example.com"
 
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch(
-        "blueprints._helpers.validate_token",
-        return_value={"sub": "interested-user"},
-    )
-    def test_missing_email_returns_400(self, _tok, _auth):
+    def test_missing_email_returns_400(self):
         import json
 
         import azure.functions as func
@@ -283,7 +259,7 @@ class TestBillingInterest:
             url="/api/billing/interest",
             headers={
                 "Origin": "https://canopex.hrdcrprwn.com",
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(user_id="interested-user"),
                 "Content-Type": "application/json",
             },
             body=json.dumps({"organization": "Acme"}).encode(),

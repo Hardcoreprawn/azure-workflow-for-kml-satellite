@@ -17,7 +17,7 @@ import azure.functions as func
 import pytest
 from pydantic import ValidationError
 
-from tests.conftest import TEST_ORIGIN
+from tests.conftest import TEST_ORIGIN, encode_test_principal
 from treesight.catalogue.contracts import (
     CatalogueEntryResponse,
     CatalogueListResponse,
@@ -74,11 +74,11 @@ def _make_request(
     params: dict | None = None,
     route_params: dict | None = None,
     origin: str = TEST_ORIGIN,
-    auth_header: str = "Bearer fake-token",
+    principal_user_id: str | None = "user-42",
 ) -> func.HttpRequest:
-    headers = {"Origin": origin}
-    if auth_header:
-        headers["Authorization"] = auth_header
+    headers: dict[str, str] = {"Origin": origin}
+    if principal_user_id:
+        headers["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(user_id=principal_user_id)
     return func.HttpRequest(
         method=method,
         url=url,
@@ -342,11 +342,8 @@ class TestListEntriesForAoi:
 
 
 class TestCatalogueListEndpoint:
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries")
-    def test_returns_200(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_returns_200(self, mock_list):
         entry = _make_entry()
         mock_list.return_value = ([entry], 1)
 
@@ -360,11 +357,8 @@ class TestCatalogueListEndpoint:
         assert len(body["entries"]) == 1
         assert body["entries"][0]["aoiName"] == "Farm Alpha"
 
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries")
-    def test_pagination_params(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_pagination_params(self, mock_list):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -377,11 +371,8 @@ class TestCatalogueListEndpoint:
         assert call_kwargs[1]["offset"] == 5
         assert call_kwargs[1]["sort"] == "asc"
 
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries")
-    def test_limit_clamped(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_limit_clamped(self, mock_list):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -397,20 +388,16 @@ class TestCatalogueListEndpoint:
         resp = catalogue_list(req)
         assert resp.status_code == 204
 
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.validate_token", side_effect=ValueError("bad token"))
-    def test_401_without_valid_token(self, mock_validate, mock_auth):
+    @patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
+    def test_401_without_valid_token(self):
         from blueprints.catalogue import catalogue_list
 
-        req = _make_request()
+        req = _make_request(principal_user_id=None)
         resp = catalogue_list(req)
         assert resp.status_code == 401
 
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries")
-    def test_cors_header(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_cors_header(self, mock_list):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -421,11 +408,8 @@ class TestCatalogueListEndpoint:
 
 
 class TestCatalogueDetailEndpoint:
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.get_entry")
-    def test_returns_200(self, mock_get, mock_uid, mock_auth, mock_validate):
+    def test_returns_200(self, mock_get):
         mock_get.return_value = _make_entry()
 
         from blueprints.catalogue import catalogue_detail
@@ -439,11 +423,8 @@ class TestCatalogueDetailEndpoint:
         body = json.loads(resp.get_body())
         assert body["id"] == "run-1:farm-alpha"
 
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.get_entry")
-    def test_returns_404(self, mock_get, mock_uid, mock_auth, mock_validate):
+    def test_returns_404(self, mock_get):
         mock_get.return_value = None
 
         from blueprints.catalogue import catalogue_detail
@@ -457,11 +438,8 @@ class TestCatalogueDetailEndpoint:
 
 
 class TestCatalogueByRunEndpoint:
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries_for_run")
-    def test_returns_200(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_returns_200(self, mock_list):
         mock_list.return_value = [_make_entry()]
 
         from blueprints.catalogue import catalogue_by_run
@@ -477,11 +455,8 @@ class TestCatalogueByRunEndpoint:
 
 
 class TestCatalogueByAoiEndpoint:
-    @patch("blueprints._helpers.validate_token", return_value={"sub": "user-42"})
-    @patch("blueprints._helpers.auth_enabled", return_value=True)
-    @patch("blueprints._helpers.get_user_id", return_value="user-42")
     @patch("blueprints.catalogue.list_entries_for_aoi")
-    def test_returns_200(self, mock_list, mock_uid, mock_auth, mock_validate):
+    def test_returns_200(self, mock_list):
         mock_list.return_value = [_make_entry()]
 
         from blueprints.catalogue import catalogue_by_aoi

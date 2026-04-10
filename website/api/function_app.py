@@ -383,7 +383,7 @@ def _json_response(data: dict, status: int = 200) -> func.HttpResponse:
 def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     """Mint a write-only SAS URL for direct-to-blob KML upload.
 
-    Requires a valid CIAM JWT in the Authorization header.
+    Requires a valid SWA session (X-MS-CLIENT-PRINCIPAL header).
     Returns a pre-signed URL scoped to a single blob in kml-input/.
     """
     # --- auth (SWA built-in — x-ms-client-principal) ---

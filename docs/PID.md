@@ -108,7 +108,7 @@ The system is designed to serve diverse land-management use cases: precision agr
 | # | Objective | Measurable Outcome |
 | --- | --- | --- |
 | O-8 | Multi-tenant data isolation | Each tenant's KML, imagery, metadata, and analytics stored in dedicated containers; no cross-tenant data leakage |
-| O-9 | Authenticated API layer | Users authenticate via Entra External ID; all operations authorised per-tenant |
+| O-9 | Authenticated API layer | Users authenticate via SWA built-in Azure AD; all operations authorised per-tenant |
 | O-10 | Self-service onboarding | New tenants can sign up, upload KML, and receive imagery without manual provisioning |
 | O-11 | Usage metering and subscription tiers | Per-tenant usage tracked (AOI count, imagery volume, API calls); free and paid tiers enforced |
 
@@ -148,7 +148,7 @@ The system is designed to serve diverse land-management use cases: precision agr
 #### Multi-Tenant Service Layer (v2)
 
 - Tenant provisioning with container-per-tenant storage isolation
-- User authentication and authorisation via Entra External ID
+- User authentication and authorisation via SWA built-in Azure AD provider
 - Authenticated REST API for upload, status, download, and management operations
 - SAS-token-scoped blob access (upload and download) per tenant
 - Usage metering and per-tenant quotas
@@ -273,7 +273,7 @@ The system is designed to serve diverse land-management use cases: precision agr
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| FR-8.1 | Authenticate users via Entra External ID (email + social login) | Must |
+| FR-8.1 | Authenticate users via SWA built-in Azure AD (email + social login) | Must |
 | FR-8.2 | Expose REST API endpoints: upload KML, list jobs, get job status, download results, list AOIs | Must |
 | FR-8.3 | Map authenticated user → tenant; authorise all operations against tenant context | Must |
 | FR-8.4 | API returns scoped SAS upload URLs so clients PUT blobs directly to storage (no API proxy for large files) | Must |
@@ -381,18 +381,18 @@ The system is designed to serve diverse land-management use cases: precision agr
                        ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                    API Layer (Container App / Functions HTTP)             │
-│   Auth (Entra External ID)  ·  Tenant resolution  ·  SAS token minting  │
+│   Auth (SWA built-in Azure AD)  ·  Tenant resolution  ·  SAS token minting  │
 │   Upload/download URLs  ·  Job status  ·  Catalogue queries  ·  Reports  │
 └─────┬─────────────┬──────────────┬───────────────┬───────────────────────┘
       │             │              │               │
       ▼             ▼              ▼               ▼
 ┌───────────┐ ┌───────────┐ ┌──────────────┐ ┌─────────────────────────┐
-│ Entra     │ │ Cosmos DB │ │ Blob Storage │ │ Processing Engine       │
-│ External  │ │           │ │ (per-tenant  │ │ (Durable Functions)     │
-│ ID        │ │ Tenants   │ │  containers) │ │                         │
+│ SWA       │ │ Cosmos DB │ │ Blob Storage │ │ Processing Engine       │
+│ Built-in  │ │           │ │ (per-tenant  │ │ (Durable Functions)     │
+│ Azure AD  │ │ Tenants   │ │  containers) │ │                         │
 │           │ │ Catalogue │ │              │ │ Ingestion → Acquisition │
 │ Users     │ │ Jobs      │ │ KML / TIFF / │ │ → Fulfillment           │
-│ Tenants   │ │ Usage     │ │ Metadata /   │ │                         │
+│ Sessions  │ │ Usage     │ │ Metadata /   │ │                         │
 │           │ │ Annot'ns  │ │ NDVI / Rpts  │ │ Fan-out / Fan-in        │
 └───────────┘ └───────────┘ └──────────────┘ │ Parallel batches        │
                                               └────────────┬────────────┘
@@ -839,7 +839,7 @@ AOI (polygon)
 | **Serverless Compute** | Azure Functions v4 (Flex Consumption, custom Docker) | Event-driven, scales to zero, native Blob/Event Grid bindings; custom container for GDAL dependencies |
 | **Orchestration** | Azure Durable Functions (Python v2 model) | Built-in fan-out/fan-in, async polling with timers (zero cost while waiting), retries, state management |
 | **API Layer** | Azure Container Apps (or Azure Functions HTTP) | Always-on API for tenant auth, SAS minting, catalogue queries; independent scaling from pipeline |
-| **Authentication** | Entra External ID (Azure AD B2C successor) | Consumer-facing signup/login; email + social providers; standards-based (OIDC/OAuth2) |
+| **Authentication** | SWA built-in Azure AD (pre-configured provider) | Zero-config consumer-facing login; SWA handles OAuth flow server-side; no app registration or client secrets needed |
 | **Event Routing** | Azure Event Grid | Reliable, filterable event delivery for blob-created events |
 | **Blob Storage** | Azure Blob Storage (General Purpose v2, Hot tier) | Scalable object storage; per-container RBAC; lifecycle management for tiering |
 | **Document Database** | Azure Cosmos DB (NoSQL) | Tenant state, temporal catalogue, annotations, usage; partition key = tenant_id for isolation and scale |
@@ -1223,7 +1223,7 @@ The following items are **explicitly excluded** from this version and may be rev
 | --- | --- | --- |
 | M-4.1 | Tenant-aware blob event model and path builders | — |
 | M-4.2 | Container-per-tenant provisioning (automated on signup) | — |
-| M-4.3 | Entra External ID integration (signup, login, token validation) | — |
+| M-4.3 | SWA built-in Azure AD integration (signup, login, session validation) | — |
 | M-4.4 | REST API: upload (SAS minting), status, download, list AOIs | — |
 | M-4.5 | Cosmos DB: tenant, job, and usage stores | — |
 | M-4.6 | Per-tenant quota enforcement and usage metering | — |
@@ -1298,7 +1298,7 @@ The following items are **explicitly excluded** from this version and may be rev
 | Azure Container Apps Jobs (ML inference) | $10–50 | Per-job billing; only runs when tree detection is triggered |
 | Azure Blob Storage (Hot, per-tenant) | $10–100 | Scales with tenant count and imagery volume |
 | Azure Cosmos DB (serverless) | $10–40 | Catalogue, tenants, annotations, usage; scaling with request units |
-| Entra External ID | $0–50 | Free up to 50k MAU; then per-auth |
+| SWA built-in Azure AD | $0 | Included in SWA hosting; no per-auth cost |
 | Azure Event Grid | < $1 | Low event volume |
 | Azure Key Vault | < $1 | Low transaction volume |
 | Application Insights | $5–15 | Dependent on log volume |

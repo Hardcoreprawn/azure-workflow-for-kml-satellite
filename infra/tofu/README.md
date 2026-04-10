@@ -65,7 +65,7 @@ tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.
 ## Clean-Slate Migration Sequence (dev)
 
 1. Open a PR with the infra/deploy changes you want to validate.
-2. Manually delete the app-managed resources in `rg-kmlsat-dev` while preserving shared/bootstrap resources such as the CIAM directory and Key Vault.
+2. Manually delete the app-managed resources in `rg-kmlsat-dev` while preserving shared/bootstrap resources such as Key Vault.
 3. Run the `Deploy` workflow on that PR branch using `workflow_dispatch` with `rebuild_after_manual_teardown=true`.
 4. The workflow prunes stale `azapi` state for the manually deleted resources, reapplies `environments/dev.tfvars`, deploys the new image, reconciles the Event Grid webhook subscription, and validates the infra gate.
 5. Confirm the website deployment completes and validate any product-path smoke checks you care about beyond the infra gate.

@@ -43,7 +43,7 @@ See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITEC
 - **AI narratives** — Azure AI Foundry generates plain-English analysis summaries
 - **Export** — PDF audit reports, GeoJSON FeatureCollections, CSV timeseries
 - **Billing** — Stripe-powered tiered subscriptions (Free / Starter / Pro / Team)
-- **Auth** — Azure Entra External ID (CIAM) with JWT validation and per-user quotas
+- **Auth** — SWA built-in Azure AD with per-user quotas
 
 ## Architecture Reference
 
@@ -238,7 +238,7 @@ Protected/internal endpoint:
 │   ├── parsers/                 KML/KMZ parsing (Fiona + lxml fallback)
 │   ├── pipeline/                Orchestration, enrichment, EUDR, acquisition
 │   ├── providers/               Imagery providers (Planetary Computer, geo-routing)
-│   ├── security/                Auth (JWT), rate limiting, replay protection, valet tokens
+│   ├── security/                Auth (SWA header parsing), rate limiting, replay protection, valet tokens
 │   ├── storage/                 Blob storage helpers
 │   ├── config.py                App configuration (Key Vault, env vars)
 │   ├── constants.py             EUDR cutoff, API contract version, limits
@@ -268,7 +268,7 @@ Protected/internal endpoint:
 | STAC | pystac-client, planetary-computer |
 | AI | Azure AI Foundry (pay-per-token, circuit breaker) |
 | Billing | Stripe (Checkout, webhooks, customer portal) |
-| Auth | Azure Entra External ID (CIAM), JWT RS256 |
+| Auth | SWA built-in Azure AD (pre-configured provider), session-based |
 | Export | fpdf2 (PDF), GeoJSON, CSV |
 | Linting | ruff |
 | Type Checking | pyright |
@@ -349,8 +349,7 @@ uv run pre-commit run --all-files
 ```
 
 For the full local product surface, run the Functions host and the website proxy
-in separate terminals so `/api/*` stays same-origin and the signed-in app uses
-the CIAM localhost redirect URI:
+in separate terminals so `/api/*` stays same-origin and SWA auth works locally:
 
 ```bash
 # Terminal 1
@@ -388,39 +387,21 @@ To bypass hooks for exceptional cases: `git commit --no-verify`
 func start
 ```
 
-### CIAM Sign-In Setup
+### Authentication
 
-Canopex uses Azure Entra External ID (CIAM) for hosted SPA sign-in. The
-CIAM bootstrap flow in `scripts/_create_user_flow.py` now defaults to
-social/passwordless sign-in rather than dedicated Canopex passwords.
+Canopex uses SWA built-in Azure AD (pre-configured provider) for authentication.
+No app registration, client secrets, or external tenant is required — SWA handles
+the full OAuth flow server-side.
 
-```bash
-# Graph token with permission to manage CIAM flows and identity providers
-export CIAM_TOKEN=<entra-graph-token>
-
-# Optional social providers
-export CIAM_GOOGLE_CLIENT_ID=<google-client-id>
-export CIAM_GOOGLE_CLIENT_SECRET=<google-client-secret>
-export CIAM_FACEBOOK_CLIENT_ID=<facebook-client-id>
-export CIAM_FACEBOOK_CLIENT_SECRET=<facebook-client-secret>
-
-# Optional: disable the built-in email OTP fallback and allow only social sign-in
-export CIAM_SOCIAL_ONLY=true
-
-uv run python scripts/_create_user_flow.py
-```
-
-Behavior:
-
-- If Google and/or Facebook credentials are present, those providers are created in the tenant (if needed) and linked to the Canopex self-service flow.
-- `EmailOtpSignup-OAUTH` stays enabled as the default fallback unless `CIAM_SOCIAL_ONLY=true`.
-- Dedicated local passwords are off by default. Re-enable them only with an explicit override such as `CIAM_USER_FLOW_IDENTITY_PROVIDERS=EmailPassword-OAUTH`.
-- `CIAM_USER_FLOW_IDENTITY_PROVIDERS` fully overrides the defaults, for example `Google-OAUTH,EmailOtpSignup-OAUTH`.
+- Login: `/.auth/login/aad`
+- Logout: `/.auth/logout`
+- User info: `/.auth/me`
+- API auth: SWA injects `X-MS-CLIENT-PRINCIPAL` header automatically
 
 Local auth testing:
 
-- Serve the website from `http://localhost:4280` so the SPA redirect URI matches the CIAM app registration.
-- Use `uv run python scripts/dev_server.py --port 4280 --func-port 7071` when testing sign-in locally.
+- Use the SWA CLI or `uv run python scripts/dev_server.py --port 4280 --func-port 7071`.
+- Auth is optional in local dev — unauthenticated requests pass through as anonymous.
 
 ### Load Testing Baseline (#320)
 
@@ -450,10 +431,6 @@ Artifacts are written to `docs/baselines/` and include:
 - scenario-level success/failure rates and p50/p95 durations
 - per-run orchestration instance IDs and terminal states
 - heuristic signals for throttling (`429`), timeout, and memory pressure
-
-Limitation:
-
-- External CIAM self-service flows support Google/Facebook social providers and email-based methods. Microsoft personal-account federation is not exposed as a self-service provider in this tenant model.
 
 ### Building the Docker Image
 

@@ -19,7 +19,6 @@ dependencies = [
     "pystac-client>=0.8.0",
     "planetary-computer>=1.0.0",
     "httpx>=0.28.0",
-    "PyJWT[crypto]>=2.9.0",
     "stripe>=11.0.0",
     "requests>=2.33.0",  # CVE-2026-25645: predictable temp filename
     "fpdf2>=2.8.0",
@@ -59,7 +58,7 @@ markers = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = ["scripts/_register_ciam_app.py", "scripts/_setup_ciam.py", "scripts/_create_user_flow.py"]
+exclude = []
 
 [tool.ruff.lint]
 select = [

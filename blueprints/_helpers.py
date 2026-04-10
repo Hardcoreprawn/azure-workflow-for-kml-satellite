@@ -9,7 +9,7 @@ from typing import Any
 
 import azure.functions as func
 
-from treesight.security.auth import auth_enabled, get_user_id, validate_token
+from treesight.security.auth import get_user_id, parse_client_principal
 
 logger = logging.getLogger(__name__)
 
@@ -79,14 +79,15 @@ def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def require_auth(fn):
-    """Decorator that validates CIAM JWT on the request.
+    """Decorator that validates SWA X-MS-CLIENT-PRINCIPAL on the request.
 
-    When CIAM is not configured the request passes through unauthenticated
-    (graceful degradation for local dev / pre-auth deployments).
+    When no principal header is present and REQUIRE_AUTH is not set,
+    the request passes through unauthenticated (local dev graceful
+    degradation).
 
     On success, the original function receives two extra keyword arguments:
-        auth_claims  — decoded JWT claims dict
-        user_id      — subject identifier string
+        auth_claims  — decoded client principal dict
+        user_id      — SWA userId string
     """
 
     @wraps(fn)
@@ -94,17 +95,18 @@ def require_auth(fn):
         if req.method == "OPTIONS":
             return cors_preflight(req)
 
-        if not auth_enabled():
-            # Auth not configured — allow through without auth
-            return fn(req, auth_claims={}, user_id="anonymous")
+        principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
+        if not principal_header:
+            if not os.environ.get("REQUIRE_AUTH"):
+                return fn(req, auth_claims={}, user_id="anonymous")
+            return error_response(401, "Authentication required", req=req)
 
-        auth_header = req.headers.get("Authorization", "")
         try:
-            claims = validate_token(auth_header)
+            principal = parse_client_principal(principal_header)
         except ValueError as exc:
             return error_response(401, str(exc), req=req)
 
-        return fn(req, auth_claims=claims, user_id=get_user_id(claims))
+        return fn(req, auth_claims=principal, user_id=get_user_id(principal))
 
     # @wraps copies __wrapped__, which makes inspect.signature() expose
     # the inner function's extra parameters (auth_claims, user_id).
@@ -115,16 +117,19 @@ def require_auth(fn):
 
 
 def check_auth(req: func.HttpRequest) -> tuple:
-    """Validate CIAM JWT and return (claims, user_id).
+    """Parse SWA X-MS-CLIENT-PRINCIPAL and return (principal, user_id).
 
-    Returns ({}, "anonymous") when CIAM is not configured.
+    Returns ({}, "anonymous") when no principal header is present and
+    REQUIRE_AUTH is not set.
     Raises ValueError with a user-safe message on auth failure.
     """
-    if not auth_enabled():
-        return {}, "anonymous"
-    auth_header = req.headers.get("Authorization", "")
-    claims = validate_token(auth_header)
-    return claims, get_user_id(claims)
+    principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
+    if not principal_header:
+        if not os.environ.get("REQUIRE_AUTH"):
+            return {}, "anonymous"
+        raise ValueError("Authentication required")
+    principal = parse_client_principal(principal_header)
+    return principal, get_user_id(principal)
 
 
 def submit_contact(

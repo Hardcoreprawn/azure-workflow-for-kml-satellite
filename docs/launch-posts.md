@@ -163,7 +163,7 @@ A few months ago I saw a researcher posting about needing an automated satellite
 - Planetary Computer STAC API for Sentinel-2, Landsat, NAIP imagery
 - Azure AI Foundry for the narrative generation
 - Stripe for billing (multi-currency, webhooks, customer portal)
-- Azure Entra External ID for auth
+- SWA built-in Azure AD for auth (zero-config, no client secrets)
 - 595 tests, CI with GitHub Actions + Semgrep + Trivy + CodeQL
 
 **What I learned:**

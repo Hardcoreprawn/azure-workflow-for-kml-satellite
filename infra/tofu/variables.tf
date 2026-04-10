@@ -121,33 +121,6 @@ variable "enable_cosmos_db" {
   default     = false
 }
 
-# --- Entra External ID (CIAM) authentication (M2.1) ---
-
-variable "ciam_tenant_id" {
-  description = "CIAM (Entra External ID) tenant ID. Required for managing the app registration via the azuread provider."
-  type        = string
-  default     = ""
-}
-
-variable "ciam_tenant_name" {
-  description = "CIAM tenant name (the prefix before .onmicrosoft.com). Empty to disable auth."
-  type        = string
-  default     = ""
-}
-
-variable "ciam_client_id" {
-  description = "CIAM app registration client ID for the SPA + API."
-  type        = string
-  default     = ""
-}
-
-variable "ciam_client_secret" {
-  description = "CIAM app registration client secret for SWA built-in auth OIDC code flow. Must be set when ciam_tenant_name is non-empty."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 # --- Stripe billing (M4) ---
 
 variable "enable_stripe" {

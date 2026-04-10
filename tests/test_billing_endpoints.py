@@ -20,11 +20,7 @@ import azure.functions as func
 from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 
 _ALLOWED_ORIGIN = TEST_ORIGIN
-_AUTH_DISABLED = patch("treesight.security.auth.auth_enabled", return_value=False)
-_AUTH_TEST_USER = [
-    patch("blueprints._helpers.auth_enabled", return_value=True),
-    patch("blueprints._helpers.validate_token", return_value={"sub": "test-user"}),
-]
+_REQUIRE_AUTH = patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
 _BILLING_UNGATED = patch(
     "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
     frozenset({"test-user"}),
@@ -165,9 +161,7 @@ class TestBillingCheckout:
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "")
     @_BILLING_UNGATED
-    @_AUTH_TEST_USER[1]
-    @_AUTH_TEST_USER[0]
-    def test_not_configured_returns_503(self, _auth, _token):
+    def test_not_configured_returns_503(self):
         from blueprints.billing import billing_checkout
 
         req = _make_req(url="/api/billing/checkout")
@@ -182,11 +176,18 @@ class TestBillingCheckout:
         resp = billing_checkout(req)
         assert resp.status_code == 204
 
-    @_AUTH_DISABLED
-    def test_anonymous_returns_401(self, _auth):
+    @_REQUIRE_AUTH
+    def test_anonymous_returns_401(self):
         from blueprints.billing import billing_checkout
 
         req = _make_req(url="/api/billing/checkout")
+        # Override to remove the SWA principal header
+        req = make_test_request(
+            url="/api/billing/checkout",
+            origin=_ALLOWED_ORIGIN,
+            principal_user_id=None,
+            auth_header=None,
+        )
         resp = billing_checkout(req)
         assert resp.status_code == 401
 
@@ -202,9 +203,7 @@ class TestBillingPortal:
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
     @patch("treesight.storage.client.BlobStorageClient")
     @_BILLING_UNGATED
-    @_AUTH_TEST_USER[1]
-    @_AUTH_TEST_USER[0]
-    def test_no_subscription_returns_404(self, _auth, _token, mock_cls):
+    def test_no_subscription_returns_404(self, mock_cls):
         from blueprints.billing import billing_portal
 
         mock_cls.return_value.download_json.side_effect = FileNotFoundError
@@ -227,8 +226,7 @@ class TestBillingPortal:
 
 class TestBillingStatus:
     @patch("treesight.storage.client.BlobStorageClient")
-    @_AUTH_DISABLED
-    def test_free_user_status(self, _auth, mock_cls):
+    def test_free_user_status(self, mock_cls):
         from blueprints.billing import billing_status
 
         mock_cls.return_value.download_json.side_effect = FileNotFoundError
@@ -256,9 +254,7 @@ class TestBillingStatus:
         assert resp.status_code == 204
 
     @patch("treesight.storage.client.BlobStorageClient")
-    @_AUTH_TEST_USER[1]
-    @_AUTH_TEST_USER[0]
-    def test_local_origin_can_enable_tier_emulation(self, _auth, _token, mock_cls):
+    def test_local_origin_can_enable_tier_emulation(self, mock_cls):
         from blueprints.billing import billing_emulation, billing_status
 
         store = {}
@@ -296,9 +292,7 @@ class TestBillingStatus:
         assert status_data["capabilities"]["api_access"] is True
 
     @patch("treesight.storage.client.BlobStorageClient")
-    @_AUTH_TEST_USER[1]
-    @_AUTH_TEST_USER[0]
-    def test_non_local_origin_rejects_tier_emulation(self, _auth, _token, mock_cls):
+    def test_non_local_origin_rejects_tier_emulation(self, mock_cls):
         from blueprints.billing import billing_emulation
 
         req = _make_req(
@@ -309,8 +303,7 @@ class TestBillingStatus:
         assert resp.status_code == 403
 
     @patch("treesight.storage.client.BlobStorageClient")
-    @_AUTH_DISABLED
-    def test_local_origin_allows_anonymous_tier_emulation(self, _auth, mock_cls):
+    def test_local_origin_allows_anonymous_tier_emulation(self, mock_cls):
         from blueprints.billing import billing_emulation
 
         store = {}
@@ -326,10 +319,13 @@ class TestBillingStatus:
         mock_cls.return_value.download_json.side_effect = _download_json
         mock_cls.return_value.upload_json.side_effect = _upload_json
 
-        req = _make_req(
-            body=json.dumps({"tier": "starter"}).encode("utf-8"),
-            headers={"Origin": TEST_LOCAL_ORIGIN},
+        req = make_test_request(
             url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "starter"}).encode("utf-8"),
+            origin=TEST_LOCAL_ORIGIN,
+            principal_user_id=None,
+            auth_header=None,
         )
         resp = billing_emulation(req)
         assert resp.status_code == 200
