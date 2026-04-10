@@ -502,28 +502,33 @@ class TestStripeKeyVaultBootstrap:
             "outputs.tf must expose the CLI-managed Function App scale cap"
         )
 
-    def test_swa_uses_managed_identity(self):
+    def test_swa_has_storage_account_key_in_settings(self):
+        """SWA app settings must include STORAGE_ACCOUNT_KEY for blob access."""
         main_tf = MAIN_TF.read_text()
-        assert "identity" in main_tf, (
-            "SWA resource must have identity block for managed identity auth"
+        assert "STORAGE_ACCOUNT_KEY" in main_tf, (
+            "SWA app settings must include STORAGE_ACCOUNT_KEY "
+            "(managed identity not available in SWA managed functions)"
         )
-        assert "swa_storage_blob_delegator" in main_tf, (
-            "SWA must have Storage Blob Delegator role for user delegation SAS"
-        )
-        assert "swa_storage_blob_data_contributor" in main_tf, (
-            "SWA must have Storage Blob Data Contributor role for ticket blob writes"
+        assert "COSMOS_KEY" in main_tf, (
+            "SWA app settings must include COSMOS_KEY "
+            "(managed identity not available in SWA managed functions)"
         )
 
-    def test_swa_api_uses_default_credential(self):
+    def test_swa_api_uses_account_key_auth(self):
+        """SWA managed functions cannot use managed identity — verify account key auth."""
         api_code = (ROOT / "website" / "api" / "function_app.py").read_text()
-        assert "DefaultAzureCredential" in api_code, (
-            "SWA API must use DefaultAzureCredential (managed identity), not storage keys"
+        assert "STORAGE_ACCOUNT_KEY" in api_code, (
+            "SWA API must use STORAGE_ACCOUNT_KEY (managed identity unavailable)"
         )
-        assert "STORAGE_ACCOUNT_KEY" not in api_code, (
-            "SWA API must not reference STORAGE_ACCOUNT_KEY — use managed identity"
+        assert "COSMOS_KEY" in api_code, (
+            "SWA API must use COSMOS_KEY (managed identity unavailable)"
         )
-        assert "user_delegation_key" in api_code, (
-            "SWA API must use user delegation SAS, not account-key SAS"
+        assert "DefaultAzureCredential" not in api_code, (
+            "SWA API must NOT use DefaultAzureCredential — SWA managed functions "
+            "do not support managed identity"
+        )
+        assert "account_key" in api_code, (
+            "SAS generation must use account_key, not user_delegation_key"
         )
 
     def test_deployer_still_has_key_vault_secret_access(self):

@@ -41,6 +41,7 @@ _SWA_MODULE_NAME = "swa_function_app"
 def _swa_env(monkeypatch):
     """Set environment variables for the SWA API module."""
     monkeypatch.setenv("STORAGE_ACCOUNT_NAME", "teststorage")
+    monkeypatch.setenv("STORAGE_ACCOUNT_KEY", "dGVzdC1rZXk=")  # base64 "test-key"
     monkeypatch.setenv("INPUT_CONTAINER", "kml-input")
     monkeypatch.setenv("SAS_TOKEN_EXPIRY_MINUTES", "15")
 
@@ -256,12 +257,12 @@ class TestUploadToken:
         assert perms.write is True
         assert perms.read is not True
         assert perms.delete is not True
-        # Must use user delegation key, not account key
-        assert "user_delegation_key" in call_kwargs, (
-            "SAS must be generated with user_delegation_key (managed identity)"
+        # SWA managed functions use account key SAS (no managed identity)
+        assert "account_key" in call_kwargs, (
+            "SAS must be generated with account_key (SWA has no managed identity)"
         )
-        assert "account_key" not in call_kwargs, (
-            "SAS must NOT use account_key — use managed identity delegation"
+        assert "user_delegation_key" not in call_kwargs, (
+            "SAS must NOT use user_delegation_key — SWA has no managed identity"
         )
 
     @patch("swa_function_app._get_blob_service")
@@ -351,16 +352,23 @@ class TestUploadToken:
 
     @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app.generate_blob_sas")
-    def test_returns_502_on_delegation_key_failure(self, mock_sas, mock_blob_svc, _reload_module):
-        """When user delegation key request fails, return 502."""
+    def test_sas_uses_account_key_from_env(self, mock_sas, mock_blob_svc, _reload_module):
+        """SAS must use the account key from STORAGE_ACCOUNT_KEY env var."""
         mod = _reload_module
-        mock_blob_svc.return_value.get_user_delegation_key.side_effect = RuntimeError(
-            "identity not ready"
+        mock_sas.return_value = "sig=test"
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(
+            mod,
+            "STORAGE_ACCOUNT_KEY",
+            "test-key-value",  # pragma: allowlist secret
         )
 
         req = _mock_request(headers=_auth_headers())
-        resp = mod.upload_token(req)
-        assert resp.status_code == 502
+        mod.upload_token(req)
+
+        call_kwargs = mock_sas.call_args[1]
+        assert call_kwargs["account_key"] == "test-key-value"  # pragma: allowlist secret
+        monkeypatch.undo()
 
     @patch("swa_function_app._get_blob_service")
     @patch("swa_function_app.generate_blob_sas")

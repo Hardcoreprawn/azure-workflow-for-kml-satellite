@@ -12,16 +12,22 @@ pre-configured providers.  SWA injects user identity via the
 
 Environment variables (set via SWA app_settings in OpenTofu):
   STORAGE_ACCOUNT_NAME   — storage account for SAS token generation
+  STORAGE_ACCOUNT_KEY    — storage account key (managed identity unavailable)
   SAS_TOKEN_EXPIRY_MINUTES — SAS token lifetime (default: 15)
-  STRIPE_API_KEY         — Stripe secret key (Key Vault reference)
+  STRIPE_API_KEY         — Stripe secret key
   STRIPE_PRICE_ID_PRO_*  — Stripe Price IDs per currency
   BILLING_ALLOWED_USERS  — comma-separated user IDs allowed to use billing
   COMMUNICATION_SERVICES_CONNECTION_STRING — ACS connection string (email)
   EMAIL_SENDER_ADDRESS   — sender address for email notifications
   NOTIFICATION_EMAIL     — recipient for contact-form notifications
+  COSMOS_ENDPOINT        — Cosmos DB account endpoint
+  COSMOS_KEY             — Cosmos DB account key (managed identity unavailable)
+  COSMOS_DATABASE_NAME   — Cosmos DB database name (default: canopex)
 
-Authentication to Azure Storage uses the SWA's user-assigned managed
-identity (DefaultAzureCredential + AZURE_CLIENT_ID) — no shared secrets.
+Note: SWA managed functions do NOT support managed identity or Key Vault
+references (see https://learn.microsoft.com/en-us/azure/static-web-apps/
+apis-functions#constraints).  Authentication to Azure Storage and Cosmos DB
+uses account keys passed via app settings.
 """
 
 from __future__ import annotations
@@ -38,7 +44,6 @@ import time
 import uuid
 
 import azure.functions as func
-from azure.identity import DefaultAzureCredential
 from azure.storage.blob import (
     BlobSasPermissions,
     BlobServiceClient,
@@ -54,12 +59,14 @@ logger = logging.getLogger("swa-api")
 # ---------------------------------------------------------------------------
 
 STORAGE_ACCOUNT_NAME = os.environ.get("STORAGE_ACCOUNT_NAME", "")
+STORAGE_ACCOUNT_KEY = os.environ.get("STORAGE_ACCOUNT_KEY", "")
 INPUT_CONTAINER = os.environ.get("INPUT_CONTAINER", "kml-input")
 SAS_TOKEN_EXPIRY_MINUTES = int(os.environ.get("SAS_TOKEN_EXPIRY_MINUTES", "15"))
 MAX_UPLOAD_BYTES = 10_485_760  # 10 MiB — matches treesight MAX_KML_FILE_SIZE_BYTES
 
 # Cosmos DB (for billing/status, analysis/history)
 COSMOS_ENDPOINT = os.environ.get("COSMOS_ENDPOINT", "")
+COSMOS_KEY = os.environ.get("COSMOS_KEY", "")
 COSMOS_DATABASE_NAME = os.environ.get("COSMOS_DATABASE_NAME", "canopex")
 
 # Stripe billing
@@ -277,28 +284,40 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
 
 
 def _get_blob_service() -> BlobServiceClient:
-    """Lazy-init BlobServiceClient with managed identity credential."""
+    """Lazy-init BlobServiceClient with account key credential.
+
+    SWA managed functions do not support managed identity, so we
+    authenticate with the storage account key.
+    """
     global _blob_service
     if _blob_service is None:
         if not STORAGE_ACCOUNT_NAME:
             raise RuntimeError("STORAGE_ACCOUNT_NAME is not configured")
+        if not STORAGE_ACCOUNT_KEY:
+            raise RuntimeError("STORAGE_ACCOUNT_KEY is not configured")
         account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
         _blob_service = BlobServiceClient(
             account_url=account_url,
-            credential=DefaultAzureCredential(),
+            credential=STORAGE_ACCOUNT_KEY,
         )
     return _blob_service
 
 
 def _get_cosmos_container(container_name: str):
-    """Return a Cosmos DB container proxy, lazily initialising the database client."""
+    """Return a Cosmos DB container proxy, lazily initialising the database client.
+
+    SWA managed functions do not support managed identity, so we
+    authenticate with the Cosmos account key.
+    """
     global _cosmos_db
     if _cosmos_db is None:
         if not COSMOS_ENDPOINT:
             raise RuntimeError("COSMOS_ENDPOINT is not configured")
+        if not COSMOS_KEY:
+            raise RuntimeError("COSMOS_KEY is not configured")
         from azure.cosmos import CosmosClient
 
-        client = CosmosClient(COSMOS_ENDPOINT, credential=DefaultAzureCredential())
+        client = CosmosClient(COSMOS_ENDPOINT, credential=COSMOS_KEY)
         _cosmos_db = client.get_database_client(COSMOS_DATABASE_NAME)
     return _cosmos_db.get_container_client(container_name)
 
@@ -445,20 +464,11 @@ def upload_token(req: func.HttpRequest) -> func.HttpResponse:
     now = datetime.datetime.now(datetime.UTC)
     expiry = now + datetime.timedelta(minutes=SAS_TOKEN_EXPIRY_MINUTES)
 
-    try:
-        delegation_key = blob_service.get_user_delegation_key(
-            key_start_time=now,
-            key_expiry_time=expiry,
-        )
-    except Exception:
-        logger.exception("Failed to obtain user delegation key")
-        return _error(502, "Storage service temporarily unavailable")
-
     sas_token = generate_blob_sas(
         account_name=STORAGE_ACCOUNT_NAME,
         container_name=INPUT_CONTAINER,
         blob_name=blob_name,
-        user_delegation_key=delegation_key,
+        account_key=STORAGE_ACCOUNT_KEY,
         permission=BlobSasPermissions(create=True, write=True),
         expiry=expiry,
         content_type="application/vnd.google-earth.kml+xml",

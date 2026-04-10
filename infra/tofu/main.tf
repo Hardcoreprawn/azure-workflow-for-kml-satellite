@@ -836,7 +836,9 @@ resource "azurerm_role_assignment" "storage_blob_data_owner" {
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
-# SWA managed identity — blob writes (ticket blobs) + user delegation SAS
+# SWA managed identity — kept for future use if SWA adds managed identity
+# support.  Currently unused: SWA managed functions authenticate to storage
+# and Cosmos with account keys (see #498).
 resource "azurerm_role_assignment" "swa_storage_blob_data_contributor" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -963,17 +965,19 @@ locals {
   # SWA managed API settings (upload/token, upload/status, billing/status,
   # billing/checkout, billing/portal, contact-form, readiness, contract,
   # analysis/history endpoints).
-  # Auth uses user-assigned managed identity — no storage key needed.
+  # SWA managed functions do NOT support managed identity or Key Vault
+  # references — use account keys directly.
   swa_api_app_settings = merge(
     {
       STORAGE_ACCOUNT_NAME                  = azurerm_storage_account.main.name
+      STORAGE_ACCOUNT_KEY                   = azurerm_storage_account.main.primary_access_key
       INPUT_CONTAINER                       = "kml-input"
-      AZURE_CLIENT_ID                       = azurerm_user_assigned_identity.swa.client_id
       APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
       OTEL_SERVICE_NAME                     = "canopex-swa-api"
     },
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
+      COSMOS_KEY           = azurerm_cosmosdb_account.main[0].primary_key
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
     } : {},
     var.enable_stripe ? {
