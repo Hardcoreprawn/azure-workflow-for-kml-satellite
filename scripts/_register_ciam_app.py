@@ -1,5 +1,9 @@
 """One-time script: Register the Canopex app in the CIAM tenant.
 
+DEPRECATED: The CIAM app registration is now managed by OpenTofu
+(infra/tofu/ciam.tf).  Use ``tofu apply`` instead of running this script.
+This script is retained only as a historical reference.
+
 SWA built-in auth uses the server-side OpenID Connect flow, so the app
 must be registered as a **web** application (not SPA).  The redirect URI
 ``/.auth/login/aad/callback`` is handled by the SWA platform.
