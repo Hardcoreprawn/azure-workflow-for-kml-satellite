@@ -34,7 +34,7 @@ def parse_client_principal(header_value: str) -> dict[str, Any]:
         raise ValueError("Missing X-MS-CLIENT-PRINCIPAL header")
 
     try:
-        decoded = base64.b64decode(header_value)
+        decoded = base64.b64decode(header_value, validate=True)
         principal = json.loads(decoded)
     except Exception:
         raise ValueError("Malformed X-MS-CLIENT-PRINCIPAL header") from None

@@ -5,8 +5,8 @@ They handle user-interactive requests (SAS token minting, status polling,
 billing status/checkout/portal, contact form, readiness, catalogue) so the
 main Container Apps function app can scale to zero without affecting UX.
 
-Authentication is handled by the SWA platform using built-in custom auth
-(Azure AD / Entra External ID).  SWA injects user identity via the
+Authentication is handled by the SWA platform using built-in
+pre-configured providers.  SWA injects user identity via the
 ``x-ms-client-principal`` header — a Base64-encoded JSON payload containing
 ``identityProvider``, ``userId``, ``userDetails``, and ``userRoles``.
 
