@@ -27,6 +27,7 @@ from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.monitoring import bp as monitoring_bp
 from blueprints.pipeline import bp as pipeline_bp
+from blueprints.upload import bp as upload_bp
 
 # Fail-fast config validation (§8.6)
 validate_config()
@@ -69,6 +70,9 @@ app.register_functions(eudr_bp)
 app.register_functions(analysis_bp)
 app.register_functions(catalogue_bp)
 app.register_functions(export_bp)
+
+# Register upload/history BFF endpoints
+app.register_functions(upload_bp)
 
 # Register monitoring blueprint (Timer Trigger + HTTP)
 app.register_functions(monitoring_bp)
