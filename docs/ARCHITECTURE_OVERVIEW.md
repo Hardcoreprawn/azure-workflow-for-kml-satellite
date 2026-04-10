@@ -91,13 +91,9 @@ The "demo" billing tier is deprecated — it overlapped with Free but was strict
 
 ### Auth — SWA Built-in Custom Auth
 
-> **Target auth flow** (PR #472). Replaces MSAL.js with SWA built-in auth.
-> Once merged, there is no MSAL.js in the frontend.
+Authentication uses SWA's built-in pre-configured Azure AD provider. SWA handles the full OAuth flow server-side with zero app registration or client secrets.
 
-Authentication uses SWA's built-in custom auth with our CIAM tenant. SWA handles the full OAuth flow server-side.
-
-- **Provider:** Entra External ID (CIAM) tenant `treesightauth`
-- **Client ID:** `6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6`
+- **Provider:** SWA pre-configured Azure AD (built-in — no app registration needed)
 - **Login:** `/.auth/login/aad` (SWA handles redirect + callback)
 - **Logout:** `/.auth/logout`
 - **User info:** `/.auth/me` → JSON with `clientPrincipal`

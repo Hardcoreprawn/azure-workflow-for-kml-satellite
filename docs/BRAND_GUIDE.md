@@ -210,7 +210,7 @@ The app dashboard supports role-based tinting via CSS custom properties:
 
 - [ ] Register `canopex.io` (or chosen TLD)
 - [ ] Configure Azure Static Web Apps custom domain
-- [ ] Update CIAM tenant redirect URIs
+- [x] ~~Update CIAM tenant redirect URIs~~ — no longer needed (SWA built-in auth, #495)
 - [ ] Update Stripe webhook URLs and product metadata
 - [ ] Update DNS, SSL, CDN configuration
 - [ ] Update CSP headers in `staticwebapp.config.json` for new domain

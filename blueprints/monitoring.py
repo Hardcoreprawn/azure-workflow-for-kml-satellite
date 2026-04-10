@@ -215,11 +215,8 @@ def create_monitor_endpoint(
     if alert_thresholds is not None and not isinstance(alert_thresholds, dict):
         return error_response(400, "alert_thresholds must be a JSON object", req=req)
 
-    # Extract verified email from JWT claims for alert delivery
-    alert_email = auth_claims.get(
-        "email",
-        auth_claims.get("emails", [""])[0] if isinstance(auth_claims.get("emails"), list) else "",
-    )
+    # Extract email from SWA principal (userDetails holds the login email)
+    alert_email = auth_claims.get("userDetails", "")
 
     from treesight.monitoring import create_monitor
 

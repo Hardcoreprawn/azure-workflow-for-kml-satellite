@@ -9,10 +9,11 @@ info:
 
     ## Authentication
 
-    Most endpoints require a **CIAM JWT** issued by Azure Entra External ID.
-    Pass it as `Authorization: Bearer {token}`.
+    Most endpoints require authentication via SWA built-in Azure AD.
+    SWA handles the OAuth flow and injects the `X-MS-CLIENT-PRINCIPAL` header
+    into API requests automatically — no client-side token management needed.
 
-    Demo artifact downloads use short-lived **valet tokens** instead of JWTs.
+    Demo artifact downloads use short-lived **valet tokens** instead of auth sessions.
 
     Health and contract endpoints are unauthenticated.
 
@@ -152,7 +153,7 @@ paths:
         accounts are routed through the cheaper seasonal two-year pipeline.
       tags: [analysis]
       security:
-        - bearerAuth: []
+        - swaAuth: []
       requestBody:
         required: true
         content:
@@ -861,11 +862,14 @@ paths:
 
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: CIAM JWT from Azure Entra External ID
+    swaAuth:
+      type: apiKey
+      in: cookie
+      name: StaticWebAppsAuthCookie
+      description: |
+        SWA built-in auth session cookie.  Users authenticate via
+        /.auth/login/{provider} and the SWA reverse proxy injects
+        X-MS-CLIENT-PRINCIPAL on every /api/* request.
     functionKey:
       type: apiKey
       in: header
@@ -1144,4 +1148,4 @@ components:
             error: "Rate limit exceeded. Try again later."
 
 security:
-  - bearerAuth: []
+  - swaAuth: []

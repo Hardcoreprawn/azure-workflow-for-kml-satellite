@@ -223,7 +223,6 @@ def main() -> int:
         "pyproj",
         "pydantic",
         "httpx",
-        "jwt",
         "stripe",
     ]
     for pkg in critical_packages:

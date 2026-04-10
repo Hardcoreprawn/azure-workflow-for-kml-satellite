@@ -76,7 +76,6 @@ class TestCspTokenMatchesHost:
         [
             ("https://js.monitor.azure.com", "js.monitor.azure.com"),
             ("https://dc.services.visualstudio.com", "visualstudio.com"),
-            ("https://treesightauth.ciamlogin.com", "treesightauth.ciamlogin.com"),
             ("https://login.microsoftonline.com", "login.microsoftonline.com"),
         ],
     )

@@ -14,7 +14,7 @@ accidentally removed or misconfigured.  They cover:
 9. Deploy workflow settings (sensitive outputs)
 10. Event Grid wiring (trigger name and webhook key)
 11. Trivy signal quality and exception discipline
-12. SSO identity providers wired into CIAM user flow
+12. (removed — CIAM replaced with SWA pre-configured providers in #495)
 """
 
 from __future__ import annotations
@@ -407,7 +407,7 @@ class TestDeployWorkflowSettings:
             "to avoid reparsing tfvars"
         )
         assert "grep 'ciam_tenant_name' environments/dev.tfvars" not in deploy_yml, (
-            "deploy.yml should not reparse CIAM settings from dev.tfvars once tofu outputs own them"
+            "deploy.yml should not reference CIAM settings (removed in #495)"
         )
 
     def test_deploy_injects_analytics_connection_string(self, deploy_yml):
@@ -634,49 +634,6 @@ class TestTrivySignalQuality:
         assert "AZU-0012" in ignore and "AZU-0013" in ignore, (
             ".trivyignore must explicitly track current low-cost network ACL exceptions"
         )
-
-
-# ---------------------------------------------------------------------------
-# 12. SSO identity providers wired into user flow
-# ---------------------------------------------------------------------------
-
-SCRIPTS = ROOT / "scripts"
-USER_FLOW_SCRIPT = SCRIPTS / "_create_user_flow.py"
-
-
-class TestSsoReadiness:
-    """Ensure CIAM user flow is configured for social SSO providers."""
-
-    def test_user_flow_includes_google(self):
-        src = USER_FLOW_SCRIPT.read_text()
-        assert "Google-OAUTH" in src, "User flow must include Google as an identity provider"
-
-    def test_user_flow_includes_microsoft_account(self):
-        src = USER_FLOW_SCRIPT.read_text()
-        assert "MicrosoftAccount" in src, (
-            "User flow must include Microsoft Account as an identity provider"
-        )
-
-    def test_user_flow_keeps_email_password(self):
-        src = USER_FLOW_SCRIPT.read_text()
-        assert "EmailPassword-OAUTH" in src, (
-            "User flow must retain email/password as a fallback provider"
-        )
-
-    def test_sso_setup_script_exists(self):
-        assert (SCRIPTS / "_setup_sso_providers.py").exists(), (
-            "SSO provider setup script must exist for repeatable provisioning"
-        )
-
-    def test_auth_is_provider_agnostic(self):
-        """JWT validation must not hardcode any specific identity provider."""
-        auth_src = (ROOT / "treesight" / "security" / "auth.py").read_text()
-        # Check for provider-specific login handling (not tenant domain names)
-        for pattern in ("google.com/oauth", "login.microsoftonline.com", "appleid.apple.com"):
-            assert pattern not in auth_src.lower(), (
-                f"auth.py must not reference '{pattern}' — "
-                "JWT validation should be provider-agnostic via CIAM federation"
-            )
 
 
 # ---------------------------------------------------------------------------

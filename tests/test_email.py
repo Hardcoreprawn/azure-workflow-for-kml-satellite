@@ -83,8 +83,8 @@ class TestSendEmail:
             )
         assert result is False
 
-    def test_allows_verified_recipient_from_jwt(self):
-        """Addresses vouched for by the caller (e.g. JWT email claim) are accepted."""
+    def test_allows_verified_recipient(self):
+        """Addresses vouched for by the caller (e.g. SWA userDetails) are accepted."""
         mock_client = MagicMock()
         mock_poller = MagicMock()
         mock_poller.result.return_value = {"id": "msg-2", "status": "Succeeded"}

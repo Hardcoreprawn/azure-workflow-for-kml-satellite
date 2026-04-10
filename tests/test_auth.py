@@ -1,21 +1,35 @@
-"""Tests for Entra External ID (CIAM) JWT authentication (treesight.security.auth)."""
+"""Tests for SWA built-in auth (X-MS-CLIENT-PRINCIPAL header parsing)."""
 
 from __future__ import annotations
 
+import base64
 import json
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from treesight.security.auth import (
-    _fetch_jwks,
-    _jwks_cache,
-    _oidc_config_url,
     auth_enabled,
     get_user_id,
-    validate_token,
+    parse_client_principal,
 )
+
+
+def _encode_principal(
+    user_id: str = "abc-123",
+    user_details: str = "user@example.com",
+    identity_provider: str = "aad",
+    user_roles: list[str] | None = None,
+) -> str:
+    """Build a Base64-encoded X-MS-CLIENT-PRINCIPAL value."""
+    principal = {
+        "identityProvider": identity_provider,
+        "userId": user_id,
+        "userDetails": user_details,
+        "userRoles": user_roles or ["anonymous", "authenticated"],
+    }
+    return base64.b64encode(json.dumps(principal).encode()).decode()
+
 
 # ---------------------------------------------------------------------------
 # auth_enabled
@@ -23,56 +37,56 @@ from treesight.security.auth import (
 
 
 class TestAuthEnabled:
-    def test_disabled_when_no_config(self):
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", ""),
-            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
-            patch("treesight.security.auth.REQUIRE_AUTH", False),
-        ):
-            assert auth_enabled() is False
-
-    def test_disabled_when_partial_config(self):
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"),
-            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
-            patch("treesight.security.auth.REQUIRE_AUTH", False),
-        ):
-            assert auth_enabled() is False
-
-    def test_enabled_when_fully_configured(self):
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"),
-            patch("treesight.security.auth.CIAM_CLIENT_ID", "abc-123"),
-        ):
-            assert auth_enabled() is True
-
-    def test_require_auth_raises_when_ciam_missing(self):
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", ""),
-            patch("treesight.security.auth.CIAM_CLIENT_ID", ""),
-            patch("treesight.security.auth.REQUIRE_AUTH", True),
-        ):
-            with pytest.raises(RuntimeError, match="REQUIRE_AUTH"):
-                auth_enabled()
+    def test_always_returns_true(self):
+        assert auth_enabled() is True
 
 
 # ---------------------------------------------------------------------------
-# _oidc_config_url
+# parse_client_principal
 # ---------------------------------------------------------------------------
 
 
-class TestOidcConfigUrl:
-    def test_url_format(self):
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "mytenant"):
-            url = _oidc_config_url()
-            from urllib.parse import urlparse
+class TestParseClientPrincipal:
+    def test_decodes_valid_principal(self):
+        header = _encode_principal(user_id="user-42", user_details="u@e.com")
+        result = parse_client_principal(header)
+        assert result["userId"] == "user-42"
+        assert result["userDetails"] == "u@e.com"
+        assert result["identityProvider"] == "aad"
 
-            parsed = urlparse(url)
-            assert parsed.hostname == "mytenant.ciamlogin.com"
-            path_segments = parsed.path.strip("/").split("/")
-            # First path segment must be the exact tenant domain
-            assert path_segments[0] == "mytenant.onmicrosoft.com"
-            assert parsed.path.endswith("/v2.0/.well-known/openid-configuration")
+    def test_raises_on_empty_header(self):
+        with pytest.raises(ValueError, match="Missing X-MS-CLIENT-PRINCIPAL"):
+            parse_client_principal("")
+
+    def test_raises_on_invalid_base64(self):
+        with pytest.raises(ValueError, match="Malformed"):
+            parse_client_principal("not-valid-base64!!!")
+
+    def test_raises_on_non_json(self):
+        header = base64.b64encode(b"not json").decode()
+        with pytest.raises(ValueError, match="Malformed"):
+            parse_client_principal(header)
+
+    def test_raises_when_user_id_missing(self):
+        header = base64.b64encode(json.dumps({"identityProvider": "aad"}).encode()).decode()
+        with pytest.raises(ValueError, match="missing userId"):
+            parse_client_principal(header)
+
+    def test_raises_when_user_id_empty(self):
+        header = base64.b64encode(json.dumps({"userId": ""}).encode()).decode()
+        with pytest.raises(ValueError, match="missing userId"):
+            parse_client_principal(header)
+
+    def test_preserves_all_fields(self):
+        header = _encode_principal(
+            user_id="u1",
+            user_details="name",
+            identity_provider="github",
+            user_roles=["authenticated", "admin"],
+        )
+        result = parse_client_principal(header)
+        assert result["identityProvider"] == "github"
+        assert result["userRoles"] == ["authenticated", "admin"]
 
 
 # ---------------------------------------------------------------------------
@@ -81,109 +95,11 @@ class TestOidcConfigUrl:
 
 
 class TestGetUserId:
-    def test_prefers_sub(self):
-        assert get_user_id({"sub": "user-123", "oid": "oid-456"}) == "user-123"
+    def test_extracts_user_id(self):
+        assert get_user_id({"userId": "user-123"}) == "user-123"
 
-    def test_falls_back_to_oid(self):
-        assert get_user_id({"oid": "oid-456"}) == "oid-456"
-
-    def test_returns_empty_when_no_id(self):
+    def test_returns_empty_when_missing(self):
         assert get_user_id({}) == ""
-
-
-# ---------------------------------------------------------------------------
-# validate_token
-# ---------------------------------------------------------------------------
-
-
-class TestValidateToken:
-    def test_raises_when_not_configured(self):
-        with patch("treesight.security.auth.auth_enabled", return_value=False):
-            with pytest.raises(ValueError, match="not configured"):
-                validate_token("Bearer xxx")
-
-    def test_raises_on_missing_header(self):
-        with patch("treesight.security.auth.auth_enabled", return_value=True):
-            with pytest.raises(ValueError, match="Missing or malformed"):
-                validate_token("")
-
-    def test_raises_on_malformed_header(self):
-        with patch("treesight.security.auth.auth_enabled", return_value=True):
-            with pytest.raises(ValueError, match="Missing or malformed"):
-                validate_token("Basic abc")
-
-    def test_raises_on_invalid_token_format(self):
-        with (
-            patch("treesight.security.auth.auth_enabled", return_value=True),
-            patch("treesight.security.auth._fetch_jwks", return_value={"keys": []}),
-        ):
-            with pytest.raises(ValueError, match="Invalid token format"):
-                validate_token("Bearer not-a-jwt")
-
-    def test_raises_when_jwks_empty(self):
-        with (
-            patch("treesight.security.auth.auth_enabled", return_value=True),
-            patch("treesight.security.auth._fetch_jwks", return_value={}),
-        ):
-            with pytest.raises(ValueError, match="Could not retrieve signing keys"):
-                validate_token("Bearer xxx")
-
-
-# ---------------------------------------------------------------------------
-# JWKS cache
-# ---------------------------------------------------------------------------
-
-
-class TestJwksCache:
-    def test_cache_hit_returns_cached_keys(self):
-        fake_keys = {"keys": [{"kid": "k1", "kty": "RSA"}]}
-        _jwks_cache.clear()
-        _jwks_cache["keys"] = fake_keys
-        _jwks_cache["fetched_at"] = time.monotonic()
-
-        with patch("treesight.security.auth.CIAM_TENANT_NAME", "t"):
-            result = _fetch_jwks()
-            assert result == fake_keys
-
-    def test_cache_expired_refetches(self):
-        _jwks_cache.clear()
-        _jwks_cache["keys"] = {"keys": [{"kid": "old"}]}
-        _jwks_cache["fetched_at"] = time.monotonic() - 100000  # expired
-
-        mock_oidc = {"jwks_uri": "https://example.com/jwks", "issuer": "https://example.com"}
-        mock_jwks = {"keys": [{"kid": "new"}]}
-
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
-            patch("treesight.security.auth.requests.get") as mock_get,
-        ):
-            mock_get.return_value.json.side_effect = [mock_oidc, mock_jwks]
-            result = _fetch_jwks()
-            assert result == mock_jwks
-
-    def test_fetch_failure_returns_stale_cache(self):
-        _jwks_cache.clear()
-        stale_keys = {"keys": [{"kid": "stale"}]}
-        _jwks_cache["keys"] = stale_keys
-        _jwks_cache["fetched_at"] = time.monotonic() - 100000  # expired
-
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
-            patch("treesight.security.auth.requests.get", side_effect=Exception("network")),
-        ):
-            result = _fetch_jwks()
-            assert result == stale_keys
-
-    def test_fetch_failure_raises_when_no_stale_cache(self):
-        """Fail closed: if JWKS fetch fails and no cached keys exist, raise."""
-        _jwks_cache.clear()
-
-        with (
-            patch("treesight.security.auth.CIAM_TENANT_NAME", "t"),
-            patch("treesight.security.auth.requests.get", side_effect=Exception("network")),
-            pytest.raises(ValueError, match="Cannot retrieve signing keys"),
-        ):
-            _fetch_jwks()
 
 
 # ---------------------------------------------------------------------------
@@ -192,70 +108,49 @@ class TestJwksCache:
 
 
 class TestCheckAuth:
-    def test_returns_anonymous_when_auth_disabled(self):
+    def test_returns_anonymous_when_no_header_and_auth_not_required(self):
         from blueprints._helpers import check_auth
 
         mock_req = MagicMock()
-        with patch("blueprints._helpers.auth_enabled", return_value=False):
+        mock_req.headers = {}
+
+        with patch.dict("os.environ", {}, clear=False):
+            # Ensure REQUIRE_AUTH is not set
+            import os
+
+            os.environ.pop("REQUIRE_AUTH", None)
             claims, user_id = check_auth(mock_req)
             assert claims == {}
             assert user_id == "anonymous"
 
-    def test_raises_on_invalid_token(self):
+    def test_raises_when_no_header_and_auth_required(self):
         from blueprints._helpers import check_auth
 
         mock_req = MagicMock()
-        mock_req.headers = {"Authorization": "Bearer bad"}
+        mock_req.headers = {}
 
-        with (
-            patch("blueprints._helpers.auth_enabled", return_value=True),
-            patch("blueprints._helpers.validate_token", side_effect=ValueError("Invalid token")),
-        ):
-            with pytest.raises(ValueError, match="Invalid token"):
+        with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
+            with pytest.raises(ValueError, match="Authentication required"):
                 check_auth(mock_req)
 
-
-# ---------------------------------------------------------------------------
-# JWT issuer validation — must fail closed
-# ---------------------------------------------------------------------------
-
-
-class TestIssuerValidation:
-    """Ensure JWT validation always requires issuer (Finding 1.2)."""
-
-    def test_raises_when_issuer_unavailable(self):
-        """If OIDC issuer is empty (cache miss), validation must fail closed."""
-        with (
-            patch("treesight.security.auth.auth_enabled", return_value=True),
-            patch(
-                "treesight.security.auth._fetch_jwks",
-                return_value={"keys": [{"kid": "k1", "kty": "RSA"}]},
-            ),
-            patch("treesight.security.auth._get_issuer", return_value=""),
-            patch("treesight.security.auth.jwt.get_unverified_header", return_value={"kid": "k1"}),
-            patch(
-                "treesight.security.auth.jwt.algorithms.RSAAlgorithm.from_jwk",
-                return_value="fake-key",
-            ),
-        ):
-            with pytest.raises(ValueError, match="issuer unavailable"):
-                validate_token("Bearer fake.jwt.token")
-
-    def test_passes_valid_token(self):
+    def test_returns_principal_and_user_id(self):
         from blueprints._helpers import check_auth
 
         mock_req = MagicMock()
-        mock_req.headers = {"Authorization": "Bearer good-token"}
+        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99")}
 
-        fake_claims = {"sub": "user-1", "name": "Test User"}
-        with (
-            patch("blueprints._helpers.auth_enabled", return_value=True),
-            patch("blueprints._helpers.validate_token", return_value=fake_claims),
-            patch("blueprints._helpers.get_user_id", return_value="user-1"),
-        ):
-            claims, user_id = check_auth(mock_req)
-            assert claims == fake_claims
-            assert user_id == "user-1"
+        principal, user_id = check_auth(mock_req)
+        assert principal["userId"] == "u-99"
+        assert user_id == "u-99"
+
+    def test_raises_on_malformed_header(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": "garbage"}
+
+        with pytest.raises(ValueError, match="Malformed"):
+            check_auth(mock_req)
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +159,7 @@ class TestIssuerValidation:
 
 
 class TestRequireAuth:
-    def test_passes_through_when_auth_disabled(self):
+    def test_passes_through_when_no_header_and_auth_not_required(self):
         from blueprints._helpers import require_auth
 
         @require_auth
@@ -275,13 +170,17 @@ class TestRequireAuth:
 
         mock_req = MagicMock()
         mock_req.method = "POST"
+        mock_req.headers = {}
 
-        with patch("blueprints._helpers.auth_enabled", return_value=False):
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("REQUIRE_AUTH", None)
             resp = my_endpoint(mock_req)
             body = json.loads(resp.get_body())
             assert body["user"] == "anonymous"
 
-    def test_returns_401_on_bad_token(self):
+    def test_returns_401_when_no_header_and_auth_required(self):
         from blueprints._helpers import require_auth
 
         @require_auth
@@ -292,16 +191,50 @@ class TestRequireAuth:
 
         mock_req = MagicMock()
         mock_req.method = "POST"
-        mock_req.headers = {"Authorization": "Bearer bad"}
+        mock_req.headers = {}
 
-        with (
-            patch("blueprints._helpers.auth_enabled", return_value=True),
-            patch("blueprints._helpers.validate_token", side_effect=ValueError("Token expired")),
-        ):
+        with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
             resp = my_endpoint(mock_req)
             assert resp.status_code == 401
-            body = json.loads(resp.get_body())
-            assert "expired" in body["error"]
+
+    def test_returns_401_on_malformed_principal(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse("OK")
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": "bad-data"}
+
+        resp = my_endpoint(mock_req)
+        assert resp.status_code == 401
+
+    def test_injects_auth_kwargs_on_valid_principal(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse(
+                json.dumps({"user": user_id, "provider": auth_claims.get("identityProvider")}),
+                mimetype="application/json",
+            )
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-1", identity_provider="github")
+        }
+
+        resp = my_endpoint(mock_req)
+        body = json.loads(resp.get_body())
+        assert body["user"] == "u-1"
+        assert body["provider"] == "github"
 
     def test_handles_options_preflight(self):
         from blueprints._helpers import require_auth
@@ -315,9 +248,8 @@ class TestRequireAuth:
         mock_req = MagicMock()
         mock_req.method = "OPTIONS"
 
-        with patch("blueprints._helpers.auth_enabled", return_value=True):
-            resp = my_endpoint(mock_req)
-            assert resp.status_code == 204
+        resp = my_endpoint(mock_req)
+        assert resp.status_code == 204
 
 
 # ---------------------------------------------------------------------------

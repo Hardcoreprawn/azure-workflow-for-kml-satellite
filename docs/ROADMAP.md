@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-09 (PR #490 merged — Q.7 code scanning alerts resolved)
+Last updated: 2026-04-10 (PR #496 merged — replace CIAM with SWA built-in auth)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: 2026-04-09 (PR #490 merged — Q.7 code scanning alerts resolved)
 | Milestone | Summary |
 |-----------|---------|
 | **M1 — Deployable Product** | CI/CD, Azure deployment, App Insights, cost alerts, AI Foundry, KMZ support |
-| **M2 — Free Tier Launch** | Auth (Entra CIAM), onboarding, KML guide, file upload, terms/privacy, structured logging helpers |
+| **M2 — Free Tier Launch** | Auth (SWA built-in Azure AD), onboarding, KML guide, file upload, terms/privacy, structured logging helpers |
 | **M3 — Core Analysis Value** | NDVI, weather overlay, AI summaries, change detection, multi-polygon KML, enrichment split, site review fixes |
 | **M4 — Revenue (12/13)** | Stripe billing, quota enforcement, pricing page, export (PDF/GeoJSON/CSV), EUDR mode, WorldCover, WDPA, circuit breaker |
 | **Stage 1 — Launch Readiness** | Cosmos state migration, billing gate, user dashboard, pipeline modularisation, SSO providers, branding due diligence |
@@ -24,12 +24,12 @@ Last updated: 2026-04-09 (PR #490 merged — Q.7 code scanning alerts resolved)
 
 | PR | Summary |
 |----|---------|
+| #496 | Replace CIAM with SWA pre-configured auth providers (fixes #495) |
 | #490 | Code scanning alerts: URL sanitisation, mixed imports, except comments (fixes #381) |
 | #487 | P2 Code Quality: orchestrator decomposition, .get() fixes, JS hardening, enrichment parallelisation |
 | #484 | SWA catalogue endpoints — list, detail, by_run, by_aoi (completes #465 / T1.1) |
 | #483 | SWA contact form, readiness, contract endpoints + deploy smoke-check fix (partial #465) |
 | #481 | SWA billing endpoints — billing/status, billing/checkout, billing/portal (partial #465, #474) |
-| #478 | SWA API App Insights instrumentation — connection string, OTEL service name, sampling (fixes #464) |
 
 ---
 

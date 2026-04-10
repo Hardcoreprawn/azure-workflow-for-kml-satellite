@@ -38,63 +38,17 @@ def swa_config():
 
 
 # ---------------------------------------------------------------------------
-# SWA auth configuration — built-in auth via azureActiveDirectory provider
+# SWA auth configuration — pre-configured Azure AD provider (no OIDC config)
 # ---------------------------------------------------------------------------
 
 
 class TestSwaAuth:
-    def test_aad_provider_configured(self, swa_config):
-        """SWA config must have azureActiveDirectory identity provider."""
+    def test_no_custom_identity_provider(self, swa_config):
+        """SWA pre-configured provider: no identityProviders block needed."""
         providers = swa_config.get("auth", {}).get("identityProviders", {})
-        assert "azureActiveDirectory" in providers, (
-            "auth.identityProviders.azureActiveDirectory missing from staticwebapp.config.json"
-        )
-
-    def test_openid_issuer_set(self, swa_config):
-        """openIdIssuer must point to the CIAM tenant OIDC endpoint."""
-        from urllib.parse import urlparse
-
-        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
-        reg = aad.get("registration", {})
-        issuer = reg.get("openIdIssuer", "")
-        parsed = urlparse(issuer)
-        hostname = parsed.hostname or ""
-        host_labels = hostname.split(".")
-        is_ciam = len(host_labels) >= 3 and host_labels[-2:] == ["ciamlogin", "com"]
-        is_aad = len(host_labels) >= 4 and host_labels[-3:] == ["login", "microsoftonline", "com"]
-        valid = parsed.scheme == "https" and (is_ciam or is_aad) and parsed.path.endswith("/v2.0")
-        assert valid, (
-            "openIdIssuer must be a full https URL pointing to a valid Azure OIDC v2.0 endpoint"
-        )
-
-    def test_client_id_setting_name(self, swa_config):
-        """clientIdSettingName must reference an app setting name."""
-        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
-        reg = aad.get("registration", {})
-        assert reg.get("clientIdSettingName"), "clientIdSettingName must be set"
-
-    def test_client_id_not_azure_client_id(self, swa_config):
-        """clientIdSettingName must NOT be AZURE_CLIENT_ID (used by managed identity)."""
-        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
-        reg = aad.get("registration", {})
-        assert reg.get("clientIdSettingName") != "AZURE_CLIENT_ID", (
-            "clientIdSettingName must not be AZURE_CLIENT_ID — that setting "
-            "holds the managed identity client ID, not the CIAM app registration"
-        )
-
-    def test_client_secret_setting_name(self, swa_config):
-        """clientSecretSettingName must reference an app setting name."""
-        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
-        reg = aad.get("registration", {})
-        assert reg.get("clientSecretSettingName"), "clientSecretSettingName must be set"
-
-    def test_client_secret_not_azure_client_secret(self, swa_config):
-        """clientSecretSettingName must NOT be AZURE_CLIENT_SECRET (ambiguous with MI)."""
-        aad = swa_config["auth"]["identityProviders"]["azureActiveDirectory"]
-        reg = aad.get("registration", {})
-        assert reg.get("clientSecretSettingName") != "AZURE_CLIENT_SECRET", (
-            "clientSecretSettingName must not be AZURE_CLIENT_SECRET — use a "
-            "CIAM-specific setting name to avoid confusion with managed identity"
+        assert not providers, (
+            "identityProviders should be absent — SWA pre-configured Azure AD "
+            "provider requires no custom OIDC configuration"
         )
 
     def test_api_routes_require_auth(self, swa_config):
@@ -224,48 +178,4 @@ class TestCorsConfig:
         src = HELPERS_PY.read_text()
         assert re.search(r'["\']https://canopex\.hrdcrprwn\.com["\']', src), (
             "_ALLOWED_ORIGINS must contain the custom domain"
-        )
-
-
-# ---------------------------------------------------------------------------
-# CIAM app registration — must use web platform, not SPA
-# ---------------------------------------------------------------------------
-
-REGISTER_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "_register_ciam_app.py"
-
-
-class TestCiamAppRegistration:
-    """Guard against AADSTS700054 regression.
-
-    SWA built-in auth uses server-side OIDC (response_type=id_token).
-    The CIAM app registration must use the 'web' platform with
-    enableIdTokenIssuance, not the 'spa' platform.
-    """
-
-    @pytest.fixture()
-    def script(self):
-        return REGISTER_SCRIPT.read_text()
-
-    def test_uses_web_platform_not_spa(self, script):
-        assert '"web"' in script, (
-            "_register_ciam_app.py must register as a 'web' app, not 'spa' — "
-            "SWA built-in auth uses server-side OIDC"
-        )
-        # The Graph API body must not contain "spa": { — only "web": {
-        assert '"spa": {' not in script, (
-            "_register_ciam_app.py must not use the 'spa' platform — "
-            "SWA built-in auth sends response_type=id_token which requires "
-            "the web platform (AADSTS700054)"
-        )
-
-    def test_enables_id_token_issuance(self, script):
-        assert "enableIdTokenIssuance" in script, (
-            "_register_ciam_app.py must enable ID token issuance — "
-            "SWA built-in auth requires response_type=id_token"
-        )
-
-    def test_redirect_uris_use_swa_callback_path(self, script):
-        assert "/.auth/login/aad/callback" in script, (
-            "Redirect URIs must use the SWA callback path "
-            "/.auth/login/aad/callback, not bare domain roots"
         )

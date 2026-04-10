@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import azure.functions as func
 import pytest
 
-from tests.conftest import TEST_ORIGIN, make_test_request
+from tests.conftest import TEST_ORIGIN, encode_test_principal, make_test_request
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -75,16 +75,8 @@ def _mock_cosmos():
 
 @pytest.fixture()
 def _mock_auth():
-    """Bypass CIAM auth for endpoint tests."""
-    with (
-        patch("treesight.security.auth.auth_enabled", return_value=True),
-        patch(
-            "treesight.security.auth.validate_token",
-            return_value={"sub": "user-123", "email": "user@example.com"},
-        ),
-        patch("treesight.security.auth.get_user_id", return_value="user-123"),
-    ):
-        yield
+    """Bypass auth for endpoint tests — SWA header parsing is exercised via request headers."""
+    yield
 
 
 @pytest.fixture()
@@ -486,7 +478,7 @@ class TestMonitoringEndpoints:
             url=f"/api/monitoring/{monitor_id}",
             headers={
                 "Origin": TEST_ORIGIN,
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
             },
             params={},
             route_params={"monitor_id": monitor_id},
@@ -514,7 +506,7 @@ class TestMonitoringEndpoints:
             url=f"/api/monitoring/{monitor_id}",
             headers={
                 "Origin": TEST_ORIGIN,
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
                 "Content-Type": "application/json",
             },
             params={},
@@ -543,7 +535,7 @@ class TestMonitoringEndpoints:
             url=f"/api/monitoring/{monitor_id}",
             headers={
                 "Origin": TEST_ORIGIN,
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
             },
             params={},
             route_params={"monitor_id": monitor_id},
@@ -561,7 +553,7 @@ class TestMonitoringEndpoints:
             url="/api/monitoring/nonexistent",
             headers={
                 "Origin": TEST_ORIGIN,
-                "Authorization": "Bearer fake-token",
+                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
             },
             params={},
             route_params={"monitor_id": "nonexistent"},

@@ -261,7 +261,7 @@ enforcement case. No coding. No GIS degree. No consultancy. Starting at £19/mo.
 | **DNS routing** | Point canopex.io → Azure Static Web Apps (or Cloudflare Pages → Azure Functions) |
 | **Rename product in codebase** | ✅ Done — all user-facing strings now say Canopex. Internal module names (`treesight/`) preserved. |
 | **Update Stripe** | Product/plan names to "Canopex Starter", "Canopex Pro", etc. |
-| **Update Entra CIAM** | Branding (custom domain, logo, colours) on login/signup pages. |
+| **Auth provider** | SWA built-in Azure AD — no separate branding needed (login page is Microsoft-hosted). |
 | **Redirect old domain** | `treesight.hrdcrprwn.com` → `canopex.io` with 301 |
 | **Sitemap + robots.txt** | Submit to Google Search Console day 1. |
 | **Structured data** | SoftwareApplication schema on homepage. FAQ schema on pricing page. |
@@ -356,7 +356,7 @@ high engagement in sustainability/compliance circles.
 | 0.6 | Set up email newsletter (Buttondown or Mailchimp) | |
 | 0.7 | ✅ Rename user-facing product strings from "TreeSight" to "Canopex" | Done |
 | 0.8 | Update Stripe branding (plan names, receipts, checkout) | |
-| 0.9 | Update Entra CIAM login branding | |
+| 0.9 | ~~Update Entra CIAM login branding~~ — removed (SWA built-in auth, #495) | N/A |
 | 0.10 | Configure DNS: canopex.io → Azure Static Web Apps | |
 | 0.11 | Set up Google Search Console + Analytics | |
 | 0.12 | Set up 301 redirect: treesight.hrdcrprwn.com → canopex.io | |

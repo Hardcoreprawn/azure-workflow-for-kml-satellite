@@ -9,8 +9,8 @@ system from being used as a spam relay.  The allowlist is the union of:
 
 1. ``NOTIFICATION_EMAIL`` (operator inbox, set via env var)
 2. An optional *verified_recipients* set passed by the caller — intended
-   for addresses extracted from **verified JWT claims** (Azure Entra
-   External ID validates the email before issuing tokens).
+   for addresses extracted from **verified SWA auth claims** (the identity
+   provider validates the email before issuing tokens).
 
 Never pass user-**supplied** (unverified) addresses.  Only pass
 addresses that the IdP has already confirmed.
@@ -29,7 +29,7 @@ def _allowed_recipients() -> set[str]:
     """Return the baseline set of email addresses we are permitted to send to.
 
     Currently this is just ``NOTIFICATION_EMAIL``.  Callers that hold
-    verified user addresses (e.g. from JWT claims) extend the effective
+    verified user addresses (e.g. from SWA auth claims) extend the effective
     allowlist via the *verified_recipients* parameter on ``send_email``.
     """
     notify = os.environ.get("NOTIFICATION_EMAIL", "").strip().lower()
@@ -53,7 +53,7 @@ def send_email(
 
     * ``NOTIFICATION_EMAIL`` (always checked)
     * *verified_recipients* — addresses the **caller** vouches for,
-      typically extracted from a verified JWT ``email`` claim.
+      typically extracted from the SWA ``userDetails`` field.
 
     Any other recipient is rejected to prevent accidental use as a spam
     relay.

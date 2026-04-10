@@ -1,15 +1,4 @@
 {
-  "auth": {
-    "identityProviders": {
-      "azureActiveDirectory": {
-        "registration": {
-          "openIdIssuer": "https://treesightauth.ciamlogin.com/92001438-8b42-4bd7-950f-0ed1775f87b7/v2.0",
-          "clientIdSettingName": "CIAM_CLIENT_ID",
-          "clientSecretSettingName": "CIAM_CLIENT_SECRET"
-        }
-      }
-    }
-  },
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html"]
