@@ -51,40 +51,22 @@ class TestSwaAuth:
             "provider requires no custom OIDC configuration"
         )
 
-    def test_api_routes_require_auth(self, swa_config):
-        """API routes (except health) must require authentication."""
+    def test_no_swa_managed_api_routes(self, swa_config):
+        """SWA must not have /api/* route rules — API lives on Container Apps FA."""
         routes = swa_config.get("routes", [])
-        api_routes = [
-            r
-            for r in routes
-            if r.get("route", "").startswith("/api/") and "health" not in r.get("route", "")
-        ]
-        for route in api_routes:
-            roles = route.get("allowedRoles", [])
-            assert "authenticated" in roles, (
-                f"Route {route['route']} must allow the authenticated role"
-            )
-            assert "anonymous" not in roles, (
-                f"Route {route['route']} must not allow anonymous access"
-            )
+        api_routes = [r for r in routes if r.get("route", "").startswith("/api/")]
+        assert not api_routes, (
+            "SWA config must not contain /api/* route rules — "
+            "all API calls go cross-origin to the Container Apps FA"
+        )
 
-    def test_health_route_anonymous(self, swa_config):
-        """Health endpoint must be accessible without authentication."""
+    def test_api_config_json_route_anonymous(self, swa_config):
+        """api-config.json route must allow anonymous access for BYOF discovery."""
         routes = swa_config.get("routes", [])
-        health_routes = [r for r in routes if "health" in r.get("route", "")]
-        assert health_routes, "No health route found in SWA config"
-        for route in health_routes:
-            roles = route.get("allowedRoles", [])
-            assert "anonymous" in roles, (
-                f"Health route {route['route']} must allow anonymous access"
-            )
-
-    def test_health_exact_route_exists(self, swa_config):
-        """Exact /api/health route must exist (not just /api/health/*)."""
-        routes = swa_config.get("routes", [])
-        exact = [r for r in routes if r.get("route") == "/api/health"]
-        assert exact, (
-            "Exact /api/health route needed — /api/health/* alone may not match /api/health"
+        cfg_routes = [r for r in routes if r.get("route") == "/api-config.json"]
+        assert cfg_routes, "api-config.json route must exist for BYOF hostname discovery"
+        assert "anonymous" in cfg_routes[0].get("allowedRoles", []), (
+            "api-config.json must allow anonymous access"
         )
 
     def test_no_msal_script_in_html(self, index_html):
@@ -157,6 +139,18 @@ class TestAuthConfig:
         """landing.js must not create an MSAL PublicClientApplication."""
         assert "PublicClientApplication" not in landing_js, (
             "landing.js still creates MSAL instance — must use SWA built-in auth"
+        )
+
+    def test_landing_uses_api_config_json(self, landing_js):
+        """landing.js must discover the Container Apps FA via /api-config.json."""
+        assert "api-config.json" in landing_js, (
+            "landing.js must read /api-config.json for BYOF hostname discovery"
+        )
+
+    def test_landing_forwards_client_principal(self, landing_js):
+        """landing.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
+        assert "X-MS-CLIENT-PRINCIPAL" in landing_js, (
+            "landing.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
         )
 
 

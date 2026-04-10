@@ -416,36 +416,18 @@ class TestDeployWorkflowSettings:
             "HTML meta tags before SWA upload"
         )
 
-    def test_swa_deploy_includes_api_location(self, deploy_yml):
-        assert "api_location" in deploy_yml, (
-            "deploy.yml SWA deploy must set api_location so managed functions "
-            "(upload/token, upload/status) are deployed"
-        )
-
-    def test_swa_app_settings_managed_by_tofu(self, deploy_yml):
+    def test_swa_app_settings_not_managed_by_cli(self, deploy_yml):
         assert "az staticwebapp appsettings set" not in deploy_yml, (
-            "deploy.yml must NOT configure SWA app settings via CLI — "
-            "tofu manages them inline via app_settings on the resource"
+            "deploy.yml must NOT configure SWA app settings via CLI"
         )
 
-    def test_swa_managed_api_smoke_check(self, deploy_yml):
-        assert "upload/token" in deploy_yml, (
-            "deploy.yml must smoke-check the SWA managed API after deploy "
-            "to catch missing app settings or startup failures"
+    def test_deploy_smoke_checks_container_apps_fa(self, deploy_yml):
+        """Deploy must smoke-check the Container Apps FA health endpoint."""
+        assert "Container Apps" in deploy_yml, (
+            "deploy.yml smoke check must target the Container Apps FA, not SWA managed functions"
         )
-
-    def test_swa_smoke_check_accepts_302_redirect(self, deploy_yml):
-        """SWA returns 302 (redirect to login) for auth-gated routes, not 401."""
-        assert "302" in deploy_yml, (
-            "deploy.yml smoke check must accept HTTP 302 — SWA auth returns "
-            "a redirect to login, not a 401 rejection"
-        )
-
-    def test_swa_smoke_check_tests_health_endpoint(self, deploy_yml):
-        """Smoke check should verify /api/health to confirm functions loaded."""
         assert "/api/health" in deploy_yml, (
-            "deploy.yml smoke check must test /api/health to verify "
-            "SWA managed functions are loaded before checking auth gates"
+            "deploy.yml smoke check must test /api/health on the Container Apps FA"
         )
 
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
@@ -500,30 +482,6 @@ class TestStripeKeyVaultBootstrap:
         )
         assert 'output "function_app_cli_maximum_instance_count"' in outputs_tf, (
             "outputs.tf must expose the CLI-managed Function App scale cap"
-        )
-
-    def test_swa_uses_managed_identity(self):
-        main_tf = MAIN_TF.read_text()
-        assert "identity" in main_tf, (
-            "SWA resource must have identity block for managed identity auth"
-        )
-        assert "swa_storage_blob_delegator" in main_tf, (
-            "SWA must have Storage Blob Delegator role for user delegation SAS"
-        )
-        assert "swa_storage_blob_data_contributor" in main_tf, (
-            "SWA must have Storage Blob Data Contributor role for ticket blob writes"
-        )
-
-    def test_swa_api_uses_default_credential(self):
-        api_code = (ROOT / "website" / "api" / "function_app.py").read_text()
-        assert "DefaultAzureCredential" in api_code, (
-            "SWA API must use DefaultAzureCredential (managed identity), not storage keys"
-        )
-        assert "STORAGE_ACCOUNT_KEY" not in api_code, (
-            "SWA API must not reference STORAGE_ACCOUNT_KEY — use managed identity"
-        )
-        assert "user_delegation_key" in api_code, (
-            "SWA API must use user delegation SAS, not account-key SAS"
         )
 
     def test_deployer_still_has_key_vault_secret_access(self):
@@ -844,166 +802,3 @@ class TestInfracostCostGate:
         assert "infracost" in content, (
             "pyproject.toml must define an 'infracost' optional dep group"
         )
-
-
-# ---------------------------------------------------------------------------
-# 16. SWA managed API — Application Insights instrumentation
-# ---------------------------------------------------------------------------
-
-
-SWA_API_HOST_JSON = WEBSITE / "api" / "host.json"
-
-
-class TestSwaAppInsights:
-    """Ensure SWA managed API has Application Insights observability (#464)."""
-
-    @pytest.fixture()
-    def main_tf(self):
-        return MAIN_TF.read_text()
-
-    def test_swa_app_settings_include_appinsights_connection_string(self, main_tf):
-        # The local definition is the last occurrence of swa_api_app_settings
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in swa_block, (
-            "swa_api_app_settings must include APPLICATIONINSIGHTS_CONNECTION_STRING "
-            "so the SWA managed API sends telemetry to App Insights"
-        )
-        assert "azurerm_application_insights.main.connection_string" in swa_block, (
-            "APPLICATIONINSIGHTS_CONNECTION_STRING must reference "
-            "azurerm_application_insights.main.connection_string"
-        )
-
-    def test_swa_app_settings_include_otel_service_name(self, main_tf):
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        assert '"canopex-swa-api"' in swa_block, (
-            "swa_api_app_settings must set OTEL_SERVICE_NAME to 'canopex-swa-api' "
-            "so cloud_RoleName distinguishes SWA API from Container Apps function app"
-        )
-
-    def test_swa_api_host_json_has_appinsights_logging(self):
-        host = json.loads(SWA_API_HOST_JSON.read_text())
-        logging_cfg = host.get("logging", {})
-        ai_cfg = logging_cfg.get("applicationInsights", {})
-        sampling = ai_cfg.get("samplingSettings", {})
-        assert sampling.get("isEnabled") is True, (
-            "website/api/host.json must enable Application Insights sampling "
-            "to control telemetry volume"
-        )
-        assert sampling.get("maxTelemetryItemsPerSecond") == 1, (
-            "website/api/host.json maxTelemetryItemsPerSecond must be 1 "
-            "to match the Container Apps host.json sampling rate"
-        )
-
-    def test_swa_api_host_json_excludes_exceptions_from_sampling(self):
-        host = json.loads(SWA_API_HOST_JSON.read_text())
-        excluded = (
-            host.get("logging", {})
-            .get("applicationInsights", {})
-            .get("samplingSettings", {})
-            .get("excludedTypes", "")
-        )
-        assert "Exception" in excluded, (
-            "website/api/host.json must exclude Exception from sampling so all errors are captured"
-        )
-
-
-# 17. SWA Billing Endpoints (#465 / #474)
-class TestSwaBillingInfra:
-    """Ensure SWA managed API has Stripe env vars for billing endpoints."""
-
-    @pytest.fixture()
-    def main_tf(self):
-        return MAIN_TF.read_text()
-
-    def test_swa_app_settings_include_stripe_api_key(self, main_tf):
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        assert "STRIPE_API_KEY" in swa_block, (
-            "swa_api_app_settings must include STRIPE_API_KEY for billing checkout/portal"
-        )
-
-    def test_swa_app_settings_include_stripe_price_ids(self, main_tf):
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        for currency in ("GBP", "USD", "EUR"):
-            assert f"STRIPE_PRICE_ID_PRO_{currency}" in swa_block, (
-                f"swa_api_app_settings must include STRIPE_PRICE_ID_PRO_{currency}"
-            )
-
-    def test_swa_app_settings_include_billing_allowed_users(self, main_tf):
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        assert "BILLING_ALLOWED_USERS" in swa_block, (
-            "swa_api_app_settings must include BILLING_ALLOWED_USERS for feature gating"
-        )
-
-    def test_swa_has_key_vault_secrets_user_role(self, main_tf):
-        assert "swa_key_vault_secrets_user" in main_tf, (
-            "SWA managed identity must have Key Vault Secrets User role "
-            "to resolve @Microsoft.KeyVault() Stripe secret references"
-        )
-
-    def test_swa_billing_endpoints_in_function_app(self):
-        source = (ROOT / "website" / "api" / "function_app.py").read_text()
-        for endpoint in ("billing_status", "billing_checkout", "billing_portal"):
-            assert endpoint in source, (
-                f"website/api/function_app.py must define {endpoint} endpoint"
-            )
-
-    def test_swa_requirements_include_stripe(self):
-        reqs = (ROOT / "website" / "api" / "requirements.txt").read_text()
-        assert "stripe" in reqs, (
-            "website/api/requirements.txt must include stripe SDK for billing endpoints"
-        )
-
-
-# 18. SWA Contact + Health Endpoints (#465)
-class TestSwaContactHealthInfra:
-    """Ensure SWA managed API has email env vars and contact/health endpoints."""
-
-    @pytest.fixture()
-    def main_tf(self):
-        return MAIN_TF.read_text()
-
-    def test_swa_app_settings_include_email_vars(self, main_tf):
-        swa_block = main_tf.split("swa_api_app_settings")[-1]
-        for var in (
-            "COMMUNICATION_SERVICES_CONNECTION_STRING",
-            "EMAIL_SENDER_ADDRESS",
-            "NOTIFICATION_EMAIL",
-        ):
-            assert var in swa_block, (
-                f"swa_api_app_settings must include {var} for contact form notifications"
-            )
-
-    def test_swa_contact_endpoint_in_function_app(self):
-        source = (ROOT / "website" / "api" / "function_app.py").read_text()
-        assert "contact_form" in source, (
-            "website/api/function_app.py must define contact_form endpoint"
-        )
-
-    def test_swa_readiness_endpoint_in_function_app(self):
-        source = (ROOT / "website" / "api" / "function_app.py").read_text()
-        for endpoint in ("readiness", "contract"):
-            assert endpoint in source, (
-                f"website/api/function_app.py must define {endpoint} endpoint"
-            )
-
-    def test_swa_requirements_include_email_sdk(self):
-        reqs = (ROOT / "website" / "api" / "requirements.txt").read_text()
-        assert "azure-communication-email" in reqs, (
-            "website/api/requirements.txt must include azure-communication-email "
-            "for contact form notifications"
-        )
-
-
-# 19. SWA Catalogue Endpoints (#465)
-class TestSwaCatalogueInfra:
-    """Ensure SWA managed API has catalogue endpoints."""
-
-    def test_swa_catalogue_endpoints_in_function_app(self):
-        source = (ROOT / "website" / "api" / "function_app.py").read_text()
-        for fn in (
-            "catalogue_list",
-            "catalogue_detail",
-            "catalogue_by_run",
-            "catalogue_by_aoi",
-        ):
-            assert fn in source, f"website/api/function_app.py must define {fn} endpoint"

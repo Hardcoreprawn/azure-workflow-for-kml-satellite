@@ -2,6 +2,8 @@
   'use strict';
 
   let currentAccount = null;
+  let _apiBase = '';           // Container Apps FA hostname from /api-config.json
+  let _clientPrincipal = null; // raw clientPrincipal for X-MS-CLIENT-PRINCIPAL forwarding
 
   function authEnabled() { return true; }
 
@@ -12,6 +14,7 @@
       const data = await res.json();
       const principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
+        _clientPrincipal = principal;
         currentAccount = {
           userId: principal.userId,
           name: principal.userDetails || principal.userId,
@@ -68,11 +71,15 @@
   async function apiFetch(path, opts) {
     opts = opts || {};
     opts.headers = opts.headers || {};
-    const resp = await fetch(path, opts);
+    if (_clientPrincipal) {
+      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(JSON.stringify(_clientPrincipal));
+    }
+    var url = _apiBase ? _apiBase + path : path;
+    var resp = await fetch(url, opts);
     if (!resp.ok) {
-      const body = await resp.json().catch(function () { return {}; });
-      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      const err = new Error(msg);
+      var body = await resp.json().catch(function () { return {}; });
+      var msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      var err = new Error(msg);
       err.status = resp.status;
       err.body = body;
       throw err;
@@ -81,11 +88,23 @@
   }
 
   async function discoverApiBase() {
-    const badge = document.getElementById('status-badge');
+    // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
+    try {
+      var cfgRes = await fetch('/api-config.json');
+      if (cfgRes.ok) {
+        var cfg = await cfgRes.json();
+        if (cfg.apiBase) {
+          _apiBase = cfg.apiBase.replace(/\/+$/, '');
+        }
+      }
+    } catch (e) { /* local dev — no api-config.json, use same-origin */ }
+
+    var badge = document.getElementById('status-badge');
     if (!badge) return;
 
     try {
-      const res = await fetch('/api/health');
+      var healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
+      var res = await fetch(healthUrl);
       if (res.ok) {
         badge.textContent = 'Online';
         badge.className = 'online';
@@ -97,7 +116,6 @@
 
     badge.textContent = 'Unavailable';
     badge.className = 'offline';
-    console.warn('Backend not reachable — SWA managed API health check failed');
   }
 
   /* --- Early Access form --- */

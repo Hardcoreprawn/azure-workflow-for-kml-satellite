@@ -510,40 +510,26 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: /website
-          api_location: /website/api
           skip_app_build: true
 
-      - name: Smoke-check SWA managed API
+      - name: Smoke-check Container Apps Function App
         run: |
-          SWA_HOSTNAME="${{ needs.deploy-infra.outputs.swa_hostname }}"
-          BASE_URL="https://${SWA_HOSTNAME}"
-          echo "Checking SWA managed API at ${BASE_URL}..."
+          FA_HOSTNAME="${{ needs.deploy-infra.outputs.function_app_hostname }}"
+          BASE_URL="https://${FA_HOSTNAME}"
+          echo "Checking Container Apps FA at ${BASE_URL}..."
 
-          # 1. Verify anonymous health endpoint returns 200 (proves functions are loaded)
+          # Verify health endpoint returns 200 (proves function app is running)
           for i in $(seq 1 6); do
             HEALTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
               "${BASE_URL}/api/health" 2>/dev/null || echo "000")
             echo "  [attempt ${i}] GET /api/health → HTTP ${HEALTH}"
             if [ "$HEALTH" = "200" ]; then
-              echo "✅ SWA managed API health endpoint responding"
+              echo "✅ Container Apps FA health endpoint responding"
               break
             fi
             sleep 10
           done
           if [ "$HEALTH" != "200" ]; then
-            echo "❌ SWA health endpoint did not return 200 within 60s (got ${HEALTH})"
-            echo "  If 404: check api_location. If 503: check app settings."
-            exit 1
-          fi
-
-          # 2. Verify auth-protected endpoint is gated (302 redirect to login or 401)
-          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-            -X POST "${BASE_URL}/api/upload/token" \
-            -H "Content-Type: application/json" 2>/dev/null || echo "000")
-          echo "  POST /api/upload/token (unauthed) → HTTP ${CODE}"
-          if [ "$CODE" = "401" ] || [ "$CODE" = "302" ]; then
-            echo "✅ SWA auth gate is active (${CODE})"
-          else
-            echo "❌ Expected 401 or 302 for unauthed request, got ${CODE}"
+            echo "❌ FA health endpoint did not return 200 within 60s (got ${HEALTH})"
             exit 1
           fi

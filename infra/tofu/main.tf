@@ -803,8 +803,6 @@ resource "azurerm_static_web_app" "main" {
   sku_size            = "Standard"
   tags                = local.tags
 
-  app_settings = local.swa_api_app_settings
-
   identity {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.swa.id]
@@ -836,19 +834,6 @@ resource "azurerm_role_assignment" "storage_blob_data_owner" {
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
-# SWA managed identity — blob writes (ticket blobs) + user delegation SAS
-resource "azurerm_role_assignment" "swa_storage_blob_data_contributor" {
-  scope                = azurerm_storage_account.main.id
-  role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_user_assigned_identity.swa.principal_id
-}
-
-resource "azurerm_role_assignment" "swa_storage_blob_delegator" {
-  scope                = azurerm_storage_account.main.id
-  role_definition_name = "Storage Blob Delegator"
-  principal_id         = azurerm_user_assigned_identity.swa.principal_id
-}
-
 resource "azurerm_role_assignment" "storage_queue_data_contributor" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Queue Data Contributor"
@@ -873,14 +858,6 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
-# SWA managed identity — Key Vault secret access for Stripe env vars
-resource "azurerm_role_assignment" "swa_key_vault_secrets_user" {
-  count                = var.enable_stripe ? 1 : 0
-  scope                = azurerm_key_vault.main.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_user_assigned_identity.swa.principal_id
-}
-
 # Allow the deployer (tofu apply / setup scripts) to manage secrets
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   count                = var.enable_stripe ? 1 : 0
@@ -896,16 +873,6 @@ resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
   account_name        = azurerm_cosmosdb_account.main[0].name
   role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
   principal_id        = azapi_resource.function_app.identity[0].principal_id
-  scope               = azurerm_cosmosdb_account.main[0].id
-}
-
-# Cosmos DB data-plane RBAC for SWA managed API (read-only: analysis/history)
-resource "azurerm_cosmosdb_sql_role_assignment" "swa" {
-  count               = var.enable_cosmos_db ? 1 : 0
-  resource_group_name = azurerm_resource_group.main.name
-  account_name        = azurerm_cosmosdb_account.main[0].name
-  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000001"
-  principal_id        = azurerm_user_assigned_identity.swa.principal_id
   scope               = azurerm_cosmosdb_account.main[0].id
 }
 
@@ -959,36 +926,6 @@ locals {
     price_id_pro_usd = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-usd"
     price_id_pro_eur = "${azurerm_key_vault.main.vault_uri}secrets/stripe-price-id-pro-eur"
   }
-
-  # SWA managed API settings (upload/token, upload/status, billing/status,
-  # billing/checkout, billing/portal, contact-form, readiness, contract,
-  # analysis/history endpoints).
-  # Auth uses user-assigned managed identity — no storage key needed.
-  swa_api_app_settings = merge(
-    {
-      STORAGE_ACCOUNT_NAME                  = azurerm_storage_account.main.name
-      INPUT_CONTAINER                       = "kml-input"
-      AZURE_CLIENT_ID                       = azurerm_user_assigned_identity.swa.client_id
-      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.main.connection_string
-      OTEL_SERVICE_NAME                     = "canopex-swa-api"
-    },
-    var.enable_cosmos_db ? {
-      COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
-      COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
-    } : {},
-    var.enable_stripe ? {
-      STRIPE_API_KEY           = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
-      STRIPE_PRICE_ID_PRO_GBP  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
-      STRIPE_PRICE_ID_PRO_USD  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
-      STRIPE_PRICE_ID_PRO_EUR  = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
-      BILLING_ALLOWED_USERS    = var.billing_allowed_users
-    } : {},
-    var.enable_email ? {
-      COMMUNICATION_SERVICES_CONNECTION_STRING = azurerm_communication_service.main[0].primary_connection_string
-      EMAIL_SENDER_ADDRESS                     = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
-      NOTIFICATION_EMAIL                       = var.notification_email
-    } : {}
-  )
 }
 
 resource "azapi_resource" "event_grid_subscription" {

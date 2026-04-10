@@ -24,12 +24,12 @@ Last updated: 2026-04-10 (architecture topology redesign — BYOF consolidation 
 
 | PR | Summary |
 |----|---------|
+| #511 | P3 BYOF: Delete SWA managed API, route all /api/* to Container Apps FA |
+| #510 | Upload BFF endpoints: upload/token + upload/status on Container Apps FA |
 | #497 | Fix deploy: Key Vault purge protection one-way toggle |
 | #496 | Replace CIAM with SWA pre-configured auth providers (fixes #495) |
 | #490 | Code scanning alerts: URL sanitisation, mixed imports, except comments (fixes #381) |
 | #487 | P2 Code Quality: orchestrator decomposition, .get() fixes, JS hardening, enrichment parallelisation |
-| #484 | SWA catalogue endpoints — list, detail, by_run, by_aoi (completes #465 / T1.1) |
-| #483 | SWA contact form, readiness, contract endpoints + deploy smoke-check fix (partial #465) |
 
 ---
 
@@ -146,18 +146,18 @@ Cosmos documents and blob JSON — the BFF handles all translation.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| B.1 | #498 | Root cause: SWA managed functions don't support managed identity | ✅ PR #507 (account-key workaround) — superseded by BYOF |
-| B.2 | #506 | Stripe Key Vault refs don't resolve in SWA managed functions | Superseded by BYOF |
-| B.3 | — | Delete `website/api/` managed function code | Open |
-| B.4 | — | Configure `api-config.json` to route `/api/*` to Container Apps FA | Open |
-| B.5 | — | Update deploy workflow to skip SWA managed API build | Open |
-| B.6 | #499 | Add orchestrator status endpoint (on Container Apps) | Open |
-| B.7 | #500 | Add timelapse-data read endpoint (on Container Apps) | Open |
-| B.8 | #501 | Add timelapse-analysis-load endpoint (on Container Apps) | Open |
-| B.9 | #503 | Add timelapse-analysis-save endpoint (on Container Apps) | Open |
-| B.10 | #502 | Add timelapse-analysis compute endpoint (on Container Apps) | Open |
-| B.11 | #504 | Add EUDR assessment endpoint (on Container Apps) | Open |
-| B.12 | #505 | Add export endpoint — SAS redirect for large files (on Container Apps) | Open |
+| B.1 | #498 | Root cause: SWA managed functions don't support managed identity | ✅ Superseded by BYOF |
+| B.2 | #506 | Stripe Key Vault refs don't resolve in SWA managed functions | ✅ Superseded by BYOF |
+| B.3 | #511 | Delete `website/api/` managed function code | ✅ PR #511 |
+| B.4 | #511 | Configure `api-config.json` to route `/api/*` to Container Apps FA | ✅ PR #511 |
+| B.5 | #511 | Update deploy workflow to skip SWA managed API build | ✅ PR #511 |
+| B.6 | #499 | Add orchestrator status endpoint (on Container Apps) | ✅ Already exists |
+| B.7 | #500 | Add timelapse-data read endpoint (on Container Apps) | ✅ Already exists |
+| B.8 | #501 | Add timelapse-analysis-load endpoint (on Container Apps) | ✅ Already exists |
+| B.9 | #503 | Add timelapse-analysis-save endpoint (on Container Apps) | ✅ Already exists |
+| B.10 | #502 | Add timelapse-analysis compute endpoint (on Container Apps) | ✅ Already exists |
+| B.11 | #504 | Add EUDR assessment endpoint (on Container Apps) | ✅ Already exists |
+| B.12 | #505 | Add export endpoint — SAS redirect for large files (on Container Apps) | ✅ Already exists |
 
 **Container Apps FA sizing (Phase 1):** 2 vCPU, 4 GiB, min 1 replica (warm
 BFF), max 10 replicas (KEDA on activity queue depth). ~£20/month baseline.
