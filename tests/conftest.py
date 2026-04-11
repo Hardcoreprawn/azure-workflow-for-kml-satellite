@@ -17,9 +17,16 @@ os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
-# Canonical test origins — use these instead of hardcoding strings in tests
+# Canonical test origins — mirrors what infra sets via CORS_ALLOWED_ORIGINS.
+# The env var must be set BEFORE _helpers is imported so _build_allowed_origins
+# picks it up at module load time.
 TEST_ORIGIN = "https://canopex.hrdcrprwn.com"
 TEST_LOCAL_ORIGIN = "http://localhost:4280"
+os.environ.setdefault(
+    "CORS_ALLOWED_ORIGINS",
+    f"{TEST_ORIGIN},https://green-moss-0e849ac03.2.azurestaticapps.net",
+)
+os.environ.setdefault("PRIMARY_SITE_URL", TEST_ORIGIN)
 
 
 @pytest.fixture()

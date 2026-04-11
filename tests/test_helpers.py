@@ -224,20 +224,34 @@ class TestCorsOriginHardening:
         importlib.reload(helpers_mod)
         return set(helpers_mod._ALLOWED_ORIGINS)
 
+    @staticmethod
+    def _restore(monkeypatch):
+        """Reload _helpers back to the test-suite default origins."""
+        import importlib
+        import os
+        import sys
+
+        from tests.conftest import TEST_ORIGIN
+
+        helpers_mod = sys.modules["blueprints._helpers"]
+        monkeypatch.setenv(
+            "CORS_ALLOWED_ORIGINS",
+            os.environ.get("CORS_ALLOWED_ORIGINS", TEST_ORIGIN),
+        )
+        importlib.reload(helpers_mod)
+
     def test_rejects_http_origin_from_env(self, monkeypatch):
         """An attacker-controlled http:// origin must be rejected."""
         origins = self._reload_with_env(monkeypatch, "http://evil.example.com")
         assert not any(o.startswith("http://evil") for o in origins)
-        # Restore
-        self._reload_with_env(monkeypatch)
+        self._restore(monkeypatch)
 
     def test_accepts_https_origin_from_env(self, monkeypatch):
         """Legitimate https:// origins must be accepted."""
         test_origin = "https://custom.treesight.com"
         origins = self._reload_with_env(monkeypatch, test_origin)
         assert test_origin in origins, f"Expected {test_origin} in CORS origins"
-        # Restore
-        self._reload_with_env(monkeypatch)
+        self._restore(monkeypatch)
 
     def test_cors_headers_accept_env_injected_origin(self, monkeypatch):
         """cors_headers must honor a current SWA hostname injected from env."""
@@ -258,19 +272,19 @@ class TestCorsOriginHardening:
             headers = helpers_mod.cors_headers(req)
             assert headers["Access-Control-Allow-Origin"] == injected_origin
         finally:
-            self._reload_with_env(monkeypatch)
+            self._restore(monkeypatch)
 
     @pytest.mark.parametrize("require_auth", ["true", "1", "yes"])
     def test_excludes_localhost_when_require_auth_enabled(self, monkeypatch, require_auth):
         """Production-style auth mode must not keep localhost in the allowlist."""
         try:
             monkeypatch.setenv("REQUIRE_AUTH", require_auth)
-            origins = self._reload_with_env(monkeypatch, None)
+            origins = self._reload_with_env(monkeypatch, "https://canopex.hrdcrprwn.com")
             assert "http://localhost:4280" not in origins
             assert "http://localhost:1111" not in origins
         finally:
             monkeypatch.delenv("REQUIRE_AUTH", raising=False)
-            self._reload_with_env(monkeypatch)
+            self._restore(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
