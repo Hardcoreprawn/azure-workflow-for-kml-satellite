@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-10 (architecture topology redesign — BYOF consolidation replaces SWA managed API)
+Last updated: 2026-04-11 (deploy fix: TF_STATE_CONTAINER/KEY secret resolution)
 
 ---
 
@@ -24,12 +24,12 @@ Last updated: 2026-04-10 (architecture topology redesign — BYOF consolidation 
 
 | PR | Summary |
 |----|---------|
+| #521 | Fix deploy: resolve TF_STATE_CONTAINER/KEY from env-suffixed secrets |
+| #516 | Build-once/promote deploy pipeline with PR previews + CORS fix for canopex.hrdcrprwn.com |
+| #515 | Fix PR #512 review comments: UTF-8 base64, smoke test, SWA identity cleanup |
 | #512 | P3 BYOF consolidation: delete SWA API, frontend BYOF routing, infracost resilience |
 | #510 | Upload BFF endpoints: upload/token + upload/status on Container Apps FA |
 | #497 | Fix deploy: Key Vault purge protection one-way toggle |
-| #496 | Replace CIAM with SWA pre-configured auth providers (fixes #495) |
-| #490 | Code scanning alerts: URL sanitisation, mixed imports, except comments (fixes #381) |
-| #487 | P2 Code Quality: orchestrator decomposition, .get() fixes, JS hardening, enrichment parallelisation |
 
 ---
 
