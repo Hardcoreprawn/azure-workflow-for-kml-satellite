@@ -130,8 +130,21 @@ def _durable_status_payload(status: Any) -> dict[str, Any]:
     }
 
 
-def _reshape_output(output: dict[str, Any]) -> dict[str, Any]:
-    """Reshape PipelineSummary to the diagnostics contract (§4.3)."""
+def _reshape_output(output: dict[str, Any] | str) -> dict[str, Any]:
+    """Reshape PipelineSummary to the diagnostics contract (§4.3).
+
+    The Durable Functions SDK sometimes returns output as a JSON string
+    instead of a parsed dict — handle both cases.
+    """
+    if isinstance(output, str):
+        import json
+
+        try:
+            output = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            return {"status": "unknown", "message": output}
+    if not isinstance(output, dict):
+        return {"status": "unknown", "message": str(output)}
     result = {
         "status": output.get("status", ""),
         "message": output.get("message", ""),
