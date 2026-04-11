@@ -26,6 +26,7 @@ from blueprints.eudr import bp as eudr_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.monitoring import bp as monitoring_bp
+from blueprints.ops import bp as ops_bp
 from blueprints.pipeline import bp as pipeline_bp
 from blueprints.upload import bp as upload_bp
 
@@ -76,6 +77,9 @@ app.register_functions(upload_bp)
 
 # Register monitoring blueprint (Timer Trigger + HTTP)
 app.register_functions(monitoring_bp)
+
+# Register ops dashboard (operator visibility)
+app.register_functions(ops_bp)
 
 # Register durable pipeline blueprint
 app.register_functions(pipeline_bp)
