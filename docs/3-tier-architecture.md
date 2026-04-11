@@ -1,194 +1,213 @@
 # Architecture Specification: Serverless Geospatial Processing Pipeline
 
+> **Last updated:** 2026-04-11
+>
+> **Status:** This document reflects the current 2-tier architecture decision.
+> The original 3-tier design (SWA Functions + Durable Orchestrator + Container
+> Apps Jobs) was rejected — see [Decision Record](#decision-swa-managed-functions-rejected) below.
+
 ## **1. Overview**
 
-This system provides an event‑driven, serverless pipeline for on‑demand geospatial processing. It supports large, memory‑intensive workloads (e.g., parsing KMZ/KML, polygon extraction, spatial joins) while maintaining minimal idle cost.
+This system provides an event-driven, serverless pipeline for on-demand
+geospatial processing. It supports large, memory-intensive workloads (KMZ/KML
+parsing, imagery fulfilment, NDVI/change-detection enrichment) while
+maintaining minimal idle cost.
 
-The architecture separates concerns into three layers:
+The architecture uses **two Container Apps Function Apps** sharing a single
+Durable Functions task hub:
 
-1. **Frontend/API Layer** — Always‑on, lightweight endpoints  
-2. **Orchestration Layer** — Scale‑to‑zero Durable Functions  
-3. **Compute Layer** — High‑CPU/RAM Activity Functions (with Container Apps Jobs as a horizon option)  
+1. **T2 — API + Orchestrator** — Always-warm BFF endpoints + lightweight
+   orchestration (no GDAL/rasterio)
+2. **T3 — Compute** — Scale-to-zero activity functions with full
+   GDAL/rasterio/Rust stack
 
-This ensures predictable cost, clean boundaries, and the ability to burst into high‑performance compute only when required.
+SWA serves **static files and auth only** — no managed functions.
 
 ---
 
 ## **2. Components**
 
-### **2.1 Static Web Apps (SWA) + SWA Functions**
+### **2.1 Azure Static Web Apps (SWA) — Static Hosting + Auth**
 
-**Purpose:**  
+**Purpose:**
 
-- Provide public or authenticated API endpoints  
-- Handle request validation, routing, and lightweight logic  
-- Keep a warm, low‑cost entry point for the system  
+- Serve the vanilla-JS frontend (`website/`)
+- Handle Azure AD authentication via built-in pre-configured providers
+- Route `/api/*` cross-origin to the Container Apps FA (BYOF pattern)
 
-**Responsibilities:**  
+**Does NOT:**
 
-- Accept incoming requests (HTTP/REST)  
-- Validate payloads and user context  
-- Forward work requests to the Durable Orchestrator  
-- Return orchestration status or job results  
+- Host any managed API functions (deprecated — see decision record)
+- Run any Python code
+- Access Key Vault, Cosmos, or Blob directly
 
-**Constraints:**  
+### **2.2 T2 — API + Orchestrator (Container Apps Function App)**
 
-- Must remain lightweight (no heavy compute)  
-- Must not perform long‑running operations  
+**Name:** `func-kmlsat-{env}` (Phase 1, single image) → `func-kmlsat-{env}-api` (Phase 2)
 
----
+**Purpose:**
 
-### **2.2 Durable Functions (Container Apps)**
+- Serve all BFF HTTP endpoints (billing, upload, status, history, export, etc.)
+- Run the Durable Functions orchestrator (fan-out/fan-in)
+- Run lightweight activity functions (parse, prepare, acquire, poll)
 
-**Purpose:**  
+**Resources (Phase 2 target):**
 
-- Act as the orchestration engine  
-- Manage fan‑out/fan‑in patterns  
-- Coordinate execution of compute jobs  
-- Maintain state, retries, and workflow history  
+- Image: ~300 MB (no GDAL, no rasterio, no Rust)
+- 0.5 vCPU, 1 GiB, **min 1 replica** (always-warm BFF)
+- Cost: ~£8/month
 
-**Responsibilities:**  
+**Capabilities:**
 
-- Receive work requests from SWA Functions  
-- Split workloads into parallelizable units  
-- Trigger Container Apps Jobs with parameters  
-- Poll for job completion or receive callbacks  
-- Aggregate results and return final output  
+- Managed identity (DefaultAzureCredential) for Blob, Cosmos, Key Vault
+- Key Vault references for Stripe secrets
+- Durable Functions v2 with `KmlSatelliteHub` task hub
+- Python 3.12
+- Application Insights telemetry
 
-**Constraints:**  
+### **2.3 T3 — Compute (Container Apps Function App)**
 
-- Runs in Container Apps with scale‑to‑zero enabled  
-- Must not perform heavy geospatial computation  
-- Must remain CPU/memory‑light to minimize idle cost  
+**Name:** `func-kmlsat-{env}-compute` (Phase 2)
 
----
+**Purpose:**
 
-### **2.3 Container Apps Jobs (Compute Layer)**
+- Run CPU/RAM-intensive activity functions: download_imagery,
+  post_process_imagery, run_enrichment
+- Scale to zero when no pipeline work queued
 
-**Purpose:**  
+**Resources:**
 
-- Execute high‑CPU, high‑memory geospatial workloads  
-- Scale to zero when idle  
-- Provide isolated, reproducible compute environments  
+- Image: ~1.2 GB (GDAL + rasterio + numpy + Rust/PyO3)
+- 4 vCPU, 8 GiB, **min 0 replicas** (scale-to-zero), max 10
+- KEDA trigger: Durable Functions activity queue depth
+- Cost: £0 idle, ~£0.40–1.60/hour during pipeline runs
 
-**Responsibilities:**  
+**Shared with T2:**
 
-- Run containerized geospatial code (GDAL, GeoPandas, PROJ, Shapely, etc.)  
-- Pull input data from Blob Storage  
-- Perform CPU/RAM‑intensive operations  
-- Write results back to Blob Storage  
-- Emit completion events or status updates  
+- Same Durable Functions task hub (`KmlSatelliteHub`)
+- Same storage account
+- Activities auto-route via the shared work queue — no explicit dispatch needed
 
-**Constraints:**  
+### **2.4 Azure Batch (Horizon)**
 
-- Stateless execution  
-- Configurable CPU/RAM (e.g., 8–32 vCPU, 32–256 GB RAM)  
-- Must terminate after job completion  
+For AOIs ≥50k ha or future GPU workloads, Azure Batch Spot VMs provide
+dedicated compute. Not currently active — deferred until proven necessary.
 
 ---
 
 ## **3. Data Flow**
 
-### **3.1 Request Flow**
+### **3.1 Upload + Pipeline Trigger**
 
-1. Client sends request to SWA API  
-2. SWA Function validates and forwards to Durable Orchestrator  
-3. Orchestrator creates a workflow instance  
+1. User authenticates via `/.auth/login/aad` (SWA built-in)
+2. Frontend calls `POST /api/upload/token` → T2 mints a write-only SAS URL
+3. Frontend uploads KML/KMZ directly to Blob Storage via SAS
+4. Event Grid fires BlobCreated → `kml_blob_trigger` (T2)
+5. Blob trigger validates input and starts the Durable orchestrator
 
-### **3.2 Orchestration Flow**
+### **3.2 Orchestration + Compute**
 
-1. Orchestrator splits workload into N tasks  
-2. For each task, orchestrator triggers a Container Apps Job  
-3. Orchestrator waits for job completion (polling or callback)  
-4. Orchestrator aggregates results  
-5. Orchestrator returns final output to SWA  
+1. Orchestrator (T2) runs phase pipeline:
+   - `parse_kml` → `prepare_aoi` → `write_metadata`
+   - `acquire_imagery` → `poll_order` (sub-orchestrator)
+   - `download_imagery` → `post_process_imagery` (dispatched to T3 via shared queue)
+   - `run_enrichment` (T3 — NDVI, change detection, weather)
+2. Results written to Blob Storage output paths
+3. Status updates written to Cosmos DB
 
-### **3.3 Compute Flow**
+### **3.3 Status Polling**
 
-1. Job container starts with assigned CPU/RAM  
-2. Job retrieves input from Blob Storage  
-3. Job performs geospatial processing  
-4. Job writes output to Blob Storage  
-5. Job exits (scale‑to‑zero)  
+1. Frontend polls `GET /api/upload/status/{id}` on T2
+2. T2 reads from Cosmos and returns progress + results
 
 ---
 
 ## **4. Scaling Characteristics**
 
-### **4.1 SWA Functions**
-
-- Always-on  
-- Low memory/CPU footprint  
-- Predictable cost  
-
-### **4.2 Durable Functions (Container Apps)**
-
-- Scale-to-zero when idle  
-- Scales out for orchestrations  
-- Minimal compute footprint  
-
-### **4.3 Container Apps Jobs**
-
-- Zero cost when idle  
-- Scale up/down per job  
-- Supports large compute bursts  
+| Component | Replicas | Cold Start | Scale Trigger |
+|-----------|----------|------------|---------------|
+| SWA | N/A (CDN) | None | N/A |
+| T2 (API+Orch) | 1–10 | None (min 1) | HTTP + queue depth |
+| T3 (Compute) | 0–10 | ~30–60s | Activity queue depth (KEDA) |
 
 ---
 
 ## **5. Operational Boundaries**
 
-### **SWA Functions**
+### **T2 (API + Orchestrator)**
 
-- May contain lightweight, request-scoped business logic (auth/authz, billing/quota checks, read/status lookups, SAS minting) but must not perform heavy compute or long-running processing  
-- Must not perform geospatial operations  
-- Must not call compute containers directly  
+- Serves all BFF endpoints — auth, billing, upload, status, history, export
+- Runs orchestrator and lightweight activities (parse, prepare, acquire, poll)
+- Must not import GDAL, rasterio, or heavy geospatial libraries (Phase 2)
+- Must not perform CPU-intensive raster processing
 
-### **Durable Functions**
+### **T3 (Compute)**
 
-- Must not perform heavy computation  
-- Must not store large payloads in state  
-- Must not assume synchronous job completion  
-
-### **Container Apps Jobs**
-
-- Must not maintain state between runs  
-- Must not expose public endpoints  
-- Must not depend on orchestrator availability  
+- Runs only activity functions that need GDAL/rasterio/Rust
+- Stateless — all data via Blob Storage claim-check pattern
+- Must not expose HTTP endpoints
+- Must not depend on T2 availability (activities are queue-driven)
 
 ---
 
 ## **6. Error Handling & Resilience**
 
-### **Durable Functions**
-
-- Automatic retries for transient failures  
-- Workflow state persisted in storage  
-- Fan‑out tasks isolated from each other  
-
-### **Container Apps Jobs**
-
-- Failures reported back to orchestrator  
-- Jobs can be retried independently  
-- Logs stored in Container Apps logging backend  
+- Durable Functions provide automatic retries for transient failures
+- Workflow state persisted in Azure Storage (durable)
+- Fan-out tasks are isolated — one AOI failure doesn't block others
+- Circuit breaker on Planetary Computer API (exponential backoff)
+- Failed activities are retried independently by the orchestrator
 
 ---
 
 ## **7. Security Model**
 
-- SWA handles authentication/authorization  
-- Durable Functions validate job parameters  
-- Container Apps Jobs access data via managed identity  
-- All inter‑service communication uses private networking  
+- SWA handles authentication (Azure AD built-in provider)
+- Auth forwarding: `X-MS-CLIENT-PRINCIPAL` header (BYOF pattern)
+- Container Apps FA uses managed identity for all Azure data-plane access
+- Key Vault for Stripe secrets and other sensitive config
+- CORS restricted to SWA hostname
+- Stripe webhooks use signature verification (not `X-MS-CLIENT-PRINCIPAL`)
 
 ---
 
-## **8. Benefits of This Architecture**
+## **8. Migration Phases**
 
-- **Minimal idle cost**  
-- **Massive compute bursts on demand**  
-- **Clear separation of concerns**  
-- **Durable, observable workflows**  
-- **Reproducible geospatial compute environments**  
-- **No VM or cluster management**  
+| Phase | Topology | Baseline Cost | Status |
+|-------|----------|---------------|--------|
+| **Phase 1 (P3)** | Single Container Apps FA — all endpoints + pipeline | ~£20/mo | ✅ Current |
+| **Phase 2 (P5)** | T2 (API+Orch) + T3 (Compute, scale-to-zero) | ~£8/mo | Planned |
+| **Phase 3 (P8)** | T2 + Container Apps Jobs (per-AOI burst) | ~£8/mo + usage | Horizon |
+
+Each phase is independently shippable and reversible.
 
 ---
+
+## **Decision: SWA Managed Functions Rejected** {#decision-swa-managed-functions-rejected}
+
+**Date:** 2026-04-10
+
+The original architecture spec proposed SWA managed functions as the
+always-warm API layer. This was rejected after implementation proved that SWA
+managed functions:
+
+1. **Do not support managed identity** — cannot access Key Vault, Cosmos, or
+   Blob via DefaultAzureCredential (#498)
+2. **Cannot resolve Key Vault references** — Stripe secrets unavailable (#506)
+3. **Cannot use Durable Functions** — no orchestration capability
+4. **Are pinned to Python ≤3.11** — behind the project's Python 3.12 baseline
+5. **Lack Application Insights integration** — no telemetry without manual setup
+6. **Duplicate every capability** — every endpoint must be re-implemented with
+   restricted tooling
+
+The Container Apps Function App already has managed identity, Key Vault,
+Durable Functions, Python 3.12, and 15+ endpoints. Consolidating onto it
+(BYOF pattern) eliminated ~900 lines of duplicated code and all five blockers.
+
+**Alternatives considered:**
+
+- **FastAPI on Container Apps** — rejected; loses Durable Functions and SWA
+  auth integration
+- **Azure API Management** — rejected; unnecessary cost/complexity for current scale
+- **SWA linked backend** — evaluated; still requires Container Apps FA, adds
+  complexity without solving managed identity gap
