@@ -336,12 +336,81 @@ jobs:
             --resource-group "$FUNC_RG" \
             --settings "${APP_SETTINGS[@]}"
 
+          # Keep platform-level CORS in sync via CLI because tofu ignores body
+          # updates on the Function App resource while the azapi identity bug exists.
+          ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
+          if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
+            echo "❌ Refusing to clear Function App CORS: browser_allowed_origins is empty"
+            exit 1
+          fi
+
+          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
+          az rest --method PATCH \
+            --url "${FUNC_ID}/config/web?api-version=2024-04-01" \
+            --body "$CORS_BODY"
+
           # Apply scaling cap from Terraform output (body is ignore_changes in tofu)
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           az rest --method PATCH \
             --url "${FUNC_ID}?api-version=2024-04-01" \
             --body "{\"properties\":{\"functionAppConfig\":{\"scaleAndConcurrency\":{\"maximumInstanceCount\":${MAX_INSTANCES}}}}}"
+
+      - name: Verify browser CORS contract
+        id: verify-browser-cors
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_HOST=$(tofu output -raw function_app_default_hostname)
+          STORAGE_NAME=$(tofu output -raw storage_account_name)
+          ORIGINS_JSON=$(tofu output -json browser_allowed_origins)
+
+          if [ "$(echo "$ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
+            echo "❌ browser_allowed_origins is empty; cannot verify browser CORS contract"
+            exit 1
+          fi
+
+          while IFS= read -r origin; do
+            echo "Checking Function App preflight for ${origin}"
+            HEADERS=$(mktemp)
+            STATUS=$(curl -sS -o /dev/null -D "$HEADERS" \
+              -X OPTIONS "https://${FUNC_HOST}/api/upload/token" \
+              -H "Origin: ${origin}" \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type,x-ms-client-principal' \
+              -w '%{http_code}')
+            ACAO=$(awk 'tolower($0) ~ /^access-control-allow-origin:/ {gsub(/\r/, "", $2); print $2}' "$HEADERS")
+            rm -f "$HEADERS"
+            if [ "$STATUS" != "204" ] || [ "$ACAO" != "$origin" ]; then
+              echo "❌ Function App preflight failed for ${origin}: status=${STATUS} allow-origin=${ACAO:-<missing>}"
+              exit 1
+            fi
+          done < <(echo "$ORIGINS_JSON" | jq -r '.[]')
+
+          BLOB_CORS_JSON=$(az storage account blob-service-properties show \
+            --account-name "$STORAGE_NAME" \
+            --resource-group "$RG_NAME" \
+            --query 'cors.corsRules' -o json)
+
+          if [ "$(echo "$BLOB_CORS_JSON" | jq '. // [] | length')" -eq 0 ]; then
+            echo "❌ Blob service has no CORS rules configured"
+            exit 1
+          fi
+
+          while IFS= read -r origin; do
+            MATCH_COUNT=$(echo "$BLOB_CORS_JSON" | jq --arg origin "$origin" '[.[] | select((.allowedOrigins // []) | index($origin)) | select((.allowedMethods // []) | index("PUT")) | select((.allowedMethods // []) | index("OPTIONS"))] | length')
+            if [ "$MATCH_COUNT" -eq 0 ]; then
+              echo "❌ Blob CORS missing required origin or methods for ${origin}"
+              exit 1
+            fi
+          done < <(echo "$ORIGINS_JSON" | jq -r '.[]')
+
+          echo "✅ Browser CORS contract verified for Function App preflight and blob service configuration."
 
       - name: Export Function App hostname
         id: hostname

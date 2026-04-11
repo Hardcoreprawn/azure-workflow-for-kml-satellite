@@ -190,15 +190,13 @@ class TestAuthConfig:
 
 
 class TestCorsConfig:
-    def test_swa_hostname_in_cors_origins(self):
-        """The SWA default hostname must be in _ALLOWED_ORIGINS."""
+    def test_no_hardcoded_swa_hostname_in_cors_origins(self):
+        """SWA hostnames must come from env, not stale code constants."""
         src = HELPERS_PY.read_text()
-        assert re.search(
-            r'["\']https://polite-glacier-0d6885003\.4\.azurestaticapps\.net["\']', src
-        ), "_ALLOWED_ORIGINS must contain the SWA default hostname"
+        assert ".azurestaticapps.net" not in src
 
     def test_custom_domain_in_cors_origins(self):
-        """The custom domain must be in _ALLOWED_ORIGINS."""
+        """The custom domain must remain in the stable allowlist."""
         src = HELPERS_PY.read_text()
         assert re.search(r'["\']https://canopex\.hrdcrprwn\.com["\']', src), (
             "_ALLOWED_ORIGINS must contain the custom domain"

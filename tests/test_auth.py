@@ -266,7 +266,7 @@ class TestCorsHeaders:
         req = func.HttpRequest(
             method="OPTIONS",
             url="/api/test",
-            headers={"Origin": "https://polite-glacier-0d6885003.4.azurestaticapps.net"},
+            headers={"Origin": "https://canopex.hrdcrprwn.com"},
             body=b"",
         )
         headers = cors_headers(req)

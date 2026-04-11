@@ -16,15 +16,18 @@ logger = logging.getLogger(__name__)
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_FIELD_LEN = 2000
 
-# Allowed CORS origins — production SWA + local dev
-_ALLOWED_ORIGINS: set[str] = {
-    "https://polite-glacier-0d6885003.4.azurestaticapps.net",
-    "https://canopex.hrdcrprwn.com",
-    "http://localhost:4280",
-    "http://localhost:1111",
-}
 
-# Allow override via env var (comma-separated) for custom domains.
+def _default_allowed_origins() -> set[str]:
+    origins = {"https://canopex.hrdcrprwn.com"}
+    if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+        origins.update({"http://localhost:4280", "http://localhost:1111"})
+    return origins
+
+
+# Stable browser origins allowed without infra-provided overrides.
+_ALLOWED_ORIGINS: set[str] = _default_allowed_origins()
+
+# Allow override via env var (comma-separated) for current SWA/default hosts.
 # Only https:// origins are accepted to prevent open CORS misconfiguration.
 _extra = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 if _extra:
