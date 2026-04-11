@@ -214,6 +214,16 @@ jobs:
           key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
           restore-keys: tofu-providers-
 
+      - name: Resolve state backend secrets
+        run: |
+          if [ "${{ env.DEPLOY_ENV }}" == "prd" ]; then
+            echo "TF_STATE_CONTAINER=${{ secrets.TF_STATE_CONTAINER_PRD }}" >> "$GITHUB_ENV"
+            echo "TF_STATE_KEY=${{ secrets.TF_STATE_KEY_PRD }}" >> "$GITHUB_ENV"
+          else
+            echo "TF_STATE_CONTAINER=${{ secrets.TF_STATE_CONTAINER_DEV }}" >> "$GITHUB_ENV"
+            echo "TF_STATE_KEY=${{ secrets.TF_STATE_KEY_DEV }}" >> "$GITHUB_ENV"
+          fi
+
       - name: Tofu Init
         working-directory: infra/tofu
         env:
@@ -228,8 +238,8 @@ jobs:
             if tofu init \
               -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
               -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
-              -backend-config="key=${{ secrets.TF_STATE_KEY }}"; then
+              -backend-config="container_name=$TF_STATE_CONTAINER" \
+              -backend-config="key=$TF_STATE_KEY"; then
               echo "✅ tofu init succeeded on attempt ${attempt}"
               exit 0
             fi
