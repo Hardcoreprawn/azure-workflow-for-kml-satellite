@@ -51,7 +51,7 @@ permissions:
   security-events: write   # upload Trivy SARIF
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-${{ inputs.environment || 'dev' }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -72,15 +72,24 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # ── Guard: prd must promote an existing image ──────────
+      - name: Require image_tag for production
+        if: ${{ inputs.environment == 'prd' && inputs.image_tag == '' }}
+        run: |
+          echo "::error::Production deploys must promote an existing image. Provide image_tag."
+          exit 1
+
       # ── Promotion path: reuse an existing GHCR image ────────
       - name: Resolve existing image for promotion
         id: resolve
         if: ${{ inputs.image_tag != '' }}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
           source .github/image-config.env
           IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${APP_IMAGE_REPO}"
-          echo "image_uri=${IMAGE_NAME}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
-          echo "### ♻️ Promoting existing image: \`${IMAGE_NAME}:${{ inputs.image_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "image_uri=${IMAGE_NAME}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "### ♻️ Promoting existing image: \`${IMAGE_NAME}:${IMAGE_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
 
       # ── Normal path: build fresh image ──────────────────────
       - name: Log in to GHCR
