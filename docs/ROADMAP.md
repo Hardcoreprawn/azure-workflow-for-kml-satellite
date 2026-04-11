@@ -175,7 +175,7 @@ Make production safe to promote into. Build once in CI, promote the same immutab
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 2A.1 | #401 | Separate dev and prod deployment flows (immutable artifact promotion) | Open |
+| 2A.1 | #401 | Separate dev and prod deployment flows (immutable artifact promotion) | 🔄 In PR |
 | 2A.2 | #404 | Structured JSON logging at Azure Functions startup | ✅ Closed |
 | 2A.3 | #405 | Reduce Function App config drift between OpenTofu and az CLI | Open — depends #401 |
 | 2A.4 | #402 | Gate production deploys on security workflow results | Open — depends #401 |

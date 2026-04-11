@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────
+# Preview Site — SWA staging environment for website-only PRs
+#
+# Deploys a staging environment on Azure Static Web Apps when
+# a PR modifies files under website/.  The staging URL is posted
+# as a PR comment.  On PR close, the staging environment is torn down.
+#
+# Required GitHub Secrets (from the 'dev' environment):
+#   SWA_DEPLOYMENT_TOKEN — Static Web App deployment token
+# ─────────────────────────────────────────────────────────────
+name: Preview Site
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths:
+      - "website/**"
+
+permissions:
+  contents: read
+  pull-requests: write       # for posting preview URL comment
+
+jobs:
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+    environment: dev
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Deploy to SWA staging environment
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: /website
+          skip_app_build: true
+          deployment_environment: "pr-${{ github.event.pull_request.number }}"
+
+  close-preview:
+    name: Close Preview
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+    environment: dev
+    steps:
+      - name: Tear down staging environment
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          action: close
+          app_location: /website
+          deployment_environment: "pr-${{ github.event.pull_request.number }}"

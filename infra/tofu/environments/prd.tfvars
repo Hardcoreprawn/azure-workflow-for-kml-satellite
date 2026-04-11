@@ -4,6 +4,7 @@ static_web_app_location           = "westeurope"
 location_code                     = "uks"
 project_code                      = "kmlsat"
 log_retention_days                = 90
+log_daily_cap_gb                  = 0.5
 enable_event_grid_subscription    = false
 enable_key_vault_purge_protection = true
 container_image                   = "mcr.microsoft.com/azure-functions/python:4-python3.12"
@@ -12,3 +13,7 @@ default_tags = {
 }
 budget_amount         = 50
 budget_contact_emails = ["alerts@jablab.dev"]
+custom_domain         = ""
+enable_azure_ai       = false
+enable_stripe         = true
+enable_cosmos_db      = true
