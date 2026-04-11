@@ -10,11 +10,11 @@ Covers:
 import json
 
 from blueprints.health import contract, health, readiness
-from tests.conftest import TEST_ORIGIN, make_test_request
+from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
 
-_ALLOWED_ORIGIN = "https://polite-glacier-0d6885003.4.azurestaticapps.net"
+_ALLOWED_ORIGIN = TEST_LOCAL_ORIGIN
 _CUSTOM_DOMAIN_ORIGIN = TEST_ORIGIN
 _UNKNOWN_ORIGIN = "https://evil.example.com"
 

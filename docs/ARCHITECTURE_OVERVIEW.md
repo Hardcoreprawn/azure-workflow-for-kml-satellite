@@ -171,7 +171,7 @@ Backlog tracking:
 
 ## Provider Adapter Boundary
 
-The orchestrator calls provider adapters only through the ImageryProvider contract in kml_satellite/providers/base.py.
+The orchestrator calls provider adapters only through the ImageryProvider contract in `treesight/providers/base.py`.
 
 Required adapter methods:
 
@@ -197,7 +197,7 @@ Core runtime settings:
 - AzureWebJobsStorage
 - APPLICATIONINSIGHTS_CONNECTION_STRING
 
-Validation and defaults are implemented in kml_satellite/core/config.py.
+Validation and defaults are implemented in `treesight/config.py`.
 
 ## Observability Surface
 

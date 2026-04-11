@@ -25,7 +25,16 @@ resource "azurerm_storage_account" "main" {
   infrastructure_encryption_enabled = true
   allow_nested_items_to_be_public   = false
   shared_access_key_enabled         = true
-  tags                              = local.tags
+  blob_properties {
+    cors_rule {
+      allowed_headers    = ["*"]
+      allowed_methods    = ["OPTIONS", "PUT"]
+      allowed_origins    = local.browser_allowed_origins
+      exposed_headers    = ["ETag", "x-ms-request-id", "x-ms-version"]
+      max_age_in_seconds = 3600
+    }
+  }
+  tags = local.tags
 }
 
 resource "azurerm_storage_container" "kml_input" {
@@ -257,7 +266,7 @@ resource "azurerm_application_insights_standard_web_test" "site_ping" {
   tags          = local.tags
 
   request {
-    url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
+    url = local.primary_site_url
   }
 
   validation_rules {
@@ -656,8 +665,8 @@ resource "azapi_resource" "function_app" {
 
   # Workaround: azapi v2 "Missing Resource Identity After Update" bug.
   # The ARM API omits identity from update responses, crashing the provider.
-  # Body changes (image, app settings) are handled by az CLI in the deploy
-  # pipeline to avoid triggering updates that hit this bug.
+  # Body changes (image, app settings, platform CORS) are handled by az CLI
+  # in the deploy pipeline to avoid triggering updates that hit this bug.
   lifecycle {
     ignore_changes = [identity, body]
   }
@@ -675,14 +684,7 @@ resource "azapi_resource" "function_app" {
       siteConfig = {
         linuxFxVersion = "DOCKER|${var.container_image}"
         cors = {
-          allowedOrigins = concat(
-            [
-              "http://localhost:1111",
-              "https://${azurerm_static_web_app.main.default_host_name}",
-              "https://*.azurestaticapps.net",
-            ],
-            var.custom_domain != "" ? ["https://${var.custom_domain}"] : []
-          )
+          allowedOrigins     = local.browser_allowed_origins
           supportCredentials = false
         }
         appSettings = concat(
@@ -899,6 +901,7 @@ locals {
     {
       WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
       AzureWebJobsStorage__accountName    = azurerm_storage_account.main.name
+      CORS_ALLOWED_ORIGINS                = join(",", local.browser_allowed_origins)
       REQUIRE_AUTH                        = var.environment == "prd" ? "true" : ""
     },
     var.enable_cosmos_db ? {

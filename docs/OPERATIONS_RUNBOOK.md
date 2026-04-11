@@ -22,10 +22,12 @@ Issue: #18
 
 1. Run CI checks.
 2. Deploy infrastructure and app via GitHub Actions deploy workflow.
-3. Verify Function host readiness using /api/health.
-4. Verify Event Grid subscription reconciliation succeeds.
-5. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
-6. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+3. Confirm Terraform-managed browser origins include the SWA default hostname and the production custom domain so both `/api/*` and direct blob SAS uploads pass CORS preflight.
+4. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
+5. Verify Function host readiness using /api/health.
+6. Verify Event Grid subscription reconciliation succeeds.
+7. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
+8. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
 
 Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 

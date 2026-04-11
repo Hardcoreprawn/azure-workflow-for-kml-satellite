@@ -48,8 +48,13 @@ output "custom_domain" {
   description = "Custom domain name (empty string if not configured)."
 }
 
+output "browser_allowed_origins" {
+  value       = local.browser_allowed_origins
+  description = "Browser origins allowed for Function App and blob upload CORS."
+}
+
 output "site_url" {
-  value       = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
+  value       = local.primary_site_url
   description = "Primary site URL (custom domain if configured, otherwise default)."
 }
 

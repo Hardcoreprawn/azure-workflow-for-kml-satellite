@@ -2,14 +2,17 @@
 # Deploy — Infra (OpenTofu) → Container image (GHCR) → Static site
 #
 # Triggered when CI passes on main, or manually.
+# The same immutable container image is built once and can be
+# promoted to any environment by re-running with a different
+# `environment` input.
 #
-# Required GitHub Secrets (set in 'dev' environment):
+# Required GitHub Secrets (set per GitHub Environment):
 #   AZURE_CLIENT_ID         — SP / managed identity client ID (OIDC)
 #   AZURE_TENANT_ID         — Azure AD tenant
 #   AZURE_SUBSCRIPTION_ID   — Target subscription
 #   TF_STATE_RESOURCE_GROUP — Resource group holding tfstate storage
 #   TF_STATE_STORAGE_ACCOUNT— Storage account name for tfstate
-#   TF_STATE_CONTAINER      — Blob container name for tfstate
+#   TF_STATE_CONTAINER      — Blob container for this environment
 #   TF_STATE_KEY            — Blob key for the state file
 #   SWA_DEPLOYMENT_TOKEN    — Static Web App deployment token
 #
@@ -23,8 +26,20 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      environment:
+        description: Target environment (must match a GitHub Environment and a tfvars file)
+        required: true
+        type: choice
+        options:
+          - dev
+          - prd
+        default: dev
+      image_tag:
+        description: 'Container image tag to deploy (default: latest main SHA)'
+        required: false
+        type: string
       rebuild_after_manual_teardown:
-        description: Recreate dev after app-managed resources were deleted manually outside the workflow.
+        description: Recreate after app-managed resources were deleted manually outside the workflow.
         required: false
         type: boolean
         default: false
@@ -36,24 +51,49 @@ permissions:
   security-events: write   # upload Trivy SARIF
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: deploy-${{ inputs.environment || 'dev' }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   TOFU_VERSION: "1.8.0"
+  # Resolve environment: workflow_dispatch supplies it; workflow_run always deploys to dev.
+  DEPLOY_ENV: ${{ inputs.environment || 'dev' }}
 
 jobs:
   # ── 1. Build & push container to GHCR ──────────────────────
+  # When promoting an existing image (image_tag input set), this job
+  # resolves the URI without rebuilding.
   build-image:
     name: Build & Push Container
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     outputs:
-      image_uri: ${{ steps.meta.outputs.image_uri }}
+      image_uri: ${{ steps.resolve.outputs.image_uri || steps.meta.outputs.image_uri }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      # ── Guard: prd must promote an existing image ──────────
+      - name: Require image_tag for production
+        if: ${{ inputs.environment == 'prd' && inputs.image_tag == '' }}
+        run: |
+          echo "::error::Production deploys must promote an existing image. Provide image_tag."
+          exit 1
+
+      # ── Promotion path: reuse an existing GHCR image ────────
+      - name: Resolve existing image for promotion
+        id: resolve
+        if: ${{ inputs.image_tag != '' }}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          source .github/image-config.env
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${APP_IMAGE_REPO}"
+          echo "image_uri=${IMAGE_NAME}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "### ♻️ Promoting existing image: \`${IMAGE_NAME}:${IMAGE_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Normal path: build fresh image ──────────────────────
       - name: Log in to GHCR
+        if: ${{ inputs.image_tag == '' }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
@@ -61,6 +101,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set image tag
+        if: ${{ inputs.image_tag == '' }}
         id: meta
         run: |
           source .github/image-config.env
@@ -72,6 +113,7 @@ jobs:
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve base image
+        if: ${{ inputs.image_tag == '' }}
         id: base
         run: |
           source .github/image-config.env
@@ -89,6 +131,7 @@ jobs:
           fi
 
       - name: Build image
+        if: ${{ inputs.image_tag == '' }}
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
@@ -101,6 +144,7 @@ jobs:
             -t "${IMAGE_NAME}:latest" .
 
       - name: Run container smoke tests
+        if: ${{ inputs.image_tag == '' }}
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
@@ -110,6 +154,7 @@ jobs:
             python3 /scripts/container_smoke_test.py
 
       - name: Push to GHCR
+        if: ${{ inputs.image_tag == '' }}
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
@@ -118,6 +163,7 @@ jobs:
           docker push "${IMAGE_NAME}:latest"
 
       - name: Trivy container scan
+        if: ${{ inputs.image_tag == '' }}
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.meta.outputs.image_uri }}
@@ -129,7 +175,7 @@ jobs:
           exit-code: "0"        # warn, don't block deploy (set to "1" to gate)
 
       - name: Upload Trivy image SARIF
-        if: always()
+        if: ${{ always() && inputs.image_tag == '' }}
         uses: github/codeql-action/upload-sarif@480db559a14342288b67e54bd959dd52dc3ee68f # v3
         with:
           sarif_file: trivy-image.sarif
@@ -140,7 +186,7 @@ jobs:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
     needs: build-image
-    environment: dev
+    environment: ${{ github.event.inputs.environment || 'dev' }}
     outputs:
       function_app_hostname: ${{ steps.hostname.outputs.hostname }}
       appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
@@ -182,8 +228,8 @@ jobs:
             if tofu init \
               -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
               -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
-              -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"; then
+              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+              -backend-config="key=${{ secrets.TF_STATE_KEY }}"; then
               echo "✅ tofu init succeeded on attempt ${attempt}"
               exit 0
             fi
@@ -226,7 +272,7 @@ jobs:
           tofu plan -out=tfplan \
             -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             -var="container_image=${{ needs.build-image.outputs.image_uri }}" \
-            -var-file="environments/dev.tfvars"
+            -var-file="environments/${{ env.DEPLOY_ENV }}.tfvars"
 
       - name: Tofu Apply
         working-directory: infra/tofu
@@ -290,12 +336,81 @@ jobs:
             --resource-group "$FUNC_RG" \
             --settings "${APP_SETTINGS[@]}"
 
+          # Keep platform-level CORS in sync via CLI because tofu ignores body
+          # updates on the Function App resource while the azapi identity bug exists.
+          ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
+          if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
+            echo "❌ Refusing to clear Function App CORS: browser_allowed_origins is empty"
+            exit 1
+          fi
+
+          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
+          az rest --method PATCH \
+            --url "${FUNC_ID}/config/web?api-version=2024-04-01" \
+            --body "$CORS_BODY"
+
           # Apply scaling cap from Terraform output (body is ignore_changes in tofu)
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           az rest --method PATCH \
             --url "${FUNC_ID}?api-version=2024-04-01" \
             --body "{\"properties\":{\"functionAppConfig\":{\"scaleAndConcurrency\":{\"maximumInstanceCount\":${MAX_INSTANCES}}}}}"
+
+      - name: Verify browser CORS contract
+        id: verify-browser-cors
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          RG_NAME=$(tofu output -raw resource_group_name)
+          FUNC_HOST=$(tofu output -raw function_app_default_hostname)
+          STORAGE_NAME=$(tofu output -raw storage_account_name)
+          ORIGINS_JSON=$(tofu output -json browser_allowed_origins)
+
+          if [ "$(echo "$ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
+            echo "❌ browser_allowed_origins is empty; cannot verify browser CORS contract"
+            exit 1
+          fi
+
+          while IFS= read -r origin; do
+            echo "Checking Function App preflight for ${origin}"
+            HEADERS=$(mktemp)
+            STATUS=$(curl -sS -o /dev/null -D "$HEADERS" \
+              -X OPTIONS "https://${FUNC_HOST}/api/upload/token" \
+              -H "Origin: ${origin}" \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: content-type,x-ms-client-principal' \
+              -w '%{http_code}')
+            ACAO=$(awk 'tolower($0) ~ /^access-control-allow-origin:/ {gsub(/\r/, "", $2); print $2}' "$HEADERS")
+            rm -f "$HEADERS"
+            if [ "$STATUS" != "204" ] || [ "$ACAO" != "$origin" ]; then
+              echo "❌ Function App preflight failed for ${origin}: status=${STATUS} allow-origin=${ACAO:-<missing>}"
+              exit 1
+            fi
+          done < <(echo "$ORIGINS_JSON" | jq -r '.[]')
+
+          BLOB_CORS_JSON=$(az storage account blob-service-properties show \
+            --account-name "$STORAGE_NAME" \
+            --resource-group "$RG_NAME" \
+            --query 'cors.corsRules' -o json)
+
+          if [ "$(echo "$BLOB_CORS_JSON" | jq '. // [] | length')" -eq 0 ]; then
+            echo "❌ Blob service has no CORS rules configured"
+            exit 1
+          fi
+
+          while IFS= read -r origin; do
+            MATCH_COUNT=$(echo "$BLOB_CORS_JSON" | jq --arg origin "$origin" '[.[] | select((.allowedOrigins // []) | index($origin)) | select((.allowedMethods // []) | index("PUT")) | select((.allowedMethods // []) | index("OPTIONS"))] | length')
+            if [ "$MATCH_COUNT" -eq 0 ]; then
+              echo "❌ Blob CORS missing required origin or methods for ${origin}"
+              exit 1
+            fi
+          done < <(echo "$ORIGINS_JSON" | jq -r '.[]')
+
+          echo "✅ Browser CORS contract verified for Function App preflight and blob service configuration."
 
       - name: Export Function App hostname
         id: hostname
@@ -430,7 +545,7 @@ jobs:
           FUNC_NAME=$(tofu output -raw function_app_name)
           HOSTNAME=$(tofu output -raw function_app_default_hostname)
           TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
-          EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/dev.tfvars)
+          EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/${{ env.DEPLOY_ENV }}.tfvars)
           : "${EXPECTED_CAP:=0.1}"
 
           python ../../scripts/validate_dev_infra_gate.py \
@@ -484,7 +599,7 @@ jobs:
     name: Deploy Static Website
     runs-on: ubuntu-latest
     needs: deploy-infra
-    environment: dev
+    environment: ${{ github.event.inputs.environment || 'dev' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

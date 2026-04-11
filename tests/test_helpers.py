@@ -18,6 +18,7 @@ from blueprints._helpers import (
 from blueprints.analysis import (
     _sanitise_for_prompt,  # pyright: ignore[reportPrivateUsage]
 )
+from tests.conftest import TEST_ORIGIN
 from treesight.parsers import ensure_closed
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ class TestErrorResponse:
 
 
 class TestCorsPreflight:
-    def _make_req(self, origin="https://polite-glacier-0d6885003.4.azurestaticapps.net"):
+    def _make_req(self, origin=TEST_ORIGIN):
         return func.HttpRequest(
             method="OPTIONS",
             url="/api/test",
@@ -237,6 +238,39 @@ class TestCorsOriginHardening:
         assert test_origin in origins, f"Expected {test_origin} in CORS origins"
         # Restore
         self._reload_with_env(monkeypatch)
+
+    def test_cors_headers_accept_env_injected_origin(self, monkeypatch):
+        """cors_headers must honor a current SWA hostname injected from env."""
+        import importlib
+        import sys
+
+        injected_origin = "https://green-moss-0e849ac03.2.azurestaticapps.net"
+        try:
+            monkeypatch.setenv("CORS_ALLOWED_ORIGINS", injected_origin)
+            helpers_mod = importlib.reload(sys.modules["blueprints._helpers"])
+            req = func.HttpRequest(
+                method="OPTIONS",
+                url="/api/test",
+                headers={"Origin": injected_origin},
+                body=b"",
+            )
+
+            headers = helpers_mod.cors_headers(req)
+            assert headers["Access-Control-Allow-Origin"] == injected_origin
+        finally:
+            self._reload_with_env(monkeypatch)
+
+    @pytest.mark.parametrize("require_auth", ["true", "1", "yes"])
+    def test_excludes_localhost_when_require_auth_enabled(self, monkeypatch, require_auth):
+        """Production-style auth mode must not keep localhost in the allowlist."""
+        try:
+            monkeypatch.setenv("REQUIRE_AUTH", require_auth)
+            origins = self._reload_with_env(monkeypatch, None)
+            assert "http://localhost:4280" not in origins
+            assert "http://localhost:1111" not in origins
+        finally:
+            monkeypatch.delenv("REQUIRE_AUTH", raising=False)
+            self._reload_with_env(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
