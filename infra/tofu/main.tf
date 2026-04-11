@@ -679,12 +679,10 @@ resource "azapi_resource" "function_app" {
       functionAppConfig = {
         scaleAndConcurrency = {
           maximumInstanceCount = var.function_max_instances
-          alwaysReady = var.function_min_instances > 0 ? [
-            {
-              name          = "http"
-              instanceCount = var.function_min_instances
-            }
-          ] : []
+          # NOTE: alwaysReady (min instances) is managed exclusively by the
+          # deploy pipeline via az rest PATCH. Not declared here because body
+          # is in lifecycle.ignore_changes and would only take effect on first
+          # creation, causing confusing drift.
         }
       }
       siteConfig = {

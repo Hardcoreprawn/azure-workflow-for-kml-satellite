@@ -21,6 +21,7 @@ output "function_app_default_hostname" {
 output "function_app_cli_app_settings" {
   value       = local.function_app_cli_app_settings
   description = "CLI-managed Function App app settings sourced from Terraform."
+  sensitive   = true
 }
 
 output "function_app_cli_maximum_instance_count" {

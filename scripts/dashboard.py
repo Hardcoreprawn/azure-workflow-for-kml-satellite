@@ -2,7 +2,7 @@
 """Live pipeline dashboard — kanban-style CLI monitor.
 
 Usage:
-    uv run python scripts/dashboard.py                          # auto-detect from infra
+    uv run python scripts/dashboard.py                          # use built-in defaults
     uv run python scripts/dashboard.py --host func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io
     uv run python scripts/dashboard.py --app-insights 387f53d2-98ef-4fc8-9296-32fda4c74bb3
 

@@ -228,15 +228,16 @@ class TestCorsOriginHardening:
     def _restore(monkeypatch):
         """Reload _helpers back to the test-suite default origins."""
         import importlib
-        import os
         import sys
 
-        from tests.conftest import TEST_ORIGIN
+        from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN
 
         helpers_mod = sys.modules["blueprints._helpers"]
+        # Always restore to the known test-suite defaults, not the current
+        # (potentially mutated) env var value.
         monkeypatch.setenv(
             "CORS_ALLOWED_ORIGINS",
-            os.environ.get("CORS_ALLOWED_ORIGINS", TEST_ORIGIN),
+            f"{TEST_ORIGIN},{TEST_LOCAL_ORIGIN}",
         )
         importlib.reload(helpers_mod)
 

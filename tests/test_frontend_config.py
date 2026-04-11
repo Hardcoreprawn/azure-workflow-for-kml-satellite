@@ -207,16 +207,15 @@ class TestCorsConfig:
     def test_cors_origins_from_env_var(self):
         """_build_allowed_origins must populate origins from CORS_ALLOWED_ORIGINS env var."""
         import importlib
-        import sys
 
+        import blueprints._helpers as helpers_mod
         from tests.conftest import TEST_ORIGIN
 
-        helpers_mod = sys.modules["blueprints._helpers"]
         original_cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")
         try:
-            os.environ["CORS_ALLOWED_ORIGINS"] = "https://example.com"
+            os.environ["CORS_ALLOWED_ORIGINS"] = "https://custom.example.org"
             importlib.reload(helpers_mod)
-            assert "https://example.com" in helpers_mod._ALLOWED_ORIGINS
+            assert "https://custom.example.org" in helpers_mod._ALLOWED_ORIGINS
         finally:
             os.environ["CORS_ALLOWED_ORIGINS"] = original_cors or f"{TEST_ORIGIN}"
             importlib.reload(helpers_mod)

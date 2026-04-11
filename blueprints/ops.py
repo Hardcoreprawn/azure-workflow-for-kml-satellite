@@ -14,6 +14,7 @@ Azure Functions worker cannot resolve deferred type annotations at
 function-index time.
 """
 
+import hmac
 import json
 import logging
 import os
@@ -127,9 +128,8 @@ def _check_ops_key(req: func.HttpRequest) -> bool:
 
     auth = req.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
-        return auth[7:].strip() == key
-    # Also accept as query param for curl convenience
-    return req.params.get("key", "") == key
+        return hmac.compare_digest(auth[7:].strip(), key)
+    return False  # header-only auth; query-param keys leak via logs/referrers
 
 
 # ---------------------------------------------------------------------------
