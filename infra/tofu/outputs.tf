@@ -28,6 +28,11 @@ output "function_app_cli_maximum_instance_count" {
   description = "CLI-managed Function App maximum instance count sourced from Terraform."
 }
 
+output "function_app_cli_minimum_instance_count" {
+  value       = var.function_min_instances
+  description = "CLI-managed Function App minimum always-ready instance count."
+}
+
 output "static_web_app_name" {
   value       = azurerm_static_web_app.main.name
   description = "Static Web App name."
