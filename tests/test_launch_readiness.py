@@ -6,7 +6,7 @@ accidentally removed or misconfigured.  They cover:
 1. Container Apps scaling limits (maxReplicas)
 2. App Insights browser analytics on all pages
 3. Auth enforcement on pipeline submission endpoint
-4. REQUIRE_AUTH wired into production app settings
+4. REQUIRE_AUTH unconditionally enabled for all deployed environments
 5. Log Analytics daily ingestion cap
 6. detect-secrets in CI security workflow
 7. App Insights availability test (URL ping)
