@@ -360,28 +360,28 @@ jobs:
             --url "${FUNC_ID}/config/web?api-version=2024-04-01" \
             --body "$CORS_BODY"
 
-          # Apply scaling cap from Terraform output (body is ignore_changes in tofu)
+          # Apply scaling config from Terraform outputs (body is ignore_changes
+          # in tofu due to the azapi identity bug).  Single PATCH to avoid 409
+          # Conflict race between back-to-back updates on the same resource.
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          az rest --method PATCH \
-            --url "${FUNC_ID}?api-version=2024-04-01" \
-            --body "{\"properties\":{\"functionAppConfig\":{\"scaleAndConcurrency\":{\"maximumInstanceCount\":${MAX_INSTANCES}}}}}"
-
-          # Apply minimum always-ready instances to avoid cold-start 504s
-          # Uses functionAppConfig.scaleAndConcurrency.alwaysReady for Container Apps
           MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
           if [ "$MIN_INSTANCES" -gt 0 ]; then
             ALWAYS_READY='[{"name":"http","instanceCount":'"${MIN_INSTANCES}"'}]'
           else
             ALWAYS_READY='[]'
           fi
+          SCALE_BODY=$(jq -cn \
+            --argjson max "$MAX_INSTANCES" \
+            --argjson ready "$ALWAYS_READY" \
+            '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           az rest --method PATCH \
             --url "${FUNC_ID}?api-version=2024-04-01" \
-            --body "{\"properties\":{\"functionAppConfig\":{\"scaleAndConcurrency\":{\"alwaysReady\":${ALWAYS_READY}}}}}"
+            --body "$SCALE_BODY"
 
-          # Verify min instances applied
+          # Verify scaling config applied
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
-            | jq '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // []')
-          echo "Always-ready config: $ACTUAL"
+            | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
+          echo "Scaling config: $ACTUAL"
 
       - name: Verify browser CORS contract
         id: verify-browser-cors
