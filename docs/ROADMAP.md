@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (merge PR #546 — demo mode removed)
+Last updated: 2026-04-12 (UX review + auth hardening)
 
 ---
 
@@ -35,13 +35,13 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 ## Recently Landed
 
 | PR | Summary |
-|----|---------|| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
-| #545 | CORS fix: set custom_domain in dev.tfvars for apex domain || #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
-| #530 | Ops dashboard, CORS hardening, always-ready instances, timing-safe auth |
+|----|---------|
+| #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
+| #549 | Fix deploy: declarative import block for custom domain |
+| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
+| #545 | CORS fix: set custom_domain in dev.tfvars for apex domain |
+| #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
 | #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
-| #537 | Roadmap restructure per project review: kill demo mode, prioritize user journey |
-| #536 | billing/status returns 200 with safe defaults when storage unavailable (fixes #520) |
-| #523 | Fix deploy: filter localhost from CORS verify; accept 200 or 204 for OPTIONS |
 
 ---
 
@@ -130,12 +130,14 @@ entry point unambiguous.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| E.1 | #531 | Verify e2e pipeline in Azure: sign in → upload KML → results | Open |
-| E.2 | #520 | Fix `/api/billing/status` returns 500 for signed-in users | Open |
+| E.1 | #531 | Verify e2e pipeline in Azure: sign in → upload KML → results | ✅ Verified 2026-04-12 |
+| E.2 | #520 | Fix `/api/billing/status` returns 500 for signed-in users | ✅ PR #536 |
 
-**Exit criteria:** A user can sign in on the live SWA URL, upload a sample
+**Exit criteria:** ✅ A user can sign in on the live SWA URL, upload a sample
 KML, and see a completed analysis with imagery, NDVI, weather, and AI
-narrative. Billing/status returns 200.
+narrative. Billing/status returns 200. Pipeline verified end-to-end on
+2026-04-12 (1 feature, 5 Sentinel-2 images acquired, clipped, enriched
+in 42s).
 
 #### 2C.2 — Unify Entry Point (Kill Demo Mode)
 
@@ -165,6 +167,24 @@ Starter/Pro. Enterprise remains "Contact Us."
 can: see what Canopex does (landing page) → sign in (free) → run analysis
 (sample KML) → see results → understand upgrade path (real prices).
 
+#### 2C.4 — Dashboard UX Overhaul
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| UX.1 | #555 | Reorder layout: submission above evidence | Open |
+| UX.2 | #555 | Replace jargon with user language | Open |
+| UX.3 | #555 | Collapse first-load noise for new users | Open |
+| UX.4 | #555 | Auto-scroll to results on completion | Open |
+| UX.5 | #555 | Streamline submission form | Open |
+| UX.6 | #555 | Deduplicate export buttons | Open |
+
+See `docs/UX_REVIEW_2026-04-12.md` for full findings and implementation
+plan. All slices are frontend-only. Recommended order: 1 → 2 → 3 → 4 → 5 → 6.
+
+**Exit criteria:** File upload is visible without scrolling. Results auto-
+scroll on completion. Zero "signed-in" / "workspace lens" / "durable" jargon
+in user-facing strings. First-load elements <12 (currently ~25).
+
 ---
 
 ### Stage 2D — Revenue Enablement (This Month)
@@ -173,6 +193,7 @@ Security and billing verification required before accepting real payments.
 
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
+| R.0 | #553 | Enforce REQUIRE_AUTH in all deployed environments | ✅ PR #554 | — |
 | R.1 | #534 | Auth header verification: prevent X-MS-CLIENT-PRINCIPAL forgery | Open | — |
 | R.2 | #535 | Verify end-to-end Stripe billing flow on live site | Open | #520 |
 | R.3 | #406 | Reconcile README, runbook, and API contracts with live routes | Open | — |
@@ -261,15 +282,17 @@ Per the project review, open issues are triaged as follows:
 
 | # | Title | Priority |
 |---|-------|----------|
-| #531 | Pipeline e2e verification in Azure | P0 |
-| #520 | billing/status 500 | P0 |
-| #532 | Remove demo mode — Free Tier entry point | P1 |
+| #531 | Pipeline e2e verification in Azure | ✅ Verified |
+| #520 | billing/status 500 | ✅ PR #536 |
+| #532 | Remove demo mode — Free Tier entry point | ✅ PR #546 |
+| #555 | Dashboard UX overhaul (6 slices) | P0 |
 | #533 | Real prices on pricing page | P1 |
 
 ### Active — This Month (Stage 2D)
 
 | # | Title |
 |---|-------|
+| #553 | Enforce REQUIRE_AUTH in all environments |
 | #534 | Auth header verification (HMAC) |
 | #535 | E2e Stripe billing flow |
 | #406 | Reconcile docs with live routes |
