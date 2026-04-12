@@ -48,25 +48,15 @@
 </nav>
 
 <main class="app-main">
-  <!-- ── Demo banner (hidden by default, shown in demo mode) ── -->
-  <div id="app-demo-banner" class="app-demo-banner" hidden>
-    <div class="container">
-      <span class="app-demo-banner-icon">&#127919;</span>
-      <span class="app-demo-banner-text">You're previewing the signed-in free plan &mdash; seasonal snapshots, a 2-year history window, and no exports.</span>
-      <a class="btn btn-sm btn-primary" href="/app/" id="app-demo-signin-link">Sign In</a>
-      <a class="btn btn-sm btn-secondary" href="/#pricing">View Plans</a>
-      <button class="app-demo-banner-close" id="app-demo-banner-dismiss" aria-label="Dismiss">&#10005;</button>
-    </div>
-  </div>
 
   <section id="app-unauthenticated" class="app-gate">
     <div class="container">
       <div class="app-panel">
-        <h2>Sign in to run your analysis</h2>
-        <p>A Canopex account is required to upload KML, queue analysis runs, and view your results. Sign in to get started.</p>
+        <h2>Sign in to start your free analysis</h2>
+        <p>Upload a land boundary, get satellite evidence back. 5 free analyses per month, no credit card required.</p>
         <div class="app-gate-actions">
-          <button class="btn btn-primary" id="app-sign-in-btn" type="button">Sign In</button>
-          <a class="btn btn-secondary" href="/app/?mode=demo">Preview the Free Plan</a>
+          <button class="btn btn-primary" id="app-sign-in-btn" type="button">Start Free</button>
+          <a class="btn btn-secondary" href="/#pricing">View Plans</a>
           <a class="btn btn-secondary" href="/">Back to site</a>
         </div>
       </div>
@@ -104,7 +94,6 @@
             <div class="app-first-run-actions">
               <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Analysis</a>
               <a class="btn btn-secondary" href="/docs/kml-guide.html">KML Guide</a>
-              <a class="btn btn-secondary" href="/app/?mode=demo">Preview the Free Plan</a>
             </div>
           </div>
           <div class="app-first-run-checklist">
@@ -284,10 +273,10 @@
           <div class="app-analysis-auth-gate" id="app-analysis-auth-gate" hidden>
             <div class="app-panel">
               <h4>Sign in to run your own analysis</h4>
-              <p>You need to be signed in to upload KML and queue analysis runs. Demo mode previews the free plan, but it does not run the pipeline anonymously.</p>
+              <p>Sign in to upload KML and queue analysis runs. 5 free analyses per month, no credit card required.</p>
               <div class="app-gate-actions">
                 <button class="btn btn-primary" id="app-analysis-sign-in-btn" type="button">Sign In</button>
-                <a class="btn btn-secondary" id="app-analysis-auth-secondary-link" href="/app/?mode=demo">Preview the Free Plan</a>
+                <a class="btn btn-secondary" href="/#pricing">View Plans</a>
               </div>
             </div>
           </div>
@@ -296,14 +285,6 @@
             <span class="app-run-label">Workspace lens</span>
             <strong id="app-analysis-lens-title">Conservation evidence run</strong>
             <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
-          </div>
-          <!-- ── Demo sample picker (hidden by default, shown in demo mode) ── -->
-          <div id="app-demo-sample-picker" class="app-demo-sample-picker" hidden>
-            <label class="app-field-label" for="app-demo-sample-select">Quick start &mdash; pick a sample location</label>
-            <select id="app-demo-sample-select" class="app-select">
-              <option value="">Choose a location…</option>
-            </select>
-            <p class="app-note">Select a pre-loaded location to populate the KML field, or paste your own KML below.</p>
           </div>
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
@@ -326,12 +307,11 @@
               <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
             </div>
             <div class="app-preflight-list" id="app-preflight-warnings">
-              <div class="app-preflight-item" data-tone="info">Signed-in preflight will surface warnings here instead of inheriting demo-only rejections.</div>
+              <div class="app-preflight-item" data-tone="info">Preflight will surface warnings here after you paste or upload KML.</div>
             </div>
           </div>
           <div class="app-select-row app-analysis-actions">
             <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
-            <a class="btn btn-secondary" href="/app/?mode=demo">Preview the Free Plan</a>
           </div>
           </div><!-- /app-analysis-form-fields -->
           <div class="app-callout" id="app-analysis-status" hidden></div>
