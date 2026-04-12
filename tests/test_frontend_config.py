@@ -211,11 +211,13 @@ class TestCorsConfig:
         import blueprints._helpers as helpers_mod
         from tests.conftest import TEST_ORIGIN
 
+        custom_origin = "https://custom.example.org"
         original_cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")
         try:
-            os.environ["CORS_ALLOWED_ORIGINS"] = "https://custom.example.org"
+            os.environ["CORS_ALLOWED_ORIGINS"] = custom_origin
             importlib.reload(helpers_mod)
-            assert "https://custom.example.org" in helpers_mod._ALLOWED_ORIGINS
+            # Set membership (not substring) — _ALLOWED_ORIGINS is set[str]
+            assert custom_origin in helpers_mod._ALLOWED_ORIGINS
         finally:
             os.environ["CORS_ALLOWED_ORIGINS"] = original_cors or f"{TEST_ORIGIN}"
             importlib.reload(helpers_mod)
