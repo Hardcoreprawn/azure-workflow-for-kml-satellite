@@ -6,7 +6,7 @@ accidentally removed or misconfigured.  They cover:
 1. Container Apps scaling limits (maxReplicas)
 2. App Insights browser analytics on all pages
 3. Auth enforcement on pipeline submission endpoint
-4. REQUIRE_AUTH wired into production app settings
+4. REQUIRE_AUTH unconditionally enabled for all deployed environments
 5. Log Analytics daily ingestion cap
 6. detect-secrets in CI security workflow
 7. App Insights availability test (URL ping)
@@ -171,30 +171,31 @@ class TestSubmissionAuthRequirement:
 
 
 # ---------------------------------------------------------------------------
-# 4. REQUIRE_AUTH in production
+# 4. REQUIRE_AUTH in all deployed environments
 # ---------------------------------------------------------------------------
 
 
 class TestRequireAuth:
-    """Ensure REQUIRE_AUTH is wired into the Function App for production."""
+    """Ensure REQUIRE_AUTH is unconditionally enabled for all deployed environments."""
 
     def test_require_auth_in_app_settings(self):
         tf = MAIN_TF.read_text()
         assert "REQUIRE_AUTH" in tf, (
             "main.tf must include REQUIRE_AUTH in appSettings "
-            "to prevent silent anonymous fallback in production"
+            "to prevent silent anonymous fallback in deployed environments"
         )
 
-    def test_require_auth_conditional_on_environment(self):
+    def test_require_auth_unconditional(self):
+        """REQUIRE_AUTH must be 'true' unconditionally — no per-env conditional."""
         tf = MAIN_TF.read_text()
         match = re.search(
             r"REQUIRE_AUTH\s*=\s*(.+)",
             tf,
         )
         assert match, "REQUIRE_AUTH app setting not found"
-        value_expr = match.group(1)
-        assert "prd" in value_expr, (
-            "REQUIRE_AUTH should be enabled for production (prd) environment"
+        value_expr = match.group(1).strip()
+        assert value_expr == '"true"', (
+            f"REQUIRE_AUTH must be unconditionally '\"true\"', got: {value_expr}"
         )
 
 
