@@ -70,13 +70,13 @@
       <div class="app-welcome-bar">
         <div class="app-welcome-identity">
           <h2>Welcome back, <span id="app-user-name">there</span></h2>
-          <p id="app-account-note" class="app-welcome-note">Signed-in workspace</p>
+          <p id="app-account-note" class="app-welcome-note">Your workspace</p>
         </div>
         <div class="app-welcome-stats">
           <div class="app-stat-pill"><span class="app-utility-label">Plan</span><strong id="app-hero-plan">Loading…</strong><span class="app-utility-note" id="app-hero-plan-note">Checking entitlement…</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Runs Left</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">Quota refreshes with your plan.</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">Analysis workspace</strong><span class="app-utility-note" id="app-hero-mode-note">Capability summary loading…</span></div>
-          <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Restoring signed-in history and active run state.</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Loading your recent runs.</span></div>
         </div>
         <div class="app-welcome-actions">
           <a class="btn btn-primary" id="app-new-analysis-btn" href="#app-analysis-card">New Analysis</a>
@@ -121,14 +121,14 @@
           <div class="app-run-snapshot">
             <span class="app-run-label">Selected status</span>
             <strong id="app-history-latest-status">Loading recent runs</strong>
-            <span id="app-history-latest-note">Restoring signed-in history and checking for an active run to resume.</span>
+            <span id="app-history-latest-note">Loading your history and checking for active runs.</span>
           </div>
           <div class="app-mini-list">
             <div class="app-mini-item"><span>Instance</span><strong id="app-history-latest-instance">…</strong></div>
             <div class="app-mini-item"><span>Phase</span><strong id="app-history-latest-phase">loading</strong></div>
-            <div class="app-mini-item"><span>Next surface</span><strong id="app-history-latest-path">Checking workspace</strong></div>
+            <div class="app-mini-item"><span>Next step</span><strong id="app-history-latest-path">Checking workspace</strong></div>
           </div>
-          <div class="app-history-list" id="app-history-list" aria-live="polite">Restoring signed-in history…</div>
+          <div class="app-history-list" id="app-history-list" aria-live="polite">Loading your history…</div>
           <div class="app-rail-footer">Select a run to reopen this workspace state.</div>
         </article>
 
@@ -153,15 +153,15 @@
           </div>
           <div id="app-analysis-form-fields" hidden>
           <div class="app-mode-card">
-            <span class="app-run-label">Workspace lens</span>
-            <strong id="app-analysis-lens-title">Conservation evidence run</strong>
-            <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
+            <span class="app-run-label">Analysis type</span>
+            <strong id="app-analysis-lens-title">Conservation analysis</strong>
+            <p id="app-analysis-lens-note">Focus on vegetation change, weather context, and plain-English findings for field teams.</p>
           </div>
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
           <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
           <label class="app-field-label" for="app-analysis-kml">KML Content</label>
-          <textarea id="app-analysis-kml" placeholder="Paste KML content for a signed-in analysis request…"></textarea>
+          <textarea id="app-analysis-kml" placeholder="Paste KML content here…"></textarea>
           <div class="app-preflight-card" id="app-analysis-preflight">
             <div class="app-preflight-header">
               <div>
@@ -170,7 +170,7 @@
               </div>
               <span class="app-preflight-badge" id="app-preflight-mode">No file yet</span>
             </div>
-            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, AOI spread, and signed-in product guidance before queueing.</p>
+            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, area spread, and guidance before queueing.</p>
             <div class="app-preflight-grid">
               <div><span>Features</span><strong id="app-preflight-features">0</strong></div>
               <div><span>AOIs</span><strong id="app-preflight-aois">0</strong></div>
@@ -178,7 +178,7 @@
               <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
             </div>
             <div class="app-preflight-list" id="app-preflight-warnings">
-              <div class="app-preflight-item" data-tone="info">Preflight will surface warnings here after you paste or upload KML.</div>
+              <div class="app-preflight-item" data-tone="info">Preflight will show warnings here after you paste or upload KML.</div>
             </div>
           </div>
           <div class="app-select-row app-analysis-actions">
@@ -203,7 +203,7 @@
             <div class="app-detail-card">
               <span class="app-content-label">Submitted</span>
               <strong id="app-run-submitted">—</strong>
-              <p id="app-run-submitted-note">Signed-in run detail restores here after reload.</p>
+              <p id="app-run-submitted-note">Run details restore here after reload.</p>
             </div>
             <div class="app-detail-card">
               <span class="app-content-label">Scope</span>
@@ -218,7 +218,7 @@
             <div class="app-detail-card">
               <span class="app-content-label">Run Link</span>
               <strong id="app-run-link-label">Dashboard state</strong>
-              <a class="app-inline-link" id="app-run-link" href="/app/">Open durable run state</a>
+              <a class="app-inline-link" id="app-run-link" href="/app/">Open run details</a>
               <div class="app-run-action-row" id="app-run-export-actions">
                 <button class="btn btn-secondary app-run-action-btn" id="app-run-export-geojson" type="button" data-export-format="geojson" disabled>GeoJSON</button>
                 <button class="btn btn-secondary app-run-action-btn" id="app-run-export-csv" type="button" data-export-format="csv" disabled>CSV</button>
@@ -400,7 +400,7 @@
               </div>
               <p class="app-lens-copy" id="app-preference-summary">Stay centered on the live run while you prove what changed, why it changed, and what to do next.</p>
               <div class="app-action-stack">
-                <button class="btn btn-primary" id="app-guided-primary-btn" type="button">Start evidence run</button>
+                <button class="btn btn-primary" id="app-guided-primary-btn" type="button">Start analysis</button>
                 <button class="btn btn-secondary" id="app-guided-secondary-btn" type="button">Review latest incident</button>
               </div>
               <div class="app-mini-list app-mini-list-tight">
@@ -430,7 +430,7 @@
 
             <article class="app-card app-support-card" id="app-tier-emulation-card" hidden>
               <h3>Plan Emulation</h3>
-              <p>Local development only. Override this signed-in account to test plan-gated behavior without changing the billing record.</p>
+              <p>Local development only. Override your account to test plan-gated behavior without changing the billing record.</p>
               <label class="app-field-label" for="app-tier-emulation-select">Effective plan</label>
               <div class="app-select-row">
                 <select id="app-tier-emulation-select">
