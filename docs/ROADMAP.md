@@ -179,7 +179,8 @@ can: see what Canopex does (landing page) → sign in (free) → run analysis
 | UX.6 | #555 | Deduplicate export buttons | Open |
 
 See `docs/UX_REVIEW_2026-04-12.md` for full findings and implementation
-plan. All slices are frontend-only. Recommended order: 1 → 2 → 3 → 4 → 5 → 6.
+plan. All slices are frontend-only. Recommended order: UX.1 → UX.2 →
+UX.3 → UX.4 → UX.5 → UX.6.
 
 **Exit criteria:** File upload is visible without scrolling. Results auto-
 scroll on completion. Zero "signed-in" / "workspace lens" / "durable" jargon
