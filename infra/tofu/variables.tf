@@ -114,6 +114,12 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "import_custom_domain" {
+  description = "Import a pre-existing SWA custom domain into state. Set true once, apply, then remove."
+  type        = bool
+  default     = false
+}
+
 variable "enable_azure_ai" {
   description = "Deploy Azure OpenAI resource for AI analysis (M1.6)."
   type        = bool
