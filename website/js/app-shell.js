@@ -1748,7 +1748,7 @@
       deliveryNoteEl.textContent = 'Failure counts and tracked artifacts will appear here.';
       linkLabelEl.textContent = 'Dashboard state';
       linkEl.href = '/app/';
-      linkEl.textContent = 'Open run details';
+      linkEl.textContent = 'Open dashboard';
       document.querySelectorAll('[data-export-format]').forEach(function(button) {
         button.disabled = true;
       });
@@ -2137,7 +2137,7 @@
       processingMode: processingMode,
       quotaImpact: latestBillingStatus && latestBillingStatus.runs_remaining != null
         ? '1 of ' + latestBillingStatus.runs_remaining + ' runs'
-        : '1 queued run',
+        : '1 analysis',
       summary: parsed.featureCount + ' features across ' + parsed.polygons.length + ' AOIs covering about ' + formatHectares(totalAreaHa) + '. ' + processingMode + ' keeps the ' + preference.focusLabel.toLowerCase() + ' in focus for this request.'
     };
     preflight.warnings = buildPreflightWarnings(preflight);
