@@ -29,7 +29,7 @@ def cosmos_available() -> bool:
     return bool(config.COSMOS_ENDPOINT)
 
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _client: CosmosClient | None = None
 _database: Any = None
 _credential: DefaultAzureCredential | None = None
