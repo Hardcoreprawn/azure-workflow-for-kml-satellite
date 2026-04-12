@@ -100,9 +100,9 @@ Key Vault.
 
 **Decision (2026-04-12):** The product entry point is the **Free Tier**
 (authenticated, real pipeline, 5 runs/month). The frontend `?mode=demo` URL
-param was removed in #532. The backend `demo` billing tier still exists in
-pipeline guard logic (`tier in {"free", "demo"}`) and will be retired
-separately.
+param was removed as part of issue #532 (this PR). The backend `demo` billing
+tier still exists in pipeline guard logic (`tier in {"free", "demo"}`) and
+will be retired separately.
 
 | Concept | Auth | Processing | Purpose |
 |---------|------|-----------|---------|
