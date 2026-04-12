@@ -17,3 +17,4 @@ custom_domain         = ""
 enable_azure_ai         = false
 enable_stripe           = true
 enable_cosmos_db         = true
+function_min_instances  = 1

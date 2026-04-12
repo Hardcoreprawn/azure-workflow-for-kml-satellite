@@ -89,6 +89,19 @@ variable "function_max_instances" {
   default     = 3
 }
 
+variable "function_min_instances" {
+  description = "Minimum always-ready instances. Set to 1 to avoid cold-start 504s."
+  type        = number
+  default     = 0
+}
+
+variable "ops_dashboard_key" {
+  description = "Bearer token for /api/ops/dashboard. Empty = allow unauthenticated (dev only)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "log_daily_cap_gb" {
   description = "Log Analytics daily ingestion cap in GB. -1 for unlimited."
   type        = number

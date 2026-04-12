@@ -8,6 +8,7 @@ correctly configured, catching the class of bugs that caused:
 """
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -195,9 +196,28 @@ class TestCorsConfig:
         src = HELPERS_PY.read_text()
         assert ".azurestaticapps.net" not in src
 
-    def test_custom_domain_in_cors_origins(self):
-        """The custom domain must remain in the stable allowlist."""
+    def test_no_hardcoded_custom_domain_in_cors_origins(self):
+        """Custom domains must come from CORS_ALLOWED_ORIGINS env var, not hardcoded."""
         src = HELPERS_PY.read_text()
-        assert re.search(r'["\']https://canopex\.hrdcrprwn\.com["\']', src), (
-            "_ALLOWED_ORIGINS must contain the custom domain"
+        assert "canopex.hrdcrprwn.com" not in src, (
+            "Custom domain must not be hardcoded — it should come from "
+            "CORS_ALLOWED_ORIGINS env var set by infra"
         )
+
+    def test_cors_origins_from_env_var(self):
+        """_build_allowed_origins must populate origins from CORS_ALLOWED_ORIGINS env var."""
+        import importlib
+
+        import blueprints._helpers as helpers_mod
+        from tests.conftest import TEST_ORIGIN
+
+        custom_origin = "https://custom.example.org"
+        original_cors = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+        try:
+            os.environ["CORS_ALLOWED_ORIGINS"] = custom_origin
+            importlib.reload(helpers_mod)
+            # Set membership (not substring) — _ALLOWED_ORIGINS is set[str]
+            assert custom_origin in helpers_mod._ALLOWED_ORIGINS
+        finally:
+            os.environ["CORS_ALLOWED_ORIGINS"] = original_cors or f"{TEST_ORIGIN}"
+            importlib.reload(helpers_mod)

@@ -21,11 +21,17 @@ output "function_app_default_hostname" {
 output "function_app_cli_app_settings" {
   value       = local.function_app_cli_app_settings
   description = "CLI-managed Function App app settings sourced from Terraform."
+  sensitive   = true
 }
 
 output "function_app_cli_maximum_instance_count" {
   value       = var.function_max_instances
   description = "CLI-managed Function App maximum instance count sourced from Terraform."
+}
+
+output "function_app_cli_minimum_instance_count" {
+  value       = var.function_min_instances
+  description = "CLI-managed Function App minimum always-ready instance count."
 }
 
 output "static_web_app_name" {

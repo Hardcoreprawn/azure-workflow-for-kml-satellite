@@ -679,6 +679,10 @@ resource "azapi_resource" "function_app" {
       functionAppConfig = {
         scaleAndConcurrency = {
           maximumInstanceCount = var.function_max_instances
+          # NOTE: alwaysReady (min instances) is managed exclusively by the
+          # deploy pipeline via az rest PATCH. Not declared here because body
+          # is in lifecycle.ignore_changes and would only take effect on first
+          # creation, causing confusing drift.
         }
       }
       siteConfig = {
@@ -902,7 +906,9 @@ locals {
       WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
       AzureWebJobsStorage__accountName    = azurerm_storage_account.main.name
       CORS_ALLOWED_ORIGINS                = join(",", local.browser_allowed_origins)
+      PRIMARY_SITE_URL                    = local.primary_site_url
       REQUIRE_AUTH                        = var.environment == "prd" ? "true" : ""
+      OPS_DASHBOARD_KEY                   = var.ops_dashboard_key
     },
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint

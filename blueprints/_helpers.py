@@ -17,24 +17,51 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_FIELD_LEN = 2000
 
 
-def _default_allowed_origins() -> set[str]:
-    origins = {"https://canopex.hrdcrprwn.com"}
+def _track_req(
+    req: func.HttpRequest,
+    resp: func.HttpResponse,
+    user_id: str,
+    t0: float,
+) -> None:
+    """Record request for ops dashboard (best-effort, never raises)."""
+    import time
+
+    try:
+        from blueprints.ops import track_request
+
+        track_request(
+            method=req.method or "",
+            path=req.url.split("/api/")[-1].split("?")[0] if "/api/" in req.url else req.url,
+            status=resp.status_code,
+            user_id=user_id,
+            duration_ms=(time.monotonic() - t0) * 1000,
+        )
+    except Exception:  # noqa: S110 — must never break request handling
+        pass
+
+
+def _build_allowed_origins() -> set[str]:
+    """Build allowed origins from the infra-managed CORS_ALLOWED_ORIGINS env var.
+
+    Production origins come exclusively from the env var which is set by
+    OpenTofu (``local.browser_allowed_origins``).  Localhost dev origins
+    are added only when ``REQUIRE_AUTH`` is not enforced.
+    """
+    origins: set[str] = set()
+
+    configured = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+    for origin in configured.split(","):
+        origin = origin.strip()
+        if origin and origin.startswith("https://"):
+            origins.add(origin)
+
     if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
         origins.update({"http://localhost:4280", "http://localhost:1111"})
+
     return origins
 
 
-# Stable browser origins allowed without infra-provided overrides.
-_ALLOWED_ORIGINS: set[str] = _default_allowed_origins()
-
-# Allow override via env var (comma-separated) for current SWA/default hosts.
-# Only https:// origins are accepted to prevent open CORS misconfiguration.
-_extra = os.environ.get("CORS_ALLOWED_ORIGINS", "")
-if _extra:
-    for origin in _extra.split(","):
-        origin = origin.strip()
-        if origin and origin.startswith("https://"):
-            _ALLOWED_ORIGINS.add(origin)
+_ALLOWED_ORIGINS: set[str] = _build_allowed_origins()
 
 
 def _cors_origin(req: func.HttpRequest) -> str:
@@ -98,10 +125,15 @@ def require_auth(fn):
         if req.method == "OPTIONS":
             return cors_preflight(req)
 
+        import time as _time
+
+        _t0 = _time.monotonic()
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if not principal_header:
             if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
-                return fn(req, auth_claims={}, user_id="anonymous")
+                resp = fn(req, auth_claims={}, user_id="anonymous")
+                _track_req(req, resp, "anonymous", _t0)
+                return resp
             return error_response(401, "Authentication required", req=req)
 
         try:
@@ -109,7 +141,10 @@ def require_auth(fn):
         except ValueError as exc:
             return error_response(401, str(exc), req=req)
 
-        return fn(req, auth_claims=principal, user_id=get_user_id(principal))
+        uid = get_user_id(principal)
+        resp = fn(req, auth_claims=principal, user_id=uid)
+        _track_req(req, resp, uid, _t0)
+        return resp
 
     # @wraps copies __wrapped__, which makes inspect.signature() expose
     # the inner function's extra parameters (auth_claims, user_id).
