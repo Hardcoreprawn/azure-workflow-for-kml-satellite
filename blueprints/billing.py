@@ -79,13 +79,21 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
     from treesight.security.feature_gate import GATED_PRICE_LABELS, billing_allowed
     from treesight.security.quota import get_usage
 
-    subscription = get_subscription(user_id)
-    effective = get_effective_subscription(user_id)
-    emulation = get_subscription_emulation(user_id)
-    capabilities = plan_capabilities(effective.get("tier"))
+    try:
+        subscription = get_subscription(user_id)
+        effective = get_effective_subscription(user_id)
+        emulation = get_subscription_emulation(user_id)
+        capabilities = plan_capabilities(effective.get("tier"))
+        usage = get_usage(user_id)
+    except Exception:
+        logger.exception("Storage error building billing status for user=%s", user_id)
+        subscription = {"tier": "free", "status": "none"}
+        effective = {"tier": "free", "status": "none"}
+        emulation = None
+        capabilities = plan_capabilities("free")
+        usage = {"used": 0, "limit": plan_capabilities("free")["run_limit"]}
 
     gated = not billing_allowed(user_id)
-    usage = get_usage(user_id)
 
     payload = {
         "tier": effective.get("tier", "free"),

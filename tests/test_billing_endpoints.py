@@ -418,3 +418,56 @@ class TestUserIdFromCustomerCosmos:
             "stripe_customer_id": "cus_err",
         }
         assert _user_id_from_customer("cus_err") == "user-fallback"
+
+
+# ---------------------------------------------------------------------------
+# billing/status resilience — returns 200 even when storage is unavailable
+# ---------------------------------------------------------------------------
+
+
+class TestBillingStatusResilience:
+    @patch("treesight.storage.cosmos.cosmos_available", return_value=False)
+    @patch(
+        "treesight.storage.client.BlobStorageClient",
+        side_effect=RuntimeError("connection string missing"),
+    )
+    def test_returns_safe_default_when_all_storage_fails(self, _mock_blob, _mock_cosmos):
+        """billing/status should return 200 with free-tier defaults, not 500."""
+        from blueprints.billing import billing_status
+
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/billing/status",
+            headers={"Origin": _ALLOWED_ORIGIN},
+            body=b"",
+        )
+        resp = billing_status(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["tier"] == "free"
+        assert data["runs_remaining"] >= 0
+        assert data["billing_gated"] is True
+
+    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
+    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("cosmos down"))
+    @patch(
+        "treesight.storage.client.BlobStorageClient",
+        side_effect=RuntimeError("blob down too"),
+    )
+    def test_returns_safe_default_when_cosmos_and_blob_both_fail(
+        self, _mock_blob, _mock_read, _mock_cosmos
+    ):
+        """Both Cosmos and blob failing should not crash the endpoint."""
+        from blueprints.billing import billing_status
+
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/billing/status",
+            headers={"Origin": _ALLOWED_ORIGIN},
+            body=b"",
+        )
+        resp = billing_status(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["tier"] == "free"
+        assert data["status"] == "none"
