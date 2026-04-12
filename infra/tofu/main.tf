@@ -915,7 +915,7 @@ locals {
       AzureWebJobsStorage__accountName    = azurerm_storage_account.main.name
       CORS_ALLOWED_ORIGINS                = join(",", local.browser_allowed_origins)
       PRIMARY_SITE_URL                    = local.primary_site_url
-      REQUIRE_AUTH                        = var.environment == "prd" ? "true" : ""
+      REQUIRE_AUTH                        = "true"
       OPS_DASHBOARD_KEY                   = var.ops_dashboard_key
     },
     var.enable_cosmos_db ? {
