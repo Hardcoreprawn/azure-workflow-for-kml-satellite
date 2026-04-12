@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (merge PRs #537, #536, #540)
+Last updated: 2026-04-12 (merge PR #530 — all open PRs resolved)
 
 ---
 
@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #530 | Ops dashboard, CORS hardening, always-ready instances, timing-safe auth |
 | #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
 | #537 | Roadmap restructure per project review: kill demo mode, prioritize user journey |
 | #536 | billing/status returns 200 with safe defaults when storage unavailable (fixes #520) |
 | #523 | Fix deploy: filter localhost from CORS verify; accept 200 or 204 for OPTIONS |
 | #521 | Fix deploy: resolve TF_STATE_CONTAINER/KEY from env-suffixed secrets |
-| #516 | Build-once/promote deploy pipeline with PR previews + CORS fix for canopex.hrdcrprwn.com |
 
 ---
 
