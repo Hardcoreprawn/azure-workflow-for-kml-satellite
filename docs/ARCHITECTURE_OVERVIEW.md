@@ -92,22 +92,30 @@ Auth works as follows:
 
 **Known limitation:** The `X-MS-CLIENT-PRINCIPAL` header is client-supplied
 and not cryptographically verified by the FA. A direct HTTP client (not bound
-by CORS) could forge this header. Mitigations planned for a future phase
-include JWT validation or a shared HMAC between SWA and FA.
+by CORS) could forge this header. Tracked as #534 — must be fixed before
+paid tiers go live. Planned approach: HMAC signature with shared secret in
+Key Vault.
 
-#### Showcase vs Tiers
+#### Entry Point
 
-Two distinct concepts serve different purposes — do not conflate them:
+**Decision (2026-04-12):** The product entry point is the **Free Tier**
+(authenticated, real pipeline, 5 runs/month). Demo mode (`?mode=demo`) is
+deprecated and scheduled for removal (#532).
 
 | Concept | Auth | Processing | Purpose |
 |---------|------|-----------|---------|
-| **Showcase** | None (anonymous) | None — pre-computed static blobs from stock AOIs | Marketing. Let visitors see real output quality before signing up. |
-| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, low-res, seasonal cadence | Try the product. 5 runs, ≤5 AOIs, 30-day retention, no alerts, all manual. Negligible compute cost. |
-| **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans with increasing AOI counts, cadence, retention, exports, API access. |
+| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. Sample KMLs for one-click first run. |
+| **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
+| **Showcase** (deferred) | None (anonymous) | None — pre-computed static blobs | Future. Marketing for anonymous visitors. Not until pipeline is proven e2e. |
 
-The **showcase** is served from `imagery/clipped/showcase/` blobs via valet tokens — no billing tier, no quota tracking, no user record. It exists purely to answer "what does Canopex actually produce?" for anonymous visitors.
+The "demo" billing tier and `?mode=demo` frontend mode are both deprecated.
+Demo mode showed the dashboard UI without auth but couldn't run anything —
+a confused middle ground that added code complexity without demonstrating
+real value. The free tier with sample KMLs replaces both concepts.
 
-The "demo" billing tier is deprecated — it overlapped with Free but was strictly worse (1 AOI, 0 retention). New unauthenticated users see the showcase; new authenticated users land on Free.
+Showcase (pre-computed static blobs for anonymous browsing) is a valid future
+concept but is deferred until after the pipeline is verified end-to-end in
+Azure (#531) and the free-tier entry point is polished (#532).
 
 ### Auth — SWA Built-in Custom Auth + BYOF Forwarding
 
