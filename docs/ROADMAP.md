@@ -3,7 +3,19 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-11 (deploy fix: CORS verify localhost filter + 200/204 status)
+Last updated: 2026-04-12 (roadmap restructure per project review)
+
+---
+
+## Architecture Decision: Entry Point
+
+**Decision (2026-04-12):** The product entry point is the **Free Tier** (authenticated, real pipeline, 5 runs). Demo mode (`?mode=demo`) is deprecated and will be removed (#532). The landing page directs users to sign in and run a real analysis.
+
+- **Free tier** = authenticated, 5 real analyses/month, sample KMLs for one-click first run
+- **Showcase** = deferred. Pre-computed static samples for anonymous visitors are a nice-to-have after the real pipeline is proven end-to-end. Not current priority.
+- **Demo mode** = deprecated; scheduled for removal (#532). It was a UI preview that couldn't run anything — confused middle ground between showcase and free tier.
+
+See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 ---
 
@@ -35,259 +47,283 @@ Last updated: 2026-04-11 (deploy fix: CORS verify localhost filter + 200/204 sta
 
 ## Architecture Direction
 
-**2-tier Container Apps split** (tracking issue: #463).
+**Single Container Apps FA** — all endpoints + pipeline in one image.
 
-SWA managed functions are deprecated — they lack managed identity, Key Vault
-refs, Durable Functions, and are pinned to Python ≤3.11. All API endpoints
-consolidate onto the Container Apps Function App (BYOF via `api-config.json`
-hostname injection). The split is driven by **resource density**: BFF endpoints
-need 0.25 vCPU always-on; compute activities need 4 vCPU occasionally.
+SWA managed functions are deleted. All API endpoints are on the Container
+Apps Function App (BYOF via `api-config.json` hostname injection). SWA
+serves static files and auth only.
 
-| Phase | Topology | Baseline cost | Notes |
-|-------|----------|---------------|-------|
-| **Phase 1 (P3)** | Single Container Apps FA — all endpoints + pipeline | ~£20/mo (min 1 replica, 2 vCPU / 4 GiB) | Delete SWA managed API (~900 lines). One codebase. |
-| **Phase 2 (P5)** | T2 (API+orchestrator) + T3 (compute, scale-to-zero) | ~£8/mo (T2 min 1 @ 0.5 vCPU) | Shared Durable task hub. T3 pays only when running. |
-| **Phase 3 (P8)** | T2 + Container Apps Jobs for burst compute | ~£8/mo + ~£0.80/500-AOI run | 50 concurrent Jobs vs 10 replicas = 3× faster. |
+**Current topology (Phase 1):** Single Container Apps FA — 2 vCPU / 4 GiB,
+min 1 replica (warm BFF), max 10 replicas (KEDA). ~£20/month baseline.
 
-**Scale target (500-AOI KMZ):** ~45 min wall-clock with Jobs (Phase 3) vs
-~2.5 hours with replicas (Phase 2). Azure Batch stays for AOIs ≥50k ha.
+**Future split (deferred until user volume justifies it):**
 
-### Resource demand summary
+| Phase | Topology | Baseline cost | Status |
+|-------|----------|---------------|--------|
+| **Phase 1** (current) | Single FA | ~£20/mo | ✅ Active |
+| **Phase 2** (#466) | T2 API + T3 Compute (scale-to-zero) | ~£8/mo | Deferred |
+| **Phase 3** (#467) | T2 + Container Apps Jobs | ~£8/mo + burst | Deferred |
 
-| Component | CPU | RAM | Duration |
-|-----------|-----|-----|----------|
-| BFF endpoints | <0.25 vCPU | <128 MiB | <100ms |
-| Orchestrator | negligible | <1 MiB | coordinates only |
-| Ingestion (parse + prepare) | 100–500ms burst | 10–50 MiB | <10s |
-| Acquisition (STAC + polling) | minimal | <5 MiB | 10–30 min (I/O) |
-| Post-process (rasterio) | **2–30s per scene** | **50–500 MiB** | 5–30s per AOI |
-| Enrichment NDVI (Rust) | **500ms–2s per frame** | **500 MiB–1 GiB** | 2–5 min (8 threads) |
-| Change detection (Rust) | 100–500ms per pair | 100 MiB | 30s–2 min |
-
-Migration is phased across P3/P5/P8. Each phase is independently shippable and reversible.
+The T2/T3 split saves ~£12/month. Do not start until user count justifies
+the engineering effort.
 
 ---
 
 ## Priority Order
 
-Work items are ordered by dependency and impact. Complete each group before starting the next, unless explicitly overridden.
+Priorities are restructured per the 2026-04-12 project review. The core
+finding: **the pipeline works, the architecture is sound, but the user
+journey is broken.** All new work prioritises the path from "visitor lands"
+to "user pays and gets value."
 
-### P0 — Live Site Fixes
-
-Bugs visible to real users right now.
-
-| Order | Issue | Title | Status |
-|-------|-------|-------|--------|
-| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 (CSP + auth); #367 already resolved |
-| 0.2 | #446 | Fix auth: SWA strips Authorization header → switch to built-in auth (BFF) | ✅ PR #472 |
-
-**Exit criteria:** Auth works reliably. No CSP errors. Demo dismiss works. Telemetry flows.
-
-**Architecture decision (2026-04-08, revised 2026-04-10):** SWA built-in
-custom auth is the single auth mechanism. MSAL.js is dropped. The Container
-Apps Function App is the BFF — the only API surface. SWA routes `/api/*` to
-it via `api-config.json` hostname injection. SWA managed functions are
-deprecated (no managed identity, no Key Vault refs, no Durable Functions,
-Python ≤3.11). See `docs/ARCHITECTURE_OVERVIEW.md`.
+Complete each group before starting the next.
 
 ---
 
-### P1 — Stage 2B Completion (event-driven pipeline + BFF)
+## Completed Stages (legacy P0–P3 numbering)
 
-Finish the event-driven restructure. SWA becomes the sole public API surface (BFF). Parent issues: #420, #463.
+<details>
+<summary>Expand completed stages</summary>
+
+### P0 — Live Site Fixes ✅
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 0.1 | #438 | Fix live site: CSP violations + deploy health check regression | ✅ PR #442 |
+| 0.2 | #446 | Fix auth: SWA strips Authorization header → switch to built-in auth | ✅ PR #472 |
+
+### P1 — Stage 2B: Event-Driven Pipeline + BFF ✅
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 2B.1 | #421 | KML/KMZ input sanitisation — zip bomb + XML validation | ✅ PR #425 |
-| 2B.2 | #422 | SWA API function for SAS token minting + status polling | ✅ PR #427 |
-| 2B.3 | #423 | Unify on event-driven path — remove direct orchestrator start | ✅ Merged |
-| 2B.4 | #424 | Migrate read-only endpoints to SWA functions (analysis/history done) | ✅ PR #444, #481, #483, #484 |
-| 2B.5 | #446 | Switch SWA auth to built-in custom auth — drop MSAL.js | ✅ PR #472 |
-| 2B.6 | #464 | Add Application Insights instrumentation to SWA managed API | ✅ PR #478 |
+| 2B.2 | #422 | SAS token minting + status polling | ✅ PR #427 |
+| 2B.3 | #423 | Unify on event-driven path | ✅ Merged |
+| 2B.4 | #424 | Migrate read-only endpoints | ✅ PR #444, #481, #483, #484 |
+| 2B.5 | #446 | Switch to SWA built-in auth | ✅ PR #472 |
+| 2B.6 | #464 | App Insights instrumentation | ✅ PR #478 |
 
-**Exit criteria:** Upload goes via SAS URL → blob → Event Grid → orchestrator. Read-only endpoints served from Container Apps FA (formerly SWA managed functions, now consolidated). All browser API calls go through SWA `/api/*` → Container Apps FA. SWA API has full App Insights telemetry.
-
----
-
-### P2 — Code Quality & Validation
-
-Prove claims, close scanning alerts, finish simplicity fixes. Each is one PR.
+### P2 — Code Quality & Validation ✅
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| Q.1 | #452 | Decompose 338-line orchestrator into phase functions | ✅ PR #487 |
-| Q.2 | #457 | Chained .get() patterns with fragile fallbacks | ✅ PR #487 |
-| Q.3 | #458 | app-shell.js — fetch swallowing, innerHTML XSS, code quality | ✅ PR #487 |
-| Q.4 | #459 | landing.js — missing response.ok, .then() chains, var usage | ✅ PR #487 |
-| Q.5 | #437 | End-to-end validation: prove 200+ AOI KMZ processing at scale | Partial — enrichment parallelised in #487; deeper optimisation tracked in #488 |
-| Q.6 | #439 | Close remaining code scanning alerts (CodeQL + Trivy IaC) | ✅ Closed |
-| Q.7 | #381 | Resolve code scanning alerts: URL sanitisation, quality, encryption | ✅ PR #490 |
-| Q.8 | #440 | Periodic check: libpng CVE fix in Debian bookworm | ✅ Closed — CVE fixed via apt-get upgrade |
+| Q.1–Q.4 | #452, #457, #458, #459 | Orchestrator decomp, code quality | ✅ PR #487 |
+| Q.5 | #437 | E2E validation (200+ AOI) | Partial (#488 tracks deeper work) |
+| Q.6–Q.8 | #439, #381, #440 | Scanning alerts, CVEs | ✅ Closed |
 
-**Exit criteria:** Orchestrator decomposed (prerequisite for #466). Scale claim proven. Code scanning clean. Simplicity violations fixed.
+### P3 — BYOF Consolidation ✅
+
+All 12 items completed. SWA managed API deleted. All `/api/*` endpoints on
+Container Apps FA. Frontend uses BYOF routing via `api-config.json`.
+
+</details>
 
 ---
 
-### P3 — BYOF Consolidation: Delete SWA Managed API
+### Stage 2C — Pipeline Verification & User Journey (NOW)
 
-Consolidate all BFF endpoints onto the Container Apps Function App. Delete
-the SWA managed API (~900 lines of duplicated code). SWA serves static files
-only; all `/api/*` calls route to Container Apps via `api-config.json`
-hostname injection.
+**This is the current focus.** Prove the pipeline works end-to-end in Azure,
+fix the bugs that break the signed-in experience, and make the product
+entry point unambiguous.
 
-**Why:** SWA managed functions lack managed identity (#498), Key Vault refs
-(#506), Durable Functions, and are pinned to Python ≤3.11. Every capability
-must be re-implemented. The Container Apps FA already has all 15+ endpoints,
-managed identity, Key Vault, Python 3.12, and Durable Functions.
-
-**BFF contract:** All endpoints use the stable camelCase API contract defined
-in `docs/openapi.yaml` v2.0.0. Response shapes are decoupled from internal
-Cosmos documents and blob JSON — the BFF handles all translation.
+#### 2C.1 — Pipeline End-to-End Verification
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| B.1 | #498 | Root cause: SWA managed functions don't support managed identity | ✅ Superseded by BYOF |
-| B.2 | #506 | Stripe Key Vault refs don't resolve in SWA managed functions | ✅ Superseded by BYOF |
-| B.3 | #511 | Delete `website/api/` managed function code | ✅ PR #512 |
-| B.4 | #511 | Configure `api-config.json` to route `/api/*` to Container Apps FA | ✅ PR #512 |
-| B.5 | #511 | Update deploy workflow to skip SWA managed API build | ✅ PR #512 |
-| B.6 | #499 | Add orchestrator status endpoint (on Container Apps) | ✅ Already exists |
-| B.7 | #500 | Add timelapse-data read endpoint (on Container Apps) | ✅ Already exists |
-| B.8 | #501 | Add timelapse-analysis-load endpoint (on Container Apps) | ✅ Already exists |
-| B.9 | #503 | Add timelapse-analysis-save endpoint (on Container Apps) | ✅ Already exists |
-| B.10 | #502 | Add timelapse-analysis compute endpoint (on Container Apps) | ✅ Already exists |
-| B.11 | #504 | Add EUDR assessment endpoint (on Container Apps) | ✅ Already exists |
-| B.12 | #505 | Add export endpoint — SAS redirect for large files (on Container Apps) | ✅ Already exists |
+| E.1 | #531 | Verify e2e pipeline in Azure: sign in → upload KML → results | Open |
+| E.2 | #520 | Fix `/api/billing/status` returns 500 for signed-in users | Open |
 
-**Container Apps FA sizing (Phase 1):** 2 vCPU, 4 GiB, min 1 replica (warm
-BFF), max 10 replicas (KEDA on activity queue depth). ~£20/month baseline.
+**Exit criteria:** A user can sign in on the live SWA URL, upload a sample
+KML, and see a completed analysis with imagery, NDVI, weather, and AI
+narrative. Billing/status returns 200.
 
-**Exit criteria:** SWA managed API deleted. All `/api/*` endpoints served by
-Container Apps FA. Frontend uses single camelCase shape. Auth via SWA built-in
-→ `x-ms-client-principal` header forwarded to Container Apps. No #498/#506
-blockers.
-
----
-
-### P4 — Stage 2A: Release Safety & Promotion
-
-Make production safe to promote into. Build once in CI, promote the same immutable artifact dev → prod.
+#### 2C.2 — Unify Entry Point (Kill Demo Mode)
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 2A.1 | #401 | Separate dev and prod deployment flows (immutable artifact promotion) | 🔄 In PR |
-| 2A.2 | #404 | Structured JSON logging at Azure Functions startup | ✅ Closed |
-| 2A.3 | #405 | Reduce Function App config drift between OpenTofu and az CLI | Open — depends #401 |
-| 2A.4 | #402 | Gate production deploys on security workflow results | Open — depends #401 |
-| 2A.5 | #406 | Reconcile README, runbook, and API contracts with live routes | Open — depends #401 |
-| 2A.6 | #403 | Production rollout: preview users, smoke gates, promotion/demotion | Open — depends #401, #402, #405 |
+| U.1 | #532 | Remove demo mode — unify on Free Tier with sample KMLs | Open |
 
-**Exit criteria:** Dev/prod promotion path explicit. Preview-user rollout exists. Production deploy security-gated. Docs match code.
+The entry point is the Free Tier (5 runs, authenticated, real pipeline).
+Demo mode (`?mode=demo`) is removed. Landing page says "Start Free" →
+sign in → sample KML picker → one-click first run.
 
----
+**Exit criteria:** No `?mode=demo` handling in frontend. Unauthenticated
+`/app/` shows sign-in gate with free-tier messaging. First-run flow offers
+sample KMLs. All demo-specific code removed.
 
-### P5 — Split T2 (API + Orchestrator) / T3 (Compute)
+#### 2C.3 — Pricing Clarity
 
-Split the single Container Apps FA into two apps for resource efficiency.
-Both share the same Durable Functions task hub (`KmlSatelliteHub`) and
-storage account. Activities auto-route via the shared work queue.
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| P.1 | #533 | Show real prices on pricing page | Open |
 
-**T2 — API + Orchestrator** (`func-kmlsat-{env}-api`)
+**Exit criteria:** Pricing cards show £0/£19/£49/£149 with clear limits.
+"Express Interest" replaced with actionable subscribe buttons for
+Starter/Pro. Enterprise remains "Contact Us."
 
-- Image: ~300 MB (no GDAL, no rasterio, no Rust)
-- Functions: BFF endpoints, orchestrator, parse_kml, prepare_aoi, acquire_imagery, poll_order
-- Resources: 0.5 vCPU, 1 GiB, **min 1 replica** (always-warm BFF)
-- Cost: ~£8/month (mostly idle rate)
-
-**T3 — Compute** (`func-kmlsat-{env}-compute`)
-
-- Image: ~1.2 GB (GDAL + rasterio + Rust/PyO3)
-- Functions: download_imagery, post_process_imagery, run_enrichment
-- Resources: 4 vCPU, 8 GiB, **min 0** (scale-to-zero), max 10 replicas
-- KEDA trigger: Durable Functions activity queue depth
-- Cost: £0 idle, ~£0.40–1.60/hour during pipeline runs
-
-| Order | Issue | Title | Depends On |
-|-------|-------|-------|------------|
-| T2.1 | #466 | Split Container Apps into API + compute images | #452, #401 |
-
-**Exit criteria:** T2 image <300 MB (no GDAL). T3 image has full GDAL+Rust
-stack. Both share Durable task hub. T2 cold-start <3s. T3 scales to zero
-when no pipeline work. Baseline cost drops from ~£20 → ~£8/month.
+**Stage 2C exit criteria:** The minimum viable user journey works. A visitor
+can: see what Canopex does (landing page) → sign in (free) → run analysis
+(sample KML) → see results → understand upgrade path (real prices).
 
 ---
 
-### P6 — Stage 3: Growth & Retention
+### Stage 2D — Revenue Enablement (This Month)
 
-Features that make Canopex a habit. **Do not open Stage 3 work until P1–P5 are materially complete.**
+Security and billing verification required before accepting real payments.
 
-| Order | Issue | Title | Depends On |
-|-------|-------|-------|------------|
-| 3.1 | #310 | Scheduled monitoring + change alerts | ✅ PR #394 merged |
-| 3.2 | #400 | Pipeline run telemetry — log per-job stats to Cosmos | — |
-| 3.3 | #399 | Pipeline ETA estimator (needs ~100 runs of telemetry data from #400) | #400 |
-| 3.4 | #78 | Temporal catalogue in Cosmos DB | — |
-| 3.5 | #79 | Catalogue API endpoints | #78 |
-| 3.6 | #177 | H3-derived imagery/stat products | — |
+| Order | Issue | Title | Status | Depends On |
+|-------|-------|-------|--------|------------|
+| R.1 | #534 | Auth header verification: prevent X-MS-CLIENT-PRINCIPAL forgery | Open | — |
+| R.2 | #535 | Verify end-to-end Stripe billing flow on live site | Open | #520 |
+| R.3 | #406 | Reconcile README, runbook, and API contracts with live routes | Open | — |
+
+**Exit criteria:** Auth is cryptographically verified (forged headers
+rejected). Free → Starter upgrade → Stripe payment → quota increase → run
+analysis works end-to-end. API docs match live behavior.
+
+---
+
+### Stage 2E — Release Safety & Promotion
+
+Build once in CI, promote the same immutable artifact dev → prod.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 2A.1 | #401 | Separate dev and prod deployment flows | 🔄 In PR |
+| 2A.2 | #405 | Reduce config drift between OpenTofu and az CLI | Open — depends #401 |
+| 2A.3 | #402 | Gate production deploys on security workflow results | Open — depends #401 |
+| 2A.4 | #403 | Production rollout: smoke gates, promotion/demotion | Open — depends #401 |
+
+**Exit criteria:** Dev/prod promotion path explicit. Production deploy
+security-gated. Smoke checks pass before traffic shift.
+
+---
+
+### Stage 3 — Growth & Retention
+
+Features that make Canopex a habit. **Do not start until Stage 2C–2E are
+materially complete.**
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 3.1 | #310 | Scheduled monitoring + change alerts | ✅ PR #394 |
+| 3.2 | #400 | Pipeline run telemetry — per-job stats | Open |
+| 3.3 | #399 | Pipeline ETA estimator | Open (needs #400) |
+| 3.4 | #78 | Temporal catalogue in Cosmos DB | Open |
+| 3.5 | #79 | Catalogue API endpoints | Open (needs #78) |
+| 3.6 | #488 | Pipeline performance optimisation | Open |
 | 3.7 | — | Shareable analysis links | — |
 
-**Enrichment sources** (each is a single PR — add when approaching):
+**Enrichment sources** (add when a user requests them):
 
-- MODIS Burned Area (`modis-64A1-061`)
-- ESA CCI Land Cover (`esa-cci-lc`)
-- IO LULC Annual V2 (`io-lulc-annual-v02`)
-- ALOS Forest/Non-Forest (`alos-fnf-mosaic`)
-- GFW deforestation alerts (GLAD + RADD)
+- MODIS Burned Area, ESA CCI Land Cover, IO LULC, ALOS Forest, GFW alerts
 
-**Exit criteria:** Users on monitoring subs. Catalogue browsable. 3+ enrichment data sources added.
+**Exit criteria:** Users on monitoring subs. Catalogue browsable.
 
 ---
 
-### P7 — Stage 4: Team & API
+### Stage 4 — Team & API
 
-Unlock Team tier (£149/mo) and programmatic access.
-
-| Order | Issue | Title | Depends On |
-|-------|-------|-------|------------|
-| 4.1 | #313 | Team workspaces + tenant segregation | — |
-| 4.2 | — | API documentation (interactive OpenAPI portal) | #406 |
-| 4.3 | — | Webhook / Slack notifications | #310 |
-
-**Exit criteria:** Team tier selling. API used programmatically. ARR > £30K.
-
----
-
-### P8 — Stage 5: Enterprise, ML & Burst Compute (Horizon)
-
-Advanced features, enterprise deals, competitive moats. **Do not start until Stage 4 is generating revenue.**
+Unlock Team tier (£149/mo) and programmatic access. **Do not start until
+Stage 3 features are retaining users.**
 
 | Order | Issue | Title |
 |-------|-------|-------|
-| 5.1 | #467 | Container Apps Jobs for burst compute (Phase 3 — replaces T3 replicas with per-AOI jobs) |
-| 5.2 | #82 | Tree detection model + inference pipeline |
-| 5.3 | #83 | Tree health classification + temporal tracking |
-| 5.4 | #84 | Annotation-driven model fine-tuning |
-| 5.5 | #87 | Annotation tools and storage |
-| 5.6 | #86 | Web frontend (React / Next.js) |
+| 4.1 | #313 | Team workspaces + tenant segregation |
+| 4.2 | — | Interactive OpenAPI portal |
+| 4.3 | — | Webhook / Slack notifications |
 
-**Container Apps Jobs detail (#467):** Replace T3 activity replicas with
-event-triggered Jobs (one per AOI). 4 vCPU / 8 GiB per Job, max 50
-concurrent. Orchestrator dispatches via storage queue, polls blob for
-completion. 500-AOI run: ~45 min (50 Jobs) vs ~2.5 hours (10 T3 replicas).
-Azure Batch stays for AOIs ≥50k ha and future GPU workloads.
+---
+
+### Stage 5 — Infrastructure Optimisation, Enterprise & ML (Horizon)
+
+**Do not start until Stage 4 is generating revenue.** These are post-revenue
+features and cost optimisations.
+
+| Order | Issue | Title |
+|-------|-------|-------|
+| 5.1 | #466 | Split Container Apps into API + compute images (T2/T3) |
+| 5.2 | #467 | Container Apps Jobs for burst compute |
+| 5.3 | #82 | Tree detection model + inference pipeline |
+| 5.4 | #83 | Tree health classification + temporal tracking |
+| 5.5 | #84 | Annotation-driven model fine-tuning |
+| 5.6 | #87 | Annotation tools and storage |
+| 5.7 | #86 | Web frontend (React / Next.js) |
+| 5.8 | #177 | H3-derived imagery/stat products |
+
+---
+
+## Issue Triage (2026-04-12)
+
+Per the project review, open issues are triaged as follows:
+
+### Active — Do Now (Stage 2C)
+
+| # | Title | Priority |
+|---|-------|----------|
+| #531 | Pipeline e2e verification in Azure | P0 |
+| #520 | billing/status 500 | P0 |
+| #532 | Remove demo mode — Free Tier entry point | P1 |
+| #533 | Real prices on pricing page | P1 |
+
+### Active — This Month (Stage 2D)
+
+| # | Title |
+|---|-------|
+| #534 | Auth header verification (HMAC) |
+| #535 | E2e Stripe billing flow |
+| #406 | Reconcile docs with live routes |
+
+### Active — Release Safety (Stage 2E)
+
+| # | Title |
+|---|-------|
+| #401 | Dev/prod deploy flows |
+| #405 | Config drift reduction |
+| #402 | Security-gated deploys |
+| #403 | Production rollout gates |
+
+### Deferred — Post-Revenue
+
+| # | Title | When |
+|---|-------|------|
+| #466 | T2/T3 split | When cost exceeds revenue |
+| #467 | Container Apps Jobs | After T2/T3 split |
+| #313 | Team workspaces | When Team tier has customers |
+| #82, #83, #84 | Tree detection / health / ML | Stage 5 |
+| #86 | React frontend | Stage 5 |
+| #87 | Annotation tools | Stage 5 |
+
+### Closed (2026-04-12)
+
+| # | Title | Reason |
+|---|-------|--------|
+| #474 | Migrate remaining browser-facing endpoints to SWA | Superseded by BYOF |
+
+### Low Priority / Bundle with Adjacent Work
+
+| # | Title | Bundle with |
+|---|-------|-------------|
+| #252 | Rate limiter persistence | Stage 4 multi-instance |
+| #228 | Distributed replay store | Stage 4 multi-instance |
+| #488 | Pipeline perf optimisation | Stage 3 |
+| #513 | Infracost usage metric name | Next infra PR |
+| #517 | CSP img-src unused CartoDB | Next CSP change |
+| #518 | CSP connect-src missing unpkg | Next CSP change |
+| #519 | Self-host Leaflet | Nice-to-have |
+| #525 | Skip unchanged app settings | Next deploy PR |
+| #526 | Batch tofu output calls | Next deploy PR |
+| #527 | CSP blocks Leaflet source map | Next CSP change |
+| #528, #529 | Duplicate split FA issues | Superseded by #466 |
 
 ---
 
 ## Housekeeping (attach to adjacent feature work)
 
-These are not standalone PRs — bundle with the next PR that touches the same area.
-
 | Issue | Title | Bundle with |
 |-------|-------|-------------|
 | #252 | Rate limiter persistence (Redis/Cosmos) | Stage 4 multi-instance work |
 | #228 | Distributed replay store for valet tokens | Stage 4 multi-instance work |
-| — | Pydantic V2 request/response models | Next API surface change |
-| — | Extract provider stubs from production code to test helpers | Next provider refactor |
 
 ---
 
@@ -298,3 +334,5 @@ When working on any task:
 1. **Log issues you find.** If you encounter a bug, deprecation warning, test flake, or code smell that isn't the current task, check if a GitHub issue already exists. If not, create one with the `discovered` label. Don't fix it inline — track it.
 2. **Update the roadmap.** When a PR merges, update "Recently Landed" and mark the corresponding stage item as ✅.
 3. **Keep context lean.** Reference issue numbers, not full descriptions. The issue holds the detail; the roadmap holds the order.
+4. **User journey first.** Do not open Stage 3+ work while the minimum viable user journey (Stage 2C) is incomplete.
+5. **No infrastructure without users.** T2/T3 split, Container Apps Jobs, and ML work are deferred until user volume or revenue justifies them.

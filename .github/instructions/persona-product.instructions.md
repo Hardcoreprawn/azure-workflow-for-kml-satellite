@@ -6,10 +6,20 @@ applyTo:
   - "blueprints/export.py"
   - "blueprints/eudr.py"
   - "blueprints/monitoring.py"
-  - "blueprints/demo.py"
   - "blueprints/catalogue.py"
 ---
 # Persona Product Guidelines
+
+## Entry Point Decision (2026-04-12)
+
+The product entry point is the **Free Tier** (authenticated, 5 real analyses/month).
+Demo mode (`?mode=demo`) is deprecated (#532). There is no unauthenticated preview
+of the dashboard. The landing page describes the product; the app requires sign-in.
+
+- **Landing page** → clear value proposition, real prices, "Start Free" CTA → `/app/`
+- **`/app/` unauthenticated** → sign-in gate with free-tier messaging
+- **`/app/` authenticated, first run** → sample KML picker, one-click first analysis
+- **Showcase** (pre-computed static demos for anonymous visitors) → deferred until pipeline is proven
 
 - Start by naming the primary persona: conservation, ESG/EUDR, or agricultural advisor.
 - State the job-to-be-done in operational terms: evidence generation, compliance proof, or batch field decision support.

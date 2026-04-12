@@ -9,9 +9,11 @@
 
 ## Prioritization
 
-- Finish Stage 2A release-safety work before opening more broad-exposure Stage 3 or Stage 4 implementation, unless the user explicitly overrides that priority.
+- **Stage 2C (Pipeline Verification & User Journey) is the current priority.** Do not open Stage 3+ work until the minimum viable user journey works end-to-end in Azure.
+- Finish Stage 2D (Revenue Enablement) and Stage 2E (Release Safety) before Stage 3 growth features.
 - For every substantial task, identify the primary persona, the job-to-be-done being improved, and the acceptance signal.
 - Prefer thin vertical slices over broad refactors that move several roadmap stages at once.
+- Do not spend engineering time on infrastructure optimisation (T2/T3 split, Container Apps Jobs) until user volume or revenue justifies it.
 
 ## Delivery Workflow
 
