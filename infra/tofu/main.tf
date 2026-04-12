@@ -815,10 +815,10 @@ resource "azurerm_static_web_app" "main" {
 #      treesight.jablab.dev → <SWA default hostname>
 #   2. Wait for DNS propagation, then run tofu apply.
 
-# Import pre-existing custom domain into state (created before IaC managed it).
-# Idempotent: once in state this is a no-op on subsequent applies.
+# One-time import: adopt a pre-existing SWA custom domain into state.
+# Set var.import_custom_domain = true in tfvars, apply once, then remove it.
 import {
-  for_each = var.custom_domain != "" ? toset([var.custom_domain]) : toset([])
+  for_each = var.import_custom_domain && var.custom_domain != "" ? toset([var.custom_domain]) : toset([])
   to       = azurerm_static_web_app_custom_domain.main[0]
   id       = "${azurerm_static_web_app.main.id}/customDomains/${each.value}"
 }
