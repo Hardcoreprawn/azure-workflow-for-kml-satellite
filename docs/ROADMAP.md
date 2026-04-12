@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
 | #530 | Ops dashboard, CORS hardening, always-ready instances, timing-safe auth |
 | #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
 | #537 | Roadmap restructure per project review: kill demo mode, prioritize user journey |
 | #536 | billing/status returns 200 with safe defaults when storage unavailable (fixes #520) |
 | #523 | Fix deploy: filter localhost from CORS verify; accept 200 or 204 for OPTIONS |
-| #521 | Fix deploy: resolve TF_STATE_CONTAINER/KEY from env-suffixed secrets |
 
 ---
 
