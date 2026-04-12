@@ -3,17 +3,17 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (merge PR #530 — all open PRs resolved)
+Last updated: 2026-04-12 (merge PR #546 — demo mode removed)
 
 ---
 
 ## Architecture Decision: Entry Point
 
-**Decision (2026-04-12):** The product entry point is the **Free Tier** (authenticated, real pipeline, 5 runs). Demo mode (`?mode=demo`) is deprecated and will be removed (#532). The landing page directs users to sign in and run a real analysis.
+**Decision (2026-04-12):** The product entry point is the **Free Tier** (authenticated, real pipeline, 5 runs). The landing page directs users to sign in and run a real analysis.
 
 - **Free tier** = authenticated, 5 real analyses/month, sample KMLs for one-click first run
 - **Showcase** = deferred. Pre-computed static samples for anonymous visitors are a nice-to-have after the real pipeline is proven end-to-end. Not current priority.
-- **Demo mode** = deprecated; scheduled for removal (#532). It was a UI preview that couldn't run anything — confused middle ground between showcase and free tier.
+- **Demo mode** = removed (PR #546, issue #532). Frontend `?mode=demo` deleted. Backend `demo` billing tier remains in pipeline guards, to be retired separately.
 
 See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
@@ -35,8 +35,8 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 ## Recently Landed
 
 | PR | Summary |
-|----|---------|
-| #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
+|----|---------|| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
+| #545 | CORS fix: set custom_domain in dev.tfvars for apex domain || #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
 | #530 | Ops dashboard, CORS hardening, always-ready instances, timing-safe auth |
 | #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
 | #537 | Roadmap restructure per project review: kill demo mode, prioritize user journey |
@@ -141,7 +141,7 @@ narrative. Billing/status returns 200.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| U.1 | #532 | Remove demo mode — unify on Free Tier with sample KMLs | Open |
+| U.1 | #532 | Remove demo mode — unify on Free Tier with sample KMLs | ✅ PR #546 |
 
 The entry point is the Free Tier (5 runs, authenticated, real pipeline).
 Demo mode (`?mode=demo`) is removed. Landing page says "Start Free" →
