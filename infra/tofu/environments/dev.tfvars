@@ -13,6 +13,8 @@ default_tags = {
 }
 budget_amount         = 10
 budget_contact_emails = ["j.brewster@outlook.com"]
+# NOTE: Apex domain is intentionally assigned to dev (the only deployed env).
+# Clear this before applying prd.tfvars — a domain can only bind to one SWA.
 custom_domain         = "canopex.hrdcrprwn.com"
 enable_azure_ai         = false
 enable_stripe           = true
