@@ -31,7 +31,7 @@
       Canopex
     </a>
     <ul>
-      <li><a href="/app/?mode=demo">Try Demo</a></li>
+      <li><a href="/app/">Start Free</a></li>
       <li><a href="#timeline">How It Works</a></li>
       <li><a href="#pricing">Pricing</a></li>
       <li><a href="/docs/">Docs</a></li>
@@ -53,7 +53,7 @@
     <h1>From Boundary to Evidence<br>in 5 Minutes.</h1>
     <p>Upload a land boundary, get automated satellite evidence back — NDVI vegetation health, weather correlation, and AI-powered insights for EUDR compliance and conservation monitoring.</p>
     <div class="hero-cta">
-      <a href="/app/?mode=demo" class="btn btn-primary">Try Live Demo</a>
+      <a href="/app/" class="btn btn-primary">Start Free</a>
       <a href="#pricing" class="btn btn-secondary">View Pricing</a>
     </div>
   </div>
@@ -63,12 +63,12 @@
 <section id="see-it-action">
   <div class="container">
     <div class="section-label">Experience</div>
-    <h2>Preview the Free Plan</h2>
-    <p style="color:var(--c-muted);max-width:560px;margin-bottom:24px">Preview the signed-in free plan, then sign in to upload a KML or use one of our sample locations for a real analysis run.</p>
+    <h2>Start Your Free Analysis</h2>
+    <p style="color:var(--c-muted);max-width:560px;margin-bottom:24px">Sign in, upload a KML file describing your area of interest, and get satellite evidence back in minutes. 5 free analyses per month, no credit card required.</p>
     <div style="text-align:center">
-      <a href="/app/?mode=demo" class="btn btn-primary" style="padding:14px 32px;font-size:1rem">Preview Free Plan</a>
+      <a href="/app/" class="btn btn-primary" style="padding:14px 32px;font-size:1rem">Start Free</a>
     </div>
-    <p style="font-size:.8rem;color:var(--c-muted);text-align:center;margin-top:24px;max-width:640px;margin-left:auto;margin-right:auto">Sign in to use the free plan's low-cost seasonal pipeline. <a href="/docs/kml-guide.html">Learn how to create KML files.</a></p>
+    <p style="font-size:.8rem;color:var(--c-muted);text-align:center;margin-top:24px;max-width:640px;margin-left:auto;margin-right:auto">No setup required. <a href="/docs/kml-guide.html">Learn how to create KML files.</a></p>
   </div>
 </section>
 
@@ -278,7 +278,7 @@
       <div class="faq-item"><div class="faq-q">How does multi-tenancy work?</div><div class="faq-a">Each tenant gets isolated input/output containers (e.g. acme-input, acme-output). The tenant ID is derived from the container name, and all pipeline outputs are scoped accordingly.</div></div>
       <div class="faq-item"><div class="faq-q">What happens if an imagery download fails?</div><div class="faq-a">Downloads are retried with configurable intervals and exponential backoff. Failed or timed-out downloads are flagged as partial in the pipeline summary, while successful downloads continue through fulfilment.</div></div>
       <div class="faq-item"><div class="faq-q">How large can KML files be?</div><div class="faq-a">The maximum KML file size is 10 MiB. For very large feature sets, the payload offloader automatically moves data to blob storage to stay within the Durable Functions 48 KiB history limit.</div></div>
-      <div class="faq-item"><div class="faq-q">Is the demo data real satellite imagery?</div><div class="faq-a">The demo map shows real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time. The pipeline uses the same composite search strategy in production.</div></div>
+      <div class="faq-item"><div class="faq-q">Is the imagery real satellite data?</div><div class="faq-a">Yes. Canopex uses real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time.</div></div>
       <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
       <div class="faq-item"><div class="faq-q">How is the pipeline deployed?</div><div class="faq-a">Azure Functions on Container Apps with Durable Functions orchestration, Azure Blob Storage, Event Grid triggers, and a Static Web App for the frontend. All managed via OpenTofu.</div></div>
       <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML/KMZ files and analysis results are automatically deleted after <strong>30 days</strong>. Server logs are retained for 90 days for debugging. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a> for full details.</div></div>

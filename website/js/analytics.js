@@ -38,7 +38,7 @@
       sdk.loadAppInsights();
       sdk.trackPageView();
 
-      // Track demo funnel events
+      // Track click events with data-track attribute
       document.addEventListener("click", function (e) {
         var btn = e.target.closest("[data-track]");
         if (btn) {

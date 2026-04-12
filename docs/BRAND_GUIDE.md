@@ -123,7 +123,7 @@ The site and app are **appropriately separate and integrated**:
 
 1. **Shared nav bar** — Same HTML structure, same `shared.css` styles. The logo and auth area are identical.
 2. **Auth handoff** — `landing.js` detects MSAL redirect from `/app/` and sends authenticated users to the dashboard. The site nav shows "Dashboard" button when signed in.
-3. **Demo bridge** — The marketing site links to `/app/?mode=demo` — the app renders in demo mode with limited features and a sign-in upsell banner.
+3. **Free tier entry** — The marketing site links to `/app/` — unauthenticated users see a sign-in gate with a clear value proposition and link to pricing.
 4. **Pricing link** — The app links back to `/#pricing` on the marketing site. Billing portal is accessed from within the app.
 5. **Shared token file** — Both pages read `/api-config.json` for runtime configuration.
 

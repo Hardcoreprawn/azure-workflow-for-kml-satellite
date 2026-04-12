@@ -226,13 +226,13 @@ class TestLogAnalyticsCap:
             "until Log Analytics proves its value"
         )
 
-    def test_dev_custom_domain_is_disabled(self):
+    def test_dev_custom_domain_is_set(self):
         tfvars = DEV_TFVARS.read_text()
         match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
         assert match, "dev.tfvars must set custom_domain explicitly"
-        assert match.group(1) == "", (
-            "dev.tfvars must leave custom_domain empty so clean-slate dev "
-            "redeploys do not depend on public DNS"
+        assert match.group(1) != "", (
+            "dev.tfvars must set custom_domain to the apex domain "
+            "so the SWA serves CORS headers for the correct origin"
         )
 
 
