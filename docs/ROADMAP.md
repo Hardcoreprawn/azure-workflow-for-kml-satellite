@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (UX review + auth hardening)
+Last updated: 2026-04-12 (UX overhaul PR #557, docs #556, auth #554 merged)
 
 ---
 
@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #557 | Dashboard UX overhaul: layout reorder, jargon replacement, export dedup (UX.1 + UX.2 + UX.6, #555) |
+| #556 | Add UX review doc and integrate dashboard UX overhaul into roadmap (closes #555 partial) |
 | #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
 | #549 | Fix deploy: declarative import block for custom domain |
 | #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
 | #545 | CORS fix: set custom_domain in dev.tfvars for apex domain |
-| #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
-| #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
 
 ---
 
@@ -171,12 +171,12 @@ can: see what Canopex does (landing page) → sign in (free) → run analysis
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| UX.1 | #555 | Reorder layout: submission above evidence | Open |
-| UX.2 | #555 | Replace jargon with user language | Open |
+| UX.1 | #555 | Reorder layout: submission above evidence | ✅ #557 |
+| UX.2 | #555 | Replace jargon with user language | ✅ #557 |
 | UX.3 | #555 | Collapse first-load noise for new users | Open |
 | UX.4 | #555 | Auto-scroll to results on completion | Open |
 | UX.5 | #555 | Streamline submission form | Open |
-| UX.6 | #555 | Deduplicate export buttons | Open |
+| UX.6 | #555 | Deduplicate export buttons | ✅ #557 |
 
 See `docs/UX_REVIEW_2026-04-12.md` for full findings and implementation
 plan. All slices are frontend-only. Recommended order: UX.1 → UX.2 →
