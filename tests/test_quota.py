@@ -14,21 +14,40 @@ from treesight.security.quota import (
 
 
 @pytest.fixture(autouse=True)
-def _mock_storage(mock_storage):
-    """Auto-use the shared mock_storage fixture from conftest."""
-    yield mock_storage
+def _mock_cosmos():
+    """Auto-patch Cosmos read_item/upsert_item with in-memory dict store."""
+    store: dict[str, dict] = {}  # item_id → document
+
+    def _read_item(container: str, item_id: str, partition_key: str):
+        return store.get(f"{container}/{item_id}")
+
+    def _upsert_item(container: str, item: dict):
+        store[f"{container}/{item['id']}"] = item
+        return item
+
+    with (
+        patch("treesight.storage.cosmos.read_item", side_effect=_read_item),
+        patch("treesight.storage.cosmos.upsert_item", side_effect=_upsert_item),
+    ):
+        yield store
 
 
 class TestCheckQuota:
     def test_new_user_has_full_quota(self):
         assert check_quota("user-new") == FREE_TIER_LIMIT
 
-    def test_partial_usage(self, _mock_storage):
-        _mock_storage["quotas/user-partial.json"] = {"used": 2, "runs": []}
+    def test_partial_usage(self, _mock_cosmos):
+        _mock_cosmos["users/user-partial"] = {
+            "id": "user-partial",
+            "quota": {"used": 2, "runs": []},
+        }
         assert check_quota("user-partial") == FREE_TIER_LIMIT - 2
 
-    def test_exhausted_returns_zero(self, _mock_storage):
-        _mock_storage["quotas/user-full.json"] = {"used": FREE_TIER_LIMIT, "runs": []}
+    def test_exhausted_returns_zero(self, _mock_cosmos):
+        _mock_cosmos["users/user-full"] = {
+            "id": "user-full",
+            "quota": {"used": FREE_TIER_LIMIT, "runs": []},
+        }
         assert check_quota("user-full") == 0
 
 
@@ -68,8 +87,11 @@ class TestGetUsage:
         assert usage["used"] == 2
         assert usage["limit"] == FREE_TIER_LIMIT
 
-    def test_partial_usage_from_store(self, _mock_storage):
-        _mock_storage["quotas/user-stored.json"] = {"used": 5, "runs": []}
+    def test_partial_usage_from_store(self, _mock_cosmos):
+        _mock_cosmos["users/user-stored"] = {
+            "id": "user-stored",
+            "quota": {"used": 5, "runs": []},
+        }
         usage = get_usage("user-stored")
         assert usage["used"] == 5
         assert usage["limit"] == FREE_TIER_LIMIT
@@ -92,46 +114,4 @@ class TestReleaseQuota:
         release_quota("user-idem", instance_id="run-abc")
         remaining = release_quota("user-idem", instance_id="run-abc")
         # Second call should be a no-op
-        assert remaining == FREE_TIER_LIMIT - 1
-
-
-# --- Cosmos path ---
-
-
-class TestGetQuotaRecordCosmos:
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.read_item")
-    def test_reads_from_cosmos(self, mock_read, _mock_cosmos):
-        mock_read.return_value = {"id": "u1", "quota": {"used": 3, "runs": []}}
-        assert check_quota("u1") == FREE_TIER_LIMIT - 3
-        mock_read.assert_any_call("users", "u1", "u1")
-
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.read_item", return_value=None)
-    def test_returns_default_when_cosmos_doc_missing(self, _mock_read, _mock_cosmos):
-        assert check_quota("u-new") == FREE_TIER_LIMIT
-
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("unavailable"))
-    def test_falls_back_to_blob_on_cosmos_error(self, _mock_read, _mock_cosmos):
-        # Blob storage also empty → default quota
-        assert check_quota("u-fallback") == FREE_TIER_LIMIT
-
-
-class TestSaveQuotaRecordCosmos:
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.upsert_item")
-    @patch("treesight.storage.cosmos.read_item", return_value=None)
-    def test_writes_to_cosmos(self, _mock_read, mock_upsert, _mock_cosmos):
-        consume_quota("u1")
-        mock_upsert.assert_called_once()
-        doc = mock_upsert.call_args[0][1]
-        assert doc["id"] == "u1"
-        assert doc["quota"]["used"] == 1
-
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.upsert_item", side_effect=RuntimeError("unavailable"))
-    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("unavailable"))
-    def test_falls_back_to_blob_on_cosmos_write_error(self, _mock_read, _mock_upsert, _mock_cosmos):
-        remaining = consume_quota("u-fallback")
         assert remaining == FREE_TIER_LIMIT - 1

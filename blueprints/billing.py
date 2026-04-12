@@ -25,7 +25,6 @@ from treesight.config import (
     STRIPE_PRICE_ID_PRO_USD,
     STRIPE_WEBHOOK_SECRET,
 )
-from treesight.storage import cosmos as _cosmos_mod
 
 logger = logging.getLogger(__name__)
 
@@ -365,9 +364,8 @@ _customer_to_user_cache: dict[str, str | None] = {}
 def _user_id_from_customer(customer_id: str | None) -> str | None:
     """Reverse-lookup user_id from Stripe customer ID.
 
-    Queries the Cosmos subscriptions container (indexed on stripe_customer_id)
-    when available; falls back to scanning subscription blobs.
-    Results are cached in-process to avoid repeated blob scans.
+    Queries the Cosmos subscriptions container (indexed on stripe_customer_id).
+    Results are cached in-process to avoid repeated queries.
     """
     if not customer_id:
         return None
@@ -375,47 +373,25 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
     if customer_id in _customer_to_user_cache:
         return _customer_to_user_cache[customer_id]
 
-    if _cosmos_mod.cosmos_available():
-        try:
-            from treesight.storage import cosmos
-
-            results = cosmos.query_items(
-                "subscriptions",
-                "SELECT c.user_id FROM c WHERE c.stripe_customer_id = @cid",
-                parameters=[{"name": "@cid", "value": customer_id}],
-            )
-            if results:
-                uid = results[0].get("user_id")
-                _customer_to_user_cache[customer_id] = uid
-                return uid
-        except Exception:
-            logger.warning(
-                "Cosmos reverse lookup failed for customer=%s, falling back to blob",
-                customer_id,
-                exc_info=True,
-            )
-
-    from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
     try:
-        from treesight.constants import SUBSCRIPTIONS_PREFIX
+        from treesight.storage import cosmos
 
-        prefix = f"{SUBSCRIPTIONS_PREFIX}/"
-        blobs = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix=prefix)
-        for blob_name in blobs:
-            try:
-                record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
-                if record.get("stripe_customer_id") == customer_id:
-                    uid = blob_name.removeprefix(prefix).removesuffix(".json")
-                    _customer_to_user_cache[customer_id] = uid
-                    return uid
-            except Exception:
-                logger.debug("Skipping unreadable blob %s", blob_name)
-                continue
+        results = cosmos.query_items(
+            "subscriptions",
+            "SELECT c.user_id FROM c WHERE c.stripe_customer_id = @cid",
+            parameters=[{"name": "@cid", "value": customer_id}],
+        )
+        if results:
+            uid = results[0].get("user_id")
+            _customer_to_user_cache[customer_id] = uid
+            return uid
     except Exception:
-        logger.warning("Could not scan subscriptions for customer=%s", customer_id)
+        logger.warning(
+            "Cosmos reverse lookup failed for customer=%s",
+            customer_id,
+            exc_info=True,
+        )
+
     _customer_to_user_cache[customer_id] = None
     return None
 

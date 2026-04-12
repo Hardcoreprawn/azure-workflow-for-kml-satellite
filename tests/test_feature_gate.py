@@ -64,19 +64,17 @@ class TestGatedPriceLabels:
 class TestBillingStatusGating:
     """Integration test: billing status payload includes gating info."""
 
-    @patch("treesight.storage.client.BlobStorageClient")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     @patch("treesight.security.feature_gate.BILLING_ALLOWED_USERS", frozenset())
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    def test_gated_user_sees_gated_flag(self, _blob):
+    def test_gated_user_sees_gated_flag(self, _cosmos_read):
         import json
 
         import azure.functions as func
 
         from blueprints.billing import billing_status
-
-        _blob.return_value.download_json.side_effect = FileNotFoundError
 
         req = func.HttpRequest(
             method="GET",
@@ -92,7 +90,7 @@ class TestBillingStatusGating:
         assert data["billing_gated"] is True
         assert "price_labels" in data
 
-    @patch("treesight.storage.client.BlobStorageClient")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     @patch(
         "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
         frozenset({"allowed-user"}),
@@ -100,14 +98,12 @@ class TestBillingStatusGating:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    def test_allowed_user_sees_ungated(self, _blob):
+    def test_allowed_user_sees_ungated(self, _cosmos_read):
         import json
 
         import azure.functions as func
 
         from blueprints.billing import billing_status
-
-        _blob.return_value.download_json.side_effect = FileNotFoundError
 
         req = func.HttpRequest(
             method="GET",

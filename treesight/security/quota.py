@@ -1,9 +1,8 @@
 """Per-user pipeline run quota.
 
 Each user gets a fixed number of pipeline runs based on their subscription tier.
-When Cosmos DB is configured, quota is stored in the ``users`` container.
-Falls back to blob storage at ``quotas/{user_id}.json`` inside
-pipeline-payloads.
+Quota records are stored in the Cosmos DB ``users`` container with partition
+key ``/user_id``.
 """
 
 from __future__ import annotations
@@ -11,18 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from treesight.constants import FREE_TIER_RUN_LIMIT, PIPELINE_PAYLOADS_CONTAINER
+from treesight.constants import FREE_TIER_RUN_LIMIT
 
 logger = logging.getLogger(__name__)
 
 #: Maximum free pipeline runs per user (kept for backwards compat).
 FREE_TIER_LIMIT = FREE_TIER_RUN_LIMIT
-
-_QUOTA_PREFIX = "quotas"
-
-
-def _blob_path(user_id: str) -> str:
-    return f"{_QUOTA_PREFIX}/{user_id}.json"
 
 
 def _run_limit(user_id: str) -> int:
@@ -40,47 +33,22 @@ def _run_limit(user_id: str) -> int:
 
 
 def _get_quota_record(user_id: str) -> dict[str, Any]:
-    """Load the quota record from Cosmos (users container) or blob storage."""
-    from treesight.storage.cosmos_or_blob import read_with_fallback
+    """Load the quota record from Cosmos (users container)."""
+    from treesight.storage.cosmos import read_item
 
-    def _cosmos():
-        from treesight.storage.cosmos import read_item
-
-        doc = read_item("users", user_id, user_id)
-        if doc:
-            return doc.get("quota", {"used": 0, "runs": []})
-        return {"used": 0, "runs": []}
-
-    def _blob():
-        from treesight.storage.client import BlobStorageClient
-
-        storage = BlobStorageClient()
-        try:
-            return storage.download_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id))
-        except Exception:
-            return {"used": 0, "runs": []}
-
-    return read_with_fallback(_cosmos, _blob)
+    doc = read_item("users", user_id, user_id)
+    if doc:
+        return doc.get("quota", {"used": 0, "runs": []})
+    return {"used": 0, "runs": []}
 
 
 def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
-    """Persist the quota record to Cosmos (users container) or blob storage."""
-    from treesight.storage.cosmos_or_blob import write_with_fallback
+    """Persist the quota record to Cosmos (users container)."""
+    from treesight.storage.cosmos import read_item, upsert_item
 
-    def _cosmos():
-        from treesight.storage.cosmos import read_item, upsert_item
-
-        existing = read_item("users", user_id, user_id) or {}
-        existing.update({"id": user_id, "user_id": user_id, "quota": record})
-        upsert_item("users", existing)
-
-    def _blob():
-        from treesight.storage.client import BlobStorageClient
-
-        storage = BlobStorageClient()
-        storage.upload_json(PIPELINE_PAYLOADS_CONTAINER, _blob_path(user_id), record)
-
-    write_with_fallback(_cosmos, _blob)
+    existing = read_item("users", user_id, user_id) or {}
+    existing.update({"id": user_id, "user_id": user_id, "quota": record})
+    upsert_item("users", existing)
 
 
 def check_quota(user_id: str) -> int:

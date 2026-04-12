@@ -65,13 +65,10 @@ class TestBillingWebhook:
 
 
 class TestHandleEvent:
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_checkout_completed_saves_pro(self, mock_cls):
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_checkout_completed_saves_pro(self, _mock_read, mock_upsert):
         from blueprints.billing import _handle_event
-
-        store = {}
-        mock_cls.return_value.upload_json = lambda c, p, d: store.update({p: d})
-        mock_cls.return_value.download_json.side_effect = FileNotFoundError
 
         _handle_event(
             {
@@ -86,19 +83,17 @@ class TestHandleEvent:
             }
         )
 
-        saved = store.get("subscriptions/user-abc.json")
-        assert saved is not None
-        assert saved["tier"] == "pro"
-        assert saved["status"] == "active"
-        assert saved["stripe_customer_id"] == "cus_123"
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["id"] == "user-abc"
+        assert doc["tier"] == "pro"
+        assert doc["status"] == "active"
+        assert doc["stripe_customer_id"] == "cus_123"
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_subscription_deleted_downgrades(self, mock_cls):
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_subscription_deleted_downgrades(self, _mock_read, mock_upsert):
         from blueprints.billing import _handle_event
-
-        store = {}
-        mock_cls.return_value.upload_json = lambda c, p, d: store.update({p: d})
-        mock_cls.return_value.download_json.side_effect = FileNotFoundError
 
         _handle_event(
             {
@@ -114,18 +109,16 @@ class TestHandleEvent:
             }
         )
 
-        saved = store.get("subscriptions/user-gone.json")
-        assert saved is not None
-        assert saved["tier"] == "free"
-        assert saved["status"] == "canceled"
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["id"] == "user-gone"
+        assert doc["tier"] == "free"
+        assert doc["status"] == "canceled"
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_payment_failed_sets_past_due(self, mock_cls):
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_payment_failed_sets_past_due(self, _mock_read, mock_upsert):
         from blueprints.billing import _handle_event
-
-        store = {}
-        mock_cls.return_value.upload_json = lambda c, p, d: store.update({p: d})
-        mock_cls.return_value.download_json.side_effect = FileNotFoundError
 
         _handle_event(
             {
@@ -140,9 +133,9 @@ class TestHandleEvent:
             }
         )
 
-        saved = store.get("subscriptions/user-broke.json")
-        assert saved is not None
-        assert saved["status"] == "past_due"
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["status"] == "past_due"
 
     def test_unknown_user_is_skipped(self):
         from blueprints.billing import _handle_event
@@ -201,12 +194,11 @@ class TestBillingPortal:
     @patch("blueprints.billing.STRIPE_API_KEY", "sk_test_xxx")
     @patch("blueprints.billing.STRIPE_WEBHOOK_SECRET", "whsec_test_xxx")
     @patch("blueprints.billing.STRIPE_PRICE_ID_PRO_GBP", "price_xxx")
-    @patch("treesight.storage.client.BlobStorageClient")
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     @_BILLING_UNGATED
-    def test_no_subscription_returns_404(self, mock_cls):
+    def test_no_subscription_returns_404(self, _mock_read):
         from blueprints.billing import billing_portal
 
-        mock_cls.return_value.download_json.side_effect = FileNotFoundError
         req = _make_req(url="/api/billing/portal")
         resp = billing_portal(req)
         assert resp.status_code == 404
@@ -225,11 +217,10 @@ class TestBillingPortal:
 
 
 class TestBillingStatus:
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_free_user_status(self, mock_cls):
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_free_user_status(self, _mock_read):
         from blueprints.billing import billing_status
 
-        mock_cls.return_value.download_json.side_effect = FileNotFoundError
         req = func.HttpRequest(
             method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b""
         )
@@ -253,22 +244,22 @@ class TestBillingStatus:
         resp = billing_status(req)
         assert resp.status_code == 204
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_local_origin_can_enable_tier_emulation(self, mock_cls):
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    def test_local_origin_can_enable_tier_emulation(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation, billing_status
 
-        store = {}
+        store: dict[str, dict] = {}
 
-        def _download_json(_container, path):
-            if path not in store:
-                raise FileNotFoundError(path)
-            return store[path]
+        def _read_item(container, item_id, partition_key):
+            return store.get(f"{container}/{item_id}")
 
-        def _upload_json(_container, path, data):
-            store[path] = data
+        def _upsert_item(container, item):
+            store[f"{container}/{item['id']}"] = item
+            return item
 
-        mock_cls.return_value.download_json.side_effect = _download_json
-        mock_cls.return_value.upload_json.side_effect = _upload_json
+        mock_read.side_effect = _read_item
+        mock_upsert.side_effect = _upsert_item
 
         emulate_req = _make_req(
             body=json.dumps({"tier": "team"}).encode("utf-8"),
@@ -291,8 +282,8 @@ class TestBillingStatus:
         assert status_data["tier"] == "team"
         assert status_data["capabilities"]["api_access"] is True
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_non_local_origin_rejects_tier_emulation(self, mock_cls):
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_non_local_origin_rejects_tier_emulation(self, _mock_read):
         from blueprints.billing import billing_emulation
 
         req = _make_req(
@@ -302,22 +293,22 @@ class TestBillingStatus:
         resp = billing_emulation(req)
         assert resp.status_code == 403
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_local_origin_allows_anonymous_tier_emulation(self, mock_cls):
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    def test_local_origin_allows_anonymous_tier_emulation(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation
 
-        store = {}
+        store: dict[str, dict] = {}
 
-        def _download_json(_container, path):
-            if path not in store:
-                raise FileNotFoundError(path)
-            return store[path]
+        def _read_item(container, item_id, partition_key):
+            return store.get(f"{container}/{item_id}")
 
-        def _upload_json(_container, path, data):
-            store[path] = data
+        def _upsert_item(container, item):
+            store[f"{container}/{item['id']}"] = item
+            return item
 
-        mock_cls.return_value.download_json.side_effect = _download_json
-        mock_cls.return_value.upload_json.side_effect = _upload_json
+        mock_read.side_effect = _read_item
+        mock_upsert.side_effect = _upsert_item
 
         req = make_test_request(
             url="/api/billing/emulation",
@@ -350,74 +341,30 @@ class TestUserIdFromCustomer:
 
         assert _user_id_from_customer(None) is None
 
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_finds_matching_customer(self, mock_cls):
-        from blueprints.billing import _user_id_from_customer
-
-        mock_cls.return_value.list_blobs.return_value = [
-            "subscriptions/user-xyz.json",
-        ]
-        mock_cls.return_value.download_json.return_value = {
-            "stripe_customer_id": "cus_target",
-            "tier": "pro",
-        }
-        assert _user_id_from_customer("cus_target") == "user-xyz"
-
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_no_match_returns_none(self, mock_cls):
-        from blueprints.billing import _user_id_from_customer
-
-        mock_cls.return_value.list_blobs.return_value = [
-            "subscriptions/user-other.json",
-        ]
-        mock_cls.return_value.download_json.return_value = {
-            "stripe_customer_id": "cus_different",
-        }
-        assert _user_id_from_customer("cus_unknown") is None
-
-
-class TestUserIdFromCustomerCosmos:
-    def setup_method(self):
-        from blueprints.billing import _customer_to_user_cache
-
-        _customer_to_user_cache.clear()
-
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items")
-    def test_finds_user_via_cosmos_query(self, mock_query, _mock_cosmos):
+    def test_finds_matching_customer(self, mock_query):
         from blueprints.billing import _user_id_from_customer
 
-        mock_query.return_value = [{"user_id": "user-abc"}]
-        assert _user_id_from_customer("cus_123") == "user-abc"
+        mock_query.return_value = [{"user_id": "user-xyz"}]
+        assert _user_id_from_customer("cus_target") == "user-xyz"
         mock_query.assert_called_once_with(
             "subscriptions",
             "SELECT c.user_id FROM c WHERE c.stripe_customer_id = @cid",
-            parameters=[{"name": "@cid", "value": "cus_123"}],
+            parameters=[{"name": "@cid", "value": "cus_target"}],
         )
 
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items")
-    def test_returns_none_when_no_cosmos_match(self, mock_query, _mock_cosmos):
+    def test_no_match_returns_none(self, mock_query):
         from blueprints.billing import _user_id_from_customer
 
         mock_query.return_value = []
-        with patch("treesight.storage.client.BlobStorageClient") as mock_cls:
-            mock_cls.return_value.list_blobs.return_value = []
-            assert _user_id_from_customer("cus_ghost") is None
+        assert _user_id_from_customer("cus_unknown") is None
 
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
     @patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("down"))
-    @patch("treesight.storage.client.BlobStorageClient")
-    def test_falls_back_to_blob_on_cosmos_error(self, mock_cls, _mock_query, _mock_cosmos):
+    def test_returns_none_on_cosmos_error(self, _mock_query):
         from blueprints.billing import _user_id_from_customer
 
-        mock_cls.return_value.list_blobs.return_value = [
-            "subscriptions/user-fallback.json",
-        ]
-        mock_cls.return_value.download_json.return_value = {
-            "stripe_customer_id": "cus_err",
-        }
-        assert _user_id_from_customer("cus_err") == "user-fallback"
+        assert _user_id_from_customer("cus_err") is None
 
 
 # ---------------------------------------------------------------------------
@@ -426,12 +373,9 @@ class TestUserIdFromCustomerCosmos:
 
 
 class TestBillingStatusResilience:
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=False)
-    @patch(
-        "treesight.storage.client.BlobStorageClient",
-        side_effect=RuntimeError("connection string missing"),
-    )
-    def test_returns_safe_default_when_all_storage_fails(self, _mock_blob, _mock_cosmos):
+    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("cosmos down"))
+    @patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("cosmos down"))
+    def test_returns_safe_default_when_cosmos_fails(self, _mock_query, _mock_read):
         """billing/status should return 200 with free-tier defaults, not 500."""
         from blueprints.billing import billing_status
 
@@ -447,27 +391,3 @@ class TestBillingStatusResilience:
         assert data["tier"] == "free"
         assert data["runs_remaining"] >= 0
         assert data["billing_gated"] is True
-
-    @patch("treesight.storage.cosmos.cosmos_available", return_value=True)
-    @patch("treesight.storage.cosmos.read_item", side_effect=RuntimeError("cosmos down"))
-    @patch(
-        "treesight.storage.client.BlobStorageClient",
-        side_effect=RuntimeError("blob down too"),
-    )
-    def test_returns_safe_default_when_cosmos_and_blob_both_fail(
-        self, _mock_blob, _mock_read, _mock_cosmos
-    ):
-        """Both Cosmos and blob failing should not crash the endpoint."""
-        from blueprints.billing import billing_status
-
-        req = func.HttpRequest(
-            method="GET",
-            url="/api/billing/status",
-            headers={"Origin": _ALLOWED_ORIGIN},
-            body=b"",
-        )
-        resp = billing_status(req)
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["tier"] == "free"
-        assert data["status"] == "none"
