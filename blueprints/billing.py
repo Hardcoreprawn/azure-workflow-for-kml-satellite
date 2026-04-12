@@ -91,7 +91,7 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
         effective = {"tier": "free", "status": "none"}
         emulation = None
         capabilities = plan_capabilities("free")
-        usage = {"used": 0, "limit": plan_capabilities("free")["run_limit"]}
+        usage = {"used": 0, "limit": capabilities["run_limit"]}
 
     gated = not billing_allowed(user_id)
 
