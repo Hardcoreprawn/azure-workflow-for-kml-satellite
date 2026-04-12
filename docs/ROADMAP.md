@@ -13,7 +13,7 @@ Last updated: 2026-04-12 (roadmap restructure per project review)
 
 - **Free tier** = authenticated, 5 real analyses/month, sample KMLs for one-click first run
 - **Showcase** = deferred. Pre-computed static samples for anonymous visitors are a nice-to-have after the real pipeline is proven end-to-end. Not current priority.
-- **Demo mode** = removed. It was a UI preview that couldn't run anything — confused middle ground between showcase and free tier.
+- **Demo mode** = deprecated; scheduled for removal (#532). It was a UI preview that couldn't run anything — confused middle ground between showcase and free tier.
 
 See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
@@ -65,7 +65,7 @@ min 1 replica (warm BFF), max 10 replicas (KEDA). ~£20/month baseline.
 | **Phase 3** (#467) | T2 + Container Apps Jobs | ~£8/mo + burst | Deferred |
 
 The T2/T3 split saves ~£12/month. Do not start until user count justifies
-the engineering effort. See § "Stage 5" for details.
+the engineering effort.
 
 ---
 
@@ -80,7 +80,7 @@ Complete each group before starting the next.
 
 ---
 
-## Completed Stages (P0–P3)
+## Completed Stages (legacy P0–P3 numbering)
 
 <details>
 <summary>Expand completed stages</summary>

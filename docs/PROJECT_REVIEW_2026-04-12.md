@@ -54,7 +54,7 @@ This is the critical finding. I'll walk through what a new visitor experiences:
    - The "Start Your First Analysis" button requires sign-in. The demo is not a demo — it's a preview of an empty UI.
    - The showcase concept (pre-computed static blobs from stock AOIs) is documented in the architecture but **not visible on the demo page**. `app-shell.js` has no `showcase` or `demo_artifacts` references.
 
-3. **Sign-in** — Uses SWA built-in Azure AD. This means the user signs in with a Microsoft account, Google account, or GitHub. This is fine for developers but may confuse conservation analysts or ESG officers who expect email/password or magic-link auth. The auth provider choice is undocumented on the site.
+3. **Sign-in** — Uses SWA built-in Azure AD via the configured `/.auth/login/aad` flow. This means the user signs in with the Microsoft/Azure AD provider currently configured for the app, not Google or GitHub. This is fine for developers but may confuse conservation analysts or ESG officers who expect email/password or magic-link auth. The auth provider choice is undocumented on the site.
 
 4. **After sign-in** — The user arrives at the same empty dashboard. They need to:
    - Know what a KML file is (the KML guide exists but is linked, not shown inline)
@@ -180,6 +180,8 @@ Pre-compute 3–4 compelling demo analyses using real AOIs:
 These run through the real pipeline, and the outputs (imagery tiles, NDVI charts, weather data, AI narrative) are stored as static blobs. The demo page renders them without auth or pipeline execution. The visitor sees exactly what they'd get as a customer, in 5 seconds, not 5 minutes.
 
 **This is the highest-ROI work in the entire backlog.**
+
+*Post-review note:* The updated roadmap/architecture decision is to defer Showcase implementation until after `#531` and `#532`, prioritising those release-safety items first. Showcase remains a high-value follow-on once that work lands.
 
 #### R2. Fix the Billing/Status 500 (Hours)
 
