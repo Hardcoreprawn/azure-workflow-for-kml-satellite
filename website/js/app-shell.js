@@ -14,17 +14,17 @@
       risk: 'No silent fallback',
       rhythm: 'Monthly watchlist',
       historyCopy: 'Keep the most recent incident visible while you compare new reports against what already ran.',
-      runCopy: 'Queue a signed-in analysis for a protected area or reported clearing.',
+      runCopy: 'Queue an analysis for a protected area or reported clearing.',
       contentCopy: 'Use this rail to understand what evidence is being assembled and what will be ready for a field or donor brief.',
-      runLensTitle: 'Conservation evidence run',
+      runLensTitle: 'Conservation analysis',
       runLensNote: 'Frame this run around vegetation change, weather context, and plain-English proof.',
-      readyNote: 'Launch a signed-in conservation evidence run from this workspace.',
-      emptyHistoryNote: 'Your next signed-in submission becomes the first item in the field evidence queue.',
+      readyNote: 'Ready to run a conservation analysis.',
+      emptyHistoryNote: 'Your next submission will appear here.',
       activeHistoryContext: 'field evidence',
       completedHistoryOutcome: 'shareable evidence brief',
       activePath: 'Tracking evidence build',
-      completedPath: 'Prepare evidence brief',
-      runLabel: 'Start evidence run',
+      completedPath: 'Review results',
+      runLabel: 'Start analysis',
       reviewLabel: 'Review latest incident',
       deliverableLabel: 'Open evidence rail',
       emptyContent: {
@@ -37,7 +37,7 @@
       },
       completedContent: {
         exportsTitle: 'Evidence pack next',
-        exportsNote: 'The next signed-in slice should reopen this run into maps, narrative, and a field-ready evidence pack.'
+        exportsNote: 'Maps, narrative, and a field-ready evidence pack will be available after results load.'
       }
     },
     eudr: {
@@ -49,12 +49,12 @@
       risk: 'Audit-ready trust',
       rhythm: 'Quarterly refresh cadence',
       historyCopy: 'Keep the most recent assessment visible while you decide whether another supplier plot needs review.',
-      runCopy: 'Queue a signed-in due diligence run with explicit product-path status.',
+      runCopy: 'Queue a due diligence run with explicit product-path status.',
       contentCopy: 'Use this rail to understand what audit evidence is forming before it becomes a saved due diligence dossier.',
-      runLensTitle: 'Due diligence evidence run',
+      runLensTitle: 'EUDR compliance check',
       runLensNote: 'Keep baseline integrity, plain-English findings, and product-path reliability front and center.',
-      readyNote: 'Launch a signed-in due diligence run from this workspace.',
-      emptyHistoryNote: 'Your next signed-in submission becomes the first item in the due diligence queue.',
+      readyNote: 'Ready to run a due diligence check.',
+      emptyHistoryNote: 'Your next submission will appear here.',
       activeHistoryContext: 'audit context',
       completedHistoryOutcome: 'due diligence dossier',
       activePath: 'Tracking audit evidence',
@@ -72,7 +72,7 @@
       },
       completedContent: {
         exportsTitle: 'Audit dossier next',
-        exportsNote: 'The next signed-in slice should reopen this run with coordinates, methods, and exportable due diligence evidence.'
+        exportsNote: 'Coordinates, methods, and exportable due diligence evidence will be available after results load.'
       }
     },
     portfolio: {
@@ -84,12 +84,12 @@
       risk: 'Scale without guesswork',
       rhythm: 'Event-driven review',
       historyCopy: 'Keep the most recent batch visible so you can triage new uploads against what already moved.',
-      runCopy: 'Queue a signed-in batch-style analysis and keep scale warnings visible.',
+      runCopy: 'Queue a batch-style analysis and keep scale warnings visible.',
       contentCopy: 'Use this rail to understand what the current run is building before you reopen it as a parcel-level review.',
       runLensTitle: 'Portfolio triage run',
       runLensNote: 'Bias the workspace toward batch readiness, AOI spread, and which runs need deeper follow-up.',
-      readyNote: 'Launch a signed-in portfolio triage run from this workspace.',
-      emptyHistoryNote: 'Your next signed-in submission becomes the first item in the batch review queue.',
+      readyNote: 'Ready to run a batch analysis.',
+      emptyHistoryNote: 'Your next submission will appear here.',
       activeHistoryContext: 'batch context',
       completedHistoryOutcome: 'triage summary',
       activePath: 'Tracking batch progress',
@@ -107,7 +107,7 @@
       },
       completedContent: {
         exportsTitle: 'Triage summary next',
-        exportsNote: 'The next signed-in slice should reopen this run into parcel-level review and export actions.'
+        exportsNote: 'Parcel-level review and export actions will be available after results load.'
       }
     }
   };
@@ -140,7 +140,7 @@
       label: 'Report',
       tag: 'Deliverable-first',
       title: 'Package findings for action',
-      summary: 'Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.',
+      summary: 'Focus on outputs, evidence language, and what to deliver next.',
       deliverable: 'Decision packet',
       stance: 'Translate signal into action',
       focusLabel: 'Content rail',
@@ -174,7 +174,7 @@
     acquisition: 'Searching NAIP and Sentinel-2 coverage to find the best imagery for each AOI.',
     fulfilment: 'Downloading scenes, clipping to your AOIs, and reprojecting them into the output stack.',
     enrichment: 'Adding NDVI, weather context, and cached artifacts so the workspace has richer outputs ready.',
-    complete: 'Analysis completed. Use history to reopen this run or resume another active submission from this workspace.'
+    complete: 'Analysis complete — scroll down to review satellite imagery, vegetation health, and export options.'
   };
 
   function authEnabled() { return true; /* SWA built-in auth — always available */ }
@@ -275,7 +275,7 @@
     var noteEl = document.getElementById('app-hero-active-run-note');
     if (!titleEl || !noteEl) return;
     titleEl.textContent = title || 'Ready to queue';
-    noteEl.textContent = note || 'Launch a signed-in analysis from this workspace.';
+    noteEl.textContent = note || 'Ready to run an analysis.';
   }
 
   function setWorkflowFocus(focus) {
@@ -411,7 +411,7 @@
 
     if (!latestAnalysisRun) {
       if (!analysisHistoryLoaded && currentAccount) {
-        setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
+        setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');
       } else {
         setHeroRunSummary('Ready to queue', role.readyNote);
       }
@@ -509,7 +509,7 @@
     planEl.textContent = (caps.label || data.tier || 'Free') + (data.tier_source === 'emulated' ? ' (emulated)' : '');
     planNoteEl.textContent = data.tier_source === 'emulated'
       ? 'Local override for product testing.'
-      : 'Driven by the signed-in account state.';
+      : 'Based on your account.';
     runsEl.textContent = data.runs_remaining == null ? '—' : String(data.runs_remaining);
     runsNoteEl.textContent = data.runs_remaining == null
       ? 'Quota unavailable in this environment.'
@@ -530,7 +530,7 @@
     if (!data) {
       if (!analysisHistoryLoaded && currentAccount) {
         statusEl.textContent = 'Loading recent runs';
-        noteEl.textContent = 'Restoring signed-in history and checking for an active run to resume.';
+        noteEl.textContent = 'Loading your history and checking for active runs.';
         instanceEl.textContent = '…';
         phaseEl.textContent = 'loading';
         pathEl.textContent = role.activePath;
@@ -549,8 +549,8 @@
     var phase = displayAnalysisPhase(data.customStatus, runtimeStatus);
     var timing = summarizeRunTiming(data);
     var summaryLabel = analysisHistoryRuns.length > 1 && selectedAnalysisRunId
-      ? 'Selected signed-in analysis'
-      : 'Latest signed-in analysis';
+      ? 'Selected analysis'
+      : 'Latest analysis';
     statusEl.textContent = runtimeStatus;
     noteEl.textContent = runtimeStatus === 'Completed'
       ? summaryLabel + ' completed and is ready to become a ' + role.completedHistoryOutcome + '.'
@@ -665,7 +665,7 @@
     if (!analysisHistoryLoaded && currentAccount) {
       var loading = document.createElement('div');
       loading.className = 'app-history-empty';
-      loading.textContent = 'Restoring signed-in history…';
+      loading.textContent = 'Loading your history…';
       container.appendChild(loading);
       return;
     }
@@ -721,9 +721,9 @@
 
       note.className = 'app-history-item-note';
       if (historyRunIsActive(run)) {
-        note.textContent = 'Resume this run from ' + phase + ' and keep polling the signed-in pipeline.';
+        note.textContent = 'Resume this run from ' + phase + '.';
       } else if (runtimeStatus === 'Completed') {
-        note.textContent = 'Reopen the completed workspace state and use the run rail to download signed-in exports.';
+        note.textContent = 'View completed results and download exports.';
       } else {
         note.textContent = 'Review this run state.';
       }
@@ -1712,7 +1712,7 @@
 
     if (phase === 'fulfilment') {
       imageryEl.textContent = 'Clipping and reprojection';
-      imageryNoteEl.textContent = 'The pipeline is producing the concrete imagery assets that the signed-in workspace should eventually reopen.';
+      imageryNoteEl.textContent = 'The pipeline is producing imagery assets for your analysis.';
       enrichmentEl.textContent = 'Preparing next';
       enrichmentNoteEl.textContent = 'NDVI and weather context will follow immediately after fulfilment finishes.';
       exportsEl.textContent = 'Outputs staging next';
@@ -1724,8 +1724,8 @@
     imageryNoteEl.textContent = 'Core imagery is in place and the workspace is adding the last supporting layers.';
     enrichmentEl.textContent = 'Context packaging';
     enrichmentNoteEl.textContent = 'NDVI, weather, and derived context are being assembled for the run detail experience.';
-    exportsEl.textContent = 'Preparing reopen surface';
-    exportsNoteEl.textContent = 'The next signed-in slices should turn this into saved outputs, exports, and revisit paths.';
+    exportsEl.textContent = 'Preparing results view';
+    exportsNoteEl.textContent = 'Saved outputs, exports, and revisit paths will be available shortly.';
   }
 
   function updateRunDetail(data) {
@@ -1737,20 +1737,18 @@
     var deliveryNoteEl = document.getElementById('app-run-delivery-note');
     var linkLabelEl = document.getElementById('app-run-link-label');
     var linkEl = document.getElementById('app-run-link');
-    var exportNoteEl = document.getElementById('app-run-export-note');
-    if (!submittedEl || !submittedNoteEl || !scopeEl || !scopeNoteEl || !deliveryEl || !deliveryNoteEl || !linkLabelEl || !linkEl || !exportNoteEl) return;
+    if (!submittedEl || !submittedNoteEl || !scopeEl || !scopeNoteEl || !deliveryEl || !deliveryNoteEl || !linkLabelEl || !linkEl) return;
 
     if (!data) {
       submittedEl.textContent = '—';
-      submittedNoteEl.textContent = 'Signed-in run detail restores here after reload.';
+      submittedNoteEl.textContent = 'Run details restore here after reload.';
       scopeEl.textContent = '—';
       scopeNoteEl.textContent = 'Feature and AOI counts appear when known.';
       deliveryEl.textContent = '—';
       deliveryNoteEl.textContent = 'Failure counts and tracked artifacts will appear here.';
       linkLabelEl.textContent = 'Dashboard state';
       linkEl.href = '/app/';
-      linkEl.textContent = 'Open durable run state';
-      exportNoteEl.textContent = 'Completed runs can download GeoJSON, CSV, and PDF exports here.';
+      linkEl.textContent = 'Open dashboard';
       document.querySelectorAll('[data-export-format]').forEach(function(button) {
         button.disabled = true;
       });
@@ -1775,25 +1773,22 @@
     submittedEl.textContent = formatHistoryTimestamp(data.submittedAt || data.createdTime);
     submittedNoteEl.textContent = timing.sinceUpdate
       ? 'Last backend update ' + timing.sinceUpdate + ' ago.'
-      : 'Signed-in run history keeps this state durable across reloads.';
+      : 'Your run history preserves this state across reloads.';
     scopeEl.textContent = scopeSummary || 'Scope loading';
     scopeNoteEl.textContent = scopeNote || 'Preflight detail appears when the run metadata is available.';
 
     if (runtimeStatus === 'Completed') {
       deliveryEl.textContent = artifactCount ? artifactCount + ' tracked outputs' : 'Exports ready';
       deliveryNoteEl.textContent = failureSummary || 'GeoJSON, CSV, and PDF exports are ready for this completed run.';
-      exportNoteEl.textContent = 'Use these export actions to inspect or download the completed signed-in result set.';
     } else if (runtimeStatus === 'Failed' || runtimeStatus === 'Canceled' || runtimeStatus === 'Terminated') {
       deliveryEl.textContent = 'Run interrupted';
       deliveryNoteEl.textContent = failureSummary || 'This run stopped before producing a complete result set.';
-      exportNoteEl.textContent = 'Exports stay unavailable when the real pipeline does not complete.';
     } else {
       deliveryEl.textContent = 'Tracking live pipeline';
-      deliveryNoteEl.textContent = failureSummary || 'Results will unlock here when the signed-in run completes.';
-      exportNoteEl.textContent = 'Exports unlock automatically after the enrichment manifest is ready.';
+      deliveryNoteEl.textContent = failureSummary || 'Results will unlock here when the run completes.';
     }
 
-    linkLabelEl.textContent = 'Durable run state';
+    linkLabelEl.textContent = 'Run details';
     linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id, 'run');
     linkEl.textContent = 'Open this run directly';
 
@@ -1874,7 +1869,7 @@
     setHeroRunSummary(
       runtimeStatus,
       runtimeStatus === 'Completed'
-        ? 'Pipeline finished successfully and is ready for the next signed-in surface.'
+        ? 'Pipeline finished successfully — results are ready.'
         : 'Current phase: ' + phase + '.' + (timing.elapsed ? ' Elapsed ' + timing.elapsed + '.' : '')
     );
     updateHistorySummary(data);
@@ -2100,7 +2095,7 @@
       warnings.push({ tone: 'info', text: 'This due diligence lens frames evidence for review and audit support. It is not a legal compliance certificate.' });
     }
     if (workspaceRole === 'portfolio' && preflight.aoiCount > 10) {
-      warnings.push({ tone: 'info', text: 'Large parcel sets are a good fit for later batch surfaces. This run still enters the tracked signed-in workflow today.' });
+      warnings.push({ tone: 'info', text: 'Large parcel sets work well with batch analysis. This run still enters your tracked workflow.' });
     }
     if (!warnings.length) {
       warnings.push({ tone: 'info', text: 'No warnings. This will queue as one tracked analysis run.' });
@@ -2115,7 +2110,7 @@
     var parsed = parseKmlGeometry(trimmed);
     if (parsed.error) return { error: parsed.error };
     if (!parsed.polygons || !parsed.polygons.length) {
-      return { error: 'No polygon boundaries were detected. Canopex expects polygon AOIs in the signed-in workflow.' };
+      return { error: 'No polygon boundaries were detected. Canopex expects polygon AOIs.' };
     }
 
     var centroids = parsed.polygons.map(function(polygon) { return polygonCentroid(polygon.coords); });
@@ -2142,7 +2137,7 @@
       processingMode: processingMode,
       quotaImpact: latestBillingStatus && latestBillingStatus.runs_remaining != null
         ? '1 of ' + latestBillingStatus.runs_remaining + ' runs'
-        : '1 signed-in run',
+        : '1 analysis',
       summary: parsed.featureCount + ' features across ' + parsed.polygons.length + ' AOIs covering about ' + formatHectares(totalAreaHa) + '. ' + processingMode + ' keeps the ' + preference.focusLabel.toLowerCase() + ' in focus for this request.'
     };
     preflight.warnings = buildPreflightWarnings(preflight);
@@ -2178,12 +2173,12 @@
       analysisDraftSummary = null;
       headlineEl.textContent = 'Awaiting KML';
       modeEl.textContent = 'No file yet';
-      summaryEl.textContent = 'Paste KML to see feature count, AOI spread, and signed-in product guidance for the ' + role.label + ' view.';
+      summaryEl.textContent = 'Paste KML to see feature count, area spread, and guidance for the ' + role.label + ' view.';
       featuresEl.textContent = '0';
       aoisEl.textContent = '0';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      renderPreflightWarnings([{ tone: 'info', text: 'Preflight will surface warnings here after you paste or upload KML.' }]);
+      renderPreflightWarnings([{ tone: 'info', text: 'Preflight will show warnings here after you paste or upload KML.' }]);
       return null;
     }
 
@@ -2262,7 +2257,7 @@
       var name = file.name.toLowerCase();
       var content = name.endsWith('.kmz') ? await readKmzFile(file) : await readKmlFile(file);
       textarea.value = content;
-      note.textContent = 'Loaded ' + file.name + ' into the signed-in analysis form.';
+      note.textContent = 'Loaded ' + file.name + ' into the analysis form.';
       updateAnalysisPreflight(content);
     } catch (err) {
       note.textContent = err.message || 'Could not read file';
@@ -2525,7 +2520,7 @@
 
     select.value = data.emulation.active ? data.emulation.tier : 'actual';
     if (data.emulation.active) {
-      note.textContent = 'Currently emulating ' + (data.capabilities.label || data.tier) + ' for this signed-in account. Billing remains ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
+      note.textContent = 'Currently emulating ' + (data.capabilities.label || data.tier) + ' for your account. Billing remains ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
     } else {
       note.textContent = 'Using the actual billing state for this account.';
     }
@@ -2614,7 +2609,7 @@
       document.getElementById('app-billing-note').textContent = 'Could not load billing state';
       document.getElementById('app-manage-billing-btn').style.display = 'none';
       updateCapabilityFields({});
-      setHeroRunSummary('Ready to queue', 'Billing is unavailable, but signed-in analysis can still be launched locally.');
+      setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
     }
   }
 
@@ -2691,7 +2686,7 @@
       dashboard.hidden = false;
       userName.textContent = displayName;
       accountIdentifier.textContent = identifier;
-      accountNote.textContent = 'This is now the dedicated signed-in home for Canopex. Choose the role view and work preference that match the job at hand.';
+      accountNote.textContent = 'This is your Canopex dashboard. Choose the analysis type and work preference that match the job at hand.';
       var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
       var analysisFormFields = document.getElementById('app-analysis-form-fields');
       var historyCard = document.getElementById('app-history-card');
@@ -2699,7 +2694,7 @@
       if (analysisFormFields) analysisFormFields.hidden = false;
       if (historyCard) historyCard.hidden = false;
       if (!analysisHistoryLoaded && !latestAnalysisRun) {
-        setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
+        setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');
         updateHistorySummary(null);
         renderAnalysisHistoryList();
       }
