@@ -366,6 +366,21 @@ class TestUserIdFromCustomer:
 
         assert _user_id_from_customer("cus_err") is None
 
+    @patch("treesight.storage.cosmos.query_items")
+    def test_does_not_cache_none_on_exception(self, mock_query):
+        """After a Cosmos error, the next call should retry — not return cached None."""
+        from blueprints.billing import _customer_to_user_cache, _user_id_from_customer
+
+        _customer_to_user_cache.pop("cus_retry", None)
+
+        mock_query.side_effect = RuntimeError("transient")
+        assert _user_id_from_customer("cus_retry") is None
+        assert "cus_retry" not in _customer_to_user_cache
+
+        mock_query.side_effect = None
+        mock_query.return_value = [{"user_id": "recovered-user"}]
+        assert _user_id_from_customer("cus_retry") == "recovered-user"
+
 
 # ---------------------------------------------------------------------------
 # billing/status resilience — returns 200 even when storage is unavailable

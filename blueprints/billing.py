@@ -385,15 +385,17 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
             uid = results[0].get("user_id")
             _customer_to_user_cache[customer_id] = uid
             return uid
+        # Query succeeded but no match — cache the miss.
+        _customer_to_user_cache[customer_id] = None
+        return None
     except Exception:
         logger.warning(
             "Cosmos reverse lookup failed for customer=%s",
             customer_id,
             exc_info=True,
         )
-
-    _customer_to_user_cache[customer_id] = None
-    return None
+        # Do NOT cache on exception — allow retry when Cosmos recovers.
+        return None
 
 
 # ---------------------------------------------------------------------------
