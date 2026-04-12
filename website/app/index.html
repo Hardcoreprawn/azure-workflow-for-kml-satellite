@@ -108,7 +108,129 @@
         </article>
       </div>
 
-      <!-- ── Evidence hero (full-width, prominent) ── -->
+      <!-- ── Two-column workflow: history + new analysis ── -->
+      <div class="app-workflow-stage" id="app-workflow-stage" data-focus="run">
+        <article class="app-workflow-rail app-rail-history" id="app-history-card" data-focus-target="history">
+          <div class="app-rail-header">
+            <div>
+              <div class="section-label">History</div>
+              <h3>History &amp; Resume</h3>
+            </div>
+          </div>
+          <p class="app-rail-copy" id="app-history-copy">Reopen a previous run or resume an active one.</p>
+          <div class="app-run-snapshot">
+            <span class="app-run-label">Selected status</span>
+            <strong id="app-history-latest-status">Loading recent runs</strong>
+            <span id="app-history-latest-note">Restoring signed-in history and checking for an active run to resume.</span>
+          </div>
+          <div class="app-mini-list">
+            <div class="app-mini-item"><span>Instance</span><strong id="app-history-latest-instance">…</strong></div>
+            <div class="app-mini-item"><span>Phase</span><strong id="app-history-latest-phase">loading</strong></div>
+            <div class="app-mini-item"><span>Next surface</span><strong id="app-history-latest-path">Checking workspace</strong></div>
+          </div>
+          <div class="app-history-list" id="app-history-list" aria-live="polite">Restoring signed-in history…</div>
+          <div class="app-rail-footer">Select a run to reopen this workspace state.</div>
+        </article>
+
+        <article class="app-workflow-rail app-rail-run" id="app-analysis-card" data-focus-target="run">
+          <div class="app-rail-header">
+            <div>
+              <div class="section-label">New Analysis</div>
+              <h3>Launch and Track</h3>
+            </div>
+          </div>
+          <p class="app-rail-copy" id="app-run-copy">Upload KML, queue the pipeline, and monitor progress.</p>
+          <!-- ── Auth gate overlay for analysis form ── -->
+          <div class="app-analysis-auth-gate" id="app-analysis-auth-gate" hidden>
+            <div class="app-panel">
+              <h4>Sign in to run your own analysis</h4>
+              <p>Sign in to upload KML and queue analysis runs. 5 free analyses per month, no credit card required.</p>
+              <div class="app-gate-actions">
+                <button class="btn btn-primary" id="app-analysis-sign-in-btn" type="button">Sign In</button>
+                <a class="btn btn-secondary" href="/#pricing">View Plans</a>
+              </div>
+            </div>
+          </div>
+          <div id="app-analysis-form-fields" hidden>
+          <div class="app-mode-card">
+            <span class="app-run-label">Workspace lens</span>
+            <strong id="app-analysis-lens-title">Conservation evidence run</strong>
+            <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
+          </div>
+          <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
+          <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
+          <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
+          <label class="app-field-label" for="app-analysis-kml">KML Content</label>
+          <textarea id="app-analysis-kml" placeholder="Paste KML content for a signed-in analysis request…"></textarea>
+          <div class="app-preflight-card" id="app-analysis-preflight">
+            <div class="app-preflight-header">
+              <div>
+                <div class="section-label">Preflight</div>
+                <h4 id="app-preflight-headline">Awaiting KML</h4>
+              </div>
+              <span class="app-preflight-badge" id="app-preflight-mode">No file yet</span>
+            </div>
+            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, AOI spread, and signed-in product guidance before queueing.</p>
+            <div class="app-preflight-grid">
+              <div><span>Features</span><strong id="app-preflight-features">0</strong></div>
+              <div><span>AOIs</span><strong id="app-preflight-aois">0</strong></div>
+              <div><span>Spread</span><strong id="app-preflight-spread">—</strong></div>
+              <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
+            </div>
+            <div class="app-preflight-list" id="app-preflight-warnings">
+              <div class="app-preflight-item" data-tone="info">Preflight will surface warnings here after you paste or upload KML.</div>
+            </div>
+          </div>
+          <div class="app-select-row app-analysis-actions">
+            <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
+          </div>
+          </div><!-- /app-analysis-form-fields -->
+          <div class="app-callout" id="app-analysis-status" hidden></div>
+          <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
+            <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
+            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing AOIs and validating geometry</div>
+            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching NAIP and Sentinel-2 imagery</div>
+            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, weather, and cache layers</div>
+            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
+          </div>
+          <dl class="app-stats compact" id="app-analysis-run" hidden>
+            <div><dt>Instance</dt><dd id="app-analysis-instance">—</dd></div>
+            <div><dt>Status</dt><dd id="app-analysis-runtime">—</dd></div>
+            <div><dt>Phase</dt><dd id="app-analysis-phase">—</dd></div>
+          </dl>
+          <div class="app-run-detail-grid" id="app-run-detail-grid">
+            <div class="app-detail-card">
+              <span class="app-content-label">Submitted</span>
+              <strong id="app-run-submitted">—</strong>
+              <p id="app-run-submitted-note">Signed-in run detail restores here after reload.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Scope</span>
+              <strong id="app-run-scope">—</strong>
+              <p id="app-run-scope-note">Feature and AOI counts appear when known.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Delivery</span>
+              <strong id="app-run-delivery">—</strong>
+              <p id="app-run-delivery-note">Failure counts and tracked artifacts will appear here.</p>
+            </div>
+            <div class="app-detail-card">
+              <span class="app-content-label">Run Link</span>
+              <strong id="app-run-link-label">Dashboard state</strong>
+              <a class="app-inline-link" id="app-run-link" href="/app/">Open durable run state</a>
+              <div class="app-run-action-row" id="app-run-export-actions">
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-geojson" type="button" data-export-format="geojson" disabled>GeoJSON</button>
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-csv" type="button" data-export-format="csv" disabled>CSV</button>
+                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-pdf" type="button" data-export-format="pdf" disabled>PDF</button>
+              </div>
+              <p class="app-note" id="app-run-export-note">Completed runs can download GeoJSON, CSV, and PDF exports here.</p>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- ── Evidence hero (populated when a run completes) ── -->
       <div class="app-evidence-hero" id="app-evidence-hero">
         <article class="app-card app-evidence-hero-card" id="app-content-card" data-focus-target="content">
           <div class="app-evidence-hero-header">
@@ -234,128 +356,6 @@
           </div>
 
           <div class="app-rail-footer" id="app-content-footer">Select a completed run from history to view evidence.</div>
-        </article>
-      </div>
-
-      <!-- ── Two-column workflow: history + run ── -->
-      <div class="app-workflow-stage" id="app-workflow-stage" data-focus="run">
-        <article class="app-workflow-rail app-rail-history" id="app-history-card" data-focus-target="history">
-          <div class="app-rail-header">
-            <div>
-              <div class="section-label">History</div>
-              <h3>History &amp; Resume</h3>
-            </div>
-          </div>
-          <p class="app-rail-copy" id="app-history-copy">Reopen a previous run or resume an active one.</p>
-          <div class="app-run-snapshot">
-            <span class="app-run-label">Selected status</span>
-            <strong id="app-history-latest-status">Loading recent runs</strong>
-            <span id="app-history-latest-note">Restoring signed-in history and checking for an active run to resume.</span>
-          </div>
-          <div class="app-mini-list">
-            <div class="app-mini-item"><span>Instance</span><strong id="app-history-latest-instance">…</strong></div>
-            <div class="app-mini-item"><span>Phase</span><strong id="app-history-latest-phase">loading</strong></div>
-            <div class="app-mini-item"><span>Next surface</span><strong id="app-history-latest-path">Checking workspace</strong></div>
-          </div>
-          <div class="app-history-list" id="app-history-list" aria-live="polite">Restoring signed-in history…</div>
-          <div class="app-rail-footer">Select a run to reopen this workspace state.</div>
-        </article>
-
-        <article class="app-workflow-rail app-rail-run" id="app-analysis-card" data-focus-target="run">
-          <div class="app-rail-header">
-            <div>
-              <div class="section-label">New Analysis</div>
-              <h3>Launch and Track</h3>
-            </div>
-          </div>
-          <p class="app-rail-copy" id="app-run-copy">Upload KML, queue the pipeline, and monitor progress.</p>
-          <!-- ── Auth gate overlay for analysis form ── -->
-          <div class="app-analysis-auth-gate" id="app-analysis-auth-gate" hidden>
-            <div class="app-panel">
-              <h4>Sign in to run your own analysis</h4>
-              <p>Sign in to upload KML and queue analysis runs. 5 free analyses per month, no credit card required.</p>
-              <div class="app-gate-actions">
-                <button class="btn btn-primary" id="app-analysis-sign-in-btn" type="button">Sign In</button>
-                <a class="btn btn-secondary" href="/#pricing">View Plans</a>
-              </div>
-            </div>
-          </div>
-          <div id="app-analysis-form-fields" hidden>
-          <div class="app-mode-card">
-            <span class="app-run-label">Workspace lens</span>
-            <strong id="app-analysis-lens-title">Conservation evidence run</strong>
-            <p id="app-analysis-lens-note">Frame this run around vegetation change, weather context, and plain-English proof. Bias the workspace toward outputs, evidence language, and what the next saved surface needs to deliver.</p>
-          </div>
-          <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
-          <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
-          <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
-          <label class="app-field-label" for="app-analysis-kml">KML Content</label>
-          <textarea id="app-analysis-kml" placeholder="Paste KML content for a signed-in analysis request…"></textarea>
-          <div class="app-preflight-card" id="app-analysis-preflight">
-            <div class="app-preflight-header">
-              <div>
-                <div class="section-label">Preflight</div>
-                <h4 id="app-preflight-headline">Awaiting KML</h4>
-              </div>
-              <span class="app-preflight-badge" id="app-preflight-mode">No file yet</span>
-            </div>
-            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, AOI spread, and signed-in product guidance before queueing.</p>
-            <div class="app-preflight-grid">
-              <div><span>Features</span><strong id="app-preflight-features">0</strong></div>
-              <div><span>AOIs</span><strong id="app-preflight-aois">0</strong></div>
-              <div><span>Spread</span><strong id="app-preflight-spread">—</strong></div>
-              <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
-            </div>
-            <div class="app-preflight-list" id="app-preflight-warnings">
-              <div class="app-preflight-item" data-tone="info">Preflight will surface warnings here after you paste or upload KML.</div>
-            </div>
-          </div>
-          <div class="app-select-row app-analysis-actions">
-            <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
-          </div>
-          </div><!-- /app-analysis-form-fields -->
-          <div class="app-callout" id="app-analysis-status" hidden></div>
-          <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
-            <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
-            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing AOIs and validating geometry</div>
-            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching NAIP and Sentinel-2 imagery</div>
-            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, weather, and cache layers</div>
-            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
-          </div>
-          <dl class="app-stats compact" id="app-analysis-run" hidden>
-            <div><dt>Instance</dt><dd id="app-analysis-instance">—</dd></div>
-            <div><dt>Status</dt><dd id="app-analysis-runtime">—</dd></div>
-            <div><dt>Phase</dt><dd id="app-analysis-phase">—</dd></div>
-          </dl>
-          <div class="app-run-detail-grid" id="app-run-detail-grid">
-            <div class="app-detail-card">
-              <span class="app-content-label">Submitted</span>
-              <strong id="app-run-submitted">—</strong>
-              <p id="app-run-submitted-note">Signed-in run detail restores here after reload.</p>
-            </div>
-            <div class="app-detail-card">
-              <span class="app-content-label">Scope</span>
-              <strong id="app-run-scope">—</strong>
-              <p id="app-run-scope-note">Feature and AOI counts appear when known.</p>
-            </div>
-            <div class="app-detail-card">
-              <span class="app-content-label">Delivery</span>
-              <strong id="app-run-delivery">—</strong>
-              <p id="app-run-delivery-note">Failure counts and tracked artifacts will appear here.</p>
-            </div>
-            <div class="app-detail-card">
-              <span class="app-content-label">Run Link</span>
-              <strong id="app-run-link-label">Dashboard state</strong>
-              <a class="app-inline-link" id="app-run-link" href="/app/">Open durable run state</a>
-              <div class="app-run-action-row" id="app-run-export-actions">
-                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-geojson" type="button" data-export-format="geojson" disabled>GeoJSON</button>
-                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-csv" type="button" data-export-format="csv" disabled>CSV</button>
-                <button class="btn btn-secondary app-run-action-btn" id="app-run-export-pdf" type="button" data-export-format="pdf" disabled>PDF</button>
-              </div>
-              <p class="app-note" id="app-run-export-note">Completed runs can download GeoJSON, CSV, and PDF exports here.</p>
-            </div>
-          </div>
         </article>
       </div>
 
