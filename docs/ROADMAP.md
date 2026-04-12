@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (merge PR #546 — demo mode removed)
+Last updated: 2026-04-12 (merge PR #549 — import custom domain into Tofu state)
 
 ---
 
@@ -35,7 +35,8 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 ## Recently Landed
 
 | PR | Summary |
-|----|---------|| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
+|----|---------|| #549 | Import pre-existing SWA custom domain into Tofu state (fixes deploy failure) |
+| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
 | #545 | CORS fix: set custom_domain in dev.tfvars for apex domain || #543 | Fix deploy: merge scaling PATCHes into single call to avoid 409 Conflict |
 | #530 | Ops dashboard, CORS hardening, always-ready instances, timing-safe auth |
 | #540 | Cosmos-only storage: remove cosmos_or_blob dual-write, fix RLock deadlock, fix exception cache poisoning |
