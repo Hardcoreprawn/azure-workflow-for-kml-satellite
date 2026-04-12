@@ -2732,7 +2732,7 @@
     // Strip legacy ?mode=demo from URL if present
     try {
       const url = new URL(window.location.href);
-      if (url.searchParams.has('mode')) {
+      if (url.searchParams.get('mode') === 'demo') {
         url.searchParams.delete('mode');
         const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
         window.history.replaceState({}, '', nextUrl || '/app/');

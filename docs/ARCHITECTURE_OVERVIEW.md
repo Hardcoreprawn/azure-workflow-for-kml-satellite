@@ -99,19 +99,21 @@ Key Vault.
 #### Entry Point
 
 **Decision (2026-04-12):** The product entry point is the **Free Tier**
-(authenticated, real pipeline, 5 runs/month). Demo mode (`?mode=demo`) is
-deprecated and scheduled for removal (#532).
+(authenticated, real pipeline, 5 runs/month). The frontend `?mode=demo` URL
+param was removed in #532. The backend `demo` billing tier still exists in
+pipeline guard logic (`tier in {"free", "demo"}`) and will be retired
+separately.
 
 | Concept | Auth | Processing | Purpose |
 |---------|------|-----------|---------|
-| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. Sample KMLs for one-click first run. |
+| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. |
 | **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
 | **Showcase** (deferred) | None (anonymous) | None — pre-computed static blobs | Future. Marketing for anonymous visitors. Not until pipeline is proven e2e. |
 
-The "demo" billing tier and `?mode=demo` frontend mode have been removed.
-Demo mode showed the dashboard UI without auth but couldn't run anything —
-a confused middle ground that added code complexity without demonstrating
-real value. The free tier with sample KMLs replaces both concepts.
+The frontend `?mode=demo` entry point has been removed (#532). It showed the
+dashboard UI without auth but couldn't run anything — a confused middle ground
+that added complexity without demonstrating real value. The backend `demo`
+billing tier remains in pipeline code and will be retired separately.
 
 Showcase (pre-computed static blobs for anonymous browsing) is a valid future
 concept but is deferred until after the pipeline is verified end-to-end in
