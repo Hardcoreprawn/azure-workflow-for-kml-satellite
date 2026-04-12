@@ -14,7 +14,7 @@
       risk: 'No silent fallback',
       rhythm: 'Monthly watchlist',
       historyCopy: 'Keep the most recent incident visible while you compare new reports against what already ran.',
-      runCopy: 'Queue a real signed-in analysis for a protected area or reported clearing, not the public demo.',
+      runCopy: 'Queue a signed-in analysis for a protected area or reported clearing.',
       contentCopy: 'Use this rail to understand what evidence is being assembled and what will be ready for a field or donor brief.',
       runLensTitle: 'Conservation evidence run',
       runLensNote: 'Frame this run around vegetation change, weather context, and plain-English proof.',
@@ -49,7 +49,7 @@
       risk: 'Audit-ready trust',
       rhythm: 'Quarterly refresh cadence',
       historyCopy: 'Keep the most recent assessment visible while you decide whether another supplier plot needs review.',
-      runCopy: 'Queue a real signed-in due diligence run with explicit product-path status, not demo behavior.',
+      runCopy: 'Queue a signed-in due diligence run with explicit product-path status.',
       contentCopy: 'Use this rail to understand what audit evidence is forming before it becomes a saved due diligence dossier.',
       runLensTitle: 'Due diligence evidence run',
       runLensNote: 'Keep baseline integrity, plain-English findings, and product-path reliability front and center.',
@@ -84,7 +84,7 @@
       risk: 'Scale without guesswork',
       rhythm: 'Event-driven review',
       historyCopy: 'Keep the most recent batch visible so you can triage new uploads against what already moved.',
-      runCopy: 'Queue a signed-in batch-style analysis and keep scale warnings visible instead of inheriting demo guardrails.',
+      runCopy: 'Queue a signed-in batch-style analysis and keep scale warnings visible.',
       contentCopy: 'Use this rail to understand what the current run is building before you reopen it as a parcel-level review.',
       runLensTitle: 'Portfolio triage run',
       runLensNote: 'Bias the workspace toward batch readiness, AOI spread, and which runs need deeper follow-up.',
@@ -167,7 +167,6 @@
   let workspaceRole = 'conservation';
   let workspacePreference = 'investigate';
   let activeAnalysisPoll = null;
-  let demoMode = false;
   const ANALYSIS_PHASES = ['submit', 'ingestion', 'acquisition', 'fulfilment', 'enrichment', 'complete'];
   const ANALYSIS_PHASE_DETAILS = {
     submit: 'Uploading your KML and reserving a pipeline worker for this run.',
@@ -177,68 +176,6 @@
     enrichment: 'Adding NDVI, weather context, and cached artifacts so the workspace has richer outputs ready.',
     complete: 'Analysis completed. Use history to reopen this run or resume another active submission from this workspace.'
   };
-
-  /* --- Sample KML locations (shared with landing page demo) --- */
-  const SAMPLE_KMLS = {
-    madera: {
-      name: 'Madera County Orchards',
-      placemark: 'Block A — Almond Grove',
-      desc: 'San Joaquin Valley irrigated agriculture. 87 ha almond orchard block.',
-      coords: '-120.08,36.86,0 -120.04,36.86,0 -120.04,36.90,0 -120.08,36.90,0 -120.08,36.86,0'
-    },
-    nechako: {
-      name: 'Nechako TSA — Old Growth Cut Block',
-      placemark: 'EM807M — Clear Cut',
-      desc: '87 ha old-growth block, Entiako/Nechako Timber Supply Area.',
-      coords: '-125.567,53.4458,0 -125.553,53.4458,0 -125.553,53.4542,0 -125.567,53.4542,0 -125.567,53.4458,0'
-    },
-    para: {
-      name: 'Novo Progresso, Pará — Deforestation Front',
-      placemark: 'BR-163 Corridor — Active Clearance',
-      desc: 'Amazon deforestation hotspot along the BR-163 highway.',
-      coords: '-55.42,-7.05,0 -55.38,-7.05,0 -55.38,-7.01,0 -55.42,-7.01,0 -55.42,-7.05,0'
-    },
-    borneo: {
-      name: 'East Kalimantan — Palm Oil Clearance',
-      placemark: 'Muara Wahau Block',
-      desc: 'Tropical rainforest cleared for palm oil plantation.',
-      coords: '116.72,1.32,0 116.76,1.32,0 116.76,1.36,0 116.72,1.36,0 116.72,1.32,0'
-    },
-    carpathians: {
-      name: 'Suceava County — Carpathian Old Growth',
-      placemark: 'Valea Bârnii Logging Road',
-      desc: 'Virgin and quasi-virgin forest in the Romanian Carpathians.',
-      coords: '25.24,47.56,0 25.28,47.56,0 25.28,47.60,0 25.24,47.60,0 25.24,47.56,0'
-    },
-    mountsorrel: {
-      name: 'Mountsorrel, Leicestershire — Mixed Agriculture',
-      placemark: 'Quarry Fringe Fields',
-      desc: 'Mixed UK farmland near Mountsorrel quarry.',
-      coords: '-1.163346,52.735911,0 -1.164544,52.738986,0 -1.171481,52.740404,0 -1.177672,52.738921,0 -1.185821,52.735713,0 -1.183141,52.726255,0 -1.174673,52.730536,0 -1.173670,52.733836,0 -1.163346,52.735911,0'
-    }
-  };
-
-  function buildSampleKml(s) {
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' +
-      '<kml xmlns="http://www.opengis.net/kml/2.2">\n' +
-      '  <Document>\n' +
-      '    <name>' + s.name + '</name>\n' +
-      '    <description>' + s.desc + '</description>\n' +
-      '    <Placemark>\n' +
-      '      <name>' + s.placemark + '</name>\n' +
-      '      <Polygon>\n' +
-      '        <outerBoundaryIs>\n' +
-      '          <LinearRing>\n' +
-      '            <coordinates>' + s.coords + '</coordinates>\n' +
-      '          </LinearRing>\n' +
-      '        </outerBoundaryIs>\n' +
-      '      </Polygon>\n' +
-      '    </Placemark>\n' +
-      '  </Document>\n' +
-      '</kml>';
-  }
-
-  function isDemoMode() { return demoMode; }
 
   function authEnabled() { return true; /* SWA built-in auth — always available */ }
 
@@ -257,17 +194,7 @@
     return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   }
 
-  function clearDemoModeQueryParam() {
-    try {
-      var url = new URL(window.location.href);
-      if (url.searchParams.get('mode') !== 'demo') return;
-      url.searchParams.delete('mode');
-      var nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-      window.history.replaceState({}, '', nextUrl || '/app/');
-    } catch {
-      /* ignore */
-    }
-  }
+
 
   async function discoverApiBase() {
     // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
@@ -798,7 +725,7 @@
       } else if (runtimeStatus === 'Completed') {
         note.textContent = 'Reopen the completed workspace state and use the run rail to download signed-in exports.';
       } else {
-        note.textContent = 'Review this run state without falling back to the public demo.';
+        note.textContent = 'Review this run state.';
       }
 
       button.appendChild(header);
@@ -1014,52 +941,17 @@
     loadSavedAnalysis(instanceId);
 
     // Show EUDR block for eudr role
-    // Hide EUDR in demo mode; show for eudr role in signed-in mode
     var eudrBlock = document.getElementById('app-evidence-eudr-block');
-    if (eudrBlock) eudrBlock.hidden = demoMode || (workspaceRole !== 'eudr');
+    if (eudrBlock) eudrBlock.hidden = (workspaceRole !== 'eudr');
 
-    // Show AI block if tier supports it; in demo mode show with upgrade CTA
+    // Show AI block if tier supports it
     var aiBlock = document.getElementById('app-evidence-ai-block');
     if (aiBlock) {
-      if (demoMode) {
-        aiBlock.hidden = false;
-        const aiContent = document.getElementById('app-evidence-ai-content');
-        const aiBtn = aiBlock.querySelector('button');
-        if (aiBtn) aiBtn.disabled = true;
-        if (aiContent) {
-          aiContent.textContent = '';
-          const callout = document.createElement('div');
-          callout.className = 'app-callout';
-          callout.dataset.tone = 'info';
-          callout.appendChild(document.createTextNode('AI analysis is available on Pro plans and above. '));
-          const planLink = document.createElement('a');
-          planLink.href = '/#pricing';
-          planLink.textContent = 'View Plans';
-          callout.appendChild(planLink);
-          aiContent.appendChild(callout);
-        }
-      } else {
-        aiBlock.hidden = !(latestBillingStatus && latestBillingStatus.capabilities && latestBillingStatus.capabilities.ai_insights);
-      }
+      aiBlock.hidden = !(latestBillingStatus && latestBillingStatus.capabilities && latestBillingStatus.capabilities.ai_insights);
     }
 
     if (footerEl) {
-      if (demoMode) {
-        footerEl.textContent = '';
-        footerEl.appendChild(document.createTextNode('Your analysis is ready. '));
-        const signInLink = document.createElement('a');
-        signInLink.href = '/app/';
-        signInLink.textContent = 'Sign in';
-        signInLink.addEventListener('click', function (e) {
-          e.preventDefault();
-          const loginBtn = document.getElementById('auth-login-btn');
-          if (loginBtn) loginBtn.click();
-        });
-        footerEl.appendChild(signInLink);
-        footerEl.appendChild(document.createTextNode(' to save it, unlock AI insights, and export evidence.'));
-      } else {
-        footerEl.textContent = 'Evidence loaded for run ' + instanceId.slice(0, 8) + '.';
-      }
+      footerEl.textContent = 'Evidence loaded for run ' + instanceId.slice(0, 8) + '.';
     }
   }
 
@@ -1906,18 +1798,13 @@
     linkEl.textContent = 'Open this run directly';
 
     document.querySelectorAll('[data-export-format]').forEach(function(button) {
-      button.disabled = runtimeStatus !== 'Completed' || demoMode;
-      if (demoMode) button.title = 'Sign in to export results';
+      button.disabled = runtimeStatus !== 'Completed';
     });
     var evidenceExportNote = document.getElementById('app-evidence-export-note');
     if (evidenceExportNote) {
-      if (demoMode) {
-        evidenceExportNote.textContent = 'Exports are available for signed-in users. Sign in to download GeoJSON, CSV, or PDF.';
-      } else {
-        evidenceExportNote.textContent = runtimeStatus === 'Completed'
-          ? 'Download GeoJSON, CSV, or PDF for this completed run.'
-          : 'Exports unlock when the selected run completes.';
-      }
+      evidenceExportNote.textContent = runtimeStatus === 'Completed'
+        ? 'Download GeoJSON, CSV, or PDF for this completed run.'
+        : 'Exports unlock when the selected run completes.';
     }
   }
 
@@ -2296,7 +2183,7 @@
       aoisEl.textContent = '0';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      renderPreflightWarnings([{ tone: 'info', text: 'Signed-in preflight will surface warnings here instead of inheriting demo-only rejections.' }]);
+      renderPreflightWarnings([{ tone: 'info', text: 'Preflight will surface warnings here after you paste or upload KML.' }]);
       return null;
     }
 
@@ -2472,7 +2359,7 @@
     try {
       await apiDiscoveryReady;
       var submissionContext = null;
-      if (!demoMode && preflight) {
+      if (preflight) {
         submissionContext = {
           feature_count: preflight.featureCount,
           aoi_count: preflight.aoiCount,
@@ -2563,7 +2450,7 @@
       });
       selectAnalysisRun(data.instance_id, { focus: 'run', resume: true });
       setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
-      if (!demoMode) loadBillingStatus();
+      loadBillingStatus();
     } catch (err) {
       console.error('queueAnalysis failed:', err);
       setAnalysisStatus('Could not queue analysis request.', 'error');
@@ -2664,7 +2551,7 @@
     if (data.tier_source === 'emulated') {
       billingNoteEl.textContent = 'Local tier override active. Real billing is ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
       billingBtn.style.display = data.billing_configured ? 'inline-block' : 'none';
-      accountNote.textContent = 'Use the role view and work preference controls to tune this workspace for the job at hand. Local plan emulation stays separate from the public demo and real billing.';
+      accountNote.textContent = 'Use the role view and work preference controls to tune this workspace for the job at hand.';
     } else if (data.billing_gated) {
       billingNoteEl.textContent = 'Billing is not yet available for your account. Contact us to express interest.';
       billingBtn.textContent = 'Express Interest';
@@ -2674,11 +2561,11 @@
       billingNoteEl.textContent = 'Stripe customer portal available';
       billingBtn.textContent = 'Billing';
       billingBtn.style.display = 'inline-block';
-      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting. This surface is the product, not the marketing demo.';
+      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting.';
     } else {
       billingNoteEl.textContent = 'Billing is not configured in this environment';
       billingBtn.style.display = 'none';
-      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting. This surface is the product, not the marketing demo.';
+      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting.';
     }
 
     updateHeroSummary(data);
@@ -2794,10 +2681,6 @@
     }
 
     if (currentAccount) {
-      if (demoMode) {
-        demoMode = false;
-        clearDemoModeQueryParam();
-      }
       var displayName = currentAccount.name || currentAccount.userId || 'User';
       var identifier = currentAccount.userId || currentAccount.name || 'Signed in';
       userSpan.textContent = displayName;
@@ -2811,13 +2694,9 @@
       accountNote.textContent = 'This is now the dedicated signed-in home for Canopex. Choose the role view and work preference that match the job at hand.';
       var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
       var analysisFormFields = document.getElementById('app-analysis-form-fields');
-      var demoBanner = document.getElementById('app-demo-banner');
-      var samplePicker = document.getElementById('app-demo-sample-picker');
       var historyCard = document.getElementById('app-history-card');
       if (analysisAuthGate) analysisAuthGate.hidden = true;
       if (analysisFormFields) analysisFormFields.hidden = false;
-      if (demoBanner) demoBanner.hidden = true;
-      if (samplePicker) samplePicker.hidden = true;
       if (historyCard) historyCard.hidden = false;
       if (!analysisHistoryLoaded && !latestAnalysisRun) {
         setHeroRunSummary('Checking recent runs', 'Restoring signed-in history and active run state.');
@@ -2837,13 +2716,8 @@
       billingBtn.style.display = 'none';
       var unauthGate = document.getElementById('app-analysis-auth-gate');
       var unauthFormFields = document.getElementById('app-analysis-form-fields');
-      var analysisAuthSecondaryLink = document.getElementById('app-analysis-auth-secondary-link');
       if (unauthGate) unauthGate.hidden = false;
       if (unauthFormFields) unauthFormFields.hidden = true;
-      if (analysisAuthSecondaryLink) {
-        analysisAuthSecondaryLink.textContent = 'Preview the Free Plan';
-        analysisAuthSecondaryLink.href = '/app/?mode=demo';
-      }
       analysisHistoryRuns = [];
       analysisHistoryLoaded = false;
       selectedAnalysisRunId = null;
@@ -2854,111 +2728,14 @@
     }
   }
 
-  function enterDemoMode() {
-    var gate = document.getElementById('app-unauthenticated');
-    var dashboard = document.getElementById('app-dashboard');
-    var loginBtn = document.getElementById('auth-login-btn');
-    var logoutBtn = document.getElementById('auth-logout-btn');
-    var userSpan = document.getElementById('auth-user');
-    var userName = document.getElementById('app-user-name');
-    var accountIdentifier = document.getElementById('app-account-identifier');
-    var accountNote = document.getElementById('app-account-note');
-    var billingBtn = document.getElementById('app-manage-billing-btn');
-    var analysisAuthSecondaryLink = document.getElementById('app-analysis-auth-secondary-link');
-
-    // Skip the outer auth gate so demo mode can preview the signed-in workspace.
-    gate.hidden = true;
-    dashboard.hidden = false;
-
-    // Demo mode previews the free plan, but still requires sign-in before spend.
-    var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
-    var analysisFormFields = document.getElementById('app-analysis-form-fields');
-    if (analysisAuthGate) analysisAuthGate.hidden = false;
-    if (analysisFormFields) analysisFormFields.hidden = true;
-
-    // Show sign-in button instead of logout
-    loginBtn.style.display = 'inline';
-    logoutBtn.style.display = 'none';
-    userSpan.textContent = 'Preview';
-    userSpan.style.display = 'inline';
-    userName.textContent = 'Free plan preview';
-    if (accountIdentifier) accountIdentifier.textContent = 'Sign in required';
-    accountNote.textContent = 'Preview the free plan before you authenticate. No pipeline run starts until you sign in.';
-    billingBtn.style.display = 'none';
-    if (analysisAuthSecondaryLink) {
-      analysisAuthSecondaryLink.textContent = 'View Plans';
-      analysisAuthSecondaryLink.href = '/#pricing';
-    }
-
-    // Apply free-plan preview status
-    var demoCaps = {
-      label: 'Free', tier: 'free', run_limit: 5, aoi_limit: 5,
-      concurrency: 1, ai_insights: false, api_access: false,
-      export: false, retention_days: 30
-    };
-    latestBillingStatus = {
-      tier: 'free', status: 'preview', runs_remaining: 5,
-      capabilities: demoCaps, billing_configured: false, preview_mode: true
-    };
-
-    // Populate billing display
-    var tierEl = document.getElementById('app-tier');
-    var statusEl = document.getElementById('app-subscription-status');
-    var remainingEl = document.getElementById('app-runs-remaining');
-    var billingNoteEl = document.getElementById('app-billing-note');
-    if (tierEl) tierEl.textContent = 'Free preview';
-    if (statusEl) statusEl.textContent = 'preview';
-    if (remainingEl) remainingEl.textContent = '5';
-    if (billingNoteEl) billingNoteEl.textContent = 'Sign in to activate your free-plan quota and queue a run';
-
-    updateHeroSummary(latestBillingStatus);
-    updateCapabilityFields(demoCaps);
-
-    // Hide tier emulation card
-    var emulationCard = document.getElementById('app-tier-emulation-card');
-    if (emulationCard) emulationCard.hidden = true;
-
-    // Show preview banner and sample picker
-    var demoBanner = document.getElementById('app-demo-banner');
-    if (demoBanner) demoBanner.hidden = false;
-    var samplePicker = document.getElementById('app-demo-sample-picker');
-    if (samplePicker) samplePicker.hidden = false;
-
-    // Hide history (no persistence in demo)
-    var historyCard = document.getElementById('app-history-card');
-    if (historyCard) historyCard.hidden = true;
-
-    // Populate sample picker options
-    var select = document.getElementById('app-demo-sample-select');
-    if (select) {
-      Object.keys(SAMPLE_KMLS).forEach(function(key) {
-        var opt = document.createElement('option');
-        opt.value = key;
-        opt.textContent = SAMPLE_KMLS[key].name;
-        select.appendChild(opt);
-      });
-      select.addEventListener('change', function() {
-        var s = SAMPLE_KMLS[select.value];
-        if (!s) return;
-        var textarea = document.getElementById('app-analysis-kml');
-        if (textarea) {
-          textarea.value = buildSampleKml(s);
-          updateAnalysisPreflight(textarea.value);
-        }
-      });
-    }
-
-    // Show first-run hero with demo messaging
-    analysisHistoryLoaded = true;
-    applyFirstRunLayout();
-  }
-
   function initAuth() {
-    // Detect demo mode from URL query parameter
+    // Strip legacy ?mode=demo from URL if present
     try {
-      var params = new URLSearchParams(window.location.search);
-      if (params.get('mode') === 'demo') {
-        demoMode = true;
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('mode')) {
+        url.searchParams.delete('mode');
+        const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
+        window.history.replaceState({}, '', nextUrl || '/app/');
       }
     } catch { /* ignore */ }
 
@@ -2977,17 +2754,9 @@
           userRoles: principal.userRoles || [],
         };
       }
-      if (!currentAccount && demoMode) {
-        enterDemoMode();
-        return;
-      }
       updateAuthUI();
     }).catch(function(err) {
       console.warn('SWA auth check failed:', err);
-      if (demoMode) {
-        enterDemoMode();
-        return;
-      }
       // When running locally without SWA CLI, auth/me won't exist.
       // Fall back to unauthenticated state — updateAuthUI handles it.
       updateAuthUI();
@@ -3024,13 +2793,6 @@
   document.getElementById('auth-logout-btn').addEventListener('click', logout);
   document.getElementById('app-sign-in-btn').addEventListener('click', login);
   document.getElementById('app-analysis-sign-in-btn').addEventListener('click', login);
-  document.getElementById('app-demo-signin-link').addEventListener('click', function(e) {
-    e.preventDefault();
-    document.getElementById('auth-login-btn').click();
-  });
-  document.getElementById('app-demo-banner-dismiss').addEventListener('click', function() {
-    document.getElementById('app-demo-banner').hidden = true;
-  });
   document.getElementById('app-manage-billing-btn').addEventListener('click', manageBilling);
   document.getElementById('app-apply-tier-emulation-btn').addEventListener('click', saveTierEmulation);
   document.getElementById('app-guided-primary-btn').addEventListener('click', function() {

@@ -108,7 +108,7 @@ deprecated and scheduled for removal (#532).
 | **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
 | **Showcase** (deferred) | None (anonymous) | None — pre-computed static blobs | Future. Marketing for anonymous visitors. Not until pipeline is proven e2e. |
 
-The "demo" billing tier and `?mode=demo` frontend mode are both deprecated.
+The "demo" billing tier and `?mode=demo` frontend mode have been removed.
 Demo mode showed the dashboard UI without auth but couldn't run anything —
 a confused middle ground that added code complexity without demonstrating
 real value. The free tier with sample KMLs replaces both concepts.
