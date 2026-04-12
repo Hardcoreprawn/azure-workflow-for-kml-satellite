@@ -230,9 +230,6 @@
 .app-detail-card p{font-size:.82rem;line-height:1.55;color:var(--c-muted)}
 .app-inline-link{color:var(--app-role-accent);font-size:.84rem;font-weight:600;text-decoration:none}
 .app-inline-link:hover{text-decoration:underline}
-.app-run-action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
-.app-run-action-btn{padding:8px 12px;min-width:0}
-.app-run-action-btn:disabled{opacity:.55;cursor:not-allowed}
 
 .btn:focus-visible,.auth-btn:focus-visible,.app-lens-chip:focus-visible,.app-history-item:focus-visible,.app-inline-link:focus-visible,.app-workflow-rail input[type=file]:focus-visible,.app-workflow-rail textarea:focus-visible,.app-card input[type=file]:focus-visible,.app-card textarea:focus-visible,.app-select-row select:focus-visible{outline:2px solid var(--app-role-accent);outline-offset:2px}
 

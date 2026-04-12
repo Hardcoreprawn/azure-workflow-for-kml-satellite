@@ -1737,8 +1737,7 @@
     var deliveryNoteEl = document.getElementById('app-run-delivery-note');
     var linkLabelEl = document.getElementById('app-run-link-label');
     var linkEl = document.getElementById('app-run-link');
-    var exportNoteEl = document.getElementById('app-run-export-note');
-    if (!submittedEl || !submittedNoteEl || !scopeEl || !scopeNoteEl || !deliveryEl || !deliveryNoteEl || !linkLabelEl || !linkEl || !exportNoteEl) return;
+    if (!submittedEl || !submittedNoteEl || !scopeEl || !scopeNoteEl || !deliveryEl || !deliveryNoteEl || !linkLabelEl || !linkEl) return;
 
     if (!data) {
       submittedEl.textContent = '—';
@@ -1750,7 +1749,6 @@
       linkLabelEl.textContent = 'Dashboard state';
       linkEl.href = '/app/';
       linkEl.textContent = 'Open run details';
-      exportNoteEl.textContent = 'Completed runs can download GeoJSON, CSV, and PDF exports here.';
       document.querySelectorAll('[data-export-format]').forEach(function(button) {
         button.disabled = true;
       });
@@ -1782,15 +1780,12 @@
     if (runtimeStatus === 'Completed') {
       deliveryEl.textContent = artifactCount ? artifactCount + ' tracked outputs' : 'Exports ready';
       deliveryNoteEl.textContent = failureSummary || 'GeoJSON, CSV, and PDF exports are ready for this completed run.';
-      exportNoteEl.textContent = 'Use these export actions to inspect or download your completed results.';
     } else if (runtimeStatus === 'Failed' || runtimeStatus === 'Canceled' || runtimeStatus === 'Terminated') {
       deliveryEl.textContent = 'Run interrupted';
       deliveryNoteEl.textContent = failureSummary || 'This run stopped before producing a complete result set.';
-      exportNoteEl.textContent = 'Exports stay unavailable when the real pipeline does not complete.';
     } else {
       deliveryEl.textContent = 'Tracking live pipeline';
       deliveryNoteEl.textContent = failureSummary || 'Results will unlock here when the run completes.';
-      exportNoteEl.textContent = 'Exports unlock automatically after the enrichment manifest is ready.';
     }
 
     linkLabelEl.textContent = 'Run details';
