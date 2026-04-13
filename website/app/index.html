@@ -152,11 +152,6 @@
             </div>
           </div>
           <div id="app-analysis-form-fields" hidden>
-          <div class="app-mode-card">
-            <span class="app-run-label">Analysis type</span>
-            <strong id="app-analysis-lens-title">Conservation analysis</strong>
-            <p id="app-analysis-lens-note">Focus on vegetation change, weather context, and plain-English findings for field teams.</p>
-          </div>
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
           <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
@@ -181,8 +176,8 @@
               <div class="app-preflight-item" data-tone="info">Preflight will show warnings here after you paste or upload KML.</div>
             </div>
           </div>
-          <div class="app-select-row app-analysis-actions">
-            <button class="btn btn-primary" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
+          <div class="app-analysis-actions">
+            <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
           </div>
           </div><!-- /app-analysis-form-fields -->
           <div class="app-callout" id="app-analysis-status" hidden></div>

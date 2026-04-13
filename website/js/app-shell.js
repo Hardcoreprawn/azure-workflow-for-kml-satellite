@@ -406,8 +406,10 @@
     document.getElementById('app-history-copy').textContent = role.historyCopy;
     document.getElementById('app-run-copy').textContent = role.runCopy;
     document.getElementById('app-content-copy').textContent = role.contentCopy;
-    document.getElementById('app-analysis-lens-title').textContent = role.runLensTitle;
-    document.getElementById('app-analysis-lens-note').textContent = role.runLensNote + ' ' + preference.summary;
+    var lensTitle = document.getElementById('app-analysis-lens-title');
+    var lensNote = document.getElementById('app-analysis-lens-note');
+    if (lensTitle) lensTitle.textContent = role.runLensTitle;
+    if (lensNote) lensNote.textContent = role.runLensNote + ' ' + preference.summary;
 
     if (!latestAnalysisRun) {
       if (!analysisHistoryLoaded && currentAccount) {
@@ -749,6 +751,7 @@
     if (!replaced) analysisHistoryRuns.unshift(normalized);
     analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
     renderAnalysisHistoryList();
+    applyFirstRunLayout();
   }
 
   function selectAnalysisRun(instanceId, options) {
@@ -830,11 +833,21 @@
   function applyFirstRunLayout() {
     var firstRun = document.getElementById('app-first-run-hero');
     var evidenceHero = document.getElementById('app-evidence-hero');
+    var historyRail = document.getElementById('app-history-card');
+    var workflowStage = document.getElementById('app-workflow-stage');
+    var modePill = document.getElementById('app-hero-mode');
+    var activeRunPill = document.getElementById('app-hero-active-run');
     if (!firstRun) return;
 
     var isEmpty = analysisHistoryLoaded && analysisHistoryRuns.length === 0 && !latestAnalysisRun;
     firstRun.hidden = !isEmpty;
     if (evidenceHero) evidenceHero.hidden = isEmpty;
+
+    // Collapse first-load noise: hide history rail + extra pills for new users
+    if (historyRail) historyRail.hidden = isEmpty;
+    if (workflowStage) workflowStage.classList.toggle('first-run', isEmpty);
+    if (modePill) modePill.closest('.app-stat-pill').hidden = isEmpty;
+    if (activeRunPill) activeRunPill.closest('.app-stat-pill').hidden = isEmpty;
   }
 
   /* ------------------------------------------------------------------ */
@@ -2289,6 +2302,17 @@
           updateAnalysisStory('complete', runtime, data);
           loadBillingStatus();
           loadAnalysisHistory({ preferInstanceId: instanceId });
+          loadRunEvidence(instanceId);
+          var evidenceHero = document.getElementById('app-evidence-hero');
+          if (evidenceHero) {
+            setTimeout(function() {
+              var scrollBehavior = 'smooth';
+              if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                scrollBehavior = 'auto';
+              }
+              evidenceHero.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
+            }, 400);
+          }
         } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
           stopAnalysisPolling();
           setAnalysisStep(phase, 'failed');

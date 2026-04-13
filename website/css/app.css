@@ -29,6 +29,7 @@
 .app-welcome-actions{grid-column:2;grid-row:1;display:flex;gap:10px;align-items:center;flex-shrink:0}
 .app-welcome-stats{grid-column:1 / -1;grid-row:2;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .app-stat-pill{display:flex;flex-direction:column;gap:3px;padding:8px 12px;background:rgba(13,17,23,.18);border:1px solid rgba(230,237,243,.08);border-radius:12px}
+.app-stat-pill[hidden]{display:none}
 .app-utility-label{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--c-muted)}
 .app-stat-pill strong{font-size:.88rem;letter-spacing:-.01em;color:var(--c-text)}
 .app-utility-note{font-size:.72rem;line-height:1.3;color:var(--c-muted)}
@@ -93,7 +94,10 @@
 .app-settings-body{padding:0 20px 20px;display:flex;flex-direction:column;gap:18px}
 
 .app-workflow-stage{display:grid;grid-template-columns:minmax(240px,.7fr) minmax(420px,1.3fr);gap:22px;align-items:stretch}
+/* First-run: hide history rail → analysis rail goes full-width */
+.app-workflow-stage.first-run{grid-template-columns:1fr}
 .app-workflow-rail{padding:22px;border:1px solid var(--c-border);border-radius:18px;background:rgba(13,17,23,.62);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden;transition:transform .25s ease,opacity .25s ease,border-color .25s ease,box-shadow .25s ease;cursor:pointer;opacity:.78;transform:scale(.965)}
+.app-workflow-rail[hidden]{display:none}
 .app-workflow-rail::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));pointer-events:none}
 .app-workflow-stage[data-focus="history"] .app-rail-history,
 .app-workflow-stage[data-focus="run"] .app-rail-run{opacity:1;transform:translateY(-6px) scale(1.01);border-color:var(--app-role-border);box-shadow:0 20px 48px rgba(0,0,0,.28)}
@@ -213,6 +217,7 @@
 .app-workflow-rail input[type=file],.app-workflow-rail textarea,.app-card input[type=file],.app-card textarea{width:100%;padding:10px 12px;background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-text);font:inherit}
 .app-workflow-rail textarea,.app-card textarea{min-height:160px;resize:vertical}
 .app-analysis-actions{margin-top:4px}
+.app-analysis-queue-btn{width:100%;padding:14px;font-size:1rem;font-weight:700}
 .app-callout{padding:12px 14px;border-radius:var(--radius);font-size:.82rem;line-height:1.5}
 .app-callout[data-tone="info"]{background:rgba(94,236,196,.1);border:1px solid rgba(94,236,196,.25);color:var(--c-text)}
 .app-callout[data-tone="error"]{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.28);color:#ffb2ad}
