@@ -62,6 +62,19 @@ def _make_req(
 class TestUploadToken:
     """SAS token minting endpoint."""
 
+    def setup_method(self):
+        self._quota_patcher = patch("blueprints.upload.consume_quota")
+        self._release_patcher = patch("blueprints.upload.release_quota")
+        self._persist_patcher = patch("blueprints.upload._persist_submission_record")
+        self.mock_consume_quota = self._quota_patcher.start()
+        self.mock_release_quota = self._release_patcher.start()
+        self.mock_persist = self._persist_patcher.start()
+
+    def teardown_method(self):
+        self._persist_patcher.stop()
+        self._release_patcher.stop()
+        self._quota_patcher.stop()
+
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_returns_sas_url_for_authenticated_user(self, mock_bsc, mock_gen_sas):
@@ -184,6 +197,72 @@ class TestUploadToken:
         assert "evil_field" not in ctx
         assert ctx["feature_count"] == 5
         assert "total_area_ha" not in ctx  # negative rejected
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_consumes_quota_on_success(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        self.mock_consume_quota.assert_called_once_with("test-user")
+
+    def test_returns_403_when_quota_exhausted(self):
+        from blueprints.upload import upload_token
+
+        self.mock_consume_quota.side_effect = ValueError("Quota exhausted")
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 403
+
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_refunds_quota_on_ticket_failure(self, mock_bsc):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_blob_client.return_value.upload_blob.side_effect = RuntimeError(
+            "storage down"
+        )
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 502
+        self.mock_release_quota.assert_called_once_with("test-user")
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_persists_submission_record(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"submission_context": {"feature_count": 3, "aoi_count": 2}}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        self.mock_persist.assert_called_once()
+        call_args = self.mock_persist.call_args
+        submission_id = call_args[0][0]
+        record = call_args[0][1]
+        assert record["user_id"] == "test-user"
+        assert record["submission_id"] == submission_id
+        assert record["instance_id"] == submission_id
+        assert record["status"] == "submitted"
+        assert record["feature_count"] == 3
+        assert record["aoi_count"] == 2
 
 
 # ===================================================================
