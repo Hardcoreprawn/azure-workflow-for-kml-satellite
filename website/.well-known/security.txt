@@ -1,0 +1,5 @@
+Contact: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/security/advisories/new
+Expires: 2027-04-13T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://canopex.hrdcrprwn.com/.well-known/security.txt
+Policy: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/blob/main/SECURITY.md

@@ -153,7 +153,7 @@ The website expects:
 
 - **No secrets** in HTML/CSS/JS — all static content is public
 - **CORS**: Configured for local testing; adapt as needed in deployment
-- **Headers**: CSP, X-Frame-Options, X-XSS-Protection set in `staticwebapp.config.json`
+- **Headers**: CSP, X-Frame-Options, HSTS, Permissions-Policy set in `staticwebapp.config.json`
 - **User data**: Contact forms validated client-side before submission
 
 ---

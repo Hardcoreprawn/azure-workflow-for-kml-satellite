@@ -1,7 +1,7 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html"]
+    "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html", "/robots.txt", "/sitemap.xml", "/.well-known/*"]
   },
   "routes": [
     {
@@ -17,6 +17,12 @@
     {
       "route": "/api-config.json",
       "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/app/*",
+      "headers": {
+        "X-Robots-Tag": "noindex, nofollow"
+      }
     }
   ],
   "responseOverrides": {
@@ -31,6 +37,7 @@
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
+    "X-XSS-Protection": "0",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",

@@ -221,3 +221,60 @@ class TestCorsConfig:
         finally:
             os.environ["CORS_ALLOWED_ORIGINS"] = original_cors or f"{TEST_ORIGIN}"
             importlib.reload(helpers_mod)
+
+
+# ---------------------------------------------------------------------------
+# Security headers — validate defensive header configuration
+# ---------------------------------------------------------------------------
+
+
+class TestSecurityHeaders:
+    def test_xss_protection_disabled(self, swa_config):
+        """X-XSS-Protection must be '0' — deprecated header that can cause issues."""
+        headers = swa_config["globalHeaders"]
+        assert headers.get("X-XSS-Protection") == "0", (
+            "X-XSS-Protection must be explicitly set to '0' to disable the "
+            "deprecated XSS auditor — CSP provides real protection"
+        )
+
+    def test_x_robots_tag_on_app(self, swa_config):
+        """The /app/* route must set X-Robots-Tag to prevent indexing."""
+        routes = swa_config.get("routes", [])
+        app_routes = [r for r in routes if r.get("route") == "/app/*"]
+        assert app_routes, "/app/* route must exist"
+        headers = app_routes[0].get("headers", {})
+        assert "noindex" in headers.get("X-Robots-Tag", ""), (
+            "/app/* must have X-Robots-Tag: noindex to prevent search engine indexing"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Static discovery files — robots.txt, security.txt, sitemap.xml
+# ---------------------------------------------------------------------------
+
+
+class TestStaticDiscoveryFiles:
+    def test_robots_txt_exists(self):
+        assert (WEBSITE / "robots.txt").is_file(), "robots.txt must exist"
+
+    def test_robots_txt_disallows_app(self):
+        content = (WEBSITE / "robots.txt").read_text()
+        assert "Disallow: /app/" in content
+
+    def test_sitemap_xml_exists(self):
+        assert (WEBSITE / "sitemap.xml").is_file(), "sitemap.xml must exist"
+
+    def test_security_txt_exists(self):
+        assert (WEBSITE / ".well-known" / "security.txt").is_file(), (
+            ".well-known/security.txt must exist"
+        )
+
+    def test_security_txt_has_contact(self):
+        content = (WEBSITE / ".well-known" / "security.txt").read_text()
+        assert "Contact:" in content, "security.txt must include a Contact field"
+
+    def test_nav_fallback_excludes_static_files(self, swa_config):
+        """Navigation fallback must exclude static discovery files."""
+        excludes = swa_config["navigationFallback"]["exclude"]
+        for path in ["/robots.txt", "/sitemap.xml", "/.well-known/*"]:
+            assert path in excludes, f"{path} must be in navigationFallback.exclude"
