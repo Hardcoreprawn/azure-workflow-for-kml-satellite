@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #563 | Batch discovered issues: infracost metric (#513), CSP connect-src (#518/#527), error logging, SSRF proxy tests, NDVI warning fix |
 | #559 | Dashboard UX: collapse first-load noise, auto-scroll on completion, streamline form (UX.3 + UX.4 + UX.5, fixes #555) |
 | #558 | Roadmap update: mark UX.1/.2/.6 done, update Recently Landed |
 | #557 | Dashboard UX overhaul: layout reorder, jargon replacement, export dedup (UX.1 + UX.2 + UX.6, #555) |
 | #556 | Add UX review doc and integrate dashboard UX overhaul into roadmap (refs #555) |
 | #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
-| #549 | Fix deploy: declarative import block for custom domain |
 
 ---
 
