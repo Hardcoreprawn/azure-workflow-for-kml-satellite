@@ -2189,13 +2189,14 @@
 
     preflightMap = L.map(container, {
       zoomControl: true,
-      attributionControl: false,
+      attributionControl: true,
       scrollWheelZoom: false,
       dragging: true
     });
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(preflightMap);
 
     var bounds = L.latLngBounds([]);
@@ -2206,7 +2207,9 @@
         fillColor: '#5eecc4',
         fillOpacity: 0.15
       }).addTo(preflightMap);
-      layer.bindTooltip(polygon.name, { sticky: true });
+      var tip = document.createElement('span');
+      tip.textContent = polygon.name;
+      layer.bindTooltip(tip, { sticky: true });
       bounds.extend(layer.getBounds());
     });
 
@@ -2539,7 +2542,7 @@
       resetAnalysisProgress();
     } finally {
       button.disabled = false;
-      button.textContent = 'Queue Analysis';
+      button.textContent = analysisDraftSummary && !analysisDraftSummary.error ? 'Confirm & Queue' : 'Queue Analysis';
     }
   }
 
