@@ -119,8 +119,6 @@
       summary: 'Stay centered on the live run while you prove what changed, why it changed, and what to do next.',
       deliverable: 'Operator brief',
       stance: 'Prove the change before escalation',
-      focusLabel: 'Run rail',
-      focusTarget: 'run',
       primaryTarget: 'run',
       secondaryTarget: 'history'
     },
@@ -131,8 +129,6 @@
       summary: 'Bias the workspace toward what changed recently so recurring reviews and follow-up runs stay efficient.',
       deliverable: 'Monitoring cadence',
       stance: 'Spot movement early and repeat',
-      focusLabel: 'History rail',
-      focusTarget: 'history',
       primaryTarget: 'history',
       secondaryTarget: 'run'
     },
@@ -143,8 +139,6 @@
       summary: 'Focus on outputs, evidence language, and what to deliver next.',
       deliverable: 'Decision packet',
       stance: 'Translate signal into action',
-      focusLabel: 'Content rail',
-      focusTarget: 'content',
       primaryTarget: 'content',
       secondaryTarget: 'run'
     }
@@ -279,56 +273,45 @@
   }
 
   function setWorkflowFocus(focus) {
-    var stage = document.getElementById('app-workflow-stage');
-    if (!stage || !focus) return;
-    // Evidence is now in its own hero section — map 'content' to scroll there
+    // Only 'content' has special behavior — scroll to evidence hero
     if (focus === 'content') {
-      var hero = document.getElementById('app-evidence-hero');
+      const hero = document.getElementById('app-evidence-hero');
       if (hero) hero.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      stage.setAttribute('data-focus', 'run');
-    } else {
-      stage.setAttribute('data-focus', focus);
     }
-    if (selectedAnalysisRunId) updateRunSelectionLocation(selectedAnalysisRunId, focus);
   }
 
   function readRunSelectionFromLocation() {
     try {
-      var params = new URLSearchParams(window.location.search || '');
+      const params = new URLSearchParams(window.location.search || '');
       return {
-        instanceId: params.get('run') || '',
-        focus: params.get('focus') || ''
+        instanceId: params.get('run') || ''
       };
     } catch {
-      return { instanceId: '', focus: '' };
+      return { instanceId: '' };
     }
   }
 
-  function selectedRunPermalink(instanceId, focus) {
+  function selectedRunPermalink(instanceId) {
     try {
-      var url = new URL(window.location.href);
+      const url = new URL(window.location.href);
       if (instanceId) {
         url.searchParams.set('run', instanceId);
       } else {
         url.searchParams.delete('run');
       }
-      if (focus) {
-        url.searchParams.set('focus', focus);
-      } else {
-        url.searchParams.delete('focus');
-      }
-      var nextPath = url.pathname;
-      var nextSearch = url.searchParams.toString();
+      url.searchParams.delete('focus');
+      const nextPath = url.pathname;
+      const nextSearch = url.searchParams.toString();
       return nextSearch ? nextPath + '?' + nextSearch : nextPath;
     } catch {
       return '/app/';
     }
   }
 
-  function updateRunSelectionLocation(instanceId, focus) {
+  function updateRunSelectionLocation(instanceId) {
     if (!window.history || typeof window.history.replaceState !== 'function') return;
     try {
-      window.history.replaceState({}, '', selectedRunPermalink(instanceId, focus));
+      window.history.replaceState({}, '', selectedRunPermalink(instanceId));
     } catch { /* ignore */ }
   }
 
@@ -361,7 +344,7 @@
       : target === 'content'
         ? 'app-content-card'
         : 'app-analysis-card';
-    setWorkflowFocus(target || 'run');
+    if (target === 'content') setWorkflowFocus('content');
     var card = document.getElementById(cardId);
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -394,7 +377,6 @@
     document.getElementById('app-preference-summary').textContent = preference.summary;
     document.getElementById('app-guided-deliverable').textContent = preference.deliverable;
     document.getElementById('app-guided-stance').textContent = preference.stance;
-    document.getElementById('app-guided-focus').textContent = preference.focusLabel;
 
     var primaryButton = document.getElementById('app-guided-primary-btn');
     var secondaryButton = document.getElementById('app-guided-secondary-btn');
@@ -431,7 +413,6 @@
     workspaceRole = roleKey;
     if (!options || options.persist !== false) storeUiValue(WORKSPACE_ROLE_STORAGE_KEY, roleKey);
     renderWorkspaceGuidance();
-    if (!options || options.alignFocus !== false) setWorkflowFocus(currentPreferenceConfig().focusTarget);
   }
 
   function setWorkspacePreference(preferenceKey, options) {
@@ -439,7 +420,6 @@
     workspacePreference = preferenceKey;
     if (!options || options.persist !== false) storeUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY, preferenceKey);
     renderWorkspaceGuidance();
-    if (!options || options.alignFocus !== false) setWorkflowFocus(currentPreferenceConfig().focusTarget);
   }
 
   function displayAnalysisPhase(customStatus, runtimeStatus) {
@@ -698,7 +678,7 @@
       button.setAttribute('data-selected', instanceId === selectedAnalysisRunId ? 'true' : 'false');
       button.addEventListener('click', function(event) {
         event.stopPropagation();
-        selectAnalysisRun(instanceId, { focus: 'history', resume: historyRunIsActive(run) });
+        selectAnalysisRun(instanceId, { resume: historyRunIsActive(run) });
       });
 
       header.className = 'app-history-item-header';
@@ -763,8 +743,7 @@
 
     selectedAnalysisRunId = instanceId;
     renderAnalysisHistoryList();
-    if (options.focus) setWorkflowFocus(options.focus);
-    updateRunSelectionLocation(instanceId, options.focus || document.getElementById('app-workflow-stage').getAttribute('data-focus') || 'run');
+    updateRunSelectionLocation(instanceId);
 
     stopAnalysisPolling();
     updateAnalysisRun(run);
@@ -793,8 +772,6 @@
   function applyAnalysisHistory(payload, options) {
     options = options || {};
     var locationSelection = readRunSelectionFromLocation();
-
-    if (locationSelection.focus) setWorkflowFocus(locationSelection.focus);
 
     var normalizedActiveRun = normalizeAnalysisRun(payload && payload.activeRun);
     analysisHistoryRuns = sortAnalysisHistoryRuns(payload && payload.runs);
@@ -826,7 +803,7 @@
 
     if (!nextSelectedId) {
       selectedAnalysisRunId = null;
-      updateRunSelectionLocation('', document.getElementById('app-workflow-stage').getAttribute('data-focus') || 'run');
+      updateRunSelectionLocation('');
       stopAnalysisPolling();
       resetAnalysisProgress();
       renderAnalysisHistoryList();
@@ -2164,7 +2141,7 @@
       quotaImpact: latestBillingStatus && latestBillingStatus.runs_remaining != null
         ? '1 of ' + latestBillingStatus.runs_remaining + ' runs'
         : '1 analysis',
-      summary: parsed.featureCount + ' features across ' + parsed.polygons.length + ' AOIs covering about ' + formatHectares(totalAreaHa) + '. ' + processingMode + ' keeps the ' + preference.focusLabel.toLowerCase() + ' in focus for this request.'
+      summary: parsed.featureCount + ' features across ' + parsed.polygons.length + ' AOIs covering about ' + formatHectares(totalAreaHa) + '. ' + processingMode + ' processing for this request.'
     };
     preflight.warnings = buildPreflightWarnings(preflight);
     return preflight;
@@ -2437,7 +2414,6 @@
     resetAnalysisProgress();
     setAnalysisProgressVisible(true);
     setAnalysisStep('submit', 'active');
-    setWorkflowFocus('run');
     updateAnalysisStory('submit', 'Pending', null);
     updateAnalysisRun(null);
 
@@ -2533,7 +2509,7 @@
         workspaceRole: workspaceRole,
         workspacePreference: workspacePreference
       });
-      selectAnalysisRun(data.instance_id, { focus: 'run', resume: true });
+      selectAnalysisRun(data.instance_id, { resume: true });
       setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
       loadBillingStatus();
     } catch (err) {
@@ -2853,14 +2829,6 @@
   workspaceRole = readStoredUiValue(WORKSPACE_ROLE_STORAGE_KEY) || workspaceRole;
   workspacePreference = readStoredUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY) || workspacePreference;
   renderWorkspaceGuidance();
-  setWorkflowFocus(currentPreferenceConfig().focusTarget);
-
-  document.querySelectorAll('.app-workflow-rail').forEach(function(rail) {
-    rail.addEventListener('click', function() {
-      var target = rail.getAttribute('data-focus-target');
-      if (target) setWorkflowFocus(target);
-    });
-  });
 
   document.querySelectorAll('[data-role-choice]').forEach(function(button) {
     button.addEventListener('click', function() {
