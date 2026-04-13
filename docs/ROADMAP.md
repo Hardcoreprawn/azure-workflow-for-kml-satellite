@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #559 | Dashboard UX: collapse first-load noise, auto-scroll on completion, streamline form (UX.3 + UX.4 + UX.5, fixes #555) |
+| #558 | Roadmap update: mark UX.1/.2/.6 done, update Recently Landed |
 | #557 | Dashboard UX overhaul: layout reorder, jargon replacement, export dedup (UX.1 + UX.2 + UX.6, #555) |
 | #556 | Add UX review doc and integrate dashboard UX overhaul into roadmap (refs #555) |
 | #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
 | #549 | Fix deploy: declarative import block for custom domain |
-| #546 | Remove frontend demo mode (`?mode=demo`), unify on Free Tier entry (closes #532) |
-| #545 | CORS fix: set custom_domain in dev.tfvars for apex domain |
 
 ---
 
@@ -173,9 +173,9 @@ can: see what Canopex does (landing page) → sign in (free) → run analysis
 |-------|-------|-------|--------|
 | UX.1 | #555 | Reorder layout: submission above evidence | ✅ PR #557 |
 | UX.2 | #555 | Replace jargon with user language | ✅ PR #557 |
-| UX.3 | #555 | Collapse first-load noise for new users | Open |
-| UX.4 | #555 | Auto-scroll to results on completion | Open |
-| UX.5 | #555 | Streamline submission form | Open |
+| UX.3 | #555 | Collapse first-load noise for new users | ✅ PR #559 |
+| UX.4 | #555 | Auto-scroll to results on completion | ✅ PR #559 |
+| UX.5 | #555 | Streamline submission form | ✅ PR #559 |
 | UX.6 | #555 | Deduplicate export buttons | ✅ PR #557 |
 
 See `docs/UX_REVIEW_2026-04-12.md` for full findings and implementation

@@ -195,6 +195,9 @@
 .app-preflight-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
 .app-preflight-header h4{font-size:1.02rem;letter-spacing:-.02em}
 .app-preflight-badge{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:rgba(94,236,196,.08);border:1px solid rgba(94,236,196,.18);font-size:.76rem;font-weight:600;color:var(--c-text);white-space:nowrap}
+.app-preflight-map-wrap{margin-top:12px}
+.app-preflight-map{height:220px;border-radius:12px;border:1px solid rgba(230,237,243,.12);overflow:hidden}
+.app-preflight-map-caption{margin-top:6px;text-align:center}
 .app-preflight-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
 .app-preflight-grid div{padding:12px 14px;border-radius:12px;background:rgba(13,17,23,.42);border:1px solid rgba(230,237,243,.08);display:flex;flex-direction:column;gap:5px}
 .app-preflight-grid span{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--c-muted)}
