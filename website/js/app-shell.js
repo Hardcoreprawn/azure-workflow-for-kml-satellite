@@ -805,6 +805,18 @@
       analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
     }
 
+    // If the history API hasn't propagated a just-completed run yet,
+    // preserve it from latestAnalysisRun so the UI doesn't flash to empty.
+    if (options.preferInstanceId && latestAnalysisRun &&
+        (latestAnalysisRun.instanceId || latestAnalysisRun.instance_id) === options.preferInstanceId &&
+        !analysisHistoryRuns.some(function(run) { return run.instanceId === options.preferInstanceId; })) {
+      var preserved = normalizeAnalysisRun(latestAnalysisRun);
+      if (preserved) {
+        analysisHistoryRuns.unshift(preserved);
+        analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
+      }
+    }
+
     var nextSelectedId = options.preferInstanceId || selectedAnalysisRunId || locationSelection.instanceId;
     if (nextSelectedId && !analysisHistoryRuns.some(function(run) { return run.instanceId === nextSelectedId; })) {
       nextSelectedId = null;
@@ -2144,6 +2156,7 @@
     var preflight = {
       featureCount: parsed.featureCount,
       aoiCount: parsed.polygons.length,
+      polygons: parsed.polygons,
       maxSpreadKm: maxSpreadKm,
       totalAreaHa: totalAreaHa,
       largestAreaHa: largestAreaHa,
@@ -2155,6 +2168,49 @@
     };
     preflight.warnings = buildPreflightWarnings(preflight);
     return preflight;
+  }
+
+  var preflightMap = null;
+
+  function renderPreflightMap(polygons) {
+    var wrap = document.getElementById('app-preflight-map-wrap');
+    var container = document.getElementById('app-preflight-map');
+    if (!wrap || !container) return;
+
+    if (!polygons || !polygons.length) {
+      wrap.hidden = true;
+      if (preflightMap) { preflightMap.remove(); preflightMap = null; }
+      return;
+    }
+
+    wrap.hidden = false;
+
+    if (preflightMap) { preflightMap.remove(); preflightMap = null; }
+
+    preflightMap = L.map(container, {
+      zoomControl: true,
+      attributionControl: false,
+      scrollWheelZoom: false,
+      dragging: true
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(preflightMap);
+
+    var bounds = L.latLngBounds([]);
+    polygons.forEach(function(polygon) {
+      var layer = L.polygon(polygon.coords, {
+        color: '#5eecc4',
+        weight: 2,
+        fillColor: '#5eecc4',
+        fillOpacity: 0.15
+      }).addTo(preflightMap);
+      layer.bindTooltip(polygon.name, { sticky: true });
+      bounds.extend(layer.getBounds());
+    });
+
+    preflightMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 15 });
   }
 
   function renderPreflightWarnings(items) {
@@ -2192,6 +2248,9 @@
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
       renderPreflightWarnings([{ tone: 'info', text: 'Preflight will show warnings here after you paste or upload KML.' }]);
+      renderPreflightMap(null);
+      var submitBtn = document.getElementById('app-analysis-submit-btn');
+      if (submitBtn) submitBtn.textContent = 'Queue Analysis';
       return null;
     }
 
@@ -2206,6 +2265,7 @@
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
       renderPreflightWarnings([{ tone: 'error', text: preflight.error }]);
+      renderPreflightMap(null);
       return preflight;
     }
 
@@ -2217,6 +2277,9 @@
     spreadEl.textContent = formatDistance(preflight.maxSpreadKm);
     quotaEl.textContent = preflight.quotaImpact;
     renderPreflightWarnings(preflight.warnings);
+    renderPreflightMap(preflight.polygons);
+    var submitBtn = document.getElementById('app-analysis-submit-btn');
+    if (submitBtn) submitBtn.textContent = 'Confirm & Queue';
     return preflight;
   }
 
