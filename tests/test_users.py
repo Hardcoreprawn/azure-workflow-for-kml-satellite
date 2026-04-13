@@ -6,6 +6,7 @@ import json
 from unittest.mock import patch
 
 import azure.functions as func
+import pytest
 
 # ---------------------------------------------------------------------------
 # Unit tests: treesight.security.users
@@ -117,6 +118,7 @@ class TestIsBillingAllowed:
 class TestSetUserRole:
     def test_sets_billing_allowed(self):
         with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.read_item", return_value={"id": "u1", "user_id": "u1"}),
             patch("treesight.storage.cosmos.upsert_item") as upsert,
         ):
@@ -128,6 +130,7 @@ class TestSetUserRole:
 
     def test_sets_tier(self):
         with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.read_item", return_value={"id": "u1", "user_id": "u1"}),
             patch("treesight.storage.cosmos.upsert_item"),
             patch("treesight.security.billing.save_subscription") as save_sub,
@@ -140,6 +143,7 @@ class TestSetUserRole:
 
     def test_creates_user_if_not_exists(self):
         with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.read_item", return_value=None),
             patch("treesight.storage.cosmos.upsert_item") as upsert,
         ):
@@ -417,3 +421,68 @@ class TestOpsSetUserRole:
             )
             assert resp.status_code == 200
             assert json.loads(resp.get_body())["assigned_tier"] == "pro"
+
+    def test_rejects_non_bool_billing_allowed(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        from blueprints.ops import ops_set_user_role
+
+        resp = ops_set_user_role(
+            self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": "yes"})
+        )
+        assert resp.status_code == 400
+        assert "boolean" in json.loads(resp.get_body())["error"]
+
+    def test_rejects_non_string_tier(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        from blueprints.ops import ops_set_user_role
+
+        resp = ops_set_user_role(self._make_role_req(bearer=_OPS_KEY, body={"tier": 123}))
+        assert resp.status_code == 400
+        assert "string" in json.loads(resp.get_body())["error"]
+
+    def test_rejects_empty_tier(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        from blueprints.ops import ops_set_user_role
+
+        resp = ops_set_user_role(self._make_role_req(bearer=_OPS_KEY, body={"tier": "   "}))
+        assert resp.status_code == 400
+
+    def test_returns_503_when_cosmos_unavailable(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        with patch(
+            "treesight.security.users.set_user_role",
+            side_effect=RuntimeError("Cosmos DB is not available"),
+        ):
+            from blueprints.ops import ops_set_user_role
+
+            resp = ops_set_user_role(
+                self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": True})
+            )
+            assert resp.status_code == 503
+
+
+class TestOpsListUsersLimitValidation:
+    def test_rejects_non_integer_limit(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        from blueprints.ops import ops_list_users
+
+        resp = ops_list_users(_make_ops_req(bearer=_OPS_KEY, params={"limit": "abc"}))
+        assert resp.status_code == 400
+
+    def test_clamps_negative_limit(self, monkeypatch):
+        monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
+        with patch("treesight.security.users.list_users", return_value=[]) as mock_lu:
+            from blueprints.ops import ops_list_users
+
+            resp = ops_list_users(_make_ops_req(bearer=_OPS_KEY, params={"limit": "-5"}))
+            assert resp.status_code == 200
+            mock_lu.assert_called_once_with(limit=1)
+
+
+class TestSetUserRoleCosmos:
+    def test_raises_when_cosmos_unavailable(self):
+        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
+            from treesight.security.users import set_user_role
+
+            with pytest.raises(RuntimeError, match="not available"):
+                set_user_role("u1", billing_allowed=True)

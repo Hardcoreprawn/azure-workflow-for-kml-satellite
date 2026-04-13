@@ -95,7 +95,10 @@ def set_user_role(
     tier: str | None = None,
 ) -> dict[str, Any]:
     """Set operator flags on a user record. Returns the updated document."""
-    from treesight.storage.cosmos import read_item, upsert_item
+    from treesight.storage.cosmos import cosmos_available, read_item, upsert_item
+
+    if not cosmos_available():
+        raise RuntimeError("Cosmos DB is not available")
 
     existing: dict[str, Any] = read_item("users", user_id, user_id) or {
         "id": user_id,

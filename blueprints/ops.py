@@ -273,7 +273,14 @@ def ops_list_users(req: func.HttpRequest) -> func.HttpResponse:
 
     from treesight.security.users import list_users
 
-    limit = min(int(req.params.get("limit", "50")), 200)
+    try:
+        limit = max(1, min(int(req.params.get("limit", "50")), 200))
+    except (ValueError, TypeError):
+        return func.HttpResponse(
+            json.dumps({"error": "'limit' must be a positive integer"}),
+            status_code=400,
+            mimetype="application/json",
+        )
     users = list_users(limit=limit)
     return func.HttpResponse(
         json.dumps([_clean_user_doc(u) for u in users], default=str),
@@ -354,19 +361,39 @@ def ops_set_user_role(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="application/json",
         )
 
+    if billing_allowed is not None and not isinstance(billing_allowed, bool):
+        return func.HttpResponse(
+            json.dumps({"error": "'billing_allowed' must be a boolean"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    if tier is not None and (not isinstance(tier, str) or not tier.strip()):
+        return func.HttpResponse(
+            json.dumps({"error": "'tier' must be a non-empty string"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
     from treesight.security.users import set_user_role
 
-    updated = set_user_role(
-        user_id,
-        billing_allowed=billing_allowed,
-        tier=tier,
-    )
+    try:
+        updated = set_user_role(
+            user_id,
+            billing_allowed=billing_allowed,
+            tier=tier,
+        )
+    except RuntimeError:
+        return func.HttpResponse(
+            json.dumps({"error": "User store is not available"}),
+            status_code=503,
+            mimetype="application/json",
+        )
 
     logger.info(
-        "Operator set role: user=%s billing_allowed=%s tier=%s",
+        "Operator set role: user=%s fields_updated=%s",
         user_id,
-        billing_allowed,
-        tier,
+        [k for k in ("billing_allowed", "tier") if body.get(k) is not None],
     )
 
     return func.HttpResponse(

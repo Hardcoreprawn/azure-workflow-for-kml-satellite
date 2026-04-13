@@ -100,12 +100,51 @@ def _sanitise_submission_context(ctx: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _safe_release_quota(user_id: str) -> None:
+def _safe_release_quota(user_id: str, instance_id: str = "") -> None:
     """Best-effort quota refund — never raises."""
     try:
-        release_quota(user_id)
+        release_quota(user_id, instance_id=instance_id)
     except Exception:
         logger.exception("Failed to release quota for user=%s", user_id)
+
+
+def _mint_sas_url(
+    blob_service,
+    blob_name: str,
+    submission_id: str,
+) -> tuple[str | None, str | None]:
+    """Generate a write-only SAS URL. Returns (sas_url, error_msg)."""
+    now = datetime.datetime.now(datetime.UTC)
+    expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
+
+    delegation_key = blob_service.get_user_delegation_key(
+        key_start_time=now,
+        key_expiry_time=expiry,
+    )
+
+    sas_token = generate_blob_sas(
+        account_name=STORAGE_ACCOUNT_NAME,
+        container_name=DEFAULT_INPUT_CONTAINER,
+        blob_name=blob_name,
+        user_delegation_key=delegation_key,
+        permission=BlobSasPermissions(create=True, write=True),
+        expiry=expiry,
+        content_type="application/vnd.google-earth.kml+xml",
+    )
+
+    sas_url = (
+        f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
+        f"{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
+    )
+    return sas_url, None
+
+
+def _resolve_provider(body: dict, submission_context: dict) -> str:
+    """Pick the effective provider from request body, falling back to submission context."""
+    top_level = body.get("provider_name")
+    if isinstance(top_level, str) and top_level.strip():
+        return top_level.strip()[:80]
+    return submission_context.get("provider_name", DEFAULT_PROVIDER)
 
 
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -139,7 +178,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         body = {}
 
     submission_context = _sanitise_submission_context(body.get("submission_context") or {})
-    effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
+    effective_provider = _resolve_provider(body, submission_context)
 
     # Write ticket blob — trusted server-side record of who initiated the upload
     ticket: dict = {
@@ -165,10 +204,19 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     except Exception:
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
         if quota_consumed:
-            _safe_release_quota(user_id)
+            _safe_release_quota(user_id, instance_id=submission_id)
         return error_response(502, "Storage service temporarily unavailable", req=req)
 
-    # Persist submission record so the run appears in analysis history.
+    try:
+        sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id)
+    except Exception:
+        logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
+        if quota_consumed:
+            _safe_release_quota(user_id, instance_id=submission_id)
+        return error_response(502, "Storage service temporarily unavailable", req=req)
+
+    # Persist submission record only after SAS minting succeeds
+    # so a minting failure doesn't leave a phantom run.
     submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
     record: dict = {
         "submission_id": submission_id,
@@ -183,33 +231,6 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     }
     record.update(submission_context)
     _persist_submission_record(submission_id, record, user_id)
-
-    now = datetime.datetime.now(datetime.UTC)
-    expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
-
-    try:
-        delegation_key = blob_service.get_user_delegation_key(
-            key_start_time=now,
-            key_expiry_time=expiry,
-        )
-    except Exception:
-        logger.exception("Failed to obtain user delegation key")
-        return error_response(502, "Storage service temporarily unavailable", req=req)
-
-    sas_token = generate_blob_sas(
-        account_name=STORAGE_ACCOUNT_NAME,
-        container_name=DEFAULT_INPUT_CONTAINER,
-        blob_name=blob_name,
-        user_delegation_key=delegation_key,
-        permission=BlobSasPermissions(create=True, write=True),
-        expiry=expiry,
-        content_type="application/vnd.google-earth.kml+xml",
-    )
-
-    sas_url = (
-        f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-        f"{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
-    )
 
     logger.info("Upload URL minted submission_id=%s blob=%s", submission_id, blob_name)
 

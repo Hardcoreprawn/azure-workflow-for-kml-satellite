@@ -1,10 +1,8 @@
 """Feature gating for billing and other premium features.
 
-Operator status is checked in two places (in priority order):
-1. Cosmos ``users`` container — ``billing_allowed`` flag per user
-2. ``BILLING_ALLOWED_USERS`` environment variable — static allow-list
-
-Either source granting access is sufficient.
+Operator status is checked in two places (either granting access is sufficient):
+1. ``BILLING_ALLOWED_USERS`` environment variable — static allow-list (fast, no I/O)
+2. Cosmos ``users`` container — ``billing_allowed`` flag per user (fallback)
 """
 
 from __future__ import annotations

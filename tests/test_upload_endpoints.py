@@ -237,7 +237,10 @@ class TestUploadToken:
             resp = upload_token(req)
 
         assert resp.status_code == 502
-        self.mock_release_quota.assert_called_once_with("test-user")
+        self.mock_release_quota.assert_called_once()
+        call_args = self.mock_release_quota.call_args
+        assert call_args[0][0] == "test-user"
+        assert call_args[1].get("instance_id")  # submission_id passed for idempotency
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
