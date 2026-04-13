@@ -97,6 +97,7 @@
 /* First-run: hide history rail → analysis rail goes full-width */
 .app-workflow-stage.first-run{grid-template-columns:1fr}
 .app-workflow-rail{padding:22px;border:1px solid var(--c-border);border-radius:18px;background:rgba(13,17,23,.62);box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px;position:relative;overflow:hidden;transition:transform .25s ease,opacity .25s ease,border-color .25s ease,box-shadow .25s ease;cursor:pointer;opacity:.78;transform:scale(.965)}
+.app-workflow-rail[hidden]{display:none}
 .app-workflow-rail::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));pointer-events:none}
 .app-workflow-stage[data-focus="history"] .app-rail-history,
 .app-workflow-stage[data-focus="run"] .app-rail-run{opacity:1;transform:translateY(-6px) scale(1.01);border-color:var(--app-role-border);box-shadow:0 20px 48px rgba(0,0,0,.28)}

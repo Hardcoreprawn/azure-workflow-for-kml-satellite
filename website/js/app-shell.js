@@ -751,6 +751,7 @@
     if (!replaced) analysisHistoryRuns.unshift(normalized);
     analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
     renderAnalysisHistoryList();
+    applyFirstRunLayout();
   }
 
   function selectAnalysisRun(instanceId, options) {
@@ -2305,7 +2306,11 @@
           var evidenceHero = document.getElementById('app-evidence-hero');
           if (evidenceHero) {
             setTimeout(function() {
-              evidenceHero.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              var scrollBehavior = 'smooth';
+              if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                scrollBehavior = 'auto';
+              }
+              evidenceHero.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
             }, 400);
           }
         } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
