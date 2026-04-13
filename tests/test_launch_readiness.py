@@ -373,6 +373,31 @@ class TestCspAppInsights:
             f"Found inline event handler(s) in app/index.html that CSP will block: {matches}"
         )
 
+    def test_connect_src_covers_cdn_domains_for_source_maps(self, csp):
+        """CDN domains in script-src/style-src must also appear in connect-src.
+
+        Browsers fetch source maps (e.g. leaflet.js.map) via connect-src.
+        If a CDN is trusted for scripts but missing from connect-src, the
+        source-map fetch is blocked — polluting DevTools with CSP errors.
+        """
+        skip = {"'self'", "'unsafe-inline'", "'none'"}
+        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
+        assert connect_match, "CSP missing connect-src"
+        connect_sources = connect_match.group(1).split()
+
+        for directive in ("script-src", "style-src"):
+            dir_match = re.search(rf"{directive}\s+([^;]+)", csp)
+            if not dir_match:
+                continue
+            for src in dir_match.group(1).split():
+                if src in skip or not src.startswith("https://"):
+                    continue
+                host = src.split("//", 1)[1].rstrip("/")
+                assert any(_csp_token_matches_host(cs, host) for cs in connect_sources), (
+                    f"CSP {directive} allows {src} but connect-src does not — "
+                    f"source-map fetches will be blocked"
+                )
+
 
 # ---------------------------------------------------------------------------
 # 9. Deploy workflow applies CLI-managed settings

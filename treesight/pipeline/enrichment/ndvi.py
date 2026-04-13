@@ -206,7 +206,8 @@ def compute_ndvi(
         else:
             # Pure-Python fallback
             denom = nir + red
-            ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
             valid_mask = (b04_data > 0) & (b08_data > 0) & np.isfinite(ndvi)
             if scl_mask is not None:
                 scl_valid = np.isin(scl_mask, VALID_SCL_CLASSES)

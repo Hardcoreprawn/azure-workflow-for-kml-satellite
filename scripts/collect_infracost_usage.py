@@ -130,7 +130,7 @@ def collect_log_analytics_ingestion(
 ) -> float:
     """Return monthly data ingestion in GB for Log Analytics workspace."""
     total_bytes = _query_metric(
-        client, resource_uri, "IngestionVolumeMB", MetricAggregationType.TOTAL, start, end
+        client, resource_uri, "Ingestion Volume", MetricAggregationType.TOTAL, start, end
     )
     if total_bytes is None:
         return 0.5  # fallback default

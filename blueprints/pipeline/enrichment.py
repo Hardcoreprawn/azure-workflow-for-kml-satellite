@@ -5,6 +5,7 @@ See blueprints/pipeline/__init__.py for details.
 """
 
 import json
+import logging
 from datetime import UTC, datetime
 
 import azure.durable_functions as df
@@ -21,6 +22,8 @@ from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 
 from . import bp
 from ._helpers import _reshape_output
+
+logger = logging.getLogger(__name__)
 
 _MAX_ANALYSIS_BODY_BYTES = 131_072
 
@@ -127,6 +130,7 @@ def timelapse_analysis_load(req: func.HttpRequest) -> func.HttpResponse:
     try:
         data = storage.download_json(DEFAULT_OUTPUT_CONTAINER, analysis_path)
     except Exception:
+        logger.warning("analysis load failed path=%s", analysis_path, exc_info=True)
         return error_response(404, "No saved analysis for this pipeline run", req=req)
 
     return func.HttpResponse(

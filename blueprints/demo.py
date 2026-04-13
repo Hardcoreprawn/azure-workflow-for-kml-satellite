@@ -5,6 +5,7 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import json
+import logging
 import mimetypes
 from urllib.parse import urlparse
 
@@ -26,6 +27,8 @@ from treesight.security.valet import mint_valet_token, verify_valet_token
 from treesight.storage.client import BlobStorageClient
 
 bp = func.Blueprint()
+
+logger = logging.getLogger(__name__)
 
 
 # --- POST /api/demo-valet-tokens ---
@@ -54,6 +57,7 @@ def demo_valet_tokens(req: func.HttpRequest) -> func.HttpResponse:
     try:
         submission = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, submission_blob)
     except Exception:
+        logger.warning("demo submission lookup failed blob=%s", submission_blob, exc_info=True)
         return error_response(404, "Submission not found", req=req)
 
     # Mint tokens for known artifact paths
@@ -98,6 +102,7 @@ def demo_artifacts(req: func.HttpRequest) -> func.HttpResponse:
     try:
         data = storage.download_bytes(output_container, artifact_path)
     except Exception:
+        logger.warning("demo artifact download failed path=%s", artifact_path, exc_info=True)
         return error_response(404, "Artifact not found", req=req)
 
     content_type = mimetypes.guess_type(artifact_path)[0] or "application/octet-stream"
@@ -164,6 +169,7 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
         if not _is_domain_allowed(domain):
             return error_response(403, "Domain not whitelisted", req=req)
     except Exception:
+        logger.warning("proxy URL validation failed url=%s", target_url, exc_info=True)
         return error_response(400, "Invalid URL", req=req)
 
     try:
