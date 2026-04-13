@@ -109,3 +109,54 @@ class TestHostInAllowlist:
 
     def test_fqdn_subdomain_of_entry(self):
         assert host_in_allowlist("sub.api.open-meteo.com", self._ALLOWED)
+
+
+class TestProxyDomainAllowlist:
+    """SSRF-prevention tests for the CORS proxy domain check.
+
+    The proxy endpoint in blueprints/demo.py validates target URLs via
+    ``_is_domain_allowed`` before fetching.  These tests verify that
+    common bypass techniques are rejected.
+    """
+
+    @staticmethod
+    def _check(domain: str) -> bool:
+        from blueprints.demo import _is_domain_allowed
+
+        return _is_domain_allowed(domain)
+
+    def test_allowed_domain_passes(self):
+        assert self._check("environment.data.gov.uk")
+
+    def test_subdomain_of_allowed_passes(self):
+        assert self._check("sub.environment.data.gov.uk")
+
+    def test_unrelated_domain_rejected(self):
+        assert not self._check("evil.com")
+
+    def test_suffix_overlap_rejected(self):
+        """Prevent evil-environment.data.gov.uk-style bypass."""
+        assert not self._check("evil-environment.data.gov.uk")
+
+    def test_domain_with_at_sign_rejected(self):
+        """Prevent credential-in-hostname SSRF bypass."""
+        assert not self._check("evil.com@environment.data.gov.uk")
+
+    def test_empty_domain_rejected(self):
+        assert not self._check("")
+
+    def test_localhost_rejected(self):
+        assert not self._check("localhost")
+
+    def test_private_ip_rejected(self):
+        assert not self._check("127.0.0.1")
+
+    def test_internal_metadata_rejected(self):
+        """Azure IMDS endpoint must never be proxied."""
+        assert not self._check("169.254.169.254")
+
+    def test_all_allowed_domains_accepted(self):
+        from blueprints.demo import PROXY_ALLOWED_DOMAINS
+
+        for domain in PROXY_ALLOWED_DOMAINS:
+            assert self._check(domain), f"{domain} should be allowed"
