@@ -293,6 +293,37 @@ class TestBillingStatus:
         resp = billing_emulation(req)
         assert resp.status_code == 403
 
+    @_BILLING_UNGATED
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    def test_operator_can_emulate_from_non_local_origin(self, mock_read, mock_upsert):
+        """Billing-allowed users can use tier emulation from production origins."""
+        from blueprints.billing import billing_emulation
+
+        store: dict[str, dict] = {}
+
+        def _read_item(container, item_id, partition_key):
+            return store.get(f"{container}/{item_id}")
+
+        def _upsert_item(container, item):
+            store[f"{container}/{item['id']}"] = item
+            return item
+
+        mock_read.side_effect = _read_item
+        mock_upsert.side_effect = _upsert_item
+
+        # Non-local origin but user is in BILLING_ALLOWED_USERS
+        req = _make_req(
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            url="/api/billing/emulation",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["tier"] == "pro"
+        assert data["tier_source"] == "emulated"
+        assert data["emulation"]["active"] is True
+
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
     def test_local_origin_allows_anonymous_tier_emulation(self, mock_read, mock_upsert):

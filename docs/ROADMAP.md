@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-12 (UX overhaul PR #557, docs #556, auth #554 merged)
+Last updated: 2026-04-13 (upload quota + user management PR #566)
 
 ---
 
@@ -36,11 +36,11 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #566 | Upload quota consumption, Cosmos-based user management, ops user endpoints (fixes #565) |
 | #563 | Batch discovered issues: infracost metric (#513), CSP connect-src (#518/#527), error logging, SSRF proxy tests, NDVI warning fix |
 | #559 | Dashboard UX: collapse first-load noise, auto-scroll on completion, streamline form (UX.3 + UX.4 + UX.5, fixes #555) |
 | #558 | Roadmap update: mark UX.1/.2/.6 done, update Recently Landed |
 | #557 | Dashboard UX overhaul: layout reorder, jargon replacement, export dedup (UX.1 + UX.2 + UX.6, #555) |
-| #556 | Add UX review doc and integrate dashboard UX overhaul into roadmap (refs #555) |
 | #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
 
 ---
@@ -185,6 +185,18 @@ UX.3 → UX.4 → UX.5 → UX.6.
 **Exit criteria:** File upload is visible without scrolling. Results auto-
 scroll on completion. Zero "signed-in" / "workspace lens" / "durable" jargon
 in user-facing strings. First-load elements <12 (currently ~25).
+
+#### 2C.5 — Upload Quota & User Management
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| Q.1 | #565 | Upload flow missing quota consumption + submission persistence | ✅ PR #566 |
+| Q.2 | #565 | Cosmos-based user management (replace env-var allow-list) | ✅ PR #566 |
+| Q.3 | #565 | Ops endpoints for user lookup and role assignment | ✅ PR #566 |
+
+**Exit criteria:** Runs counter decrements on upload. History shows all
+submissions. Operators can look up users by email and assign billing
+access / tiers at runtime via ops endpoints.
 
 ---
 

@@ -19,7 +19,10 @@ class TestBillingAllowed:
             assert billing_allowed(None) is False
 
     def test_empty_allowlist_gates_everyone(self):
-        with patch("treesight.security.feature_gate.BILLING_ALLOWED_USERS", frozenset()):
+        with (
+            patch("treesight.security.feature_gate.BILLING_ALLOWED_USERS", frozenset()),
+            patch("treesight.security.users.is_billing_allowed", return_value=False),
+        ):
             from treesight.security.feature_gate import billing_allowed
 
             assert billing_allowed("some-user") is False
@@ -35,9 +38,12 @@ class TestBillingAllowed:
             assert billing_allowed("friend-456") is True
 
     def test_unlisted_user_gated(self):
-        with patch(
-            "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
-            frozenset({"admin-123"}),
+        with (
+            patch(
+                "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
+                frozenset({"admin-123"}),
+            ),
+            patch("treesight.security.users.is_billing_allowed", return_value=False),
         ):
             from treesight.security.feature_gate import billing_allowed
 

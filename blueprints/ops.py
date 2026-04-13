@@ -249,3 +249,155 @@ async def ops_dashboard(
         status_code=200,
         mimetype="application/json",
     )
+
+
+# ---------------------------------------------------------------------------
+# User management endpoints (ops-key protected)
+# ---------------------------------------------------------------------------
+
+
+def _clean_user_doc(doc: dict[str, Any]) -> dict[str, Any]:
+    """Strip Cosmos metadata fields from a user document."""
+    return {k: v for k, v in doc.items() if not k.startswith("_")}
+
+
+@bp.route(route="ops/users", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def ops_list_users(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/ops/users — list registered users."""
+    if not _check_ops_key(req):
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    from treesight.security.users import list_users
+
+    try:
+        limit = max(1, min(int(req.params.get("limit", "50")), 200))
+    except (ValueError, TypeError):
+        return func.HttpResponse(
+            json.dumps({"error": "'limit' must be a positive integer"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+    users = list_users(limit=limit)
+    return func.HttpResponse(
+        json.dumps([_clean_user_doc(u) for u in users], default=str),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
+@bp.route(route="ops/users/lookup", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def ops_lookup_user(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/ops/users/lookup?email=... — find user by email."""
+    if not _check_ops_key(req):
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    email = req.params.get("email", "").strip()
+    if not email:
+        return func.HttpResponse(
+            json.dumps({"error": "Missing 'email' query parameter"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    from treesight.security.users import lookup_user_by_email
+
+    user = lookup_user_by_email(email)
+    if not user:
+        return func.HttpResponse(
+            json.dumps({"error": "User not found"}),
+            status_code=404,
+            mimetype="application/json",
+        )
+
+    return func.HttpResponse(
+        json.dumps(_clean_user_doc(user), default=str),
+        status_code=200,
+        mimetype="application/json",
+    )
+
+
+@bp.route(route="ops/users/{user_id}/role", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def ops_set_user_role(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/ops/users/{user_id}/role — set billing_allowed / tier."""
+    if not _check_ops_key(req):
+        return func.HttpResponse(
+            json.dumps({"error": "Unauthorized"}),
+            status_code=401,
+            mimetype="application/json",
+        )
+
+    user_id = req.route_params.get("user_id", "").strip()
+    if not user_id:
+        return func.HttpResponse(
+            json.dumps({"error": "Missing user_id in path"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    try:
+        body = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"error": "Invalid JSON body"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    billing_allowed = body.get("billing_allowed")
+    tier = body.get("tier")
+
+    if billing_allowed is None and tier is None:
+        return func.HttpResponse(
+            json.dumps({"error": "Provide 'billing_allowed' and/or 'tier'"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    if billing_allowed is not None and not isinstance(billing_allowed, bool):
+        return func.HttpResponse(
+            json.dumps({"error": "'billing_allowed' must be a boolean"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    if tier is not None and (not isinstance(tier, str) or not tier.strip()):
+        return func.HttpResponse(
+            json.dumps({"error": "'tier' must be a non-empty string"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    from treesight.security.users import set_user_role
+
+    try:
+        updated = set_user_role(
+            user_id,
+            billing_allowed=billing_allowed,
+            tier=tier,
+        )
+    except RuntimeError:
+        return func.HttpResponse(
+            json.dumps({"error": "User store is not available"}),
+            status_code=503,
+            mimetype="application/json",
+        )
+
+    logger.info(
+        "Operator set role: user=%s fields_updated=%s",
+        user_id,
+        [k for k in ("billing_allowed", "tier") if body.get(k) is not None],
+    )
+
+    return func.HttpResponse(
+        json.dumps(_clean_user_doc(updated), default=str),
+        status_code=200,
+        mimetype="application/json",
+    )

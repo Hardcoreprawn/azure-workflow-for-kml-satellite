@@ -56,16 +56,23 @@ def _get_stripe():
     return stripe
 
 
-def _tier_emulation_allowed(req: func.HttpRequest) -> bool:
-    """Allow plan emulation only from local development origins."""
+def _tier_emulation_allowed(req: func.HttpRequest, user_id: str = "") -> bool:
+    """Allow plan emulation from local dev origins or for allowed operators."""
     origin = req.headers.get("Origin", "")
     if origin in _LOCAL_EMULATION_ORIGINS:
         return True
     try:
         hostname = urlparse(req.url).hostname or ""
     except Exception:
-        return False
-    return hostname in {"localhost", "127.0.0.1"}
+        hostname = ""
+    if hostname in {"localhost", "127.0.0.1"}:
+        return True
+    # Allow billing-allowed users (operators) to emulate from any origin.
+    if user_id and user_id != "anonymous":
+        from treesight.security.feature_gate import billing_allowed
+
+        return billing_allowed(user_id)
+    return False
 
 
 def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
@@ -109,7 +116,7 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
             "status": subscription.get("status", "none"),
         },
         "emulation": {
-            "available": _tier_emulation_allowed(req),
+            "available": _tier_emulation_allowed(req, user_id),
             "active": bool(emulation),
             "tier": emulation.get("tier") if emulation else None,
             "tiers": list(supported_tiers()),
@@ -404,11 +411,34 @@ def _user_id_from_customer(customer_id: str | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# User profile recording
+# ---------------------------------------------------------------------------
+
+
+def _record_user_profile(user_id: str, auth_claims: dict) -> None:
+    """Best-effort record of user sign-in for ops lookup."""
+    try:
+        from treesight.security.users import record_user_sign_in
+
+        record_user_sign_in(
+            user_id,
+            email=auth_claims.get("userDetails", ""),
+            display_name=auth_claims.get("userDetails", ""),
+            identity_provider=auth_claims.get("identityProvider", ""),
+        )
+    except Exception:
+        logger.debug("Failed to record user profile for user=%s", user_id, exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # GET /api/billing/status  — current user's subscription status
 # ---------------------------------------------------------------------------
 @bp.route(route="billing/status", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
+    # Record user sign-in profile so ops can look up users by email.
+    _record_user_profile(user_id, auth_claims)
+
     return func.HttpResponse(
         json.dumps(_billing_status_payload(user_id, req)),
         status_code=200,
@@ -424,7 +454,7 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
 def billing_emulation(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
-    if not _tier_emulation_allowed(req):
+    if not _tier_emulation_allowed(req, user_id):
         if user_id == "anonymous":
             return error_response(401, "Authentication required for billing", req=req)
         return error_response(
