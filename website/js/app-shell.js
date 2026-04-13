@@ -272,14 +272,6 @@
     noteEl.textContent = note || 'Ready to run an analysis.';
   }
 
-  function setWorkflowFocus(focus) {
-    // Only 'content' has special behavior — scroll to evidence hero
-    if (focus === 'content') {
-      const hero = document.getElementById('app-evidence-hero');
-      if (hero) hero.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }
-
   function readRunSelectionFromLocation() {
     try {
       const params = new URLSearchParams(window.location.search || '');
@@ -344,7 +336,6 @@
       : target === 'content'
         ? 'app-content-card'
         : 'app-analysis-card';
-    if (target === 'content') setWorkflowFocus('content');
     var card = document.getElementById(cardId);
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
