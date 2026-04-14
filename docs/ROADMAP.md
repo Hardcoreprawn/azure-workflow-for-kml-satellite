@@ -100,7 +100,7 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.1 | #531 | E2e pipeline verification in Azure | ✅ Verified 2026-04-12 |
 | 2C.1 | #520 | Fix billing/status 500 | ✅ PR #536 |
 | 2C.2 | #532 | Remove demo mode — Free Tier entry point | ✅ PR #546 |
-| 2C.3 | #533 | EUDR pricing on pricing page | Open |
+| 2C.3 | #533 | EUDR pricing on pricing page | ✅ PR #615 |
 | 2C.4 | #555 | Dashboard UX overhaul (6 slices) | ✅ PR #557, #559 |
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
 | 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #616 |
