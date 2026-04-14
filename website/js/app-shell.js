@@ -2226,7 +2226,7 @@
   async function manageBilling() {
     // If billing is gated for this user, redirect to express interest
     if (latestBillingStatus && latestBillingStatus.billing_gated) {
-      window.location.href = '/#early-access';
+      window.location.href = 'mailto:hello@canopex.io';
       return;
     }
 

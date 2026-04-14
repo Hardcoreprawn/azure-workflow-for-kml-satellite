@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Canopex — Automated Satellite Evidence</title>
-<meta name="description" content="Automated satellite evidence for conservation and compliance. Upload a land boundary, get NDVI analysis, weather correlation, and AI-powered evidence reports in minutes.">
+<title>Canopex — EUDR Deforestation-Free Evidence in Minutes</title>
+<meta name="description" content="Upload parcel coordinates, get audit-grade satellite evidence for EU Deforestation Regulation compliance. Multi-source, timestamped, exportable reports.">
 <link rel="canonical" href="/">
-<meta property="og:title" content="Canopex — Automated Satellite Evidence">
-<meta property="og:description" content="From boundary to evidence in 5 minutes. Satellite NDVI analysis, weather correlation, and AI-powered reports for EUDR compliance and conservation.">
+<meta property="og:title" content="Canopex — EUDR Deforestation-Free Evidence in Minutes">
+<meta property="og:description" content="Upload parcel coordinates, get audit-grade satellite evidence for EUDR compliance. Multi-source, timestamped, exportable.">
 <meta property="og:url" content="/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Canopex">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Canopex — Automated Satellite Evidence">
-<meta name="twitter:description" content="From boundary to evidence in 5 minutes. Satellite NDVI analysis, weather correlation, and AI-powered reports for EUDR compliance and conservation.">
+<meta name="twitter:title" content="Canopex — EUDR Deforestation-Free Evidence">
+<meta name="twitter:description" content="Upload parcel coordinates, get audit-grade satellite evidence for EUDR compliance in minutes.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/style.css">
@@ -31,16 +31,16 @@
       Canopex
     </a>
     <ul>
-      <li><a href="/app/">Start Free</a></li>
-      <li><a href="#timeline">How It Works</a></li>
+      <li><a href="/eudr/">Try It Free</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
       <li><a href="#pricing">Pricing</a></li>
-      <li><a href="/docs/">Docs</a></li>
+      <li><a href="/docs/eudr-methodology.html">Methodology</a></li>
       <li><a href="#faq">FAQ</a></li>
     </ul>
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
       <span class="auth-user" id="auth-user" style="display:none"></span>
-      <a class="auth-btn primary" id="auth-dashboard-link" href="/app/" style="display:none">Dashboard</a>
+      <a class="auth-btn primary" id="auth-dashboard-link" href="/eudr/" style="display:none">Dashboard</a>
       <button class="auth-btn primary" id="auth-login-btn">Sign In</button>
       <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
     </div>
@@ -50,64 +50,155 @@
 <!-- Hero -->
 <header class="hero">
   <div class="container">
-    <h1>From Boundary to Evidence<br>in 5 Minutes.</h1>
-    <p>Upload a land boundary, get automated satellite evidence back — NDVI vegetation health, weather correlation, and AI-powered insights for EUDR compliance and conservation monitoring.</p>
+    <h1>EUDR Deforestation-Free Evidence<br>in Minutes.</h1>
+    <p>Upload parcel coordinates, get audit-grade satellite evidence — multi-source NDVI analysis, timestamped vegetation history, and exportable compliance reports.</p>
     <div class="hero-cta">
-      <a href="/app/" class="btn btn-primary">Start Free</a>
-      <a href="#pricing" class="btn btn-secondary">View Pricing</a>
+      <a href="/eudr/" class="btn btn-primary">Try It Free</a>
+      <a href="#sample-report" class="btn btn-secondary">See a Sample Report</a>
     </div>
+    <p class="hero-note">2 free parcel assessments. No credit card required.</p>
   </div>
 </header>
 
-<!-- See It In Action -->
-<section id="see-it-action">
-  <div class="container">
-    <div class="section-label">Experience</div>
-    <h2>Start Your Free Analysis</h2>
-    <p style="color:var(--c-muted);max-width:560px;margin-bottom:24px">Sign in, upload a KML file describing your area of interest, and get satellite evidence back in minutes. 5 free analyses per month, no credit card required.</p>
-    <div style="text-align:center">
-      <a href="/app/" class="btn btn-primary" style="padding:14px 32px;font-size:1rem">Start Free</a>
-    </div>
-    <p style="font-size:.8rem;color:var(--c-muted);text-align:center;margin-top:24px;max-width:640px;margin-left:auto;margin-right:auto">No setup required. <a href="/docs/kml-guide.html">Learn how to create KML files.</a></p>
-  </div>
-</section>
-
+<!-- The Problem -->
 <section id="problem">
   <div class="container">
-    <div class="section-label">Why Canopex</div>
-    <h2>The Problem With Manual Imagery Pipelines</h2>
-    <div class="card-grid cols-2">
-      <div class="card"><div class="icon">📂</div><h3>Fragmented Tooling</h3><p>Parsing KML, searching providers, downloading assets, clipping, reprojecting — each step requires different tools and APIs.</p></div>
-      <div class="card"><div class="icon">⏱️</div><h3>Slow Turnaround</h3><p>Manual pipelines take hours to days. Canopex's durable orchestrator typically completes in minutes for standard AOIs, with automatic retry and parallelism. Processing time varies with AOI size and cloud cover.</p></div>
-      <div class="card"><div class="icon">🔐</div><h3>Multi-Tenant Blind Spots</h3><p>Container-per-tenant isolation, tenant-scoped routing, and valet tokens keep data separated without complex infrastructure.</p></div>
-      <div class="card"><div class="icon">📐</div><h3>Geometry Gotchas</h3><p>Unclosed rings, coordinate normalisation, geodesic area calculation, buffered bounding boxes — Canopex handles all of it correctly.</p></div>
-    </div>
-
-    <div class="section-label" style="margin-top:48px">Capabilities</div>
-    <h2>What You Get</h2>
-    <div class="cap-grid">
-      <div class="cap-item"><span class="dot"></span>KML polygon extraction (Fiona + lxml fallback)</div>
-      <div class="cap-item"><span class="dot"></span>Geodesic area and buffered bounding boxes</div>
-      <div class="cap-item"><span class="dot"></span>Pluggable provider registry (Planetary Computer, extensible)</div>
-      <div class="cap-item"><span class="dot"></span>Durable Functions orchestration with fan-out parallelism</div>
-      <div class="cap-item"><span class="dot"></span>Automatic retry with exponential backoff</div>
-      <div class="cap-item"><span class="dot"></span>Clip and reproject to target CRS</div>
+    <div class="section-label">The Problem</div>
+    <h2>EUDR Due Diligence Shouldn't Cost a Fortune</h2>
+    <p class="section-intro">The EU Deforestation Regulation requires satellite-based evidence that commodities weren't produced on deforested land. Current options are slow, expensive, or inadequate.</p>
+    <div class="card-grid cols-3">
+      <div class="card">
+        <div class="icon">💷</div>
+        <h3>Consultancy Reports</h3>
+        <p>£10K–£50K per assessment. Weeks of lead time. Every parcel change means another engagement.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🛠️</div>
+        <h3>DIY with GIS Tools</h3>
+        <p>Requires specialist remote-sensing knowledge, QGIS expertise, and hours of manual imagery processing per parcel.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🌍</div>
+        <h3>Free Tools (Global Forest Watch)</h3>
+        <p>Useful for exploration, but don't produce the audit-grade, timestamped evidence reports that EUDR compliance demands.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section id="timeline">
+<!-- Sample Report Preview -->
+<section id="sample-report">
+  <div class="container">
+    <div class="section-label">Sample Output</div>
+    <h2>What You Get</h2>
+    <p class="section-intro">Every assessment produces a structured evidence package with satellite-derived vegetation analysis, deforestation determination, and supporting data.</p>
+
+    <div class="sample-report-container">
+      <div class="sample-report-header">
+        <div class="sample-badge compliant">✓ Deforestation-Free</div>
+        <div class="sample-meta">
+          <span>Confidence: <strong>High</strong></span>
+          <span>Parcel: <strong>São Félix do Xingu, Pará</strong></span>
+          <span>Assessment date: <strong>April 2026</strong></span>
+        </div>
+      </div>
+
+      <div class="sample-report-grid">
+        <div class="sample-map-panel">
+          <div id="sample-map" class="sample-map"></div>
+        </div>
+
+        <div class="sample-data-panel">
+          <h3>NDVI Vegetation History</h3>
+          <div class="ndvi-summary">
+            <div class="ndvi-stat">
+              <span class="ndvi-label">Baseline (2021)</span>
+              <span class="ndvi-value good">0.72</span>
+            </div>
+            <div class="ndvi-stat">
+              <span class="ndvi-label">Latest (2026)</span>
+              <span class="ndvi-value good">0.69</span>
+            </div>
+            <div class="ndvi-stat">
+              <span class="ndvi-label">Trend</span>
+              <span class="ndvi-value stable">Stable ↔</span>
+            </div>
+            <div class="ndvi-stat">
+              <span class="ndvi-label">Decline events</span>
+              <span class="ndvi-value good">0</span>
+            </div>
+          </div>
+          <p class="sample-note">20 seasonal observations from Jan 2021 – Apr 2026. No significant NDVI decline detected (threshold: &gt;0.15 same-season YoY).</p>
+
+          <h3>Evidence Layers</h3>
+          <ul class="evidence-layers">
+            <li><span class="layer-dot sentinel"></span>Sentinel-2 L2A (10 m, 5-day revisit)</li>
+            <li><span class="layer-dot worldcover"></span>ESA WorldCover 2020/21 baseline</li>
+            <li><span class="layer-dot weather"></span>Open-Meteo weather context</li>
+            <li><span class="layer-dot fire"></span>FIRMS fire hotspot scan</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sample-report-footer">
+        <button class="btn btn-primary" id="btn-download-sample">Download Full PDF Report</button>
+        <p class="sample-gated-note" id="sample-gated-note" style="display:none">Sign in to download the full PDF evidence report.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section id="how-it-works">
   <div class="container">
     <div class="section-label">How It Works</div>
-    <h2>Pipeline Workflow</h2>
-    <div class="timeline">
-      <div class="timeline-step"><div class="dot">1</div><h3>Upload KML</h3><p>A KML file is uploaded to blob storage, triggering an Event Grid event.</p></div>
-      <div class="timeline-step"><div class="dot">2</div><h3>Parse &amp; Validate</h3><p>Fiona (or lxml fallback) extracts polygon features, normalises coordinates, and auto-closes rings.</p></div>
-      <div class="timeline-step"><div class="dot">3</div><h3>Prepare AOIs</h3><p>Each feature becomes an Area of Interest with bounding box, geodesic area, centroid, and buffered search extent.</p></div>
-      <div class="timeline-step"><div class="dot">4</div><h3>Search &amp; Queue</h3><p>Composite search: NAIP for high-res detail (US only) + Sentinel-2 for global temporal monitoring. Matching scenes selected and queued in parallel across all AOIs.</p></div>
-      <div class="timeline-step"><div class="dot">5</div><h3>Download</h3><p>Queued imagery assets are downloaded in configurable batches with retry and exponential backoff.</p></div>
-      <div class="timeline-step"><div class="dot">6</div><h3>Clip &amp; Reproject</h3><p>Downloaded GeoTIFFs are clipped to AOI boundaries and reprojected to the target CRS.</p></div>
+    <h2>From Coordinates to Compliance in 3 Steps</h2>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-number">1</div>
+        <h3>Upload Parcel Coordinates</h3>
+        <p>Paste lat/lon coordinates, upload a KML file, or draw parcels on the map. Batch upload supported.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">2</div>
+        <h3>Automated Satellite Analysis</h3>
+        <p>We analyse multi-source satellite imagery from 2021 to present — NDVI vegetation index, land cover classification, fire and weather events.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-number">3</div>
+        <h3>Download Your Report</h3>
+        <p>Get an audit-grade PDF with deforestation-free determination, confidence level, supporting evidence, and data provenance — ready for your due diligence file.</p>
+      </div>
     </div>
+  </div>
+</section>
+
+<!-- Data Sources -->
+<section id="data-sources">
+  <div class="container">
+    <div class="section-label">Transparency</div>
+    <h2>Evidence Layers in Your Report</h2>
+    <p class="section-intro">Every assessment draws on multiple independent data sources. Full methodology: <a href="/docs/eudr-methodology.html">EUDR Methodology</a>.</p>
+
+    <div style="overflow-x:auto;margin-bottom:24px">
+      <table class="source-table">
+        <thead><tr>
+          <th>Layer</th>
+          <th>Source</th>
+          <th>Resolution</th>
+          <th>Coverage</th>
+          <th>Role</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>Vegetation index</td><td><a href="https://planetarycomputer.microsoft.com/dataset/sentinel-2-l2a">Sentinel-2 L2A</a></td><td>10 m</td><td>Global, 5-day revisit</td><td>Primary NDVI time series</td></tr>
+          <tr><td>Land cover</td><td><a href="https://planetarycomputer.microsoft.com/dataset/esa-worldcover">ESA WorldCover</a></td><td>10 m</td><td>Global (2020 &amp; 2021)</td><td>Baseline forest classification</td></tr>
+          <tr><td>Weather</td><td><a href="https://open-meteo.com/en/docs/historical-weather-api">Open-Meteo</a></td><td>~25 km</td><td>Global</td><td>Drought vs. land-use change</td></tr>
+          <tr><td>Fire hotspots</td><td><a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a></td><td>375 m–1 km</td><td>Global</td><td>Burn event detection</td></tr>
+          <tr><td>Protected areas</td><td>WDPA</td><td>Vector</td><td>Global</td><td>Additional risk indicator</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="source-note">All satellite data accessed via <a href="https://planetarycomputer.microsoft.com/">Microsoft Planetary Computer</a> at no additional cost. <a href="/docs/eudr-methodology.html">Read the full methodology →</a></p>
   </div>
 </section>
 
@@ -116,154 +207,50 @@
   <div class="container">
     <div class="section-label">Pricing</div>
     <h2>Simple, Transparent Pricing</h2>
-    <p id="pricing-subtitle" style="color:var(--c-muted);max-width:560px;margin-bottom:8px">Start free, upgrade when you need more. All plans include Sentinel-2 and NAIP satellite imagery, weather correlation, and NDVI change detection. Prices shown exclude VAT where applicable.</p>
+    <p class="section-intro">Start with 2 free assessments. Upgrade when you need more. Prices exclude VAT.</p>
     <div class="pricing-grid">
-      <div class="pricing-card" data-tier="free">
-        <div class="tier-name">Free</div>
-        <div class="tier-price" data-real-price="&pound;0 /month" data-gated-price="Free">&pound;0 <span>/month</span></div>
-        <div class="tier-desc">For individual researchers and evaluation</div>
+      <div class="pricing-card" data-tier="trial">
+        <div class="tier-name">Free Trial</div>
+        <div class="tier-price">&pound;0</div>
+        <div class="tier-desc">Try before you commit</div>
         <ul>
-          <li>5 AOI analyses total <em>(beta)</em></li>
-          <li>1 concurrent pipeline</li>
-          <li>NDVI + weather overlay</li>
-          <li>Before/after comparison</li>
-          <li>30-day data retention</li>
-          <li>Community support</li>
+          <li>2 parcel assessments</li>
+          <li>Full evidence + PDF report</li>
+          <li>All data sources included</li>
+          <li>No credit card required</li>
         </ul>
-        <a href="#early-access" class="btn btn-primary">Start Free</a>
-      </div>
-      <div class="pricing-card" data-tier="starter">
-        <div class="tier-name">Starter</div>
-        <div class="tier-price" data-real-price="&pound;19 /month" data-gated-price="$">&pound;19 <span>/month</span></div>
-        <div class="tier-desc">For freelancers and solo consultants</div>
-        <ul>
-          <li>15 AOI analyses per month</li>
-          <li>2 concurrent pipelines</li>
-          <li>Everything in Free, plus:</li>
-          <li>AI-generated insights</li>
-          <li>GeoJSON &amp; CSV export</li>
-          <li>60-day data retention</li>
-          <li>Email support</li>
-        </ul>
-        <a href="#early-access" class="btn btn-secondary pricing-cta">Get Starter</a>
+        <a href="/eudr/" class="btn btn-primary">Try It Free</a>
       </div>
       <div class="pricing-card featured" data-tier="pro">
-        <div class="tier-name">Pro</div>
-        <div class="tier-price" data-real-price="&pound;39 /month" data-gated-price="$$">&pound;39 <span>/month</span></div>
-        <div class="tier-desc">For small NGOs and independent advisors</div>
+        <div class="tier-name">EUDR Pro</div>
+        <div class="tier-price">&pound;49 <span>/month</span></div>
+        <div class="tier-desc">For compliance teams and importers</div>
         <ul>
-          <li>50 AOI analyses per month</li>
-          <li>5 concurrent pipelines</li>
-          <li>Everything in Starter, plus:</li>
-          <li>PDF evidence reports</li>
-          <li>90-day data retention</li>
-          <li>Priority email support</li>
-        </ul>
-        <button class="btn btn-primary pricing-cta" id="btn-upgrade-pro" onclick="window.canopexBilling && window.canopexBilling.checkout()">Get Pro</button>
-      </div>
-      <div class="pricing-card" data-tier="team">
-        <div class="tier-name">Team</div>
-        <div class="tier-price" data-real-price="&pound;119 /month" data-gated-price="$$$">&pound;119 <span>/month</span></div>
-        <div class="tier-desc">For agritech companies and compliance teams</div>
-        <ul>
-          <li>200 AOI analyses per month</li>
-          <li>10 concurrent pipelines</li>
-          <li>Everything in Pro, plus:</li>
-          <li>API access</li>
-          <li>Up to 5 team members</li>
-          <li>1-year data retention</li>
+          <li>10 parcel assessments included</li>
+          <li>&pound;3/parcel overage</li>
+          <li>Volume: 100+ parcels &pound;2.50, 500+ &pound;1.80</li>
+          <li>Unlimited team members</li>
+          <li>Audit-grade PDF reports</li>
           <li>Priority support</li>
         </ul>
-        <a href="#early-access" class="btn btn-secondary pricing-cta">Get Team</a>
+        <button class="btn btn-primary" id="btn-subscribe">Subscribe</button>
       </div>
       <div class="pricing-card" data-tier="enterprise">
         <div class="tier-name">Enterprise</div>
-        <div class="tier-price" data-real-price="Custom" data-gated-price="Price on Enquiry">Custom</div>
-        <div class="tier-desc">For large organisations and government agencies</div>
+        <div class="tier-price">Custom</div>
+        <div class="tier-desc">For large operators and commodity traders</div>
         <ul>
-          <li>High-volume AOI analyses</li>
-          <li>Dedicated infrastructure</li>
-          <li>Everything in Team, plus:</li>
+          <li>1,000+ parcels/month</li>
+          <li>Annual commitment (20% discount)</li>
           <li>SSO / SAML integration</li>
-          <li>Custom integrations</li>
-          <li>SLA &amp; audit logs</li>
           <li>Dedicated account manager</li>
+          <li>Custom integrations &amp; API</li>
+          <li>SLA &amp; audit logs</li>
         </ul>
-        <a href="#early-access" class="btn btn-secondary pricing-cta">Talk to Sales</a>
+        <a href="mailto:hello@canopex.io?subject=Enterprise%20enquiry" class="btn btn-secondary">Contact Us</a>
       </div>
     </div>
-    <p class="pricing-note">All plans include access to Microsoft Planetary Computer imagery at no extra cost. VAT is calculated at checkout based on your location. You can cancel any time from your <a href="#" id="manage-billing-link" style="display:none">billing dashboard</a>. 14-day cancellation right applies under UK Consumer Contracts Regulations 2013. Enterprise pricing scales with compute usage. Need more AOIs? <a href="#early-access">Contact us</a>.</p>
-  </div>
-</section>
-
-<!-- Social Proof -->
-<section id="social-proof">
-  <div class="container">
-    <div class="section-label">Use Cases</div>
-    <h2>Built for Real-World Geospatial Workflows</h2>
-    <div class="proof-grid">
-      <div class="proof-card">
-        <div class="proof-quote">A conservation team monitoring 140 forest concessions across Central Africa replaces a 3-day manual QGIS workflow with a 10-minute automated pipeline — and uses AI summaries to save hours writing donor reports.</div>
-        <div class="proof-tag">Conservation</div>
-      </div>
-      <div class="proof-card">
-        <div class="proof-quote">An agricultural advisory uses integrated NDVI + weather correlation for crop insurance assessments. One upload replaces three separate tools, with everything in a single dashboard.</div>
-        <div class="proof-tag">Agriculture</div>
-      </div>
-      <div class="proof-card">
-        <div class="proof-quote">An ESG compliance team uses before/after satellite evidence with quantified change metrics for EUDR reporting. The comparison view and hectare-level change detection provide audit-ready output.</div>
-        <div class="proof-tag">ESG Compliance</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Data Sources & Methodology -->
-<section id="data-sources">
-  <div class="container">
-    <div class="section-label">Transparency</div>
-    <h2>Data Sources &amp; Methodology</h2>
-    <p style="color:var(--c-muted);max-width:640px;margin-bottom:20px">Canopex uses publicly available satellite imagery and environmental data. Here's exactly where the data comes from and how we process it.</p>
-
-    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">Sources</h3>
-    <div style="overflow-x:auto;margin-bottom:24px">
-      <table style="width:100%;border-collapse:collapse;font-size:.8rem;color:var(--c-muted)">
-        <thead><tr style="border-bottom:1px solid var(--c-border);text-align:left">
-          <th style="padding:8px 12px;color:var(--c-text)">Layer</th>
-          <th style="padding:8px 12px;color:var(--c-text)">Source</th>
-          <th style="padding:8px 12px;color:var(--c-text)">Resolution</th>
-          <th style="padding:8px 12px;color:var(--c-text)">Coverage</th>
-          <th style="padding:8px 12px;color:var(--c-text)">Frequency</th>
-        </tr></thead>
-        <tbody>
-          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Optical imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/sentinel-2-l2a" style="color:var(--c-accent)">Sentinel-2 L2A</a> via Planetary Computer</td><td style="padding:8px 12px">10 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">~5 days</td></tr>
-          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">High-res imagery</td><td style="padding:8px 12px"><a href="https://planetarycomputer.microsoft.com/dataset/naip" style="color:var(--c-accent)">NAIP</a> via Planetary Computer</td><td style="padding:8px 12px">0.6 m</td><td style="padding:8px 12px">US (CONUS) only</td><td style="padding:8px 12px">~2–3 year cycle</td></tr>
-          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Weather</td><td style="padding:8px 12px"><a href="https://open-meteo.com/en/docs/historical-weather-api" style="color:var(--c-accent)">Open-Meteo</a> Historical Archive</td><td style="padding:8px 12px">~25 km grid</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Daily</td></tr>
-          <tr style="border-bottom:1px solid var(--c-border)"><td style="padding:8px 12px">Flood events</td><td style="padding:8px 12px">UK Environment Agency / USGS streamflow</td><td style="padding:8px 12px">Point/area</td><td style="padding:8px 12px">UK, US</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
-          <tr><td style="padding:8px 12px">Fire hotspots</td><td style="padding:8px 12px"><a href="https://firms.modaps.eosdis.nasa.gov/" style="color:var(--c-accent)">NASA FIRMS</a> VIIRS/SNPP</td><td style="padding:8px 12px">375 m</td><td style="padding:8px 12px">Global</td><td style="padding:8px 12px">Best-effort / varies</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p style="font-size:.75rem;color:var(--c-muted);margin-bottom:16px">
-      Note: Flood and fire layers are experimental and depend on third-party APIs and required access keys.
-      Availability and recency may vary, and these layers can sometimes return no data.
-    </p>
-
-    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">How We Process It</h3>
-    <ul style="font-size:.8rem;color:var(--c-muted);list-style:disc;padding-left:20px;margin-bottom:24px;line-height:1.8">
-      <li><strong style="color:var(--c-text)">NDVI</strong> — Computed from Sentinel-2 10 m bands: (B08 − B04) / (B08 + B04). NAIP is used for visual context only, not for NDVI.</li>
-      <li><strong style="color:var(--c-text)">Cloud filtering</strong> — Scenes with &gt;20% cloud cover are excluded. Pixel-level SCL masking is planned.</li>
-      <li><strong style="color:var(--c-text)">Weather</strong> — Queried at AOI centroid coordinates, aggregated from daily to monthly statistics.</li>
-      <li><strong style="color:var(--c-text)">Change detection</strong> — Same-season year-over-year raster differencing with ±0.1 NDVI significance threshold.</li>
-    </ul>
-
-    <h3 style="font-size:1rem;margin-bottom:12px;color:var(--c-text)">Known Limitations</h3>
-    <ul style="font-size:.8rem;color:var(--c-muted);list-style:disc;padding-left:20px;line-height:1.8">
-      <li>Cloud filtering is scene-level only — some cloudy pixels may be included in otherwise clear scenes.</li>
-      <li>Weather is queried at a single centroid point, not a polygon-weighted spatial average. For large AOIs, this may not represent conditions across the full area.</li>
-      <li>Sentinel-2 revisits every ~5 days, but cloud-free images for a specific location may be weeks apart.</li>
-      <li>NAIP imagery is updated on a 2–3 year cycle and is not suitable for temporal change monitoring.</li>
-    </ul>
+    <p class="pricing-note">All plans include Sentinel-2, WorldCover, FIRMS, and weather data via Microsoft Planetary Computer at no extra cost. VAT calculated at checkout. Volume discounts available for 100+ parcels. You can cancel any time. 14-day cancellation right applies under UK Consumer Contracts Regulations 2013.</p>
   </div>
 </section>
 
@@ -273,39 +260,13 @@
     <div class="section-label">Questions</div>
     <h2>FAQ</h2>
     <div id="faq-list">
-      <div class="faq-item"><div class="faq-q">What file formats are supported?</div><div class="faq-a">KML files with Polygon and MultiPolygon geometries. The parser handles both Fiona/GDAL and a pure-lxml fallback for environments without GDAL.</div></div>
-      <div class="faq-item"><div class="faq-q">What satellite imagery providers are supported?</div><div class="faq-a">Microsoft Planetary Computer is the default provider, with composite search: NAIP for high-resolution detail (0.6 m, US coverage) and Sentinel-2 L2A for global temporal monitoring (10 m). The provider registry is pluggable — additional providers can be added by implementing the ImageryProvider interface.</div></div>
-      <div class="faq-item"><div class="faq-q">How does multi-tenancy work?</div><div class="faq-a">Each tenant gets isolated input/output containers (e.g. acme-input, acme-output). The tenant ID is derived from the container name, and all pipeline outputs are scoped accordingly.</div></div>
-      <div class="faq-item"><div class="faq-q">What happens if an imagery download fails?</div><div class="faq-a">Downloads are retried with configurable intervals and exponential backoff. Failed or timed-out downloads are flagged as partial in the pipeline summary, while successful downloads continue through fulfilment.</div></div>
-      <div class="faq-item"><div class="faq-q">How large can KML files be?</div><div class="faq-a">The maximum KML file size is 10 MiB. For very large feature sets, the payload offloader automatically moves data to blob storage to stay within the Durable Functions 48 KiB history limit.</div></div>
-      <div class="faq-item"><div class="faq-q">Is the imagery real satellite data?</div><div class="faq-a">Yes. Canopex uses real imagery from Microsoft Planetary Computer: a NAIP detail layer (~0.6 m) for high-resolution context, plus a Sentinel-2 L2A temporal series (10 m, bi-monthly) to track change over time.</div></div>
-      <div class="faq-item"><div class="faq-q">What CRS are outputs delivered in?</div><div class="faq-a">By default, outputs are reprojected to EPSG:4326. You can specify a custom target CRS in the pipeline configuration.</div></div>
-      <div class="faq-item"><div class="faq-q">How is the pipeline deployed?</div><div class="faq-a">Azure Functions on Container Apps with Durable Functions orchestration, Azure Blob Storage, Event Grid triggers, and a Static Web App for the frontend. All managed via OpenTofu.</div></div>
-      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded KML/KMZ files and analysis results are automatically deleted after <strong>30 days</strong>. Server logs are retained for 90 days for debugging. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a> for full details.</div></div>
-    </div>
-  </div>
-</section>
-
-<!-- Early Access -->
-<section id="early-access">
-  <div class="container" style="text-align:center">
-    <div class="section-label">Get Started</div>
-    <h2>Request Early Access</h2>
-    <p style="color:var(--c-muted);max-width:480px;margin:0 auto 8px">Tell us about your organisation and use case. We'll be in touch.</p>
-    <div class="ea-form">
-      <label for="ea-org">Organisation</label>
-      <input type="text" id="ea-org" placeholder="Acme AgriTech">
-      <label for="ea-usecase">Use Case</label>
-      <textarea id="ea-usecase" placeholder="Describe your geospatial imagery needs…" style="min-height:80px"></textarea>
-      <label for="ea-email">Email</label>
-      <input type="email" id="ea-email" placeholder="you@company.com">
-      <!-- Honeypot — hidden from real users, filled by bots -->
-      <div aria-hidden="true" style="position:absolute;left:-9999px">
-        <label for="ea-website">Website</label>
-        <input type="text" id="ea-website" tabindex="-1" autocomplete="off">
-      </div>
-      <button class="btn btn-primary" id="ea-submit" style="width:100%">Submit</button>
-      <div id="ea-status"></div>
+      <div class="faq-item"><div class="faq-q">Does this meet EUDR evidence requirements?</div><div class="faq-a">Canopex provides satellite-based supporting evidence for EUDR due diligence under Regulation 2023/1115. It produces timestamped, multi-source vegetation analysis with audit-grade reports. However, it does not constitute a complete due-diligence assessment — operators remain responsible for supply-chain traceability, in-country verification, and declaration submission.</div></div>
+      <div class="faq-item"><div class="faq-q">What satellite data do you use?</div><div class="faq-a">Sentinel-2 L2A (10 m, global, 5-day revisit) for NDVI vegetation analysis, ESA WorldCover (10 m, 2020/21) for baseline land cover, NASA FIRMS for fire hotspots, and Open-Meteo for weather context. All data is accessed via Microsoft Planetary Computer. See our <a href="/docs/eudr-methodology.html">full methodology</a>.</div></div>
+      <div class="faq-item"><div class="faq-q">How many parcels can I assess?</div><div class="faq-a">Free trial includes 2 parcel assessments with no expiry. EUDR Pro includes 10 parcels/month with additional parcels at £3 each (volume discounts from 100+ parcels). Enterprise plans support 1,000+ parcels/month with annual commitment pricing.</div></div>
+      <div class="faq-item"><div class="faq-q">What format is the report?</div><div class="faq-a">Each assessment produces a structured evidence package: an interactive dashboard with NDVI time series and map overlays, plus a downloadable PDF report with deforestation-free determination, confidence level, supporting evidence, data provenance, and methodology reference. GeoJSON and CSV exports are also available.</div></div>
+      <div class="faq-item"><div class="faq-q">How long does an assessment take?</div><div class="faq-a">Most single-parcel assessments complete in under 5 minutes. Processing time depends on parcel size and cloud-cover history. Batch assessments run in parallel — 50 parcels typically complete within 15 minutes.</div></div>
+      <div class="faq-item"><div class="faq-q">What is the EUDR cutoff date?</div><div class="faq-a">The EU Deforestation Regulation uses 31 December 2020 as the cutoff date. Canopex analyses vegetation from January 2021 onwards, comparing seasonal NDVI against this baseline to detect any post-2020 deforestation.</div></div>
+      <div class="faq-item"><div class="faq-q">What happens to my data?</div><div class="faq-a">Uploaded coordinates and assessment results are stored securely in your organisation's isolated workspace. Data is retained for the duration of your subscription. We do not sell or share your data. See our <a href="/privacy.html">Privacy Policy</a>.</div></div>
     </div>
   </div>
 </section>
@@ -314,7 +275,7 @@
 <footer>
   <div class="container">
     <p>&copy; 2026 Canopex. API contract version: <span id="contract-version">—</span>
-    <br><a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+    <br><a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a> · <a href="/docs/eudr-methodology.html">Methodology</a></p>
   </div>
 </footer>
 
@@ -322,6 +283,3 @@
 <script src="/js/landing.js"></script>
 </body>
 </html>
-
-<!-- Timeline -->
-<section id="timeline">
