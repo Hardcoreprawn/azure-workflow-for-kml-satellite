@@ -117,7 +117,36 @@ def validate_kml_bytes(data: bytes) -> None:
 from treesight.parsers.fiona_parser import parse_kml_fiona  # noqa: E402
 from treesight.parsers.lxml_parser import parse_kml_lxml  # noqa: E402
 
+
+def count_kml_features(kml_bytes: bytes) -> int:
+    """Count Placemark elements containing at least one Polygon.
+
+    This is a lightweight pre-parse check for AOI limit enforcement.
+    It does *not* validate geometry — just counts features that would
+    produce AOIs in a full parse.
+
+    Raises ``ValueError`` on malformed XML.
+    """
+    from lxml import etree
+
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
+    try:
+        root = etree.fromstring(kml_bytes, parser=parser)
+    except etree.XMLSyntaxError as exc:
+        raise ValueError(f"Malformed XML: {exc}") from exc
+
+    count = 0
+    # Check all recognised KML namespaces
+    for ns in _KML_NAMESPACES:
+        ns_prefix = f"{{{ns}}}"
+        for placemark in root.iter(f"{ns_prefix}Placemark"):
+            if placemark.find(f".//{ns_prefix}Polygon") is not None:
+                count += 1
+    return count
+
+
 __all__ = [
+    "count_kml_features",
     "ensure_closed",
     "maybe_unzip",
     "parse_kml_fiona",

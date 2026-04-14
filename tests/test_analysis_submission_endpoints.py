@@ -663,3 +663,121 @@ class TestPersistSubmissionRecordCosmos:
             _persist_submission_record(storage, record, "u1", "s1")
 
         storage.upload_json.assert_called_once()
+
+
+class TestAoiLimitEnforcement:
+    """Verify that aoi_limit from PLAN_CATALOG is enforced at submission time (#575)."""
+
+    def _kml_body(self, fixture_name: str) -> dict[str, str]:
+        """Load a fixture KML as a submission body."""
+        path = Path(__file__).parent / "fixtures" / fixture_name
+        return {"kml_content": path.read_text()}
+
+    def test_rejects_submission_exceeding_free_tier_aoi_limit(self):
+        """Free tier allows 5 AOIs; 56-polygon KML should be rejected."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        body = self._kml_body("global_monitoring_55.kml")
+        req = _make_req("/api/analysis/submit", body)
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 403
+        data = json.loads(resp.get_body())
+        assert "56 parcels" in data["error"]
+        assert "Free" in data["error"]
+        assert "5" in data["error"]
+
+    def test_rejects_submission_exceeding_demo_tier_aoi_limit(self):
+        """Demo tier allows 1 AOI; sample.kml has 2 polygons."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        body = self._kml_body("sample.kml")
+        req = _make_req("/api/analysis/submit", body)
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=1),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "demo", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 403
+        data = json.loads(resp.get_body())
+        assert "2 parcels" in data["error"]
+        assert "1" in data["error"]
+
+    def test_accepts_submission_within_free_tier_aoi_limit(self):
+        """Free tier allows 5 AOIs; five_polygons.kml has exactly 5."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        body = self._kml_body("five_polygons.kml")
+        req = _make_req("/api/analysis/submit", body)
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 202
+
+    def test_enterprise_tier_has_no_aoi_limit(self):
+        """Enterprise tier has aoi_limit=None — unlimited."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        body = self._kml_body("global_monitoring_55.kml")
+        req = _make_req("/api/analysis/submit", body)
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=100),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "enterprise", "status": "active"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 202
+
+    def test_quota_refunded_on_aoi_limit_rejection(self):
+        """When aoi_limit blocks submission, the consumed quota slot is refunded."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        body = self._kml_body("global_monitoring_55.kml")
+        req = _make_req("/api/analysis/submit", body)
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("blueprints.pipeline.submission.release_quota") as mock_release,
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req))
+
+        assert resp.status_code == 403
+        mock_release.assert_called_once_with("user-123")

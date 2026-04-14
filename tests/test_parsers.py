@@ -273,3 +273,54 @@ class TestKmlInputValidation:
           <Document><name>Test</name></Document>
         </kml>"""
         validate_kml_bytes(kml)
+
+
+class TestCountKmlFeatures:
+    """Tests for the lightweight feature counter."""
+
+    def test_counts_single_polygon(self, single_polygon_kml_bytes: bytes):
+        from treesight.parsers import count_kml_features
+
+        assert count_kml_features(single_polygon_kml_bytes) == 1
+
+    def test_counts_five_polygons(self, five_polygons_kml_bytes: bytes):
+        from treesight.parsers import count_kml_features
+
+        assert count_kml_features(five_polygons_kml_bytes) == 5
+
+    def test_counts_56_polygons(self):
+        from pathlib import Path
+
+        from treesight.parsers import count_kml_features
+
+        kml = (Path(__file__).parent / "fixtures" / "global_monitoring_55.kml").read_bytes()
+        assert count_kml_features(kml) == 56
+
+    def test_returns_zero_for_no_polygons(self):
+        from treesight.parsers import count_kml_features
+
+        kml = b"""<?xml version="1.0"?>
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document><name>Empty</name></Document>
+        </kml>"""
+        assert count_kml_features(kml) == 0
+
+    def test_ignores_placemarks_without_polygon(self):
+        from treesight.parsers import count_kml_features
+
+        kml = b"""<?xml version="1.0"?>
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document>
+            <Placemark><name>Point</name><Point><coordinates>0,0</coordinates></Point></Placemark>
+            <Placemark><name>Poly</name><Polygon><outerBoundaryIs><LinearRing>
+              <coordinates>0,0 1,0 1,1 0,1 0,0</coordinates>
+            </LinearRing></outerBoundaryIs></Polygon></Placemark>
+          </Document>
+        </kml>"""
+        assert count_kml_features(kml) == 1
+
+    def test_raises_on_malformed_xml(self):
+        from treesight.parsers import count_kml_features
+
+        with pytest.raises(ValueError, match="Malformed XML"):
+            count_kml_features(b"not xml at all")

@@ -14,6 +14,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.parsers import count_kml_features, maybe_unzip
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 from treesight.security.quota import consume_quota, release_quota
 
@@ -66,6 +67,29 @@ def _validated_kml_bytes(req: func.HttpRequest, body: Any) -> bytes | func.HttpR
     return kml_bytes
 
 
+def _check_aoi_limit(
+    kml_bytes: bytes, tier: str, req: func.HttpRequest
+) -> func.HttpResponse | None:
+    """Return an error response if the KML exceeds the tier's AOI limit, else None."""
+    try:
+        raw_kml = maybe_unzip(kml_bytes)
+        feature_count = count_kml_features(raw_kml)
+    except ValueError:
+        return None  # let the pipeline's full parser handle errors
+
+    aoi_limit = plan_capabilities(tier).get("aoi_limit")
+    if aoi_limit is not None and feature_count > aoi_limit:
+        tier_label = plan_capabilities(tier).get("label", tier)
+        return error_response(
+            403,
+            f"This file contains {feature_count} parcels but your "
+            f"{tier_label} plan allows {aoi_limit} per submission. "
+            f"Upgrade your plan or reduce the number of parcels.",
+            req=req,
+        )
+    return None
+
+
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 async def analysis_submit(
     req: func.HttpRequest,
@@ -111,6 +135,20 @@ async def _submit_analysis_request(
 
     effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
     plan_overrides = _submission_plan_overrides(user_id)
+
+    # --- AOI limit enforcement (§ #575) ---
+    kml_bytes = _validated_kml_bytes(req, body)
+    if isinstance(kml_bytes, func.HttpResponse):
+        if quota_consumed:
+            _safe_release_quota(user_id)
+        return kml_bytes
+
+    tier = plan_overrides.get("tier", "free")
+    aoi_err = _check_aoi_limit(kml_bytes, tier, req)
+    if aoi_err is not None:
+        if quota_consumed:
+            _safe_release_quota(user_id)
+        return aoi_err
 
     resp = await _submit_kml(
         req,
