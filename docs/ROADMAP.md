@@ -37,9 +37,9 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 | PR | Summary |
 |----|---------|
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse, reliability (fixes #571) |
+| #591 | Roadmap update + 56-polygon KML test fixture |
 | #577 | Dependabot: pytest bump |
 | #576 | Dependabot: pillow bump |
-| #591 | Roadmap update + 56-polygon KML test fixture |
 | #568 | Security review batch: discovery files (robots.txt, sitemap.xml, security.txt), X-XSS-Protection, X-Robots-Tag |
 | #567 | Remove focus emphasis system from dashboard (competing scroll, dead code cleanup) |
 
