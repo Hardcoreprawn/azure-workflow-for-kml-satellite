@@ -471,6 +471,18 @@ def _phase_enrichment(
     return enrichment
 
 
+def _safe_release_quota(context: df.DurableOrchestrationContext, user_id: str, instance_id: str):
+    """Release quota on failure, swallowing errors to preserve the original exception."""
+    try:
+        yield context.call_activity(
+            "release_quota", {"user_id": user_id, "instance_id": instance_id}
+        )
+    except Exception:
+        logger.exception(
+            "Failed to release quota during error handling for instance=%s", instance_id
+        )
+
+
 # ---------------------------------------------------------------------------
 # Coordinator
 # ---------------------------------------------------------------------------
@@ -511,7 +523,5 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         return summary
     except Exception:
         if user_id and tier != "demo":
-            yield context.call_activity(
-                "release_quota", {"user_id": user_id, "instance_id": instance_id}
-            )
+            yield from _safe_release_quota(context, user_id, instance_id)
         raise

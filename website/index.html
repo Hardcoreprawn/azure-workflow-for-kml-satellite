@@ -299,6 +299,11 @@
       <textarea id="ea-usecase" placeholder="Describe your geospatial imagery needs…" style="min-height:80px"></textarea>
       <label for="ea-email">Email</label>
       <input type="email" id="ea-email" placeholder="you@company.com">
+      <!-- Honeypot — hidden from real users, filled by bots -->
+      <div aria-hidden="true" style="position:absolute;left:-9999px">
+        <label for="ea-website">Website</label>
+        <input type="text" id="ea-website" tabindex="-1" autocomplete="off">
+      </div>
       <button class="btn btn-primary" id="ea-submit" style="width:100%">Submit</button>
       <div id="ea-status"></div>
     </div>

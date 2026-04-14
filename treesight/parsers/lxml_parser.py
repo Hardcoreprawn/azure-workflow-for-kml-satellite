@@ -34,6 +34,7 @@ def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
                 logger.warning("Skipping polygon with < 3 coords: %s", name)
                 continue
             exterior = _ensure_closed(exterior)
+            interior = [_ensure_closed(ring) for ring in interior]
             features.append(
                 Feature(
                     name=name,

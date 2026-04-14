@@ -125,7 +125,7 @@ def _frame_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
                 context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
             else:
                 context_lines.append(f"NDVI Change: {ndvi_change:+.3f}")
-    if context.get("ndvi_min") is not None:
+    if context.get("ndvi_min") is not None and context.get("ndvi_max") is not None:
         context_lines.append(f"NDVI Range: {context['ndvi_min']:.3f} to {context['ndvi_max']:.3f}")
 
     context_lines.append("\n=== Weather Context ===")

@@ -195,6 +195,15 @@ def submit_contact(
     if not isinstance(body, dict):
         return error_response(400, "Expected JSON object", req=req)
 
+    # Honeypot: if a hidden field is filled, silently accept (bot detected)
+    if body.get("website"):
+        return func.HttpResponse(
+            json.dumps({"status": "received", "submission_id": "ok"}),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+
     email = sanitise(body.get("email", ""))
     if not email or not EMAIL_RE.match(email):
         return error_response(400, "Valid email is required", req=req)
@@ -260,7 +269,14 @@ async def fetch_enrichment_manifest(
     if not owner_id or owner_id != caller_user_id:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
-    output = status.output if isinstance(status.output, dict) else {}
+    output = status.output
+    if isinstance(output, str):
+        try:
+            output = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            output = {}
+    if not isinstance(output, dict):
+        output = {}
     if reshape_output is not None:
         output = reshape_output(status.output) if status.output else {}
     manifest_path = output.get("enrichment_manifest") or output.get("enrichmentManifest")
