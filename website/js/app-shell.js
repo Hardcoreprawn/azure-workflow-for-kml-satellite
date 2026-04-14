@@ -172,6 +172,51 @@
     complete: 'Analysis complete — scroll down to review satellite imagery, vegetation health, and export options.'
   };
 
+  // ---------------------------------------------------------------------------
+  // localStorage stale-while-revalidate cache (#596)
+  // Render cached data instantly, then refresh in background.
+  // ---------------------------------------------------------------------------
+  const CACHE_PREFIX = 'canopex:';
+  const CACHE_TTL_HISTORY = 5 * 60 * 1000;   // 5 min
+  const CACHE_TTL_BILLING = 30 * 60 * 1000;  // 30 min
+
+  function readCache(key) {
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + key);
+      if (!raw) return null;
+      const entry = JSON.parse(raw);
+      if (!entry || typeof entry.expires !== 'number' || Date.now() > entry.expires) {
+        localStorage.removeItem(CACHE_PREFIX + key);
+        return null;
+      }
+      return entry.data;
+    } catch { return null; }
+  }
+
+  function writeCache(key, data, ttlMs) {
+    try {
+      localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+        data: data,
+        expires: Date.now() + ttlMs
+      }));
+    } catch { /* quota exceeded or private browsing — degrade gracefully */ }
+  }
+
+  function clearCacheKey(key) {
+    try { localStorage.removeItem(CACHE_PREFIX + key); } catch { /* ignore */ }
+  }
+
+  function clearAllCache() {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(CACHE_PREFIX)) keys.push(k);
+      }
+      keys.forEach(function(k) { localStorage.removeItem(k); });
+    } catch { /* ignore */ }
+  }
+
   function authEnabled() { return true; /* SWA built-in auth — always available */ }
 
   function rememberPostLoginDestination() {
@@ -222,6 +267,7 @@
   }
 
   function logout() {
+    clearAllCache();
     try { sessionStorage.removeItem(POST_LOGIN_DESTINATION_KEY); } catch { /* ignore */ }
     window.location.href = '/.auth/logout';
   }
@@ -2366,6 +2412,8 @@
           stopAnalysisPolling();
           setAnalysisStep('complete', 'done');
           updateAnalysisStory('complete', runtime, data);
+          clearCacheKey('billing');
+          clearCacheKey('history');
           loadBillingStatus();
           loadAnalysisHistory({ preferInstanceId: instanceId });
           loadRunEvidence(instanceId);
@@ -2514,6 +2562,8 @@
       }
 
       // Step 3: Track the submission
+      clearCacheKey('history');
+      clearCacheKey('billing');
       var data = { instance_id: submissionId };
       analysisHistoryLoaded = true;
       applyFirstRunLayout();
@@ -2678,6 +2728,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tier: select.value })
       });
+      clearCacheKey('billing');
       applyBillingStatus(await res.json());
     } catch (err) {
       alert((err && err.message) || 'Could not update plan emulation. Please try again.');
@@ -2691,17 +2742,26 @@
     await apiDiscoveryReady;
     if (!currentAccount) return;
 
+    // Render cached billing data instantly while fetching fresh data
+    const cached = readCache('billing');
+    if (cached) applyBillingStatus(cached);
+
     try {
-      var res = await apiFetch('/api/billing/status');
-      applyBillingStatus(await res.json());
+      const res = await apiFetch('/api/billing/status');
+      const data = await res.json();
+      writeCache('billing', data, CACHE_TTL_BILLING);
+      applyBillingStatus(data);
     } catch {
-      document.getElementById('app-tier').textContent = 'Unknown';
-      document.getElementById('app-subscription-status').textContent = 'Unavailable';
-      document.getElementById('app-runs-remaining').textContent = '—';
-      document.getElementById('app-billing-note').textContent = 'Could not load billing state';
-      document.getElementById('app-manage-billing-btn').style.display = 'none';
-      updateCapabilityFields({});
-      setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
+      // Only show error state if we had no cached data to show
+      if (!cached) {
+        document.getElementById('app-tier').textContent = 'Unknown';
+        document.getElementById('app-subscription-status').textContent = 'Unavailable';
+        document.getElementById('app-runs-remaining').textContent = '—';
+        document.getElementById('app-billing-note').textContent = 'Could not load billing state';
+        document.getElementById('app-manage-billing-btn').style.display = 'none';
+        updateCapabilityFields({});
+        setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
+      }
     }
   }
 
@@ -2709,14 +2769,24 @@
     await apiDiscoveryReady;
     if (!currentAccount && authEnabled()) return;
 
-    try {
-      var res = await apiFetch('/api/analysis/history?limit=6');
+    // Render cached history instantly while fetching fresh data
+    const cached = readCache('history');
+    if (cached && !analysisHistoryLoaded) {
       analysisHistoryLoaded = true;
-      applyAnalysisHistory(await res.json(), options || {});
+      applyAnalysisHistory(cached, options || {});
+      applyFirstRunLayout();
+    }
+
+    try {
+      const res = await apiFetch('/api/analysis/history?limit=6');
+      const data = await res.json();
+      writeCache('history', data, CACHE_TTL_HISTORY);
+      analysisHistoryLoaded = true;
+      applyAnalysisHistory(data, options || {});
       applyFirstRunLayout();
     } catch {
       analysisHistoryLoaded = true;
-      if (!analysisHistoryRuns.length && !latestAnalysisRun) {
+      if (!cached && !analysisHistoryRuns.length && !latestAnalysisRun) {
         analysisHistoryRuns = [];
         selectedAnalysisRunId = null;
         renderAnalysisHistoryList();
