@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
 ---
 
@@ -32,12 +32,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #620 | Enforce `aoi_limit` at submission time per plan tier (fixes #575) |
 | #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
 | #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse (fixes #571) |
 | #591 | Roadmap update + 56-polygon KML test fixture |
 | #577 | Dependabot: pytest bump |
-| #576 | Dependabot: pillow bump |
 
 ---
 
@@ -102,7 +102,7 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.3 | #533 | EUDR pricing on pricing page | Open |
 | 2C.4 | #555 | Dashboard UX overhaul (6 slices) | ✅ PR #557, #559 |
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
-| 2C.6 | #575 | `aoi_limit` never enforced at submission | Open |
+| 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
 | 2C.6 | #580 | Feature/AOI count mismatch (56→57) | Open |
 | 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
 
