@@ -1,0 +1,1428 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Global Monitoring Portfolio</name>
+    <description>55 realistic polygons across 8 regions — conservation, EUDR compliance, agriculture, and rangeland monitoring</description>
+
+    <!-- ============================================================ -->
+    <!-- Region 1: Amazon Deforestation Frontier — Rondônia, Brazil    -->
+    <!-- Elongated clearings along feeder roads off BR-364             -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Amazon Deforestation Frontier</name>
+      <description>Rondônia, Brazil — cleared parcels along the deforestation arc</description>
+
+      <Placemark>
+        <name>AMZ-01 Clearing Alpha</name>
+        <description>Rectangular clearing along N-S feeder road, ~25 ha</description>
+        <ExtendedData>
+          <Data name="region"><value>Rondônia</value></Data>
+          <Data name="land_use"><value>cattle_pasture</value></Data>
+          <Data name="risk_level"><value>high</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0240,-10.4860,0
+            -63.0180,-10.4850,0
+            -63.0155,-10.4880,0
+            -63.0150,-10.4930,0
+            -63.0160,-10.4980,0
+            -63.0170,-10.5020,0
+            -63.0220,-10.5030,0
+            -63.0250,-10.4990,0
+            -63.0260,-10.4940,0
+            -63.0250,-10.4890,0
+            -63.0240,-10.4860,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-02 Clearing Bravo</name>
+        <description>Fish-bone pattern clearing, ~18 ha</description>
+        <ExtendedData>
+          <Data name="region"><value>Rondônia</value></Data>
+          <Data name="land_use"><value>cattle_pasture</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0450,-10.5100,0
+            -63.0400,-10.5090,0
+            -63.0370,-10.5120,0
+            -63.0365,-10.5160,0
+            -63.0380,-10.5200,0
+            -63.0420,-10.5220,0
+            -63.0460,-10.5210,0
+            -63.0480,-10.5170,0
+            -63.0470,-10.5130,0
+            -63.0450,-10.5100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-03 Clearing Charlie</name>
+        <description>Narrow strip along road, ~12 ha</description>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0600,-10.5250,0
+            -63.0560,-10.5245,0
+            -63.0540,-10.5270,0
+            -63.0530,-10.5310,0
+            -63.0535,-10.5350,0
+            -63.0560,-10.5380,0
+            -63.0590,-10.5385,0
+            -63.0610,-10.5360,0
+            -63.0620,-10.5320,0
+            -63.0615,-10.5280,0
+            -63.0600,-10.5250,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-04 Clearing Delta</name>
+        <description>Concave clearing around creek, ~30 ha</description>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0800,-10.5400,0
+            -63.0740,-10.5390,0
+            -63.0710,-10.5420,0
+            -63.0700,-10.5460,0
+            -63.0720,-10.5480,0
+            -63.0700,-10.5510,0
+            -63.0710,-10.5550,0
+            -63.0760,-10.5570,0
+            -63.0810,-10.5560,0
+            -63.0840,-10.5520,0
+            -63.0830,-10.5470,0
+            -63.0820,-10.5430,0
+            -63.0800,-10.5400,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-05 Intact Forest Reference</name>
+        <description>Intact forest baseline block, ~50 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>primary_forest</value></Data>
+          <Data name="risk_level"><value>baseline</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0100,-10.4700,0
+            -63.0020,-10.4690,0
+            -62.9970,-10.4720,0
+            -62.9950,-10.4780,0
+            -62.9960,-10.4840,0
+            -63.0000,-10.4880,0
+            -63.0060,-10.4890,0
+            -63.0110,-10.4860,0
+            -63.0130,-10.4810,0
+            -63.0120,-10.4750,0
+            -63.0100,-10.4700,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-06 New Encroachment</name>
+        <description>Recently detected clearing, ~8 ha</description>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0320,-10.5450,0
+            -63.0290,-10.5445,0
+            -63.0275,-10.5465,0
+            -63.0270,-10.5495,0
+            -63.0285,-10.5520,0
+            -63.0310,-10.5525,0
+            -63.0330,-10.5505,0
+            -63.0335,-10.5475,0
+            -63.0320,-10.5450,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>AMZ-07 Degraded Edge</name>
+        <description>Forest-pasture transition zone, ~22 ha</description>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -63.0550,-10.4750,0
+            -63.0490,-10.4740,0
+            -63.0460,-10.4770,0
+            -63.0440,-10.4810,0
+            -63.0450,-10.4860,0
+            -63.0490,-10.4890,0
+            -63.0540,-10.4900,0
+            -63.0570,-10.4870,0
+            -63.0580,-10.4830,0
+            -63.0570,-10.4790,0
+            -63.0550,-10.4750,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 2: Cerrado Soy Parcels — Mato Grosso, Brazil          -->
+    <!-- Large rectangular fields typical of industrial soy            -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Cerrado Soy Parcels</name>
+      <description>Mato Grosso, Brazil — industrial soy and maize fields</description>
+
+      <Placemark>
+        <name>SOY-01 Campo Norte</name>
+        <description>Large soy pivot, ~120 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>soy</value></Data>
+          <Data name="season"><value>safrinha_2025</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.5200,-12.4800,0
+            -55.5080,-12.4790,0
+            -55.5050,-12.4850,0
+            -55.5040,-12.4930,0
+            -55.5060,-12.5010,0
+            -55.5120,-12.5050,0
+            -55.5200,-12.5060,0
+            -55.5260,-12.5020,0
+            -55.5290,-12.4950,0
+            -55.5280,-12.4870,0
+            -55.5250,-12.4820,0
+            -55.5200,-12.4800,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-02 Campo Sul</name>
+        <description>Maize-soy rotation, ~95 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>maize</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.5400,-12.5200,0
+            -55.5310,-12.5190,0
+            -55.5280,-12.5240,0
+            -55.5270,-12.5310,0
+            -55.5290,-12.5370,0
+            -55.5350,-12.5400,0
+            -55.5420,-12.5390,0
+            -55.5460,-12.5340,0
+            -55.5450,-12.5260,0
+            -55.5420,-12.5210,0
+            -55.5400,-12.5200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-03 Fazenda Esperança</name>
+        <description>Soy field with irregular western edge, ~80 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>soy</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.4800,-12.5500,0
+            -55.4720,-12.5510,0
+            -55.4690,-12.5560,0
+            -55.4700,-12.5630,0
+            -55.4750,-12.5680,0
+            -55.4820,-12.5690,0
+            -55.4870,-12.5650,0
+            -55.4880,-12.5580,0
+            -55.4850,-12.5530,0
+            -55.4800,-12.5500,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-04 Reserva Legal Strip</name>
+        <description>Legal reserve along watercourse, ~15 ha strip</description>
+        <ExtendedData>
+          <Data name="land_use"><value>legal_reserve</value></Data>
+          <Data name="protected"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.5600,-12.4900,0
+            -55.5560,-12.4910,0
+            -55.5530,-12.4960,0
+            -55.5510,-12.5020,0
+            -55.5520,-12.5080,0
+            -55.5540,-12.5120,0
+            -55.5580,-12.5130,0
+            -55.5610,-12.5100,0
+            -55.5620,-12.5040,0
+            -55.5630,-12.4970,0
+            -55.5620,-12.4920,0
+            -55.5600,-12.4900,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-05 Pivot Central</name>
+        <description>Center-pivot irrigated soy, ~100 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>soy</value></Data>
+          <Data name="irrigation"><value>center_pivot</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.6000,-12.5300,0
+            -55.5940,-12.5280,0
+            -55.5890,-12.5300,0
+            -55.5860,-12.5350,0
+            -55.5860,-12.5410,0
+            -55.5890,-12.5460,0
+            -55.5940,-12.5480,0
+            -55.6000,-12.5470,0
+            -55.6050,-12.5440,0
+            -55.6070,-12.5390,0
+            -55.6060,-12.5340,0
+            -55.6030,-12.5310,0
+            -55.6000,-12.5300,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-06 Campo Leste</name>
+        <description>Recently cleared cerrado, ~60 ha — first planting</description>
+        <ExtendedData>
+          <Data name="crop"><value>soy</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+          <Data name="cleared_year"><value>2024</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.4500,-12.4600,0
+            -55.4430,-12.4610,0
+            -55.4410,-12.4660,0
+            -55.4420,-12.4720,0
+            -55.4460,-12.4760,0
+            -55.4520,-12.4770,0
+            -55.4560,-12.4740,0
+            -55.4570,-12.4680,0
+            -55.4550,-12.4630,0
+            -55.4500,-12.4600,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>SOY-07 Fazenda Boa Vista</name>
+        <description>Large field with headland, ~140 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>soy</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -55.5000,-12.6000,0
+            -55.4900,-12.5990,0
+            -55.4850,-12.6030,0
+            -55.4830,-12.6100,0
+            -55.4840,-12.6170,0
+            -55.4880,-12.6220,0
+            -55.4950,-12.6250,0
+            -55.5030,-12.6240,0
+            -55.5090,-12.6200,0
+            -55.5110,-12.6140,0
+            -55.5100,-12.6070,0
+            -55.5060,-12.6020,0
+            -55.5000,-12.6000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 3: Palm Oil Concessions — Sarawak, Borneo             -->
+    <!-- Irregular blocks following terrain on tropical lowland        -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Palm Oil Concessions</name>
+      <description>Sarawak, Malaysian Borneo — oil palm plantation blocks</description>
+
+      <Placemark>
+        <name>PALM-01 Block Sungai Baram</name>
+        <description>Mature palm stand, ~75 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>oil_palm</value></Data>
+          <Data name="planting_year"><value>2012</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.0200,2.0100,0
+            111.0260,2.0110,0
+            111.0310,2.0090,0
+            111.0340,2.0050,0
+            111.0330,2.0000,0
+            111.0300,1.9960,0
+            111.0250,1.9950,0
+            111.0200,1.9970,0
+            111.0170,2.0010,0
+            111.0180,2.0060,0
+            111.0200,2.0100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-02 Block Niah</name>
+        <description>Recently replanted block, ~55 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>oil_palm</value></Data>
+          <Data name="planting_year"><value>2023</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.0500,2.0250,0
+            111.0550,2.0260,0
+            111.0590,2.0240,0
+            111.0610,2.0200,0
+            111.0600,2.0160,0
+            111.0570,2.0130,0
+            111.0520,2.0120,0
+            111.0480,2.0140,0
+            111.0460,2.0180,0
+            111.0470,2.0220,0
+            111.0500,2.0250,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-03 Block Tinjar</name>
+        <description>Mature palm along river, ~90 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>oil_palm</value></Data>
+          <Data name="planting_year"><value>2010</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.0800,2.0400,0
+            111.0870,2.0420,0
+            111.0930,2.0410,0
+            111.0970,2.0370,0
+            111.0980,2.0310,0
+            111.0960,2.0260,0
+            111.0910,2.0230,0
+            111.0850,2.0240,0
+            111.0810,2.0280,0
+            111.0790,2.0340,0
+            111.0800,2.0400,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-04 Block Belaga Hilir</name>
+        <description>Smallholder cluster, ~35 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>oil_palm</value></Data>
+          <Data name="ownership"><value>smallholder</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.1100,2.0600,0
+            111.1140,2.0615,0
+            111.1180,2.0605,0
+            111.1200,2.0570,0
+            111.1195,2.0530,0
+            111.1160,2.0510,0
+            111.1120,2.0515,0
+            111.1095,2.0545,0
+            111.1090,2.0580,0
+            111.1100,2.0600,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-05 Riparian Buffer</name>
+        <description>Protected riparian zone within concession, ~10 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>riparian_buffer</value></Data>
+          <Data name="protected"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.0350,2.0150,0
+            111.0380,2.0165,0
+            111.0410,2.0160,0
+            111.0430,2.0140,0
+            111.0420,2.0110,0
+            111.0400,2.0090,0
+            111.0370,2.0085,0
+            111.0345,2.0100,0
+            111.0335,2.0125,0
+            111.0350,2.0150,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-06 Block Rejang</name>
+        <description>Large estate block, ~110 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>oil_palm</value></Data>
+          <Data name="planting_year"><value>2015</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.1400,2.0800,0
+            111.1470,2.0820,0
+            111.1540,2.0810,0
+            111.1590,2.0770,0
+            111.1600,2.0710,0
+            111.1580,2.0650,0
+            111.1520,2.0620,0
+            111.1450,2.0630,0
+            111.1400,2.0660,0
+            111.1380,2.0720,0
+            111.1390,2.0770,0
+            111.1400,2.0800,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>PALM-07 Peat Forest Remnant</name>
+        <description>Intact peat swamp fragment inside concession, ~40 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>peat_forest</value></Data>
+          <Data name="risk_level"><value>critical</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            111.0650,2.0000,0
+            111.0700,2.0020,0
+            111.0740,2.0015,0
+            111.0770,1.9980,0
+            111.0760,1.9940,0
+            111.0730,1.9910,0
+            111.0680,1.9900,0
+            111.0640,1.9920,0
+            111.0620,1.9960,0
+            111.0630,1.9990,0
+            111.0650,2.0000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 4: Cocoa Farms — Côte d'Ivoire                        -->
+    <!-- Small irregular farms typical of West African cocoa belt      -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Cocoa Farms</name>
+      <description>Soubré district, Côte d'Ivoire — smallholder cocoa belt</description>
+
+      <Placemark>
+        <name>COC-01 Ferme Kouassi</name>
+        <description>Traditional cocoa farm, ~6 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+          <Data name="shade_type"><value>full_sun</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.5930,5.7820,0
+            -6.5910,5.7830,0
+            -6.5895,5.7820,0
+            -6.5885,5.7800,0
+            -6.5890,5.7785,0
+            -6.5910,5.7775,0
+            -6.5925,5.7785,0
+            -6.5935,5.7800,0
+            -6.5930,5.7820,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-02 Ferme Yao</name>
+        <description>Shaded cocoa under remnant canopy, ~8 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+          <Data name="shade_type"><value>agroforestry</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.5850,5.7860,0
+            -6.5825,5.7870,0
+            -6.5805,5.7860,0
+            -6.5790,5.7840,0
+            -6.5785,5.7815,0
+            -6.5800,5.7800,0
+            -6.5825,5.7795,0
+            -6.5845,5.7810,0
+            -6.5855,5.7835,0
+            -6.5850,5.7860,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-03 Ferme Adjoua</name>
+        <description>New planting on former forest, ~4 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+          <Data name="risk_level"><value>high</value></Data>
+          <Data name="cleared_year"><value>2023</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.6000,5.7750,0
+            -6.5985,5.7760,0
+            -6.5970,5.7755,0
+            -6.5965,5.7740,0
+            -6.5975,5.7725,0
+            -6.5990,5.7720,0
+            -6.6005,5.7730,0
+            -6.6010,5.7745,0
+            -6.6000,5.7750,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-04 Cooperative Bloc A</name>
+        <description>Cooperative-managed block, ~12 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="ownership"><value>cooperative</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.5760,5.7900,0
+            -6.5730,5.7915,0
+            -6.5705,5.7910,0
+            -6.5690,5.7890,0
+            -6.5685,5.7865,0
+            -6.5695,5.7845,0
+            -6.5720,5.7835,0
+            -6.5745,5.7840,0
+            -6.5760,5.7860,0
+            -6.5765,5.7880,0
+            -6.5760,5.7900,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-05 Ferme Bamba</name>
+        <description>Mixed cocoa and rubber, ~5 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa_rubber</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.6050,5.7680,0
+            -6.6035,5.7690,0
+            -6.6020,5.7685,0
+            -6.6010,5.7670,0
+            -6.6015,5.7650,0
+            -6.6030,5.7640,0
+            -6.6050,5.7645,0
+            -6.6060,5.7660,0
+            -6.6055,5.7675,0
+            -6.6050,5.7680,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-06 Taï Buffer Zone</name>
+        <description>Farm adjacent to Taï National Park boundary, ~7 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="risk_level"><value>critical</value></Data>
+          <Data name="adjacent_to"><value>tai_national_park</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -7.3400,5.8200,0
+            -7.3375,5.8215,0
+            -7.3350,5.8210,0
+            -7.3335,5.8190,0
+            -7.3330,5.8170,0
+            -7.3345,5.8150,0
+            -7.3370,5.8145,0
+            -7.3390,5.8155,0
+            -7.3405,5.8175,0
+            -7.3400,5.8200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-07 Ferme Koné Nord</name>
+        <description>Established cocoa farm, ~9 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.5880,5.7950,0
+            -6.5860,5.7960,0
+            -6.5840,5.7955,0
+            -6.5825,5.7935,0
+            -6.5830,5.7910,0
+            -6.5845,5.7895,0
+            -6.5870,5.7900,0
+            -6.5885,5.7920,0
+            -6.5890,5.7940,0
+            -6.5880,5.7950,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>COC-08 Ferme Koné Sud</name>
+        <description>Young cocoa replanting, ~3 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>cocoa</value></Data>
+          <Data name="planting_year"><value>2024</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -6.5870,5.7870,0
+            -6.5855,5.7878,0
+            -6.5840,5.7872,0
+            -6.5835,5.7855,0
+            -6.5845,5.7842,0
+            -6.5862,5.7838,0
+            -6.5875,5.7850,0
+            -6.5878,5.7865,0
+            -6.5870,5.7870,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 5: European Agriculture — Alsace, France               -->
+    <!-- Well-defined parcels with cadastral precision                 -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>European Agriculture</name>
+      <description>Alsace, France — precision agriculture and vineyard parcels</description>
+
+      <Placemark>
+        <name>EUR-01 Parcelle Blé Nord</name>
+        <description>Winter wheat field, ~22 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>winter_wheat</value></Data>
+          <Data name="cadastre_id"><value>FR-67-0342-A-0012</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.7100,48.5200,0
+            7.7150,48.5205,0
+            7.7190,48.5195,0
+            7.7200,48.5170,0
+            7.7195,48.5145,0
+            7.7160,48.5130,0
+            7.7120,48.5135,0
+            7.7095,48.5155,0
+            7.7090,48.5180,0
+            7.7100,48.5200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>EUR-02 Vignoble Grand Cru</name>
+        <description>Riesling vineyard on steep slope, ~5 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>riesling</value></Data>
+          <Data name="slope_deg"><value>18</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.3050,48.1650,0
+            7.3070,48.1658,0
+            7.3090,48.1655,0
+            7.3100,48.1640,0
+            7.3095,48.1625,0
+            7.3075,48.1618,0
+            7.3055,48.1622,0
+            7.3045,48.1635,0
+            7.3050,48.1650,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>EUR-03 Parcelle Maïs</name>
+        <description>Irrigated maize, ~15 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>grain_maize</value></Data>
+          <Data name="irrigation"><value>drip</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.7300,48.5300,0
+            7.7345,48.5310,0
+            7.7380,48.5300,0
+            7.7390,48.5275,0
+            7.7385,48.5250,0
+            7.7350,48.5240,0
+            7.7310,48.5245,0
+            7.7295,48.5265,0
+            7.7290,48.5285,0
+            7.7300,48.5300,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>EUR-04 Prairie Permanente</name>
+        <description>Permanent grassland — CAP ecological focus area, ~8 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>permanent_grassland</value></Data>
+          <Data name="cap_efa"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.7400,48.5100,0
+            7.7425,48.5112,0
+            7.7450,48.5108,0
+            7.7460,48.5090,0
+            7.7455,48.5070,0
+            7.7430,48.5060,0
+            7.7405,48.5065,0
+            7.7395,48.5080,0
+            7.7400,48.5100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>EUR-05 Colza Hiver</name>
+        <description>Winter rapeseed, ~18 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>winter_rapeseed</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.6800,48.5400,0
+            7.6850,48.5412,0
+            7.6900,48.5405,0
+            7.6920,48.5380,0
+            7.6910,48.5355,0
+            7.6870,48.5340,0
+            7.6830,48.5345,0
+            7.6805,48.5365,0
+            7.6800,48.5400,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>EUR-06 Verger Pommes</name>
+        <description>Apple orchard with anti-hail nets, ~3 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>apple</value></Data>
+          <Data name="variety"><value>gala</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            7.7500,48.5050,0
+            7.7518,48.5056,0
+            7.7535,48.5050,0
+            7.7540,48.5035,0
+            7.7530,48.5022,0
+            7.7512,48.5018,0
+            7.7495,48.5025,0
+            7.7490,48.5040,0
+            7.7500,48.5050,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 6: Conservation Corridors — Laikipia, Kenya            -->
+    <!-- Large wildlife and rangeland monitoring parcels               -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Conservation Corridors</name>
+      <description>Laikipia Plateau, Kenya — wildlife conservancies and rangeland</description>
+
+      <Placemark>
+        <name>CON-01 Ol Pejeta South</name>
+        <description>Black rhino sanctuary zone, ~180 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>wildlife_conservancy</value></Data>
+          <Data name="species_focus"><value>diceros_bicornis</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            36.8800,0.0100,0
+            36.8900,0.0120,0
+            36.8980,0.0100,0
+            36.9030,0.0050,0
+            36.9040,-0.0010,0
+            36.9010,-0.0070,0
+            36.8940,-0.0100,0
+            36.8860,-0.0090,0
+            36.8800,-0.0050,0
+            36.8780,0.0010,0
+            36.8790,0.0060,0
+            36.8800,0.0100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>CON-02 Lewa Corridor</name>
+        <description>Elephant migration corridor, ~250 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>migration_corridor</value></Data>
+          <Data name="species_focus"><value>loxodonta_africana</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            37.3800,0.1800,0
+            37.3900,0.1830,0
+            37.4000,0.1820,0
+            37.4080,0.1780,0
+            37.4100,0.1720,0
+            37.4060,0.1650,0
+            37.3980,0.1620,0
+            37.3880,0.1630,0
+            37.3810,0.1670,0
+            37.3780,0.1730,0
+            37.3800,0.1800,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>CON-03 Mukogodo Forest Edge</name>
+        <description>Community forest boundary, ~120 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>community_forest</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            37.1200,0.3200,0
+            37.1280,0.3230,0
+            37.1360,0.3220,0
+            37.1410,0.3180,0
+            37.1420,0.3120,0
+            37.1390,0.3070,0
+            37.1320,0.3050,0
+            37.1250,0.3060,0
+            37.1200,0.3100,0
+            37.1190,0.3150,0
+            37.1200,0.3200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>CON-04 Rangeland Restoration</name>
+        <description>Degraded rangeland under restoration, ~300 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>rangeland_restoration</value></Data>
+          <Data name="grazing_plan"><value>holistic_planned</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            36.7500,0.2000,0
+            36.7620,0.2040,0
+            36.7740,0.2030,0
+            36.7830,0.1970,0
+            36.7850,0.1880,0
+            36.7800,0.1800,0
+            36.7700,0.1760,0
+            36.7590,0.1770,0
+            36.7510,0.1830,0
+            36.7480,0.1910,0
+            36.7500,0.2000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>CON-05 Cattle Ranch Monitoring</name>
+        <description>Large-scale cattle ranch, ~400 ha — overgrazing risk assessment</description>
+        <ExtendedData>
+          <Data name="land_use"><value>cattle_ranch</value></Data>
+          <Data name="stocking_rate"><value>0.3_lu_per_ha</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            36.9200,0.1200,0
+            36.9350,0.1250,0
+            36.9500,0.1230,0
+            36.9600,0.1160,0
+            36.9620,0.1050,0
+            36.9560,0.0960,0
+            36.9430,0.0920,0
+            36.9300,0.0940,0
+            36.9210,0.1010,0
+            36.9180,0.1100,0
+            36.9200,0.1200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>CON-06 Riparian Woodland</name>
+        <description>Ewaso Ng'iro riverine forest, ~45 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>riparian_woodland</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            37.0500,0.0800,0
+            37.0540,0.0820,0
+            37.0590,0.0815,0
+            37.0620,0.0790,0
+            37.0630,0.0750,0
+            37.0610,0.0720,0
+            37.0570,0.0700,0
+            37.0530,0.0705,0
+            37.0500,0.0730,0
+            37.0490,0.0765,0
+            37.0500,0.0800,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 7: Rubber Plantations — Chiang Rai, Thailand           -->
+    <!-- Hill-slope plantations on former forest land                  -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Rubber Plantations</name>
+      <description>Chiang Rai Province, Thailand — upland rubber blocks</description>
+
+      <Placemark>
+        <name>RUB-01 Ban Huay Block A</name>
+        <description>Mature rubber, ~20 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>rubber</value></Data>
+          <Data name="planting_year"><value>2008</value></Data>
+          <Data name="eudr_relevant"><value>true</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            100.0800,20.0200,0
+            100.0840,20.0215,0
+            100.0870,20.0210,0
+            100.0890,20.0190,0
+            100.0885,20.0165,0
+            100.0860,20.0150,0
+            100.0825,20.0148,0
+            100.0800,20.0160,0
+            100.0790,20.0180,0
+            100.0800,20.0200,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>RUB-02 Ban Huay Block B</name>
+        <description>Young rubber, ~15 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>rubber</value></Data>
+          <Data name="planting_year"><value>2020</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            100.0920,20.0250,0
+            100.0955,20.0260,0
+            100.0980,20.0250,0
+            100.0995,20.0230,0
+            100.0990,20.0210,0
+            100.0965,20.0195,0
+            100.0935,20.0200,0
+            100.0920,20.0215,0
+            100.0915,20.0235,0
+            100.0920,20.0250,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>RUB-03 Mae Fah Luang</name>
+        <description>Hillside rubber on 15° slope, ~12 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>rubber</value></Data>
+          <Data name="slope_deg"><value>15</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            99.9700,20.0500,0
+            99.9730,20.0512,0
+            99.9760,20.0505,0
+            99.9775,20.0488,0
+            99.9770,20.0468,0
+            99.9745,20.0455,0
+            99.9715,20.0458,0
+            99.9700,20.0475,0
+            99.9695,20.0490,0
+            99.9700,20.0500,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>RUB-04 Community Forest Boundary</name>
+        <description>Forest-rubber mosaic, ~25 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>forest_rubber_mosaic</value></Data>
+          <Data name="risk_level"><value>medium</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            100.1100,20.0350,0
+            100.1145,20.0365,0
+            100.1180,20.0355,0
+            100.1200,20.0330,0
+            100.1195,20.0300,0
+            100.1170,20.0280,0
+            100.1135,20.0278,0
+            100.1110,20.0295,0
+            100.1095,20.0320,0
+            100.1100,20.0350,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>RUB-05 Doi Tung Restoration</name>
+        <description>Former opium poppy land, now rubber, ~10 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>rubber</value></Data>
+          <Data name="planting_year"><value>2015</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            99.9400,20.2900,0
+            99.9425,20.2912,0
+            99.9450,20.2908,0
+            99.9465,20.2892,0
+            99.9460,20.2875,0
+            99.9440,20.2862,0
+            99.9415,20.2865,0
+            99.9400,20.2878,0
+            99.9395,20.2893,0
+            99.9400,20.2900,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>RUB-06 Valley Floor Plantation</name>
+        <description>Lowland rubber on alluvial soil, ~30 ha</description>
+        <ExtendedData>
+          <Data name="crop"><value>rubber</value></Data>
+          <Data name="soil_type"><value>alluvial</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            100.0500,20.0100,0
+            100.0545,20.0120,0
+            100.0590,20.0115,0
+            100.0620,20.0090,0
+            100.0615,20.0060,0
+            100.0585,20.0040,0
+            100.0540,20.0035,0
+            100.0510,20.0050,0
+            100.0495,20.0075,0
+            100.0500,20.0100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Region 8: Rangeland — Queensland, Australia                   -->
+    <!-- Large pastoral/grazing parcels in semi-arid landscape         -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Queensland Rangeland</name>
+      <description>Burdekin region, Queensland — pastoral grazing and vegetation monitoring</description>
+
+      <Placemark>
+        <name>QLD-01 Station Paddock North</name>
+        <description>Large grazing paddock, ~500 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>extensive_grazing</value></Data>
+          <Data name="vegetation_type"><value>eucalyptus_woodland</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            147.9500,-19.9500,0
+            147.9700,-19.9470,0
+            147.9880,-19.9510,0
+            148.0000,-19.9600,0
+            148.0020,-19.9750,0
+            147.9950,-19.9880,0
+            147.9800,-19.9920,0
+            147.9640,-19.9900,0
+            147.9520,-19.9820,0
+            147.9480,-19.9700,0
+            147.9480,-19.9590,0
+            147.9500,-19.9500,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>QLD-02 Riparian Fencing Zone</name>
+        <description>Creek-line exclusion zone, ~60 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>riparian_exclusion</value></Data>
+          <Data name="fencing_year"><value>2024</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            148.0200,-20.0100,0
+            148.0250,-20.0080,0
+            148.0310,-20.0090,0
+            148.0340,-20.0130,0
+            148.0330,-20.0180,0
+            148.0290,-20.0210,0
+            148.0240,-20.0220,0
+            148.0200,-20.0200,0
+            148.0185,-20.0160,0
+            148.0190,-20.0120,0
+            148.0200,-20.0100,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>QLD-03 Regrowth Monitoring</name>
+        <description>Post-clearing regrowth area, ~200 ha — vegetation monitoring</description>
+        <ExtendedData>
+          <Data name="land_use"><value>regrowth_monitoring</value></Data>
+          <Data name="cleared_year"><value>2018</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            148.1000,-19.8800,0
+            148.1150,-19.8770,0
+            148.1300,-19.8800,0
+            148.1380,-19.8880,0
+            148.1400,-19.8980,0
+            148.1350,-19.9060,0
+            148.1220,-19.9100,0
+            148.1100,-19.9080,0
+            148.1020,-19.9010,0
+            148.0990,-19.8920,0
+            148.1000,-19.8800,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>QLD-04 Savanna Woodland</name>
+        <description>Native woodland — carbon credit project, ~350 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>carbon_project</value></Data>
+          <Data name="carbon_method"><value>savanna_burning</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            147.8500,-20.1000,0
+            147.8680,-20.0960,0
+            147.8850,-20.0990,0
+            147.8950,-20.1080,0
+            147.8970,-20.1200,0
+            147.8900,-20.1310,0
+            147.8750,-20.1360,0
+            147.8600,-20.1330,0
+            147.8500,-20.1250,0
+            147.8470,-20.1130,0
+            147.8500,-20.1000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <Placemark>
+        <name>QLD-05 Mine Rehab Site</name>
+        <description>Post-mining rehabilitation monitoring, ~45 ha</description>
+        <ExtendedData>
+          <Data name="land_use"><value>mine_rehabilitation</value></Data>
+          <Data name="closure_year"><value>2020</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            148.2000,-20.0500,0
+            148.2040,-20.0480,0
+            148.2080,-20.0490,0
+            148.2100,-20.0520,0
+            148.2095,-20.0560,0
+            148.2070,-20.0590,0
+            148.2030,-20.0595,0
+            148.2000,-20.0580,0
+            148.1985,-20.0550,0
+            148.1990,-20.0520,0
+            148.2000,-20.0500,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+    <!-- ============================================================ -->
+    <!-- Special test cases                                            -->
+    <!-- ============================================================ -->
+    <Folder>
+      <name>Special Geometry Cases</name>
+      <description>Edge cases for parser and geometry validation</description>
+
+      <!-- Polygon with hole (donut) — forest clearing with preserved tree island -->
+      <Placemark>
+        <name>SPEC-01 Clearing with Tree Island</name>
+        <description>Pasture clearing with preserved forest island inside (donut polygon), ~35 ha outer, ~4 ha hole</description>
+        <ExtendedData>
+          <Data name="test_case"><value>polygon_with_hole</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            -54.5000,-3.5000,0
+            -54.4920,-3.4970,0
+            -54.4850,-3.5000,0
+            -54.4820,-3.5060,0
+            -54.4830,-3.5130,0
+            -54.4880,-3.5180,0
+            -54.4960,-3.5200,0
+            -54.5040,-3.5180,0
+            -54.5080,-3.5130,0
+            -54.5090,-3.5060,0
+            -54.5060,-3.5010,0
+            -54.5000,-3.5000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+          <innerBoundaryIs><LinearRing><coordinates>
+            -54.4960,-3.5070,0
+            -54.4940,-3.5060,0
+            -54.4930,-3.5080,0
+            -54.4925,-3.5100,0
+            -54.4940,-3.5115,0
+            -54.4960,-3.5120,0
+            -54.4975,-3.5110,0
+            -54.4980,-3.5090,0
+            -54.4970,-3.5075,0
+            -54.4960,-3.5070,0
+          </coordinates></LinearRing></innerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <!-- Highly elongated polygon — river buffer strip -->
+      <Placemark>
+        <name>SPEC-02 River Buffer Strip</name>
+        <description>Narrow riparian buffer ~50m wide, 2km long — elongated geometry stress test, ~10 ha</description>
+        <ExtendedData>
+          <Data name="test_case"><value>elongated_polygon</value></Data>
+          <Data name="width_m"><value>50</value></Data>
+          <Data name="length_m"><value>2000</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            29.0500,-2.5000,0
+            29.0520,-2.4980,0
+            29.0545,-2.4965,0
+            29.0575,-2.4955,0
+            29.0610,-2.4950,0
+            29.0650,-2.4948,0
+            29.0690,-2.4952,0
+            29.0720,-2.4960,0
+            29.0720,-2.4970,0
+            29.0690,-2.4963,0
+            29.0650,-2.4958,0
+            29.0610,-2.4960,0
+            29.0575,-2.4966,0
+            29.0545,-2.4976,0
+            29.0520,-2.4992,0
+            29.0500,-2.5010,0
+            29.0500,-2.5000,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <!-- Near-minimum-area polygon — tiny garden plot -->
+      <Placemark>
+        <name>SPEC-03 Urban Garden Plot</name>
+        <description>Very small urban test polygon, ~0.3 ha — near minimum viable AOI</description>
+        <ExtendedData>
+          <Data name="test_case"><value>minimum_area</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            36.8170,-1.2830,0
+            36.8175,-1.2828,0
+            36.8178,-1.2832,0
+            36.8176,-1.2836,0
+            36.8172,-1.2837,0
+            36.8169,-1.2834,0
+            36.8170,-1.2830,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+
+      <!-- Many-vertex polygon — detailed coastline trace -->
+      <Placemark>
+        <name>SPEC-04 Mangrove Coastline</name>
+        <description>Mangrove tract with detailed coastline boundary — many vertices, ~25 ha</description>
+        <ExtendedData>
+          <Data name="test_case"><value>many_vertices</value></Data>
+          <Data name="land_use"><value>mangrove</value></Data>
+        </ExtendedData>
+        <Polygon>
+          <outerBoundaryIs><LinearRing><coordinates>
+            39.6700,-4.0500,0
+            39.6715,-4.0490,0
+            39.6725,-4.0485,0
+            39.6738,-4.0488,0
+            39.6748,-4.0482,0
+            39.6760,-4.0480,0
+            39.6772,-4.0485,0
+            39.6780,-4.0478,0
+            39.6792,-4.0480,0
+            39.6800,-4.0488,0
+            39.6805,-4.0500,0
+            39.6810,-4.0515,0
+            39.6805,-4.0530,0
+            39.6795,-4.0542,0
+            39.6780,-4.0548,0
+            39.6765,-4.0555,0
+            39.6750,-4.0560,0
+            39.6735,-4.0558,0
+            39.6720,-4.0550,0
+            39.6710,-4.0540,0
+            39.6705,-4.0525,0
+            39.6700,-4.0510,0
+            39.6700,-4.0500,0
+          </coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>
+    </Folder>
+
+  </Document>
+</kml>
