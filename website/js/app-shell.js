@@ -2088,12 +2088,26 @@
     var placemarks = doc.getElementsByTagName('Placemark');
     var polygons = [];
     for (var p = 0; p < placemarks.length; p++) {
-      var coordEls = placemarks[p].getElementsByTagName('coordinates');
       var nameEl = placemarks[p].getElementsByTagName('name')[0];
       var polygonName = nameEl ? nameEl.textContent.trim() : 'Polygon ' + (polygons.length + 1);
-      for (var c = 0; c < coordEls.length; c++) {
-        var coords = parseCoordText(coordEls[c].textContent);
-        if (coords) polygons.push({ name: polygonName, coords: coords });
+      // Only extract outer boundary coordinates — inner boundaries (holes)
+      // must not be counted as separate polygons (#580).
+      var outerEls = placemarks[p].getElementsByTagName('outerBoundaryIs');
+      if (outerEls.length) {
+        for (var o = 0; o < outerEls.length; o++) {
+          var outerCoordEls = outerEls[o].getElementsByTagName('coordinates');
+          for (var c = 0; c < outerCoordEls.length; c++) {
+            var coords = parseCoordText(outerCoordEls[c].textContent);
+            if (coords) polygons.push({ name: polygonName, coords: coords });
+          }
+        }
+      } else {
+        // Simple KML without outerBoundaryIs wrappers — take all coordinates
+        var coordEls = placemarks[p].getElementsByTagName('coordinates');
+        for (var c = 0; c < coordEls.length; c++) {
+          var coords = parseCoordText(coordEls[c].textContent);
+          if (coords) polygons.push({ name: polygonName, coords: coords });
+        }
       }
     }
 
