@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
 | #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse, reliability (fixes #571) |
 | #591 | Roadmap update + 56-polygon KML test fixture |
 | #577 | Dependabot: pytest bump |
 | #576 | Dependabot: pillow bump |
-| #568 | Security review batch: discovery files (robots.txt, sitemap.xml, security.txt), X-XSS-Protection, X-Robots-Tag |
 
 ---
 
