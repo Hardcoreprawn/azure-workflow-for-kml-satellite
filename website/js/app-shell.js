@@ -175,18 +175,26 @@
   // ---------------------------------------------------------------------------
   // localStorage stale-while-revalidate cache (#596)
   // Render cached data instantly, then refresh in background.
+  // Keys are scoped per-user to prevent cross-account data leakage.
   // ---------------------------------------------------------------------------
   const CACHE_PREFIX = 'canopex:';
   const CACHE_TTL_HISTORY = 5 * 60 * 1000;   // 5 min
   const CACHE_TTL_BILLING = 30 * 60 * 1000;  // 30 min
 
+  function cacheKey(key) {
+    const uid = currentAccount && currentAccount.userId;
+    return uid ? CACHE_PREFIX + uid + ':' + key : null;
+  }
+
   function readCache(key) {
     try {
-      const raw = localStorage.getItem(CACHE_PREFIX + key);
+      const full = cacheKey(key);
+      if (!full) return null;
+      const raw = localStorage.getItem(full);
       if (!raw) return null;
       const entry = JSON.parse(raw);
       if (!entry || typeof entry.expires !== 'number' || Date.now() > entry.expires) {
-        localStorage.removeItem(CACHE_PREFIX + key);
+        localStorage.removeItem(full);
         return null;
       }
       return entry.data;
@@ -194,8 +202,11 @@
   }
 
   function writeCache(key, data, ttlMs) {
+    if (!Number.isFinite(ttlMs)) return;
     try {
-      localStorage.setItem(CACHE_PREFIX + key, JSON.stringify({
+      const full = cacheKey(key);
+      if (!full) return;
+      localStorage.setItem(full, JSON.stringify({
         data: data,
         expires: Date.now() + ttlMs
       }));
@@ -203,7 +214,10 @@
   }
 
   function clearCacheKey(key) {
-    try { localStorage.removeItem(CACHE_PREFIX + key); } catch { /* ignore */ }
+    try {
+      const full = cacheKey(key);
+      if (full) localStorage.removeItem(full);
+    } catch { /* ignore */ }
   }
 
   function clearAllCache() {
