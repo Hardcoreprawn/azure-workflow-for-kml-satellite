@@ -123,17 +123,57 @@
     var mapEl = document.getElementById('sample-map');
     if (!mapEl || typeof L === 'undefined') return;
 
-    // São Félix do Xingu, Pará — ~90 ha cattle ranch parcel on
-    // the deforestation frontier along road network south of town.
-    // Classic pasture/forest mosaic visible in S2 imagery.
+    // São Félix do Xingu, Pará — real PRODES d2021 deforestation polygon
+    // from INPE/Terrabrasilis WFS (prodes-amazon-nb:yearly_deforestation_biome).
+    // 0.379 km² clearing detected 2021, near Fresco River, state PA.
+    // Coordinates sourced from official Brazilian government deforestation
+    // monitoring — the same data EUDR regulators reference.
     var parcelCoords = [
-      [-6.675, -51.835],
-      [-6.675, -51.825],
-      [-6.684, -51.825],
-      [-6.684, -51.835],
-      [-6.675, -51.835]
+      [-6.6624, -51.8461],
+      [-6.6620, -51.8461],
+      [-6.6618, -51.8461],
+      [-6.6591, -51.8449],
+      [-6.6613, -51.8394],
+      [-6.6618, -51.8394],
+      [-6.6618, -51.8400],
+      [-6.6620, -51.8400],
+      [-6.6628, -51.8400],
+      [-6.6628, -51.8394],
+      [-6.6634, -51.8394],
+      [-6.6634, -51.8389],
+      [-6.6639, -51.8389],
+      [-6.6639, -51.8383],
+      [-6.6644, -51.8383],
+      [-6.6644, -51.8386],
+      [-6.6647, -51.8386],
+      [-6.6647, -51.8389],
+      [-6.6653, -51.8389],
+      [-6.6653, -51.8391],
+      [-6.6655, -51.8391],
+      [-6.6655, -51.8394],
+      [-6.6658, -51.8394],
+      [-6.6658, -51.8389],
+      [-6.6661, -51.8389],
+      [-6.6661, -51.8383],
+      [-6.6662, -51.8383],
+      [-6.6665, -51.8389],
+      [-6.6671, -51.8387],
+      [-6.6671, -51.8389],
+      [-6.6674, -51.8389],
+      [-6.6674, -51.8391],
+      [-6.6673, -51.8391],
+      [-6.6672, -51.8392],
+      [-6.6671, -51.8415],
+      [-6.6670, -51.8416],
+      [-6.6664, -51.8417],
+      [-6.6662, -51.8419],
+      [-6.6660, -51.8419],
+      [-6.6660, -51.8421],
+      [-6.6654, -51.8425],
+      [-6.6635, -51.8419],
+      [-6.6624, -51.8461]
     ];
-    var center = [-6.6795, -51.830];
+    var center = [-6.6647, -51.8404];
 
     var map = L.map(mapEl, {
       scrollWheelZoom: false,
@@ -142,7 +182,7 @@
     }).setView(center, 14);
 
     // Register a PC mosaic for recent low-cloud S2 visual imagery
-    var bbox = [-51.84, -6.69, -51.82, -6.67];
+    var bbox = [-51.85, -6.68, -51.83, -6.65];
     var registerBody = {
       collections: ['sentinel-2-l2a'],
       'filter-lang': 'cql2-json',
