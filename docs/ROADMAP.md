@@ -103,7 +103,7 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.4 | #555 | Dashboard UX overhaul (6 slices) | ✅ PR #557, #559 |
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
 | 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
-| 2C.6 | #580 | Feature/AOI count mismatch (56→57) | Open |
+| 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #620 |
 | 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
 
 **Exit:** Visitor → landing page → EUDR app → free trial → submit parcels
