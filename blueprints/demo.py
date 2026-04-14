@@ -111,6 +111,7 @@ def demo_artifacts(req: func.HttpRequest) -> func.HttpResponse:
         body=data,
         status_code=200,
         mimetype=content_type,
+        headers=cors_headers(req),
     )
 
 
@@ -179,7 +180,10 @@ def cors_proxy(req: func.HttpRequest) -> func.HttpResponse:
             allow_redirects=False,
             stream=True,
         )
-        body = resp.raw.read(_PROXY_MAX_RESPONSE_BYTES + 1)
+        try:
+            body = resp.raw.read(_PROXY_MAX_RESPONSE_BYTES + 1)
+        finally:
+            resp.close()
         if len(body) > _PROXY_MAX_RESPONSE_BYTES:
             return error_response(502, "Upstream response too large", req=req)
         hdrs = cors_headers(req)

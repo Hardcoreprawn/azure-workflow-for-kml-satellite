@@ -242,7 +242,7 @@ async def fetch_enrichment_manifest(
     extracting the manifest path.
     """
     try:
-        check_auth(req)
+        _, caller_user_id = check_auth(req)
     except ValueError as exc:
         return None, error_response(401, str(exc), req=req)
 
@@ -252,6 +252,12 @@ async def fetch_enrichment_manifest(
 
     status = await client.get_status(instance_id)
     if not status or not status.output:
+        return None, error_response(404, "Pipeline not found or not complete", req=req)
+
+    # Verify the authenticated user owns this orchestration
+    inp = status.input_ if hasattr(status, "input_") else None
+    owner_id = inp.get("user_id", "") if isinstance(inp, dict) else ""
+    if not owner_id or owner_id != caller_user_id:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
     output = status.output if isinstance(status.output, dict) else {}

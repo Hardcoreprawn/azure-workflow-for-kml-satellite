@@ -29,11 +29,14 @@ def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> li
     if not blob_event.blob_name:
         raise ValueError("blob_event.blob_name must not be empty")
 
-    from treesight.parsers import maybe_unzip
+    from treesight.parsers import maybe_unzip, validate_kml_bytes
 
     raw_bytes = storage.download_bytes(blob_event.container_name, blob_event.blob_name)
     kml_bytes = maybe_unzip(raw_bytes)
     source_file = PurePosixPath(blob_event.blob_name).name
+
+    # Reject malformed or dangerous XML before parser dispatch
+    validate_kml_bytes(kml_bytes)
 
     # Try Fiona first, fall back to lxml
     try:
