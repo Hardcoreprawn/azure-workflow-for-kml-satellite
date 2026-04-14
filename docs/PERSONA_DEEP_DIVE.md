@@ -1049,6 +1049,71 @@ Canopex is an unknown tool from an unknown company. For Elena to bet her EUDR co
 - Want weather context and AI analysis that GFW Pro doesn't provide
 - Want a predictable monthly price, not consumption-based tokens
 
+### 8.8 Real-World Scale: Cattle Ranches in São Félix do Xingu
+
+Understanding the physical scale of EUDR-relevant landholdings is critical for
+product design. São Félix do Xingu (Pará, Brazil) is the single most important
+municipality for cattle-linked EUDR compliance — and its ranch sizes set the
+upper bound for what our system must handle.
+
+**Municipality context:**
+
+- Covers **84,000 km²** — larger than Austria or Portugal.
+- **2.5 million head of cattle** — the largest municipal herd in Brazil.
+- Known as _o gigante da pecuária brasileira_ ("the giant of Brazilian cattle
+  ranching").
+- Contains a patchwork of native Amazon forest, conservation units, indigenous
+  lands, and large private ranches on the deforestation frontier.
+
+**Typical ranch sizes:**
+
+| Category | Area (hectares) | Notes |
+|----------|----------------|-------|
+| Small-to-medium | 500–2,000 ha | Family-run, common in older settled areas |
+| Large commercial | 2,000–10,000 ha | Standard tier-1 supplier |
+| Very large (frontier) | 10,000–50,000+ ha | Common in Pará frontier zones |
+
+For a **typical tier-1 cattle supplier** in São Félix do Xingu, expect the
+property boundary to cover **5,000–20,000 hectares**. Very large operations can
+reach 50,000 ha.
+
+**What EUDR requires Elena to track:**
+
+- The **full polygon** of the supplying ranch — not just the pasture the animals
+  grazed on.
+- If the ranch has multiple contiguous or non-contiguous parcels (fragmented
+  legal titles are common), **every parcel must be included**.
+- **High-resolution, time-bound geolocation** proving no deforestation occurred
+  after the 31 December 2020 cutoff.
+- **Historical land-use change**, comparing pre- and post-cutoff imagery.
+
+**Key data layers for compliance in Pará:**
+
+| Layer | Source | Purpose |
+|-------|--------|---------|
+| CAR (Cadastro Ambiental Rural) | SICAR / state agencies | Legal ranch boundary polygons |
+| PRODES | INPE | Annual deforestation mapping (30m, since 1988) |
+| DETER | INPE | Near-real-time deforestation alerts (daily) |
+| Sentinel-2 | ESA / Planetary Computer | 10m multispectral imagery (NDVI, change detection) |
+| ESA WorldCover | ESA / Planetary Computer | Land classification (forest, cropland, grassland) |
+| WDPA | protectedplanet.net | Protected area and indigenous land overlap |
+
+**Product design implications:**
+
+1. **Parcel-count limits are necessary but insufficient.** A single polygon
+   covering 20,000 ha requires far more processing than 20 polygons of 1 ha
+   each. Area-based limits or compute-time limits should complement
+   `aoi_limit`.
+2. **System must handle large, irregular polygons** — ranch boundaries follow
+   rivers, ridgelines, and property disputes, not neat rectangles.
+3. **Multi-parcel submissions are the norm**, not the exception. A ranch may
+   have 3–10 non-contiguous parcels under the same owner.
+4. **The EUDR buyer** (Elena) is tracking suppliers, not her own land. She
+   receives boundary data from outside her organisation and must validate it.
+5. **Demo and marketing imagery** should show realistic frontier landscapes:
+   pasture/forest boundaries, cleared areas adjacent to standing forest —
+   exactly what a cattle buyer tracking a supplier would see.
+
 ---
 
 ## 9. Market Sizing — Grounded Estimates
