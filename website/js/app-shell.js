@@ -2088,20 +2088,33 @@
     var placemarks = doc.getElementsByTagName('Placemark');
     var polygons = [];
     for (var p = 0; p < placemarks.length; p++) {
-      var coordEls = placemarks[p].getElementsByTagName('coordinates');
       var nameEl = placemarks[p].getElementsByTagName('name')[0];
       var polygonName = nameEl ? nameEl.textContent.trim() : 'Polygon ' + (polygons.length + 1);
-      for (var c = 0; c < coordEls.length; c++) {
-        var coords = parseCoordText(coordEls[c].textContent);
-        if (coords) polygons.push({ name: polygonName, coords: coords });
+      var polyEls = placemarks[p].getElementsByTagName('Polygon');
+      if (polyEls.length) {
+        for (var q = 0; q < polyEls.length; q++) {
+          var outerEl = polyEls[q].getElementsByTagName('outerBoundaryIs')[0];
+          var outerCoordEl = outerEl ? outerEl.getElementsByTagName('coordinates')[0] : null;
+          if (outerCoordEl) {
+            var coords = parseCoordText(outerCoordEl.textContent);
+            if (coords) polygons.push({ name: polygonName, coords: coords });
+          }
+        }
+      } else {
+        // Fallback: Placemarks without explicit Polygon elements (e.g. raw coordinates)
+        var coordEls = placemarks[p].getElementsByTagName('coordinates');
+        for (var c = 0; c < coordEls.length; c++) {
+          var fallbackCoords = parseCoordText(coordEls[c].textContent);
+          if (fallbackCoords) polygons.push({ name: polygonName, coords: fallbackCoords });
+        }
       }
     }
 
     if (!polygons.length) {
       var allCoords = doc.getElementsByTagName('coordinates');
       for (var i = 0; i < allCoords.length; i++) {
-        var fallbackCoords = parseCoordText(allCoords[i].textContent);
-        if (fallbackCoords) polygons.push({ name: 'Polygon ' + (polygons.length + 1), coords: fallbackCoords });
+        var topLevelCoords = parseCoordText(allCoords[i].textContent);
+        if (topLevelCoords) polygons.push({ name: 'Polygon ' + (polygons.length + 1), coords: topLevelCoords });
       }
     }
 
