@@ -195,6 +195,15 @@ def submit_contact(
     if not isinstance(body, dict):
         return error_response(400, "Expected JSON object", req=req)
 
+    # Honeypot: if a hidden field is filled, silently accept (bot detected)
+    if body.get("website"):
+        return func.HttpResponse(
+            json.dumps({"status": "received", "submission_id": "ok"}),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+
     email = sanitise(body.get("email", ""))
     if not email or not EMAIL_RE.match(email):
         return error_response(400, "Valid email is required", req=req)
@@ -242,7 +251,7 @@ async def fetch_enrichment_manifest(
     extracting the manifest path.
     """
     try:
-        check_auth(req)
+        _, caller_user_id = check_auth(req)
     except ValueError as exc:
         return None, error_response(401, str(exc), req=req)
 
@@ -254,9 +263,22 @@ async def fetch_enrichment_manifest(
     if not status or not status.output:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
-    output = status.output if isinstance(status.output, dict) else {}
+    # Verify the authenticated user owns this orchestration
+    inp = status.input_ if hasattr(status, "input_") else None
+    owner_id = inp.get("user_id", "") if isinstance(inp, dict) else ""
+    if not owner_id or owner_id != caller_user_id:
+        return None, error_response(404, "Pipeline not found or not complete", req=req)
+
+    output = status.output
+    if isinstance(output, str):
+        try:
+            output = json.loads(output)
+        except (json.JSONDecodeError, TypeError):
+            output = {}
+    if not isinstance(output, dict):
+        output = {}
     if reshape_output is not None:
-        output = reshape_output(status.output) if status.output else {}
+        output = reshape_output(output) if output else {}
     manifest_path = output.get("enrichment_manifest") or output.get("enrichmentManifest")
     if not manifest_path:
         return None, error_response(404, "No enrichment data for this pipeline run", req=req)

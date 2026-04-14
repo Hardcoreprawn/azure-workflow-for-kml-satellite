@@ -277,13 +277,18 @@ def upload_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> 
     except ValueError:
         return error_response(400, "Invalid submission_id format", req=req)
 
-    # Read status from Cosmos runs container
+    # Read status from Cosmos runs container (scoped to authenticated user)
     try:
         records = _cosmos_mod.query_items(
             "runs",
             "SELECT c.submission_id, c.status, c.submitted_at, c.feature_count,"
-            " c.aoi_count FROM c WHERE c.submission_id = @sid",
-            parameters=[{"name": "@sid", "value": submission_id}],
+            " c.aoi_count FROM c WHERE c.submission_id = @sid"
+            " AND c.user_id = @uid",
+            parameters=[
+                {"name": "@sid", "value": submission_id},
+                {"name": "@uid", "value": user_id},
+            ],
+            partition_key=user_id,
         )
     except Exception:
         logger.exception("Cosmos query failed for submission_id=%s", submission_id)

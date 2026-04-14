@@ -161,6 +161,7 @@
   let workspaceRole = 'conservation';
   let workspacePreference = 'investigate';
   let activeAnalysisPoll = null;
+  let analysisPollGeneration = 0; // incremented on each pollAnalysisRun call to detect stale callbacks
   const ANALYSIS_PHASES = ['submit', 'ingestion', 'acquisition', 'fulfilment', 'enrichment', 'complete'];
   const ANALYSIS_PHASE_DETAILS = {
     submit: 'Uploading your KML and reserving a pipeline worker for this run.',
@@ -241,6 +242,14 @@
     const resp = await fetch(url, opts);
     if (!resp.ok) {
       const body = await resp.json().catch(function () { return {}; });
+      if (resp.status === 401 && authEnabled()) {
+        // Session expired — clear local auth state and prompt re-login.
+        currentAccount = null;
+        _clientPrincipal = null;
+        updateAuthUI();
+        setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
+        stopAnalysisPolling();
+      }
       const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
       const err = new Error(msg);
       err.status = resp.status;
@@ -737,6 +746,8 @@
     updateRunSelectionLocation(instanceId);
 
     stopAnalysisPolling();
+    // Stop any running timelapse animation from a previous run.
+    if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
     updateAnalysisRun(run);
     resetAnalysisProgress();
     setAnalysisProgressVisible(true);
@@ -919,8 +930,12 @@
     try {
       await apiDiscoveryReady;
       var manifestRes = await apiFetch('/api/timelapse-data/' + encodeURIComponent(instanceId));
-      evidenceManifest = await manifestRes.json();
+      var manifest = await manifestRes.json();
+      // Guard: user may have switched runs while we were fetching.
+      if (evidenceInstanceId !== instanceId) return;
+      evidenceManifest = manifest;
     } catch (err) {
+      if (evidenceInstanceId !== instanceId) return;
       if (footerEl) footerEl.textContent = 'Could not load enrichment data: ' + ((err && err.message) || 'unknown error');
       return;
     }
@@ -1452,7 +1467,12 @@
         aiBlock.hidden = false;
         renderEvidenceAnalysis(evidenceAnalysis);
       }
-    } catch (e) { /* ignore — no saved analysis yet */ }
+    } catch (e) {
+      // 404 = no saved analysis yet (expected). Other errors indicate a real problem.
+      if (e && e.status && e.status !== 404) {
+        console.warn('Failed to load saved analysis:', e.message || e);
+      }
+    }
   }
 
   async function requestAiAnalysis() {
@@ -1514,12 +1534,15 @@
       evidenceAnalysis = await res.json();
       renderEvidenceAnalysis(evidenceAnalysis);
 
-      // Save the analysis
+      // Save the analysis (non-blocking but warn user on failure)
       apiFetch('/api/timelapse-analysis-save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instance_id: evidenceInstanceId, analysis: evidenceAnalysis })
-      }).catch(function() {});
+      }).catch(function() {
+        var saveWarn = document.getElementById('app-evidence-ai-content');
+        if (saveWarn) saveWarn.appendChild(createCallout('warning', 'Analysis displayed but could not be saved. It will be lost on reload.'));
+      });
     } catch (err) {
       content.textContent = '';
       content.appendChild(createCallout('error', (err && err.message) || 'Could not run AI analysis.'));
@@ -1782,8 +1805,8 @@
     }
 
     linkLabelEl.textContent = 'Run details';
-    linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id, 'run');
-    linkEl.textContent = 'Open this run directly';
+    linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id);
+    linkEl.textContent = 'Copy link to this run';
 
     document.querySelectorAll('[data-export-format]').forEach(function(button) {
       button.disabled = runtimeStatus !== 'Completed';
@@ -2320,10 +2343,19 @@
 
   async function pollAnalysisRun(instanceId) {
     stopAnalysisPolling();
+    const thisGeneration = ++analysisPollGeneration;
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 5;
+
     async function refreshRun() {
+      // Bail out if a newer poll has started while we were awaiting.
+      if (analysisPollGeneration !== thisGeneration) return null;
       try {
         var res = await apiFetch('/api/orchestrator/' + instanceId);
         var data = await res.json();
+        consecutiveFailures = 0;
+        // Re-check after await — another selectAnalysisRun may have fired.
+        if (analysisPollGeneration !== thisGeneration) return null;
         upsertAnalysisHistoryRun(data);
         updateAnalysisRun(data);
 
@@ -2358,11 +2390,17 @@
         }
         return data;
       } catch {
+        consecutiveFailures++;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          stopAnalysisPolling();
+          setAnalysisStatus('Connection lost — pipeline updates have stopped. Reload the page to resume.', 'error');
+        }
         return null;
       }
     }
 
     var initialData = await refreshRun();
+    if (analysisPollGeneration !== thisGeneration) return; // superseded during initial fetch
     if (initialData) {
       var initialRuntime = initialData.runtimeStatus || '';
       if (initialRuntime === 'Completed' || initialRuntime === 'Failed' || initialRuntime === 'Canceled' || initialRuntime === 'Terminated') {
@@ -2441,12 +2479,9 @@
           body: JSON.stringify(tokenBody)
         });
       } catch (tokenFetchErr) {
+        // 401 is handled centrally by apiFetch (clears session, shows re-login prompt).
         if (tokenFetchErr.status === 401) {
-          // Session expired — redirect to login.
           resetAnalysisProgress();
-          currentAccount = null;
-          updateAuthUI();
-          setAnalysisStatus('Your session has expired. Please sign in again to queue an analysis.', 'error');
           return;
         }
         setAnalysisStatus(tokenFetchErr.body && tokenFetchErr.body.error || 'Could not prepare upload. Please try again.', 'error');
@@ -2846,6 +2881,31 @@
     revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().secondaryTarget);
   });
   document.getElementById('app-analysis-submit-btn').addEventListener('click', queueAnalysis);
+  document.getElementById('app-run-link').addEventListener('click', function(event) {
+    const href = this.href;
+    if (!href) return;
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      return; // Let normal navigation proceed
+    }
+    const fullUrl = new URL(href, window.location.origin).href;
+    event.preventDefault();
+    const el = document.getElementById('app-run-link');
+    try {
+      navigator.clipboard.writeText(fullUrl).then(function() {
+        if (el._copyTimer) clearTimeout(el._copyTimer);
+        const prev = el.textContent;
+        el.textContent = 'Link copied!';
+        el._copyTimer = setTimeout(function() {
+          if (el.textContent === 'Link copied!') el.textContent = prev;
+          el._copyTimer = null;
+        }, 1500);
+      }).catch(function() {
+        window.location.href = href;
+      });
+    } catch (_) {
+      window.location.href = href;
+    }
+  });
   document.querySelectorAll('[data-export-format]').forEach(function(button) {
     button.addEventListener('click', function(event) {
       event.stopPropagation();

@@ -79,6 +79,7 @@ def _coords_to_feature(
     name, description = _extract_name_description(props, index)
     metadata = _extract_metadata(props)
     exterior = _ensure_closed(exterior)
+    interior = [_ensure_closed(ring) for ring in interior]
 
     return Feature(
         name=name,

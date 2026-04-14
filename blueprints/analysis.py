@@ -110,7 +110,7 @@ def _frame_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
         date_val = _sanitise_for_prompt(context["date"])
         if date_val:
             context_lines.append(f"Date: {date_val}")
-    if context.get("latitude") and context.get("longitude"):
+    if context.get("latitude") is not None and context.get("longitude") is not None:
         context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
     context_lines.append("\n=== Vegetation Health ===")
@@ -118,10 +118,14 @@ def _frame_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
         context_lines.append(f"NDVI (current): {context['ndvi_mean']:.3f}")
     if context.get("ndvi_previous") is not None:
         context_lines.append(f"NDVI (previous): {context['ndvi_previous']:.3f}")
-        ndvi_change = context["ndvi_mean"] - context["ndvi_previous"]
-        pct = ndvi_change / context["ndvi_previous"] * 100
-        context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
-    if context.get("ndvi_min") is not None:
+        if context.get("ndvi_mean") is not None:
+            ndvi_change = context["ndvi_mean"] - context["ndvi_previous"]
+            if context["ndvi_previous"] != 0:
+                pct = ndvi_change / context["ndvi_previous"] * 100
+                context_lines.append(f"NDVI Change: {ndvi_change:+.3f} ({pct:+.1f}%)")
+            else:
+                context_lines.append(f"NDVI Change: {ndvi_change:+.3f}")
+    if context.get("ndvi_min") is not None and context.get("ndvi_max") is not None:
         context_lines.append(f"NDVI Range: {context['ndvi_min']:.3f} to {context['ndvi_max']:.3f}")
 
     context_lines.append("\n=== Weather Context ===")
@@ -245,7 +249,7 @@ def _timelapse_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
         end = _sanitise_for_prompt(context["date_range_end"])
         if start and end:
             context_lines.append(f"Analysis Period: {start} to {end}")
-    if context.get("latitude") and context.get("longitude"):
+    if context.get("latitude") is not None and context.get("longitude") is not None:
         context_lines.append(f"Location: {context['latitude']:.2f}, {context['longitude']:.2f}")
 
     n_frames = context.get("frame_count", len(ndvi_series))

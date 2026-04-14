@@ -131,7 +131,18 @@
       const org = document.getElementById('ea-org').value.trim();
       const useCase = document.getElementById('ea-usecase').value.trim();
       const email = document.getElementById('ea-email').value.trim();
+      const honeypot = document.getElementById('ea-website');
       const status = document.getElementById('ea-status');
+
+      // Honeypot filled → silently pretend success (bot detected)
+      if (honeypot && honeypot.value) {
+        if (status) {
+          status.textContent = 'Thanks! We\'ll be in touch.';
+          status.className = 'show';
+          status.style.color = 'var(--c-green)';
+        }
+        return;
+      }
 
       if (!org || !email) {
         if (status) {
@@ -156,7 +167,8 @@
             organisation: org,
             use_case: useCase,
             email: email,
-            source: 'marketing_website'
+            source: 'marketing_website',
+            website: honeypot ? honeypot.value : ''
           })
         });
 
