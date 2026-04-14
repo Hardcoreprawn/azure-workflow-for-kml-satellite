@@ -75,6 +75,12 @@ def _phase_ingestion(
         feature_list = loaded
         offloaded = True
 
+    # Gate: enforce tier's aoi_limit before expensive fan-out
+    tier = inp.get("tier", "free")
+    from treesight.pipeline.ingestion import enforce_aoi_limit
+
+    enforce_aoi_limit(feature_count=len(feature_list), tier=tier)
+
     # Fan-out: prepare AOIs
     context.set_custom_status(
         {"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)}

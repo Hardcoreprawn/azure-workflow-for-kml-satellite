@@ -330,3 +330,73 @@ class TestWriteMetadata:
 
         # Only upload_json should be called (metadata), not upload_bytes
         storage.upload_bytes.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# enforce_aoi_limit
+# ---------------------------------------------------------------------------
+
+
+class TestEnforceAoiLimit:
+    """Tests for ``enforce_aoi_limit`` — tier-based feature count gate."""
+
+    def test_allows_features_within_limit(self) -> None:
+        """No exception when feature count is at or below the tier's aoi_limit."""
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        # free tier allows 5
+        enforce_aoi_limit(feature_count=5, tier="free")
+        enforce_aoi_limit(feature_count=1, tier="free")
+
+    def test_rejects_features_exceeding_limit(self) -> None:
+        """Raises ValueError when feature count exceeds the tier's aoi_limit."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        with pytest.raises(ValueError, match=r"6 features.*free.*allows 5"):
+            enforce_aoi_limit(feature_count=6, tier="free")
+
+    def test_rejects_demo_tier_over_one(self) -> None:
+        """Demo tier allows only 1 AOI."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        with pytest.raises(ValueError, match=r"2 features.*demo.*allows 1"):
+            enforce_aoi_limit(feature_count=2, tier="demo")
+
+    def test_enterprise_allows_unlimited(self) -> None:
+        """Enterprise tier has no aoi_limit (None) — any count is allowed."""
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        enforce_aoi_limit(feature_count=1000, tier="enterprise")
+
+    def test_pro_tier_limit(self) -> None:
+        """Pro tier allows 50."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        enforce_aoi_limit(feature_count=50, tier="pro")
+        with pytest.raises(ValueError, match=r"51 features.*pro.*allows 50"):
+            enforce_aoi_limit(feature_count=51, tier="pro")
+
+    def test_unknown_tier_defaults_to_free(self) -> None:
+        """Unknown tier falls back to free-tier limits."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        enforce_aoi_limit(feature_count=5, tier="unknown_tier")
+        with pytest.raises(ValueError, match=r"6 features.*allows 5"):
+            enforce_aoi_limit(feature_count=6, tier="unknown_tier")
+
+    def test_error_message_includes_upgrade_hint(self) -> None:
+        """Error message should tell the user to upgrade."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        with pytest.raises(ValueError, match=r"[Uu]pgrade"):
+            enforce_aoi_limit(feature_count=6, tier="free")
