@@ -2882,19 +2882,29 @@
   });
   document.getElementById('app-analysis-submit-btn').addEventListener('click', queueAnalysis);
   document.getElementById('app-run-link').addEventListener('click', function(event) {
-    event.preventDefault();
     const href = this.href;
     if (!href) return;
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      return; // Let normal navigation proceed
+    }
     const fullUrl = new URL(href, window.location.origin).href;
-    navigator.clipboard.writeText(fullUrl).then(function() {
-      const el = document.getElementById('app-run-link');
-      const prev = el.textContent;
-      el.textContent = 'Link copied!';
-      setTimeout(function() { el.textContent = prev; }, 1500);
-    }).catch(function() {
-      // Clipboard API blocked — open in same tab as fallback.
+    event.preventDefault();
+    const el = document.getElementById('app-run-link');
+    try {
+      navigator.clipboard.writeText(fullUrl).then(function() {
+        if (el._copyTimer) clearTimeout(el._copyTimer);
+        const prev = el.textContent;
+        el.textContent = 'Link copied!';
+        el._copyTimer = setTimeout(function() {
+          if (el.textContent === 'Link copied!') el.textContent = prev;
+          el._copyTimer = null;
+        }, 1500);
+      }).catch(function() {
+        window.location.href = href;
+      });
+    } catch (_) {
       window.location.href = href;
-    });
+    }
   });
   document.querySelectorAll('[data-export-format]').forEach(function(button) {
     button.addEventListener('click', function(event) {
