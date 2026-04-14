@@ -105,10 +105,9 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
 | 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #616 |
 | 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #616 |
-| 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
 
 **Exit:** Visitor → landing page → EUDR app → free trial → submit parcels
-→ evidence → pricing. AOI limits enforced. Retries work.
+→ evidence → pricing. AOI limits enforced.
 
 ---
 
@@ -123,6 +122,7 @@ Auth + billing security. Prerequisites for any paid product.
 | R.2 | #535 | E2e Stripe billing flow on live site | Open | #520 |
 | R.3 | #406 | Reconcile docs with live routes | Open | — |
 | R.4 | #589 | Billing ledger, metered overage, refunds | Open | R.2 |
+| R.5 | #590 | Pipeline retry model + refund | Open | R.4 |
 
 **Exit:** Forged headers rejected. Free → paid upgrade → Stripe → quota
 increase works. Overage metered. Failed runs refunded. Docs match reality.
