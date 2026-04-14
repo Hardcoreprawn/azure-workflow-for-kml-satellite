@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-13 (upload quota + user management PR #566)
+Last updated: 2026-04-14 (multi-AOI stress test issues #574–#590)
 
 ---
 
@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #568 | Security review batch: discovery files (robots.txt, sitemap.xml, security.txt), X-XSS-Protection, X-Robots-Tag |
+| #567 | Remove focus emphasis system from dashboard (competing scroll, dead code cleanup) |
 | #566 | Upload quota consumption, Cosmos-based user management, ops user endpoints (fixes #565) |
 | #563 | Batch discovered issues: infracost metric (#513), CSP connect-src (#518/#527), error logging, SSRF proxy tests, NDVI warning fix |
 | #559 | Dashboard UX: collapse first-load noise, auto-scroll on completion, streamline form (UX.3 + UX.4 + UX.5, fixes #555) |
 | #558 | Roadmap update: mark UX.1/.2/.6 done, update Recently Landed |
-| #557 | Dashboard UX overhaul: layout reorder, jargon replacement, export dedup (UX.1 + UX.2 + UX.6, #555) |
-| #554 | Enforce REQUIRE_AUTH in all deployed environments (fixes #553) |
 
 ---
 
@@ -198,6 +198,57 @@ in user-facing strings. First-load elements <12 (currently ~25).
 submissions. Operators can look up users by email and assign billing
 access / tiers at runtime via ops endpoints.
 
+#### 2C.6 — Multi-AOI Pipeline Bugs
+
+Discovered during 56-polygon global stress test (2026-04-14).
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| B.1 | #575 | `aoi_limit` never enforced at submission — free tier accepted 57 AOIs | Open |
+| B.2 | #580 | Feature/AOI count mismatch — 56 features parsed but 57 AOIs created | Open |
+
+**Exit criteria:** Submissions exceeding the plan's `aoi_limit` are rejected
+with a clear error. Feature count and AOI count match exactly.
+
+#### 2C.7 — Pipeline Retry & Failure Handling
+
+| Order | Issue | Title | Status | Depends On |
+|-------|-------|-------|--------|------------|
+| RT.1 | #590 | Pipeline retry model: activity-level backoff + orchestrator re-run with refund | Open | #589 |
+
+**Exit criteria:** Transient activity failures are retried automatically (3×
+with backoff). Full orchestrator failures allow user-initiated re-run (up to
+3 attempts) without consuming additional quota. Failed runs are refunded.
+
+---
+
+### Stage 2F — Multi-AOI Pipeline & Per-Parcel Evidence
+
+The pipeline currently collapses multi-AOI submissions into a single
+global aggregate — one centroid for weather, one bbox for NDVI, one
+change detection pass. This makes multi-polygon results **useless** for
+all three personas. Discovered via 56-AOI stress test (#578).
+
+**Do not start until Stage 2C bugs (B.1, B.2) are fixed.** This is the
+largest architectural change since fan-out/fan-in.
+
+| Order | Issue | Title | Status | Depends On |
+|-------|-------|-------|--------|------------|
+| F.0 | #583 | Data model cleanup: typed models for runs, subscriptions, users, manifest + run timing | Open | — |
+| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection per polygon | Open | F.0 |
+| F.2 | #574 | Enrichment sub-step progress in UI (not one opaque activity) | Open | F.1 |
+| F.3 | #579 | Frontend per-AOI evidence rendering + polygon click interaction | Open | F.1 |
+| F.4 | #581 | Spatial clustering for wide-spread submissions | Open | F.1 |
+| F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | F.1, F.3 |
+| F.6 | #585 | Progressive delivery: stream per-AOI results as they complete | Open | F.1 |
+| F.7 | #587 | Audit-grade EUDR due diligence evidence report (PDF) | Open | F.1, F.5 |
+
+**Exit criteria:** A 50-polygon multi-region submission produces per-AOI
+NDVI, weather, and change detection. Clicking a polygon on the evidence
+map shows that AOI's results. EUDR mode exports a downloadable audit-grade
+PDF with per-parcel imagery, NDVI baseline, methodology, and
+deforestation-free determination.
+
 ---
 
 ### Stage 2D — Revenue Enablement (This Month)
@@ -210,10 +261,12 @@ Security and billing verification required before accepting real payments.
 | R.1 | #534 | Auth header verification: prevent X-MS-CLIENT-PRINCIPAL forgery | Open | — |
 | R.2 | #535 | Verify end-to-end Stripe billing flow on live site | Open | #520 |
 | R.3 | #406 | Reconcile README, runbook, and API contracts with live routes | Open | — |
+| R.4 | #589 | Accurate run billing: ledger, metered overage, spend limits, reconciliation | Open | R.2 |
 
 **Exit criteria:** Auth is cryptographically verified (forged headers
 rejected). Free → Starter upgrade → Stripe payment → quota increase → run
-analysis works end-to-end. API docs match live behavior.
+analysis works end-to-end. Overage runs are metered and invoiced correctly.
+Failed runs are refunded automatically. API docs match live behavior.
 
 ---
 
@@ -246,7 +299,8 @@ materially complete.**
 | 3.4 | #78 | Temporal catalogue in Cosmos DB | Open |
 | 3.5 | #79 | Catalogue API endpoints | Open (needs #78) |
 | 3.6 | #488 | Pipeline performance optimisation | Open |
-| 3.7 | — | Shareable analysis links | — |
+| 3.7 | #586 | Per-user AOI imagery reuse + blob data retention | Open |
+| 3.8 | — | Shareable analysis links | — |
 
 **Enrichment sources** (add when a user requests them):
 
@@ -260,6 +314,10 @@ materially complete.**
 
 Unlock Team tier (£149/mo) and programmatic access. **Do not start until
 Stage 3 features are retaining users.**
+
+| Order | Issue | Title | Status | Depends On |
+|-------|-------|-------|--------|------------|
+| 4.1 | #588 | Batch operations: multi-file upload, tracking, consolidated export | Open | #578, #585, #587 |
 
 | Order | Issue | Title |
 |-------|-------|-------|
@@ -301,6 +359,13 @@ Per the project review, open issues are triaged as follows:
 | #555 | Dashboard UX overhaul (6 slices) | P0 |
 | #533 | Real prices on pricing page | P1 |
 
+### Active — Pipeline Bugs (Stage 2C.6)
+
+| # | Title |
+|---|-------|
+| #575 | `aoi_limit` never enforced at submission |
+| #580 | Feature/AOI count mismatch (56 features → 57 AOIs) |
+
 ### Active — This Month (Stage 2D)
 
 | # | Title |
@@ -318,6 +383,17 @@ Per the project review, open issues are triaged as follows:
 | #405 | Config drift reduction |
 | #402 | Security-gated deploys |
 | #403 | Production rollout gates |
+
+### Queued — Multi-AOI Architecture (Stage 2F)
+
+| # | Title | When |
+|---|-------|------|
+| #583 | Data model cleanup: typed models + run timing | Before #578 |
+| #578 | Per-AOI enrichment (weather, NDVI, change detection) | After #583 |
+| #574 | Enrichment sub-step progress | After #578 |
+| #579 | Frontend per-AOI evidence + polygon interaction | After #578 |
+| #581 | Spatial clustering for wide-spread submissions | After #578 |
+| #582 | EUDR per-parcel deforestation evidence | After #578 + #579 |
 
 ### Deferred — Post-Revenue
 
@@ -351,6 +427,7 @@ Per the project review, open issues are triaged as follows:
 | #526 | Batch tofu output calls | Next deploy PR |
 | #527 | CSP blocks Leaflet source map | Next CSP change |
 | #528, #529 | Duplicate split FA issues | Superseded by #466 |
+| #584 | Data model internal consistency (Feature/AOI dedup, enums, schema validation) | Adjacent model work |
 
 ---
 
