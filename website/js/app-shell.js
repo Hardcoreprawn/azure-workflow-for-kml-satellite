@@ -144,6 +144,17 @@
     }
   };
 
+  // Detect EUDR-locked page: <body data-eudr-app> forces EUDR mode
+  // and hides the workspace role/preference switcher.
+  const EUDR_LOCKED = document.body.hasAttribute('data-eudr-app');
+
+  // Null-safe DOM text setter — used when elements may not exist
+  // on all pages (e.g. settings panel absent on EUDR app).
+  function setText(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
   let apiDiscoveryReady = null;
 
   // Container Apps FA: API calls go cross-origin to the Function App
@@ -425,29 +436,33 @@
       button.setAttribute('aria-pressed', button.getAttribute('data-preference-choice') === workspacePreference ? 'true' : 'false');
     });
 
-    document.getElementById('app-role-title').textContent = role.title;
-    document.getElementById('app-role-tag').textContent = role.tag;
-    document.getElementById('app-role-summary').textContent = role.summary;
-    document.getElementById('app-role-outcome').textContent = role.outcome;
-    document.getElementById('app-role-risk').textContent = role.risk;
-    document.getElementById('app-role-rhythm').textContent = role.rhythm;
+    setText('app-role-title', role.title);
+    setText('app-role-tag', role.tag);
+    setText('app-role-summary', role.summary);
+    setText('app-role-outcome', role.outcome);
+    setText('app-role-risk', role.risk);
+    setText('app-role-rhythm', role.rhythm);
 
-    document.getElementById('app-preference-title').textContent = preference.title;
-    document.getElementById('app-preference-tag').textContent = preference.tag;
-    document.getElementById('app-preference-summary').textContent = preference.summary;
-    document.getElementById('app-guided-deliverable').textContent = preference.deliverable;
-    document.getElementById('app-guided-stance').textContent = preference.stance;
+    setText('app-preference-title', preference.title);
+    setText('app-preference-tag', preference.tag);
+    setText('app-preference-summary', preference.summary);
+    setText('app-guided-deliverable', preference.deliverable);
+    setText('app-guided-stance', preference.stance);
 
     var primaryButton = document.getElementById('app-guided-primary-btn');
     var secondaryButton = document.getElementById('app-guided-secondary-btn');
-    primaryButton.textContent = actionLabelForTarget(preference.primaryTarget);
-    primaryButton.setAttribute('data-target', preference.primaryTarget);
-    secondaryButton.textContent = actionLabelForTarget(preference.secondaryTarget);
-    secondaryButton.setAttribute('data-target', preference.secondaryTarget);
+    if (primaryButton) {
+      primaryButton.textContent = actionLabelForTarget(preference.primaryTarget);
+      primaryButton.setAttribute('data-target', preference.primaryTarget);
+    }
+    if (secondaryButton) {
+      secondaryButton.textContent = actionLabelForTarget(preference.secondaryTarget);
+      secondaryButton.setAttribute('data-target', preference.secondaryTarget);
+    }
 
-    document.getElementById('app-history-copy').textContent = role.historyCopy;
-    document.getElementById('app-run-copy').textContent = role.runCopy;
-    document.getElementById('app-content-copy').textContent = role.contentCopy;
+    setText('app-history-copy', role.historyCopy);
+    setText('app-run-copy', role.runCopy);
+    setText('app-content-copy', role.contentCopy);
     var lensTitle = document.getElementById('app-analysis-lens-title');
     var lensNote = document.getElementById('app-analysis-lens-note');
     if (lensTitle) lensTitle.textContent = role.runLensTitle;
@@ -2936,8 +2951,13 @@
 
   apiDiscoveryReady = discoverApiBase();
   initAuth();
-  workspaceRole = readStoredUiValue(WORKSPACE_ROLE_STORAGE_KEY) || workspaceRole;
-  workspacePreference = readStoredUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY) || workspacePreference;
+  if (EUDR_LOCKED) {
+    workspaceRole = 'eudr';
+    workspacePreference = 'report';
+  } else {
+    workspaceRole = readStoredUiValue(WORKSPACE_ROLE_STORAGE_KEY) || workspaceRole;
+    workspacePreference = readStoredUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY) || workspacePreference;
+  }
   renderWorkspaceGuidance();
 
   document.querySelectorAll('[data-role-choice]').forEach(function(button) {
@@ -2952,20 +2972,25 @@
     });
   });
 
-  document.getElementById('auth-login-btn').addEventListener('click', login);
-  document.getElementById('auth-logout-btn').addEventListener('click', logout);
-  document.getElementById('app-sign-in-btn').addEventListener('click', login);
-  document.getElementById('app-analysis-sign-in-btn').addEventListener('click', login);
-  document.getElementById('app-manage-billing-btn').addEventListener('click', manageBilling);
-  document.getElementById('app-apply-tier-emulation-btn').addEventListener('click', saveTierEmulation);
-  document.getElementById('app-guided-primary-btn').addEventListener('click', function() {
+  // Bind click handlers — guarded for elements that only exist on some pages.
+  function bindClick(id, handler) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', handler);
+  }
+  bindClick('auth-login-btn', login);
+  bindClick('auth-logout-btn', logout);
+  bindClick('app-sign-in-btn', login);
+  bindClick('app-analysis-sign-in-btn', login);
+  bindClick('app-manage-billing-btn', manageBilling);
+  bindClick('app-apply-tier-emulation-btn', saveTierEmulation);
+  bindClick('app-guided-primary-btn', function() {
     revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().primaryTarget);
   });
-  document.getElementById('app-guided-secondary-btn').addEventListener('click', function() {
+  bindClick('app-guided-secondary-btn', function() {
     revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().secondaryTarget);
   });
-  document.getElementById('app-analysis-submit-btn').addEventListener('click', queueAnalysis);
-  document.getElementById('app-run-link').addEventListener('click', function(event) {
+  bindClick('app-analysis-submit-btn', queueAnalysis);
+  bindClick('app-run-link', function(event) {
     const href = this.href;
     if (!href) return;
     if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
@@ -2996,44 +3021,41 @@
       downloadRunExport(button.getAttribute('data-export-format'));
     });
   });
-  document.getElementById('app-analysis-kml').addEventListener('input', function() {
-    updateAnalysisPreflight(this.value);
-  });
-  document.getElementById('app-analysis-file').addEventListener('change', function() {
-    if (this.files && this.files[0]) loadAnalysisFile(this.files[0]);
-  });
+
+  // Bind remaining controls — guarded so pages that omit elements don't crash.
+  var kmlInput = document.getElementById('app-analysis-kml');
+  if (kmlInput) kmlInput.addEventListener('input', function() { updateAnalysisPreflight(this.value); });
+  var fileInput = document.getElementById('app-analysis-file');
+  if (fileInput) fileInput.addEventListener('change', function() { if (this.files && this.files[0]) loadAnalysisFile(this.files[0]); });
 
   // Evidence surface controls
-  document.getElementById('app-map-play-btn').addEventListener('click', toggleEvidencePlay);
-  document.getElementById('app-map-frame-slider').addEventListener('input', function() {
-    showEvidenceFrame(parseInt(this.value, 10));
-  });
-  document.getElementById('app-map-btn-rgb').addEventListener('click', function() {
+  bindClick('app-map-play-btn', toggleEvidencePlay);
+  var frameSlider = document.getElementById('app-map-frame-slider');
+  if (frameSlider) frameSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
+  bindClick('app-map-btn-rgb', function() {
     evidenceLayerMode = 'rgb';
     document.getElementById('app-map-btn-rgb').classList.add('active');
     document.getElementById('app-map-btn-ndvi').classList.remove('active');
     showEvidenceFrame(evidenceFrameIndex);
   });
-  document.getElementById('app-map-btn-ndvi').addEventListener('click', function() {
+  bindClick('app-map-btn-ndvi', function() {
     evidenceLayerMode = 'ndvi';
     document.getElementById('app-map-btn-ndvi').classList.add('active');
     document.getElementById('app-map-btn-rgb').classList.remove('active');
     showEvidenceFrame(evidenceFrameIndex);
   });
-  document.getElementById('app-evidence-ai-btn').addEventListener('click', requestAiAnalysis);
-  document.getElementById('app-evidence-eudr-btn').addEventListener('click', requestEudrAssessment);
+  bindClick('app-evidence-ai-btn', requestAiAnalysis);
+  bindClick('app-evidence-eudr-btn', requestEudrAssessment);
 
   // Expanded map viewer controls
-  document.getElementById('app-map-expand-btn').addEventListener('click', expandEvidenceMap);
-  document.getElementById('app-map-collapse-btn').addEventListener('click', collapseEvidenceMap);
-  document.getElementById('app-map-expanded-backdrop').addEventListener('click', function(e) {
-    if (e.target === this) collapseEvidenceMap();
-  });
-  document.getElementById('app-map-expanded-play-btn').addEventListener('click', toggleEvidencePlay);
-  document.getElementById('app-map-expanded-slider').addEventListener('input', function() {
-    showEvidenceFrame(parseInt(this.value, 10));
-  });
-  document.getElementById('app-map-expanded-btn-rgb').addEventListener('click', function() {
+  bindClick('app-map-expand-btn', expandEvidenceMap);
+  bindClick('app-map-collapse-btn', collapseEvidenceMap);
+  var expandedBackdrop = document.getElementById('app-map-expanded-backdrop');
+  if (expandedBackdrop) expandedBackdrop.addEventListener('click', function(e) { if (e.target === this) collapseEvidenceMap(); });
+  bindClick('app-map-expanded-play-btn', toggleEvidencePlay);
+  var expandedSlider = document.getElementById('app-map-expanded-slider');
+  if (expandedSlider) expandedSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
+  bindClick('app-map-expanded-btn-rgb', function() {
     evidenceLayerMode = 'rgb';
     document.getElementById('app-map-expanded-btn-rgb').classList.add('active');
     document.getElementById('app-map-expanded-btn-ndvi').classList.remove('active');
@@ -3041,7 +3063,7 @@
     document.getElementById('app-map-btn-ndvi').classList.remove('active');
     showEvidenceFrame(evidenceFrameIndex);
   });
-  document.getElementById('app-map-expanded-btn-ndvi').addEventListener('click', function() {
+  bindClick('app-map-expanded-btn-ndvi', function() {
     evidenceLayerMode = 'ndvi';
     document.getElementById('app-map-expanded-btn-ndvi').classList.add('active');
     document.getElementById('app-map-expanded-btn-rgb').classList.remove('active');
