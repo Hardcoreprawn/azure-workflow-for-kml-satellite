@@ -231,8 +231,12 @@ deforestation-free determination → audit-grade PDF → metered billing.
 | 3.6 | #488 | Pipeline performance optimisation | Open |
 | 3.7 | #586 | Per-user AOI imagery reuse + data retention | Open |
 | 3.8 | — | Shareable analysis links | — |
+| 3.9 | #618 | Brazilian authoritative data enrichment (PRODES, DETER, CAR) | Open |
+| 3.10 | #619 | Evaluate Mapbox/Maxar satellite basemap | Open |
 
-Future enrichment sources: MODIS Burned Area, ESA CCI Land Cover, GFW alerts.
+Future enrichment sources: INPE PRODES & DETER (confirmed WFS access),
+CAR/SICAR property registry, MapBiomas, MODIS Burned Area, ESA CCI Land Cover,
+GFW alerts.
 
 ---
 
