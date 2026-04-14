@@ -471,7 +471,9 @@ def _phase_enrichment(
     return enrichment
 
 
-def _safe_release_quota(context: df.DurableOrchestrationContext, user_id: str, instance_id: str):
+def _safe_release_quota(
+    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
+) -> Generator[Any, Any, None]:
     """Release quota on failure, swallowing errors to preserve the original exception."""
     try:
         yield context.call_activity(

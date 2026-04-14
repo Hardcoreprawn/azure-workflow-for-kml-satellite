@@ -288,6 +288,7 @@ def upload_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> 
                 {"name": "@sid", "value": submission_id},
                 {"name": "@uid", "value": user_id},
             ],
+            partition_key=user_id,
         )
     except Exception:
         logger.exception("Cosmos query failed for submission_id=%s", submission_id)

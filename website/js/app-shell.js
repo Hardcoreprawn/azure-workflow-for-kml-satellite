@@ -1805,7 +1805,7 @@
     }
 
     linkLabelEl.textContent = 'Run details';
-    linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id, 'run');
+    linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id);
     linkEl.textContent = 'Copy link to this run';
 
     document.querySelectorAll('[data-export-format]').forEach(function(button) {

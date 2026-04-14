@@ -278,7 +278,7 @@ async def fetch_enrichment_manifest(
     if not isinstance(output, dict):
         output = {}
     if reshape_output is not None:
-        output = reshape_output(status.output) if status.output else {}
+        output = reshape_output(output) if output else {}
     manifest_path = output.get("enrichment_manifest") or output.get("enrichmentManifest")
     if not manifest_path:
         return None, error_response(404, "No enrichment data for this pipeline run", req=req)
