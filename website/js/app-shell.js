@@ -1783,7 +1783,7 @@
 
     linkLabelEl.textContent = 'Run details';
     linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id, 'run');
-    linkEl.textContent = 'Open this run directly';
+    linkEl.textContent = 'Copy link to this run';
 
     document.querySelectorAll('[data-export-format]').forEach(function(button) {
       button.disabled = runtimeStatus !== 'Completed';
@@ -2846,6 +2846,21 @@
     revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().secondaryTarget);
   });
   document.getElementById('app-analysis-submit-btn').addEventListener('click', queueAnalysis);
+  document.getElementById('app-run-link').addEventListener('click', function(event) {
+    event.preventDefault();
+    const href = this.href;
+    if (!href) return;
+    const fullUrl = new URL(href, window.location.origin).href;
+    navigator.clipboard.writeText(fullUrl).then(function() {
+      const el = document.getElementById('app-run-link');
+      const prev = el.textContent;
+      el.textContent = 'Link copied!';
+      setTimeout(function() { el.textContent = prev; }, 1500);
+    }).catch(function() {
+      // Clipboard API blocked — open in same tab as fallback.
+      window.location.href = href;
+    });
+  });
   document.querySelectorAll('[data-export-format]').forEach(function(button) {
     button.addEventListener('click', function(event) {
       event.stopPropagation();
