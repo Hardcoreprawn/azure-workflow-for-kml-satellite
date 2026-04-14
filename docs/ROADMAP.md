@@ -36,12 +36,12 @@ See `docs/ARCHITECTURE_OVERVIEW.md` § "Entry Point" for details.
 
 | PR | Summary |
 |----|---------|
+| #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse, reliability (fixes #571) |
+| #577 | Dependabot: pytest bump |
+| #576 | Dependabot: pillow bump |
+| #591 | Roadmap update + 56-polygon KML test fixture |
 | #568 | Security review batch: discovery files (robots.txt, sitemap.xml, security.txt), X-XSS-Protection, X-Robots-Tag |
 | #567 | Remove focus emphasis system from dashboard (competing scroll, dead code cleanup) |
-| #566 | Upload quota consumption, Cosmos-based user management, ops user endpoints (fixes #565) |
-| #563 | Batch discovered issues: infracost metric (#513), CSP connect-src (#518/#527), error logging, SSRF proxy tests, NDVI warning fix |
-| #559 | Dashboard UX: collapse first-load noise, auto-scroll on completion, streamline form (UX.3 + UX.4 + UX.5, fixes #555) |
-| #558 | Roadmap update: mark UX.1/.2/.6 done, update Recently Landed |
 
 ---
 
