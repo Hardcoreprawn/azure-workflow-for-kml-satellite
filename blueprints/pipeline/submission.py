@@ -119,7 +119,7 @@ def _csv_to_kml(csv_text: str, body: dict, req: func.HttpRequest) -> bytes | fun
 
 def _features_to_kml_bytes(features: list) -> bytes:
     """Convert a list of Feature objects to minimal KML XML bytes."""
-    from xml.etree.ElementTree import Element, SubElement, tostring
+    from lxml.etree import Element, SubElement, tostring
 
     kml = Element("kml", xmlns="http://www.opengis.net/kml/2.2")
     doc = SubElement(kml, "Document")
@@ -137,7 +137,7 @@ def _features_to_kml_bytes(features: list) -> bytes:
         coord_str = " ".join(f"{c[0]},{c[1]},0" for c in f.exterior_coords)
         SubElement(lr, "coordinates").text = coord_str
 
-    return tostring(kml, encoding="unicode", xml_declaration=True).encode("utf-8")
+    return tostring(kml, encoding="utf-8", xml_declaration=True)
 
 
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
