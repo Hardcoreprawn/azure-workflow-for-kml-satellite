@@ -18,6 +18,7 @@ if APPINSIGHTS_CONNECTION_STRING:
 logger = logging.getLogger(__name__)
 
 from blueprints.analysis import bp as analysis_bp
+from blueprints.auth import bp as auth_bp
 from blueprints.billing import bp as billing_bp
 from blueprints.catalogue import bp as catalogue_bp
 from blueprints.contact import bp as contact_bp
@@ -64,6 +65,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Register HTTP blueprints
 app.register_functions(health_bp)
+app.register_functions(auth_bp)
 app.register_functions(billing_bp)
 app.register_functions(contact_bp)
 app.register_functions(demo_bp)

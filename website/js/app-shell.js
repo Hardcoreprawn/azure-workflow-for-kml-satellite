@@ -162,6 +162,7 @@
   // Auth principal is forwarded via X-MS-CLIENT-PRINCIPAL header.
   let _apiBase = '';          // Container Apps FA hostname, e.g. 'https://func-kmlsat-dev.azurecontainerapps.io'
   let _clientPrincipal = null; // raw clientPrincipal from /.auth/me — base64-encoded for X-MS-CLIENT-PRINCIPAL
+  let _sessionToken = '';      // HMAC session token from /api/auth/session (#534)
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
@@ -309,6 +310,9 @@
       var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
       opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
+    if (_sessionToken) {
+      opts.headers['X-Auth-Session'] = _sessionToken;
+    }
     const url = _apiBase ? _apiBase + path : path;
     const resp = await fetch(url, opts);
     if (!resp.ok) {
@@ -317,6 +321,7 @@
         // Session expired — clear local auth state and prompt re-login.
         currentAccount = null;
         _clientPrincipal = null;
+        _sessionToken = '';
         updateAuthUI();
         setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
         stopAnalysisPolling();
@@ -2966,6 +2971,13 @@
           identityProvider: principal.identityProvider || 'aad',
           userRoles: principal.userRoles || [],
         };
+        // Acquire HMAC session token for principal verification (#534).
+        // Waits for API base discovery so the request goes to the right host.
+        (apiDiscoveryReady || Promise.resolve()).then(function() {
+          return apiFetch('/api/auth/session', { method: 'POST' });
+        }).then(function(resp) { return resp.json(); }).then(function(data) {
+          if (data && data.token) _sessionToken = data.token;
+        }).catch(function() { /* session token unavailable — backend may not enforce HMAC */ });
       }
       updateAuthUI();
     }).catch(function(err) {

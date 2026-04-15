@@ -90,11 +90,14 @@ Auth works as follows:
 4. Frontend sends it as `X-MS-CLIENT-PRINCIPAL` header on each cross-origin API call
 5. Container Apps FA `require_auth` decorator decodes and reads `userId`/`userRoles`
 
-**Known limitation:** The `X-MS-CLIENT-PRINCIPAL` header is client-supplied
-and not cryptographically verified by the FA. A direct HTTP client (not bound
-by CORS) could forge this header. Tracked as #534 — must be fixed before
-paid tiers go live. Planned approach: HMAC signature with shared secret in
-Key Vault.
+**Mitigation (PR #620):** When ``AUTH_HMAC_KEY`` is set, the FA requires a
+backend-signed HMAC session token (``X-Auth-Session`` header) alongside
+the client principal.  The frontend obtains the token from
+``POST /api/auth/session`` after SWA authentication.  This prevents
+simple header forgery — an attacker cannot construct a valid HMAC token
+without the secret.  Full protection requires restricting Container Apps
+ingress to SWA-only traffic (VNet / private endpoint), tracked
+separately.
 
 #### Entry Point
 
