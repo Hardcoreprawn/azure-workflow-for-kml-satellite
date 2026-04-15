@@ -121,6 +121,19 @@ def _assess_supplementary_layers(
     else:
         evidence["alos_fnf"] = {"available": False}
 
+    # Landsat historical baseline (#609)
+    landsat = enrichment.get("landsat_baseline", {})
+    if landsat.get("available"):
+        scenes = landsat.get("scenes", [])
+        mean_ndvi = round(sum(s["mean"] for s in scenes) / len(scenes), 4) if scenes else None
+        evidence["landsat_baseline"] = {
+            "scenes": len(scenes),
+            "mean_ndvi": mean_ndvi,
+            "source": landsat.get("source"),
+        }
+    else:
+        evidence["landsat_baseline"] = {"available": False}
+
 
 def determine_deforestation_free(
     enrichment: dict[str, Any],

@@ -119,11 +119,49 @@ def _run_eudr_phase(
     alos = query_alos_fnf(flat_bbox_eudr)
     results["alos_fnf"] = alos
     log_phase("enrichment", "alos_fnf_done", available=alos.get("available", False))
+
+    # Landsat historical NDVI baseline (#609)
+    _run_landsat_baseline(flat_bbox_eudr, results)
     log_phase(
         "enrichment",
         "wdpa_done",
         checked=wdpa.get("checked", False),
         protected=wdpa.get("is_protected", False),
+    )
+
+
+def _run_landsat_baseline(
+    flat_bbox: list[float],
+    results: dict[str, Any],
+) -> None:
+    """Phase 1e: Landsat C2 L2 historical NDVI baseline (#609).
+
+    Samples 2 dry-season windows (2013-2014, 2015-2016) to establish
+    a pre-Sentinel-2 forest baseline for EUDR evidence.
+    """
+    from treesight.pipeline.enrichment.ndvi import compute_landsat_ndvi
+
+    log_phase("enrichment", "landsat_baseline_start")
+    windows = [
+        ("2013-06-01", "2014-09-30"),
+        ("2015-06-01", "2016-09-30"),
+    ]
+    baseline_results: list[dict[str, Any]] = []
+    for start, end in windows:
+        result = compute_landsat_ndvi(flat_bbox, start, end)
+        if result is not None:
+            result.pop("geotiff_bytes", None)  # don't store raster in manifest
+            baseline_results.append(result)
+
+    results["landsat_baseline"] = {
+        "available": len(baseline_results) > 0,
+        "scenes": baseline_results,
+        "source": "landsat-c2-l2",
+    }
+    log_phase(
+        "enrichment",
+        "landsat_baseline_done",
+        scenes=len(baseline_results),
     )
 
 

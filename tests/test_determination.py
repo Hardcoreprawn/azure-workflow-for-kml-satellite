@@ -208,3 +208,24 @@ class TestDeforestationDetermination:
         enrichment = _make_enrichment()  # no alos
         det = determine_deforestation_free(enrichment)
         assert det["evidence"]["alos_fnf"]["available"] is False
+
+    def test_landsat_baseline_evidence(self):
+        enrichment = _make_enrichment()
+        enrichment["landsat_baseline"] = {
+            "available": True,
+            "scenes": [
+                {"mean": 0.62, "scene_id": "LC08_1"},
+                {"mean": 0.65, "scene_id": "LC08_2"},
+            ],
+            "source": "landsat-c2-l2",
+        }
+        det = determine_deforestation_free(enrichment)
+        lb = det["evidence"]["landsat_baseline"]
+        assert lb["scenes"] == 2
+        assert lb["mean_ndvi"] is not None
+        assert lb["source"] == "landsat-c2-l2"
+
+    def test_landsat_baseline_missing(self):
+        enrichment = _make_enrichment()
+        det = determine_deforestation_free(enrichment)
+        assert det["evidence"]["landsat_baseline"]["available"] is False
