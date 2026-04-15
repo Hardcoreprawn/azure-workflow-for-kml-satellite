@@ -32,12 +32,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #623 | Use lxml instead of stdlib xml for KML generation — resolves Semgrep #2869 |
 | #622 | Re-enable Cosmos DB public network access — fixes 24h alert storm (fixes #621) |
 | #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
 | #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
 | #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse (fixes #571) |
-| #591 | Roadmap update + 56-polygon KML test fixture |
 
 ---
 
