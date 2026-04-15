@@ -216,6 +216,9 @@
 .app-workflow-rail input[type=file],.app-workflow-rail textarea,.app-card input[type=file],.app-card textarea{width:100%;padding:10px 12px;background:var(--c-bg);border:1px solid var(--c-border);border-radius:var(--radius);color:var(--c-text);font:inherit}
 .app-workflow-rail textarea,.app-card textarea{min-height:160px;resize:vertical}
 .app-analysis-actions{margin-top:4px}
+.app-eudr-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-bottom:10px;font-size:.85rem;cursor:pointer;color:var(--c-text)}
+.app-eudr-toggle input[type=checkbox]{accent-color:var(--c-green);width:16px;height:16px;cursor:pointer}
+.app-eudr-toggle .app-note{width:100%;margin:0}
 .app-analysis-queue-btn{width:100%;padding:14px;font-size:1rem;font-weight:700}
 .app-callout{padding:12px 14px;border-radius:var(--radius);font-size:.82rem;line-height:1.5}
 .app-callout[data-tone="info"]{background:rgba(94,236,196,.1);border:1px solid rgba(94,236,196,.25);color:var(--c-text)}

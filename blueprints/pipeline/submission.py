@@ -112,6 +112,17 @@ async def _submit_analysis_request(
     effective_provider = submission_context.get("provider_name", DEFAULT_PROVIDER)
     plan_overrides = _submission_plan_overrides(user_id)
 
+    # EUDR mode flag — only accept strict boolean True
+    eudr_mode = body.get("eudr_mode") if isinstance(body, dict) else None
+    eudr_input: dict[str, Any] = {}
+    if eudr_mode is True:
+        eudr_input["eudr_mode"] = True
+        from treesight.pipeline.submission_helpers import build_eudr_imagery_overrides
+
+        imagery_overrides = build_eudr_imagery_overrides(eudr_mode=True, existing_filters=None)
+        if imagery_overrides:
+            eudr_input["imagery_filters"] = imagery_overrides
+
     resp = await _submit_kml(
         req,
         body,
@@ -120,6 +131,7 @@ async def _submit_analysis_request(
             "provider_name": effective_provider,
             "user_id": user_id,
             **plan_overrides,
+            **eudr_input,
         },
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
@@ -148,6 +160,8 @@ async def _submit_analysis_request(
             "provider_name": effective_provider,
             "status": "submitted",
         }
+        if eudr_mode is True:
+            record["eudr_mode"] = True
         record.update(submission_context)
         _persist_submission_record(storage, record, user_id, submission_id)
 

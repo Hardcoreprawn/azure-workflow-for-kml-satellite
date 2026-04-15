@@ -91,6 +91,16 @@ def _enrich_from_ticket(orchestrator_input: dict, ticket: dict) -> None:
     if isinstance(provider, str) and provider:
         orchestrator_input["provider_name"] = provider
 
+    # EUDR mode — only accept strict boolean
+    eudr_mode = ticket.get("eudr_mode")
+    if isinstance(eudr_mode, bool):
+        orchestrator_input["eudr_mode"] = eudr_mode
+
+    # EUDR imagery filter overrides
+    imagery_filters = ticket.get("imagery_filters")
+    if isinstance(imagery_filters, dict):
+        orchestrator_input["imagery_filters"] = imagery_filters
+
     # If tier was not pre-resolved, look it up from billing
     if "tier" not in orchestrator_input and orchestrator_input.get("user_id"):
         try:

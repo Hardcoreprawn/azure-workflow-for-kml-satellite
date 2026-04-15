@@ -147,6 +147,30 @@ def _resolve_provider(body: dict, submission_context: dict) -> str:
     return submission_context.get("provider_name", DEFAULT_PROVIDER)
 
 
+def _build_ticket(body: dict, user_id: str, submission_context: dict) -> dict:
+    """Assemble the ticket blob payload from request body and user metadata."""
+    ticket: dict = {
+        "user_id": user_id,
+        "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
+    }
+    provider = body.get("provider_name")
+    if isinstance(provider, str) and provider.strip():
+        ticket["provider_name"] = provider.strip()[:80]
+    if submission_context:
+        ticket["submission_context"] = submission_context
+
+    # EUDR mode flag — only accept strict boolean True
+    if body.get("eudr_mode") is True:
+        ticket["eudr_mode"] = True
+        from treesight.pipeline.submission_helpers import build_eudr_imagery_overrides
+
+        imagery_overrides = build_eudr_imagery_overrides(eudr_mode=True, existing_filters=None)
+        if imagery_overrides:
+            ticket["imagery_filters"] = imagery_overrides
+
+    return ticket
+
+
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
@@ -181,15 +205,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     effective_provider = _resolve_provider(body, submission_context)
 
     # Write ticket blob — trusted server-side record of who initiated the upload
-    ticket: dict = {
-        "user_id": user_id,
-        "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
-    }
-    provider = body.get("provider_name")
-    if isinstance(provider, str) and provider.strip():
-        ticket["provider_name"] = provider.strip()[:80]
-    if submission_context:
-        ticket["submission_context"] = submission_context
+    ticket = _build_ticket(body, user_id, submission_context)
 
     try:
         blob_service = get_blob_service_client()
@@ -229,6 +245,8 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         "provider_name": effective_provider,
         "status": "submitted",
     }
+    if body.get("eudr_mode") is True:
+        record["eudr_mode"] = True
     record.update(submission_context)
     _persist_submission_record(submission_id, record, user_id)
 

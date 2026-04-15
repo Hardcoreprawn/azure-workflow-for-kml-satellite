@@ -267,6 +267,80 @@ class TestUploadToken:
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_blob_client = MagicMock()
+        mock_bsc.return_value.get_blob_client.return_value = mock_blob_client
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"eudr_mode": True}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
+        assert ticket_data["eudr_mode"] is True
+        assert "imagery_filters" in ticket_data
+        assert "2020-12-31" in ticket_data["imagery_filters"]["date_start"]
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_false_not_in_ticket(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_blob_client = MagicMock()
+        mock_bsc.return_value.get_blob_client.return_value = mock_blob_client
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"eudr_mode": False}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            upload_token(req)
+
+        ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
+        assert "eudr_mode" not in ticket_data
+        assert "imagery_filters" not in ticket_data
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_non_bool_rejected(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_blob_client = MagicMock()
+        mock_bsc.return_value.get_blob_client.return_value = mock_blob_client
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"eudr_mode": "yes"}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            upload_token(req)
+
+        ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
+        assert "eudr_mode" not in ticket_data
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_stored_in_run_record(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        body = {"eudr_mode": True}
+        req = _make_req("/api/upload/token", method="POST", body=body)
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            upload_token(req)
+
+        record = self.mock_persist.call_args[0][1]
+        assert record["eudr_mode"] is True
+
 
 # ===================================================================
 # GET /api/upload/status/{submission_id}

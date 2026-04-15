@@ -558,6 +558,186 @@ class TestEnrichFromTicket:
         assert orch["max_history_years"] == 5
         assert orch["provider_name"] == "planetary_computer"
 
+    def test_copies_eudr_mode_true(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch: dict[str, object] = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "tier": "pro", "eudr_mode": True})
+        assert orch["eudr_mode"] is True
+
+    def test_copies_eudr_mode_false(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch: dict[str, object] = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "tier": "pro", "eudr_mode": False})
+        assert orch.get("eudr_mode") is False
+
+    def test_rejects_non_bool_eudr_mode(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch: dict[str, object] = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "tier": "pro", "eudr_mode": "yes"})
+        assert "eudr_mode" not in orch
+
+    def test_eudr_mode_absent_not_injected(self):
+        from blueprints.pipeline.blob_trigger import _enrich_from_ticket
+
+        orch: dict[str, object] = {}
+        _enrich_from_ticket(orch, {"user_id": "u1", "tier": "pro"})
+        assert "eudr_mode" not in orch
+
+
+# ---------------------------------------------------------------------------
+# EUDR mode submission flag (#600)
+# ---------------------------------------------------------------------------
+
+
+class TestEudrModeSubmission:
+    """Verify eudr_mode flows from request body to ticket and run record."""
+
+    def test_eudr_mode_true_included_in_ticket(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "eudr_mode": True},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        assert len(ticket_calls) >= 1
+        ticket_data = ticket_calls[0][0][2]
+        assert ticket_data["eudr_mode"] is True
+
+    def test_eudr_mode_false_not_in_ticket(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "eudr_mode": False},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        ticket_data = ticket_calls[0][0][2]
+        assert ticket_data.get("eudr_mode") is not True
+
+    def test_eudr_mode_non_bool_rejected(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "eudr_mode": "yes"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+
+        ticket_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if ".tickets/" in str(c)
+        ]
+        ticket_data = ticket_calls[0][0][2]
+        assert "eudr_mode" not in ticket_data
+
+    def test_eudr_mode_stored_in_run_record(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "eudr_mode": True,
+                "submission_context": {"feature_count": 1},
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+
+        # Check the run record (uploaded to analysis-submissions/)
+        history_calls = [
+            c
+            for c in mock_storage_cls.return_value.upload_json.call_args_list
+            if "analysis-submissions/" in str(c)
+        ]
+        assert len(history_calls) >= 1
+        record = history_calls[0][0][2]
+        assert record["eudr_mode"] is True
+
+
+# ---------------------------------------------------------------------------
+# EUDR mode — acquisition date filtering (#600)
+# ---------------------------------------------------------------------------
+
+
+class TestEudrModeAcquisitionDateFilter:
+    """When eudr_mode=True, imagery_filters.date_start must be >= EUDR cutoff."""
+
+    def test_eudr_mode_sets_date_start_on_imagery_filters(self):
+        """Orchestrator input with eudr_mode=True should inject imagery_filters date_start."""
+        from treesight.constants import EUDR_CUTOFF_DATE
+        from treesight.pipeline.submission_helpers import build_eudr_imagery_overrides
+
+        overrides = build_eudr_imagery_overrides(eudr_mode=True, existing_filters=None)
+        assert overrides is not None
+        assert overrides["date_start"]
+        # date_start should be the EUDR cutoff
+        assert EUDR_CUTOFF_DATE in overrides["date_start"]
+
+    def test_eudr_mode_false_no_overrides(self):
+        from treesight.pipeline.submission_helpers import build_eudr_imagery_overrides
+
+        overrides = build_eudr_imagery_overrides(eudr_mode=False, existing_filters=None)
+        assert overrides is None
+
+    def test_eudr_mode_preserves_existing_filters(self):
+        from treesight.constants import EUDR_CUTOFF_DATE
+        from treesight.pipeline.submission_helpers import build_eudr_imagery_overrides
+
+        existing = {"max_cloud_cover_pct": 15.0}
+        overrides = build_eudr_imagery_overrides(eudr_mode=True, existing_filters=existing)
+        assert overrides is not None
+        assert overrides["max_cloud_cover_pct"] == 15.0
+        assert EUDR_CUTOFF_DATE in overrides["date_start"]
+
 
 # ---------------------------------------------------------------------------
 # Cosmos DB paths — _fetch_submission_records / _persist_submission_record

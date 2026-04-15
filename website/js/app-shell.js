@@ -2562,6 +2562,12 @@
         tokenBody.submission_context = submissionContext;
       }
 
+      // EUDR compliance mode (#600)
+      var eudrCheckbox = document.getElementById('app-eudr-mode');
+      if (eudrCheckbox && eudrCheckbox.checked) {
+        tokenBody.eudr_mode = true;
+      }
+
       var tokenRes;
       try {
         tokenRes = await apiFetch('/api/upload/token', {
@@ -2750,6 +2756,13 @@
 
     updateHeroSummary(data);
     renderTierEmulation(data);
+
+    // Show EUDR toggle only for paid tiers
+    var eudrToggle = document.getElementById('app-eudr-toggle');
+    if (eudrToggle) {
+      var paidTiers = ['starter', 'pro', 'team', 'enterprise'];
+      eudrToggle.hidden = !paidTiers.includes(data.tier);
+    }
   }
 
   async function saveTierEmulation() {
