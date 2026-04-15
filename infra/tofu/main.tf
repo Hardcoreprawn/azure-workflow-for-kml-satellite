@@ -397,7 +397,7 @@ resource "azurerm_cognitive_deployment" "gpt4o_mini" {
 
 # --- Cosmos DB for NoSQL — Serverless (M4 state persistence) ---
 # Security posture:
-#   - Public network access disabled (access via Azure backbone only)
+#   - Public network access enabled (Container Apps FA connects over public internet)
 #   - Local (key-based) authentication disabled — Entra ID RBAC only
 #   - TLS 1.2 enforced
 #   - Function App uses Managed Identity with Cosmos DB Built-in Data Contributor role
@@ -426,11 +426,38 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   # --- Security hardening ---
-  local_authentication_disabled         = true  # Disable key-based auth; RBAC only
-  public_network_access_enabled         = false # No public internet access
+  local_authentication_disabled         = true     # Disable key-based auth; RBAC only
+  public_network_access_enabled         = false    # Safe default; enabled atomically with IP rules by azapi_update_resource below
   minimal_tls_version                   = "Tls12"
-  network_acl_bypass_for_azure_services = true # Allow Azure services (Functions, Portal diagnostics)
-  ip_range_filter                       = []   # No IP allowlist needed — private access only
+  network_acl_bypass_for_azure_services = true     # Portal/diagnostics only; does NOT cover Container Apps public-egress path
+  ip_range_filter                       = []       # Managed by azapi_update_resource.cosmos_ip_rules below
+
+  lifecycle {
+    ignore_changes = [public_network_access_enabled, ip_range_filter]
+  }
+}
+
+# Enable Cosmos public access AND restrict firewall to FA outbound IPs
+# in a single atomic ARM call.  Applied as a separate update resource to
+# avoid a circular dependency: FA body → Cosmos endpoint, Cosmos
+# ip_range_filter → FA outbound IPs.  The base resource defaults to
+# publicNetworkAccess=Disabled so Cosmos is never publicly reachable
+# without an IP allowlist.
+resource "azapi_update_resource" "cosmos_ip_rules" {
+  count       = var.enable_cosmos_db ? 1 : 0
+  type        = "Microsoft.DocumentDB/databaseAccounts@2024-11-15"
+  resource_id = azurerm_cosmosdb_account.main[0].id
+
+  body = {
+    properties = {
+      publicNetworkAccess = "Enabled"
+      ipRules = [
+        for ip in split(",", azapi_resource.function_app.output.properties.possibleOutboundIpAddresses) : {
+          ipAddressOrRange = ip
+        }
+      ]
+    }
+  }
 }
 
 resource "azurerm_cosmosdb_sql_database" "main" {
@@ -791,7 +818,7 @@ resource "azapi_resource" "function_app" {
     }
   }
 
-  response_export_values = ["id", "name", "properties.defaultHostName"]
+  response_export_values = ["id", "name", "properties.defaultHostName", "properties.possibleOutboundIpAddresses"]
 }
 
 resource "azurerm_static_web_app" "main" {

@@ -535,6 +535,58 @@ class TestPhaseIngestionAoiLimitGate:
         )
 
 
+class TestAcquisitionActivityRetry:
+    """Verify _phase_acquisition uses call_activity_with_retry for search activities."""
+
+    def test_acquisition_uses_call_activity_with_retry(self):
+        """Acquisition search activities must use DF retry options."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        ctx.task_all.return_value = [[]]  # single batch, composite returns list of lists
+
+        inp = {"composite_search": True}
+        aoi_refs = [{"ref": "blob://aoi/1", "key": "aoi-1"}]
+        aoi_area_by_name = {"aoi-1": 10.0}
+
+        gen = _phase_acquisition(ctx, inp, aoi_refs, aoi_area_by_name)
+        # First yield: task_all for acquisition batch
+        gen.send(None)
+
+        # Verify call_activity_with_retry was used (not call_activity)
+        ctx.call_activity_with_retry.assert_called()
+        ctx.call_activity.assert_not_called()
+
+        # Verify retry options were passed
+        call_args = ctx.call_activity_with_retry.call_args
+        retry_opts = call_args[0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == 5_000
+        assert retry_opts.max_number_of_attempts == 3
+
+    def test_acquisition_retry_applies_to_non_composite(self):
+        """Non-composite (single acquire_imagery) also uses retry."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        ctx.task_all.return_value = [{"order_id": "o1"}]
+
+        inp = {"composite_search": False}
+        aoi_refs = [{"ref": "blob://aoi/1", "key": "aoi-1"}]
+        aoi_area_by_name = {"aoi-1": 10.0}
+
+        gen = _phase_acquisition(ctx, inp, aoi_refs, aoi_area_by_name)
+        gen.send(None)
+
+        activity_name = ctx.call_activity_with_retry.call_args[0][0]
+        assert activity_name == "acquire_imagery"
+
+
 class TestOrchestratorCoordinatorSize:
     """The main orchestrator should be a thin coordinator ≤40 lines."""
 

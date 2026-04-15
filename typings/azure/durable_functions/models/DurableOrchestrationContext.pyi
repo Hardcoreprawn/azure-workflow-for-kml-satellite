@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
+from azure.durable_functions.models.RetryOptions import RetryOptions
 from azure.durable_functions.models.Task import TaskBase
 
 class DurableOrchestrationContext:
@@ -13,6 +14,12 @@ class DurableOrchestrationContext:
     def call_activity(
         self,
         name: str | Callable[..., Any],
+        input_: Any | None = None,
+    ) -> TaskBase: ...
+    def call_activity_with_retry(
+        self,
+        name: str | Callable[..., Any],
+        retry_options: RetryOptions,
         input_: Any | None = None,
     ) -> TaskBase: ...
     def task_all(self, activities: list[TaskBase]) -> TaskBase: ...
