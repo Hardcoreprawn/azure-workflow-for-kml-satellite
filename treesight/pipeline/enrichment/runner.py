@@ -367,6 +367,14 @@ def _enrich_single_aoi(
         result,
     )
 
+    # Deforestation-free determination (#603)
+    if eudr_mode:
+        from treesight.pipeline.enrichment.determination import (
+            determine_deforestation_free,
+        )
+
+        result["determination"] = determine_deforestation_free(result)
+
     return result
 
 
@@ -527,6 +535,13 @@ def run_enrichment(
     if eudr_mode:
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
+
+        # Overall deforestation-free determination (#603)
+        from treesight.pipeline.enrichment.determination import (
+            determine_deforestation_free,
+        )
+
+        results["determination"] = determine_deforestation_free(results)
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     storage.upload_json(output_container, manifest_path, results)
