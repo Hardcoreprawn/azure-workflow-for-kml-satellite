@@ -28,6 +28,7 @@ from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.monitoring import bp as monitoring_bp
 from blueprints.ops import bp as ops_bp
+from blueprints.org import bp as org_bp
 from blueprints.pipeline import bp as pipeline_bp
 from blueprints.upload import bp as upload_bp
 
@@ -73,6 +74,9 @@ app.register_functions(eudr_bp)
 app.register_functions(analysis_bp)
 app.register_functions(catalogue_bp)
 app.register_functions(export_bp)
+
+# Register org management endpoints
+app.register_functions(org_bp)
 
 # Register upload/history BFF endpoints
 app.register_functions(upload_bp)

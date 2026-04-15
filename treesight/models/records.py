@@ -112,7 +112,60 @@ class UserRecord(BaseModel):
     last_seen: str | None = None
     last_modified: str | None = None
     assigned_tier: str | None = None
+    org_id: str | None = None
+    org_role: str | None = None
     quota: QuotaState | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+# ---------------------------------------------------------------------------
+# OrgMember — embedded in OrgRecord
+# ---------------------------------------------------------------------------
+
+
+class OrgMember(BaseModel):
+    """A member entry within an organisation document."""
+
+    user_id: str
+    email: str = ""
+    role: str = "member"  # "owner" or "member"
+    joined_at: str | None = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+# ---------------------------------------------------------------------------
+# OrgRecord — ``orgs`` container
+# ---------------------------------------------------------------------------
+
+
+class OrgRecord(BaseModel):
+    """An organisation stored in the Cosmos ``orgs`` container."""
+
+    org_id: str
+    name: str = "My Organisation"
+    created_by: str = ""
+    created_at: str | None = None
+    members: list[OrgMember] = Field(default_factory=list)
+    billing: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
+
+
+# ---------------------------------------------------------------------------
+# OrgInvite — ``orgs`` container (invite variant)
+# ---------------------------------------------------------------------------
+
+
+class OrgInvite(BaseModel):
+    """A pending org invite stored alongside org docs."""
+
+    org_id: str
+    email: str
+    invited_by: str = ""
+    invited_at: str | None = None
+    expires_at: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
