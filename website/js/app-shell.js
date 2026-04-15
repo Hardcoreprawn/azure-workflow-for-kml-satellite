@@ -37,6 +37,8 @@
   var renderEvidenceAnalysis = CanopexEvidenceRender.renderEvidenceAnalysis;
   var pcTileUrl = CanopexEvidenceRender.pcTileUrl;
   var pcNdviTileUrl = CanopexEvidenceRender.pcNdviTileUrl;
+  var renderAoiDetail = CanopexEvidenceRender.renderAoiDetail;
+  var clearAoiDetail = CanopexEvidenceRender.clearAoiDetail;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -882,6 +884,8 @@
   let evidenceAnalysis = null;
   let evidenceInstanceId = null;
   let evidenceMapExpanded = false;
+  let evidenceAoiPolygons = []; // Leaflet polygon layers for per-AOI click
+  let evidenceSelectedAoi = -1;  // -1 = aggregate, >=0 = per-AOI index
 
   function expandEvidenceMap() {
     var mapEl = document.getElementById('app-evidence-map');
@@ -973,6 +977,10 @@
     renderEvidenceChangeDetection(evidenceManifest);
     initEvidenceMap(evidenceManifest);
 
+    // Per-AOI selector (multi-polygon runs)
+    evidenceSelectedAoi = -1;
+    populateAoiSelector(evidenceManifest.per_aoi_enrichment);
+
     // Load saved AI analysis (non-blocking)
     loadSavedAnalysis(instanceId);
 
@@ -1002,6 +1010,11 @@
       if (c) { var ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height); }
     });
     if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
+    evidenceAoiPolygons = [];
+    evidenceSelectedAoi = -1;
+    clearAoiDetail();
+    var aoiBlock = document.getElementById('app-evidence-aoi-block');
+    if (aoiBlock) aoiBlock.hidden = true;
   }
 
   /* ---- Map viewer ---- */
@@ -1036,8 +1049,31 @@
     }).addTo(evidenceMap);
 
     // AOI polygon outlines (coords are [lon, lat] GeoJSON; Leaflet needs [lat, lon])
-    // Multi-AOI runs concatenate all rings; split on ring-closure (first == last point)
-    if (manifest.coords && Array.isArray(manifest.coords)) {
+    evidenceAoiPolygons = [];
+    var perAoi = manifest.per_aoi_enrichment || [];
+    if (perAoi.length > 1) {
+      // Per-AOI mode: draw each AOI polygon as interactive
+      try {
+        var allBounds = L.latLngBounds([]);
+        perAoi.forEach(function(aoi, idx) {
+          if (!aoi.coords || !aoi.coords.length) return;
+          var ll = aoi.coords.map(function(c) { return [c[1], c[0]]; });
+          var poly = L.polygon(ll, {
+            color: 'rgba(88,166,255,.7)',
+            weight: 2,
+            fillOpacity: 0.05
+          }).addTo(evidenceMap);
+          var tip = document.createElement('span');
+          tip.textContent = aoi.name || ('Parcel ' + (idx + 1));
+          poly.bindTooltip(tip, { sticky: true });
+          poly.on('click', function() { selectAoi(idx); });
+          evidenceAoiPolygons.push(poly);
+          allBounds.extend(poly.getBounds());
+        });
+        if (allBounds.isValid()) evidenceMap.fitBounds(allBounds.pad(0.1));
+      } catch (e) { /* skip polygon */ }
+    } else if (manifest.coords && Array.isArray(manifest.coords)) {
+      // Single-AOI fallback: split concatenated ring
       try {
         var rings = [];
         var ringStart = 0;
@@ -1078,6 +1114,91 @@
 
     // Force resize
     setTimeout(function() { if (evidenceMap) evidenceMap.invalidateSize(); }, 200);
+  }
+
+  /* ---- Per-AOI selection ---- */
+
+  function populateAoiSelector(perAoi) {
+    var block = document.getElementById('app-evidence-aoi-block');
+    var list = document.getElementById('app-evidence-aoi-list');
+    var resetBtn = document.getElementById('app-evidence-aoi-reset');
+    if (!block || !list) return;
+
+    if (!perAoi || perAoi.length < 2) {
+      block.hidden = true;
+      return;
+    }
+
+    block.hidden = false;
+    list.textContent = '';
+
+    perAoi.forEach(function(aoi, idx) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'app-evidence-aoi-chip';
+      chip.textContent = aoi.name || ('Parcel ' + (idx + 1));
+      chip.addEventListener('click', function() { selectAoi(idx); });
+      list.appendChild(chip);
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() { resetAoiSelection(); });
+    }
+  }
+
+  function selectAoi(idx) {
+    if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
+    var perAoi = evidenceManifest.per_aoi_enrichment;
+    if (idx < 0 || idx >= perAoi.length) return;
+
+    evidenceSelectedAoi = idx;
+    var aoi = perAoi[idx];
+
+    // Highlight selected polygon, dim others
+    evidenceAoiPolygons.forEach(function(poly, i) {
+      if (i === idx) {
+        poly.setStyle({ color: '#5eecc4', weight: 3, fillOpacity: 0.15 });
+      } else {
+        poly.setStyle({ color: 'rgba(88,166,255,.3)', weight: 1, fillOpacity: 0.02 });
+      }
+    });
+
+    // Zoom to selected AOI
+    if (evidenceAoiPolygons[idx] && evidenceMap) {
+      evidenceMap.fitBounds(evidenceAoiPolygons[idx].getBounds().pad(0.15));
+    }
+
+    // Update chip active state
+    var chips = document.querySelectorAll('.app-evidence-aoi-chip');
+    chips.forEach(function(chip, i) {
+      chip.className = 'app-evidence-aoi-chip' + (i === idx ? ' active' : '');
+    });
+
+    // Render per-AOI detail
+    renderAoiDetail(aoi);
+  }
+
+  function resetAoiSelection() {
+    evidenceSelectedAoi = -1;
+
+    // Reset polygon styles
+    evidenceAoiPolygons.forEach(function(poly) {
+      poly.setStyle({ color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 });
+    });
+
+    // Zoom to fit all
+    if (evidenceAoiPolygons.length && evidenceMap) {
+      var allBounds = L.latLngBounds([]);
+      evidenceAoiPolygons.forEach(function(poly) { allBounds.extend(poly.getBounds()); });
+      if (allBounds.isValid()) evidenceMap.fitBounds(allBounds.pad(0.1));
+    }
+
+    // Clear chip active state
+    var chips = document.querySelectorAll('.app-evidence-aoi-chip');
+    chips.forEach(function(chip) { chip.className = 'app-evidence-aoi-chip'; });
+
+    // Clear per-AOI detail
+    clearAoiDetail();
   }
 
   function buildEvidenceFrames(framePlan, searchIds, ndviSearchIds) {

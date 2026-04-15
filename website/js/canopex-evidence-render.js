@@ -354,6 +354,78 @@
       'collection=sentinel-2-l2a&expression=(B08-B04)/(B08%2BB04)&rescale=-0.2,0.8&colormap_name=rdylgn';
   }
 
+  /* ---- Per-AOI detail rendering ---- */
+  function renderAoiDetail(aoiData) {
+    var nameEl = document.getElementById('app-evidence-aoi-detail-name');
+    var grid = document.getElementById('app-evidence-aoi-detail-grid');
+    var detEl = document.getElementById('app-evidence-aoi-determination');
+    var detail = document.getElementById('app-evidence-aoi-detail');
+    if (!detail || !grid) return;
+
+    detail.hidden = false;
+    if (nameEl) nameEl.textContent = aoiData.name || 'Unnamed parcel';
+
+    var stats = [];
+
+    // Area
+    if (aoiData.area_ha != null) {
+      stats.push(['Area', aoiData.area_ha.toFixed(1) + ' ha', '']);
+    }
+
+    // NDVI from per-AOI enrichment
+    var ndvi = (aoiData.ndvi_stats || []).filter(function(f) { return f != null; });
+    var means = ndvi.map(function(f) { return f.mean; }).filter(function(v) { return v != null && !isNaN(v); });
+    if (means.length) {
+      var avg = means.reduce(function(a, b) { return a + b; }, 0) / means.length;
+      var tone = avg > 0.4 ? 'positive' : avg < 0.2 ? 'negative' : '';
+      stats.push(['NDVI', avg.toFixed(3), tone]);
+    }
+
+    // Weather from per-AOI enrichment
+    var wd = aoiData.weather_daily;
+    if (wd && wd.temp) {
+      var temps = wd.temp.filter(function(t) { return t != null; });
+      if (temps.length) {
+        var avgT = temps.reduce(function(a, b) { return a + b; }, 0) / temps.length;
+        stats.push(['Temp', avgT.toFixed(1) + '\u00B0C', '']);
+      }
+    }
+
+    // Change detection
+    var cd = aoiData.change_detection;
+    if (cd && cd.summary) {
+      var traj = cd.summary.trajectory || 'Stable';
+      var trajTone = traj === 'Improving' ? 'positive' : traj === 'Declining' ? 'negative' : '';
+      stats.push(['Trend', traj, trajTone]);
+    }
+
+    setStatGrid(grid, stats);
+
+    // EUDR determination
+    if (detEl) {
+      var det = aoiData.determination;
+      if (det) {
+        detEl.hidden = false;
+        detEl.className = 'app-evidence-aoi-determination ' +
+          (det.deforestation_free ? 'compliant' : 'non-compliant');
+        detEl.textContent = det.deforestation_free
+          ? '\u2705 Deforestation-free (' + (det.confidence || 'medium') + ' confidence)'
+          : '\u26A0\uFE0F Risk detected — ' + (det.reason || 'see full report');
+      } else {
+        detEl.hidden = true;
+      }
+    }
+  }
+
+  function clearAoiDetail() {
+    var detail = document.getElementById('app-evidence-aoi-detail');
+    var grid = document.getElementById('app-evidence-aoi-detail-grid');
+    var detEl = document.getElementById('app-evidence-aoi-determination');
+    if (detail) detail.hidden = true;
+    if (grid) grid.textContent = '';
+    if (detEl) { detEl.hidden = true; detEl.textContent = ''; }
+  }
+
   window.CanopexEvidenceRender = {
     renderEvidenceNdvi: renderEvidenceNdvi,
     drawNdviSparkline: drawNdviSparkline,
@@ -363,5 +435,7 @@
     renderEvidenceAnalysis: renderEvidenceAnalysis,
     pcTileUrl: pcTileUrl,
     pcNdviTileUrl: pcNdviTileUrl,
+    renderAoiDetail: renderAoiDetail,
+    clearAoiDetail: clearAoiDetail,
   };
 })();

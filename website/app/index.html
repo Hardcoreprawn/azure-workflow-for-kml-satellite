@@ -312,6 +312,20 @@
                   <span class="app-content-label">Change detection</span>
                   <div id="app-evidence-change-list"></div>
                 </div>
+
+                <!-- Per-AOI selector (multi-polygon runs only) -->
+                <div class="app-evidence-block" id="app-evidence-aoi-block" hidden>
+                  <div class="app-evidence-aoi-header">
+                    <span class="app-content-label">Per-parcel evidence</span>
+                    <button class="btn btn-secondary btn-sm" id="app-evidence-aoi-reset" type="button">All parcels</button>
+                  </div>
+                  <div class="app-evidence-aoi-list" id="app-evidence-aoi-list"></div>
+                  <div id="app-evidence-aoi-detail" hidden>
+                    <div class="app-evidence-aoi-detail-name" id="app-evidence-aoi-detail-name"></div>
+                    <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
+                    <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
+                  </div>
+                </div>
               </div>
             </div>
 

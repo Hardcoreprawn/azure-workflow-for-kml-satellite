@@ -154,7 +154,7 @@ Per-AOI enrichment so multi-polygon submissions produce useful results.
 | F.0 | #583 | Data model cleanup: typed models, manifest, run timing | ✅ PR #620 | — |
 | F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | ✅ PR #620 | #583 |
 | F.2 | #574 | Enrichment sub-step progress in UI | Open | #578 |
-| F.3 | #579 | Frontend per-AOI evidence + polygon interaction | Open | #578 |
+| F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
 | F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | #578, #579 |
 | F.6 | #585 | Progressive delivery: stream per-AOI results | Open | #578 |
@@ -174,9 +174,9 @@ Dedicated EUDR app. Master tracker: #606.
 | Order | Issue | Title | Dataset | Depends On |
 |-------|-------|-------|---------|------------|
 | D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | #578 |
-| D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | #578 |
-| D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | #578 |
-| D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | #578 |
+| D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
+| D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
+| D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 
@@ -185,14 +185,14 @@ Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
 | L.1 | #600 | EUDR mode: post-2020 date filtering | ✅ PR #620 |
-| L.2 | #601 | Coordinate-to-polygon converter (lat/lon, CSV) | — |
-| L.3 | #603 | Deforestation-free determination per AOI | #578 |
+| L.2 | #601 | Coordinate-to-polygon converter (lat/lon, CSV) | ✅ PR #620 |
+| L.3 | #603 | Deforestation-free determination per AOI | ✅ PR #620 |
 
 ### 2G.3 — Org & User Management
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| ORG.1 | #614 | Org/team data model with email invites | #583 |
+| ORG.1 | #614 | Org/team data model with email invites | ✅ PR #620 |
 
 Parcels and billing are org-scoped. Owner invites members by email;
 invited users auto-join on sign-in via SWA email matching.
@@ -201,7 +201,7 @@ invited users auto-join on sign-in via SWA email matching.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | — |
+| FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | ✅ PR #620 |
 | FE.2 | #610 | EUDR compliance app (`/eudr/`) | #611, #601, #603, #579, #614 |
 | FE.3 | #605 | EUDR landing page + sitemap | — |
 | FE.4 | #602 | Methodology page | — |
