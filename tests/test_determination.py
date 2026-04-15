@@ -19,6 +19,11 @@ def _make_enrichment(
     worldcover_available: bool = True,
     tree_pct: float = 40.0,
     wdpa_protected: bool = False,
+    lulc_available: bool = False,
+    lulc_change_detected: bool = False,
+    lulc_trend: str = "stable",
+    alos_available: bool = False,
+    alos_forest_pct: float = 90.0,
 ) -> dict:
     """Build a minimal enrichment result dict for testing."""
     if season_changes is None:
@@ -67,6 +72,23 @@ def _make_enrichment(
         "checked": True,
         "is_protected": wdpa_protected,
     }
+    if lulc_available:
+        result["lulc_annual"] = {
+            "available": True,
+            "collection": "io-lulc-annual-v02",
+            "change_detected": lulc_change_detected,
+            "tree_cover_trend": lulc_trend,
+            "years": {"2020": {}, "2021": {}, "2022": {}},
+        }
+    if alos_available:
+        result["alos_fnf"] = {
+            "available": True,
+            "collection": "alos-fnf-mosaic",
+            "year": 2020,
+            "forest_pct": alos_forest_pct,
+            "dominant_class": "Forest (>90% canopy)",
+            "source": "ALOS-2 PALSAR-2",
+        }
     return result
 
 
@@ -157,3 +179,32 @@ class TestDeforestationDetermination:
         assert det["deforestation_free"] is False
         assert len(det["flags"]) >= 3
         assert det["confidence"] == "high"
+
+    def test_lulc_change_detected_flags(self):
+        enrichment = _make_enrichment(lulc_available=True, lulc_change_detected=True)
+        det = determine_deforestation_free(enrichment)
+        assert det["deforestation_free"] is False
+        assert any("IO LULC" in f and "change" in f for f in det["flags"])
+
+    def test_lulc_declining_trend_flags(self):
+        enrichment = _make_enrichment(lulc_available=True, lulc_trend="declining")
+        det = determine_deforestation_free(enrichment)
+        assert det["deforestation_free"] is False
+        assert any("declining" in f.lower() for f in det["flags"])
+
+    def test_lulc_evidence_recorded(self):
+        enrichment = _make_enrichment(lulc_available=True)
+        det = determine_deforestation_free(enrichment)
+        assert det["evidence"]["lulc_annual"]["tree_cover_trend"] == "stable"
+        assert det["evidence"]["lulc_annual"]["years_available"] == 3
+
+    def test_alos_evidence_recorded(self):
+        enrichment = _make_enrichment(alos_available=True, alos_forest_pct=92.5)
+        det = determine_deforestation_free(enrichment)
+        assert det["evidence"]["alos_fnf"]["forest_pct"] == 92.5
+        assert det["evidence"]["alos_fnf"]["source"] == "ALOS-2 PALSAR-2"
+
+    def test_alos_missing_handled(self):
+        enrichment = _make_enrichment()  # no alos
+        det = determine_deforestation_free(enrichment)
+        assert det["evidence"]["alos_fnf"]["available"] is False

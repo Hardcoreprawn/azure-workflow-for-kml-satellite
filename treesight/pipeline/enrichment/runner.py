@@ -85,8 +85,13 @@ def _run_eudr_phase(
     center_lon: float,
     results: dict[str, Any],
 ) -> None:
-    """Phase 1d: EUDR-specific enrichments (WorldCover + WDPA)."""
-    from treesight.pipeline.eudr import check_wdpa_overlap, query_worldcover
+    """Phase 1d: EUDR-specific enrichments (WorldCover + WDPA + IO LULC + ALOS FNF)."""
+    from treesight.pipeline.eudr import (
+        check_wdpa_overlap,
+        query_alos_fnf,
+        query_lulc_annual,
+        query_worldcover,
+    )
 
     flat_bbox_eudr = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
 
@@ -98,6 +103,22 @@ def _run_eudr_phase(
     log_phase("enrichment", "wdpa_start")
     wdpa = check_wdpa_overlap(center_lon, center_lat)
     results["wdpa"] = wdpa
+    log_phase(
+        "enrichment",
+        "wdpa_done",
+        checked=wdpa.get("checked", False),
+        protected=wdpa.get("is_protected", False),
+    )
+
+    log_phase("enrichment", "lulc_annual_start")
+    lulc = query_lulc_annual(flat_bbox_eudr)
+    results["lulc_annual"] = lulc
+    log_phase("enrichment", "lulc_annual_done", available=lulc.get("available", False))
+
+    log_phase("enrichment", "alos_fnf_start")
+    alos = query_alos_fnf(flat_bbox_eudr)
+    results["alos_fnf"] = alos
+    log_phase("enrichment", "alos_fnf_done", available=alos.get("available", False))
     log_phase(
         "enrichment",
         "wdpa_done",
