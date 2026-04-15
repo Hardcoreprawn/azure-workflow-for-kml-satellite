@@ -64,6 +64,9 @@ def record_user_sign_in(
         if identity_provider:
             existing["identity_provider"] = identity_provider
 
+        from treesight.models.records import UserRecord
+
+        UserRecord.model_validate(existing)
         upsert_item("users", existing)
     except Exception:
         logger.warning("Failed to record sign-in for user=%s", user_id, exc_info=True)
@@ -118,6 +121,9 @@ def set_user_role(
         save_subscription(user_id, {"tier": normalized, "status": "active"})
         existing["assigned_tier"] = normalized
 
+    from treesight.models.records import UserRecord
+
+    UserRecord.model_validate(existing)
     upsert_item("users", existing)
     return existing
 

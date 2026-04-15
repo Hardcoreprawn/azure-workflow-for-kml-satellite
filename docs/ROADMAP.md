@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 
 ---
 
@@ -32,12 +32,13 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #620 | aoi_limit, AOI count, EUDR date filter, data models, per-AOI enrichment (#575, #580, #600, #583, #578) |
+| #620 | Enforce `aoi_limit` at submission time per plan tier (fixes #575) |
 | #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
 | #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse (fixes #571) |
 | #591 | Roadmap update + 56-polygon KML test fixture |
 | #577 | Dependabot: pytest bump |
-| #576 | Dependabot: pillow bump |
 
 ---
 
@@ -102,8 +103,8 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.3 | #533 | EUDR pricing on pricing page | Open |
 | 2C.4 | #555 | Dashboard UX overhaul (6 slices) | ✅ PR #557, #559 |
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
-| 2C.6 | #575 | `aoi_limit` never enforced at submission | Open |
-| 2C.6 | #580 | Feature/AOI count mismatch (56→57) | Open |
+| 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
+| 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #620 |
 | 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
 
 **Exit:** Visitor → landing page → EUDR app → free trial → submit parcels
@@ -118,7 +119,7 @@ Auth + billing security. Prerequisites for any paid product.
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
 | R.0 | #553 | Enforce REQUIRE_AUTH everywhere | ✅ PR #554 | — |
-| R.1 | #534 | Auth header verification (HMAC) | Open | — |
+| R.1 | #534 | Auth header verification (HMAC) | ✅ PR #620 | — |
 | R.2 | #535 | E2e Stripe billing flow on live site | Open | #520 |
 | R.3 | #406 | Reconcile docs with live routes | Open | — |
 | R.4 | #589 | Billing ledger, metered overage, refunds | Open | R.2 |
@@ -150,10 +151,10 @@ Per-AOI enrichment so multi-polygon submissions produce useful results.
 
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
-| F.0 | #583 | Data model cleanup: typed models, manifest, run timing | Open | — |
-| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | Open | #583 |
+| F.0 | #583 | Data model cleanup: typed models, manifest, run timing | ✅ PR #620 | — |
+| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | ✅ PR #620 | #583 |
 | F.2 | #574 | Enrichment sub-step progress in UI | Open | #578 |
-| F.3 | #579 | Frontend per-AOI evidence + polygon interaction | Open | #578 |
+| F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
 | F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | #578, #579 |
 | F.6 | #585 | Progressive delivery: stream per-AOI results | Open | #578 |
@@ -173,9 +174,9 @@ Dedicated EUDR app. Master tracker: #606.
 | Order | Issue | Title | Dataset | Depends On |
 |-------|-------|-------|---------|------------|
 | D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | #578 |
-| D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | #578 |
-| D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | #578 |
-| D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | #578 |
+| D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
+| D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
+| D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 
@@ -183,15 +184,15 @@ Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| L.1 | #600 | EUDR mode: post-2020 date filtering | — |
-| L.2 | #601 | Coordinate-to-polygon converter (lat/lon, CSV) | — |
-| L.3 | #603 | Deforestation-free determination per AOI | #578 |
+| L.1 | #600 | EUDR mode: post-2020 date filtering | ✅ PR #620 |
+| L.2 | #601 | Coordinate-to-polygon converter (lat/lon, CSV) | ✅ PR #620 |
+| L.3 | #603 | Deforestation-free determination per AOI | ✅ PR #620 |
 
 ### 2G.3 — Org & User Management
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| ORG.1 | #614 | Org/team data model with email invites | #583 |
+| ORG.1 | #614 | Org/team data model with email invites | ✅ PR #620 |
 
 Parcels and billing are org-scoped. Owner invites members by email;
 invited users auto-join on sign-in via SWA email matching.
@@ -200,7 +201,7 @@ invited users auto-join on sign-in via SWA email matching.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | — |
+| FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | ✅ PR #620 |
 | FE.2 | #610 | EUDR compliance app (`/eudr/`) | #611, #601, #603, #579, #614 |
 | FE.3 | #605 | EUDR landing page + sitemap | — |
 | FE.4 | #602 | Methodology page | — |

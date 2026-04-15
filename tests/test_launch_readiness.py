@@ -832,3 +832,104 @@ class TestInfracostCostGate:
         assert "infracost" in content, (
             "pyproject.toml must define an 'infracost' optional dep group"
         )
+
+
+# ---------------------------------------------------------------------------
+# 14. KML polygon-with-hole parsing (#580)
+# ---------------------------------------------------------------------------
+
+
+class TestParseKmlGeometryHoleHandling:
+    """Regression: parseKmlGeometry must not count innerBoundaryIs as extra polygons.
+
+    A Placemark with a polygon hole (outerBoundaryIs + innerBoundaryIs) was
+    producing 2 polygon entries instead of 1, causing "56 features across 57
+    AOIs" in the preflight panel. The fix extracts coordinates only from
+    outerBoundaryIs elements when present.
+    """
+
+    APP_SHELL = WEBSITE / "js" / "canopex-geo.js"
+
+    def test_uses_outer_boundary_extraction(self):
+        """parseKmlGeometry must look for outerBoundaryIs before extracting coordinates."""
+        content = self.APP_SHELL.read_text()
+        fn_start = content.find("function parseKmlGeometry(")
+        assert fn_start != -1, "parseKmlGeometry not found in canopex-geo.js"
+
+        fn_end = content.find("\n  function ", fn_start + 1)
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+
+        assert "outerBoundaryIs" in fn_body, (
+            "parseKmlGeometry must extract coordinates from outerBoundaryIs "
+            "to avoid counting innerBoundaryIs (holes) as separate polygons (#580)"
+        )
+
+    def test_does_not_blindly_iterate_all_coordinates(self):
+        """The primary Placemark loop must not use getElementsByTagName('coordinates') directly."""
+        content = self.APP_SHELL.read_text()
+        fn_start = content.find("function parseKmlGeometry(")
+        fn_end = content.find("\n  function ", fn_start + 1)
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+
+        # The first coordinates extraction inside the Placemark loop should
+        # go through outerBoundaryIs, not directly on the Placemark.
+        # The fallback (no outerBoundaryIs) is fine, but the primary path
+        # must not blindly grab all <coordinates> from a Placemark.
+        placemark_loop_start = fn_body.find("for (var p = 0;")
+        assert placemark_loop_start != -1, "Placemark loop not found"
+        loop_body = fn_body[placemark_loop_start:]
+
+        # outerBoundaryIs check must appear before any raw getElementsByTagName('coordinates')
+        outer_idx = loop_body.find("outerBoundaryIs")
+        raw_coord_idx = loop_body.find("getElementsByTagName('coordinates')")
+        assert outer_idx < raw_coord_idx, (
+            "parseKmlGeometry must check outerBoundaryIs before falling back "
+            "to raw coordinates extraction (#580)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 15. EUDR mode toggle wiring (#600)
+# ---------------------------------------------------------------------------
+
+
+class TestEudrModeToggle:
+    """EUDR mode checkbox must exist in HTML, be wired in JS, and be tier-gated."""
+
+    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+    APP_HTML = WEBSITE / "app" / "index.html"
+
+    def test_eudr_checkbox_exists_in_html(self):
+        content = self.APP_HTML.read_text()
+        assert 'id="app-eudr-mode"' in content, (
+            "EUDR mode checkbox with id='app-eudr-mode' must exist in app/index.html"
+        )
+
+    def test_eudr_toggle_hidden_by_default(self):
+        content = self.APP_HTML.read_text()
+        assert 'id="app-eudr-toggle" hidden' in content, (
+            "EUDR toggle container must be hidden by default (shown only for paid tiers)"
+        )
+
+    def test_js_reads_eudr_checkbox_in_queue(self):
+        content = self.APP_SHELL.read_text()
+        fn_start = content.find("async function queueAnalysis()")
+        assert fn_start != -1
+        fn_end = content.find("\n  async function ", fn_start + 1)
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+        assert "app-eudr-mode" in fn_body, "queueAnalysis must read the EUDR checkbox value (#600)"
+        assert "eudr_mode" in fn_body, "queueAnalysis must set eudr_mode on the token body (#600)"
+
+    def test_js_gates_toggle_visibility_by_tier(self):
+        content = self.APP_SHELL.read_text()
+        assert "app-eudr-toggle" in content, "applyBillingStatus must manage EUDR toggle visibility"
+        # Must check for paid tiers
+        assert "paidTiers" in content or "starter" in content, (
+            "EUDR toggle visibility must be gated on paid tier list"
+        )

@@ -1,6 +1,45 @@
 (function(){
   'use strict';
 
+  // Geo/parsing utilities extracted to canopex-geo.js
+  var escHtml = CanopexGeo.escHtml;
+  var parseKmlText = CanopexGeo.parseKmlText;
+  var parseCoordText = CanopexGeo.parseCoordText;
+  var parseKmlGeometry = CanopexGeo.parseKmlGeometry;
+  var haversineKm = CanopexGeo.haversineKm;
+  var polygonCentroid = CanopexGeo.polygonCentroid;
+  var polygonAreaHa = CanopexGeo.polygonAreaHa;
+  var formatDistance = CanopexGeo.formatDistance;
+  var formatHectares = CanopexGeo.formatHectares;
+  var determineProcessingMode = CanopexGeo.determineProcessingMode;
+
+  // Formatting/display helpers extracted to canopex-helpers.js
+  var displayAnalysisPhase = CanopexHelpers.displayAnalysisPhase;
+  var parseStatusTimestamp = CanopexHelpers.parseStatusTimestamp;
+  var formatRelativeDuration = CanopexHelpers.formatRelativeDuration;
+  var summarizeRunTiming = CanopexHelpers.summarizeRunTiming;
+  var capabilityHeadline = CanopexHelpers.capabilityHeadline;
+  var shortInstanceId = CanopexHelpers.shortInstanceId;
+  var formatHistoryTimestamp = CanopexHelpers.formatHistoryTimestamp;
+  var formatCountLabel = CanopexHelpers.formatCountLabel;
+  var providerLabel = CanopexHelpers.providerLabel;
+  var summarizeFailureCounts = CanopexHelpers.summarizeFailureCounts;
+  var parseDownloadFilename = CanopexHelpers.parseDownloadFilename;
+  var createStatEl = CanopexHelpers.createStatEl;
+  var setStatGrid = CanopexHelpers.setStatGrid;
+  var createCallout = CanopexHelpers.createCallout;
+  var formatRetention = CanopexHelpers.formatRetention;
+
+  // Evidence rendering extracted to canopex-evidence-render.js
+  var renderEvidenceNdvi = CanopexEvidenceRender.renderEvidenceNdvi;
+  var renderEvidenceWeather = CanopexEvidenceRender.renderEvidenceWeather;
+  var renderEvidenceChangeDetection = CanopexEvidenceRender.renderEvidenceChangeDetection;
+  var renderEvidenceAnalysis = CanopexEvidenceRender.renderEvidenceAnalysis;
+  var pcTileUrl = CanopexEvidenceRender.pcTileUrl;
+  var pcNdviTileUrl = CanopexEvidenceRender.pcNdviTileUrl;
+  var renderAoiDetail = CanopexEvidenceRender.renderAoiDetail;
+  var clearAoiDetail = CanopexEvidenceRender.clearAoiDetail;
+
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
   const WORKSPACE_PREFERENCE_STORAGE_KEY = 'canopex-workspace-preference';
@@ -162,6 +201,7 @@
   // Auth principal is forwarded via X-MS-CLIENT-PRINCIPAL header.
   let _apiBase = '';          // Container Apps FA hostname, e.g. 'https://func-kmlsat-dev.azurecontainerapps.io'
   let _clientPrincipal = null; // raw clientPrincipal from /.auth/me — base64-encoded for X-MS-CLIENT-PRINCIPAL
+  let _sessionToken = '';      // HMAC session token from /api/auth/session (#534)
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
@@ -309,6 +349,9 @@
       var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
       opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
+    if (_sessionToken) {
+      opts.headers['X-Auth-Session'] = _sessionToken;
+    }
     const url = _apiBase ? _apiBase + path : path;
     const resp = await fetch(url, opts);
     if (!resp.ok) {
@@ -317,6 +360,7 @@
         // Session expired — clear local auth state and prompt re-login.
         currentAccount = null;
         _clientPrincipal = null;
+        _sessionToken = '';
         updateAuthUI();
         setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
         stopAnalysisPolling();
@@ -497,50 +541,6 @@
     renderWorkspaceGuidance();
   }
 
-  function displayAnalysisPhase(customStatus, runtimeStatus) {
-    if (runtimeStatus === 'Completed') return 'complete';
-    return (customStatus && customStatus.phase) || 'queued';
-  }
-
-  function parseStatusTimestamp(value) {
-    if (!value) return null;
-    var normalized = String(value).replace(' ', 'T');
-    var parsed = Date.parse(normalized);
-    return Number.isNaN(parsed) ? null : parsed;
-  }
-
-  function formatRelativeDuration(ms) {
-    if (ms == null || ms < 0) return null;
-    var totalSeconds = Math.round(ms / 1000);
-    if (totalSeconds < 60) return totalSeconds + 's';
-    var minutes = Math.floor(totalSeconds / 60);
-    var seconds = totalSeconds % 60;
-    if (minutes < 60) return minutes + 'm' + (seconds >= 5 ? ' ' + seconds + 's' : '');
-    var hours = Math.floor(minutes / 60);
-    var remainingMinutes = minutes % 60;
-    return hours + 'h' + (remainingMinutes ? ' ' + remainingMinutes + 'm' : '');
-  }
-
-  function summarizeRunTiming(data) {
-    var createdMs = parseStatusTimestamp(data && data.createdTime);
-    var updatedMs = parseStatusTimestamp(data && data.lastUpdatedTime);
-    var now = Date.now();
-    return {
-      elapsed: createdMs ? formatRelativeDuration(now - createdMs) : null,
-      sinceUpdate: updatedMs ? formatRelativeDuration(now - updatedMs) : null,
-      stale: updatedMs ? (now - updatedMs) >= 90000 : false,
-    };
-  }
-
-  function capabilityHeadline(caps) {
-    var parts = [];
-    if (caps.ai_insights) parts.push('AI insights');
-    if (caps.api_access) parts.push('API ready');
-    if (caps.concurrency && caps.concurrency > 1) parts.push(String(caps.concurrency) + ' concurrent runs');
-    if (!parts.length) return 'Core analysis workspace';
-    return parts.slice(0, 2).join(' + ');
-  }
-
   function updateHeroSummary(data) {
     var role = currentRoleConfig();
     var preference = currentPreferenceConfig();
@@ -662,51 +662,6 @@
       .sort(function(a, b) {
         return historyRunSortValue(b) - historyRunSortValue(a);
       });
-  }
-
-  function shortInstanceId(instanceId) {
-    var value = String(instanceId || 'pending');
-    return value.length > 8 ? value.slice(0, 8) : value;
-  }
-
-  function formatHistoryTimestamp(value) {
-    var parsed = parseStatusTimestamp(value);
-    if (parsed == null) return 'Time unavailable';
-    return new Date(parsed).toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-  }
-
-  function formatCountLabel(count, singular, plural) {
-    if (count == null || isNaN(count)) return null;
-    var whole = Number(count);
-    var noun = whole === 1 ? singular : (plural || singular + 's');
-    return whole + ' ' + noun;
-  }
-
-  function providerLabel(providerName) {
-    if (!providerName) return null;
-    if (providerName === 'planetary_computer') return 'Planetary Computer';
-    return String(providerName).replace(/_/g, ' ');
-  }
-
-  function summarizeFailureCounts(partialFailures) {
-    if (!partialFailures) return null;
-    var parts = [];
-    if (partialFailures.imagery) parts.push(partialFailures.imagery + ' imagery');
-    if (partialFailures.downloads) parts.push(partialFailures.downloads + ' download');
-    if (partialFailures.postProcess) parts.push(partialFailures.postProcess + ' post-process');
-    if (!parts.length) return null;
-    return 'Failures: ' + parts.join(', ');
-  }
-
-  function parseDownloadFilename(response, fallbackName) {
-    var disposition = response && response.headers ? response.headers.get('Content-Disposition') : '';
-    var match = disposition && disposition.match(/filename="?([^";]+)"?/i);
-    return match && match[1] ? match[1] : fallbackName;
   }
 
   function historyRunIsActive(run) {
@@ -929,6 +884,8 @@
   let evidenceAnalysis = null;
   let evidenceInstanceId = null;
   let evidenceMapExpanded = false;
+  let evidenceAoiPolygons = []; // Leaflet polygon layers for per-AOI click
+  let evidenceSelectedAoi = -1;  // -1 = aggregate, >=0 = per-AOI index
 
   function expandEvidenceMap() {
     var mapEl = document.getElementById('app-evidence-map');
@@ -1020,6 +977,10 @@
     renderEvidenceChangeDetection(evidenceManifest);
     initEvidenceMap(evidenceManifest);
 
+    // Per-AOI selector (multi-polygon runs)
+    evidenceSelectedAoi = -1;
+    populateAoiSelector(evidenceManifest.per_aoi_enrichment);
+
     // Load saved AI analysis (non-blocking)
     loadSavedAnalysis(instanceId);
 
@@ -1049,321 +1010,11 @@
       if (c) { var ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height); }
     });
     if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
-  }
-
-  function createStatEl(label, value, tone) {
-    let cls;
-    if (tone === 'positive') cls = ' positive';
-    else if (tone === 'negative') cls = ' negative';
-    else cls = ' neutral';
-    const div = document.createElement('div');
-    div.className = 'app-evidence-stat';
-    const span = document.createElement('span');
-    span.textContent = label;
-    const strong = document.createElement('strong');
-    strong.className = cls;
-    strong.textContent = value;
-    div.appendChild(span);
-    div.appendChild(strong);
-    return div;
-  }
-
-  function setStatGrid(grid, stats) {
-    grid.textContent = '';
-    stats.forEach(function(s) { grid.appendChild(createStatEl(s[0], s[1], s[2])); });
-  }
-
-  function createCallout(tone, message) {
-    var div = document.createElement('div');
-    div.className = 'app-callout';
-    div.setAttribute('data-tone', tone);
-    div.textContent = message;
-    return div;
-  }
-
-  function escHtml(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  /* ---- NDVI evidence ---- */
-  function renderEvidenceNdvi(manifest) {
-    var grid = document.getElementById('app-evidence-ndvi-grid');
-    var note = document.getElementById('app-evidence-ndvi-note');
-    var canvas = document.getElementById('app-evidence-ndvi-canvas');
-    if (!grid) return;
-
-    var ndvi = (manifest.ndvi_stats || []).filter(function(f) { return f != null; });
-    if (!ndvi.length) {
-      setStatGrid(grid, [['Status', 'No NDVI data', '']]);
-      return;
-    }
-
-    var means = ndvi.map(function(f) { return f.mean; }).filter(function(v) { return v != null && !isNaN(v); });
-    var overallMean = means.length ? (means.reduce(function(a, b) { return a + b; }, 0) / means.length) : null;
-    var overallMin = means.length ? Math.min.apply(null, means) : null;
-    var overallMax = means.length ? Math.max.apply(null, means) : null;
-
-    // Trajectory — prefer backend season-aware change detection
-    var trajectory = 'Stable';
-    var trajectoryTone = '';
-    var cdSummary = manifest.change_detection && manifest.change_detection.summary;
-    if (cdSummary && cdSummary.trajectory) {
-      var t = cdSummary.trajectory;
-      if (t === 'Improving') { trajectory = 'Improving ↑'; trajectoryTone = 'positive'; }
-      else if (t === 'Declining') { trajectory = 'Declining ↓'; trajectoryTone = 'negative'; }
-      else { trajectory = 'Stable'; trajectoryTone = ''; }
-    } else if (means.length >= 4) {
-      var firstHalf = means.slice(0, Math.floor(means.length / 2));
-      var secondHalf = means.slice(Math.floor(means.length / 2));
-      var avgFirst = firstHalf.reduce(function(a, b) { return a + b; }, 0) / firstHalf.length;
-      var avgSecond = secondHalf.reduce(function(a, b) { return a + b; }, 0) / secondHalf.length;
-      var delta = avgSecond - avgFirst;
-      if (delta > 0.05) { trajectory = 'Improving ↑'; trajectoryTone = 'positive'; }
-      else if (delta < -0.05) { trajectory = 'Declining ↓'; trajectoryTone = 'negative'; }
-    }
-
-    var meanLabel = overallMean != null ? overallMean.toFixed(3) : '\u2014';
-    var meanTone = '';
-    if (overallMean != null && overallMean > 0.4) meanTone = 'positive';
-    else if (overallMean != null && overallMean < 0.2) meanTone = 'negative';
-    var rangeLabel = overallMin != null ? overallMin.toFixed(2) + ' \u2013 ' + overallMax.toFixed(2) : '\u2014';
-
-    setStatGrid(grid, [
-      ['Mean NDVI', meanLabel, meanTone],
-      ['Range', rangeLabel, ''],
-      ['Trajectory', trajectory, trajectoryTone]
-    ]);
-
-    if (note) note.textContent = means.length + ' frames sampled across the analysis period.';
-
-    // Draw sparkline
-    if (canvas && means.length > 1) drawNdviSparkline(canvas, ndvi);
-  }
-
-  function drawNdviSparkline(canvas, ndviStats) {
-    var dpr = window.devicePixelRatio || 1;
-    var w = canvas.clientWidth;
-    var h = canvas.clientHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    var ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-
-    var means = ndviStats.map(function(f) { return f ? f.mean : null; });
-    var valid = means.filter(function(v) { return v != null && !isNaN(v); });
-    if (valid.length < 2) return;
-    var minV = Math.min.apply(null, valid) - 0.05;
-    var maxV = Math.max.apply(null, valid) + 0.05;
-    var range = maxV - minV || 1;
-    var pad = 4;
-
-    // Background
-    ctx.fillStyle = 'rgba(13,17,23,.4)';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, w, h, 8);
-    ctx.fill();
-
-    // Line
-    ctx.strokeStyle = 'rgba(63,185,80,.8)';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    var drawn = false;
-    for (var i = 0; i < means.length; i++) {
-      if (means[i] == null || isNaN(means[i])) continue;
-      var x = pad + (i / (means.length - 1)) * (w - 2 * pad);
-      var y = h - pad - ((means[i] - minV) / range) * (h - 2 * pad);
-      if (!drawn) { ctx.moveTo(x, y); drawn = true; } else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    // Drop markers
-    ctx.fillStyle = 'rgba(248,81,73,.9)';
-    for (var j = 1; j < means.length; j++) {
-      if (means[j] == null || means[j - 1] == null) continue;
-      var drop = means[j] - means[j - 1];
-      if (drop <= -0.1) {
-        var dx = pad + (j / (means.length - 1)) * (w - 2 * pad);
-        var dy = h - pad - ((means[j] - minV) / range) * (h - 2 * pad);
-        ctx.beginPath();
-        ctx.arc(dx, dy, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-  }
-
-  /* ---- Weather evidence ---- */
-  function renderEvidenceWeather(manifest) {
-    var grid = document.getElementById('app-evidence-weather-grid');
-    var canvas = document.getElementById('app-evidence-weather-canvas');
-    if (!grid) return;
-
-    var monthly = manifest.weather_monthly;
-    var daily = manifest.weather_daily;
-    if (!monthly && !daily) {
-      setStatGrid(grid, [['Status', 'No weather data', '']]);
-      return;
-    }
-
-    var temps = [];
-    var precips = [];
-    var source = [];
-
-    // weather_monthly may be { labels, temp, precip } parallel arrays
-    if (monthly && monthly.labels && Array.isArray(monthly.labels)) {
-      source = monthly.labels.map(function(lbl, i) {
-        return {
-          label: lbl,
-          temperature: (monthly.temp && monthly.temp[i] != null) ? monthly.temp[i] : null,
-          precipitation: (monthly.precip && monthly.precip[i] != null) ? monthly.precip[i] : null
-        };
-      });
-    } else if (Array.isArray(monthly)) {
-      source = monthly;
-    }
-
-    if (!source.length && daily) {
-      // aggregate daily to monthly — daily may be { dates, temp, precip }
-      var byMonth = {};
-      var dates = daily.dates || daily.time || [];
-      var dTemps = daily.temp || daily.temperature_2m_mean || [];
-      var dPrecip = daily.precip || daily.precipitation_sum || [];
-      dates.forEach(function(d, i) {
-        var key = d.slice(0, 7);
-        if (!byMonth[key]) byMonth[key] = { temps: [], precips: [] };
-        if (dTemps[i] != null) byMonth[key].temps.push(dTemps[i]);
-        if (dPrecip[i] != null) byMonth[key].precips.push(dPrecip[i]);
-      });
-      source = Object.keys(byMonth).sort().map(function(key) {
-        var m = byMonth[key];
-        return {
-          label: key,
-          temperature: m.temps.length ? m.temps.reduce(function(a, b) { return a + b; }, 0) / m.temps.length : null,
-          precipitation: m.precips.length ? m.precips.reduce(function(a, b) { return a + b; }, 0) : null
-        };
-      });
-    }
-
-    source.forEach(function(m) {
-      if (m.temperature != null) temps.push(m.temperature);
-      if (m.precipitation != null) precips.push(m.precipitation);
-    });
-
-    var avgTemp = temps.length ? (temps.reduce(function(a, b) { return a + b; }, 0) / temps.length) : null;
-    var totalPrecip = precips.reduce(function(a, b) { return a + b; }, 0);
-
-    setStatGrid(grid, [
-      ['Avg temp', avgTemp != null ? avgTemp.toFixed(1) + '\u00B0C' : '\u2014', ''],
-      ['Total precip', totalPrecip ? Math.round(totalPrecip) + ' mm' : '\u2014', ''],
-      ['Months', source.length + ' months', '']
-    ]);
-
-    if (canvas && source.length > 1) drawWeatherSparkline(canvas, source);
-  }
-
-  function drawWeatherSparkline(canvas, monthly) {
-    var dpr = window.devicePixelRatio || 1;
-    var w = canvas.clientWidth;
-    var h = canvas.clientHeight;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    var ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-    var pad = 4;
-
-    ctx.fillStyle = 'rgba(13,17,23,.4)';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, w, h, 8);
-    ctx.fill();
-
-    var temps = monthly.map(function(m) { return m.temperature; });
-    var precips = monthly.map(function(m) { return m.precipitation; });
-    var validTemps = temps.filter(function(v) { return v != null; });
-    var validPrecips = precips.filter(function(v) { return v != null; });
-    var maxPrecip = validPrecips.length ? Math.max.apply(null, validPrecips) : 1;
-    var minT = validTemps.length ? Math.min.apply(null, validTemps) - 2 : 0;
-    var maxT = validTemps.length ? Math.max.apply(null, validTemps) + 2 : 30;
-
-    // Precipitation bars
-    var barW = Math.max(2, (w - 2 * pad) / monthly.length - 1);
-    ctx.fillStyle = 'rgba(88,166,255,.35)';
-    for (var i = 0; i < precips.length; i++) {
-      if (precips[i] == null) continue;
-      var bx = pad + (i / monthly.length) * (w - 2 * pad);
-      var bh = (precips[i] / (maxPrecip || 1)) * (h - 2 * pad) * 0.8;
-      ctx.fillRect(bx, h - pad - bh, barW, bh);
-    }
-
-    // Temperature line
-    ctx.strokeStyle = 'rgba(210,153,34,.9)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    var drawn = false;
-    for (var j = 0; j < temps.length; j++) {
-      if (temps[j] == null) continue;
-      var tx = pad + ((j + 0.5) / monthly.length) * (w - 2 * pad);
-      var ty = h - pad - ((temps[j] - minT) / (maxT - minT)) * (h - 2 * pad);
-      if (!drawn) { ctx.moveTo(tx, ty); drawn = true; } else ctx.lineTo(tx, ty);
-    }
-    ctx.stroke();
-  }
-
-  /* ---- Change detection ---- */
-  function renderEvidenceChangeDetection(manifest) {
-    var block = document.getElementById('app-evidence-change-block');
-    var list = document.getElementById('app-evidence-change-list');
-    if (!block || !list) return;
-
-    var cd = manifest.change_detection;
-    if (!cd || (!cd.season_changes && !cd.significant_changes && !cd.events && !cd.summary)) {
-      block.hidden = true;
-      return;
-    }
-
-    block.hidden = false;
-    var items = cd.season_changes || cd.significant_changes || cd.events || [];
-
-    // Summary may be an object { comparisons, total_loss_ha, total_gain_ha, avg_mean_delta, trajectory }
-    if (cd.summary) {
-      var s = cd.summary;
-      var summaryText = typeof s === 'string' ? s :
-        (s.trajectory || 'Stable') + ' \u2014 ' + (s.comparisons || 0) + ' comparisons, ' +
-        'net loss ' + (s.total_loss_ha ? s.total_loss_ha.toFixed(0) + ' ha' : '\u2014') +
-        ', net gain ' + (s.total_gain_ha ? s.total_gain_ha.toFixed(0) + ' ha' : '\u2014');
-      var summaryDiv = document.createElement('div');
-      summaryDiv.className = 'app-evidence-change-item positive';
-      summaryDiv.textContent = summaryText;
-      list.appendChild(summaryDiv);
-    }
-
-    // Show notable season changes (loss_pct > 20% or gain_pct > 20%)
-    var notable = items.filter(function(item) {
-      return typeof item === 'object' && (item.loss_pct > 20 || item.gain_pct > 20);
-    });
-    if (!notable.length && items.length > 3) notable = items.slice(0, 5);
-    else if (!notable.length) notable = items;
-
-    notable.forEach(function(item) {
-      var text;
-      if (typeof item === 'string') {
-        text = item;
-      } else if (item.label) {
-        var parts = [item.label];
-        if (item.mean_delta != null) parts.push('Δ ' + (item.mean_delta > 0 ? '+' : '') + item.mean_delta.toFixed(3));
-        if (item.loss_pct != null) parts.push('loss ' + item.loss_pct + '%');
-        if (item.gain_pct != null) parts.push('gain ' + item.gain_pct + '%');
-        text = parts.join(' — ');
-      } else {
-        text = item.description || item.text || JSON.stringify(item);
-      }
-      var cls = 'app-evidence-change-item';
-      if (typeof item === 'object' && (item.gain_pct > item.loss_pct || item.mean_delta > 0.02)) cls += ' positive';
-      var el = document.createElement('div');
-      el.className = cls;
-      el.textContent = text;
-      list.appendChild(el);
-    });
+    evidenceAoiPolygons = [];
+    evidenceSelectedAoi = -1;
+    clearAoiDetail();
+    var aoiBlock = document.getElementById('app-evidence-aoi-block');
+    if (aoiBlock) aoiBlock.hidden = true;
   }
 
   /* ---- Map viewer ---- */
@@ -1398,8 +1049,31 @@
     }).addTo(evidenceMap);
 
     // AOI polygon outlines (coords are [lon, lat] GeoJSON; Leaflet needs [lat, lon])
-    // Multi-AOI runs concatenate all rings; split on ring-closure (first == last point)
-    if (manifest.coords && Array.isArray(manifest.coords)) {
+    evidenceAoiPolygons = [];
+    var perAoi = manifest.per_aoi_enrichment || [];
+    if (perAoi.length > 1) {
+      // Per-AOI mode: draw each AOI polygon as interactive
+      try {
+        var allBounds = L.latLngBounds([]);
+        perAoi.forEach(function(aoi, idx) {
+          if (!aoi.coords || !aoi.coords.length) return;
+          var ll = aoi.coords.map(function(c) { return [c[1], c[0]]; });
+          var poly = L.polygon(ll, {
+            color: 'rgba(88,166,255,.7)',
+            weight: 2,
+            fillOpacity: 0.05
+          }).addTo(evidenceMap);
+          var tip = document.createElement('span');
+          tip.textContent = aoi.name || ('Parcel ' + (idx + 1));
+          poly.bindTooltip(tip, { sticky: true });
+          poly.on('click', function() { selectAoi(idx); });
+          evidenceAoiPolygons.push(poly);
+          allBounds.extend(poly.getBounds());
+        });
+        if (allBounds.isValid()) evidenceMap.fitBounds(allBounds.pad(0.1));
+      } catch (e) { /* skip polygon */ }
+    } else if (manifest.coords && Array.isArray(manifest.coords)) {
+      // Single-AOI fallback: split concatenated ring
       try {
         var rings = [];
         var ringStart = 0;
@@ -1442,17 +1116,89 @@
     setTimeout(function() { if (evidenceMap) evidenceMap.invalidateSize(); }, 200);
   }
 
-  function pcTileUrl(searchId, collection, asset) {
-    asset = asset || 'visual';
-    return 'https://planetarycomputer.microsoft.com/api/data/v1/mosaic/tiles/' +
-      encodeURIComponent(searchId) + '/WebMercatorQuad/{z}/{x}/{y}@2x?' +
-      'collection=' + encodeURIComponent(collection) + '&assets=' + encodeURIComponent(asset);
+  /* ---- Per-AOI selection ---- */
+
+  function populateAoiSelector(perAoi) {
+    var block = document.getElementById('app-evidence-aoi-block');
+    var list = document.getElementById('app-evidence-aoi-list');
+    var resetBtn = document.getElementById('app-evidence-aoi-reset');
+    if (!block || !list) return;
+
+    if (!perAoi || perAoi.length < 2) {
+      block.hidden = true;
+      return;
+    }
+
+    block.hidden = false;
+    list.textContent = '';
+
+    perAoi.forEach(function(aoi, idx) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'app-evidence-aoi-chip';
+      chip.textContent = aoi.name || ('Parcel ' + (idx + 1));
+      chip.addEventListener('click', function() { selectAoi(idx); });
+      list.appendChild(chip);
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function() { resetAoiSelection(); });
+    }
   }
 
-  function pcNdviTileUrl(searchId) {
-    return 'https://planetarycomputer.microsoft.com/api/data/v1/mosaic/tiles/' +
-      encodeURIComponent(searchId) + '/WebMercatorQuad/{z}/{x}/{y}@2x?' +
-      'collection=sentinel-2-l2a&expression=(B08-B04)/(B08%2BB04)&rescale=-0.2,0.8&colormap_name=rdylgn';
+  function selectAoi(idx) {
+    if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
+    var perAoi = evidenceManifest.per_aoi_enrichment;
+    if (idx < 0 || idx >= perAoi.length) return;
+
+    evidenceSelectedAoi = idx;
+    var aoi = perAoi[idx];
+
+    // Highlight selected polygon, dim others
+    evidenceAoiPolygons.forEach(function(poly, i) {
+      if (i === idx) {
+        poly.setStyle({ color: '#5eecc4', weight: 3, fillOpacity: 0.15 });
+      } else {
+        poly.setStyle({ color: 'rgba(88,166,255,.3)', weight: 1, fillOpacity: 0.02 });
+      }
+    });
+
+    // Zoom to selected AOI
+    if (evidenceAoiPolygons[idx] && evidenceMap) {
+      evidenceMap.fitBounds(evidenceAoiPolygons[idx].getBounds().pad(0.15));
+    }
+
+    // Update chip active state
+    var chips = document.querySelectorAll('.app-evidence-aoi-chip');
+    chips.forEach(function(chip, i) {
+      chip.className = 'app-evidence-aoi-chip' + (i === idx ? ' active' : '');
+    });
+
+    // Render per-AOI detail
+    renderAoiDetail(aoi);
+  }
+
+  function resetAoiSelection() {
+    evidenceSelectedAoi = -1;
+
+    // Reset polygon styles
+    evidenceAoiPolygons.forEach(function(poly) {
+      poly.setStyle({ color: 'rgba(88,166,255,.7)', weight: 2, fillOpacity: 0.05 });
+    });
+
+    // Zoom to fit all
+    if (evidenceAoiPolygons.length && evidenceMap) {
+      var allBounds = L.latLngBounds([]);
+      evidenceAoiPolygons.forEach(function(poly) { allBounds.extend(poly.getBounds()); });
+      if (allBounds.isValid()) evidenceMap.fitBounds(allBounds.pad(0.1));
+    }
+
+    // Clear chip active state
+    var chips = document.querySelectorAll('.app-evidence-aoi-chip');
+    chips.forEach(function(chip) { chip.className = 'app-evidence-aoi-chip'; });
+
+    // Clear per-AOI detail
+    clearAoiDetail();
   }
 
   function buildEvidenceFrames(framePlan, searchIds, ndviSearchIds) {
@@ -1625,53 +1371,6 @@
       loading.hidden = true;
       if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
     }
-  }
-
-  function renderEvidenceAnalysis(analysis) {
-    var content = document.getElementById('app-evidence-ai-content');
-    if (!content) return;
-    content.textContent = '';
-
-    if (analysis.summary) {
-      var summaryEl = document.createElement('div');
-      summaryEl.className = 'app-evidence-summary';
-      summaryEl.textContent = analysis.summary;
-      content.appendChild(summaryEl);
-    }
-
-    (analysis.observations || []).forEach(function(obs) {
-      var card = document.createElement('div');
-      card.className = 'app-evidence-obs';
-
-      var header = document.createElement('div');
-      header.className = 'app-evidence-obs-header';
-
-      var cat = document.createElement('span');
-      cat.className = 'app-evidence-obs-category';
-      cat.textContent = (obs.category || 'observation').replace(/_/g, ' ');
-
-      var sev = document.createElement('span');
-      sev.className = 'app-evidence-obs-severity severity-' + (obs.severity || 'normal');
-      sev.textContent = obs.severity || 'normal';
-
-      header.appendChild(cat);
-      header.appendChild(sev);
-      card.appendChild(header);
-
-      if (obs.description) {
-        var desc = document.createElement('p');
-        desc.textContent = obs.description;
-        card.appendChild(desc);
-      }
-      if (obs.recommendation) {
-        var rec = document.createElement('p');
-        rec.className = 'obs-recommendation';
-        rec.textContent = '💡 ' + obs.recommendation;
-        card.appendChild(rec);
-      }
-
-      content.appendChild(card);
-    });
   }
 
   /* ---- EUDR assessment ---- */
@@ -2058,115 +1757,6 @@
     setAnalysisStatus(detail, 'info');
   }
 
-  function parseKmlText(text) {
-    if (!text) return '';
-    return String(text).trim();
-  }
-
-  function parseCoordText(text) {
-    var raw = String(text || '').trim().split(/\s+/).filter(Boolean);
-    var coords = raw.map(function(chunk) {
-      var parts = chunk.split(',');
-      return [parseFloat(parts[1]), parseFloat(parts[0])];
-    }).filter(function(coord) {
-      return !isNaN(coord[0]) && !isNaN(coord[1]);
-    });
-    if (coords.length < 3) return null;
-    if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
-      coords.push(coords[0].slice());
-    }
-    return coords;
-  }
-
-  function parseKmlGeometry(text) {
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(text, 'text/xml');
-    if (doc.getElementsByTagName('parsererror').length) {
-      return { error: 'Could not parse the KML markup. Check that the XML is complete.' };
-    }
-
-    var placemarks = doc.getElementsByTagName('Placemark');
-    var polygons = [];
-    for (var p = 0; p < placemarks.length; p++) {
-      var coordEls = placemarks[p].getElementsByTagName('coordinates');
-      var nameEl = placemarks[p].getElementsByTagName('name')[0];
-      var polygonName = nameEl ? nameEl.textContent.trim() : 'Polygon ' + (polygons.length + 1);
-      for (var c = 0; c < coordEls.length; c++) {
-        var coords = parseCoordText(coordEls[c].textContent);
-        if (coords) polygons.push({ name: polygonName, coords: coords });
-      }
-    }
-
-    if (!polygons.length) {
-      var allCoords = doc.getElementsByTagName('coordinates');
-      for (var i = 0; i < allCoords.length; i++) {
-        var fallbackCoords = parseCoordText(allCoords[i].textContent);
-        if (fallbackCoords) polygons.push({ name: 'Polygon ' + (polygons.length + 1), coords: fallbackCoords });
-      }
-    }
-
-    return {
-      featureCount: placemarks.length || polygons.length,
-      polygons: polygons,
-    };
-  }
-
-  function haversineKm(lat1, lon1, lat2, lon2) {
-    var radiusKm = 6371;
-    var dLat = (lat2 - lat1) * Math.PI / 180;
-    var dLon = (lon2 - lon1) * Math.PI / 180;
-    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    return radiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
-
-  function polygonCentroid(coords) {
-    var latTotal = 0;
-    var lonTotal = 0;
-    var count = coords.length - 1;
-    for (var i = 0; i < count; i++) {
-      latTotal += coords[i][0];
-      lonTotal += coords[i][1];
-    }
-    return [latTotal / count, lonTotal / count];
-  }
-
-  function polygonAreaHa(coords) {
-    if (!coords || coords.length < 4) return 0;
-    var usable = coords.slice(0, -1);
-    var meanLat = usable.reduce(function(sum, coord) { return sum + coord[0]; }, 0) / usable.length;
-    var metresPerDegreeLat = 111320;
-    var metresPerDegreeLon = Math.cos(meanLat * Math.PI / 180) * metresPerDegreeLat;
-    var areaM2 = 0;
-    for (var i = 0; i < coords.length - 1; i++) {
-      var x1 = coords[i][1] * metresPerDegreeLon;
-      var y1 = coords[i][0] * metresPerDegreeLat;
-      var x2 = coords[i + 1][1] * metresPerDegreeLon;
-      var y2 = coords[i + 1][0] * metresPerDegreeLat;
-      areaM2 += (x1 * y2) - (x2 * y1);
-    }
-    return Math.abs(areaM2) / 2 / 10000;
-  }
-
-  function formatDistance(km) {
-    if (km == null || isNaN(km)) return '—';
-    if (km < 1) return '<1 km';
-    return (km >= 10 ? km.toFixed(0) : km.toFixed(1)) + ' km';
-  }
-
-  function formatHectares(ha) {
-    if (ha == null || isNaN(ha)) return '—';
-    if (ha < 1) return ha.toFixed(1) + ' ha';
-    return Math.round(ha).toLocaleString() + ' ha';
-  }
-
-  function determineProcessingMode(aoiCount, maxSpreadKm) {
-    if (aoiCount > 30 || maxSpreadKm > 100) return 'May batch';
-    if (aoiCount > 6 || maxSpreadKm > 25) return 'Bulk-ready';
-    return 'Single run';
-  }
-
   function buildPreflightWarnings(preflight) {
     var warnings = [];
     if (preflight.aoiCount > 30) {
@@ -2548,6 +2138,12 @@
         tokenBody.submission_context = submissionContext;
       }
 
+      // EUDR compliance mode (#600)
+      var eudrCheckbox = document.getElementById('app-eudr-mode');
+      if (eudrCheckbox && eudrCheckbox.checked) {
+        tokenBody.eudr_mode = true;
+      }
+
       var tokenRes;
       try {
         tokenRes = await apiFetch('/api/upload/token', {
@@ -2649,12 +2245,6 @@
     }
   }
 
-  function formatRetention(days) {
-    if (days == null) return 'Custom';
-    if (days === 365) return '1 year';
-    return String(days) + ' days';
-  }
-
   function updateCapabilityFields(caps) {
     document.getElementById('app-concurrency').textContent = caps.concurrency == null ? '—' : String(caps.concurrency);
     document.getElementById('app-ai-access').textContent = caps.ai_insights ? 'Included' : 'Not included';
@@ -2736,6 +2326,13 @@
 
     updateHeroSummary(data);
     renderTierEmulation(data);
+
+    // Show EUDR toggle only for paid tiers
+    var eudrToggle = document.getElementById('app-eudr-toggle');
+    if (eudrToggle) {
+      var paidTiers = ['starter', 'pro', 'team', 'enterprise'];
+      eudrToggle.hidden = !paidTiers.includes(data.tier);
+    }
   }
 
   async function saveTierEmulation() {
@@ -2939,6 +2536,13 @@
           identityProvider: principal.identityProvider || 'aad',
           userRoles: principal.userRoles || [],
         };
+        // Acquire HMAC session token for principal verification (#534).
+        // Waits for API base discovery so the request goes to the right host.
+        (apiDiscoveryReady || Promise.resolve()).then(function() {
+          return apiFetch('/api/auth/session', { method: 'POST' });
+        }).then(function(resp) { return resp.json(); }).then(function(data) {
+          if (data && data.token) _sessionToken = data.token;
+        }).catch(function() { /* session token unavailable — backend may not enforce HMAC */ });
       }
       updateAuthUI();
     }).catch(function(err) {

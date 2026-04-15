@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase
+from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase, run_enrichment
 
 
 def _make_frame(
@@ -197,3 +197,156 @@ class TestMosaicNdviParallel:
         mock_fetch_stat.assert_called_once()
         assert stats[0] == {"mean": 0.4}
         assert raster_paths[0] is None
+
+
+class TestPerAoiEnrichment:
+    """Verify per-AOI enrichment fan-out in run_enrichment (#578)."""
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_per_aoi_enrichment_runs_per_aoi(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """With per_aoi_coords containing 2+ AOIs, each gets its own enrichment."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
+            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+        ]
+
+        result = run_enrichment(
+            coords=[[-50, -10], [30, 1]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert "per_aoi_enrichment" in result
+        assert len(result["per_aoi_enrichment"]) == 2
+        assert result["per_aoi_enrichment"][0]["name"] == "Farm A"
+        assert result["per_aoi_enrichment"][1]["name"] == "Farm B"
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_single_aoi_skips_per_aoi(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """With only 1 AOI, per-AOI enrichment is not triggered."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        per_aoi = [
+            {"name": "Solo Farm", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 50},
+        ]
+
+        result = run_enrichment(
+            coords=[[-50, -10], [-50, -9], [-49, -9]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert "per_aoi_enrichment" not in result
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_per_aoi_failure_does_not_abort(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """If one AOI's enrichment fails, others still succeed."""
+        call_count = 0
+
+        def plan_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 3:  # 3rd call is 2nd per-AOI (1 main + 2 per-AOI)
+                raise RuntimeError("API limit hit")
+            return [{"start": "2024-01-01", "end": "2024-03-01"}]
+
+        mock_plan.side_effect = plan_side_effect
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
+            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+        ]
+
+        result = run_enrichment(
+            coords=[[-50, -10], [30, 1]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert "per_aoi_enrichment" in result
+        assert len(result["per_aoi_enrichment"]) == 2
+        # One succeeded, one failed
+        errors = [r for r in result["per_aoi_enrichment"] if "error" in r]
+        successes = [r for r in result["per_aoi_enrichment"] if "error" not in r]
+        assert len(errors) == 1
+        assert len(successes) == 1
+        assert errors[0]["name"] == "Farm B"
+
+
+class TestCollectPerAoiCoords:
+    """Test _collect_per_aoi_coords helper (#578)."""
+
+    def test_extracts_from_exterior_coords(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {
+                "feature_name": "Farm A",
+                "exterior_coords": [[-50, -10], [-50, -9], [-49, -9]],
+                "area_ha": 100,
+            },
+            {
+                "feature_name": "Farm B",
+                "exterior_coords": [[30, 1], [30, 2], [31, 2]],
+                "area_ha": 200,
+            },
+        ]
+        result = _collect_per_aoi_coords(aois)
+        assert len(result) == 2
+        assert result[0]["name"] == "Farm A"
+        assert result[0]["coords"] == [[-50, -10], [-50, -9], [-49, -9]]
+        assert result[1]["area_ha"] == 200
+
+    def test_falls_back_to_bbox(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [{"feature_name": "Box", "bbox": [-50, -10, -49, -9], "area_ha": 50}]
+        result = _collect_per_aoi_coords(aois)
+        assert len(result) == 1
+        assert len(result[0]["coords"]) == 5  # bbox → closed ring
+
+    def test_skips_aois_without_coords(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {"feature_name": "Good", "exterior_coords": [[1, 2], [3, 4]]},
+            {"feature_name": "Empty"},
+        ]
+        result = _collect_per_aoi_coords(aois)
+        assert len(result) == 1
+        assert result[0]["name"] == "Good"

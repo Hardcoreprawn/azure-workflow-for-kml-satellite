@@ -9,7 +9,8 @@ from typing import Any
 
 import azure.functions as func
 
-from treesight.security.auth import get_user_id, parse_client_principal
+from treesight.config import AUTH_HMAC_KEY
+from treesight.security.auth import get_user_id, parse_client_principal, verify_session_token
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,9 @@ def cors_headers(req: func.HttpRequest) -> dict[str, str]:
     return {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MS-CLIENT-PRINCIPAL",
+        "Access-Control-Allow-Headers": (
+            "Content-Type, Authorization, X-MS-CLIENT-PRINCIPAL, X-Auth-Session"
+        ),
     }
 
 
@@ -108,12 +111,33 @@ def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(status_code=204, headers=cors_headers(req))
 
 
+def _verify_hmac(req: func.HttpRequest, uid: str) -> str | None:
+    """Check the HMAC session token when ``AUTH_HMAC_KEY`` is configured.
+
+    Returns an error message string on failure, or ``None`` on success /
+    when HMAC verification is not enabled.
+    """
+    if not AUTH_HMAC_KEY:
+        return None
+    token = req.headers.get("X-Auth-Session", "")
+    if not token:
+        return "Missing X-Auth-Session header"
+    try:
+        verify_session_token(token, uid, key=AUTH_HMAC_KEY)
+    except ValueError as exc:
+        return str(exc)
+    return None
+
+
 def require_auth(fn):
     """Decorator that validates SWA X-MS-CLIENT-PRINCIPAL on the request.
 
     When no principal header is present and REQUIRE_AUTH is not set,
     the request passes through unauthenticated (local dev graceful
     degradation).
+
+    When ``AUTH_HMAC_KEY`` is configured, a valid ``X-Auth-Session`` HMAC
+    token must also be present (issued by ``/api/auth/session``).
 
     On success, the original function receives two extra keyword arguments:
         auth_claims  — decoded client principal dict
@@ -142,6 +166,11 @@ def require_auth(fn):
             return error_response(401, str(exc), req=req)
 
         uid = get_user_id(principal)
+
+        hmac_err = _verify_hmac(req, uid)
+        if hmac_err:
+            return error_response(401, hmac_err, req=req)
+
         resp = fn(req, auth_claims=principal, user_id=uid)
         _track_req(req, resp, uid, _t0)
         return resp
@@ -150,6 +179,43 @@ def require_auth(fn):
     # the inner function's extra parameters (auth_claims, user_id).
     # The Azure Functions worker treats every parameter as a binding;
     # these are not bindings, so we remove __wrapped__ to hide them.
+    del wrapper.__wrapped__
+    return wrapper
+
+
+def require_auth_hmac_exempt(fn):
+    """Like ``require_auth`` but skips HMAC verification.
+
+    Used for the ``/api/auth/session`` endpoint which *issues* the HMAC
+    token — it cannot require one.
+    """
+
+    @wraps(fn)
+    def wrapper(req: func.HttpRequest) -> func.HttpResponse:
+        if req.method == "OPTIONS":
+            return cors_preflight(req)
+
+        import time as _time
+
+        _t0 = _time.monotonic()
+        principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
+        if not principal_header:
+            if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+                resp = fn(req, auth_claims={}, user_id="anonymous")
+                _track_req(req, resp, "anonymous", _t0)
+                return resp
+            return error_response(401, "Authentication required", req=req)
+
+        try:
+            principal = parse_client_principal(principal_header)
+        except ValueError as exc:
+            return error_response(401, str(exc), req=req)
+
+        uid = get_user_id(principal)
+        resp = fn(req, auth_claims=principal, user_id=uid)
+        _track_req(req, resp, uid, _t0)
+        return resp
+
     del wrapper.__wrapped__
     return wrapper
 

@@ -269,6 +269,197 @@ def compute_ndvi(
         return None
 
 
+# ── Landsat NDVI for historical baseline (#609) ──────────────
+
+# Landsat QA_PIXEL bit flags (Collection 2 Level 2).
+# Bit 1 = dilated cloud, Bit 3 = cloud, Bit 4 = cloud shadow, Bit 5 = snow.
+_LANDSAT_QA_CLEAR_MASK = 0b00111010  # bits 1,3,4,5
+
+
+def _find_best_landsat_scene(
+    bbox: list[float],
+    date_start: str,
+    date_end: str,
+    max_cloud: float = 30.0,
+) -> dict[str, Any] | None:
+    """Search for the least-cloudy Landsat C2 L2 scene in a date window."""
+    import planetary_computer
+    from pystac_client import Client
+
+    catalog = Client.open(STAC_API, modifier=planetary_computer.sign_inplace)
+    search = catalog.search(
+        collections=["landsat-c2-l2"],
+        bbox=bbox,
+        datetime=f"{date_start}/{date_end}",
+        query={"eo:cloud_cover": {"lte": max_cloud}},
+        max_items=1,
+        sortby=[{"field": "eo:cloud_cover", "direction": "asc"}],
+    )
+
+    items = list(search.items())
+    if not items:
+        return None
+
+    item = items[0]
+    # Landsat 8/9: B4=Red, B5=NIR (OLI)
+    red = item.assets.get("red")
+    nir = item.assets.get("nir08")
+    qa = item.assets.get("qa_pixel")
+    if not red or not nir:
+        logger.warning("Landsat item %s missing red/nir08 assets", item.id)
+        return None
+
+    result: dict[str, Any] = {
+        "scene_id": item.id,
+        "red": red.href,
+        "nir": nir.href,
+        "cloud_cover": item.properties.get("eo:cloud_cover", 0.0),
+        "datetime": item.properties.get("datetime", ""),
+        "crs": f"EPSG:{item.properties.get('proj:epsg', 32632)}",
+    }
+    if qa:
+        result["qa_pixel"] = qa.href
+    return result
+
+
+def compute_landsat_ndvi(
+    bbox: list[float],
+    date_start: str,
+    date_end: str,
+    max_cloud: float = 30.0,
+) -> dict[str, Any] | None:
+    """Compute NDVI from Landsat C2 L2 Red/NIR08 COGs.
+
+    Mirrors ``compute_ndvi`` but uses Landsat band names and QA_PIXEL
+    for cloud masking instead of Sentinel-2 SCL.
+
+    Parameters
+    ----------
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326.
+    date_start, date_end : str
+        ISO date strings for the search window.
+    max_cloud : float
+        Maximum cloud cover percentage (higher default for Landsat).
+
+    Returns
+    -------
+    dict or None
+        Same structure as ``compute_ndvi`` on success; None if no scene.
+    """
+    import numpy as np
+    import rasterio
+
+    log_phase(
+        "ndvi",
+        "landsat_search_start",
+        bbox=bbox,
+        window=f"{date_start}/{date_end}",
+    )
+
+    scene = _find_best_landsat_scene(bbox, date_start, date_end, max_cloud)
+    if not scene:
+        log_phase("ndvi", "landsat_no_scene")
+        return None
+
+    log_phase(
+        "ndvi",
+        "landsat_reading_bands",
+        scene_id=scene["scene_id"],
+        cloud_cover=scene["cloud_cover"],
+    )
+
+    try:
+        red_data, red_profile = _cog_band_read(scene["red"], bbox)
+        nir_data, _ = _cog_band_read(scene["nir"], bbox)
+
+        # Ensure same shape (both 30m for Landsat OLI)
+        if red_data.shape != nir_data.shape:
+            min_h = min(red_data.shape[0], nir_data.shape[0])
+            min_w = min(red_data.shape[1], nir_data.shape[1])
+            red_data = red_data[:min_h, :min_w]
+            nir_data = nir_data[:min_h, :min_w]
+
+        # QA_PIXEL cloud masking
+        qa_mask = None
+        qa_masked_count = 0
+        if scene.get("qa_pixel"):
+            try:
+                qa_data, _ = _cog_band_read(scene["qa_pixel"], bbox)
+                # Resample if needed (QA is same resolution as bands for Landsat)
+                if qa_data.shape != red_data.shape:
+                    qa_data = _resample_scl(qa_data, red_data.shape)
+                # Clear = none of the cloud/shadow/snow bits are set
+                qa_mask = (qa_data.astype(np.uint16) & _LANDSAT_QA_CLEAR_MASK) == 0
+            except Exception:
+                logger.warning(
+                    "Landsat QA_PIXEL read failed for %s",
+                    scene["scene_id"],
+                    exc_info=True,
+                )
+
+        red = red_data.astype(np.float32)
+        nir = nir_data.astype(np.float32)
+
+        denom = nir + red
+        with np.errstate(invalid="ignore", divide="ignore"):
+            ndvi = np.where(denom > 0, (nir - red) / denom, np.nan)
+        valid_mask = (red_data > 0) & (nir_data > 0) & np.isfinite(ndvi)
+
+        if qa_mask is not None:
+            qa_masked_count = int(np.sum(valid_mask & ~qa_mask))
+            valid_mask = valid_mask & qa_mask
+
+        valid_pixels = ndvi[valid_mask]
+        if len(valid_pixels) == 0:
+            log_phase("ndvi", "landsat_no_valid_pixels", scene_id=scene["scene_id"])
+            return None
+
+        ndvi_masked = np.where(valid_mask, ndvi, np.nan)
+        buf = io.BytesIO()
+        profile = red_profile.copy()
+        profile.update(
+            count=1,
+            dtype="float32",
+            nodata=np.nan,
+            height=ndvi.shape[0],
+            width=ndvi.shape[1],
+            compress="deflate",
+        )
+        with rasterio.open(buf, "w", **profile) as dst:
+            dst.write(ndvi_masked[np.newaxis, :, :])
+
+        stats = {
+            "mean": round(float(np.mean(valid_pixels)), 4),
+            "min": round(float(np.min(valid_pixels)), 4),
+            "max": round(float(np.max(valid_pixels)), 4),
+            "std": round(float(np.std(valid_pixels)), 4),
+            "median": round(float(np.median(valid_pixels)), 4),
+            "valid_pixels": len(valid_pixels),
+            "total_pixels": int(ndvi.size),
+            "qa_masked_pixels": qa_masked_count,
+            "qa_applied": qa_mask is not None,
+            "scene_id": scene["scene_id"],
+            "cloud_cover": scene["cloud_cover"],
+            "datetime": scene["datetime"],
+            "source": "landsat-c2-l2",
+            "geotiff_bytes": buf.getvalue(),
+        }
+
+        log_phase(
+            "ndvi",
+            "landsat_compute_done",
+            scene_id=scene["scene_id"],
+            mean=stats["mean"],
+            valid_pixels=stats["valid_pixels"],
+        )
+        return stats
+
+    except Exception as exc:
+        logger.warning("Landsat NDVI failed for %s: %s", scene.get("scene_id"), exc)
+        return None
+
+
 def _cog_band_read(
     url: str,
     bbox: list[float],

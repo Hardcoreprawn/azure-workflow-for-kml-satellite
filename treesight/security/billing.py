@@ -157,33 +157,39 @@ def save_subscription_emulation(user_id: str, tier: str) -> None:
         supported = ", ".join(supported_tiers())
         raise ValueError(f"Unsupported tier '{tier}'. Choose one of: {supported}")
 
-    record = {
-        "enabled": True,
-        "tier": normalized,
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
+    from treesight.models.records import SubscriptionRecord
+
+    sub = SubscriptionRecord(
+        user_id=user_id,
+        enabled=True,
+        tier=normalized,
+        updated_at=datetime.now(UTC).isoformat(),
+    )
 
     from treesight.storage.cosmos import upsert_item
 
     upsert_item(
         "subscriptions",
-        {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+        {"id": f"{user_id}:emulation", **sub.model_dump(exclude_none=True)},
     )
 
 
 def clear_subscription_emulation(user_id: str) -> None:
     """Disable any previously saved tier emulation for *user_id*."""
-    record = {
-        "enabled": False,
-        "tier": "",
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
+    from treesight.models.records import SubscriptionRecord
+
+    sub = SubscriptionRecord(
+        user_id=user_id,
+        enabled=False,
+        tier="",
+        updated_at=datetime.now(UTC).isoformat(),
+    )
 
     from treesight.storage.cosmos import upsert_item
 
     upsert_item(
         "subscriptions",
-        {"id": f"{user_id}:emulation", "user_id": user_id, **record},
+        {"id": f"{user_id}:emulation", **sub.model_dump(exclude_none=True)},
     )
 
 
@@ -211,20 +217,26 @@ def get_effective_subscription(user_id: str) -> dict[str, Any]:
 
 def save_subscription(user_id: str, record: dict[str, Any]) -> None:
     """Persist subscription record."""
-    record["updated_at"] = datetime.now(UTC).isoformat()
+    from treesight.models.records import SubscriptionRecord
+
+    sub = SubscriptionRecord(
+        user_id=user_id,
+        **record,
+        updated_at=datetime.now(UTC).isoformat(),
+    )
 
     from treesight.storage.cosmos import upsert_item
 
     upsert_item(
         "subscriptions",
-        {"id": user_id, "user_id": user_id, **record},
+        {"id": user_id, **sub.model_dump(exclude_none=True)},
     )
 
     logger.info(
         "Subscription saved user=%s tier=%s status=%s",
         user_id,
-        record.get("tier"),
-        record.get("status"),
+        sub.tier,
+        sub.status,
     )
 
 

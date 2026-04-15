@@ -418,3 +418,426 @@ def _stub_worldcover(bbox: list[float]) -> dict[str, Any]:
             "dominant_class": "Tree cover",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# IO Annual LULC v2 — year-over-year land cover (#607)
+# ---------------------------------------------------------------------------
+
+IO_LULC_CLASSES: dict[int, str] = {
+    1: "No data",
+    2: "Water",
+    4: "Trees",
+    5: "Flooded vegetation",
+    7: "Crops",
+    8: "Built area",
+    9: "Bare ground",
+    10: "Snow/ice",
+    11: "Clouds",
+    12: "Rangeland",
+}
+
+# Years expected in the collection.
+_IO_LULC_YEARS = list(range(2017, 2024))  # 2017–2023
+
+
+def _analyse_tree_cover_trend(
+    year_results: dict[str, Any],
+) -> tuple[bool, str]:
+    """Analyse year-over-year tree cover for change detection and trend.
+
+    Returns ``(change_detected, trend)`` where trend is one of
+    ``"increasing"``, ``"declining"``, ``"stable"``, or ``"insufficient_data"``.
+    """
+    tree_pcts = [(int(y), v["tree_pct"]) for y, v in sorted(year_results.items())]
+    if len(tree_pcts) < 2:
+        return False, "insufficient_data"
+
+    max_pct = max(p for _, p in tree_pcts)
+    min_pct = min(p for _, p in tree_pcts)
+    change_detected = (max_pct - min_pct) > 10.0
+
+    first_pct = tree_pcts[0][1]
+    last_pct = tree_pcts[-1][1]
+    if last_pct > first_pct + 5:
+        trend = "increasing"
+    elif last_pct < first_pct - 5:
+        trend = "declining"
+    else:
+        trend = "stable"
+
+    return change_detected, trend
+
+
+def query_lulc_annual(
+    bbox: list[float],
+    *,
+    years: list[int] | None = None,
+    stub_mode: bool = False,
+    http_client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    """Query IO Annual LULC v2 for year-over-year land-cover classification.
+
+    Searches ``io-lulc-annual-v02`` on Planetary Computer for each
+    requested year, samples the ``data`` asset COG within *bbox*, and
+    builds a year-over-year classification table.
+
+    Parameters
+    ----------
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
+    years : list[int], optional
+        Years to query. Defaults to 2017–2023.
+    stub_mode : bool
+        When True, return synthetic data without network calls.
+    """
+    if stub_mode:
+        return _stub_lulc_annual(bbox, years)
+
+    target_years = years or _IO_LULC_YEARS
+    stac_url = "https://planetarycomputer.microsoft.com/api/stac/v1"
+
+    def _do_query(client: httpx.Client) -> dict[str, Any]:
+        year_results = _fetch_lulc_years(client, stac_url, bbox, target_years)
+
+        if not year_results:
+            return {"available": False, "reason": "no_lulc_data", "bbox": bbox}
+
+        change_detected, trend = _analyse_tree_cover_trend(year_results)
+
+        return {
+            "available": True,
+            "collection": "io-lulc-annual-v02",
+            "bbox": bbox,
+            "years": year_results,
+            "change_detected": change_detected,
+            "tree_cover_trend": trend,
+        }
+
+    if http_client is None:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
+            return _do_query(client)
+    return _do_query(http_client)
+
+
+def _fetch_lulc_years(
+    client: httpx.Client,
+    stac_url: str,
+    bbox: list[float],
+    target_years: list[int],
+) -> dict[str, Any]:
+    """Fetch IO LULC data for each year, returning per-year results."""
+    year_results: dict[str, Any] = {}
+    for year in target_years:
+        try:
+            search_resp = client.post(
+                f"{stac_url}/search",
+                json={
+                    "collections": ["io-lulc-annual-v02"],
+                    "bbox": bbox,
+                    "datetime": f"{year}-01-01T00:00:00Z/{year}-12-31T23:59:59Z",
+                    "limit": 1,
+                },
+            )
+            search_resp.raise_for_status()
+            items = search_resp.json().get("features", [])
+            if not items:
+                continue
+
+            data_asset = items[0].get("assets", {}).get("data")
+            if not data_asset:
+                continue
+
+            breakdown = _sample_classification_cog(data_asset["href"], bbox, IO_LULC_CLASSES)
+            tree_pct = next(
+                (c["area_pct"] for c in breakdown.get("classes", []) if c["code"] == 4),
+                0.0,
+            )
+            year_results[str(year)] = {
+                "dominant": breakdown.get("dominant_class"),
+                "tree_pct": tree_pct,
+                "class_breakdown": breakdown,
+            }
+        except Exception:
+            logger.warning("IO LULC query failed for year %d", year, exc_info=True)
+    return year_results
+
+
+def _stub_lulc_annual(
+    bbox: list[float],
+    years: list[int] | None = None,
+) -> dict[str, Any]:
+    """Return synthetic IO LULC data for unit tests."""
+    target_years = years or [2020, 2021, 2022, 2023]
+    year_results: dict[str, Any] = {}
+    for year in target_years:
+        tree_pct = 85.0 - (year - 2020) * 0.5  # slight decline
+        year_results[str(year)] = {
+            "dominant": "Trees",
+            "tree_pct": round(tree_pct, 1),
+            "class_breakdown": {
+                "total_pixels": 5000,
+                "classes": [
+                    {
+                        "code": 4,
+                        "label": "Trees",
+                        "pixel_count": int(50 * tree_pct),
+                        "area_pct": tree_pct,
+                    },
+                    {
+                        "code": 7,
+                        "label": "Crops",
+                        "pixel_count": int(50 * (100 - tree_pct)),
+                        "area_pct": round(100 - tree_pct, 1),
+                    },
+                ],
+                "dominant_class": "Trees",
+            },
+        }
+    return {
+        "available": True,
+        "collection": "io-lulc-annual-v02",
+        "bbox": bbox,
+        "years": year_results,
+        "change_detected": False,
+        "tree_cover_trend": "stable",
+    }
+
+
+# ---------------------------------------------------------------------------
+# ALOS Forest/Non-Forest — radar-based classification (#608)
+# ---------------------------------------------------------------------------
+
+ALOS_FNF_CLASSES: dict[int, str] = {
+    1: "Forest (>90% canopy)",
+    2: "Forest (10-90% canopy)",
+    3: "Non-forest",
+    4: "Water",
+}
+
+
+def query_alos_fnf(
+    bbox: list[float],
+    *,
+    stub_mode: bool = False,
+    http_client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    """Query ALOS Forest/Non-Forest mosaic for radar-based forest classification.
+
+    Searches ``alos-fnf-mosaic`` on Planetary Computer, samples the
+    classification raster within *bbox*, and returns forest/non-forest
+    percentages.
+
+    Parameters
+    ----------
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
+    stub_mode : bool
+        When True, return synthetic data without network calls.
+    """
+    if stub_mode:
+        return _stub_alos_fnf(bbox)
+
+    stac_url = "https://planetarycomputer.microsoft.com/api/stac/v1"
+
+    def _do_query(client: httpx.Client) -> dict[str, Any]:
+        try:
+            search_resp = client.post(
+                f"{stac_url}/search",
+                json={
+                    "collections": ["alos-fnf-mosaic"],
+                    "bbox": bbox,
+                    "limit": 1,
+                    "sortby": [
+                        {"field": "datetime", "direction": "desc"},
+                    ],
+                },
+            )
+            search_resp.raise_for_status()
+            items = search_resp.json().get("features", [])
+
+            if not items:
+                return {
+                    "available": False,
+                    "reason": "no_alos_data",
+                    "bbox": bbox,
+                }
+
+            item = items[0]
+            item_id = item.get("id", "")
+            # ALOS FNF uses "C" (classification) asset
+            fnf_asset = item.get("assets", {}).get("C")
+            if not fnf_asset:
+                return {
+                    "available": False,
+                    "reason": "no_classification_asset",
+                    "bbox": bbox,
+                }
+
+            year_str = item.get("properties", {}).get("datetime", "")[:4]
+            year = int(year_str) if year_str.isdigit() else None
+
+            breakdown = _sample_classification_cog(fnf_asset["href"], bbox, ALOS_FNF_CLASSES)
+
+            forest_pct = sum(
+                c["area_pct"] for c in breakdown.get("classes", []) if c["code"] in (1, 2)
+            )
+            non_forest_pct = next(
+                (c["area_pct"] for c in breakdown.get("classes", []) if c["code"] == 3),
+                0.0,
+            )
+            water_pct = next(
+                (c["area_pct"] for c in breakdown.get("classes", []) if c["code"] == 4),
+                0.0,
+            )
+
+            return {
+                "available": True,
+                "item_id": item_id,
+                "collection": "alos-fnf-mosaic",
+                "year": year,
+                "bbox": bbox,
+                "dominant_class": breakdown.get("dominant_class"),
+                "forest_pct": round(forest_pct, 2),
+                "non_forest_pct": round(non_forest_pct, 2),
+                "water_pct": round(water_pct, 2),
+                "source": "ALOS-2 PALSAR-2",
+                "classification": breakdown,
+            }
+
+        except Exception:
+            logger.warning("ALOS FNF query failed", exc_info=True)
+            return {
+                "available": False,
+                "reason": "query_error",
+                "bbox": bbox,
+            }
+
+    if http_client is None:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as client:
+            return _do_query(client)
+    return _do_query(http_client)
+
+
+def _stub_alos_fnf(bbox: list[float]) -> dict[str, Any]:
+    """Return synthetic ALOS FNF data for unit tests."""
+    return {
+        "available": True,
+        "item_id": "ALOS_FNF_2020_STUB",
+        "collection": "alos-fnf-mosaic",
+        "year": 2020,
+        "bbox": bbox,
+        "dominant_class": "Forest (>90% canopy)",
+        "forest_pct": 92.5,
+        "non_forest_pct": 5.8,
+        "water_pct": 1.7,
+        "source": "ALOS-2 PALSAR-2",
+        "classification": {
+            "total_pixels": 8000,
+            "classes": [
+                {
+                    "code": 1,
+                    "label": "Forest (>90% canopy)",
+                    "pixel_count": 6400,
+                    "area_pct": 80.0,
+                },
+                {
+                    "code": 2,
+                    "label": "Forest (10-90% canopy)",
+                    "pixel_count": 1000,
+                    "area_pct": 12.5,
+                },
+                {
+                    "code": 3,
+                    "label": "Non-forest",
+                    "pixel_count": 464,
+                    "area_pct": 5.8,
+                },
+                {
+                    "code": 4,
+                    "label": "Water",
+                    "pixel_count": 136,
+                    "area_pct": 1.7,
+                },
+            ],
+            "dominant_class": "Forest (>90% canopy)",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Shared COG sampling utility
+# ---------------------------------------------------------------------------
+
+
+def _sample_classification_cog(
+    href: str,
+    bbox: list[float],
+    class_labels: dict[int, str],
+) -> dict[str, Any]:
+    """Read a classification COG windowed to *bbox* and return class breakdown.
+
+    Generic version of ``_sample_worldcover_cog`` that works with any
+    uint8 classification raster (IO LULC, ALOS FNF, etc.).
+
+    Parameters
+    ----------
+    href : str
+        Raw COG URL (will be signed via Planetary Computer).
+    bbox : list[float]
+        ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
+    class_labels : dict[int, str]
+        Mapping of pixel code → human label.
+
+    Returns
+    -------
+    dict
+        ``{"total_pixels": int, "classes": [...], "dominant_class": str|None}``
+    """
+    import numpy as np
+    import planetary_computer
+    import rasterio
+    from rasterio.windows import from_bounds as window_from_bounds
+
+    signed_href = planetary_computer.sign_url(href)
+
+    with rasterio.open(signed_href) as src:
+        window = window_from_bounds(bbox[0], bbox[1], bbox[2], bbox[3], transform=src.transform)
+        window = window.intersection(rasterio.windows.Window(0, 0, src.width, src.height))
+        data = src.read(1, window=window)
+
+    total = int(data.size)
+    if total == 0:
+        return {"total_pixels": 0, "classes": [], "dominant_class": None}
+
+    unique, counts = np.unique(data, return_counts=True)
+
+    nodata_mask = unique == 0
+    nodata_count = int(counts[nodata_mask].sum()) if nodata_mask.any() else 0
+    valid_total = total - nodata_count
+    if valid_total == 0:
+        return {"total_pixels": total, "classes": [], "dominant_class": None}
+
+    classes: list[dict[str, Any]] = []
+    for code, count in zip(unique, counts, strict=True):
+        code_int = int(code)
+        if code_int == 0:
+            continue
+        label = class_labels.get(code_int, f"Unknown ({code_int})")
+        classes.append(
+            {
+                "code": code_int,
+                "label": label,
+                "pixel_count": int(count),
+                "area_pct": round(100.0 * int(count) / valid_total, 2),
+            }
+        )
+
+    classes.sort(key=lambda c: c["pixel_count"], reverse=True)
+    dominant = classes[0]["label"] if classes else None
+
+    return {
+        "total_pixels": total,
+        "classes": classes,
+        "dominant_class": dominant,
+    }

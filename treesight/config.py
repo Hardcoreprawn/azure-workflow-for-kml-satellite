@@ -88,6 +88,11 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 # X-MS-CLIENT-PRINCIPAL header in production.
 REQUIRE_AUTH = _env("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
 
+# HMAC auth verification (#534).  When set, require_auth verifies a
+# backend-signed HMAC alongside the client principal to prevent header
+# forgery.  The key should be a random 32+ char secret stored in Key Vault.
+AUTH_HMAC_KEY = _env("AUTH_HMAC_KEY")
+
 # Stripe billing (M4)
 # In production, these resolve via @Microsoft.KeyVault() app setting references.
 # Locally, leave empty to disable Stripe or set in local.settings.json for testing.

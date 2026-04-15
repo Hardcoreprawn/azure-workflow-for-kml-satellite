@@ -34,6 +34,7 @@ from ._helpers import (
     _acq_payload,
     _build_order_lookups,
     _collect_enrichment_coords,
+    _collect_per_aoi_coords,
     _download_payload,
     _poll_payload,
     _post_process_payload,
@@ -75,6 +76,11 @@ def _phase_ingestion(
         feature_list = loaded
         offloaded = True
 
+    # Gate: enforce tier's aoi_limit before expensive fan-out
+    from treesight.pipeline.ingestion import enforce_aoi_limit
+
+    enforce_aoi_limit(feature_count=len(feature_list), tier=inp.get("tier"))
+
     # Fan-out: prepare AOIs
     context.set_custom_status(
         {"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)}
@@ -87,6 +93,7 @@ def _phase_ingestion(
 
     # Claim-check: extract enrichment coords before offloading AOIs
     all_coords = _collect_enrichment_coords(aois)
+    per_aoi_coords = _collect_per_aoi_coords(aois)
 
     # Extract area_ha per AOI for batch routing (before claim-check offload)
     aoi_area_by_name: dict[str, float] = {
@@ -137,6 +144,7 @@ def _phase_ingestion(
         },
         "aoi_refs": aoi_refs,
         "all_coords": all_coords,
+        "per_aoi_coords": per_aoi_coords,
         "aoi_area_by_name": aoi_area_by_name,
     }
 
@@ -441,6 +449,7 @@ def _phase_enrichment(
     inp: dict[str, Any],
     ctx: dict[str, str],
     all_coords: list[list[float]],
+    per_aoi_coords: list[dict[str, Any]],
     output_container: str,
 ) -> _PhaseGen:
     """Fetch weather, NDVI, mosaics, and build enrichment manifest."""
@@ -456,6 +465,7 @@ def _phase_enrichment(
                 "run_enrichment",
                 {
                     "coords": all_coords,
+                    "per_aoi_coords": per_aoi_coords,
                     "project_name": ctx["project_name"],
                     "timestamp": ctx["timestamp"],
                     "output_container": output_container,
@@ -508,7 +518,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         acq = yield from _phase_acquisition(context, inp, ing["aoi_refs"], ing["aoi_area_by_name"])
         ful = yield from _phase_fulfilment(context, inp, ctx, acq)
         enrichment = yield from _phase_enrichment(
-            context, inp, ctx, ing["all_coords"], output_container
+            context, inp, ctx, ing["all_coords"], ing["per_aoi_coords"], output_container
         )
 
         summary = build_pipeline_summary(

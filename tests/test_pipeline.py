@@ -485,6 +485,56 @@ class TestOrchestratorPhaseFunctions:
         assert inspect.isgeneratorfunction(_phase_enrichment)
 
 
+class TestPhaseIngestionAoiLimitGate:
+    """Verify _phase_ingestion enforces aoi_limit before fan-out."""
+
+    def test_over_limit_raises_before_prepare_aoi(self):
+        """Over-limit input fails before scheduling prepare_aoi tasks."""
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        # parse_kml returns a list of features (inline, not offloaded)
+        six_features = [{"geometry": {"type": "Point", "coordinates": [0, 0]}}] * 6
+        ctx.call_activity.return_value = "parse_kml_sentinel"
+
+        inp = {"blob_name": "test.kml", "tier": "free"}  # free allows 5
+        gen = _phase_ingestion(ctx, inp, "inst-1", {"tid": "t1"})
+
+        # First yield: call_activity("parse_kml", ...)
+        gen.send(None)
+        # Send back 6 features (exceeds free tier limit of 5)
+        with pytest.raises(ValueError, match=r"6 AOIs.*Free.*allows 5"):
+            gen.send(six_features)
+
+    def test_within_limit_proceeds_to_fan_out(self):
+        """Within-limit input reaches the prepare_aoi fan-out step."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        three_features = [{"geometry": {"type": "Point", "coordinates": [0, 0]}}] * 3
+        ctx.call_activity.return_value = "activity_sentinel"
+        ctx.task_all.return_value = "task_all_sentinel"
+
+        inp = {"blob_name": "test.kml", "tier": "free"}  # free allows 5
+        gen = _phase_ingestion(ctx, inp, "inst-1", {"tid": "t1"})
+
+        # First yield: parse_kml
+        gen.send(None)
+        # Send back 3 features (within limit) — should proceed, not raise
+        gen.send(three_features)
+        # If we got here, enforce_aoi_limit passed and the generator continued
+        # to the prepare_aoi fan-out step (task_all yield)
+        ctx.set_custom_status.assert_any_call(
+            {"phase": "ingestion", "step": "preparing_aois", "features": 3}
+        )
+
+
 class TestOrchestratorCoordinatorSize:
     """The main orchestrator should be a thin coordinator ≤40 lines."""
 

@@ -48,6 +48,9 @@ def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
 
     existing = read_item("users", user_id, user_id) or {}
     existing.update({"id": user_id, "user_id": user_id, "quota": record})
+    from treesight.models.records import UserRecord
+
+    UserRecord.model_validate(existing)
     upsert_item("users", existing)
 
 

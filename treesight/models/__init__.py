@@ -15,12 +15,19 @@ from treesight.models.outcomes import (
     PipelineSummary,
     PostProcessResult,
 )
+from treesight.models.records import (
+    EnrichmentManifest,
+    RunRecord,
+    SubscriptionRecord,
+    UserRecord,
+)
 
 __all__ = [
     "AOI",
     "AcquisitionResult",
     "BlobEvent",
     "DownloadResult",
+    "EnrichmentManifest",
     "Feature",
     "FulfillmentResult",
     "ImageryFilters",
@@ -30,6 +37,9 @@ __all__ = [
     "OrderState",
     "PipelineSummary",
     "PostProcessResult",
+    "RunRecord",
     "SearchResult",
+    "SubscriptionRecord",
+    "UserRecord",
     "WorkflowState",
 ]

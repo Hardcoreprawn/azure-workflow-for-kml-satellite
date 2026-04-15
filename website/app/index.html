@@ -20,6 +20,9 @@
 <meta name="ai-connection-string" content="">
 <script src="/js/analytics.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
+<script src="/js/canopex-geo.js" defer></script>
+<script src="/js/canopex-helpers.js" defer></script>
+<script src="/js/canopex-evidence-render.js" defer></script>
 <script src="/js/app-shell.js" defer></script>
 </head>
 <body>
@@ -181,6 +184,11 @@
             </div>
           </div>
           <div class="app-analysis-actions">
+            <label class="app-eudr-toggle" id="app-eudr-toggle" hidden>
+              <input type="checkbox" id="app-eudr-mode">
+              <span>EUDR compliance check</span>
+              <span class="app-note">Restricts imagery to post-Dec 2020 for EU Deforestation Regulation evidence.</span>
+            </label>
             <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
           </div>
           </div><!-- /app-analysis-form-fields -->
@@ -303,6 +311,20 @@
                 <div class="app-evidence-block" id="app-evidence-change-block" hidden>
                   <span class="app-content-label">Change detection</span>
                   <div id="app-evidence-change-list"></div>
+                </div>
+
+                <!-- Per-AOI selector (multi-polygon runs only) -->
+                <div class="app-evidence-block" id="app-evidence-aoi-block" hidden>
+                  <div class="app-evidence-aoi-header">
+                    <span class="app-content-label">Per-parcel evidence</span>
+                    <button class="btn btn-secondary btn-sm" id="app-evidence-aoi-reset" type="button">All parcels</button>
+                  </div>
+                  <div class="app-evidence-aoi-list" id="app-evidence-aoi-list"></div>
+                  <div id="app-evidence-aoi-detail" hidden>
+                    <div class="app-evidence-aoi-detail-name" id="app-evidence-aoi-detail-name"></div>
+                    <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
+                    <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
+                  </div>
                 </div>
               </div>
             </div>
