@@ -234,21 +234,23 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     # Persist submission record only after SAS minting succeeds
     # so a minting failure doesn't leave a phantom run.
     submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
-    record: dict = {
-        "submission_id": submission_id,
-        "instance_id": submission_id,
-        "user_id": user_id,
-        "submitted_at": submitted_at,
-        "kml_blob_name": blob_name,
-        "kml_size_bytes": 0,
-        "submission_prefix": "analysis",
-        "provider_name": effective_provider,
-        "status": "submitted",
-    }
-    if body.get("eudr_mode") is True:
-        record["eudr_mode"] = True
-    record.update(submission_context)
-    _persist_submission_record(submission_id, record, user_id)
+    from treesight.models.records import RunRecord
+
+    ctx = {k: v for k, v in submission_context.items() if k != "provider_name"}
+    run = RunRecord(
+        submission_id=submission_id,
+        instance_id=submission_id,
+        user_id=user_id,
+        submitted_at=submitted_at,
+        kml_blob_name=blob_name,
+        kml_size_bytes=0,
+        submission_prefix="analysis",
+        provider_name=effective_provider,
+        status="submitted",
+        eudr_mode=body.get("eudr_mode") is True,
+        **ctx,
+    )
+    _persist_submission_record(submission_id, run.model_dump(exclude_none=True), user_id)
 
     logger.info("Upload URL minted submission_id=%s blob=%s", submission_id, blob_name)
 

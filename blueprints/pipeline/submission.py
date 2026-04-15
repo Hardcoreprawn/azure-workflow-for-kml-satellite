@@ -147,22 +147,25 @@ async def _submit_analysis_request(
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()
-        record: dict[str, Any] = {
-            "submission_id": submission_id,
-            "instance_id": submission_id,
-            "user_id": user_id,
-            "submitted_at": datetime.now(UTC).isoformat(),
-            "kml_blob_name": f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
-            "kml_size_bytes": len(body.get("kml_content", "").encode("utf-8"))
+        from treesight.models.records import RunRecord
+
+        ctx = {k: v for k, v in submission_context.items() if k != "provider_name"}
+        run = RunRecord(
+            submission_id=submission_id,
+            instance_id=submission_id,
+            user_id=user_id,
+            submitted_at=datetime.now(UTC).isoformat(),
+            kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
+            kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))
             if isinstance(body, dict)
             else 0,
-            "submission_prefix": blob_prefix.strip("/") or "analysis",
-            "provider_name": effective_provider,
-            "status": "submitted",
-        }
-        if eudr_mode is True:
-            record["eudr_mode"] = True
-        record.update(submission_context)
+            submission_prefix=blob_prefix.strip("/") or "analysis",
+            provider_name=effective_provider,
+            status="submitted",
+            eudr_mode=eudr_mode is True,
+            **ctx,
+        )
+        record = run.model_dump(exclude_none=True)
         _persist_submission_record(storage, record, user_id, submission_id)
 
     return resp
