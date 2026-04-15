@@ -292,6 +292,84 @@ def _run_aoi_metrics_phase(
     log_phase("enrichment", "aoi_metrics_done", aoi_count=len(per_aoi))
 
 
+# ── Per-AOI enrichment ────────────────────────────────────────
+
+
+def _enrich_single_aoi(
+    aoi_entry: dict[str, Any],
+    *,
+    date_start: str | None,
+    date_end: str | None,
+    cadence: str,
+    max_history_years: int | None,
+    eudr_mode: bool,
+    project_name: str,
+    timestamp: str,
+    output_container: str,
+    storage: BlobStorageClient,
+) -> dict[str, Any]:
+    """Run enrichment for a single AOI and return its results dict."""
+    aoi_name = aoi_entry.get("name", "")
+    coords = aoi_entry["coords"]
+
+    bbox = _coords_to_bbox(coords)
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    center_lat = round((min(lats) + max(lats)) / 2, 4)
+    center_lon = round((min(lons) + max(lons)) / 2, 4)
+
+    frame_plan = build_frame_plan(
+        coords,
+        date_start=date_start,
+        date_end=date_end,
+        cadence=cadence,
+        max_history_years=max_history_years,
+    )
+
+    result: dict[str, Any] = {
+        "name": aoi_name,
+        "coords": coords,
+        "bbox": bbox,
+        "center": {"lat": center_lat, "lon": center_lon},
+        "frame_plan": frame_plan,
+        "area_ha": aoi_entry.get("area_ha", 0.0),
+    }
+
+    if not frame_plan:
+        return result
+
+    first_date = frame_plan[0]["start"]
+    last_date = frame_plan[-1]["end"]
+    _run_weather_phase(center_lat, center_lon, first_date, last_date, result)
+    _run_flood_fire_phase(bbox, center_lat, center_lon, result)
+
+    if eudr_mode:
+        _run_eudr_phase(bbox, center_lat, center_lon, result)
+
+    _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
+        bbox,
+        coords,
+        frame_plan,
+        project_name,
+        timestamp,
+        output_container,
+        storage,
+        result,
+    )
+
+    _run_change_detection_phase(
+        frame_plan,
+        ndvi_raster_paths,
+        output_container,
+        project_name,
+        timestamp,
+        storage,
+        result,
+    )
+
+    return result
+
+
 # ── Main orchestrator ─────────────────────────────────────────
 
 
@@ -303,6 +381,7 @@ def run_enrichment(
     storage: BlobStorageClient,
     aoi_list: list[dict[str, Any]] | None = None,
     *,
+    per_aoi_coords: list[dict[str, Any]] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     date_end: str | None = None,
@@ -404,6 +483,42 @@ def run_enrichment(
     # 6. Per-AOI quantitative metrics
     if aoi_list is not None:
         _run_aoi_metrics_phase(aoi_list, ndvi_stats, results)
+
+    # 6b. Per-AOI enrichment — each AOI gets its own weather, NDVI, change detection
+    if per_aoi_coords and len(per_aoi_coords) > 1:
+        log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
+        per_aoi_enrichment: list[dict[str, Any]] = []
+        for entry in per_aoi_coords:
+            try:
+                aoi_result = _enrich_single_aoi(
+                    entry,
+                    date_start=date_start,
+                    date_end=date_end,
+                    cadence=cadence,
+                    max_history_years=max_history_years,
+                    eudr_mode=eudr_mode,
+                    project_name=project_name,
+                    timestamp=timestamp,
+                    output_container=output_container,
+                    storage=storage,
+                )
+                per_aoi_enrichment.append(aoi_result)
+            except Exception:
+                logger.warning(
+                    "Per-AOI enrichment failed for %s — skipping",
+                    entry.get("name", "?"),
+                    exc_info=True,
+                )
+                per_aoi_enrichment.append(
+                    {"name": entry.get("name", ""), "error": "enrichment_failed"}
+                )
+        results["per_aoi_enrichment"] = per_aoi_enrichment
+        log_phase(
+            "enrichment",
+            "per_aoi_done",
+            total=len(per_aoi_enrichment),
+            succeeded=sum(1 for r in per_aoi_enrichment if "error" not in r),
+        )
 
     # 7. Store manifest
     duration = time.monotonic() - start

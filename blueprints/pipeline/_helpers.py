@@ -198,6 +198,41 @@ def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
     return all_coords
 
 
+def _collect_per_aoi_coords(
+    aois: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Extract per-AOI coordinate data for per-AOI enrichment.
+
+    Returns a list of dicts, one per AOI, each containing:
+    - ``name``: the feature name
+    - ``coords``: the exterior coordinates (or bbox-derived ring)
+    - ``area_ha``: area in hectares
+    """
+    result: list[dict[str, Any]] = []
+    for aoi in aois:
+        coords = aoi.get("exterior_coords", [])
+        if not coords:
+            bb = aoi.get("bbox") or aoi.get("buffered_bbox")
+            if bb and len(bb) == 4:
+                min_lon, min_lat, max_lon, max_lat = bb
+                coords = [
+                    [min_lon, min_lat],
+                    [max_lon, min_lat],
+                    [max_lon, max_lat],
+                    [min_lon, max_lat],
+                    [min_lon, min_lat],
+                ]
+        if coords:
+            result.append(
+                {
+                    "name": aoi.get("feature_name", ""),
+                    "coords": coords,
+                    "area_ha": aoi.get("area_ha", 0.0),
+                }
+            )
+    return result
+
+
 def _build_order_lookups(
     orders: list[dict[str, Any]],
 ) -> tuple[dict[str, str], dict[str, dict[str, str]]]:

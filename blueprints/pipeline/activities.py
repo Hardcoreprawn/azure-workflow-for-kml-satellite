@@ -299,9 +299,12 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
         timestamp=payload["timestamp"],
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
+        per_aoi_coords=payload.get("per_aoi_coords"),
         eudr_mode=payload.get("eudr_mode", False),
         date_start=payload.get("date_start"),
         date_end=payload.get("date_end"),
+        cadence=payload.get("cadence", "maximum"),
+        max_history_years=payload.get("max_history_years"),
     )
 
 
