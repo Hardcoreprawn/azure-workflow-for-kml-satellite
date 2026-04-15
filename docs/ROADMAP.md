@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-15
+Last updated: 2026-04-16
 
 ---
 
@@ -32,6 +32,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #620 | aoi_limit, AOI count, EUDR date filter, data models, per-AOI enrichment (#575, #580, #600, #583, #578) |
 | #620 | Enforce `aoi_limit` at submission time per plan tier (fixes #575) |
 | #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
 | #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
@@ -150,8 +151,8 @@ Per-AOI enrichment so multi-polygon submissions produce useful results.
 
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
-| F.0 | #583 | Data model cleanup: typed models, manifest, run timing | Open | — |
-| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | Open | #583 |
+| F.0 | #583 | Data model cleanup: typed models, manifest, run timing | ✅ PR #620 | — |
+| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | ✅ PR #620 | #583 |
 | F.2 | #574 | Enrichment sub-step progress in UI | Open | #578 |
 | F.3 | #579 | Frontend per-AOI evidence + polygon interaction | Open | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
@@ -183,7 +184,7 @@ Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
-| L.1 | #600 | EUDR mode: post-2020 date filtering | — |
+| L.1 | #600 | EUDR mode: post-2020 date filtering | ✅ PR #620 |
 | L.2 | #601 | Coordinate-to-polygon converter (lat/lon, CSV) | — |
 | L.3 | #603 | Deforestation-free determination per AOI | #578 |
 
