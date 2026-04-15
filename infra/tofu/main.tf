@@ -397,7 +397,7 @@ resource "azurerm_cognitive_deployment" "gpt4o_mini" {
 
 # --- Cosmos DB for NoSQL — Serverless (M4 state persistence) ---
 # Security posture:
-#   - Public network access disabled (access via Azure backbone only)
+#   - Public network access enabled (Container Apps FA connects over public internet)
 #   - Local (key-based) authentication disabled — Entra ID RBAC only
 #   - TLS 1.2 enforced
 #   - Function App uses Managed Identity with Cosmos DB Built-in Data Contributor role
@@ -426,11 +426,11 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   # --- Security hardening ---
-  local_authentication_disabled         = true  # Disable key-based auth; RBAC only
-  public_network_access_enabled         = false # No public internet access
+  local_authentication_disabled         = true     # Disable key-based auth; RBAC only
+  public_network_access_enabled         = true     # Required — Container Apps FA has no private endpoint
   minimal_tls_version                   = "Tls12"
-  network_acl_bypass_for_azure_services = true # Allow Azure services (Functions, Portal diagnostics)
-  ip_range_filter                       = []   # No IP allowlist needed — private access only
+  network_acl_bypass_for_azure_services = true     # Allow Azure services (Functions, Portal diagnostics)
+  ip_range_filter                       = []       # TODO: restrict to FA outbound IPs once stable
 }
 
 resource "azurerm_cosmosdb_sql_database" "main" {
