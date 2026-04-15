@@ -429,8 +429,31 @@ resource "azurerm_cosmosdb_account" "main" {
   local_authentication_disabled         = true     # Disable key-based auth; RBAC only
   public_network_access_enabled         = true     # Required — Container Apps FA has no private endpoint
   minimal_tls_version                   = "Tls12"
-  network_acl_bypass_for_azure_services = true     # Allow Azure services (Functions, Portal diagnostics)
-  ip_range_filter                       = []       # TODO: restrict to FA outbound IPs once stable
+  network_acl_bypass_for_azure_services = true     # Portal/diagnostics only; does NOT cover Container Apps public-egress path
+  ip_range_filter                       = []       # Managed by azapi_update_resource.cosmos_ip_rules below
+
+  lifecycle {
+    ignore_changes = [ip_range_filter] # Managed by azapi_update_resource after FA creation
+  }
+}
+
+# Restrict Cosmos DB firewall to FA outbound IPs.  Applied as a separate
+# update resource to avoid a circular dependency: FA body → Cosmos endpoint,
+# Cosmos ip_range_filter → FA outbound IPs.
+resource "azapi_update_resource" "cosmos_ip_rules" {
+  count       = var.enable_cosmos_db ? 1 : 0
+  type        = "Microsoft.DocumentDB/databaseAccounts@2024-11-15"
+  resource_id = azurerm_cosmosdb_account.main[0].id
+
+  body = {
+    properties = {
+      ipRules = [
+        for ip in split(",", azapi_resource.function_app.output.properties.possibleOutboundIpAddresses) : {
+          ipAddressOrRange = ip
+        }
+      ]
+    }
+  }
 }
 
 resource "azurerm_cosmosdb_sql_database" "main" {
@@ -791,7 +814,7 @@ resource "azapi_resource" "function_app" {
     }
   }
 
-  response_export_values = ["id", "name", "properties.defaultHostName"]
+  response_export_values = ["id", "name", "properties.defaultHostName", "properties.possibleOutboundIpAddresses"]
 }
 
 resource "azurerm_static_web_app" "main" {
