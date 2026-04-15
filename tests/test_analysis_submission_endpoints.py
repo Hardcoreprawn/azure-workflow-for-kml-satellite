@@ -843,3 +843,100 @@ class TestPersistSubmissionRecordCosmos:
             _persist_submission_record(storage, record, "u1", "s1")
 
         storage.upload_json.assert_called_once()
+
+
+class TestCoordinateSubmission:
+    """Tests for coordinate/CSV submission paths (#601)."""
+
+    def test_coordinate_text_submission(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"coordinates": "51.5, -0.1"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        # Verify KML was generated from coordinates
+        upload_calls = list(mock_storage_cls.return_value.upload_bytes.call_args_list)
+        assert len(upload_calls) >= 1
+        kml_bytes = upload_calls[0][0][2]
+        assert b"<kml" in kml_bytes
+        assert b"Point" in kml_bytes  # Feature name contains "Point"
+
+    def test_csv_submission(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"csv_content": "name,lat,lon\nFarm A,51.5,-0.1\nFarm B,48.8,2.3"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        kml_bytes = mock_storage_cls.return_value.upload_bytes.call_args_list[0][0][2]
+        assert b"Farm A" in kml_bytes
+        assert b"Farm B" in kml_bytes
+
+    def test_invalid_coordinates_returns_400(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"coordinates": "not valid coords"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 400
+
+    def test_invalid_csv_returns_400(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"csv_content": "x,y\n1,2"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 400
+
+    def test_kml_still_works(self):
+        """Classic KML submission still functions after coordinate support added."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml><Document></Document></kml>"},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202

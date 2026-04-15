@@ -54,16 +54,90 @@ def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
 
 
 def _validated_kml_bytes(req: func.HttpRequest, body: Any) -> bytes | func.HttpResponse:
-    """Return validated KML bytes or an error response."""
-    kml_content = body.get("kml_content", "") if isinstance(body, dict) else ""
+    """Return validated KML bytes or an error response.
+
+    Accepts ``kml_content`` (raw KML), ``coordinates`` (lat/lon text),
+    or ``csv_content`` (CSV with lat/lon columns).  Coordinate inputs
+    are converted to minimal KML so the rest of the pipeline is unchanged.
+    """
+    if not isinstance(body, dict):
+        return error_response(400, "kml_content, coordinates, or csv_content is required", req=req)
+
+    # --- coordinate text input (#601) ---
+    coordinates = body.get("coordinates", "")
+    if isinstance(coordinates, str) and coordinates.strip():
+        return _coordinates_to_kml(coordinates, body, req)
+
+    # --- CSV input (#601) ---
+    csv_content = body.get("csv_content", "")
+    if isinstance(csv_content, str) and csv_content.strip():
+        return _csv_to_kml(csv_content, body, req)
+
+    # --- classic KML input ---
+    kml_content = body.get("kml_content", "")
     if not isinstance(kml_content, str) or not kml_content.strip():
-        return error_response(400, "kml_content is required", req=req)
+        return error_response(400, "kml_content, coordinates, or csv_content is required", req=req)
 
     kml_bytes = kml_content.encode("utf-8")
     if len(kml_bytes) > MAX_KML_FILE_SIZE_BYTES:
         return error_response(400, f"KML exceeds {MAX_KML_FILE_SIZE_BYTES} bytes", req=req)
 
     return kml_bytes
+
+
+def _coordinates_to_kml(text: str, body: dict, req: func.HttpRequest) -> bytes | func.HttpResponse:
+    """Convert coordinate text to KML bytes."""
+    from treesight.parsers.coordinate_parser import parse_coordinate_text
+
+    buffer_m = body.get("buffer_m", 500.0)
+    if not isinstance(buffer_m, (int, float)) or buffer_m <= 0:
+        buffer_m = 500.0
+
+    try:
+        features = parse_coordinate_text(text, buffer_m=float(buffer_m))
+    except ValueError as exc:
+        return error_response(400, str(exc), req=req)
+
+    return _features_to_kml_bytes(features)
+
+
+def _csv_to_kml(csv_text: str, body: dict, req: func.HttpRequest) -> bytes | func.HttpResponse:
+    """Convert CSV text to KML bytes."""
+    from treesight.parsers.coordinate_parser import parse_csv
+
+    buffer_m = body.get("buffer_m", 500.0)
+    if not isinstance(buffer_m, (int, float)) or buffer_m <= 0:
+        buffer_m = 500.0
+
+    try:
+        features = parse_csv(csv_text, buffer_m=float(buffer_m))
+    except ValueError as exc:
+        return error_response(400, str(exc), req=req)
+
+    return _features_to_kml_bytes(features)
+
+
+def _features_to_kml_bytes(features: list) -> bytes:
+    """Convert a list of Feature objects to minimal KML XML bytes."""
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    kml = Element("kml", xmlns="http://www.opengis.net/kml/2.2")
+    doc = SubElement(kml, "Document")
+    SubElement(doc, "name").text = "Coordinate Input"
+
+    for f in features:
+        pm = SubElement(doc, "Placemark")
+        SubElement(pm, "name").text = f.name
+        if f.description:
+            SubElement(pm, "description").text = f.description
+        polygon = SubElement(pm, "Polygon")
+        outer = SubElement(polygon, "outerBoundaryIs")
+        lr = SubElement(outer, "LinearRing")
+        # KML coordinates: lon,lat,alt separated by whitespace
+        coord_str = " ".join(f"{c[0]},{c[1]},0" for c in f.exterior_coords)
+        SubElement(lr, "coordinates").text = coord_str
+
+    return tostring(kml, encoding="unicode", xml_declaration=True).encode("utf-8")
 
 
 @bp.route(route="analysis/submit", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -157,7 +231,7 @@ async def _submit_analysis_request(
             submitted_at=datetime.now(UTC).isoformat(),
             kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
             kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))
-            if isinstance(body, dict)
+            if isinstance(body, dict) and body.get("kml_content")
             else 0,
             submission_prefix=blob_prefix.strip("/") or "analysis",
             provider_name=effective_provider,
