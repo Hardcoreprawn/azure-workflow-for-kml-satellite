@@ -354,7 +354,7 @@ class TestEnforceAoiLimit:
 
         from treesight.pipeline.ingestion import enforce_aoi_limit
 
-        with pytest.raises(ValueError, match=r"6 features.*free.*allows 5"):
+        with pytest.raises(ValueError, match=r"6 AOIs.*Free.*allows 5"):
             enforce_aoi_limit(feature_count=6, tier="free")
 
     def test_rejects_demo_tier_over_one(self) -> None:
@@ -363,7 +363,7 @@ class TestEnforceAoiLimit:
 
         from treesight.pipeline.ingestion import enforce_aoi_limit
 
-        with pytest.raises(ValueError, match=r"2 features.*demo.*allows 1"):
+        with pytest.raises(ValueError, match=r"2 AOIs.*Demo.*allows 1"):
             enforce_aoi_limit(feature_count=2, tier="demo")
 
     def test_enterprise_allows_unlimited(self) -> None:
@@ -379,7 +379,7 @@ class TestEnforceAoiLimit:
         from treesight.pipeline.ingestion import enforce_aoi_limit
 
         enforce_aoi_limit(feature_count=50, tier="pro")
-        with pytest.raises(ValueError, match=r"51 features.*pro.*allows 50"):
+        with pytest.raises(ValueError, match=r"51 AOIs.*Pro.*allows 50"):
             enforce_aoi_limit(feature_count=51, tier="pro")
 
     def test_unknown_tier_defaults_to_free(self) -> None:
@@ -389,7 +389,7 @@ class TestEnforceAoiLimit:
         from treesight.pipeline.ingestion import enforce_aoi_limit
 
         enforce_aoi_limit(feature_count=5, tier="unknown_tier")
-        with pytest.raises(ValueError, match=r"6 features.*allows 5"):
+        with pytest.raises(ValueError, match=r"6 AOIs.*allows 5"):
             enforce_aoi_limit(feature_count=6, tier="unknown_tier")
 
     def test_error_message_includes_upgrade_hint(self) -> None:
@@ -400,3 +400,13 @@ class TestEnforceAoiLimit:
 
         with pytest.raises(ValueError, match=r"[Uu]pgrade"):
             enforce_aoi_limit(feature_count=6, tier="free")
+
+    def test_none_tier_defaults_to_free(self) -> None:
+        """None tier falls back to free-tier limits."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        enforce_aoi_limit(feature_count=5, tier=None)
+        with pytest.raises(ValueError, match=r"6 AOIs.*Free.*allows 5"):
+            enforce_aoi_limit(feature_count=6, tier=None)

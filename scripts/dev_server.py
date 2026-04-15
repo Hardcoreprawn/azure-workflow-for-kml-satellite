@@ -86,7 +86,13 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         request = urllib.request.Request(target, data=body, method=self.command)
 
         # Forward relevant headers
-        for header in ("Content-Type", "Accept", "Authorization"):
+        for header in (
+            "Content-Type",
+            "Accept",
+            "Authorization",
+            "X-MS-CLIENT-PRINCIPAL",
+            "X-Auth-Session",
+        ):
             val = self.headers.get(header)
             if val:
                 request.add_header(header, val)

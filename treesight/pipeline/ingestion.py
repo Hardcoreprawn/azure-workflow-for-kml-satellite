@@ -57,12 +57,13 @@ def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> li
     return features
 
 
-def enforce_aoi_limit(feature_count: int, tier: str) -> None:
+def enforce_aoi_limit(feature_count: int, tier: str | None) -> None:
     """Raise ValueError if feature_count exceeds the tier's aoi_limit."""
     from treesight.security.billing import PLAN_CATALOG, normalize_tier
 
     normalized = normalize_tier(tier)
     plan = PLAN_CATALOG.get(normalized, PLAN_CATALOG["free"])
+    label = plan.get("label", normalized.title())
     aoi_limit = plan.get("aoi_limit")
 
     # None means unlimited (enterprise)
@@ -71,8 +72,8 @@ def enforce_aoi_limit(feature_count: int, tier: str) -> None:
 
     if feature_count > aoi_limit:
         raise ValueError(
-            f"This file contains {feature_count} features but your "
-            f"{normalized} plan allows {aoi_limit} per submission. "
+            f"This file contains {feature_count} AOIs but your "
+            f"{label} plan allows {aoi_limit} per submission. "
             f"Upgrade your plan for higher limits."
         )
 
