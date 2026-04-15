@@ -848,13 +848,13 @@ class TestParseKmlGeometryHoleHandling:
     outerBoundaryIs elements when present.
     """
 
-    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+    APP_SHELL = WEBSITE / "js" / "canopex-geo.js"
 
     def test_uses_outer_boundary_extraction(self):
         """parseKmlGeometry must look for outerBoundaryIs before extracting coordinates."""
         content = self.APP_SHELL.read_text()
         fn_start = content.find("function parseKmlGeometry(")
-        assert fn_start != -1, "parseKmlGeometry not found in app-shell.js"
+        assert fn_start != -1, "parseKmlGeometry not found in canopex-geo.js"
 
         fn_end = content.find("\n  function ", fn_start + 1)
         if fn_end == -1:
