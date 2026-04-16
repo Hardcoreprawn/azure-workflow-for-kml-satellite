@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
 ---
 
@@ -41,15 +41,8 @@ Stages 2D and 2E can proceed in parallel.
 |----|---------|
 | #615 | EUDR landing page, per-parcel export, audit PDF (fixes #533, #605) |
 | #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
-| -- | F.7: Audit-grade EUDR evidence PDF report (f586892, closes #587) |
-| -- | F.4: Spatial clustering for AOIs (d01f642, closes #581) |
-| -- | F.5: EUDR per-parcel deforestation evidence export (aee1756, closes #582) |
 | #624 | DF retry on acquisition activities, remove dead Cosmos IP rules, infracost fix |
-| #623 | Use lxml instead of stdlib xml for KML generation — resolves Semgrep #2869 |
-| #622 | Re-enable Cosmos DB public network access — fixes 24h alert storm (fixes #621) |
 | #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
-| #597 | Stale-while-revalidate localStorage caching for billing + history (fixes #596) |
-| #594 | Roadmap update: recently landed PRs #576, #577, #591, #592 |
 | #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse (fixes #571) |
 
 ---
@@ -136,9 +129,11 @@ Auth + billing security. Prerequisites for any paid product.
 | R.2 | #535 | E2e Stripe billing flow on live site | Open | #520 |
 | R.3 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
 | R.4 | #589 | Billing ledger, metered overage, refunds | Open | R.2 |
+| R.5 | #572 | Audit unauthenticated API endpoints | Open | — |
 
 **Exit:** Forged headers rejected. Free → paid upgrade → Stripe → quota
 increase works. Overage metered. Failed runs refunded. Docs match reality.
+Anonymous endpoints audited and gated or documented.
 
 ---
 
@@ -191,8 +186,11 @@ Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
+| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | D.4 |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
+D.4 registered the source; D.5 adds full cross-sensor NDVI computation,
+QA_PIXEL cloud masking, and 7-year pre-cutoff baseline.
 
 ### 2G.2 — Pipeline Logic
 
@@ -219,6 +217,7 @@ invited users auto-join on sign-in via SWA email matching.
 | FE.2 | — | EUDR-specific UI polish on `/eudr/` | #610 (2C.8) |
 | FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
+| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | FE.3 |
 
 ### 2G.5 — Revenue
 
@@ -295,14 +294,17 @@ GFW alerts.
 | #584 | Data model internal consistency | #583 model cleanup |
 | #252 | Rate limiter persistence | Stage 4 multi-instance |
 | #228 | Distributed replay store | Stage 4 multi-instance |
-| #513 | Infracost usage metric name | Next infra PR |
-| #517 | CSP img-src unused CartoDB | Next CSP change |
-| #518 | CSP connect-src missing unpkg | Next CSP change |
+| #573 | CSP connect-src wildcards too broad — pin hostnames | Next CSP change |
 | #519 | Self-host Leaflet | Nice-to-have |
+| #593 | Pydantic v2 deprecation warning (planetary-computer) | Next dependency update |
+| #625 | Refactor poll_order to DF monitor pattern | Next pipeline PR |
+| #550 | Upgrade GitHub Actions to Node.js 24 (deadline June 2026) | Next CI PR |
+| #551 | Upgrade CodeQL Action v3 → v4 (deadline Dec 2026) | #550 CI PR |
+| #569 | Verify/decommission old treesight.jablab.dev domain | Next infra PR |
+| #570 | Public repo operational docs — risk acceptance | Next security review |
 | #525 | Skip unchanged app settings | Next deploy PR |
 | #526 | Batch tofu output calls | Next deploy PR |
-| #527 | CSP blocks Leaflet source map | Next CSP change |
-| #528, #529 | Duplicate split FA issues | Superseded by #466 |
+| #529 | Split function app BFF + pipeline | Superseded by #466 |
 
 ---
 

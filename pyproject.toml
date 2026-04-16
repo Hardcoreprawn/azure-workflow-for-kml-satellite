@@ -54,6 +54,11 @@ pythonpath = [".", "scripts"]
 markers = [
     "integration: tests requiring a live Azurite instance",
 ]
+filterwarnings = [
+    # planetary-computer 1.0.0 uses class-based Config (Pydantic v2 deprecated).
+    # Suppress until upstream fixes; revisit when Pydantic v3 lands. (#593)
+    "ignore:Support for class-based `config`:DeprecationWarning:planetary_computer",
+]
 
 [tool.ruff]
 target-version = "py311"
