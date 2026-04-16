@@ -167,6 +167,7 @@ class TestMosaicNdviParallel:
         assert "2025_winter.tif" in call_args[0][1]
         assert raster_paths[0] is not None
         # geotiff_bytes should be stripped from stats
+        assert stats[0] is not None
         assert "geotiff_bytes" not in stats[0]
 
     @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
