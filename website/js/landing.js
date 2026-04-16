@@ -10,7 +10,7 @@
   async function initAuth() {
     try {
       var res = await fetch('/.auth/me');
-      if (!res.ok) { updateAuthUI(); return; }
+      if (!res.ok) { updateAuthUI(); updateSampleReportGate(); return; }
       var data = await res.json();
       var principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
@@ -255,8 +255,8 @@
       btn.textContent = 'Download Full PDF Report';
       if (note) note.style.display = 'none';
       btn.onclick = function() {
-        // Placeholder — actual PDF download to be implemented
-        alert('PDF report download will be available soon. The sample assessment data shown above is representative of the full report output.');
+        // Placeholder — actual PDF export wired in Stage 2F (#605)
+        alert('PDF report download coming soon. The assessment data shown above is representative of the full evidence package.');
       };
     } else {
       btn.textContent = 'Sign In to Download PDF';
