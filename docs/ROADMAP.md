@@ -165,8 +165,8 @@ Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidenc
 | F.2 | #574 | Enrichment sub-step progress in UI | ✅ | #578 |
 | F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
-| F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | #578, #579 |
-| F.6 | #585 | Progressive delivery: stream per-AOI results | ✅ | #578 |
+| F.5 | #582 | EUDR per-parcel deforestation evidence export | ✅ aee1756 | #578, #579 |
+| F.6 | #585 | Progressive delivery: stream per-AOI results | ✅ PR #626 | #578 |
 | F.7 | #587 | Audit-grade EUDR PDF report | Open | #578, #582 |
 
 **Exit:** 50-polygon submission → per-AOI NDVI/weather/change. Click polygon
