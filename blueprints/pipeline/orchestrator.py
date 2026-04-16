@@ -193,7 +193,8 @@ def _phase_acquisition(
         else:
             orders.extend(batch_results)
 
-    # Poll orders
+    # Poll orders — poll_order has its own internal retry loop with backoff
+    # (treesight.pipeline.acquisition.poll_order), so DF-level retry is not added here.
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
     poll_tasks = [
         context.call_activity("poll_order", _poll_payload(o, inp))
