@@ -500,11 +500,38 @@ class TestBuildEudrGeoJson:
         props = result["features"][1]["properties"]
         assert len(props["determination_flags"]) == 1
 
-    def test_empty_per_aoi_returns_empty(self):
-        result = _build_eudr_geojson({"per_aoi_enrichment": []})
-        assert result["features"] == []
+    def test_empty_per_aoi_falls_back_to_toplevel(self):
+        """Single-parcel runs have no per_aoi_enrichment; use top-level evidence."""
+        manifest = {
+            "per_aoi_enrichment": [],
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "center": {"lat": -1.305, "lon": 36.805},
+            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "worldcover": {
+                "available": True,
+                "land_cover": {
+                    "dominant_class": "Tree cover",
+                    "classes": [{"code": 10, "area_pct": 80.0}],
+                },
+            },
+            "wdpa": {"checked": True, "is_protected": False},
+            "ndvi_stats": [{"mean": 0.7, "min": 0.5, "max": 0.85, "std": 0.1}],
+            "change_detection": {"summary": {"trajectory": "stable", "comparisons": 1}},
+        }
+        result = _build_eudr_geojson(manifest)
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["determination_status"] == "deforestation_free"
 
-    def test_no_per_aoi_returns_empty(self):
+    def test_no_per_aoi_falls_back_to_toplevel(self):
+        manifest = {
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "determination": {"status": "unknown", "confidence": "low", "flags": []},
+        }
+        result = _build_eudr_geojson(manifest)
+        assert len(result["features"]) == 1
+
+    def test_no_per_aoi_no_toplevel_returns_empty(self):
         result = _build_eudr_geojson({})
         assert result["features"] == []
 
@@ -549,10 +576,29 @@ class TestBuildEudrCsv:
         rows = list(reader)
         assert rows[2]["determination_status"] == "error"
 
-    def test_empty_per_aoi_returns_header_only(self):
-        result = _build_eudr_csv({"per_aoi_enrichment": []})
-        lines = result.strip().split("\n")
-        assert len(lines) == 1
+    def test_empty_per_aoi_falls_back_to_toplevel(self):
+        """Single-parcel: build one CSV row from top-level evidence."""
+        manifest = {
+            "per_aoi_enrichment": [],
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "center": {"lat": -1.305, "lon": 36.805},
+            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "worldcover": {
+                "available": True,
+                "land_cover": {
+                    "dominant_class": "Tree cover",
+                    "classes": [{"code": 10, "area_pct": 80.0}],
+                },
+            },
+            "wdpa": {"checked": True, "is_protected": False},
+            "ndvi_stats": [{"mean": 0.7, "min": 0.5, "max": 0.85, "std": 0.1}],
+            "change_detection": {"summary": {"trajectory": "stable", "comparisons": 1}},
+        }
+        result = _build_eudr_csv(manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 1
+        assert rows[0]["determination_status"] == "deforestation_free"
 
 
 class TestBuildPdfEudrPerParcel:

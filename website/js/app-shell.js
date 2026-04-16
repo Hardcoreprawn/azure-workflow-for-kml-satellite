@@ -1732,7 +1732,7 @@
     return 'submit';
   }
 
-  var ENRICHMENT_STEP_LABELS = {
+  const ENRICHMENT_STEP_LABELS = {
     data_sources_and_imagery: 'Fetching weather, flood/fire context, and registering satellite mosaics in parallel.',
     per_aoi: 'Running per-parcel enrichment across AOIs in parallel.',
     finalizing: 'Merging results and storing the analysis manifest.'
@@ -1746,7 +1746,7 @@
     if (runtime !== 'Completed' && phase === 'enrichment') {
       var cs = data && data.customStatus;
       var step = cs && cs.step;
-      var stepLabel = step && ENRICHMENT_STEP_LABELS[step];
+      const stepLabel = step && ENRICHMENT_STEP_LABELS[step];
       if (stepLabel) {
         detail = stepLabel;
         if (step === 'per_aoi' && cs.aois) {

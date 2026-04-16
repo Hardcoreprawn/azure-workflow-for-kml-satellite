@@ -282,14 +282,42 @@ def _build_bulk_csv(manifest: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _toplevel_as_single_aoi(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build a single-element per-AOI list from top-level manifest evidence.
+
+    Used as fallback when ``per_aoi_enrichment`` is empty (single-parcel runs).
+    Returns an empty list if the manifest has no usable evidence.
+    """
+    if not manifest.get("determination") and not manifest.get("coords"):
+        return []
+    return [
+        {
+            "name": manifest.get("feature_name", ""),
+            "coords": manifest.get("coords", []),
+            "center": manifest.get("center", {}),
+            "area_ha": manifest.get("area_ha", 0.0),
+            "determination": manifest.get("determination", {}),
+            "worldcover": manifest.get("worldcover", {}),
+            "wdpa": manifest.get("wdpa", {}),
+            "ndvi_stats": manifest.get("ndvi_stats", []),
+            "change_detection": manifest.get("change_detection", {}),
+        }
+    ]
+
+
 def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
     """Build a per-parcel GeoJSON FeatureCollection with EUDR evidence.
 
     Each AOI in ``per_aoi_enrichment`` becomes a Feature with EUDR-specific
     properties: determination status, WorldCover baseline, WDPA overlap,
     NDVI summary, and change trajectory.
+
+    For single-parcel runs (no ``per_aoi_enrichment``), falls back to
+    top-level manifest evidence.
     """
     per_aoi = manifest.get("per_aoi_enrichment", [])
+    if not per_aoi:
+        per_aoi = _toplevel_as_single_aoi(manifest)
 
     features: list[dict[str, Any]] = []
     for aoi in per_aoi:
@@ -385,8 +413,13 @@ def _build_eudr_csv(manifest: dict[str, Any]) -> str:
 
     One row per AOI from ``per_aoi_enrichment``.  Failed AOIs are included
     with ``determination_status`` = ``error``.
+
+    For single-parcel runs (no ``per_aoi_enrichment``), falls back to
+    top-level manifest evidence.
     """
     per_aoi = manifest.get("per_aoi_enrichment", [])
+    if not per_aoi:
+        per_aoi = _toplevel_as_single_aoi(manifest)
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=_EUDR_CSV_FIELDS)

@@ -203,8 +203,8 @@ def _collect_per_aoi_coords(
 ) -> list[dict[str, Any]]:
     """Extract per-AOI coordinate data for per-AOI enrichment.
 
-    Assigns a ``cluster`` label so the enrichment phase knows which AOIs
-    share spatial proximity and can share satellite imagery tiles (#581).
+    Assigns a ``cluster`` label so downstream consumers (enrichment, spatial
+    clustering #581) can identify spatially proximate AOIs.
 
     Returns a list of dicts, one per AOI, each containing:
     - ``name``: the feature name

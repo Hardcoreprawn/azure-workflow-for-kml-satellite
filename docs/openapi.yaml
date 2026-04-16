@@ -933,6 +933,8 @@ paths:
       operationId: billingPortal
       tags: [billing]
       summary: Create a Stripe customer portal session
+      security:
+        - swaAuth: []
       responses:
         "200":
           description: Portal session URL
@@ -940,6 +942,8 @@ paths:
             application/json:
               schema:
                 type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /billing/webhook:
     post:
