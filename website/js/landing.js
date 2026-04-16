@@ -1,18 +1,18 @@
 (function() {
   'use strict';
 
-  var currentAccount = null;
-  var _apiBase = '';
-  var _clientPrincipal = null;
+  let currentAccount = null;
+  let _apiBase = '';
+  let _clientPrincipal = null;
 
   function authEnabled() { return true; }
 
   async function initAuth() {
     try {
-      var res = await fetch('/.auth/me');
+      const res = await fetch('/.auth/me');
       if (!res.ok) { updateAuthUI(); updateSampleReportGate(); return; }
-      var data = await res.json();
-      var principal = data && data.clientPrincipal;
+      const data = await res.json();
+      const principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
         _clientPrincipal = principal;
         currentAccount = {
@@ -38,10 +38,10 @@
   }
 
   function updateAuthUI() {
-    var loginBtn = document.getElementById('auth-login-btn');
-    var logoutBtn = document.getElementById('auth-logout-btn');
-    var userSpan = document.getElementById('auth-user');
-    var dashLink = document.getElementById('auth-dashboard-link');
+    const loginBtn = document.getElementById('auth-login-btn');
+    const logoutBtn = document.getElementById('auth-logout-btn');
+    const userSpan = document.getElementById('auth-user');
+    const dashLink = document.getElementById('auth-dashboard-link');
 
     if (!authEnabled()) {
       if (loginBtn) loginBtn.style.display = 'none';
@@ -52,7 +52,7 @@
     }
 
     if (currentAccount) {
-      var name = currentAccount.name || currentAccount.userId || 'User';
+      const name = currentAccount.name || currentAccount.userId || 'User';
       if (userSpan) userSpan.textContent = name;
       if (userSpan) userSpan.style.display = 'inline';
       if (loginBtn) loginBtn.style.display = 'none';
@@ -70,17 +70,17 @@
     opts = opts || {};
     opts.headers = opts.headers || {};
     if (_clientPrincipal) {
-      var jsonStr = JSON.stringify(_clientPrincipal);
-      var bytes = new TextEncoder().encode(jsonStr);
-      var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
+      const jsonStr = JSON.stringify(_clientPrincipal);
+      const bytes = new TextEncoder().encode(jsonStr);
+      const binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
       opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
-    var url = _apiBase ? _apiBase + path : path;
-    var resp = await fetch(url, opts);
+    const url = _apiBase ? _apiBase + path : path;
+    const resp = await fetch(url, opts);
     if (!resp.ok) {
-      var body = await resp.json().catch(function () { return {}; });
-      var msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      var err = new Error(msg);
+      const body = await resp.json().catch(function () { return {}; });
+      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      const err = new Error(msg);
       err.status = resp.status;
       err.body = body;
       throw err;
@@ -90,21 +90,21 @@
 
   async function discoverApiBase() {
     try {
-      var cfgRes = await fetch('/api-config.json');
+      const cfgRes = await fetch('/api-config.json');
       if (cfgRes.ok) {
-        var cfg = await cfgRes.json();
+        const cfg = await cfgRes.json();
         if (cfg.apiBase) {
           _apiBase = cfg.apiBase.replace(/\/+$/, '');
         }
       }
     } catch (e) { /* local dev — no api-config.json, use same-origin */ }
 
-    var badge = document.getElementById('status-badge');
+    const badge = document.getElementById('status-badge');
     if (!badge) return;
 
     try {
-      var healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      var res = await fetch(healthUrl);
+      const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
+      const res = await fetch(healthUrl);
       if (res.ok) {
         badge.textContent = 'Online';
         badge.className = 'online';
@@ -119,8 +119,8 @@
   }
 
   /* --- Sample Report Map (Planetary Computer S2 visual) --- */
-  function initSampleMap() {
-    var mapEl = document.getElementById('sample-map');
+  async function initSampleMap() {
+    const mapEl = document.getElementById('sample-map');
     if (!mapEl || typeof L === 'undefined') return;
 
     // São Félix do Xingu, Pará — real PRODES d2021 deforestation polygon
@@ -128,7 +128,7 @@
     // 0.379 km² clearing detected 2021, near Fresco River, state PA.
     // Coordinates sourced from official Brazilian government deforestation
     // monitoring — the same data EUDR regulators reference.
-    var parcelCoords = [
+    const parcelCoords = [
       [-6.6624, -51.8461],
       [-6.6620, -51.8461],
       [-6.6618, -51.8461],
@@ -173,17 +173,17 @@
       [-6.6635, -51.8419],
       [-6.6624, -51.8461]
     ];
-    var center = [-6.6647, -51.8404];
+    const center = [-6.6647, -51.8404];
 
-    var map = L.map(mapEl, {
+    const map = L.map(mapEl, {
       scrollWheelZoom: false,
       zoomControl: true,
       attributionControl: true
     }).setView(center, 14);
 
     // Register a PC mosaic for recent low-cloud S2 visual imagery
-    var bbox = [-51.85, -6.68, -51.83, -6.65];
-    var registerBody = {
+    const bbox = [-51.85, -6.68, -51.83, -6.65];
+    const registerBody = {
       collections: ['sentinel-2-l2a'],
       'filter-lang': 'cql2-json',
       filter: {
@@ -204,26 +204,46 @@
     };
 
     // Esri fallback base layer
-    var esriLayer = L.tileLayer(
+    const esriLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
     );
     esriLayer.addTo(map);
 
-    // Try to overlay PC Sentinel-2 visual tiles
-    fetch('https://planetarycomputer.microsoft.com/api/data/v1/mosaic/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(registerBody)
-    }).then(function(res) {
-      if (!res.ok) return;
-      return res.json();
-    }).then(function(data) {
-      if (!data || !data.searchid) return;
-      var tileUrl = 'https://planetarycomputer.microsoft.com/api/data/v1/mosaic/tiles/' +
-        encodeURIComponent(data.searchid) + '/WebMercatorQuad/{z}/{x}/{y}@2x' +
+    // Try to overlay PC Sentinel-2 visual tiles (cache searchid to avoid re-registration)
+    try {
+      const CACHE_KEY = 'canopex_mosaic_searchid';
+      const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+      let searchid = null;
+
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const entry = JSON.parse(cached);
+        if (entry.ts && Date.now() - entry.ts < CACHE_TTL_MS) {
+          searchid = entry.id;
+        }
+      }
+
+      if (!searchid) {
+        const res = await fetch('https://planetarycomputer.microsoft.com/api/data/v1/mosaic/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registerBody)
+        });
+        if (!res.ok) {
+          console.warn('[canopex] PC mosaic register failed:', res.status, res.statusText);
+          return;
+        }
+        const data = await res.json();
+        if (!data || !data.searchid) return;
+        searchid = data.searchid;
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ id: searchid, ts: Date.now() }));
+      }
+
+      const tileUrl = 'https://planetarycomputer.microsoft.com/api/data/v1/mosaic/tiles/' +
+        encodeURIComponent(searchid) + '/WebMercatorQuad/{z}/{x}/{y}@2x' +
         '?collection=sentinel-2-l2a&assets=visual';
-      var pcLayer = L.tileLayer(tileUrl, {
+      const pcLayer = L.tileLayer(tileUrl, {
         tileSize: 512,
         zoomOffset: -1,
         maxNativeZoom: 14,
@@ -232,7 +252,10 @@
       });
       map.removeLayer(esriLayer);
       pcLayer.addTo(map);
-    }).catch(function() { /* keep Esri fallback */ });
+    } catch (err) {
+      // Keep Esri fallback — log for diagnostics
+      console.warn('[canopex] PC mosaic overlay failed, using Esri fallback:', err);
+    }
 
     L.polygon(parcelCoords, {
       color: '#5eecc4',
@@ -247,8 +270,8 @@
 
   /* --- Sample Report PDF Gate --- */
   function updateSampleReportGate() {
-    var btn = document.getElementById('btn-download-sample');
-    var note = document.getElementById('sample-gated-note');
+    const btn = document.getElementById('btn-download-sample');
+    const note = document.getElementById('sample-gated-note');
     if (!btn) return;
 
     if (currentAccount) {
@@ -270,21 +293,25 @@
 
   /* --- Subscribe Button --- */
   function initSubscribe() {
-    var btn = document.getElementById('btn-subscribe');
+    const btn = document.getElementById('btn-subscribe');
     if (!btn) return;
 
     btn.addEventListener('click', async function() {
       if (!currentAccount && authEnabled()) { login(); return; }
       try {
-        var res = await apiFetch('/api/billing/checkout', {
+        const res = await apiFetch('/api/billing/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tier: 'eudr_pro' })
         });
-        var data = await res.json();
+        const data = await res.json();
         if (data.checkout_url) { window.location.href = data.checkout_url; }
       } catch (e) {
         console.error('Checkout error:', e);
+        if (e && e.status === 403) {
+          alert('Your account is not yet enabled for billing. Please contact us at hello@canopex.io.');
+          return;
+        }
         alert((e && e.message) || 'Could not connect to billing. Please try again later.');
       }
     });
@@ -292,19 +319,19 @@
 
   /* --- FAQ toggle --- */
   function initFAQ() {
-    var faqList = document.getElementById('faq-list');
+    const faqList = document.getElementById('faq-list');
     if (!faqList) return;
 
     faqList.addEventListener('click', function(e) {
-      var item = e.target.closest('.faq-item');
+    const item = e.target.closest('.faq-item');
       if (item) item.classList.toggle('open');
     });
   }
 
   /* --- Auth event listeners --- */
   document.addEventListener('DOMContentLoaded', function() {
-    var loginBtn = document.getElementById('auth-login-btn');
-    var logoutBtn = document.getElementById('auth-logout-btn');
+    const loginBtn = document.getElementById('auth-login-btn');
+    const logoutBtn = document.getElementById('auth-logout-btn');
 
     if (loginBtn) loginBtn.addEventListener('click', login);
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
@@ -316,7 +343,7 @@
 
   /* Handle billing return query params */
   document.addEventListener('DOMContentLoaded', function() {
-    var params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
       setTimeout(function() { alert('Welcome to EUDR Pro! Your subscription is now active.'); }, 500);
       history.replaceState(null, '', window.location.pathname);
