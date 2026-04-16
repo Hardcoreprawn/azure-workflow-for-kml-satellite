@@ -32,6 +32,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
 | #623 | Use lxml instead of stdlib xml for KML generation — resolves Semgrep #2869 |
 | #622 | Re-enable Cosmos DB public network access — fixes 24h alert storm (fixes #621) |
 | #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
