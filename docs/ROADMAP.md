@@ -216,7 +216,7 @@ invited users auto-join on sign-in via SWA email matching.
 |-------|-------|-------|------------|
 | FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | ✅ PR #620 |
 | FE.2 | — | EUDR-specific UI polish on `/eudr/` | #610 (2C.8) |
-| FE.3 | #605 | EUDR landing page + sitemap | — |
+| FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
 
 ### 2G.5 — Revenue
