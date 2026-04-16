@@ -392,7 +392,7 @@ def _aggregate_aoi_results(
         ful["batch_submitted"] += f.get("batch_submitted", 0)
         ful["batch_succeeded"] += f.get("batch_succeeded", 0)
         ful["batch_failed"] += f.get("batch_failed", 0)
-        ful["post_process_results"].extend(f.get("pp_results", []))
+        ful["post_process_results"].extend(f.get("post_process_results", []))
         ful["pp_completed"] += f.get("pp_completed", 0)
         ful["pp_clipped"] += f.get("pp_clipped", 0)
         ful["pp_reprojected"] += f.get("pp_reprojected", 0)

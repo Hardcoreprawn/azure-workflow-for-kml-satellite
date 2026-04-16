@@ -647,7 +647,7 @@ def _make_aoi_result(
             "batch_submitted": 0,
             "batch_succeeded": 0,
             "batch_failed": 0,
-            "pp_results": [{"aoi": name}] * pp_completed,
+            "post_process_results": [{"aoi": name}] * pp_completed,
             "pp_completed": pp_completed,
             "pp_clipped": pp_clipped,
             "pp_reprojected": pp_reprojected,

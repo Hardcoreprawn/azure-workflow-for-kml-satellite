@@ -156,7 +156,7 @@ def _aoi_fulfil(
             "batch_submitted": len(batch_tracking),
             "batch_succeeded": len(batch_ok),
             "batch_failed": len(batch_bad),
-            "pp_results": pp_results,
+            "post_process_results": pp_results,
             "pp_completed": len(pp_results),
             "pp_clipped": sum(1 for p in pp_results if p.get("clipped")),
             "pp_reprojected": sum(1 for p in pp_results if p.get("reprojected")),

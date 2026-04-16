@@ -173,7 +173,7 @@ Dedicated EUDR app. Master tracker: #606.
 
 | Order | Issue | Title | Dataset | Depends On |
 |-------|-------|-------|---------|------------|
-| D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | #578 |
+| D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | ✅ PR #620 |
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
