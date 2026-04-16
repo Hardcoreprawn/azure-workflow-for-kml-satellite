@@ -27,6 +27,8 @@ from treesight.constants import (
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
+    LONG_RETRY_FIRST_INTERVAL_MS,
+    LONG_RETRY_MAX_ATTEMPTS,
     MAX_POLL_ITERATIONS,
 )
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
@@ -255,9 +257,14 @@ def _fulfil_batch(
     context.set_custom_status(
         {"phase": "fulfilment", "step": "batch_submit", "count": len(batch_ready)}
     )
+    batch_submit_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
     submit_tasks = [
-        context.call_activity(
+        context.call_activity_with_retry(
             "submit_batch_fulfilment",
+            batch_submit_retry,
             {
                 "outcome": outcome,
                 "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
@@ -284,9 +291,14 @@ def _fulfil_batch(
         context.set_custom_status(
             {"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)}
         )
+        batch_poll_retry = df.RetryOptions(
+            first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
         poll_batch_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "poll_batch_fulfilment",
+                batch_poll_retry,
                 {"job_id": t["job_id"], "task_id": t["task_id"]},
             )
             for t in pending
@@ -327,11 +339,17 @@ def _fulfil_download(
     batch_size = config_get_int(inp, "download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)
     download_results: list[dict[str, Any]] = []
 
+    dl_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
+
     for i in range(0, len(serverless_ready), batch_size):
         batch = serverless_ready[i : i + batch_size]
         dl_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "download_imagery",
+                dl_retry,
                 _download_payload(
                     outcome, inp, ctx, asset_urls, order_meta, aoi_ref_lookup, output_container
                 ),
@@ -362,11 +380,17 @@ def _fulfil_post_process(
     pp_batch_size = config_get_int(inp, "post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE)
     pp_results: list[dict[str, Any]] = []
 
+    pp_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
+
     for i in range(0, len(successful_downloads), pp_batch_size):
         batch = successful_downloads[i : i + pp_batch_size]
         pp_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "post_process_imagery",
+                pp_retry,
                 _post_process_payload(dl, inp, ctx, aoi_ref_lookup, output_container),
             )
             for dl in batch
@@ -472,11 +496,16 @@ def _phase_enrichment(
     if not all_coords:
         return {}
 
+    enrichment_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
     enrichment = cast(
         "dict[str, Any]",
         (
-            yield context.call_activity(
+            yield context.call_activity_with_retry(
                 "run_enrichment",
+                enrichment_retry,
                 {
                     "coords": all_coords,
                     "per_aoi_coords": per_aoi_coords,
@@ -499,9 +528,15 @@ def _safe_release_quota(
     context: df.DurableOrchestrationContext, user_id: str, instance_id: str
 ) -> Generator[Any, Any, None]:
     """Release quota on failure, swallowing errors to preserve the original exception."""
+    # release_quota must succeed — it refunds the user's pipeline run credit.
+    # Retry aggressively to avoid permanently lost quota.
+    quota_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
     try:
-        yield context.call_activity(
-            "release_quota", {"user_id": user_id, "instance_id": instance_id}
+        yield context.call_activity_with_retry(
+            "release_quota", quota_retry, {"user_id": user_id, "instance_id": instance_id}
         )
     except Exception:
         logger.exception(

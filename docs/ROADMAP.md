@@ -113,7 +113,7 @@ Prove the pipeline works, fix bugs, establish `/eudr/` as the entry point.
 | 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
 | 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
 | 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #620 |
-| 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
+| 2C.7 | #590 | Pipeline retry model + quota refund | ✅ |
 | 2C.8 | #610 | Create `/eudr/` app entry point | ✅ PR #615 |
 
 **Exit:** Visitor → `/` landing page → `/eudr/` → free trial → submit
