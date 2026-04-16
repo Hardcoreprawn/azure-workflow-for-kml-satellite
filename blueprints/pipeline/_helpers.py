@@ -386,7 +386,7 @@ def _aggregate_aoi_results(
         succeeded = f.get("downloads_succeeded", 0)
         failed = f.get("downloads_failed", 0)
         ful["download_results"].extend(f.get("download_results", []))
-        ful["downloads_completed"] += succeeded + failed
+        ful["downloads_completed"] += f.get("downloads_completed", 0)
         ful["downloads_succeeded"] += succeeded
         ful["downloads_failed"] += failed
         ful["batch_submitted"] += f.get("batch_submitted", 0)

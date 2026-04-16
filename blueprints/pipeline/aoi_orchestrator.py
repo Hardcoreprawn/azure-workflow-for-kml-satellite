@@ -8,7 +8,6 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
-import logging
 from collections.abc import Generator
 from typing import Any, cast
 
@@ -28,8 +27,6 @@ from ._helpers import (
     _split_batch_routing,
 )
 from .orchestrator import _fulfil_batch, _fulfil_download, _fulfil_post_process
-
-logger = logging.getLogger(__name__)
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
 
@@ -65,7 +62,7 @@ def _aoi_acquire(
     # Normalize: composite returns list of orders, non-composite returns one
     orders: list[dict[str, Any]] = acq_result if composite else [acq_result]
 
-    # Poll orders until ready
+    # Poll orders — use DF-level retry for resilience against transient failures.
     poll_retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
@@ -153,6 +150,7 @@ def _aoi_fulfil(
     return {
         "fulfilment": {
             "download_results": download_results,
+            "downloads_completed": len(download_results) + len(batch_tracking),
             "downloads_succeeded": len(successful) + len(batch_ok),
             "downloads_failed": len(failed_dl) + len(batch_bad),
             "batch_submitted": len(batch_tracking),

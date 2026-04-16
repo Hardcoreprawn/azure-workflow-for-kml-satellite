@@ -194,11 +194,14 @@ def _phase_acquisition(
         else:
             orders.extend(batch_results)
 
-    # Poll orders — poll_order has its own internal retry loop with backoff
-    # (treesight.pipeline.acquisition.poll_order), so DF-level retry is not added here.
+    # Poll orders — use DF-level retry consistently (use the platform).
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
+    poll_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
     poll_tasks = [
-        context.call_activity("poll_order", _poll_payload(o, inp))
+        context.call_activity_with_retry("poll_order", poll_retry, _poll_payload(o, inp))
         for o in orders
         if o.get("order_id")
     ]
@@ -524,27 +527,23 @@ def _progressive_pipeline(
     AOI independently.  Returns a list of per-AOI result dicts.
     """
     aoi_refs: list[dict[str, str]] = ing["aoi_refs"]
-    per_aoi_coords: list[dict[str, Any]] = ing["per_aoi_coords"]
     aoi_area_by_name: dict[str, float] = ing["aoi_area_by_name"]
-
-    per_aoi_by_name = {entry["name"]: entry for entry in per_aoi_coords}
+    total = len(aoi_refs)
 
     context.set_custom_status(
         {
             "phase": "per_aoi_pipeline",
             "completed_aois": 0,
-            "total_aois": len(aoi_refs),
+            "total_aois": total,
         }
     )
 
     sub_tasks = []
     for i, ref in enumerate(aoi_refs):
-        aoi_entry = per_aoi_by_name.get(ref["key"], {})
         task = context.call_sub_orchestrator(
             "aoi_pipeline",
             input_={
                 "aoi_ref": ref,
-                "aoi_entry": aoi_entry,
                 "aoi_area_ha": aoi_area_by_name.get(ref["key"], 0.0),
                 "pipeline_input": inp,
                 "project_context": ctx,
@@ -553,18 +552,20 @@ def _progressive_pipeline(
         )
         sub_tasks.append(task)
 
-    all_results = cast(
-        "list[dict[str, Any]]",
-        (yield context.task_all(sub_tasks)),
-    )
-
-    context.set_custom_status(
-        {
-            "phase": "per_aoi_pipeline",
-            "completed_aois": len(all_results),
-            "total_aois": len(aoi_refs),
-        }
-    )
+    # Progressive: task_any loop updates status after each AOI completes
+    pending = list(sub_tasks)
+    all_results: list[dict[str, Any]] = []
+    while pending:
+        winner = yield context.task_any(pending)
+        all_results.append(winner.result)
+        pending.remove(winner)
+        context.set_custom_status(
+            {
+                "phase": "per_aoi_pipeline",
+                "completed_aois": len(all_results),
+                "total_aois": total,
+            }
+        )
 
     return {"aoi_results": all_results}
 
