@@ -162,7 +162,7 @@ Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidenc
 |-------|-------|-------|--------|------------|
 | F.0 | #583 | Data model cleanup: typed models, manifest, run timing | ✅ PR #620 | — |
 | F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | ✅ PR #620 | #583 |
-| F.2 | #574 | Enrichment sub-step progress in UI | Open | #578 |
+| F.2 | #574 | Enrichment sub-step progress in UI | ✅ | #578 |
 | F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
 | F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | #578, #579 |
