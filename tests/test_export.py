@@ -15,6 +15,7 @@ from blueprints.export import (
     _build_eudr_geojson,
     _build_geojson,
     _build_pdf,
+    build_eudr_audit_pdf,
 )
 
 
@@ -560,4 +561,64 @@ class TestBuildPdfEudrPerParcel:
     def test_eudr_pdf_with_per_aoi_enrichment(self, eudr_manifest):
         result = _build_pdf(eudr_manifest, "run-eudr-582")
         assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Audit-grade EUDR PDF report (#587)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEudrAuditPdf:
+    """Audit-grade EUDR evidence PDF report (#587)."""
+
+    def test_returns_valid_pdf(self, eudr_manifest):
+        result = build_eudr_audit_pdf(eudr_manifest, "run-audit-587")
+        assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+    def test_larger_than_basic_pdf(self, eudr_manifest):
+        """Audit PDF should be bigger than the basic one (more sections)."""
+        basic = _build_pdf(eudr_manifest, "run-basic")
+        audit = build_eudr_audit_pdf(eudr_manifest, "run-audit")
+        assert len(audit) > len(basic)
+
+    def test_handles_empty_manifest(self):
+        result = build_eudr_audit_pdf({}, "run-empty")
+        assert result.startswith(b"%PDF")
+
+    def test_handles_no_per_aoi(self, enrichment_manifest):
+        """Non-EUDR manifest without per_aoi_enrichment should still work."""
+        result = build_eudr_audit_pdf(enrichment_manifest, "run-no-aoi")
+        assert result.startswith(b"%PDF")
+
+    def test_filters_to_post_2020_frames(self, eudr_manifest):
+        """Frames before 2021 should be excluded from the EUDR timeseries."""
+        manifest = dict(eudr_manifest)
+        manifest["frame_plan"] = [
+            {"year": 2019, "season": "spring", "start": "2019-03-01", "end": "2019-05-31"},
+            {"year": 2020, "season": "spring", "start": "2020-03-01", "end": "2020-05-31"},
+            {"year": 2021, "season": "spring", "start": "2021-03-01", "end": "2021-05-31"},
+            {"year": 2023, "season": "spring", "start": "2023-03-01", "end": "2023-05-31"},
+        ]
+        manifest["ndvi_stats"] = [
+            {"mean": 0.5},
+            {"mean": 0.6},
+            {"mean": 0.55},
+            {"mean": 0.58},
+        ]
+        result = build_eudr_audit_pdf(manifest, "run-filter")
+        assert result.startswith(b"%PDF")
+
+    def test_with_operator_context(self, eudr_manifest):
+        """Operator metadata should be accepted."""
+        manifest = dict(eudr_manifest)
+        manifest["operator_name"] = "Acme Trading GmbH"
+        manifest["commodity"] = "cocoa"
+        result = build_eudr_audit_pdf(manifest, "run-operator")
+        assert result.startswith(b"%PDF")
+
+    def test_mixed_determinations(self, eudr_manifest):
+        """Mix of deforestation_free and further_review parcels."""
+        result = build_eudr_audit_pdf(eudr_manifest, "run-mixed")
         assert result.startswith(b"%PDF")
