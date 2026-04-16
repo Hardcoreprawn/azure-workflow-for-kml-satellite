@@ -39,6 +39,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #615 | EUDR landing page, per-parcel export, audit PDF (fixes #533, #605) |
 | #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
 | -- | F.7: Audit-grade EUDR evidence PDF report (f586892, closes #587) |
 | -- | F.4: Spatial clustering for AOIs (d01f642, closes #581) |
