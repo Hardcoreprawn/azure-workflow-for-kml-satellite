@@ -36,7 +36,7 @@ def auth_session(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         return error_response(401, "Authentication required for session token", req=req)
 
     result = sign_session_token(user_id, key=AUTH_HMAC_KEY)
-    logger.info("Session token issued for user %s", user_id[:8])
+    logger.info("Session HMAC issued for user_prefix=%s", user_id[:8])
     return func.HttpResponse(
         json.dumps({**result, "hmac_enabled": True}),
         status_code=200,
