@@ -40,6 +40,9 @@ Stages 2D and 2E can proceed in parallel.
 | PR | Summary |
 |----|---------|
 | #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
+| -- | F.7: Audit-grade EUDR evidence PDF report (f586892, closes #587) |
+| -- | F.4: Spatial clustering for AOIs (d01f642, closes #581) |
+| -- | F.5: EUDR per-parcel deforestation evidence export (aee1756, closes #582) |
 | #624 | DF retry on acquisition activities, remove dead Cosmos IP rules, infracost fix |
 | #623 | Use lxml instead of stdlib xml for KML generation — resolves Semgrep #2869 |
 | #622 | Re-enable Cosmos DB public network access — fixes 24h alert storm (fixes #621) |
@@ -167,7 +170,7 @@ Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidenc
 | F.4 | #581 | Spatial clustering for wide-spread submissions | ✅ d01f642 | #578 |
 | F.5 | #582 | EUDR per-parcel deforestation evidence export | ✅ aee1756 | #578, #579 |
 | F.6 | #585 | Progressive delivery: stream per-AOI results | ✅ PR #626 | #578 |
-| F.7 | #587 | Audit-grade EUDR PDF report | Open | #578, #582 |
+| F.7 | #587 | Audit-grade EUDR PDF report | ✅ f586892 | #578, #582 |
 
 **Exit:** 50-polygon submission → per-AOI NDVI/weather/change. Click polygon
 → see that AOI's results. EUDR PDF with per-parcel evidence.
