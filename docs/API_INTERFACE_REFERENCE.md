@@ -33,27 +33,34 @@ Function App base URL (dev): `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.
 
 ## Trigger and Orchestrator Entry Points
 
-- Event Grid trigger: kml_blob_trigger
-- Main orchestrator: kml_processing_orchestrator
-- Polling sub-orchestrator: poll_order_suborchestrator
+- Event Grid trigger: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
+- Main orchestrator: `treesight_orchestrator` (blueprints/pipeline/orchestrator.py)
 
 ## Activity Functions and Contracts
 
-Durable activity payload contracts are defined in kml_satellite/models/payloads.py.
+Durable activity functions are defined in blueprints/pipeline/activities.py.
 
 | Activity | Input Contract | Output Contract |
 | --- | --- | --- |
 | parse_kml | ParseKmlInput | list[FeatureDict] |
+| load_offloaded_features | OffloadRef | list[FeatureDict] |
 | prepare_aoi | FeatureDict | AOIDict |
-| write_metadata | WriteMetadataInput | WriteMetadataOutput |
+| store_aoi_claims | ClaimInput | list[ClaimRef] |
+| load_aoi_claim | ClaimRef | AOIDict |
 | acquire_imagery | AcquireImageryInput | AcquireImageryOutput |
+| acquire_composite | CompositeInput | list[AcquireImageryOutput] |
 | poll_order | PollOrderInput | PollOrderOutput |
 | download_imagery | DownloadImageryInput | DownloadImageryOutput |
 | post_process_imagery | PostProcessImageryInput | PostProcessImageryOutput |
+| run_enrichment | EnrichmentInput | EnrichmentOutput |
+| submit_batch_fulfilment | BatchInput | BatchOutput |
+| poll_batch_fulfilment | BatchPollInput | BatchPollOutput |
+| release_quota | QuotaInput | QuotaOutput |
+| write_metadata | WriteMetadataInput | WriteMetadataOutput |
 
 ## ImageryProvider Contract
 
-Base interface: kml_satellite/providers/base.py
+Base interface: treesight/providers/base.py
 
 Required methods:
 
@@ -72,7 +79,7 @@ Failure model:
 
 ## Metadata JSON Schema
 
-Canonical model: kml_satellite/models/metadata.py
+Canonical model: treesight/models/aoi.py
 
 Formal schema file:
 
@@ -80,7 +87,7 @@ Formal schema file:
 
 ## Blob Path Conventions
 
-Path builders: kml_satellite/utils/blob_paths.py
+Path builders: treesight/storage/client.py
 
 - kml/YYYY/MM/{project}/{filename}.kml
 - metadata/YYYY/MM/{project}/{feature}.json

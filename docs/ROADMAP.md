@@ -130,7 +130,7 @@ Auth + billing security. Prerequisites for any paid product.
 | R.0 | #553 | Enforce REQUIRE_AUTH everywhere | ✅ PR #554 | — |
 | R.1 | #534 | Auth header verification (HMAC) | ✅ PR #620 | — |
 | R.2 | #535 | E2e Stripe billing flow on live site | Open | #520 |
-| R.3 | #406 | Reconcile docs with live routes | Open | — |
+| R.3 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
 | R.4 | #589 | Billing ledger, metered overage, refunds | Open | R.2 |
 
 **Exit:** Forged headers rejected. Free → paid upgrade → Stripe → quota

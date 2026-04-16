@@ -58,6 +58,14 @@ tags:
     description: Data export (GeoJSON, CSV)
   - name: contact
     description: Contact form
+  - name: auth
+    description: Session and identity
+  - name: billing
+    description: Stripe billing and subscriptions
+  - name: org
+    description: Organisation management
+  - name: ops
+    description: Operator administration
   - name: catalogue
     description: Temporal acquisition catalogue and time-series browsing
 
@@ -859,6 +867,248 @@ paths:
                 $ref: "#/components/schemas/CatalogueListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /auth/session:
+    post:
+      operationId: authSession
+      tags: [auth]
+      summary: Bootstrap or validate a user session
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: Session info (user ID, roles, quota)
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /billing/status:
+    get:
+      operationId: billingStatus
+      tags: [billing]
+      summary: Current subscription status for the authenticated user
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: Billing status
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /billing/checkout:
+    post:
+      operationId: billingCheckout
+      tags: [billing]
+      summary: Create a Stripe Checkout session
+      security:
+        - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tier:
+                  type: string
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /billing/portal:
+    post:
+      operationId: billingPortal
+      tags: [billing]
+      summary: Create a Stripe customer portal session
+      responses:
+        "200":
+          description: Portal session URL
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /billing/webhook:
+    post:
+      operationId: billingWebhook
+      tags: [billing]
+      summary: Handle Stripe webhook events
+      responses:
+        "200":
+          description: Webhook processed
+
+  /upload/token:
+    post:
+      operationId: uploadToken
+      tags: [pipeline]
+      summary: Generate a write-only SAS token for blob upload
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: SAS token and upload URL
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /upload/status/{submission_id}:
+    get:
+      operationId: uploadStatus
+      tags: [pipeline]
+      summary: Pipeline submission status
+      parameters:
+        - name: submission_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submission status
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Submission not found
+
+  /analysis/history:
+    get:
+      operationId: analysisHistory
+      tags: [analysis]
+      summary: User analysis run history
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: List of past analysis runs
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /eudr-assessment:
+    post:
+      operationId: eudrAssessment
+      tags: [analysis]
+      summary: EUDR compliance assessment (NDVI + WorldCover + WDPA)
+      security:
+        - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: EUDR assessment result
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid input
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /convert-coordinates:
+    post:
+      operationId: convertCoordinates
+      tags: [analysis]
+      summary: Convert lat/lon coordinates to KML
+      security:
+        - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: KML content
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid coordinates
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /org:
+    get:
+      operationId: orgGet
+      tags: [org]
+      summary: Get organisation details
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: Organisation info
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: orgCreate
+      tags: [org]
+      summary: Create an organisation
+      security:
+        - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Created organisation
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ops/dashboard:
+    get:
+      operationId: opsDashboard
+      tags: [ops]
+      summary: Ops dashboard (admin only)
+      security:
+        - swaAuth: []
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: Forbidden — admin role required
 
 components:
   securitySchemes:

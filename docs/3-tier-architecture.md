@@ -102,16 +102,16 @@ dedicated compute. Not currently active — deferred until proven necessary.
 1. User authenticates via `/.auth/login/aad` (SWA built-in)
 2. Frontend calls `POST /api/upload/token` → T2 mints a write-only SAS URL
 3. Frontend uploads KML/KMZ directly to Blob Storage via SAS
-4. Event Grid fires BlobCreated → `kml_blob_trigger` (T2)
-5. Blob trigger validates input and starts the Durable orchestrator
+4. Event Grid fires BlobCreated → `blob_trigger` (T2)
+5. Blob trigger validates input and starts `treesight_orchestrator`
 
 ### **3.2 Orchestration + Compute**
 
-1. Orchestrator (T2) runs phase pipeline:
-   - `parse_kml` → `prepare_aoi` → `write_metadata`
-   - `acquire_imagery` → `poll_order` (sub-orchestrator)
-   - `download_imagery` → `post_process_imagery` (dispatched to T3 via shared queue)
-   - `run_enrichment` (T3 — NDVI, change detection, weather)
+1. Orchestrator (T2) runs four-phase pipeline:
+   - Ingestion: `parse_kml` → `prepare_aoi` → `store_aoi_claims`
+   - Acquisition: `acquire_imagery` → `poll_order` → `download_imagery`
+   - Fulfilment: `post_process_imagery` → `submit_batch_fulfilment`
+   - Enrichment: `run_enrichment` → `write_metadata` → `release_quota`
 2. Results written to Blob Storage output paths
 3. Status updates written to Cosmos DB
 
