@@ -25,7 +25,7 @@ from treesight.security.rate_limit import get_client_ip, pipeline_limiter
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf"}
+_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf", "eudr-geojson", "eudr-csv"}
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +278,159 @@ def _build_bulk_csv(manifest: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# EUDR per-parcel GeoJSON export (#582)
+# ---------------------------------------------------------------------------
+
+
+def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Build a per-parcel GeoJSON FeatureCollection with EUDR evidence.
+
+    Each AOI in ``per_aoi_enrichment`` becomes a Feature with EUDR-specific
+    properties: determination status, WorldCover baseline, WDPA overlap,
+    NDVI summary, and change trajectory.
+    """
+    per_aoi = manifest.get("per_aoi_enrichment", [])
+
+    features: list[dict[str, Any]] = []
+    for aoi in per_aoi:
+        props: dict[str, Any] = {"parcel_name": aoi.get("name", "")}
+
+        if "error" in aoi:
+            props["error"] = aoi["error"]
+            features.append({"type": "Feature", "geometry": None, "properties": props})
+            continue
+
+        props["area_ha"] = aoi.get("area_ha", 0.0)
+        center = aoi.get("center", {})
+        props["center_lat"] = center.get("lat")
+        props["center_lon"] = center.get("lon")
+
+        # Determination
+        det = aoi.get("determination", {})
+        props["determination_status"] = det.get("status", "unknown")
+        props["determination_confidence"] = det.get("confidence", "unknown")
+        props["determination_flags"] = det.get("flags", [])
+
+        # WorldCover baseline
+        wc = aoi.get("worldcover", {})
+        if wc.get("available"):
+            lc = wc.get("land_cover", {})
+            props["worldcover_dominant"] = lc.get("dominant_class", "")
+            classes = {c["code"]: c for c in lc.get("classes", [])}
+            props["worldcover_tree_pct"] = classes.get(10, {}).get("area_pct", 0.0)
+        else:
+            props["worldcover_dominant"] = ""
+            props["worldcover_tree_pct"] = None
+
+        # WDPA
+        wdpa = aoi.get("wdpa", {})
+        props["wdpa_checked"] = wdpa.get("checked", False)
+        props["wdpa_is_protected"] = wdpa.get("is_protected", False)
+
+        # NDVI summary
+        ndvi_stats = aoi.get("ndvi_stats", [])
+        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        if valid:
+            props["ndvi_latest_mean"] = valid[-1]["mean"]
+            props["ndvi_observations"] = len(valid)
+        else:
+            props["ndvi_latest_mean"] = None
+            props["ndvi_observations"] = 0
+
+        # Change detection
+        cd = aoi.get("change_detection", {})
+        summary = cd.get("summary", {})
+        props["change_trajectory"] = summary.get("trajectory", "unknown")
+        props["change_comparisons"] = summary.get("comparisons", 0)
+
+        # Build polygon geometry
+        coords = aoi.get("coords", [])
+        ring = list(coords)
+        if ring and ring[0] != ring[-1]:
+            ring.append(ring[0])
+
+        geometry: dict[str, Any] | None = (
+            {"type": "Polygon", "coordinates": [ring]} if ring else None
+        )
+
+        features.append({"type": "Feature", "geometry": geometry, "properties": props})
+
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ---------------------------------------------------------------------------
+# EUDR per-parcel CSV export (#582)
+# ---------------------------------------------------------------------------
+
+_EUDR_CSV_FIELDS = [
+    "parcel_name",
+    "area_ha",
+    "center_lat",
+    "center_lon",
+    "determination_status",
+    "determination_confidence",
+    "determination_flags",
+    "worldcover_dominant",
+    "worldcover_tree_pct",
+    "wdpa_is_protected",
+    "ndvi_latest_mean",
+    "ndvi_observations",
+    "change_trajectory",
+    "change_comparisons",
+]
+
+
+def _build_eudr_csv(manifest: dict[str, Any]) -> str:
+    """Build a per-parcel CSV with EUDR deforestation evidence.
+
+    One row per AOI from ``per_aoi_enrichment``.  Failed AOIs are included
+    with ``determination_status`` = ``error``.
+    """
+    per_aoi = manifest.get("per_aoi_enrichment", [])
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_EUDR_CSV_FIELDS)
+    writer.writeheader()
+
+    for aoi in per_aoi:
+        if "error" in aoi:
+            writer.writerow({"parcel_name": aoi.get("name", ""), "determination_status": "error"})
+            continue
+
+        center = aoi.get("center", {})
+        det = aoi.get("determination", {})
+        wc = aoi.get("worldcover", {})
+        lc = wc.get("land_cover", {}) if wc.get("available") else {}
+        wdpa = aoi.get("wdpa", {})
+        ndvi_stats = aoi.get("ndvi_stats", [])
+        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        cd_summary = aoi.get("change_detection", {}).get("summary", {})
+
+        writer.writerow(
+            {
+                "parcel_name": aoi.get("name", ""),
+                "area_ha": aoi.get("area_ha", ""),
+                "center_lat": center.get("lat", ""),
+                "center_lon": center.get("lon", ""),
+                "determination_status": det.get("status", "unknown"),
+                "determination_confidence": det.get("confidence", "unknown"),
+                "determination_flags": "; ".join(det.get("flags", [])),
+                "worldcover_dominant": lc.get("dominant_class", ""),
+                "worldcover_tree_pct": (
+                    {c["code"]: c for c in lc.get("classes", [])}.get(10, {}).get("area_pct", "")
+                ),
+                "wdpa_is_protected": wdpa.get("is_protected", ""),
+                "ndvi_latest_mean": valid[-1]["mean"] if valid else "",
+                "ndvi_observations": len(valid),
+                "change_trajectory": cd_summary.get("trajectory", ""),
+                "change_comparisons": cd_summary.get("comparisons", ""),
+            }
+        )
+
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # PDF export (EUDR audit report)
 # ---------------------------------------------------------------------------
 
@@ -461,6 +614,107 @@ def _pdf_vegetation_section(
     pdf.ln(6)
 
 
+def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
+    """Write per-parcel EUDR evidence sections (#582)."""
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "Per-Parcel Evidence", new_x="LMARGIN", new_y="NEXT")
+
+    for idx, aoi in enumerate(per_aoi):
+        name = aoi.get("name", f"Parcel {idx + 1}")
+
+        if "error" in aoi:
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.cell(0, 8, _safe_text(f"{name} -- ERROR"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.cell(0, 5, "Enrichment failed for this parcel.", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(3)
+            continue
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, _safe_text(name), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+
+        # Area and location
+        area = aoi.get("area_ha", 0.0)
+        center = aoi.get("center", {})
+        pdf.cell(
+            0,
+            5,
+            f"Area: {area:.2f} ha | Centre: {center.get('lat', 0):.4f}, {center.get('lon', 0):.4f}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+
+        # Determination
+        det = aoi.get("determination", {})
+        status = det.get("status", "unknown")
+        confidence = det.get("confidence", "unknown")
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(
+            0,
+            5,
+            f"Determination: {status} (confidence: {confidence})",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
+        pdf.set_font("Helvetica", "", 9)
+        for flag in det.get("flags", []):
+            pdf.cell(0, 5, _safe_text(f"  - {flag}"), new_x="LMARGIN", new_y="NEXT")
+
+        # WorldCover
+        wc = aoi.get("worldcover", {})
+        if wc.get("available"):
+            lc = wc.get("land_cover", {})
+            pdf.cell(
+                0,
+                5,
+                f"WorldCover: {lc.get('dominant_class', 'N/A')} (dominant)",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+        # WDPA
+        wdpa = aoi.get("wdpa", {})
+        if wdpa.get("checked"):
+            prot = "Yes" if wdpa.get("is_protected") else "No"
+            pdf.cell(
+                0,
+                5,
+                f"Protected area overlap: {prot}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+        # NDVI summary
+        ndvi_stats = aoi.get("ndvi_stats", [])
+        valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
+        if valid:
+            means = [s["mean"] for s in valid]
+            pdf.cell(
+                0,
+                5,
+                f"NDVI: {len(valid)} observations, latest {means[-1]:.3f}, "
+                f"range {min(means):.3f}-{max(means):.3f}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+        # Change detection
+        cd = aoi.get("change_detection", {}).get("summary", {})
+        if cd:
+            pdf.cell(
+                0,
+                5,
+                f"Change trajectory: {cd.get('trajectory', 'unknown')} "
+                f"({cd.get('comparisons', 0)} comparisons)",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+        pdf.ln(3)
+
+
 def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
     """Build an audit-quality PDF report from the enrichment manifest.
 
@@ -517,6 +771,11 @@ def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
             )
         pdf.ln(4)
 
+    # Per-parcel EUDR evidence sections (#582)
+    per_aoi = manifest.get("per_aoi_enrichment", [])
+    if per_aoi:
+        _pdf_per_parcel_sections(pdf, per_aoi)
+
     # Disclaimer
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(100, 100, 100)
@@ -549,7 +808,8 @@ async def export_data(
 ) -> func.HttpResponse:
     """GET /api/export/{instance_id}/{format} — download enrichment data.
 
-    Supported formats: ``geojson``, ``csv``, ``csv-bulk``, ``pdf``.
+    Supported formats: ``geojson``, ``csv``, ``csv-bulk``, ``pdf``,
+    ``eudr-geojson``, ``eudr-csv``.
 
     The ``csv-bulk`` format produces one row per AOI with aggregated metrics.
     Falls back to the regular temporal CSV when ``per_aoi_metrics`` is absent.
@@ -601,6 +861,29 @@ async def export_data(
     if fmt == "csv-bulk":
         csv_body = _build_bulk_csv(manifest)
         headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_bulk.csv"'
+        return func.HttpResponse(
+            csv_body,
+            status_code=200,
+            mimetype="text/csv",
+            headers=headers,
+        )
+
+    if fmt == "eudr-geojson":
+        geojson = _build_eudr_geojson(manifest)
+        body = json.dumps(geojson, indent=2, default=str)
+        headers["Content-Disposition"] = (
+            f'attachment; filename="treesight_{instance_id}_eudr.geojson"'
+        )
+        return func.HttpResponse(
+            body,
+            status_code=200,
+            mimetype="application/geo+json",
+            headers=headers,
+        )
+
+    if fmt == "eudr-csv":
+        csv_body = _build_eudr_csv(manifest)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.csv"'
         return func.HttpResponse(
             csv_body,
             status_code=200,
