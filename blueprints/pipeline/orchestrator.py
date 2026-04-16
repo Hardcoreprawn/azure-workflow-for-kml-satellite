@@ -34,6 +34,7 @@ from treesight.pipeline.orchestrator import build_pipeline_summary, derive_proje
 from . import bp
 from ._helpers import (
     _acq_payload,
+    _aggregate_aoi_results,
     _build_order_lookups,
     _collect_enrichment_coords,
     _collect_per_aoi_coords,
@@ -193,11 +194,14 @@ def _phase_acquisition(
         else:
             orders.extend(batch_results)
 
-    # Poll orders — poll_order has its own internal retry loop with backoff
-    # (treesight.pipeline.acquisition.poll_order), so DF-level retry is not added here.
+    # Poll orders — use DF-level retry consistently (use the platform).
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
+    poll_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
     poll_tasks = [
-        context.call_activity("poll_order", _poll_payload(o, inp))
+        context.call_activity_with_retry("poll_order", poll_retry, _poll_payload(o, inp))
         for o in orders
         if o.get("order_id")
     ]
@@ -506,38 +510,117 @@ def _safe_release_quota(
 
 
 # ---------------------------------------------------------------------------
+# Progressive delivery — sub-orchestrator fan-out (#585)
+# ---------------------------------------------------------------------------
+
+
+def _progressive_pipeline(
+    context: df.DurableOrchestrationContext,
+    inp: dict[str, Any],
+    ctx: dict[str, str],
+    ing: dict[str, Any],
+    instance_id: str,
+) -> _PhaseGen:
+    """Fan out per-AOI sub-orchestrators for parallel acquisition + fulfilment.
+
+    Each sub-orchestrator handles acquire → download → post-process for one
+    AOI independently.  Returns a list of per-AOI result dicts.
+    """
+    aoi_refs: list[dict[str, str]] = ing["aoi_refs"]
+    aoi_area_by_name: dict[str, float] = ing["aoi_area_by_name"]
+    total = len(aoi_refs)
+
+    context.set_custom_status(
+        {
+            "phase": "per_aoi_pipeline",
+            "completed_aois": 0,
+            "total_aois": total,
+        }
+    )
+
+    sub_tasks = []
+    for i, ref in enumerate(aoi_refs):
+        task = context.call_sub_orchestrator(
+            "aoi_pipeline",
+            input_={
+                "aoi_ref": ref,
+                "aoi_area_ha": aoi_area_by_name.get(ref["key"], 0.0),
+                "pipeline_input": inp,
+                "project_context": ctx,
+            },
+            instance_id=f"{instance_id}:aoi-{i}",
+        )
+        sub_tasks.append(task)
+
+    # Progressive: task_any loop updates status after each AOI completes
+    pending = list(sub_tasks)
+    all_results: list[dict[str, Any]] = []
+    while pending:
+        winner = yield context.task_any(pending)
+        all_results.append(winner.result)
+        pending.remove(winner)
+        context.set_custom_status(
+            {
+                "phase": "per_aoi_pipeline",
+                "completed_aois": len(all_results),
+                "total_aois": total,
+            }
+        )
+
+    return {"aoi_results": all_results}
+
+
+def _dispatch_acq_ful(
+    context: df.DurableOrchestrationContext,
+    inp: dict[str, Any],
+    ctx: dict[str, str],
+    ing: dict[str, Any],
+    instance_id: str,
+) -> Generator[Any, Any, tuple[dict[str, Any], dict[str, Any]]]:
+    """Route acquisition + fulfilment: sub-orchestrators for multi-AOI, direct for single."""
+    if len(ing["aoi_refs"]) > 1:
+        prog = yield from _progressive_pipeline(context, inp, ctx, ing, instance_id)
+        return _aggregate_aoi_results(prog["aoi_results"])
+    acq = yield from _phase_acquisition(context, inp, ing["aoi_refs"], ing["aoi_area_by_name"])
+    ful = yield from _phase_fulfilment(context, inp, ctx, acq)
+    return acq["acquisition"], ful["fulfilment"]
+
+
+# ---------------------------------------------------------------------------
 # Coordinator
 # ---------------------------------------------------------------------------
 
 
 @bp.orchestration_trigger(context_name="context")
 def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]
-    """Four-phase sequential orchestrator with fan-out parallelism.
+    """Orchestrator with per-AOI progressive delivery (#585).
 
-    Phases: Ingestion → Acquisition → Fulfilment → Enrichment.
-    Each phase is a sub-generator delegated via ``yield from``.
+    Single AOI: Ingestion → Acquisition → Fulfilment → Enrichment.
+    Multi-AOI:  Ingestion → Per-AOI sub-orchestrators → Enrichment.
     """
     inp = cast("dict[str, Any]", context.get_input() or {})
-    instance_id: str = context.instance_id
-    ctx = derive_project_context(inp.get("blob_name", ""))
+    instance_id, ctx = context.instance_id, derive_project_context(inp.get("blob_name", ""))
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
 
     try:
         ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
-        acq = yield from _phase_acquisition(context, inp, ing["aoi_refs"], ing["aoi_area_by_name"])
-        ful = yield from _phase_fulfilment(context, inp, ctx, acq)
+        acq_s, ful_s = yield from _dispatch_acq_ful(context, inp, ctx, ing, instance_id)
         enrichment = yield from _phase_enrichment(
-            context, inp, ctx, ing["all_coords"], ing["per_aoi_coords"], output_container
+            context,
+            inp,
+            ctx,
+            ing["all_coords"],
+            ing["per_aoi_coords"],
+            output_container,
         )
-
         summary = build_pipeline_summary(
             instance_id=instance_id,
             blob_name=inp.get("blob_name", ""),
             blob_url=inp.get("blob_url", ""),
             ingestion=ing["ingestion"],
-            acquisition=acq["acquisition"],
-            fulfilment=ful["fulfilment"],
+            acquisition=acq_s,
+            fulfilment=ful_s,
         )
         if enrichment.get("manifest_path"):
             summary["enrichment_manifest"] = enrichment["manifest_path"]

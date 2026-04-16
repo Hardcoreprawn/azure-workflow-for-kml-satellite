@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from unittest.mock import MagicMock
 
 from blueprints.pipeline._helpers import (
     _acq_payload,
+    _aggregate_aoi_results,
     _download_payload,
     _poll_payload,
     _post_process_payload,
@@ -611,3 +613,304 @@ class TestOrchestratorCoordinatorSize:
                 return
 
         raise AssertionError("treesight_orchestrator not found in source")
+
+
+# ---------------------------------------------------------------------------
+# Progressive delivery — sub-orchestrator per AOI (#585)
+# ---------------------------------------------------------------------------
+
+
+def _make_aoi_result(
+    name: str,
+    ready: int = 1,
+    failed: int = 0,
+    dl_succeeded: int = 1,
+    dl_failed: int = 0,
+    pp_completed: int = 1,
+    pp_clipped: int = 0,
+    pp_reprojected: int = 0,
+    pp_failed: int = 0,
+) -> dict:
+    """Build a minimal per-AOI sub-orchestrator result for test helpers."""
+    return {
+        "aoi_name": name,
+        "acquisition": {
+            "imagery_outcomes": [{"aoi": name}] * (ready + failed),
+            "ready_count": ready,
+            "failed_count": failed,
+        },
+        "fulfilment": {
+            "download_results": [{"aoi": name}] * (dl_succeeded + dl_failed),
+            "downloads_completed": dl_succeeded + dl_failed,
+            "downloads_succeeded": dl_succeeded,
+            "downloads_failed": dl_failed,
+            "batch_submitted": 0,
+            "batch_succeeded": 0,
+            "batch_failed": 0,
+            "post_process_results": [{"aoi": name}] * pp_completed,
+            "pp_completed": pp_completed,
+            "pp_clipped": pp_clipped,
+            "pp_reprojected": pp_reprojected,
+            "pp_failed": pp_failed,
+        },
+    }
+
+
+class TestAggregateAoiResults:
+    """Verify _aggregate_aoi_results merges per-AOI sub-orchestrator results."""
+
+    def test_sums_acquisition_ready_counts(self):
+        results = [
+            _make_aoi_result("A", ready=3, failed=1),
+            _make_aoi_result("B", ready=2, failed=0),
+        ]
+        acq, _ful = _aggregate_aoi_results(results)
+        assert acq["ready_count"] == 5
+        assert acq["failed_count"] == 1
+        assert len(acq["imagery_outcomes"]) == 6
+
+    def test_sums_fulfilment_counts(self):
+        results = [
+            _make_aoi_result("A", dl_succeeded=3, dl_failed=1, pp_completed=3, pp_clipped=2),
+            _make_aoi_result(
+                "B",
+                dl_succeeded=2,
+                dl_failed=0,
+                pp_completed=2,
+                pp_clipped=1,
+                pp_failed=1,
+            ),
+        ]
+        _acq, ful = _aggregate_aoi_results(results)
+        assert ful["downloads_succeeded"] == 5
+        assert ful["downloads_failed"] == 1
+        assert ful["downloads_completed"] == 6
+        assert ful["pp_completed"] == 5
+        assert ful["pp_clipped"] == 3
+        assert ful["pp_failed"] == 1
+
+    def test_handles_empty_results(self):
+        acq, ful = _aggregate_aoi_results([])
+        assert acq["ready_count"] == 0
+        assert ful["downloads_completed"] == 0
+        assert ful["pp_completed"] == 0
+
+    def test_handles_missing_keys(self):
+        acq, ful = _aggregate_aoi_results([{"aoi_name": "A"}])
+        assert acq["ready_count"] == 0
+        assert ful["downloads_completed"] == 0
+
+
+class TestAoiPipelineSubOrchestrator:
+    """Verify per-AOI sub-orchestrator exists and has correct structure."""
+
+    def test_aoi_pipeline_module_imports(self):
+        from blueprints.pipeline import aoi_orchestrator
+
+        assert hasattr(aoi_orchestrator, "aoi_pipeline")
+
+    def test_aoi_acquire_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
+
+        assert inspect.isgeneratorfunction(_aoi_acquire)
+
+    def test_aoi_fulfil_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.aoi_orchestrator import _aoi_fulfil
+
+        assert inspect.isgeneratorfunction(_aoi_fulfil)
+
+    def test_aoi_acquire_calls_composite_search(self):
+        from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        ctx.task_all.return_value = [{"order_id": "o1", "state": "ready"}]
+
+        pipeline_inp = {"composite_search": True}
+        aoi_ref = {"ref": "blob://aoi/1", "key": "Farm A"}
+
+        gen = _aoi_acquire(ctx, pipeline_inp, aoi_ref)
+        gen.send(None)  # First yield: acquire activity
+
+        ctx.call_activity_with_retry.assert_called()
+        activity_name = ctx.call_activity_with_retry.call_args[0][0]
+        assert activity_name == "acquire_composite"
+
+    def test_aoi_acquire_uses_retry(self):
+        from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
+        from treesight.constants import (
+            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        ctx.task_all.return_value = []
+
+        gen = _aoi_acquire(ctx, {"composite_search": True}, {"ref": "r", "key": "k"})
+        gen.send(None)
+
+        retry_opts = ctx.call_activity_with_retry.call_args[0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
+
+    def test_aoi_acquire_non_composite(self):
+        from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        ctx.task_all.return_value = [{"order_id": "o1", "state": "ready"}]
+
+        gen = _aoi_acquire(ctx, {"composite_search": False}, {"ref": "r", "key": "k"})
+        gen.send(None)
+
+        activity_name = ctx.call_activity_with_retry.call_args[0][0]
+        assert activity_name == "acquire_imagery"
+
+
+class TestProgressivePipeline:
+    """Verify progressive pipeline fans out sub-orchestrators."""
+
+    def test_progressive_pipeline_is_generator(self):
+        import inspect
+
+        from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+        assert inspect.isgeneratorfunction(_progressive_pipeline)
+
+    def test_progressive_pipeline_calls_sub_orchestrator(self):
+        from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+        ctx = MagicMock()
+        task_a = MagicMock()
+        task_a.result = _make_aoi_result("A")
+        task_b = MagicMock()
+        task_b.result = _make_aoi_result("B")
+        ctx.call_sub_orchestrator.side_effect = [task_a, task_b]
+        ctx.task_any.return_value = "any_sentinel"
+
+        inp = {"composite_search": True}
+        project_ctx = {"project_name": "test", "timestamp": "20260416T000000Z"}
+        ing = {
+            "aoi_refs": [{"ref": "blob://1", "key": "A"}, {"ref": "blob://2", "key": "B"}],
+            "per_aoi_coords": [
+                {"name": "A", "coords": [[0, 0]], "area_ha": 10, "cluster": 0},
+                {"name": "B", "coords": [[1, 1]], "area_ha": 20, "cluster": 0},
+            ],
+            "aoi_area_by_name": {"A": 10.0, "B": 20.0},
+        }
+
+        gen = _progressive_pipeline(ctx, inp, project_ctx, ing, "test-inst")
+        gen.send(None)  # First yield: task_any
+
+        assert ctx.call_sub_orchestrator.call_count == 2
+
+    def test_progressive_pipeline_passes_deterministic_instance_ids(self):
+        from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+        ctx = MagicMock()
+        task_a = MagicMock()
+        task_a.result = _make_aoi_result("A")
+        task_b = MagicMock()
+        task_b.result = _make_aoi_result("B")
+        ctx.call_sub_orchestrator.side_effect = [task_a, task_b]
+        ctx.task_any.return_value = "any_sentinel"
+
+        ing = {
+            "aoi_refs": [{"ref": "blob://1", "key": "A"}, {"ref": "blob://2", "key": "B"}],
+            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "aoi_area_by_name": {"A": 10.0, "B": 20.0},
+        }
+
+        gen = _progressive_pipeline(
+            ctx,
+            {},
+            {"project_name": "t", "timestamp": "ts"},
+            ing,
+            "parent-id",
+        )
+        gen.send(None)
+
+        calls = ctx.call_sub_orchestrator.call_args_list
+        ids = [c[1]["instance_id"] for c in calls]
+        assert ids == ["parent-id:aoi-0", "parent-id:aoi-1"]
+
+    def test_progressive_pipeline_sets_custom_status(self):
+        from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+        ctx = MagicMock()
+        task_a = MagicMock()
+        task_a.result = _make_aoi_result("A")
+        ctx.call_sub_orchestrator.return_value = task_a
+        ctx.task_any.return_value = "any_sentinel"
+
+        ing = {
+            "aoi_refs": [{"ref": "blob://1", "key": "A"}],
+            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "aoi_area_by_name": {"A": 10.0},
+        }
+
+        gen = _progressive_pipeline(
+            ctx,
+            {},
+            {"project_name": "t", "timestamp": "ts"},
+            ing,
+            "parent-id",
+        )
+        with contextlib.suppress(StopIteration):
+            gen.send(None)  # first yield: task_any
+            gen.send(task_a)  # winner is task_a, loop ends
+
+        status_calls = ctx.set_custom_status.call_args_list
+        assert any(c[0][0].get("phase") == "per_aoi_pipeline" for c in status_calls)
+        # Should have status after completion
+        assert any(c[0][0].get("completed_aois") == 1 for c in status_calls)
+
+    def test_progressive_pipeline_omits_aoi_entry(self):
+        """Sub-orchestrator payload must NOT include aoi_entry (claim-check, 48 KiB limit)."""
+        from blueprints.pipeline.orchestrator import _progressive_pipeline
+
+        ctx = MagicMock()
+        task_a = MagicMock()
+        task_a.result = _make_aoi_result("A")
+        ctx.call_sub_orchestrator.return_value = task_a
+        ctx.task_any.return_value = "any_sentinel"
+
+        ing = {
+            "aoi_refs": [{"ref": "blob://1", "key": "A"}],
+            "per_aoi_coords": [{"name": "A", "coords": [[0, 0]], "cluster": 0}],
+            "aoi_area_by_name": {"A": 10.0},
+        }
+
+        gen = _progressive_pipeline(ctx, {}, {"project_name": "t", "timestamp": "ts"}, ing, "p")
+        gen.send(None)
+
+        payload = ctx.call_sub_orchestrator.call_args[1]["input_"]
+        assert "aoi_entry" not in payload
+
+
+class TestAoiPollOrderRetry:
+    """Verify poll_order uses call_activity_with_retry (DF-level retry)."""
+
+    def test_poll_order_uses_call_activity_with_retry(self):
+        from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = [{"order_id": "o1"}]
+        ctx.task_all.return_value = [{"order_id": "o1", "state": "ready"}]
+
+        gen = _aoi_acquire(ctx, {"composite_search": True}, {"ref": "r", "key": "k"})
+        gen.send(None)  # first yield: acquire (with retry)
+
+        with contextlib.suppress(StopIteration):
+            gen.send([{"order_id": "o1"}])  # resume with acquire result
+
+        # poll_order should use call_activity_with_retry
+        retry_calls = [
+            c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"
+        ]
+        assert len(retry_calls) >= 1

@@ -17,6 +17,7 @@ bp = df.Blueprint()
 # Order does not matter — each module imports ``bp`` from this package.
 from . import (  # noqa: E402  — must follow bp = df.Blueprint()
     activities,  # noqa: F401  — registers activity triggers
+    aoi_orchestrator,  # noqa: F401  — registers per-AOI sub-orchestrator (#585)
     blob_trigger,  # noqa: F401  — registers blob trigger
     diagnostics,  # noqa: F401  — registers diagnostic endpoints
     enrichment,  # noqa: F401  — registers enrichment activities

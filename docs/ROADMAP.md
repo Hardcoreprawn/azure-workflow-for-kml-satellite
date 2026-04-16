@@ -32,6 +32,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
 | #623 | Use lxml instead of stdlib xml for KML generation — resolves Semgrep #2869 |
 | #622 | Re-enable Cosmos DB public network access — fixes 24h alert storm (fixes #621) |
 | #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
@@ -156,7 +157,7 @@ Per-AOI enrichment so multi-polygon submissions produce useful results.
 | F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
 | F.4 | #581 | Spatial clustering for wide-spread submissions | Open | #578 |
 | F.5 | #582 | EUDR per-parcel deforestation evidence export | Open | #578, #579 |
-| F.6 | #585 | Progressive delivery: stream per-AOI results | Open | #578 |
+| F.6 | #585 | Progressive delivery: stream per-AOI results | ✅ | #578 |
 | F.7 | #587 | Audit-grade EUDR PDF report | Open | #578, #582 |
 
 **Exit:** 50-polygon submission → per-AOI NDVI/weather/change. Click polygon
@@ -172,7 +173,7 @@ Dedicated EUDR app. Master tracker: #606.
 
 | Order | Issue | Title | Dataset | Depends On |
 |-------|-------|-------|---------|------------|
-| D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | #578 |
+| D.1 | #604 | ESA WorldCover overlay | `esa-worldcover` 10m | ✅ PR #620 |
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
