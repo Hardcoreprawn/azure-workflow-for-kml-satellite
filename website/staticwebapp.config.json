@@ -23,6 +23,12 @@
       "headers": {
         "X-Robots-Tag": "noindex, nofollow"
       }
+    },
+    {
+      "route": "/eudr/*",
+      "headers": {
+        "X-Robots-Tag": "noindex, nofollow"
+      }
     }
   ],
   "responseOverrides": {

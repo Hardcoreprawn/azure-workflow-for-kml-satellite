@@ -16,11 +16,18 @@ until EUDR reaches revenue.
   directs users to the EUDR app.
 - **EUDR app** (`/eudr/`) — 2 free trial parcels → £49/month base +
   £3/parcel metered overage (graduated volume tiers). Billing is per-org.
+- **Platform apps** (`/account/`) — shared concerns: account management,
+  billing, org settings. Usable by all vertical apps.
 - **Conservation** (`/app/`) — code stays, no new development or promotion.
 - Master tracker: #606.
 
-**Architecture:** Single Container Apps Function App — all endpoints +
-pipeline in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
+**Multi-app platform architecture:** The satellite pipeline (acquisition,
+NDVI, change detection, enrichment) is shared infrastructure. Each product
+vertical (EUDR, conservation, agriculture) gets its own URL namespace and
+entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
+
+**Backend:** Single Container Apps Function App — all endpoints + pipeline
+in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
 T2/T3 split (#466, #467) deferred until user volume justifies it.
 
 **Execution order:** 2C → 2D → 2E → 2F → 2G → 3 → 4 → 5.
@@ -94,7 +101,7 @@ Container Apps FA via `api-config.json`.
 
 ## Stage 2C — Pipeline Verification & User Journey
 
-Prove the pipeline works, fix bugs, make the entry point clear.
+Prove the pipeline works, fix bugs, establish `/eudr/` as the entry point.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
@@ -107,9 +114,10 @@ Prove the pipeline works, fix bugs, make the entry point clear.
 | 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
 | 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #620 |
 | 2C.7 | #590 | Pipeline retry model + refund | Open (needs #589) |
+| 2C.8 | #610 | Create `/eudr/` app entry point | ✅ PR #615 |
 
-**Exit:** Visitor → landing page → EUDR app → free trial → submit parcels
-→ evidence → pricing. AOI limits enforced. Retries work.
+**Exit:** Visitor → `/` landing page → `/eudr/` → free trial → submit
+parcels → evidence → pricing. AOI limits enforced. Retries work.
 
 ---
 
@@ -145,9 +153,9 @@ Build once, promote dev → prod.
 
 ---
 
-## Stage 2F — Multi-AOI Pipeline & Per-Parcel Evidence
+## Stage 2F — Per-Parcel Evidence & EUDR Export
 
-Per-AOI enrichment so multi-polygon submissions produce useful results.
+Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidence.
 **Do not start until 2C.6 bugs are fixed.**
 
 | Order | Issue | Title | Status | Depends On |
@@ -168,7 +176,8 @@ Per-AOI enrichment so multi-polygon submissions produce useful results.
 
 ## Stage 2G — EUDR Compliance Product
 
-Dedicated EUDR app. Master tracker: #606.
+Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
+`/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
 ### 2G.1 — Data Sources
 
@@ -203,7 +212,7 @@ invited users auto-join on sign-in via SWA email matching.
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
 | FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | ✅ PR #620 |
-| FE.2 | #610 | EUDR compliance app (`/eudr/`) | #611, #601, #603, #579, #614 |
+| FE.2 | — | EUDR-specific UI polish on `/eudr/` | #610 (2C.8) |
 | FE.3 | #605 | EUDR landing page + sitemap | — |
 | FE.4 | #602 | Methodology page | — |
 
@@ -215,12 +224,16 @@ invited users auto-join on sign-in via SWA email matching.
 
 **Exit:** Compliance officer uploads parcels → multi-source evidence →
 deforestation-free determination → audit-grade PDF → metered billing.
+All at `/eudr/`. Shared billing/account at `/account/`.
 
 ---
 
 ## Stage 3 — Growth & Retention
 
 **Do not start until Stages 2C–2G are materially complete.**
+Growth features target the EUDR vertical first. Conservation/agriculture
+verticals start here as separate `/conservation/` or `/agri/` apps,
+reusing the shared pipeline and platform.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
@@ -294,6 +307,7 @@ GFW alerts.
 1. **Log issues you find.** Bug, deprecation, flake, code smell → check for existing issue → create with `discovered` label if none. Don't fix inline.
 2. **Update the roadmap.** PR merges → update "Recently Landed" + mark stage item ✅.
 3. **Keep context lean.** Reference issue numbers. The issue holds detail; the roadmap holds order.
-4. **EUDR first.** Conservation is mothballed. All feature work targets Stage 2G (#606).
-5. **Pipeline foundation first.** Stage 2F (#578, #583) before 2G data sources.
-6. **No infrastructure without users.** T2/T3, Container Apps Jobs, ML — deferred until volume justifies it.
+4. **EUDR first.** Conservation is mothballed. All feature work targets EUDR (`/eudr/`). Conservation stays at `/app/`, unchanged.
+5. **Multi-app platform.** Pipeline is shared; each vertical gets its own URL namespace. Shared concerns (auth, billing, org) go in `/account/` or shared modules.
+6. **Pipeline foundation first.** Stage 2F (#578, #583) before 2G data sources.
+7. **No infrastructure without users.** T2/T3, Container Apps Jobs, ML — deferred until volume justifies it.

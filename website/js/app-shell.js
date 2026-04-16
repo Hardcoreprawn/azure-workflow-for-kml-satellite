@@ -187,6 +187,9 @@
   // and hides the workspace role/preference switcher.
   const EUDR_LOCKED = document.body.hasAttribute('data-eudr-app');
 
+  // Base path for the current app entry (/eudr/ or /app/).
+  const APP_BASE = EUDR_LOCKED ? '/eudr/' : '/app/';
+
   // Null-safe DOM text setter — used when elements may not exist
   // on all pages (e.g. settings panel absent on EUDR app).
   function setText(id, value) {
@@ -420,7 +423,7 @@
       const nextSearch = url.searchParams.toString();
       return nextSearch ? nextPath + '?' + nextSearch : nextPath;
     } catch {
-      return '/app/';
+      return APP_BASE;
     }
   }
 
@@ -1537,7 +1540,7 @@
       deliveryEl.textContent = '—';
       deliveryNoteEl.textContent = 'Failure counts and tracked artifacts will appear here.';
       linkLabelEl.textContent = 'Dashboard state';
-      linkEl.href = '/app/';
+      linkEl.href = APP_BASE;
       linkEl.textContent = 'Open dashboard';
       document.querySelectorAll('[data-export-format]').forEach(function(button) {
         button.disabled = true;
@@ -2518,7 +2521,7 @@
       if (url.searchParams.get('mode') === 'demo') {
         url.searchParams.delete('mode');
         const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-        window.history.replaceState({}, '', nextUrl || '/app/');
+        window.history.replaceState({}, '', nextUrl || APP_BASE);
       }
     } catch { /* ignore */ }
 
