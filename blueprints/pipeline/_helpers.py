@@ -203,10 +203,14 @@ def _collect_per_aoi_coords(
 ) -> list[dict[str, Any]]:
     """Extract per-AOI coordinate data for per-AOI enrichment.
 
+    Assigns a ``cluster`` label so the enrichment phase knows which AOIs
+    share spatial proximity and can share satellite imagery tiles (#581).
+
     Returns a list of dicts, one per AOI, each containing:
     - ``name``: the feature name
     - ``coords``: the exterior coordinates (or bbox-derived ring)
     - ``area_ha``: area in hectares
+    - ``cluster``: zero-based cluster index from spatial grouping
     """
     result: list[dict[str, Any]] = []
     for aoi in aois:
@@ -230,6 +234,18 @@ def _collect_per_aoi_coords(
                     "area_ha": aoi.get("area_ha", 0.0),
                 }
             )
+
+    # Assign spatial cluster labels (#581)
+    if len(result) > 1:
+        from treesight.geo import cluster_aois
+
+        clusters = cluster_aois(result)
+        for cluster_idx, group in enumerate(clusters):
+            for entry in group:
+                entry["cluster"] = cluster_idx
+    elif result:
+        result[0]["cluster"] = 0
+
     return result
 
 
