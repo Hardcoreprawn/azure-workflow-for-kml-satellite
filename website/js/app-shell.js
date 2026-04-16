@@ -187,6 +187,9 @@
   // and hides the workspace role/preference switcher.
   const EUDR_LOCKED = document.body.hasAttribute('data-eudr-app');
 
+  // Base path for the current app entry (/eudr/ or /app/).
+  const APP_BASE = EUDR_LOCKED ? '/eudr/' : '/app/';
+
   // Null-safe DOM text setter — used when elements may not exist
   // on all pages (e.g. settings panel absent on EUDR app).
   function setText(id, value) {
@@ -420,7 +423,7 @@
       const nextSearch = url.searchParams.toString();
       return nextSearch ? nextPath + '?' + nextSearch : nextPath;
     } catch {
-      return '/app/';
+      return APP_BASE;
     }
   }
 
@@ -1537,7 +1540,7 @@
       deliveryEl.textContent = '—';
       deliveryNoteEl.textContent = 'Failure counts and tracked artifacts will appear here.';
       linkLabelEl.textContent = 'Dashboard state';
-      linkEl.href = '/app/';
+      linkEl.href = APP_BASE;
       linkEl.textContent = 'Open dashboard';
       document.querySelectorAll('[data-export-format]').forEach(function(button) {
         button.disabled = true;
@@ -1729,18 +1732,31 @@
     return 'submit';
   }
 
+  const ENRICHMENT_STEP_LABELS = {
+    data_sources_and_imagery: 'Fetching weather, flood/fire context, and registering satellite mosaics in parallel.',
+    per_aoi: 'Running per-parcel enrichment across AOIs in parallel.',
+    finalizing: 'Merging results and storing the analysis manifest.'
+  };
+
   function updateAnalysisStory(phase, runtimeStatus, data) {
     var runtime = runtimeStatus || 'Pending';
     var detail = ANALYSIS_PHASE_DETAILS[phase] || 'Working through the analysis pipeline.';
     var timing = summarizeRunTiming(data);
 
     if (runtime !== 'Completed' && phase === 'enrichment') {
-      detail += ' Enrichment is the slowest local step because it batches weather, flood/fire checks, mosaic registration, NDVI, change detection, and manifest generation.';
+      var cs = data && data.customStatus;
+      var step = cs && cs.step;
+      const stepLabel = step && ENRICHMENT_STEP_LABELS[step];
+      if (stepLabel) {
+        detail = stepLabel;
+        if (step === 'per_aoi' && cs.aois) {
+          detail += ' (' + cs.aois + ' AOIs)';
+        }
+      } else {
+        detail += ' Enrichment batches weather, flood/fire checks, mosaic registration, NDVI, and change detection in parallel.';
+      }
       if (timing.sinceUpdate) {
         detail += ' Last backend update ' + timing.sinceUpdate + ' ago.';
-      }
-      if (timing.stale) {
-        detail += ' The UI will stay on this message until the enrichment activity finishes because the backend only publishes the next status after that activity returns.';
       }
     } else if (runtime !== 'Completed' && timing.elapsed) {
       detail += ' Elapsed ' + timing.elapsed + '.';
@@ -2226,7 +2242,7 @@
   async function manageBilling() {
     // If billing is gated for this user, redirect to express interest
     if (latestBillingStatus && latestBillingStatus.billing_gated) {
-      window.location.href = '/#early-access';
+      window.location.href = 'mailto:hello@canopex.io';
       return;
     }
 
@@ -2518,7 +2534,7 @@
       if (url.searchParams.get('mode') === 'demo') {
         url.searchParams.delete('mode');
         const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-        window.history.replaceState({}, '', nextUrl || '/app/');
+        window.history.replaceState({}, '', nextUrl || APP_BASE);
       }
     } catch { /* ignore */ }
 

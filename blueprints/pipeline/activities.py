@@ -309,6 +309,88 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Enrichment sub-step activities (#574 — parallel fan-out)
+# ---------------------------------------------------------------------------
+
+
+@bp.activity_trigger(input_name="payload")
+def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
+    """Enrichment sub-step 1: weather, flood/fire, EUDR datasets."""
+    from treesight.pipeline.enrichment import enrich_data_sources as _enrich_ds
+
+    return _enrich_ds(
+        payload["coords"],
+        eudr_mode=payload.get("eudr_mode", False),
+        date_start=payload.get("date_start"),
+        date_end=payload.get("date_end"),
+        cadence=payload.get("cadence", "maximum"),
+        max_history_years=payload.get("max_history_years"),
+    )
+
+
+@bp.activity_trigger(input_name="payload")
+def enrich_imagery(payload: _Payload) -> dict[str, Any]:
+    """Enrichment sub-step 2: mosaic registration, NDVI, change detection."""
+    from treesight.pipeline.enrichment import enrich_imagery as _enrich_img
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    return _enrich_img(
+        payload["coords"],
+        eudr_mode=payload.get("eudr_mode", False),
+        date_start=payload.get("date_start"),
+        date_end=payload.get("date_end"),
+        cadence=payload.get("cadence", "maximum"),
+        max_history_years=payload.get("max_history_years"),
+        project_name=payload["project_name"],
+        timestamp=payload["timestamp"],
+        output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
+        storage=storage,
+    )
+
+
+@bp.activity_trigger(input_name="payload")
+def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
+    """Enrichment sub-step 3a: per-AOI enrichment (fan-out one per AOI)."""
+    from treesight.pipeline.enrichment import enrich_single_aoi_step as _enrich_aoi
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    return _enrich_aoi(
+        payload["aoi_entry"],
+        date_start=payload.get("date_start"),
+        date_end=payload.get("date_end"),
+        cadence=payload.get("cadence", "maximum"),
+        max_history_years=payload.get("max_history_years"),
+        eudr_mode=payload.get("eudr_mode", False),
+        project_name=payload["project_name"],
+        timestamp=payload["timestamp"],
+        output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
+        storage=storage,
+    )
+
+
+@bp.activity_trigger(input_name="payload")
+def enrich_finalize(payload: _Payload) -> dict[str, Any]:
+    """Enrichment sub-step 4: merge parallel results + store manifest."""
+    from treesight.pipeline.enrichment import enrich_finalize as _finalize
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    return _finalize(
+        payload["data_sources"],
+        payload["imagery"],
+        payload.get("per_aoi_results", []),
+        eudr_mode=payload.get("eudr_mode", False),
+        date_start=payload.get("date_start"),
+        project_name=payload["project_name"],
+        timestamp=payload["timestamp"],
+        output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
+        storage=storage,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Azure Batch fallback activities (#315)
 # ---------------------------------------------------------------------------
 

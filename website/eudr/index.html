@@ -3,17 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard — Canopex</title>
-<meta name="description" content="Canopex workspace for satellite analyses, usage, and billing.">
-<link rel="canonical" href="/app/">
-<meta property="og:title" content="Dashboard — Canopex">
-<meta property="og:description" content="Canopex workspace for satellite analyses, usage, and billing.">
-<meta property="og:url" content="/app/">
+<title>EUDR Due Diligence — Canopex</title>
+<meta name="description" content="Upload land parcels, get satellite evidence for EU Deforestation Regulation due diligence.">
+<link rel="canonical" href="/eudr/">
+<meta property="og:title" content="EUDR Due Diligence — Canopex">
+<meta property="og:description" content="Upload land parcels, get satellite evidence for EU Deforestation Regulation due diligence.">
+<meta property="og:url" content="/eudr/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Canopex">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Dashboard — Canopex">
-<meta name="twitter:description" content="Canopex workspace for satellite analyses, usage, and billing.">
+<meta name="twitter:title" content="EUDR Due Diligence — Canopex">
+<meta name="twitter:description" content="Upload land parcels, get satellite evidence for EU Deforestation Regulation due diligence.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/app.css">
@@ -25,21 +25,21 @@
 <script src="/js/canopex-evidence-render.js" defer></script>
 <script src="/js/app-shell.js" defer></script>
 </head>
-<body>
+<body data-eudr-app>
 <noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
 
 <nav>
   <div class="container">
-    <a href="/app/" class="logo">
+    <a href="/eudr/" class="logo">
       <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
       Canopex
     </a>
     <ul>
-      <li><a href="/app/" aria-current="page">Dashboard</a></li>
+      <li><a href="/eudr/" aria-current="page">Due Diligence</a></li>
       <li><a href="/#how-it-works">How It Works</a></li>
       <li><a href="/#pricing">Pricing</a></li>
       <li><a href="/docs/">Docs</a></li>
-      <li><a href="/#faq">FAQ</a></li>
+      <li><a href="/docs/eudr-methodology.html">EUDR Methodology</a></li>
     </ul>
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
@@ -55,8 +55,8 @@
   <section id="app-unauthenticated" class="app-gate">
     <div class="container">
       <div class="app-panel">
-        <h2>Sign in to start your free analysis</h2>
-        <p>Upload a land boundary, get satellite evidence back. 2 free parcel assessments, no credit card required.</p>
+        <h2>Sign in to start EUDR due diligence</h2>
+        <p>Upload land parcel boundaries, get satellite evidence for EU Deforestation Regulation compliance. 2 free parcel assessments, no credit card required.</p>
         <div class="app-gate-actions">
           <button class="btn btn-primary" id="app-sign-in-btn" type="button">Start Free</button>
           <a class="btn btn-secondary" href="/#pricing">View Plans</a>
@@ -73,16 +73,16 @@
       <div class="app-welcome-bar">
         <div class="app-welcome-identity">
           <h2>Welcome back, <span id="app-user-name">there</span></h2>
-          <p id="app-account-note" class="app-welcome-note">Your workspace</p>
+          <p id="app-account-note" class="app-welcome-note">EUDR due diligence workspace</p>
         </div>
         <div class="app-welcome-stats">
           <div class="app-stat-pill"><span class="app-utility-label">Plan</span><strong id="app-hero-plan">Loading…</strong><span class="app-utility-note" id="app-hero-plan-note">Checking entitlement…</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Runs Left</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">Quota refreshes with your plan.</span></div>
-          <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">Analysis workspace</strong><span class="app-utility-note" id="app-hero-mode-note">Capability summary loading…</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">EUDR due diligence</strong><span class="app-utility-note" id="app-hero-mode-note">Imagery restricted to post-Dec 2020 for EUDR compliance.</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Loading your recent runs.</span></div>
         </div>
         <div class="app-welcome-actions">
-          <a class="btn btn-primary" id="app-new-analysis-btn" href="#app-analysis-card">New Analysis</a>
+          <a class="btn btn-primary" id="app-new-analysis-btn" href="#app-analysis-card">New Due Diligence</a>
           <button class="btn btn-secondary" id="app-manage-billing-btn" type="button">Billing</button>
         </div>
       </div>
@@ -92,20 +92,21 @@
         <article class="app-card app-first-run-card">
           <div class="app-first-run-content">
             <div class="section-label">Get Started</div>
-            <h3>Welcome to Your Workspace</h3>
-            <p class="app-first-run-note">You have no analysis runs yet. Upload a KML file describing your area of interest, and Canopex will search satellite imagery, compute vegetation health, and assemble a time-series evidence pack.</p>
+            <h3>Welcome to EUDR Due Diligence</h3>
+            <p class="app-first-run-note">You have no due diligence runs yet. Upload a KML file with your parcel boundaries. Canopex will search post-2020 satellite imagery, assess deforestation risk, and assemble an evidence pack for EUDR compliance.</p>
             <div class="app-first-run-actions">
-              <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Analysis</a>
+              <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Assessment</a>
               <a class="btn btn-secondary" href="/docs/kml-guide.html">KML Guide</a>
+              <a class="btn btn-secondary" href="/docs/eudr-methodology.html">EUDR Methodology</a>
             </div>
           </div>
           <div class="app-first-run-checklist">
             <div class="section-label">Quick Checklist</div>
             <ol>
-              <li>Prepare a KML or KMZ file with polygon boundaries</li>
-              <li>Upload it in the New Analysis panel below</li>
-              <li>Queue the pipeline and watch each phase complete</li>
-              <li>Review satellite imagery, NDVI, and AI findings on this dashboard</li>
+              <li>Prepare a KML or KMZ file with parcel polygon boundaries</li>
+              <li>Upload it in the New Due Diligence panel below</li>
+              <li>Queue the pipeline — imagery is restricted to post-Dec 2020</li>
+              <li>Review satellite evidence, NDVI, and deforestation-risk assessment</li>
             </ol>
           </div>
         </article>
@@ -120,7 +121,7 @@
               <h3>History &amp; Resume</h3>
             </div>
           </div>
-          <p class="app-rail-copy" id="app-history-copy">Reopen a previous run or resume an active one.</p>
+          <p class="app-rail-copy" id="app-history-copy">Reopen a previous due diligence run or resume an active one.</p>
           <div class="app-run-snapshot">
             <span class="app-run-label">Selected status</span>
             <strong id="app-history-latest-status">Loading recent runs</strong>
@@ -138,16 +139,16 @@
         <article class="app-workflow-rail app-rail-run" id="app-analysis-card">
           <div class="app-rail-header">
             <div>
-              <div class="section-label">New Analysis</div>
+              <div class="section-label">New Due Diligence</div>
               <h3>Launch and Track</h3>
             </div>
           </div>
-          <p class="app-rail-copy" id="app-run-copy">Upload KML, queue the pipeline, and monitor progress.</p>
+          <p class="app-rail-copy" id="app-run-copy">Upload parcel KML, queue the EUDR pipeline, and monitor progress.</p>
           <!-- ── Auth gate overlay for analysis form ── -->
           <div class="app-analysis-auth-gate" id="app-analysis-auth-gate" hidden>
             <div class="app-panel">
-              <h4>Sign in to run your own analysis</h4>
-              <p>Sign in to upload KML and queue analysis runs. 2 free parcel assessments, no credit card required.</p>
+              <h4>Sign in to run EUDR due diligence</h4>
+              <p>Sign in to upload parcel boundaries and queue due diligence runs. 2 free parcel assessments, no credit card required.</p>
               <div class="app-gate-actions">
                 <button class="btn btn-primary" id="app-analysis-sign-in-btn" type="button">Sign In</button>
                 <a class="btn btn-secondary" href="/#pricing">View Plans</a>
@@ -157,7 +158,7 @@
           <div id="app-analysis-form-fields" hidden>
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
-          <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file, or paste KML below.</p>
+          <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file with your parcel boundaries, or paste KML below.</p>
           <label class="app-field-label" for="app-analysis-kml">KML Content</label>
           <textarea id="app-analysis-kml" placeholder="Paste KML content here…"></textarea>
           <div class="app-preflight-card" id="app-analysis-preflight">
@@ -168,14 +169,14 @@
               </div>
               <span class="app-preflight-badge" id="app-preflight-mode">No file yet</span>
             </div>
-            <p class="app-note" id="app-preflight-summary">Paste KML to see feature count, area spread, and guidance before queueing.</p>
+            <p class="app-note" id="app-preflight-summary">Paste KML to see parcel count, area spread, and guidance before queueing.</p>
             <div class="app-preflight-map-wrap" id="app-preflight-map-wrap" hidden>
               <div id="app-preflight-map" class="app-preflight-map"></div>
-              <p class="app-note app-preflight-map-caption">Confirm your area of interest before queueing.</p>
+              <p class="app-note app-preflight-map-caption">Confirm your parcels before queueing.</p>
             </div>
             <div class="app-preflight-grid">
               <div><span>Features</span><strong id="app-preflight-features">0</strong></div>
-              <div><span>AOIs</span><strong id="app-preflight-aois">0</strong></div>
+              <div><span>Parcels</span><strong id="app-preflight-aois">0</strong></div>
               <div><span>Spread</span><strong id="app-preflight-spread">—</strong></div>
               <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
             </div>
@@ -184,21 +185,16 @@
             </div>
           </div>
           <div class="app-analysis-actions">
-            <label class="app-eudr-toggle" id="app-eudr-toggle" hidden>
-              <input type="checkbox" id="app-eudr-mode">
-              <span>EUDR compliance check</span>
-              <span class="app-note">Restricts imagery to post-Dec 2020 for EU Deforestation Regulation evidence.</span>
-            </label>
-            <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button">Queue Analysis</button>
+            <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button">Queue Due Diligence</button>
           </div>
           </div><!-- /app-analysis-form-fields -->
           <div class="app-callout" id="app-analysis-status" hidden></div>
           <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
-            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing AOIs and validating geometry</div>
-            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching NAIP and Sentinel-2 imagery</div>
+            <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing parcels and validating geometry</div>
+            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2 imagery</div>
             <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, weather, and cache layers</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, deforestation risk, and evidence layers</div>
             <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
           </div>
           <dl class="app-stats compact" id="app-analysis-run" hidden>
@@ -215,7 +211,7 @@
             <div class="app-detail-card">
               <span class="app-content-label">Scope</span>
               <strong id="app-run-scope">—</strong>
-              <p id="app-run-scope-note">Feature and AOI counts appear when known.</p>
+              <p id="app-run-scope-note">Parcel counts appear when known.</p>
             </div>
             <div class="app-detail-card">
               <span class="app-content-label">Delivery</span>
@@ -225,7 +221,7 @@
             <div class="app-detail-card">
               <span class="app-content-label">Run Link</span>
               <strong id="app-run-link-label">Dashboard state</strong>
-              <a class="app-inline-link" id="app-run-link" href="/app/">Copy run link</a>
+              <a class="app-inline-link" id="app-run-link" href="/eudr/">Copy run link</a>
             </div>
           </div>
         </article>
@@ -237,9 +233,9 @@
           <div class="app-evidence-hero-header">
             <div>
               <div class="section-label">Evidence</div>
-              <h3 id="app-content-title">Satellite Imagery &amp; Analysis</h3>
+              <h3 id="app-content-title">Satellite Evidence &amp; EUDR Assessment</h3>
             </div>
-            <p class="app-evidence-hero-note" id="app-content-copy">Select a completed run to review satellite imagery, vegetation health, weather context, and AI-powered findings.</p>
+            <p class="app-evidence-hero-note" id="app-content-copy">Select a completed run to review satellite imagery, vegetation health, and deforestation-risk assessment for EUDR compliance.</p>
           </div>
 
           <!-- Phase status (shown during active runs) -->
@@ -253,12 +249,12 @@
               <div class="app-content-block">
                 <span class="app-content-label">Enrichment</span>
                 <strong id="app-content-enrichment">Context pending</strong>
-                <p id="app-content-enrichment-note">Weather and narrative context will follow once the imagery pipeline is stable.</p>
+                <p id="app-content-enrichment-note">Deforestation-risk assessment and narrative context will follow once the imagery pipeline is stable.</p>
               </div>
               <div class="app-content-block">
                 <span class="app-content-label">Exports</span>
                 <strong id="app-content-exports">Evidence pack next</strong>
-                <p id="app-content-exports-note">Saved maps, narrative, and donor-ready exports will land here once run detail is wired.</p>
+                <p id="app-content-exports-note">EUDR due diligence statement and compliance exports will land here once evidence is assembled.</p>
               </div>
             </div>
           </div>
@@ -313,7 +309,7 @@
                   <div id="app-evidence-change-list"></div>
                 </div>
 
-                <!-- Per-AOI selector (multi-polygon runs only) -->
+                <!-- Per-parcel selector (multi-polygon runs only) -->
                 <div class="app-evidence-block" id="app-evidence-aoi-block" hidden>
                   <div class="app-evidence-aoi-header">
                     <span class="app-content-label">Per-parcel evidence</span>
@@ -329,8 +325,21 @@
               </div>
             </div>
 
-            <!-- AI & EUDR — full-width action row below the two-col layout -->
+            <!-- EUDR — full-width action row below the two-col layout -->
             <div class="app-evidence-actions-row">
+              <!-- EUDR compliance assessment -->
+              <div class="app-evidence-block app-evidence-action-card" id="app-evidence-eudr-block" hidden>
+                <div class="app-evidence-ai-header">
+                  <div>
+                    <span class="app-content-label">EUDR compliance</span>
+                    <p class="app-evidence-action-hint">Run a deforestation-risk assessment against EU Deforestation Regulation thresholds.</p>
+                  </div>
+                  <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button">Assess EUDR</button>
+                </div>
+                <div id="app-evidence-eudr-content"></div>
+                <div class="app-evidence-ai-loading" id="app-evidence-eudr-loading" hidden>Running EUDR assessment&hellip;</div>
+              </div>
+
               <!-- AI observations -->
               <div class="app-evidence-block app-evidence-action-card" id="app-evidence-ai-block" hidden>
                 <div class="app-evidence-ai-header">
@@ -342,19 +351,6 @@
                 </div>
                 <div id="app-evidence-ai-content"></div>
                 <div class="app-evidence-ai-loading" id="app-evidence-ai-loading" hidden>Analyzing with AI&hellip;</div>
-              </div>
-
-              <!-- EUDR compliance (role-dependent) -->
-              <div class="app-evidence-block app-evidence-action-card" id="app-evidence-eudr-block" hidden>
-                <div class="app-evidence-ai-header">
-                  <div>
-                    <span class="app-content-label">EUDR compliance</span>
-                    <p class="app-evidence-action-hint">Run a deforestation-risk assessment against EU Deforestation Regulation thresholds.</p>
-                  </div>
-                  <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button">Assess EUDR</button>
-                </div>
-                <div id="app-evidence-eudr-content"></div>
-                <div class="app-evidence-ai-loading" id="app-evidence-eudr-loading" hidden>Running EUDR assessment&hellip;</div>
               </div>
             </div>
 
@@ -374,57 +370,10 @@
         </article>
       </div>
 
-      <!-- ── Workspace settings (collapsible) ── -->
+      <!-- ── Account settings (collapsible, no role/preference switcher) ── -->
       <details class="app-settings-disclosure" id="app-settings-disclosure">
-        <summary class="app-settings-toggle">Workspace Settings <span class="app-settings-hint">Role, preference, and account</span></summary>
+        <summary class="app-settings-toggle">Account Settings <span class="app-settings-hint">Billing and access</span></summary>
         <div class="app-settings-body">
-          <div class="app-lens-board">
-            <article class="app-card app-lens-card">
-              <div class="app-lens-header">
-                <div>
-                  <div class="section-label">Role View</div>
-                  <h3 id="app-role-title">Conservation monitoring</h3>
-                </div>
-                <span class="app-lens-tag" id="app-role-tag">Field evidence</span>
-              </div>
-              <div class="app-chip-row" id="app-role-switcher">
-                <button class="app-lens-chip" type="button" data-role-choice="conservation" aria-pressed="true">Conservation</button>
-                <button class="app-lens-chip" type="button" data-role-choice="eudr" aria-pressed="false">EUDR</button>
-                <button class="app-lens-chip" type="button" data-role-choice="portfolio" aria-pressed="false">Portfolio Ops</button>
-              </div>
-              <p class="app-lens-copy" id="app-role-summary">Built for protected-area coordinators who need rapid, plain-English evidence they can take to rangers, directors, or donors.</p>
-              <div class="app-brief-grid">
-                <div class="app-brief-item"><span>Primary outcome</span><strong id="app-role-outcome">Evidence packs</strong></div>
-                <div class="app-brief-item"><span>Operator stance</span><strong id="app-role-risk">No silent fallback</strong></div>
-                <div class="app-brief-item"><span>Default rhythm</span><strong id="app-role-rhythm">Monthly watchlist</strong></div>
-              </div>
-            </article>
-
-            <article class="app-card app-lens-card app-preference-card">
-              <div class="app-lens-header">
-                <div>
-                  <div class="section-label">Work Preference</div>
-                  <h3 id="app-preference-title">Investigate suspicious change</h3>
-                </div>
-                <span class="app-lens-tag" id="app-preference-tag">Run-first</span>
-              </div>
-              <div class="app-chip-row" id="app-preference-switcher">
-                <button class="app-lens-chip" type="button" data-preference-choice="investigate" aria-pressed="true">Investigate</button>
-                <button class="app-lens-chip" type="button" data-preference-choice="monitor" aria-pressed="false">Monitor</button>
-                <button class="app-lens-chip" type="button" data-preference-choice="report" aria-pressed="false">Report</button>
-              </div>
-              <p class="app-lens-copy" id="app-preference-summary">Stay centered on the live run while you prove what changed, why it changed, and what to do next.</p>
-              <div class="app-action-stack">
-                <button class="btn btn-primary" id="app-guided-primary-btn" type="button">Start analysis</button>
-                <button class="btn btn-secondary" id="app-guided-secondary-btn" type="button">Review latest incident</button>
-              </div>
-              <div class="app-mini-list app-mini-list-tight">
-                <div class="app-mini-item"><span>Deliverable</span><strong id="app-guided-deliverable">Operator brief</strong></div>
-                <div class="app-mini-item"><span>Operator stance</span><strong id="app-guided-stance">Prove the change before escalation</strong></div>
-              </div>
-            </article>
-          </div>
-
           <div class="app-support-grid">
             <article class="app-card app-support-card">
               <h3>Account &amp; Access</h3>
@@ -463,7 +412,7 @@
 </main>
 
 <footer>
-  <div class="container">Canopex — automated satellite evidence for conservation and compliance.</div>
+  <div class="container">Canopex — satellite evidence for EU Deforestation Regulation due diligence.</div>
 </footer>
 <!-- Expanded map viewer modal (must be direct child of body to avoid transform containment) -->
 <div class="app-map-expanded-backdrop" id="app-map-expanded-backdrop" hidden>

@@ -142,7 +142,7 @@ the startup logging installer ran before config validation and replay-store setu
 
 ## Add New Imagery Provider Adapter
 
-1. Implement ImageryProvider in kml_satellite/providers.
+1. Implement ImageryProvider in treesight/providers.
 2. Implement search/order/poll/download with typed returns.
 3. Register adapter in provider factory.
 4. Add unit tests for success and error/retry paths.

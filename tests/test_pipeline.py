@@ -592,6 +592,322 @@ class TestAcquisitionActivityRetry:
         activity_name = ctx.call_activity_with_retry.call_args[0][0]
         assert activity_name == "acquire_imagery"
 
+    def test_poll_order_uses_retry(self):
+        """poll_order should use transient retry (talks to external APIs)."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+        from treesight.constants import (
+            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "acq_sentinel"
+        # First yield: acquisition batch. Second yield: poll batch.
+        ctx.task_all.side_effect = [
+            [{"order_id": "o1"}],  # acquisition
+            [{"state": "ready", "order_id": "o1"}],  # polling
+        ]
+
+        inp = {"composite_search": False}
+        aoi_refs = [{"ref": "blob://aoi/1", "key": "aoi-1"}]
+        aoi_area_by_name = {"aoi-1": 10.0}
+
+        gen = _phase_acquisition(ctx, inp, aoi_refs, aoi_area_by_name)
+        gen.send(None)  # acquisition yield
+        with contextlib.suppress(StopIteration):
+            gen.send([{"order_id": "o1"}])  # poll yield
+
+        # poll_order should be called with retry
+        poll_calls = [
+            c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"
+        ]
+        assert len(poll_calls) >= 1
+        retry_opts = poll_calls[0][0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
+
+
+class TestFulfilmentRetry:
+    """Verify fulfilment activities use call_activity_with_retry."""
+
+    def test_download_imagery_uses_transient_retry(self):
+        """download_imagery should use transient retry options."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _fulfil_download
+        from treesight.constants import (
+            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "dl_sentinel"
+        ctx.task_all.return_value = [{"state": "ok", "blob_path": "path"}]
+
+        gen = _fulfil_download(
+            ctx,
+            serverless_ready=[{"order_id": "o1", "aoi_key": "aoi-1"}],
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            asset_urls={"o1": "http://example.com"},
+            order_meta={"o1": {"provider": "test"}},
+            aoi_ref_lookup={"aoi-1": "blob://aoi/1"},
+            output_container="out",
+        )
+        gen.send(None)
+
+        ctx.call_activity_with_retry.assert_called()
+        call_args = ctx.call_activity_with_retry.call_args
+        assert call_args[0][0] == "download_imagery"
+        retry_opts = call_args[0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
+
+    def test_post_process_uses_long_retry(self):
+        """post_process_imagery should use long-running retry options."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _fulfil_post_process
+        from treesight.constants import (
+            LONG_RETRY_FIRST_INTERVAL_MS,
+            LONG_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "pp_sentinel"
+        ctx.task_all.return_value = [{"state": "ok"}]
+
+        gen = _fulfil_post_process(
+            ctx,
+            successful_downloads=[{"blob_path": "path", "aoi_key": "aoi-1"}],
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            aoi_ref_lookup={"aoi-1": "blob://aoi/1"},
+            output_container="out",
+        )
+        gen.send(None)
+
+        ctx.call_activity_with_retry.assert_called()
+        call_args = ctx.call_activity_with_retry.call_args
+        assert call_args[0][0] == "post_process_imagery"
+        retry_opts = call_args[0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == LONG_RETRY_MAX_ATTEMPTS
+
+    def test_submit_batch_fulfilment_uses_long_retry(self):
+        """submit_batch_fulfilment should use long-running retry options."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _fulfil_batch
+        from treesight.constants import (
+            LONG_RETRY_FIRST_INTERVAL_MS,
+            LONG_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "submit_sentinel"
+        ctx.task_all.return_value = [{"state": "completed", "job_id": "j1", "task_id": "t1"}]
+
+        gen = _fulfil_batch(
+            ctx,
+            batch_ready=[{"order_id": "o1"}],
+            asset_urls={"o1": "http://example.com"},
+            output_container="out",
+            ctx={"project_name": "p", "timestamp": "t"},
+        )
+        gen.send(None)
+
+        submit_calls = [
+            c
+            for c in ctx.call_activity_with_retry.call_args_list
+            if c[0][0] == "submit_batch_fulfilment"
+        ]
+        assert len(submit_calls) == 1
+        retry_opts = submit_calls[0][0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == LONG_RETRY_MAX_ATTEMPTS
+
+
+class TestEnrichmentParallelFanOut:
+    """Verify enrichment phase uses parallel fan-out via task_all (#574)."""
+
+    def test_data_sources_and_imagery_fan_out_in_parallel(self):
+        """enrich_data_sources and enrich_imagery should execute via task_all."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+        from treesight.constants import (
+            LONG_RETRY_FIRST_INTERVAL_MS,
+            LONG_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        task_all_sentinel = MagicMock()
+        ctx.task_all.return_value = task_all_sentinel
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={"eudr_mode": False},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=[],
+            output_container="out",
+        )
+        # First yield: task_all for data_sources + imagery
+        yielded = gen.send(None)
+        assert yielded is task_all_sentinel
+
+        # Verify task_all was called with two activities
+        ctx.task_all.assert_called_once()
+        task_all_args = ctx.task_all.call_args[0][0]
+        assert len(task_all_args) == 2
+
+        # Verify both activities use long retry
+        calls = ctx.call_activity_with_retry.call_args_list
+        activity_names = [c[0][0] for c in calls]
+        assert "enrich_data_sources" in activity_names
+        assert "enrich_imagery" in activity_names
+        for c in calls:
+            retry_opts = c[0][1]
+            assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
+            assert retry_opts.max_number_of_attempts == LONG_RETRY_MAX_ATTEMPTS
+
+    def test_per_aoi_fan_out(self):
+        """Per-AOI enrichment should fan-out one activity per AOI via task_all."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+        # First task_all: data_sources + imagery
+        parallel_sentinel = MagicMock()
+        # Second task_all: per-AOI
+        per_aoi_sentinel = MagicMock()
+        # Third yield: enrich_finalize
+        finalize_sentinel = MagicMock()
+
+        ctx.task_all.side_effect = [parallel_sentinel, per_aoi_sentinel]
+        ctx.call_activity_with_retry.return_value = finalize_sentinel
+
+        aois = [
+            {"name": "a", "coords": [[1, 2]]},
+            {"name": "b", "coords": [[3, 4]]},
+            {"name": "c", "coords": [[5, 6]]},
+        ]
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={"eudr_mode": False},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=aois,
+            output_container="out",
+        )
+
+        # Yield 1: parallel task_all (data_sources + imagery)
+        gen.send(None)
+        # Send back results for data_sources + imagery
+        gen.send([{"frame_plan": []}, {"ndvi": {}}])
+        # Yield 2: per-AOI task_all — verify 3 AOI activities
+        assert ctx.task_all.call_count == 2
+        aoi_tasks = ctx.task_all.call_args_list[1][0][0]
+        assert len(aoi_tasks) == 3
+
+    def test_enrichment_reports_substep_status(self):
+        """Orchestrator should set customStatus with enrichment sub-steps."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+        ctx.task_all.return_value = MagicMock()
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=[],
+            output_container="out",
+        )
+        gen.send(None)
+
+        # Should have set customStatus with phase + step
+        ctx.set_custom_status.assert_called()
+        first_status = ctx.set_custom_status.call_args_list[0][0][0]
+        assert first_status["phase"] == "enrichment"
+        assert first_status["step"] == "data_sources_and_imagery"
+
+    def test_enrichment_skipped_when_no_coords(self):
+        """Enrichment should return empty dict when all_coords is empty."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[],
+            per_aoi_coords=[],
+            output_container="out",
+        )
+        try:
+            gen.send(None)
+        except StopIteration as e:
+            result = e.value
+        else:
+            result = None
+
+        assert result == {}
+        ctx.call_activity_with_retry.assert_not_called()
+
+
+class TestSafeReleaseQuotaRetry:
+    """Verify _safe_release_quota uses retry."""
+
+    def test_release_quota_uses_transient_retry(self):
+        """release_quota should use transient retry — it refunds credits."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _safe_release_quota
+        from treesight.constants import (
+            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = None
+
+        gen = _safe_release_quota(ctx, user_id="u1", instance_id="i1")
+        with contextlib.suppress(StopIteration):
+            gen.send(None)
+
+        ctx.call_activity_with_retry.assert_called_once()
+        call_args = ctx.call_activity_with_retry.call_args
+        assert call_args[0][0] == "release_quota"
+        retry_opts = call_args[0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
+
+    def test_release_quota_swallows_errors(self):
+        """release_quota failure must not propagate (preserves original exception)."""
+        from unittest.mock import MagicMock
+
+        from blueprints.pipeline.orchestrator import _safe_release_quota
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.side_effect = RuntimeError("quota service down")
+
+        gen = _safe_release_quota(ctx, user_id="u1", instance_id="i1")
+        with contextlib.suppress(StopIteration):
+            gen.send(None)
+        # If RuntimeError propagated, the above would raise instead of being suppressed.
+
 
 class TestOrchestratorCoordinatorSize:
     """The main orchestrator should be a thin coordinator ≤40 lines."""

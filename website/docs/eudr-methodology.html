@@ -47,8 +47,8 @@ li strong{color:var(--c-text)}
       Canopex
     </a>
     <ul>
-      <li><a href="/app/">Start Free</a></li>
-      <li><a href="/#timeline">How It Works</a></li>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
       <li><a href="/#pricing">Pricing</a></li>
       <li><a href="/docs/" aria-current="page">Docs</a></li>
       <li><a href="/#faq">FAQ</a></li>
@@ -137,6 +137,18 @@ li strong{color:var(--c-text)}
             <td>Global</td>
             <td>Protected area overlap — additional risk indicator</td>
           </tr>
+          <tr>
+            <td><strong>IO Annual LULC</strong></td>
+            <td>10 m/px</td>
+            <td>Global (2017–2023)</td>
+            <td>Year-over-year land-use/land-cover classification — independent deforestation signal</td>
+          </tr>
+          <tr>
+            <td><strong>ALOS PALSAR FNF</strong></td>
+            <td>25 m/px</td>
+            <td>Global (annual mosaics)</td>
+            <td>Radar-based forest/non-forest classification — detects change through cloud cover</td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -207,15 +219,35 @@ li strong{color:var(--c-text)}
       </div>
     </section>
 
-    <!-- §6 References -->
+    <!-- §6 Audit Trail -->
     <section class="method-section">
-      <h2>6. References</h2>
+      <h2>6. Audit Trail</h2>
+      <p>Every assessment produces a fully traceable evidence chain:</p>
+
+      <h3>6.1 Imagery Provenance</h3>
+      <p>Each satellite observation records the <strong>scene ID</strong> (e.g. Sentinel-2 granule identifier), acquisition date, and cloud cover percentage. Scene IDs are included in the per-parcel assessment and in exported reports, allowing independent verification against the source imagery archive.</p>
+
+      <h3>6.2 Timestamped Results</h3>
+      <p>Analysis results are timestamped at each pipeline stage: upload, ingestion, enrichment start, enrichment completion, and determination. The <strong>enriched_at</strong> field records the UTC datetime when the assessment was finalised. All timestamps use ISO 8601 format.</p>
+
+      <h3>6.3 Immutable Storage</h3>
+      <p>Completed assessments are stored in Azure Cosmos DB with the full manifest — input coordinates, enrichment data, NDVI statistics, change detection results, and determination outcome. Records are immutable once the assessment completes; subsequent re-analyses create new records rather than overwriting.</p>
+
+      <h3>6.4 Data Retention</h3>
+      <p>Assessment records are retained indefinitely while the account is active. Uploaded KML/KMZ source files are stored in Azure Blob Storage alongside the assessment record. Operators can export their data at any time in GeoJSON, CSV, or PDF format.</p>
+    </section>
+
+    <!-- §7 References -->
+    <section class="method-section">
+      <h2>7. References</h2>
       <ul>
         <li><a href="https://eur-lex.europa.eu/eli/reg/2023/1115/oj" target="_blank" rel="noopener">Regulation (EU) 2023/1115</a> — EU Deforestation Regulation full text</li>
         <li><a href="https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-2" target="_blank" rel="noopener">Copernicus Sentinel-2</a> — mission overview</li>
         <li><a href="https://esa-worldcover.org/" target="_blank" rel="noopener">ESA WorldCover</a> — global land-cover maps at 10m</li>
         <li><a href="https://www.protectedplanet.net/" target="_blank" rel="noopener">Protected Planet / WDPA</a> — World Database on Protected Areas</li>
         <li><a href="https://planetarycomputer.microsoft.com/" target="_blank" rel="noopener">Microsoft Planetary Computer</a> — data catalogue and APIs</li>
+        <li><a href="https://planetarycomputer.microsoft.com/dataset/io-lulc-annual-v02" target="_blank" rel="noopener">IO Annual Land Use/Land Cover</a> — 10m global LULC (2017–2023)</li>
+        <li><a href="https://www.eorc.jaxa.jp/ALOS/en/dataset/fnf_e.htm" target="_blank" rel="noopener">ALOS PALSAR Forest/Non-Forest</a> — 25m radar-based forest classification</li>
       </ul>
     </section>
 

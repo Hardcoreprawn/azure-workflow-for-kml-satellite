@@ -27,6 +27,8 @@ from treesight.constants import (
     DEFAULT_INPUT_CONTAINER,
     DEFAULT_OUTPUT_CONTAINER,
     DEFAULT_POST_PROCESS_BATCH_SIZE,
+    LONG_RETRY_FIRST_INTERVAL_MS,
+    LONG_RETRY_MAX_ATTEMPTS,
     MAX_POLL_ITERATIONS,
 )
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
@@ -255,9 +257,14 @@ def _fulfil_batch(
     context.set_custom_status(
         {"phase": "fulfilment", "step": "batch_submit", "count": len(batch_ready)}
     )
+    batch_submit_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
     submit_tasks = [
-        context.call_activity(
+        context.call_activity_with_retry(
             "submit_batch_fulfilment",
+            batch_submit_retry,
             {
                 "outcome": outcome,
                 "asset_url": asset_urls.get(outcome.get("order_id", ""), ""),
@@ -284,9 +291,14 @@ def _fulfil_batch(
         context.set_custom_status(
             {"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)}
         )
+        batch_poll_retry = df.RetryOptions(
+            first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
         poll_batch_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "poll_batch_fulfilment",
+                batch_poll_retry,
                 {"job_id": t["job_id"], "task_id": t["task_id"]},
             )
             for t in pending
@@ -327,11 +339,17 @@ def _fulfil_download(
     batch_size = config_get_int(inp, "download_batch_size", DEFAULT_DOWNLOAD_BATCH_SIZE)
     download_results: list[dict[str, Any]] = []
 
+    dl_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
+
     for i in range(0, len(serverless_ready), batch_size):
         batch = serverless_ready[i : i + batch_size]
         dl_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "download_imagery",
+                dl_retry,
                 _download_payload(
                     outcome, inp, ctx, asset_urls, order_meta, aoi_ref_lookup, output_container
                 ),
@@ -362,11 +380,17 @@ def _fulfil_post_process(
     pp_batch_size = config_get_int(inp, "post_process_batch_size", DEFAULT_POST_PROCESS_BATCH_SIZE)
     pp_results: list[dict[str, Any]] = []
 
+    pp_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
+
     for i in range(0, len(successful_downloads), pp_batch_size):
         batch = successful_downloads[i : i + pp_batch_size]
         pp_tasks = [
-            context.call_activity(
+            context.call_activity_with_retry(
                 "post_process_imagery",
+                pp_retry,
                 _post_process_payload(dl, inp, ctx, aoi_ref_lookup, output_container),
             )
             for dl in batch
@@ -466,28 +490,86 @@ def _phase_enrichment(
     per_aoi_coords: list[dict[str, Any]],
     output_container: str,
 ) -> _PhaseGen:
-    """Fetch weather, NDVI, mosaics, and build enrichment manifest."""
-    context.set_custom_status({"phase": "enrichment", "step": "fetching_data"})
+    """Fetch weather, NDVI, mosaics, and build enrichment manifest.
 
+    Fan-out structure (parallel where possible):
+
+    1. ``enrich_data_sources`` ∥ ``enrich_imagery`` — independent I/O
+    2. ``enrich_single_aoi`` × N — per-AOI fan-out (parallel)
+    3. ``enrich_finalize`` — merge + manifest (sequential)
+    """
     if not all_coords:
         return {}
 
+    enrichment_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
+    )
+
+    enrichment_common = {
+        "coords": all_coords,
+        "eudr_mode": inp.get("eudr_mode", False),
+        "date_start": inp.get("date_start"),
+        "date_end": inp.get("date_end"),
+        "cadence": inp.get("cadence", "maximum"),
+        "max_history_years": inp.get("max_history_years"),
+        "project_name": ctx["project_name"],
+        "timestamp": ctx["timestamp"],
+        "output_container": output_container,
+    }
+
+    # ── Step 1: data sources ∥ imagery (parallel fan-out) ─────
+    context.set_custom_status({"phase": "enrichment", "step": "data_sources_and_imagery"})
+    parallel_tasks = [
+        context.call_activity_with_retry(
+            "enrich_data_sources", enrichment_retry, enrichment_common
+        ),
+        context.call_activity_with_retry("enrich_imagery", enrichment_retry, enrichment_common),
+    ]
+    data_sources, imagery = cast(
+        "list[dict[str, Any]]",
+        (yield context.task_all(parallel_tasks)),
+    )
+
+    # ── Step 2: per-AOI enrichment (parallel fan-out, one per AOI) ──
+    per_aoi_results: list[dict[str, Any]] = []
+    if per_aoi_coords and len(per_aoi_coords) > 1:
+        context.set_custom_status(
+            {"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)}
+        )
+        aoi_tasks = [
+            context.call_activity_with_retry(
+                "enrich_single_aoi",
+                enrichment_retry,
+                {
+                    "aoi_entry": entry,
+                    **{k: v for k, v in enrichment_common.items() if k != "coords"},
+                },
+            )
+            for entry in per_aoi_coords
+        ]
+        per_aoi_results = cast(
+            "list[dict[str, Any]]",
+            (yield context.task_all(aoi_tasks)),
+        )
+
+    # ── Step 3: merge + manifest (sequential) ────────────────
+    context.set_custom_status({"phase": "enrichment", "step": "finalizing"})
     enrichment = cast(
         "dict[str, Any]",
         (
-            yield context.call_activity(
-                "run_enrichment",
+            yield context.call_activity_with_retry(
+                "enrich_finalize",
+                enrichment_retry,
                 {
-                    "coords": all_coords,
-                    "per_aoi_coords": per_aoi_coords,
+                    "data_sources": data_sources,
+                    "imagery": imagery,
+                    "per_aoi_results": per_aoi_results,
+                    "eudr_mode": inp.get("eudr_mode", False),
+                    "date_start": inp.get("date_start"),
                     "project_name": ctx["project_name"],
                     "timestamp": ctx["timestamp"],
                     "output_container": output_container,
-                    "eudr_mode": inp.get("eudr_mode", False),
-                    "date_start": inp.get("date_start"),
-                    "date_end": inp.get("date_end"),
-                    "cadence": inp.get("cadence", "maximum"),
-                    "max_history_years": inp.get("max_history_years"),
                 },
             )
         ),
@@ -499,9 +581,15 @@ def _safe_release_quota(
     context: df.DurableOrchestrationContext, user_id: str, instance_id: str
 ) -> Generator[Any, Any, None]:
     """Release quota on failure, swallowing errors to preserve the original exception."""
+    # release_quota must succeed — it refunds the user's pipeline run credit.
+    # Retry aggressively to avoid permanently lost quota.
+    quota_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
     try:
-        yield context.call_activity(
-            "release_quota", {"user_id": user_id, "instance_id": instance_id}
+        yield context.call_activity_with_retry(
+            "release_quota", quota_retry, {"user_id": user_id, "instance_id": instance_id}
         )
     except Exception:
         logger.exception(

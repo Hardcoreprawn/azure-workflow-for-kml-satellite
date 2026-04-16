@@ -158,11 +158,12 @@ Config: `.github/workflows/deploy.yml`
 2. Frontend calls `POST /api/upload/token` on the Container Apps FA — `require_auth` validates `X-MS-CLIENT-PRINCIPAL`, mints a write-only SAS URL.
 3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
 4. Event Grid emits a BlobCreated event.
-5. kml_blob_trigger (Container Apps) validates event payload and starts kml_processing_orchestrator.
-6. Orchestrator runs phase pipeline:
-   - parse_kml
-   - prepare_aoi + write_metadata
-   - acquire_imagery + poll_order_suborchestrator + download_imagery + post_process_imagery
+5. `blob_trigger` (Container Apps) validates event payload and starts `treesight_orchestrator`.
+6. Orchestrator runs four-phase pipeline:
+   - Ingestion: parse_kml, load_offloaded_features, prepare_aoi, store_aoi_claims
+   - Acquisition: load_aoi_claim, acquire_imagery/acquire_composite, poll_order, download_imagery
+   - Fulfilment: post_process_imagery, submit_batch_fulfilment, poll_batch_fulfilment
+   - Enrichment: run_enrichment, write_metadata, release_quota
 7. Metadata and imagery artifacts are written to output blob paths.
 8. Frontend polls `GET /api/upload/status/{id}` on the Container Apps FA for progress.
 

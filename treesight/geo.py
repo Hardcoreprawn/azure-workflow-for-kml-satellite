@@ -210,3 +210,93 @@ def _centroid(coords: list[list[float]]) -> list[float]:
     avg_lon = sum(c[0] for c in pts) / n
     avg_lat = sum(c[1] for c in pts) / n
     return [avg_lon, avg_lat]
+
+
+# ---------------------------------------------------------------------------
+# Spatial clustering (#581)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CLUSTER_EPS_KM = 25.0
+
+
+def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Haversine distance in kilometres between two WGS-84 points."""
+    rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    return (EARTH_RADIUS_M / 1_000) * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _union_find_clusters(n: int, edges: list[tuple[int, int]]) -> list[int]:
+    """Return root labels for *n* items connected by *edges* (Union-Find)."""
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in edges:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    return [find(i) for i in range(n)]
+
+
+def cluster_aois(
+    aois: list[dict],
+    eps_km: float = _DEFAULT_CLUSTER_EPS_KM,
+) -> list[list[dict]]:
+    """Group AOIs into spatial clusters using DBSCAN-style single-linkage.
+
+    Each AOI is represented by the centroid of its ``coords``.  AOIs
+    within *eps_km* kilometres of any member of a cluster are merged
+    into that cluster (transitive linkage).
+
+    Parameters
+    ----------
+    aois:
+        List of AOI dicts, each with a ``coords`` key (list of ``[lon, lat]``).
+    eps_km:
+        Maximum inter-centroid distance (km) to link two AOIs.
+
+    Returns
+    -------
+    list[list[dict]]
+        Groups of AOI dicts.  Order within and across groups is stable.
+    """
+    if not aois:
+        return []
+
+    n = len(aois)
+
+    # Compute centroids; AOIs without coords get None
+    centroids: list[list[float] | None] = []
+    for aoi in aois:
+        coords = aoi.get("coords", [])
+        centroids.append(_centroid(coords) if coords else None)
+
+    # Build edge list of pairs within eps_km
+    edges: list[tuple[int, int]] = []
+    for i in range(n):
+        ci = centroids[i]
+        if ci is None:
+            continue
+        for j in range(i + 1, n):
+            cj = centroids[j]
+            if cj is None:
+                continue
+            if _haversine_km(ci[0], ci[1], cj[0], cj[1]) <= eps_km:
+                edges.append((i, j))
+
+    labels = _union_find_clusters(n, edges)
+
+    # Collect clusters preserving insertion order
+    clusters_map: dict[int, list[dict]] = {}
+    for i in range(n):
+        clusters_map.setdefault(labels[i], []).append(aois[i])
+
+    return list(clusters_map.values())

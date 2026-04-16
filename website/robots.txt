@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /app/
+Disallow: /eudr/
 Disallow: /api/
 
 Sitemap: https://canopex.hrdcrprwn.com/sitemap.xml

@@ -247,6 +247,16 @@ class TestSecurityHeaders:
             "/app/* must have X-Robots-Tag: noindex to prevent search engine indexing"
         )
 
+    def test_x_robots_tag_on_eudr(self, swa_config):
+        """The /eudr/* route must set X-Robots-Tag to prevent indexing."""
+        routes = swa_config.get("routes", [])
+        eudr_routes = [r for r in routes if r.get("route") == "/eudr/*"]
+        assert eudr_routes, "/eudr/* route must exist"
+        headers = eudr_routes[0].get("headers", {})
+        assert "noindex" in headers.get("X-Robots-Tag", ""), (
+            "/eudr/* must have X-Robots-Tag: noindex to prevent search engine indexing"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Static discovery files — robots.txt, security.txt, sitemap.xml
@@ -260,6 +270,10 @@ class TestStaticDiscoveryFiles:
     def test_robots_txt_disallows_app(self):
         content = (WEBSITE / "robots.txt").read_text()
         assert "Disallow: /app/" in content
+
+    def test_robots_txt_disallows_eudr(self):
+        content = (WEBSITE / "robots.txt").read_text()
+        assert "Disallow: /eudr/" in content
 
     def test_sitemap_xml_exists(self):
         assert (WEBSITE / "sitemap.xml").is_file(), "sitemap.xml must exist"
@@ -278,3 +292,25 @@ class TestStaticDiscoveryFiles:
         excludes = swa_config["navigationFallback"]["exclude"]
         for path in ["/robots.txt", "/sitemap.xml", "/.well-known/*"]:
             assert path in excludes, f"{path} must be in navigationFallback.exclude"
+
+
+# ---------------------------------------------------------------------------
+# EUDR app entry point
+# ---------------------------------------------------------------------------
+
+
+class TestEudrEntryPoint:
+    def test_eudr_index_exists(self):
+        assert (WEBSITE / "eudr" / "index.html").is_file(), (
+            "website/eudr/index.html must exist as the EUDR app entry point"
+        )
+
+    def test_eudr_index_has_data_eudr_app(self):
+        content = (WEBSITE / "eudr" / "index.html").read_text()
+        assert "data-eudr-app" in content, (
+            "eudr/index.html <body> must have data-eudr-app attribute to lock EUDR mode"
+        )
+
+    def test_eudr_index_loads_app_shell(self):
+        content = (WEBSITE / "eudr" / "index.html").read_text()
+        assert "app-shell.js" in content, "eudr/index.html must load the shared app-shell.js module"

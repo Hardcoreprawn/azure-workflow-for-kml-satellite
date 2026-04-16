@@ -4,7 +4,7 @@ Azure-hosted pipeline that ingests KML/KMZ boundaries, acquires
 multi-provider satellite imagery, and delivers enriched analysis
 (NDVI, weather, fire, flood, EUDR compliance) with AI-generated narratives.
 
-> **Status:** Milestone 4 — Revenue (12/13 items complete). See [PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md) for delivery plan.
+> **Status:** Stage 2 — Pipeline Verification & Revenue Enablement. See [ROADMAP.md](docs/ROADMAP.md) for delivery plan.
 
 ## Architecture
 
@@ -42,14 +42,14 @@ See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITEC
 - **EUDR compliance** — post-2020 date filtering, WorldCover land-cover sampling, WDPA protected area check, coordinate-to-KML converter, AI deforestation-free assessment
 - **AI narratives** — Azure AI Foundry generates plain-English analysis summaries
 - **Export** — PDF audit reports, GeoJSON FeatureCollections, CSV timeseries
-- **Billing** — Stripe-powered tiered subscriptions (Free / Starter / Pro / Team)
+- **Billing** — Stripe-powered tiered subscriptions (Free Trial / EUDR Pro / Enterprise)
 - **Auth** — SWA built-in Azure AD with per-user quotas
 
 ## Architecture Reference
 
 - **System architecture:** [PID.md §7](docs/PID.md)
 - **Deployed component/data-flow guide:** [docs/ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md)
-- **Product roadmap & business strategy:** [docs/PRODUCT_ROADMAP.md](docs/PRODUCT_ROADMAP.md)
+- **Product roadmap & business strategy:** [docs/ROADMAP.md](docs/ROADMAP.md)
 - **OpenAPI specification:** [docs/openapi.yaml](docs/openapi.yaml)
 
 ## Documentation Index
@@ -57,8 +57,7 @@ See [PID.md](docs/PID.md) for the full Project Initiation Document and [ARCHITEC
 - **Operations runbook:** [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md)
 - **API and interfaces:** [docs/API_INTERFACE_REFERENCE.md](docs/API_INTERFACE_REFERENCE.md)
 - **Metadata JSON schema:** [docs/schemas/aoi-metadata-v2.schema.json](docs/schemas/aoi-metadata-v2.schema.json)
-- **Signed-in UX spec:** [docs/SIGNED_IN_EXPERIENCE_SPEC.md](docs/SIGNED_IN_EXPERIENCE_SPEC.md)
-- **EUDR methodology:** [website/eudr-methodology.html](website/eudr-methodology.html)
+- **EUDR methodology:** [website/docs/eudr-methodology.html](website/docs/eudr-methodology.html)
 - **Infrastructure naming standard:** [docs/INFRA_NAMING_STANDARD.md](docs/INFRA_NAMING_STANDARD.md)
 
 ## Operations Runbook
@@ -183,39 +182,58 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | --- | --- | --- | --- | --- |
 | GET | `/api/health` | Liveness probe | 200 | 500 |
 | GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
-| GET | `/api/orchestrator/{instance_id}` | Durable instance status + output artifact diagnostics | 200 | 400 / 404 |
-| GET | `/api/demo-results?token=...` | Validate valet token and reveal one authorized demo artifact | 200 | 401 / 403 |
-| GET | `/api/demo-results/download?token=...` | Proxy a single authorized demo artifact download | 200 | 401 / 403 / 404 |
-| POST | `/api/eudr-assessment` | EUDR compliance assessment (NDVI + WorldCover + WDPA) | 200 | 400 |
-| POST | `/api/convert-coordinates` | Convert lat/lon coordinates to KML | 200 | 400 |
-| POST | `/api/export` | Export analysis results (GeoJSON, CSV, PDF) | 200 | 400 |
-| POST | `/api/create-checkout-session` | Create Stripe Checkout session | 200 | 400 |
-| POST | `/api/stripe-webhook` | Handle Stripe webhook events | 200 | 400 |
-| POST | `/api/create-portal-session` | Create Stripe customer portal session | 200 | 400 |
-
-Protected/internal endpoint:
-
-- `POST /api/demo-results-token` — mint a short-lived, replay-limited valet token for one demo artifact (Function auth)
+| GET | `/api/contract` | OpenAPI/contract metadata | 200 | — |
+| GET | `/api/orchestrator/{instance_id}` | Durable instance status + artifact diagnostics | 200 | 400 / 404 |
+| POST | `/api/auth/session` | Session bootstrap | 200 | 401 |
+| GET | `/api/billing/status` | Subscription status | 200 | 401 |
+| POST | `/api/billing/checkout` | Create Stripe Checkout session | 200 | 400 / 401 |
+| POST | `/api/billing/portal` | Create Stripe customer portal session | 200 | 400 |
+| POST | `/api/billing/webhook` | Handle Stripe webhook events | 200 | 400 |
+| POST | `/api/upload/token` | Generate upload SAS token | 200 | 401 |
+| GET | `/api/upload/status/{submission_id}` | Upload/pipeline status | 200 | 404 |
+| POST | `/api/analysis/submit` | Submit KML for pipeline processing | 200 | 400 / 401 |
+| GET | `/api/analysis/history` | User analysis history | 200 | 401 |
+| POST | `/api/frame-analysis` | Single-frame analysis | 200 | 400 |
+| POST | `/api/timelapse-analysis` | Timelapse analysis | 200 | 400 / 401 |
+| POST | `/api/eudr-assessment` | EUDR compliance assessment | 200 | 400 / 401 |
+| POST | `/api/convert-coordinates` | Convert lat/lon to KML | 200 | 400 / 401 |
+| GET | `/api/catalogue` | User analysis catalogue | 200 | 401 |
+| GET | `/api/export/{id}/{format}` | Export artifacts (GeoJSON, CSV, PDF) | 200 | 401 / 404 |
+| GET\|POST | `/api/monitoring` | AOI monitoring (list / create) | 200 | 401 |
+| GET\|PATCH\|DELETE | `/api/monitoring/{monitor_id}` | Monitor CRUD | 200 | 401 / 404 |
+| GET\|POST\|PATCH | `/api/org` | Organisation CRUD | 200 | 401 |
+| GET | `/api/demo-artifacts` | Demo artifact listing | 200 | 400 |
+| POST | `/api/demo-valet-tokens` | Mint demo valet token (Function auth) | 200 | 401 |
+| GET | `/api/proxy` | Tile proxy | 200 | — |
+| POST | `/api/contact-form` | Contact form submission | 200 | 400 |
+| GET | `/api/ops/dashboard` | Ops dashboard (admin) | 200 | 403 |
 
 ### Event-driven entrypoint
 
-- Event Grid trigger function: `blob_trigger`
+- Event Grid trigger function: `blob_trigger` (blueprints/pipeline/blob_trigger.py)
 - Expected event source: blob-created events for input containers ending in `-input`
 - Expected payload contract: canonical blob event fields (`blob_url`, `container_name`, `blob_name`, `content_length`, `content_type`, `event_time`, `correlation_id`)
 
 ### Durable orchestrations
 
-- `kml_processing_orchestrator` — main 3-phase workflow
-- `poll_order_suborchestrator` — bounded concurrent polling loop for imagery orders
+- `treesight_orchestrator` — four-phase sequential workflow (Ingestion → Acquisition → Fulfilment → Enrichment)
 
 ### Durable activities
 
 - `parse_kml`
+- `load_offloaded_features`
 - `prepare_aoi`
+- `store_aoi_claims`
+- `load_aoi_claim`
 - `acquire_imagery`
+- `acquire_composite`
 - `poll_order`
 - `download_imagery`
 - `post_process_imagery`
+- `run_enrichment`
+- `submit_batch_fulfilment`
+- `poll_batch_fulfilment`
+- `release_quota`
 - `write_metadata`
 
 ## Project Structure
@@ -223,32 +241,45 @@ Protected/internal endpoint:
 ```text
 ├── .github/workflows/          CI, deploy, base-image-refresh, security
 ├── blueprints/                  Azure Functions HTTP blueprints
-│   ├── analysis.py              EUDR assessment, AI insights
+│   ├── analysis.py              EUDR assessment, frame/timelapse analysis
+│   ├── auth.py                  Session bootstrap
 │   ├── billing.py               Stripe Checkout, webhooks, customer portal
+│   ├── catalogue.py             User analysis catalogue
 │   ├── contact.py               Contact form endpoint
 │   ├── demo.py                  Demo valet token + artifact download
 │   ├── eudr.py                  Coordinate conversion endpoint
 │   ├── export.py                GeoJSON, CSV, PDF export
 │   ├── health.py                Liveness + readiness probes
-│   └── pipeline.py              Orchestrator status + pipeline trigger
+│   ├── monitoring.py            AOI monitoring CRUD
+│   ├── ops.py                   Ops dashboard, user admin
+│   ├── org.py                   Organisation management
+│   ├── upload.py                Upload token + status
+│   └── pipeline/                Orchestrator, activities, diagnostics, enrichment
 ├── infra/tofu/                  OpenTofu IaC (Azure resources)
 ├── treesight/                   Application package
 │   ├── ai/                      Azure AI Foundry client + circuit breaker
-│   ├── models/                  Data models (AOI metadata, pipeline state)
+│   ├── catalogue/               Catalogue service
+│   ├── models/                  Data models (AOI, features, imagery, monitors)
 │   ├── parsers/                 KML/KMZ parsing (Fiona + lxml fallback)
 │   ├── pipeline/                Orchestration, enrichment, EUDR, acquisition
 │   ├── providers/               Imagery providers (Planetary Computer, geo-routing)
 │   ├── security/                Auth (SWA header parsing), rate limiting, replay protection, valet tokens
-│   ├── storage/                 Blob storage helpers
+│   ├── storage/                 Blob storage + Cosmos DB helpers
 │   ├── config.py                App configuration (Key Vault, env vars)
 │   ├── constants.py             EUDR cutoff, API contract version, limits
+│   ├── email.py                 Email notifications
 │   ├── errors.py                Custom exception hierarchy
 │   ├── geo.py                   Geometry utilities (Shapely, pyproj)
-│   └── log.py                   Structured JSON logging
-├── tests/                       595 tests (unit + integration)
+│   ├── log.py                   Structured JSON logging
+│   └── monitoring.py            Monitoring service
+├── tests/                       1315 tests (unit + integration)
 │   ├── fixtures/                KML test files (valid + edge cases)
 │   └── conftest.py              Shared fixtures and mocks
 ├── website/                     Static Web App (HTML/CSS/JS)
+│   ├── app/                     General-purpose SPA (mothballed)
+│   ├── eudr/                    EUDR-specific SPA entry point
+│   ├── docs/                    Methodology + documentation pages
+│   └── js/                      Shared JS modules
 ├── function_app.py              Azure Functions entry point (v2 model)
 ├── host.json                    Functions host configuration
 ├── Dockerfile                   Custom container (Python 3.12 + GDAL)
@@ -272,7 +303,7 @@ Protected/internal endpoint:
 | Export | fpdf2 (PDF), GeoJSON, CSV |
 | Linting | ruff |
 | Type Checking | pyright |
-| Testing | pytest (595 tests) |
+| Testing | pytest (1315 tests) |
 | IaC | OpenTofu (Terraform-compatible) |
 | CI/CD | GitHub Actions |
 | Security | Semgrep, Trivy, pip-audit, CodeQL, detect-secrets |

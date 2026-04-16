@@ -9,6 +9,7 @@ from treesight.geo import (
     _centroid,
     _compute_bbox,
     _geodesic_area_and_perimeter,
+    cluster_aois,
     prepare_aoi,
 )
 from treesight.models.aoi import AOI
@@ -189,3 +190,91 @@ class TestSquareBbox:
         # Side should be >= original span (no padding, but squaring)
         assert result[2] - result[0] >= bbox[2] - bbox[0] - 1e-10
         assert result[3] - result[1] >= bbox[3] - bbox[1] - 1e-10
+
+
+# ---------------------------------------------------------------------------
+# Spatial clustering (#581)
+# ---------------------------------------------------------------------------
+
+
+class TestClusterAois:
+    """Tests for DBSCAN-style spatial clustering of AOI centroids."""
+
+    def test_single_aoi_returns_one_cluster(self):
+        aois = [{"name": "Farm A", "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]}]
+        clusters = cluster_aois(aois, eps_km=25.0)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 1
+
+    def test_nearby_aois_in_same_cluster(self):
+        """AOIs within eps_km should be grouped together."""
+        aois = [
+            {"name": "A", "coords": [[36.80, -1.30], [36.81, -1.30], [36.81, -1.31]]},
+            {"name": "B", "coords": [[36.82, -1.30], [36.83, -1.30], [36.83, -1.31]]},
+        ]
+        clusters = cluster_aois(aois, eps_km=25.0)
+        assert len(clusters) == 1
+        assert len(clusters[0]) == 2
+
+    def test_distant_aois_in_separate_clusters(self):
+        """AOIs far apart should be in different clusters."""
+        aois = [
+            {"name": "Kenya", "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]]},
+            {"name": "Brazil", "coords": [[-50.0, -10.0], [-49.9, -10.0], [-49.9, -10.1]]},
+        ]
+        clusters = cluster_aois(aois, eps_km=25.0)
+        assert len(clusters) == 2
+
+    def test_three_groups(self):
+        """Three widely-separated groups should form three clusters."""
+        aois = [
+            # Group 1: Kenya
+            {"name": "Kenya-1", "coords": [[36.80, -1.30], [36.81, -1.31]]},
+            {"name": "Kenya-2", "coords": [[36.82, -1.30], [36.83, -1.31]]},
+            # Group 2: Brazil
+            {"name": "Brazil-1", "coords": [[-50.0, -10.0], [-49.9, -10.1]]},
+            # Group 3: Indonesia
+            {"name": "Indo-1", "coords": [[110.0, -7.0], [110.1, -7.1]]},
+            {"name": "Indo-2", "coords": [[110.05, -7.0], [110.15, -7.1]]},
+        ]
+        clusters = cluster_aois(aois, eps_km=25.0)
+        assert len(clusters) == 3
+        sizes = sorted(len(c) for c in clusters)
+        assert sizes == [1, 2, 2]
+
+    def test_empty_input(self):
+        assert cluster_aois([], eps_km=25.0) == []
+
+    def test_preserves_aoi_dicts(self):
+        """Clustered items should be the same dicts (by identity)."""
+        aois = [
+            {"name": "A", "coords": [[36.8, -1.3]], "area_ha": 10},
+            {"name": "B", "coords": [[36.81, -1.3]], "area_ha": 20},
+        ]
+        clusters = cluster_aois(aois, eps_km=100.0)
+        flat = [item for cluster in clusters for item in cluster]
+        assert len(flat) == 2
+        assert flat[0]["area_ha"] in {10, 20}
+
+    def test_chain_linkage(self):
+        """AOIs forming a chain should be merged into one cluster via transitivity."""
+        # A-B close, B-C close, but A-C might be > eps apart
+        # With eps=30km, each pair ~15km apart, but chain links them
+        aois = [
+            {"name": "A", "coords": [[36.80, -1.30]]},
+            {"name": "B", "coords": [[36.93, -1.30]]},  # ~14km east of A
+            {"name": "C", "coords": [[37.06, -1.30]]},  # ~14km east of B
+        ]
+        clusters = cluster_aois(aois, eps_km=20.0)
+        assert len(clusters) == 1
+
+    def test_aois_with_missing_coords_skipped(self):
+        """AOIs without coords should still be included as singleton clusters."""
+        aois = [
+            {"name": "Good", "coords": [[36.8, -1.3]]},
+            {"name": "Empty", "coords": []},
+        ]
+        clusters = cluster_aois(aois, eps_km=25.0)
+        # Both returned: good in one cluster, empty in another
+        flat = [item for cluster in clusters for item in cluster]
+        assert len(flat) == 2

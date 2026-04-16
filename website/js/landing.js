@@ -2,15 +2,15 @@
   'use strict';
 
   let currentAccount = null;
-  let _apiBase = '';           // Container Apps FA hostname from /api-config.json
-  let _clientPrincipal = null; // raw clientPrincipal for X-MS-CLIENT-PRINCIPAL forwarding
+  let _apiBase = '';
+  let _clientPrincipal = null;
 
   function authEnabled() { return true; }
 
   async function initAuth() {
     try {
       const res = await fetch('/.auth/me');
-      if (!res.ok) { updateAuthUI(); return; }
+      if (!res.ok) { updateAuthUI(); updateSampleReportGate(); return; }
       const data = await res.json();
       const principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
@@ -26,9 +26,7 @@
       console.warn('[canopex] SWA auth check failed:', err);
     }
     updateAuthUI();
-    if (window.canopexBilling && window.canopexBilling.loadStatus) {
-      window.canopexBilling.loadStatus();
-    }
+    updateSampleReportGate();
   }
 
   function login() {
@@ -72,18 +70,17 @@
     opts = opts || {};
     opts.headers = opts.headers || {};
     if (_clientPrincipal) {
-      // UTF-8 safe base64: encode to bytes first, then btoa on Latin-1 string.
-      var jsonStr = JSON.stringify(_clientPrincipal);
-      var bytes = new TextEncoder().encode(jsonStr);
-      var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
+      const jsonStr = JSON.stringify(_clientPrincipal);
+      const bytes = new TextEncoder().encode(jsonStr);
+      const binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
       opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
     }
-    var url = _apiBase ? _apiBase + path : path;
-    var resp = await fetch(url, opts);
+    const url = _apiBase ? _apiBase + path : path;
+    const resp = await fetch(url, opts);
     if (!resp.ok) {
-      var body = await resp.json().catch(function () { return {}; });
-      var msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      var err = new Error(msg);
+      const body = await resp.json().catch(function () { return {}; });
+      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
+      const err = new Error(msg);
       err.status = resp.status;
       err.body = body;
       throw err;
@@ -92,23 +89,22 @@
   }
 
   async function discoverApiBase() {
-    // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
     try {
-      var cfgRes = await fetch('/api-config.json');
+      const cfgRes = await fetch('/api-config.json');
       if (cfgRes.ok) {
-        var cfg = await cfgRes.json();
+        const cfg = await cfgRes.json();
         if (cfg.apiBase) {
           _apiBase = cfg.apiBase.replace(/\/+$/, '');
         }
       }
     } catch (e) { /* local dev — no api-config.json, use same-origin */ }
 
-    var badge = document.getElementById('status-badge');
+    const badge = document.getElementById('status-badge');
     if (!badge) return;
 
     try {
-      var healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      var res = await fetch(healthUrl);
+      const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
+      const res = await fetch(healthUrl);
       if (res.ok) {
         badge.textContent = 'Online';
         badge.className = 'online';
@@ -122,65 +118,201 @@
     badge.className = 'offline';
   }
 
-  /* --- Early Access form --- */
-  function initEarlyAccessForm() {
-    const submitBtn = document.getElementById('ea-submit');
-    if (!submitBtn) return;
+  /* --- Sample Report Map (Planetary Computer S2 visual) --- */
+  async function initSampleMap() {
+    const mapEl = document.getElementById('sample-map');
+    if (!mapEl || typeof L === 'undefined') return;
 
-    submitBtn.addEventListener('click', async function() {
-      const org = document.getElementById('ea-org').value.trim();
-      const useCase = document.getElementById('ea-usecase').value.trim();
-      const email = document.getElementById('ea-email').value.trim();
-      const honeypot = document.getElementById('ea-website');
-      const status = document.getElementById('ea-status');
+    // São Félix do Xingu, Pará — real PRODES d2021 deforestation polygon
+    // from INPE/Terrabrasilis WFS (prodes-amazon-nb:yearly_deforestation_biome).
+    // 0.379 km² clearing detected 2021, near Fresco River, state PA.
+    // Coordinates sourced from official Brazilian government deforestation
+    // monitoring — the same data EUDR regulators reference.
+    const parcelCoords = [
+      [-6.6624, -51.8461],
+      [-6.6620, -51.8461],
+      [-6.6618, -51.8461],
+      [-6.6591, -51.8449],
+      [-6.6613, -51.8394],
+      [-6.6618, -51.8394],
+      [-6.6618, -51.8400],
+      [-6.6620, -51.8400],
+      [-6.6628, -51.8400],
+      [-6.6628, -51.8394],
+      [-6.6634, -51.8394],
+      [-6.6634, -51.8389],
+      [-6.6639, -51.8389],
+      [-6.6639, -51.8383],
+      [-6.6644, -51.8383],
+      [-6.6644, -51.8386],
+      [-6.6647, -51.8386],
+      [-6.6647, -51.8389],
+      [-6.6653, -51.8389],
+      [-6.6653, -51.8391],
+      [-6.6655, -51.8391],
+      [-6.6655, -51.8394],
+      [-6.6658, -51.8394],
+      [-6.6658, -51.8389],
+      [-6.6661, -51.8389],
+      [-6.6661, -51.8383],
+      [-6.6662, -51.8383],
+      [-6.6665, -51.8389],
+      [-6.6671, -51.8387],
+      [-6.6671, -51.8389],
+      [-6.6674, -51.8389],
+      [-6.6674, -51.8391],
+      [-6.6673, -51.8391],
+      [-6.6672, -51.8392],
+      [-6.6671, -51.8415],
+      [-6.6670, -51.8416],
+      [-6.6664, -51.8417],
+      [-6.6662, -51.8419],
+      [-6.6660, -51.8419],
+      [-6.6660, -51.8421],
+      [-6.6654, -51.8425],
+      [-6.6635, -51.8419],
+      [-6.6624, -51.8461]
+    ];
+    const center = [-6.6647, -51.8404];
 
-      // Honeypot filled → silently pretend success (bot detected)
-      if (honeypot && honeypot.value) {
-        if (status) {
-          status.textContent = 'Thanks! We\'ll be in touch.';
-          status.className = 'show';
-          status.style.color = 'var(--c-green)';
+    const map = L.map(mapEl, {
+      scrollWheelZoom: false,
+      zoomControl: true,
+      attributionControl: true
+    }).setView(center, 14);
+
+    // Register a PC mosaic for recent low-cloud S2 visual imagery
+    const bbox = [-51.85, -6.68, -51.83, -6.65];
+    const registerBody = {
+      collections: ['sentinel-2-l2a'],
+      'filter-lang': 'cql2-json',
+      filter: {
+        op: 'and',
+        args: [
+          { op: 's_intersects', args: [
+            { property: 'geometry' },
+            { type: 'Polygon', coordinates: [[
+              [bbox[0], bbox[1]], [bbox[2], bbox[1]],
+              [bbox[2], bbox[3]], [bbox[0], bbox[3]],
+              [bbox[0], bbox[1]]
+            ]]}
+          ]},
+          { op: '<=', args: [{ property: 'eo:cloud_cover' }, 10] },
+          { op: '>=', args: [{ property: 'datetime' }, '2025-01-01T00:00:00Z'] }
+        ]
+      }
+    };
+
+    // Esri fallback base layer
+    const esriLayer = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
+    );
+    esriLayer.addTo(map);
+
+    // Try to overlay PC Sentinel-2 visual tiles (cache searchid to avoid re-registration)
+    try {
+      const CACHE_KEY = 'canopex_mosaic_searchid';
+      const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+      let searchid = null;
+
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const entry = JSON.parse(cached);
+        if (entry.ts && Date.now() - entry.ts < CACHE_TTL_MS) {
+          searchid = entry.id;
         }
-        return;
       }
 
-      if (!org || !email) {
-        if (status) {
-          status.textContent = 'Please provide at least organisation and email.';
-          status.className = 'show';
-          status.style.color = 'var(--c-red)';
-        }
-        return;
-      }
-
-      if (status) {
-        status.textContent = 'Submitting…';
-        status.className = 'show';
-        status.style.color = 'var(--c-muted)';
-      }
-
-      try {
-        const res = await apiFetch('/api/contact-form', {
+      if (!searchid) {
+        const res = await fetch('https://planetarycomputer.microsoft.com/api/data/v1/mosaic/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            organisation: org,
-            use_case: useCase,
-            email: email,
-            source: 'marketing_website',
-            website: honeypot ? honeypot.value : ''
-          })
+          body: JSON.stringify(registerBody)
         });
+        if (!res.ok) {
+          console.warn('[canopex] PC mosaic register failed:', res.status, res.statusText);
+          return;
+        }
+        const data = await res.json();
+        if (!data || !data.searchid) return;
+        searchid = data.searchid;
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify({ id: searchid, ts: Date.now() }));
+      }
 
-        if (status) {
-          status.textContent = 'Thanks! We\'ll be in touch.';
-          status.style.color = 'var(--c-green)';
+      const tileUrl = 'https://planetarycomputer.microsoft.com/api/data/v1/mosaic/tiles/' +
+        encodeURIComponent(searchid) + '/WebMercatorQuad/{z}/{x}/{y}@2x' +
+        '?collection=sentinel-2-l2a&assets=visual';
+      const pcLayer = L.tileLayer(tileUrl, {
+        tileSize: 512,
+        zoomOffset: -1,
+        maxNativeZoom: 14,
+        maxZoom: 18,
+        attribution: 'Sentinel-2 &copy; ESA / Copernicus via Planetary Computer'
+      });
+      map.removeLayer(esriLayer);
+      pcLayer.addTo(map);
+    } catch (err) {
+      // Keep Esri fallback — log for diagnostics
+      console.warn('[canopex] PC mosaic overlay failed, using Esri fallback:', err);
+    }
+
+    L.polygon(parcelCoords, {
+      color: '#5eecc4',
+      weight: 2,
+      fillColor: '#5eecc4',
+      fillOpacity: 0.15
+    }).addTo(map);
+
+    // Fix Leaflet tile rendering after container becomes visible
+    setTimeout(function() { map.invalidateSize(); }, 200);
+  }
+
+  /* --- Sample Report PDF Gate --- */
+  function updateSampleReportGate() {
+    const btn = document.getElementById('btn-download-sample');
+    const note = document.getElementById('sample-gated-note');
+    if (!btn) return;
+
+    if (currentAccount) {
+      btn.textContent = 'Download Full PDF Report';
+      if (note) note.style.display = 'none';
+      btn.onclick = function() {
+        // Placeholder — actual PDF export wired in Stage 2F (#605)
+        alert('PDF report download coming soon. The assessment data shown above is representative of the full evidence package.');
+      };
+    } else {
+      btn.textContent = 'Sign In to Download PDF';
+      if (note) {
+        note.textContent = 'Sign in to download the full PDF evidence report.';
+        note.style.display = 'block';
+      }
+      btn.onclick = function() { login(); };
+    }
+  }
+
+  /* --- Subscribe Button --- */
+  function initSubscribe() {
+    const btn = document.getElementById('btn-subscribe');
+    if (!btn) return;
+
+    btn.addEventListener('click', async function() {
+      if (!currentAccount && authEnabled()) { login(); return; }
+      try {
+        const res = await apiFetch('/api/billing/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tier: 'eudr_pro' })
+        });
+        const data = await res.json();
+        if (data.checkout_url) { window.location.href = data.checkout_url; }
+      } catch (e) {
+        console.error('Checkout error:', e);
+        if (e && e.status === 403) {
+          alert('Your account is not yet enabled for billing. Please contact us at hello@canopex.io.');
+          return;
         }
-      } catch (err) {
-        if (status) {
-          status.textContent = (err && err.message) || 'Submission failed. Please try again.';
-          status.style.color = 'var(--c-red)';
-        }
+        alert((e && e.message) || 'Could not connect to billing. Please try again later.');
       }
     });
   }
@@ -191,163 +323,10 @@
     if (!faqList) return;
 
     faqList.addEventListener('click', function(e) {
-      const item = e.target.closest('.faq-item');
+    const item = e.target.closest('.faq-item');
       if (item) item.classList.toggle('open');
     });
   }
-
-  /* --- Billing integration --- */
-  /* --- Apply gated pricing (hide real prices when billing is restricted) --- */
-
-  // Capture original pricing card state at init for safe restoration
-  const _originalCardState = {};
-  document.addEventListener('DOMContentLoaded', function() {
-    const cards = document.querySelectorAll('.pricing-card[data-tier]');
-    cards.forEach(function(card) {
-      const tier = card.getAttribute('data-tier');
-      const priceEl = card.querySelector('.tier-price');
-      const cta = card.querySelector('.pricing-cta');
-      _originalCardState[tier] = {
-        priceNode: priceEl ? priceEl.cloneNode(true) : null,
-        ctaText: cta ? cta.textContent : '',
-        ctaHref: cta ? cta.getAttribute('href') : null,
-        ctaOnclick: cta ? cta.getAttribute('onclick') : null
-      };
-    });
-  });
-
-  function applyGatedPricing(gated, priceLabels) {
-    const cards = document.querySelectorAll('.pricing-card[data-tier]');
-    const subtitle = document.getElementById('pricing-subtitle');
-
-    cards.forEach(function(card) {
-      const tier = card.getAttribute('data-tier');
-      const priceEl = card.querySelector('.tier-price');
-      if (!priceEl) return;
-
-      if (gated && priceLabels && priceLabels[tier]) {
-        priceEl.textContent = priceLabels[tier];
-      } else {
-        // Restore original price DOM from captured clone (avoids innerHTML)
-        const orig = _originalCardState[tier];
-        if (orig && orig.priceNode) {
-          const restored = orig.priceNode.cloneNode(true);
-          priceEl.parentNode.replaceChild(restored, priceEl);
-        }
-      }
-    });
-
-    // Swap "Get Pro" checkout button with "Express Interest" when gated
-    const proBtn = document.getElementById('btn-upgrade-pro');
-    if (proBtn && gated) {
-      proBtn.textContent = 'Express Interest';
-      proBtn.onclick = function() { window.canopexBilling.expressInterest(); };
-    } else if (proBtn && !gated) {
-      proBtn.textContent = 'Get Pro';
-      proBtn.disabled = false;
-      proBtn.style.opacity = '';
-      proBtn.onclick = function() { window.canopexBilling.checkout(); };
-    }
-
-    // Update subtitle
-    if (subtitle && gated) {
-      subtitle.textContent = 'Start free, express interest to unlock paid tiers. All plans include Sentinel-2 and NAIP satellite imagery, weather correlation, and NDVI change detection.';
-    }
-
-    // Swap paid tier CTAs to "Express Interest" when gated, restore when ungated
-    cards.forEach(function(card) {
-      const tier = card.getAttribute('data-tier');
-      if (tier === 'free' || tier === 'enterprise') return;
-      const cta = card.querySelector('.pricing-cta');
-      if (!cta || cta.id === 'btn-upgrade-pro') return;
-
-      if (gated) {
-        cta.textContent = 'Express Interest';
-        cta.href = '#early-access';
-      } else {
-        const orig = _originalCardState[tier];
-        if (orig) {
-          cta.textContent = orig.ctaText;
-          if (orig.ctaHref) cta.href = orig.ctaHref;
-        }
-      }
-    });
-  }
-
-  window.canopexBilling = {
-    checkout: async function() {
-      if (!currentAccount && authEnabled()) { login(); return; }
-      try {
-        const res = await apiFetch('/api/billing/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tier: 'pro' })
-        });
-        const data = await res.json();
-        if (data.checkout_url) { window.location.href = data.checkout_url; }
-      } catch(e) {
-        console.error('Checkout error:', e);
-        alert((e && e.message) || 'Could not connect to billing. Please try again later.');
-      }
-    },
-
-    portal: async function() {
-      if (!currentAccount && authEnabled()) { login(); return; }
-      try {
-        const res = await apiFetch('/api/billing/portal', { method: 'POST' });
-        const data = await res.json();
-        if (data.portal_url) { window.location.href = data.portal_url; }
-      } catch(e) {
-        console.error('Portal error:', e);
-        alert((e && e.message) || 'Could not connect to billing. Please try again later.');
-      }
-    },
-
-    expressInterest: function() {
-      // Scroll to the early-access / contact form section
-      const section = document.getElementById('early-access');
-      if (section) {
-        section.scrollIntoView({ behavior: 'smooth' });
-        const emailInput = document.getElementById('ea-email');
-        if (emailInput) setTimeout(function() { emailInput.focus(); }, 400);
-      }
-    },
-
-    loadStatus: async function() {
-      if (!currentAccount || !authEnabled()) {
-        // Not signed in — show gated pricing by default
-        applyGatedPricing(true, { free: 'Free', starter: '$', pro: '$$', team: '$$$', enterprise: 'Price on Enquiry' });
-        return;
-      }
-      try {
-        const res = await apiFetch('/api/billing/status');
-        const data = await res.json();
-
-        // Apply gated pricing if billing is restricted for this user
-        if (data.billing_gated) {
-          applyGatedPricing(true, data.price_labels || {});
-        } else {
-          applyGatedPricing(false, null);
-        }
-
-        const proBtn = document.getElementById('btn-upgrade-pro');
-        const manageLink = document.getElementById('manage-billing-link');
-
-        if (!data.billing_gated && data.tier === 'pro' && data.status === 'active') {
-          if (proBtn) { proBtn.textContent = 'Current Plan'; proBtn.disabled = true; proBtn.style.opacity = '0.6'; }
-          if (manageLink) {
-            manageLink.style.display = 'inline';
-            manageLink.onclick = function(e) { e.preventDefault(); window.canopexBilling.portal(); };
-          }
-        } else if (!data.billing_gated && data.status === 'past_due' && proBtn) {
-          proBtn.textContent = 'Payment Issue — Update';
-          proBtn.onclick = function() { window.canopexBilling.portal(); };
-        }
-      } catch(e) {
-        console.debug('Billing status check skipped:', e);
-      }
-    }
-  };
 
   /* --- Auth event listeners --- */
   document.addEventListener('DOMContentLoaded', function() {
@@ -357,18 +336,16 @@
     if (loginBtn) loginBtn.addEventListener('click', login);
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
-    initEarlyAccessForm();
     initFAQ();
-
-    // Apply gated pricing on load (will be overwritten by loadStatus if signed in)
-    applyGatedPricing(true, { free: 'Free', starter: '$', pro: '$$', team: '$$$', enterprise: 'Price on Enquiry' });
+    initSampleMap();
+    initSubscribe();
   });
 
   /* Handle billing return query params */
   document.addEventListener('DOMContentLoaded', function() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('billing') === 'success') {
-      setTimeout(function() { alert('Welcome to Pro! Your subscription is now active.'); }, 500);
+      setTimeout(function() { alert('Welcome to EUDR Pro! Your subscription is now active.'); }, 500);
       history.replaceState(null, '', window.location.pathname);
     } else if (params.get('billing') === 'cancel') {
       history.replaceState(null, '', window.location.pathname);

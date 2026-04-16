@@ -8,7 +8,15 @@ import json
 
 import pytest
 
-from blueprints.export import _build_bulk_csv, _build_csv, _build_geojson, _build_pdf
+from blueprints.export import (
+    _build_bulk_csv,
+    _build_csv,
+    _build_eudr_csv,
+    _build_eudr_geojson,
+    _build_geojson,
+    _build_pdf,
+    build_eudr_audit_pdf,
+)
 
 
 @pytest.fixture()
@@ -336,3 +344,327 @@ class TestBuildBulkCsv:
         reader = csv.DictReader(io.StringIO(result))
         rows = list(reader)
         assert "frame_index" in rows[0]
+
+
+# ---------------------------------------------------------------------------
+# EUDR per-parcel evidence export (#582)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def eudr_manifest():
+    """Enrichment manifest with per_aoi_enrichment for EUDR export tests."""
+    return {
+        "eudr_mode": True,
+        "eudr_date_start": "2021-01-01",
+        "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+        "center": {"lat": -1.305, "lon": 36.805},
+        "enriched_at": "2026-04-16T12:00:00Z",
+        "frame_plan": [
+            {"year": 2023, "season": "spring", "start": "2023-03-01", "end": "2023-05-31"},
+        ],
+        "per_aoi_enrichment": [
+            {
+                "name": "Farm A",
+                "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+                "bbox": [[36.8, -1.31], [36.81, -1.3]],
+                "center": {"lat": -1.305, "lon": 36.805},
+                "area_ha": 12.5,
+                "frame_plan": [
+                    {
+                        "year": 2023,
+                        "season": "spring",
+                        "start": "2023-03-01",
+                        "end": "2023-05-31",
+                    }
+                ],
+                "ndvi_stats": [{"mean": 0.72, "min": 0.5, "max": 0.85, "std": 0.08}],
+                "change_detection": {
+                    "summary": {"trajectory": "stable", "comparisons": 1},
+                },
+                "worldcover": {
+                    "available": True,
+                    "land_cover": {
+                        "dominant_class": "Tree cover",
+                        "classes": [
+                            {"code": 10, "label": "Tree cover", "area_pct": 85.0},
+                        ],
+                    },
+                },
+                "wdpa": {"checked": True, "is_protected": False},
+                "determination": {
+                    "status": "deforestation_free",
+                    "confidence": "high",
+                    "flags": [],
+                },
+            },
+            {
+                "name": "Farm B",
+                "coords": [[36.9, -1.4], [36.91, -1.4], [36.91, -1.41], [36.9, -1.41]],
+                "bbox": [[36.9, -1.41], [36.91, -1.4]],
+                "center": {"lat": -1.405, "lon": 36.905},
+                "area_ha": 8.0,
+                "frame_plan": [
+                    {
+                        "year": 2023,
+                        "season": "spring",
+                        "start": "2023-03-01",
+                        "end": "2023-05-31",
+                    }
+                ],
+                "ndvi_stats": [{"mean": 0.35, "min": 0.1, "max": 0.55, "std": 0.15}],
+                "change_detection": {
+                    "summary": {"trajectory": "declining", "comparisons": 1},
+                    "season_changes": [
+                        {"loss_ha": 2.5, "loss_pct": 8.0, "label": "spring 2023-2024"}
+                    ],
+                },
+                "worldcover": {
+                    "available": True,
+                    "land_cover": {
+                        "dominant_class": "Cropland",
+                        "classes": [
+                            {"code": 40, "label": "Cropland", "area_pct": 70.0},
+                        ],
+                    },
+                },
+                "wdpa": {"checked": True, "is_protected": True},
+                "determination": {
+                    "status": "further_review",
+                    "confidence": "medium",
+                    "flags": ["Vegetation loss 8.0% (2.5 ha) in spring 2023-2024"],
+                },
+            },
+            {
+                "name": "Farm C (failed)",
+                "error": "enrichment_failed",
+            },
+        ],
+    }
+
+
+class TestBuildEudrGeoJson:
+    """EUDR per-parcel GeoJSON export (#582)."""
+
+    def test_returns_feature_collection(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        assert result["type"] == "FeatureCollection"
+
+    def test_one_feature_per_aoi(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        # 2 successful parcels (Farm C failed — included with error flag)
+        assert len(result["features"]) == 3
+
+    def test_feature_has_polygon_geometry(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        feat = result["features"][0]
+        assert feat["geometry"]["type"] == "Polygon"
+
+    def test_polygon_ring_is_closed(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        ring = result["features"][0]["geometry"]["coordinates"][0]
+        assert ring[0] == ring[-1]
+
+    def test_eudr_properties_present(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        props = result["features"][0]["properties"]
+        assert props["parcel_name"] == "Farm A"
+        assert props["area_ha"] == 12.5
+        assert props["determination_status"] == "deforestation_free"
+        assert props["determination_confidence"] == "high"
+
+    def test_worldcover_in_properties(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        props = result["features"][0]["properties"]
+        assert props["worldcover_dominant"] == "Tree cover"
+
+    def test_wdpa_in_properties(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        props = result["features"][1]["properties"]
+        assert props["wdpa_is_protected"] is True
+
+    def test_ndvi_summary_in_properties(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        props = result["features"][0]["properties"]
+        assert props["ndvi_latest_mean"] == 0.72
+        assert props["change_trajectory"] == "stable"
+
+    def test_failed_aoi_has_error_flag(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        failed = result["features"][2]
+        assert failed["properties"]["error"] == "enrichment_failed"
+        assert failed["geometry"] is None
+
+    def test_flags_included(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        props = result["features"][1]["properties"]
+        assert len(props["determination_flags"]) == 1
+
+    def test_empty_per_aoi_falls_back_to_toplevel(self):
+        """Single-parcel runs have no per_aoi_enrichment; use top-level evidence."""
+        manifest = {
+            "per_aoi_enrichment": [],
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "center": {"lat": -1.305, "lon": 36.805},
+            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "worldcover": {
+                "available": True,
+                "land_cover": {
+                    "dominant_class": "Tree cover",
+                    "classes": [{"code": 10, "area_pct": 80.0}],
+                },
+            },
+            "wdpa": {"checked": True, "is_protected": False},
+            "ndvi_stats": [{"mean": 0.7, "min": 0.5, "max": 0.85, "std": 0.1}],
+            "change_detection": {"summary": {"trajectory": "stable", "comparisons": 1}},
+        }
+        result = _build_eudr_geojson(manifest)
+        assert len(result["features"]) == 1
+        props = result["features"][0]["properties"]
+        assert props["determination_status"] == "deforestation_free"
+
+    def test_no_per_aoi_falls_back_to_toplevel(self):
+        manifest = {
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "determination": {"status": "unknown", "confidence": "low", "flags": []},
+        }
+        result = _build_eudr_geojson(manifest)
+        assert len(result["features"]) == 1
+
+    def test_no_per_aoi_no_toplevel_returns_empty(self):
+        result = _build_eudr_geojson({})
+        assert result["features"] == []
+
+    def test_serialisable(self, eudr_manifest):
+        result = _build_eudr_geojson(eudr_manifest)
+        body = json.dumps(result, default=str)
+        parsed = json.loads(body)
+        assert parsed["type"] == "FeatureCollection"
+
+
+class TestBuildEudrCsv:
+    """EUDR per-parcel CSV export (#582)."""
+
+    def test_returns_string(self, eudr_manifest):
+        result = _build_eudr_csv(eudr_manifest)
+        assert isinstance(result, str)
+
+    def test_has_header(self, eudr_manifest):
+        result = _build_eudr_csv(eudr_manifest)
+        reader = csv.reader(io.StringIO(result))
+        header = next(reader)
+        assert "parcel_name" in header
+        assert "determination_status" in header
+        assert "area_ha" in header
+
+    def test_one_row_per_aoi(self, eudr_manifest):
+        result = _build_eudr_csv(eudr_manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 3
+
+    def test_determination_values(self, eudr_manifest):
+        result = _build_eudr_csv(eudr_manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert rows[0]["determination_status"] == "deforestation_free"
+        assert rows[1]["determination_status"] == "further_review"
+
+    def test_failed_aoi_marked(self, eudr_manifest):
+        result = _build_eudr_csv(eudr_manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert rows[2]["determination_status"] == "error"
+
+    def test_empty_per_aoi_falls_back_to_toplevel(self):
+        """Single-parcel: build one CSV row from top-level evidence."""
+        manifest = {
+            "per_aoi_enrichment": [],
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "center": {"lat": -1.305, "lon": 36.805},
+            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "worldcover": {
+                "available": True,
+                "land_cover": {
+                    "dominant_class": "Tree cover",
+                    "classes": [{"code": 10, "area_pct": 80.0}],
+                },
+            },
+            "wdpa": {"checked": True, "is_protected": False},
+            "ndvi_stats": [{"mean": 0.7, "min": 0.5, "max": 0.85, "std": 0.1}],
+            "change_detection": {"summary": {"trajectory": "stable", "comparisons": 1}},
+        }
+        result = _build_eudr_csv(manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 1
+        assert rows[0]["determination_status"] == "deforestation_free"
+
+
+class TestBuildPdfEudrPerParcel:
+    """EUDR per-parcel sections in PDF (#582)."""
+
+    def test_eudr_pdf_with_per_aoi_enrichment(self, eudr_manifest):
+        result = _build_pdf(eudr_manifest, "run-eudr-582")
+        assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Audit-grade EUDR PDF report (#587)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEudrAuditPdf:
+    """Audit-grade EUDR evidence PDF report (#587)."""
+
+    def test_returns_valid_pdf(self, eudr_manifest):
+        result = build_eudr_audit_pdf(eudr_manifest, "run-audit-587")
+        assert isinstance(result, bytes)
+        assert result.startswith(b"%PDF")
+
+    def test_larger_than_basic_pdf(self, eudr_manifest):
+        """Audit PDF should be bigger than the basic one (more sections)."""
+        basic = _build_pdf(eudr_manifest, "run-basic")
+        audit = build_eudr_audit_pdf(eudr_manifest, "run-audit")
+        assert len(audit) > len(basic)
+
+    def test_handles_empty_manifest(self):
+        result = build_eudr_audit_pdf({}, "run-empty")
+        assert result.startswith(b"%PDF")
+
+    def test_handles_no_per_aoi(self, enrichment_manifest):
+        """Non-EUDR manifest without per_aoi_enrichment should still work."""
+        result = build_eudr_audit_pdf(enrichment_manifest, "run-no-aoi")
+        assert result.startswith(b"%PDF")
+
+    def test_filters_to_post_2020_frames(self, eudr_manifest):
+        """Frames before 2021 should be excluded from the EUDR timeseries."""
+        manifest = dict(eudr_manifest)
+        manifest["frame_plan"] = [
+            {"year": 2019, "season": "spring", "start": "2019-03-01", "end": "2019-05-31"},
+            {"year": 2020, "season": "spring", "start": "2020-03-01", "end": "2020-05-31"},
+            {"year": 2021, "season": "spring", "start": "2021-03-01", "end": "2021-05-31"},
+            {"year": 2023, "season": "spring", "start": "2023-03-01", "end": "2023-05-31"},
+        ]
+        manifest["ndvi_stats"] = [
+            {"mean": 0.5},
+            {"mean": 0.6},
+            {"mean": 0.55},
+            {"mean": 0.58},
+        ]
+        result = build_eudr_audit_pdf(manifest, "run-filter")
+        assert result.startswith(b"%PDF")
+
+    def test_with_operator_context(self, eudr_manifest):
+        """Operator metadata should be accepted."""
+        manifest = dict(eudr_manifest)
+        manifest["operator_name"] = "Acme Trading GmbH"
+        manifest["commodity"] = "cocoa"
+        result = build_eudr_audit_pdf(manifest, "run-operator")
+        assert result.startswith(b"%PDF")
+
+    def test_mixed_determinations(self, eudr_manifest):
+        """Mix of deforestation_free and further_review parcels."""
+        result = build_eudr_audit_pdf(eudr_manifest, "run-mixed")
+        assert result.startswith(b"%PDF")
