@@ -18,7 +18,13 @@ from treesight.pipeline.enrichment.flood import fetch_flood_events
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import register_mosaic
 from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
-from treesight.pipeline.enrichment.runner import run_enrichment
+from treesight.pipeline.enrichment.runner import (
+    enrich_data_sources,
+    enrich_finalize,
+    enrich_imagery,
+    enrich_single_aoi_step,
+    run_enrichment,
+)
 from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
@@ -33,6 +39,10 @@ __all__ = [
     "compute_ndvi",
     "compute_ndvi_trend",
     "detect_changes",
+    "enrich_data_sources",
+    "enrich_finalize",
+    "enrich_imagery",
+    "enrich_single_aoi_step",
     "fetch_fire_hotspots",
     "fetch_flood_events",
     "fetch_ndvi_stat",

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase, run_enrichment
+from treesight.pipeline.enrichment.runner import (
+    _run_mosaic_ndvi_phase,
+    enrich_data_sources,
+    enrich_finalize,
+    enrich_imagery,
+    enrich_single_aoi_step,
+    run_enrichment,
+)
 
 
 def _make_frame(
@@ -350,3 +357,161 @@ class TestCollectPerAoiCoords:
         result = _collect_per_aoi_coords(aois)
         assert len(result) == 1
         assert result[0]["name"] == "Good"
+
+
+# ---------------------------------------------------------------------------
+# Sub-step function tests (#574 — parallel enrichment fan-out)
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichDataSources:
+    """Verify enrich_data_sources returns weather/flood/fire results."""
+
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_returns_frame_plan_and_center(self, mock_plan, mock_weather, mock_flood):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
+        result = enrich_data_sources(COORDS)
+        assert "frame_plan" in result
+        assert "center" in result
+        assert "bbox" in result
+        mock_weather.assert_called_once()
+        mock_flood.assert_called_once()
+
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_returns_early_on_empty_frame_plan(self, mock_plan):
+        mock_plan.return_value = []
+        result = enrich_data_sources(COORDS)
+        assert result["frame_plan"] == []
+        assert "enriched_at" in result
+
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_eudr_mode_runs_eudr_phase(self, mock_plan, mock_weather, mock_flood, mock_eudr):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
+        result = enrich_data_sources(COORDS, eudr_mode=True)
+        mock_eudr.assert_called_once()
+        assert result.get("eudr_mode") is True
+
+
+class TestEnrichImagery:
+    """Verify enrich_imagery returns mosaic/NDVI/change-detection results."""
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_runs_mosaic_and_change_detection(self, mock_plan, mock_mosaic, mock_change):
+        mock_plan.return_value = [_make_frame()]
+        mock_mosaic.return_value = ({}, {})
+        storage = MagicMock()
+        result = enrich_imagery(
+            COORDS,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        mock_mosaic.assert_called_once()
+        mock_change.assert_called_once()
+        assert isinstance(result, dict)
+
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_empty_frame_plan_returns_empty(self, mock_plan):
+        mock_plan.return_value = []
+        storage = MagicMock()
+        result = enrich_imagery(
+            COORDS,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result == {}
+
+
+class TestEnrichSingleAoiStep:
+    """Verify enrich_single_aoi_step wraps _enrich_single_aoi with error containment."""
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    def test_returns_aoi_result(self, mock_inner):
+        mock_inner.return_value = {"name": "forest-a", "ndvi": 0.7}
+        storage = MagicMock()
+        result = enrich_single_aoi_step(
+            {"name": "forest-a", "coords": [[1, 2]]},
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result["name"] == "forest-a"
+        assert "error" not in result
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    def test_contains_error_on_failure(self, mock_inner):
+        mock_inner.side_effect = RuntimeError("boom")
+        storage = MagicMock()
+        result = enrich_single_aoi_step(
+            {"name": "bad-aoi", "coords": [[1, 2]]},
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result["error"] == "enrichment_failed"
+        assert result["name"] == "bad-aoi"
+
+
+class TestEnrichFinalize:
+    """Verify enrich_finalize merges results and stores manifest."""
+
+    def test_merges_data_sources_and_imagery(self):
+        storage = MagicMock()
+        result = enrich_finalize(
+            {"weather": {"temp": 20}, "frame_plan": []},
+            {"ndvi": {"mean": 0.5}},
+            [],
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result["weather"] == {"temp": 20}
+        assert result["ndvi"] == {"mean": 0.5}
+        assert "enriched_at" in result
+        assert "manifest_path" in result
+        storage.upload_json.assert_called_once()
+
+    def test_includes_per_aoi_results(self):
+        storage = MagicMock()
+        per_aoi = [{"name": "a"}, {"name": "b", "error": "enrichment_failed"}]
+        result = enrich_finalize(
+            {"frame_plan": []},
+            {},
+            per_aoi,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert len(result["per_aoi_enrichment"]) == 2
+
+    @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
+    def test_eudr_mode_runs_determination(self, mock_det):
+        mock_det.return_value = {"status": "compliant"}
+        storage = MagicMock()
+        result = enrich_finalize(
+            {},
+            {},
+            [],
+            eudr_mode=True,
+            date_start="2021-01-01",
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+        assert result["eudr_mode"] is True
+        assert result["determination"] == {"status": "compliant"}

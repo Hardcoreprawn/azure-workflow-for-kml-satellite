@@ -490,9 +490,14 @@ def _phase_enrichment(
     per_aoi_coords: list[dict[str, Any]],
     output_container: str,
 ) -> _PhaseGen:
-    """Fetch weather, NDVI, mosaics, and build enrichment manifest."""
-    context.set_custom_status({"phase": "enrichment", "step": "fetching_data"})
+    """Fetch weather, NDVI, mosaics, and build enrichment manifest.
 
+    Fan-out structure (parallel where possible):
+
+    1. ``enrich_data_sources`` ∥ ``enrich_imagery`` — independent I/O
+    2. ``enrich_single_aoi`` × N — per-AOI fan-out (parallel)
+    3. ``enrich_finalize`` — merge + manifest (sequential)
+    """
     if not all_coords:
         return {}
 
@@ -500,23 +505,71 @@ def _phase_enrichment(
         first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
     )
+
+    enrichment_common = {
+        "coords": all_coords,
+        "eudr_mode": inp.get("eudr_mode", False),
+        "date_start": inp.get("date_start"),
+        "date_end": inp.get("date_end"),
+        "cadence": inp.get("cadence", "maximum"),
+        "max_history_years": inp.get("max_history_years"),
+        "project_name": ctx["project_name"],
+        "timestamp": ctx["timestamp"],
+        "output_container": output_container,
+    }
+
+    # ── Step 1: data sources ∥ imagery (parallel fan-out) ─────
+    context.set_custom_status({"phase": "enrichment", "step": "data_sources_and_imagery"})
+    parallel_tasks = [
+        context.call_activity_with_retry(
+            "enrich_data_sources", enrichment_retry, enrichment_common
+        ),
+        context.call_activity_with_retry("enrich_imagery", enrichment_retry, enrichment_common),
+    ]
+    data_sources, imagery = cast(
+        "list[dict[str, Any]]",
+        (yield context.task_all(parallel_tasks)),
+    )
+
+    # ── Step 2: per-AOI enrichment (parallel fan-out, one per AOI) ──
+    per_aoi_results: list[dict[str, Any]] = []
+    if per_aoi_coords and len(per_aoi_coords) > 1:
+        context.set_custom_status(
+            {"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)}
+        )
+        aoi_tasks = [
+            context.call_activity_with_retry(
+                "enrich_single_aoi",
+                enrichment_retry,
+                {
+                    "aoi_entry": entry,
+                    **{k: v for k, v in enrichment_common.items() if k != "coords"},
+                },
+            )
+            for entry in per_aoi_coords
+        ]
+        per_aoi_results = cast(
+            "list[dict[str, Any]]",
+            (yield context.task_all(aoi_tasks)),
+        )
+
+    # ── Step 3: merge + manifest (sequential) ────────────────
+    context.set_custom_status({"phase": "enrichment", "step": "finalizing"})
     enrichment = cast(
         "dict[str, Any]",
         (
             yield context.call_activity_with_retry(
-                "run_enrichment",
+                "enrich_finalize",
                 enrichment_retry,
                 {
-                    "coords": all_coords,
-                    "per_aoi_coords": per_aoi_coords,
+                    "data_sources": data_sources,
+                    "imagery": imagery,
+                    "per_aoi_results": per_aoi_results,
+                    "eudr_mode": inp.get("eudr_mode", False),
+                    "date_start": inp.get("date_start"),
                     "project_name": ctx["project_name"],
                     "timestamp": ctx["timestamp"],
                     "output_container": output_container,
-                    "eudr_mode": inp.get("eudr_mode", False),
-                    "date_start": inp.get("date_start"),
-                    "date_end": inp.get("date_end"),
-                    "cadence": inp.get("cadence", "maximum"),
-                    "max_history_years": inp.get("max_history_years"),
                 },
             )
         ),

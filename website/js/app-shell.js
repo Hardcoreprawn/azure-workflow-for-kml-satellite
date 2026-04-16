@@ -1732,18 +1732,31 @@
     return 'submit';
   }
 
+  var ENRICHMENT_STEP_LABELS = {
+    data_sources_and_imagery: 'Fetching weather, flood/fire context, and registering satellite mosaics in parallel.',
+    per_aoi: 'Running per-parcel enrichment across AOIs in parallel.',
+    finalizing: 'Merging results and storing the analysis manifest.'
+  };
+
   function updateAnalysisStory(phase, runtimeStatus, data) {
     var runtime = runtimeStatus || 'Pending';
     var detail = ANALYSIS_PHASE_DETAILS[phase] || 'Working through the analysis pipeline.';
     var timing = summarizeRunTiming(data);
 
     if (runtime !== 'Completed' && phase === 'enrichment') {
-      detail += ' Enrichment is the slowest local step because it batches weather, flood/fire checks, mosaic registration, NDVI, change detection, and manifest generation.';
+      var cs = data && data.customStatus;
+      var step = cs && cs.step;
+      var stepLabel = step && ENRICHMENT_STEP_LABELS[step];
+      if (stepLabel) {
+        detail = stepLabel;
+        if (step === 'per_aoi' && cs.aois) {
+          detail += ' (' + cs.aois + ' AOIs)';
+        }
+      } else {
+        detail += ' Enrichment batches weather, flood/fire checks, mosaic registration, NDVI, and change detection in parallel.';
+      }
       if (timing.sinceUpdate) {
         detail += ' Last backend update ' + timing.sinceUpdate + ' ago.';
-      }
-      if (timing.stale) {
-        detail += ' The UI will stay on this message until the enrichment activity finishes because the backend only publishes the next status after that activity returns.';
       }
     } else if (runtime !== 'Completed' && timing.elapsed) {
       detail += ' Elapsed ' + timing.elapsed + '.';

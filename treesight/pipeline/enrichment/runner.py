@@ -617,3 +617,198 @@ def run_enrichment(
     )
 
     return results
+
+
+# ── Sub-step functions for DF activity splitting (#574) ───────
+
+
+def enrich_data_sources(
+    coords: list[list[float]],
+    *,
+    eudr_mode: bool = False,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    cadence: str = "maximum",
+    max_history_years: int | None = None,
+) -> dict[str, Any]:
+    """Sub-step 1: weather, flood/fire, EUDR datasets.
+
+    Returns a partial results dict that subsequent sub-steps extend.
+    Runs independently from ``enrich_imagery`` — these two fan-out in parallel.
+    """
+    bbox = _coords_to_bbox(coords)
+
+    if eudr_mode and not date_start:
+        cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
+        date_start = (cutoff + timedelta(days=1)).isoformat()
+
+    frame_plan = build_frame_plan(
+        coords,
+        date_start=date_start,
+        date_end=date_end,
+        cadence=cadence,
+        max_history_years=max_history_years,
+    )
+
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    center_lat = round((min(lats) + max(lats)) / 2, 4)
+    center_lon = round((min(lons) + max(lons)) / 2, 4)
+
+    results: dict[str, Any] = {
+        "frame_plan": frame_plan,
+        "coords": coords,
+        "bbox": bbox,
+        "center": {"lat": center_lat, "lon": center_lon},
+    }
+
+    if not frame_plan:
+        logger.warning("No frames matched date filters — returning partial results")
+        results["enriched_at"] = datetime.now(UTC).isoformat()
+        if eudr_mode:
+            results["eudr_mode"] = True
+            results["eudr_date_start"] = date_start
+        return results
+
+    first_date = frame_plan[0]["start"]
+    last_date = frame_plan[-1]["end"]
+    _run_weather_phase(center_lat, center_lon, first_date, last_date, results)
+    _run_flood_fire_phase(bbox, center_lat, center_lon, results)
+
+    if eudr_mode:
+        _run_eudr_phase(bbox, center_lat, center_lon, results)
+        results["eudr_mode"] = True
+        results["eudr_date_start"] = date_start
+
+    return results
+
+
+def enrich_imagery(
+    coords: list[list[float]],
+    *,
+    eudr_mode: bool = False,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    cadence: str = "maximum",
+    max_history_years: int | None = None,
+    project_name: str,
+    timestamp: str,
+    output_container: str,
+    storage: BlobStorageClient,
+) -> dict[str, Any]:
+    """Sub-step 2: mosaic registration, NDVI computation, change detection.
+
+    Runs independently from ``enrich_data_sources`` — these two fan-out in parallel.
+    Returns a partial results dict with imagery-specific keys.
+    """
+    bbox = _coords_to_bbox(coords)
+
+    if eudr_mode and not date_start:
+        cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
+        date_start = (cutoff + timedelta(days=1)).isoformat()
+
+    frame_plan = build_frame_plan(
+        coords,
+        date_start=date_start,
+        date_end=date_end,
+        cadence=cadence,
+        max_history_years=max_history_years,
+    )
+
+    results: dict[str, Any] = {}
+    if not frame_plan:
+        return results
+
+    _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
+        bbox, coords, frame_plan, project_name, timestamp, output_container, storage, results
+    )
+
+    _run_change_detection_phase(
+        frame_plan, ndvi_raster_paths, output_container, project_name, timestamp, storage, results
+    )
+
+    return results
+
+
+def enrich_single_aoi_step(
+    aoi_entry: dict[str, Any],
+    *,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    cadence: str = "maximum",
+    max_history_years: int | None = None,
+    eudr_mode: bool = False,
+    project_name: str,
+    timestamp: str,
+    output_container: str,
+    storage: BlobStorageClient,
+) -> dict[str, Any]:
+    """Sub-step 3a: per-AOI enrichment — one call per AOI, fan-out via task_all.
+
+    Thin wrapper around ``_enrich_single_aoi`` with error containment so
+    a single AOI failure doesn't poison the whole batch.
+    """
+    try:
+        return _enrich_single_aoi(
+            aoi_entry,
+            date_start=date_start,
+            date_end=date_end,
+            cadence=cadence,
+            max_history_years=max_history_years,
+            eudr_mode=eudr_mode,
+            project_name=project_name,
+            timestamp=timestamp,
+            output_container=output_container,
+            storage=storage,
+        )
+    except Exception:
+        logger.warning(
+            "Per-AOI enrichment failed for %s — returning error stub",
+            aoi_entry.get("name", "?"),
+            exc_info=True,
+        )
+        return {"name": aoi_entry.get("name", ""), "error": "enrichment_failed"}
+
+
+def enrich_finalize(
+    data_sources: dict[str, Any],
+    imagery: dict[str, Any],
+    per_aoi_results: list[dict[str, Any]],
+    *,
+    eudr_mode: bool = False,
+    date_start: str | None = None,
+    project_name: str,
+    timestamp: str,
+    output_container: str,
+    storage: BlobStorageClient,
+) -> dict[str, Any]:
+    """Sub-step 4: merge parallel results, apply determination, store manifest.
+
+    Merges ``data_sources`` (weather/flood/EUDR) and ``imagery``
+    (mosaics/NDVI/change-detection), appends per-AOI enrichment, writes
+    the final manifest to blob storage.
+    """
+    # Merge: data_sources is the base, imagery overlays
+    merged = {**data_sources, **imagery}
+
+    if per_aoi_results:
+        merged["per_aoi_enrichment"] = per_aoi_results
+        succeeded = sum(1 for r in per_aoi_results if "error" not in r)
+        log_phase("enrichment", "per_aoi_done", total=len(per_aoi_results), succeeded=succeeded)
+
+    merged["enriched_at"] = datetime.now(UTC).isoformat()
+    if eudr_mode:
+        merged["eudr_mode"] = True
+        merged["eudr_date_start"] = date_start
+        from treesight.pipeline.enrichment.determination import (
+            determine_deforestation_free,
+        )
+
+        merged["determination"] = determine_deforestation_free(merged)
+
+    manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
+    storage.upload_json(output_container, manifest_path, merged)
+    merged["manifest_path"] = manifest_path
+
+    log_phase("enrichment", "finalize_done", manifest=manifest_path)
+    return merged
