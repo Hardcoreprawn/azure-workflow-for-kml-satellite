@@ -11,6 +11,7 @@ from azure.durable_functions.models.DurableOrchestrationStatus import (
 from azure.durable_functions.models.OrchestrationRuntimeStatus import (
     OrchestrationRuntimeStatus as OrchestrationRuntimeStatus,
 )
+from azure.durable_functions.models.RetryOptions import RetryOptions as RetryOptions
 from azure.durable_functions.models.Task import TaskBase as TaskBase
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "DurableOrchestrationContext",
     "DurableOrchestrationStatus",
     "OrchestrationRuntimeStatus",
+    "RetryOptions",
     "TaskBase",
 ]

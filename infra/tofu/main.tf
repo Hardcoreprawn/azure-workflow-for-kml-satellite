@@ -427,38 +427,22 @@ resource "azurerm_cosmosdb_account" "main" {
 
   # --- Security hardening ---
   local_authentication_disabled         = true     # Disable key-based auth; RBAC only
-  public_network_access_enabled         = false    # Safe default; enabled atomically with IP rules by azapi_update_resource below
+  public_network_access_enabled         = false    # No static egress IPs without VNet; keep disabled
   minimal_tls_version                   = "Tls12"
-  network_acl_bypass_for_azure_services = true     # Portal/diagnostics only; does NOT cover Container Apps public-egress path
-  ip_range_filter                       = []       # Managed by azapi_update_resource.cosmos_ip_rules below
+  network_acl_bypass_for_azure_services = true     # Allows Azure-internal traffic (portal, diagnostics, Function App via MI)
+  ip_range_filter                       = []       # Re-add when VNet + NAT gateway provides static egress IPs
 
   lifecycle {
     ignore_changes = [public_network_access_enabled, ip_range_filter]
   }
 }
 
-# Enable Cosmos public access AND restrict firewall to FA outbound IPs
-# in a single atomic ARM call.  Applied as a separate update resource to
-# avoid a circular dependency: FA body → Cosmos endpoint, Cosmos
-# ip_range_filter → FA outbound IPs.  The base resource defaults to
-# publicNetworkAccess=Disabled so Cosmos is never publicly reachable
-# without an IP allowlist.
-resource "azapi_update_resource" "cosmos_ip_rules" {
-  count       = var.enable_cosmos_db ? 1 : 0
-  type        = "Microsoft.DocumentDB/databaseAccounts@2024-11-15"
-  resource_id = azurerm_cosmosdb_account.main[0].id
-
-  body = {
-    properties = {
-      publicNetworkAccess = "Enabled"
-      ipRules = [
-        for ip in split(",", azapi_resource.function_app.output.properties.possibleOutboundIpAddresses) : {
-          ipAddressOrRange = ip
-        }
-      ]
-    }
-  }
-}
+# NOTE: Cosmos IP-allowlist (cosmos_ip_rules) removed — Container Apps
+# Function Apps do not expose possibleOutboundIpAddresses.  Without a
+# VNet + NAT gateway, there are no static egress IPs to allowlist.
+# The base resource keeps publicNetworkAccess=Disabled, and
+# network_acl_bypass_for_azure_services=true allows Azure-internal
+# traffic.  Re-add IP rules when the environment moves to VNet egress.
 
 resource "azurerm_cosmosdb_sql_database" "main" {
   count               = var.enable_cosmos_db ? 1 : 0
@@ -818,7 +802,7 @@ resource "azapi_resource" "function_app" {
     }
   }
 
-  response_export_values = ["id", "name", "properties.defaultHostName", "properties.possibleOutboundIpAddresses"]
+  response_export_values = ["id", "name", "properties.defaultHostName"]
 }
 
 resource "azurerm_static_web_app" "main" {

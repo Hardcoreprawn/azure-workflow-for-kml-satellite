@@ -1,13 +1,7 @@
 ---
 description: "Use when writing or modifying Python code, tests, activities, parsers, or pipeline logic. Enforces test-first development, functional style, and high-reliability engineering discipline."
 name: "Engineering Standards"
-applyTo:
-  - "**/*.py"
-  - "tests/**"
-  - "treesight/**"
-  - "blueprints/**"
-  - "scripts/**"
-  - "rust/**"
+applyTo: "**/*.{py,rs}"
 ---
 # Engineering Standards
 
@@ -52,6 +46,18 @@ Write idiomatic, clean, high-reliability Python. Every function should be testab
 - Size-check before parsing. Schema-check before processing. Never trust content-type headers alone.
 - Log at decision points with structured context: `logger.info("msg", extra={...})` or at minimum `logger.info("msg key=%s", value)`.
 - Make operations idempotent where possible. A retry should not create a duplicate or corrupt state.
+
+## Use the Platform — Don't Reinvent It
+
+Before writing infrastructure-level code (retry loops, backoff, polling, scheduling, locking, queuing), check whether the runtime or framework already provides it. Hand-rolled versions are harder to test, miss edge cases the platform handles, and create maintenance burden.
+
+- **Retry and backoff**: Use Durable Functions `RetryOptions` / `call_activity_with_retry`, not `time.sleep` loops inside activities.
+- **Polling / waiting**: Use durable timers (`create_timer`) in orchestrators, not blocking sleeps in activities. Activities should be single-shot: call an API, return the result.
+- **Scheduling**: Use DF sub-orchestrations or timer-based monitors, not cron-in-code.
+- **Concurrency control**: Use DF fan-out/fan-in (`task_all`), not hand-managed thread pools.
+- **Configuration**: Use `treesight/config.py` and environment variables, not in-code defaults that bypass the config layer.
+
+When the platform primitive doesn't exist or genuinely doesn't fit, document *why* in a comment at the call site. "The SDK doesn't support X" is a valid reason. "I didn't know it existed" is not.
 
 ## Code Simplicity (adapted from NASA/JPL Power of 10)
 

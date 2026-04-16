@@ -19,6 +19,8 @@ import azure.durable_functions as df
 
 from treesight.config import config_get_int
 from treesight.constants import (
+    ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+    ACTIVITY_RETRY_MAX_ATTEMPTS,
     BATCH_POLL_INTERVAL_SECONDS,
     DEFAULT_ACQUISITION_BATCH_SIZE,
     DEFAULT_DOWNLOAD_BATCH_SIZE,
@@ -167,12 +169,19 @@ def _phase_acquisition(
         1, config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE)
     )
 
+    # Retry options for transient provider failures (STAC API timeouts, 5xx).
+    acq_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
+
     orders: list[dict[str, Any]] = []
     for i in range(0, len(aoi_refs), acq_batch_size):
         batch_refs = aoi_refs[i : i + acq_batch_size]
         activity = "acquire_composite" if composite else "acquire_imagery"
         acq_tasks = [
-            context.call_activity(activity, _acq_payload(ref, inp, composite)) for ref in batch_refs
+            context.call_activity_with_retry(activity, acq_retry, _acq_payload(ref, inp, composite))
+            for ref in batch_refs
         ]
         batch_results = cast(
             "list[Any]",
@@ -184,7 +193,8 @@ def _phase_acquisition(
         else:
             orders.extend(batch_results)
 
-    # Poll orders
+    # Poll orders — poll_order has its own internal retry loop with backoff
+    # (treesight.pipeline.acquisition.poll_order), so DF-level retry is not added here.
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
     poll_tasks = [
         context.call_activity("poll_order", _poll_payload(o, inp))
