@@ -1,13 +1,7 @@
 ---
 description: "Use when writing or modifying Python code, tests, activities, parsers, or pipeline logic. Enforces test-first development, functional style, and high-reliability engineering discipline."
 name: "Engineering Standards"
-applyTo:
-  - "**/*.py"
-  - "tests/**"
-  - "treesight/**"
-  - "blueprints/**"
-  - "scripts/**"
-  - "rust/**"
+applyTo: "**/*.{py,rs}"
 ---
 # Engineering Standards
 

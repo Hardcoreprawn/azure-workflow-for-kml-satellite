@@ -543,6 +543,10 @@ class TestAcquisitionActivityRetry:
         from unittest.mock import MagicMock
 
         from blueprints.pipeline.orchestrator import _phase_acquisition
+        from treesight.constants import (
+            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+            ACTIVITY_RETRY_MAX_ATTEMPTS,
+        )
 
         ctx = MagicMock()
         ctx.call_activity_with_retry.return_value = "acq_sentinel"
@@ -563,8 +567,8 @@ class TestAcquisitionActivityRetry:
         # Verify retry options were passed
         call_args = ctx.call_activity_with_retry.call_args
         retry_opts = call_args[0][1]
-        assert retry_opts.first_retry_interval_in_milliseconds == 5_000
-        assert retry_opts.max_number_of_attempts == 3
+        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
 
     def test_acquisition_retry_applies_to_non_composite(self):
         """Non-composite (single acquire_imagery) also uses retry."""
