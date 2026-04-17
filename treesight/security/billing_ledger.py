@@ -14,12 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from treesight.security.redact import redact_user_id as _redact
+
 logger = logging.getLogger(__name__)
-
-
-def _redact(user_id: str) -> str:
-    """Return a truncated user ID safe for logging (no full PII)."""
-    return user_id[:8] + "…" if len(user_id) > 8 else user_id
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +118,10 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
     if billing_type == "overage":
         _report_overage(user_id, instance_id, doc)
         if not doc.get("payment_ref"):
-            logger.warning(
-                "Overage billing not confirmed instance=%s user=%s",
-                instance_id,
-                _redact(user_id),
+            # Stay pending so Durable retry can re-attempt billing
+            raise RuntimeError(
+                f"Overage billing not confirmed instance={instance_id} user={_redact(user_id)}"
             )
-            return
 
     doc["billing_status"] = "charged"
     upsert_item("runs", doc)
@@ -168,13 +163,26 @@ def fail_run_billing(
         )
         return
 
+    # If it was an overage run that was already charged, credit first
+    needs_credit = doc.get("billing_type") == "overage" and previous_status == "charged"
+
+    if needs_credit:
+        # Write interim status so a crash between credit and final update
+        # is retryable — the run won't appear as "refunded" without credit.
+        doc["billing_status"] = "credit_pending"
+        doc["refund_reason"] = reason
+        upsert_item("runs", doc)
+
+        _credit_overage(user_id, instance_id, doc, reason)
+
+        if not doc.get("payment_ref"):
+            raise RuntimeError(
+                f"Overage credit not confirmed instance={instance_id} user={_redact(user_id)}"
+            )
+
     doc["billing_status"] = "refunded"
     doc["refund_reason"] = reason
     upsert_item("runs", doc)
-
-    # If it was an overage run that was already charged, credit it back
-    if doc.get("billing_type") == "overage" and previous_status == "charged":
-        _credit_overage(user_id, instance_id, doc, reason)
 
     logger.info(
         "Billing refunded instance=%s user=%s reason=%s",

@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from treesight.security.billing_ledger import (
     billing_fields_for_submission,
     classify_run,
@@ -183,8 +185,8 @@ class TestCompleteRunBilling:
     @patch("treesight.security.billing_ledger._report_overage")
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
-    def test_overage_stays_pending_when_provider_fails(self, mock_read, mock_upsert, mock_report):
-        """If _report_overage doesn't set payment_ref, run stays pending."""
+    def test_overage_raises_when_provider_fails(self, mock_read, mock_upsert, mock_report):
+        """If _report_overage doesn't set payment_ref, RuntimeError raised for retry."""
         mock_read.return_value = {
             "id": "inst-fail",
             "user_id": "u1",
@@ -195,7 +197,8 @@ class TestCompleteRunBilling:
         # Provider returns None — no payment_ref set
         mock_report.side_effect = lambda uid, iid, d: None
 
-        complete_run_billing("u1", "inst-fail")
+        with pytest.raises(RuntimeError, match="Overage billing not confirmed"):
+            complete_run_billing("u1", "inst-fail")
 
         mock_report.assert_called_once()
         mock_upsert.assert_not_called()
@@ -249,11 +252,20 @@ class TestFailRunBilling:
             "billing_status": "charged",
             "tier_at_submission": "pro",
         }
+        # Simulate _credit_overage setting payment_ref (provider succeeded)
+        mock_credit.side_effect = lambda uid, iid, d, r: d.__setitem__("payment_ref", "cr_789")
+
+        # Capture doc snapshots at each upsert call (dict is mutated in place)
+        snapshots = []
+        mock_upsert.side_effect = lambda coll, doc: snapshots.append(dict(doc))
 
         fail_run_billing("u1", "inst-3", reason="timeout")
 
-        mock_upsert.assert_called_once()
-        mock_credit.assert_called_once_with("u1", "inst-3", mock_upsert.call_args[0][1], "timeout")
+        # First upsert writes credit_pending, second writes refunded
+        assert len(snapshots) == 2
+        assert snapshots[0]["billing_status"] == "credit_pending"
+        assert snapshots[1]["billing_status"] == "refunded"
+        mock_credit.assert_called_once()
 
     @patch("treesight.security.billing_ledger._credit_overage")
     @patch(_COSMOS_UPSERT)
@@ -271,6 +283,28 @@ class TestFailRunBilling:
 
         mock_upsert.assert_called_once()
         mock_credit.assert_not_called()
+
+    @patch("treesight.security.billing_ledger._credit_overage")
+    @patch(_COSMOS_UPSERT)
+    @patch(_COSMOS_READ)
+    def test_credit_failure_raises_for_retry(self, mock_read, mock_upsert, mock_credit):
+        """If _credit_overage doesn't set payment_ref, RuntimeError for retry."""
+        mock_read.return_value = {
+            "id": "inst-5",
+            "user_id": "u1",
+            "billing_type": "overage",
+            "billing_status": "charged",
+            "tier_at_submission": "pro",
+        }
+        # Provider returns None — no payment_ref set
+        mock_credit.side_effect = lambda uid, iid, d, r: None
+
+        with pytest.raises(RuntimeError, match="Overage credit not confirmed"):
+            fail_run_billing("u1", "inst-5", reason="pipeline_failure")
+
+        # Status should be credit_pending, not refunded
+        interim_doc = mock_upsert.call_args_list[0][0][1]
+        assert interim_doc["billing_status"] == "credit_pending"
 
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
@@ -356,7 +390,9 @@ class TestOverageProviderIntegration:
             idempotency_key="credit-inst-credit",
             reason="timeout",
         )
+        # credit_pending → refunded; payment_ref saved
         final_doc = mock_upsert.call_args_list[-1][0][1]
+        assert final_doc["billing_status"] == "refunded"
         assert final_doc["payment_ref"] == "cr_456"
 
     @patch(_GET_PROVIDER)
@@ -379,6 +415,29 @@ class TestOverageProviderIntegration:
             # No stripe_subscription_item_id
         }
 
-        complete_run_billing("u1", "inst-nosub")
+        with pytest.raises(RuntimeError, match="Overage billing not confirmed"):
+            complete_run_billing("u1", "inst-nosub")
 
         mock_provider_fn.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Shared redact helper
+# ---------------------------------------------------------------------------
+
+
+class TestRedactUserId:
+    def test_truncates_long_id(self):
+        from treesight.security.redact import redact_user_id
+
+        assert redact_user_id("abcdefghij") == "abcdefgh…"
+
+    def test_short_id_unchanged(self):
+        from treesight.security.redact import redact_user_id
+
+        assert redact_user_id("abc") == "abc"
+
+    def test_exactly_eight_chars(self):
+        from treesight.security.redact import redact_user_id
+
+        assert redact_user_id("12345678") == "12345678"

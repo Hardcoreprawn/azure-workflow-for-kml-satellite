@@ -25,6 +25,7 @@ from azure.storage.blob import (
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.quota import consume_quota, release_quota
+from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
 
@@ -197,7 +198,10 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     except ValueError as exc:
         return error_response(403, str(exc), req=req)
     except Exception:
-        logger.exception("Quota storage unavailable for user=%s — allowing submission", user_id)
+        logger.exception(
+            "Quota storage unavailable for user=%s — allowing submission",
+            _redact(user_id),
+        )
 
     submission_id = str(uuid.uuid4())
     blob_name = f"analysis/{submission_id}.kml"
