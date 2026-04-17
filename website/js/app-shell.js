@@ -1710,6 +1710,7 @@
       var icon = el.querySelector('.step-icon');
       if (icon) icon.textContent = '○';
     });
+    resetEnrichmentSubSteps();
   }
 
   function setAnalysisProgressVisible(visible) {
@@ -1769,6 +1770,69 @@
     finalizing: 'Merging results and storing the analysis manifest.'
   };
 
+  // Sub-step order for the enrichment phase progress UI.
+  // 'data_sources_and_imagery' maps to both data_sources_and_imagery + imagery
+  // sub-bullets since the orchestrator runs them in parallel under one status.
+  const ENRICHMENT_SUB_ORDER = ['data_sources_and_imagery', 'imagery', 'per_aoi', 'finalizing'];
+
+  function updateEnrichmentSubSteps(enrichmentStep) {
+    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
+    if (!container) return;
+    container.hidden = false;
+    const currentIdx = ENRICHMENT_SUB_ORDER.indexOf(enrichmentStep);
+    const subs = container.querySelectorAll('.pipeline-sub-step');
+    subs.forEach(function(el) {
+      const sub = el.getAttribute('data-sub');
+      const icon = el.querySelector('.sub-icon');
+      el.className = 'pipeline-sub-step';
+      if (!icon) return;
+      const subIdx = ENRICHMENT_SUB_ORDER.indexOf(sub);
+      if (subIdx < 0) return;
+
+      // data_sources_and_imagery and imagery run in parallel — treat
+      // them as the same phase for status purposes.
+      const isParallelPair = (sub === 'imagery' && enrichmentStep === 'data_sources_and_imagery')
+        || (sub === 'data_sources_and_imagery' && enrichmentStep === 'imagery');
+
+      if (sub === enrichmentStep || isParallelPair) {
+        el.classList.add('active');
+        icon.replaceChildren();
+        const spinner = document.createElement('span');
+        spinner.className = 'spinner';
+        icon.appendChild(spinner);
+      } else if (subIdx < currentIdx) {
+        el.classList.add('done');
+        icon.textContent = '✓';
+      } else {
+        icon.textContent = '○';
+      }
+    });
+  }
+
+  function resetEnrichmentSubSteps() {
+    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
+    if (!container) return;
+    container.hidden = true;
+    const subs = container.querySelectorAll('.pipeline-sub-step');
+    subs.forEach(function(el) {
+      el.className = 'pipeline-sub-step';
+      const icon = el.querySelector('.sub-icon');
+      if (icon) icon.textContent = '○';
+    });
+  }
+
+  function completeEnrichmentSubSteps() {
+    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
+    if (!container) return;
+    container.hidden = false;
+    const subs = container.querySelectorAll('.pipeline-sub-step');
+    subs.forEach(function(el) {
+      el.className = 'pipeline-sub-step done';
+      const icon = el.querySelector('.sub-icon');
+      if (icon) icon.textContent = '✓';
+    });
+  }
+
   function updateAnalysisStory(phase, runtimeStatus, data) {
     var runtime = runtimeStatus || 'Pending';
     var phaseDetails = EUDR_LOCKED ? EUDR_ANALYSIS_PHASE_DETAILS : ANALYSIS_PHASE_DETAILS;
@@ -1790,8 +1854,24 @@
       if (timing.sinceUpdate) {
         detail += ' Last backend update ' + timing.sinceUpdate + ' ago.';
       }
-    } else if (runtime !== 'Completed' && timing.elapsed) {
-      detail += ' Elapsed ' + timing.elapsed + '.';
+      // Drive the nested sub-step progress indicators.
+      if (step) updateEnrichmentSubSteps(step);
+    } else if (phase !== 'enrichment') {
+      // Past enrichment (complete) — mark all sub-steps done.
+      // Before enrichment — keep sub-steps hidden.
+      const enrichIdx = ANALYSIS_PHASES.indexOf('enrichment');
+      const phaseIdx = ANALYSIS_PHASES.indexOf(phase);
+      if (phaseIdx > enrichIdx) {
+        completeEnrichmentSubSteps();
+      } else {
+        resetEnrichmentSubSteps();
+      }
+      if (runtime !== 'Completed' && timing.elapsed) {
+        detail += ' Elapsed ' + timing.elapsed + '.';
+      }
+    } else {
+      // Completed while on enrichment phase — mark all sub-steps done.
+      completeEnrichmentSubSteps();
     }
 
     if (runtime === 'Completed') {

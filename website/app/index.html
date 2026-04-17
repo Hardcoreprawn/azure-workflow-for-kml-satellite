@@ -198,7 +198,14 @@
             <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing AOIs and validating geometry</div>
             <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching NAIP and Sentinel-2 imagery</div>
             <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, weather, and cache layers</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building evidence layers
+              <div class="pipeline-sub-steps" hidden>
+                <div class="pipeline-sub-step" data-sub="data_sources_and_imagery"><span class="sub-icon">○</span> Weather, fire/flood context, and land-cover overlays</div>
+                <div class="pipeline-sub-step" data-sub="imagery"><span class="sub-icon">○</span> Mosaic registration and NDVI computation</div>
+                <div class="pipeline-sub-step" data-sub="per_aoi"><span class="sub-icon">○</span> Per-AOI enrichment and change detection</div>
+                <div class="pipeline-sub-step" data-sub="finalizing"><span class="sub-icon">○</span> Merging results and storing the manifest</div>
+              </div>
+            </div>
             <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
           </div>
           <dl class="app-stats compact" id="app-analysis-run" hidden>

@@ -39,12 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #644 | Enrichment sub-steps: nested progress indicators (#644) |
 | #641 | Fix enrichment 404: parse Durable Functions `input_` from JSON string (fixes #637) |
 | #639 | Resolve code scanning alerts: hash-based PII redaction, dismiss base-image CVEs |
+| #636 | AOI limit tier suggestion (#635), enrichment 404 on completed runs (#637) |
 | #629 | Billing ledger, payment provider, run lifecycle, PII redaction (fixes #589) |
 | #631 | EUDR UI polish: landing page, phase copy, app-shell branching (fixes #630, #632) |
-| #615 | EUDR landing page, per-parcel export, audit PDF (fixes #533, #605) |
-| #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
 
 ---
 

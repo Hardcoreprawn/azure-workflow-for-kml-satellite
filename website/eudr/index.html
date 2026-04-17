@@ -204,7 +204,14 @@
             <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing parcels and validating geometry</div>
             <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2 imagery and polling scene availability</div>
             <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping to parcel boundaries</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI time series, deforestation risk, weather, fire, and WorldCover/IO LULC/ALOS land-cover evidence</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building evidence layers
+              <div class="pipeline-sub-steps" hidden>
+                <div class="pipeline-sub-step" data-sub="data_sources_and_imagery"><span class="sub-icon">○</span> Weather, fire/flood, WorldCover, IO LULC, ALOS land-cover</div>
+                <div class="pipeline-sub-step" data-sub="imagery"><span class="sub-icon">○</span> Sentinel-2 mosaic registration and NDVI time series</div>
+                <div class="pipeline-sub-step" data-sub="per_aoi"><span class="sub-icon">○</span> Per-parcel deforestation risk and change detection</div>
+                <div class="pipeline-sub-step" data-sub="finalizing"><span class="sub-icon">○</span> Merging results and storing the evidence manifest</div>
+              </div>
+            </div>
             <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Evidence pack complete — ready for review</div>
           </div>
           <dl class="app-stats compact" id="app-analysis-run" hidden>
