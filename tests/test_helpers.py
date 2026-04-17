@@ -398,3 +398,38 @@ class TestFetchEnrichmentManifest:
         assert manifest is None
         assert err is not None
         assert err.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_input_as_json_string(self) -> None:
+        """input_ from the Durable Functions SDK is a JSON string, not a dict."""
+        import json
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from blueprints._helpers import fetch_enrichment_manifest
+
+        fake_status = MagicMock()
+        fake_status.output = json.dumps({"enrichmentManifest": "enrichment/abc/payload.json"})
+        fake_status.input_ = json.dumps({"user_id": "user-123"})
+
+        client = AsyncMock()
+        client.get_status = AsyncMock(return_value=fake_status)
+
+        req = func.HttpRequest(
+            method="GET",
+            url="https://example.com/api/timelapse-data/abc",
+            route_params={"instance_id": "abc"},
+            headers={"Origin": TEST_ORIGIN},
+            body=b"",
+        )
+
+        with (
+            patch("blueprints._helpers.check_auth", return_value=({}, "user-123")),
+            patch(
+                "treesight.storage.client.BlobStorageClient.download_json",
+                return_value={"frames": []},
+            ),
+        ):
+            manifest, err = await fetch_enrichment_manifest(req, client)
+
+        assert err is None
+        assert manifest == {"frames": []}
