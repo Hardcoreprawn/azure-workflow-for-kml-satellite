@@ -173,8 +173,6 @@ class TestBillingCheckout:
     def test_anonymous_returns_401(self):
         from blueprints.billing import billing_checkout
 
-        req = _make_req(url="/api/billing/checkout")
-        # Override to remove the SWA principal header
         req = make_test_request(
             url="/api/billing/checkout",
             origin=_ALLOWED_ORIGIN,
