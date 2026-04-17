@@ -325,7 +325,7 @@ async def fetch_enrichment_manifest(
     if not instance_id:
         return None, error_response(400, "instance_id required", req=req)
 
-    status = await client.get_status(instance_id)
+    status = await client.get_status(instance_id, show_input=True)
     if not status or not status.output:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
