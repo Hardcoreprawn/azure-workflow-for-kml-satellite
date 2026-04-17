@@ -39,12 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #641 | Fix enrichment 404: parse Durable Functions `input_` from JSON string (fixes #637) |
+| #639 | Resolve code scanning alerts: hash-based PII redaction, dismiss base-image CVEs |
 | #629 | Billing ledger, payment provider, run lifecycle, PII redaction (fixes #589) |
 | #631 | EUDR UI polish: landing page, phase copy, app-shell branching (fixes #630, #632) |
 | #615 | EUDR landing page, per-parcel export, audit PDF (fixes #533, #605) |
 | #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
-| #624 | DF retry on acquisition activities, remove dead Cosmos IP rules, infracost fix |
-| #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
 
 ---
 
