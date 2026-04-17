@@ -978,6 +978,13 @@
       if (evidenceInstanceId !== instanceId) return;
       evidenceManifest = manifest;
     } catch (err) {
+      // Retry once after a short delay — the orchestrator may have just
+      // completed and storage propagation can lag a few seconds.
+      if (err && err.status === 404 && !arguments[1]) {
+        await new Promise(function (r) { setTimeout(r, 3000); });
+        if (evidenceInstanceId !== instanceId) return;
+        return loadRunEvidence(instanceId, true);
+      }
       if (evidenceInstanceId !== instanceId) return;
       if (footerEl) footerEl.textContent = 'Could not load enrichment data: ' + ((err && err.message) || 'unknown error');
       return;
