@@ -427,17 +427,28 @@ class TestOverageProviderIntegration:
 
 
 class TestRedactUserId:
-    def test_truncates_long_id(self):
+    def test_returns_hash_prefix(self):
         from treesight.security.redact import redact_user_id
 
-        assert redact_user_id("abcdefghij") == "abcdefgh…"
+        result = redact_user_id("abcdefghij")
+        assert result.startswith("u#")
+        assert len(result) == 14  # "u#" + 12 hex chars
+        # No raw PII leaks
+        assert "abcdefgh" not in result
 
-    def test_short_id_unchanged(self):
+    def test_deterministic(self):
         from treesight.security.redact import redact_user_id
 
-        assert redact_user_id("abc") == "abc"
+        assert redact_user_id("abc") == redact_user_id("abc")
 
-    def test_exactly_eight_chars(self):
+    def test_different_ids_produce_different_hashes(self):
         from treesight.security.redact import redact_user_id
 
-        assert redact_user_id("12345678") == "12345678"
+        assert redact_user_id("user-a") != redact_user_id("user-b")
+
+    def test_empty_string(self):
+        from treesight.security.redact import redact_user_id
+
+        result = redact_user_id("")
+        assert result.startswith("u#")
+        assert len(result) == 14
