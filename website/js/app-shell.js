@@ -225,6 +225,14 @@
     enrichment: 'Adding NDVI, weather context, and cached artifacts so the workspace has richer outputs ready.',
     complete: 'Analysis complete — scroll down to review satellite imagery, vegetation health, and export options.'
   };
+  const EUDR_ANALYSIS_PHASE_DETAILS = {
+    submit: 'Uploading KML and reserving pipeline capacity for this compliance run.',
+    ingestion: 'Parsing parcels, validating geometry, and preparing the evidence request.',
+    acquisition: 'Searching post-2020 Sentinel-2 imagery and polling scene availability for each parcel.',
+    fulfilment: 'Downloading scenes, clipping to parcel boundaries, and reprojecting into the evidence stack.',
+    enrichment: 'Building NDVI time series, deforestation risk, weather, fire, and land-cover evidence layers.',
+    complete: 'Evidence pack complete — scroll down to review per-parcel determination and export compliance records.'
+  };
 
   // ---------------------------------------------------------------------------
   // localStorage stale-while-revalidate cache (#596)
@@ -1495,30 +1503,46 @@
 
     if (phase === 'acquisition') {
       imageryEl.textContent = 'Scene search underway';
-      imageryNoteEl.textContent = 'NAIP and Sentinel-2 discovery is in progress so the run can pick the right source imagery.';
+      imageryNoteEl.textContent = EUDR_LOCKED
+        ? 'Sentinel-2 post-2020 imagery discovery is in progress for each parcel.'
+        : 'NAIP and Sentinel-2 discovery is in progress so the run can pick the right source imagery.';
       enrichmentEl.textContent = 'Queued behind acquisition';
       enrichmentNoteEl.textContent = 'Context layers are staged after the imagery stack is selected.';
       exportsEl.textContent = 'Awaiting artefacts';
-      exportsNoteEl.textContent = 'There is nothing to export until imagery is actually acquired.';
+      exportsNoteEl.textContent = EUDR_LOCKED
+        ? 'Evidence pack exports are unavailable until imagery is acquired.'
+        : 'There is nothing to export until imagery is actually acquired.';
       return;
     }
 
     if (phase === 'fulfilment') {
       imageryEl.textContent = 'Clipping and reprojection';
-      imageryNoteEl.textContent = 'The pipeline is producing imagery assets for your analysis.';
+      imageryNoteEl.textContent = EUDR_LOCKED
+        ? 'The pipeline is clipping scenes to parcel boundaries for the evidence stack.'
+        : 'The pipeline is producing imagery assets for your analysis.';
       enrichmentEl.textContent = 'Preparing next';
-      enrichmentNoteEl.textContent = 'NDVI and weather context will follow immediately after fulfilment finishes.';
+      enrichmentNoteEl.textContent = EUDR_LOCKED
+        ? 'Deforestation risk, NDVI time series, and land-cover evidence will follow immediately.'
+        : 'NDVI and weather context will follow immediately after fulfilment finishes.';
       exportsEl.textContent = 'Outputs staging next';
-      exportsNoteEl.textContent = 'The run is close enough that saved outputs should feel tangible, not hypothetical.';
+      exportsNoteEl.textContent = EUDR_LOCKED
+        ? 'Compliance exports are close — the evidence pack is being assembled.'
+        : 'The run is close enough that saved outputs should feel tangible, not hypothetical.';
       return;
     }
 
     imageryEl.textContent = 'Imagery stack stabilizing';
-    imageryNoteEl.textContent = 'Core imagery is in place and the workspace is adding the last supporting layers.';
+    imageryNoteEl.textContent = EUDR_LOCKED
+      ? 'Sentinel-2 and land-cover layers are in place; final evidence layers being added.'
+      : 'Core imagery is in place and the workspace is adding the last supporting layers.';
     enrichmentEl.textContent = 'Context packaging';
-    enrichmentNoteEl.textContent = 'NDVI, weather, and derived context are being assembled for the run detail experience.';
+    enrichmentNoteEl.textContent = EUDR_LOCKED
+      ? 'Per-parcel deforestation determination, NDVI, weather, fire, and land-cover evidence are being assembled.'
+      : 'NDVI, weather, and derived context are being assembled for the run detail experience.';
     exportsEl.textContent = 'Preparing results view';
-    exportsNoteEl.textContent = 'Saved outputs, exports, and revisit paths will be available shortly.';
+    exportsNoteEl.textContent = EUDR_LOCKED
+      ? 'Audit-grade PDF, GeoJSON, and CSV exports for compliance records will be available shortly.'
+      : 'Saved outputs, exports, and revisit paths will be available shortly.';
   }
 
   function updateRunDetail(data) {
@@ -1740,7 +1764,8 @@
 
   function updateAnalysisStory(phase, runtimeStatus, data) {
     var runtime = runtimeStatus || 'Pending';
-    var detail = ANALYSIS_PHASE_DETAILS[phase] || 'Working through the analysis pipeline.';
+    var phaseDetails = EUDR_LOCKED ? EUDR_ANALYSIS_PHASE_DETAILS : ANALYSIS_PHASE_DETAILS;
+    var detail = phaseDetails[phase] || 'Working through the analysis pipeline.';
     var timing = summarizeRunTiming(data);
 
     if (runtime !== 'Completed' && phase === 'enrichment') {
