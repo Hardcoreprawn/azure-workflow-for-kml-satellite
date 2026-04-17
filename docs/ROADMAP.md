@@ -177,10 +177,14 @@ Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidenc
 
 ---
 
-## Stage 2G — EUDR Compliance Product
+## Stage 2G — EUDR Compliance Product ✅ (bar revenue)
 
 Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
+
+**Status:** 20/22 issues closed. Pipeline, data sources, frontend, org
+management, and evidence export are complete. Revenue items (#589, #613)
+tracked in 2D/2G.5. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 
@@ -218,7 +222,7 @@ invited users auto-join on sign-in via SWA email matching.
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
 | FE.1 | #611 | JS module decomposition (core, pipeline, evidence) | ✅ PR #620 |
-| FE.2 | — | EUDR-specific UI polish on `/eudr/` | #610 (2C.8) |
+| FE.2 | #630 | EUDR-specific UI polish on `/eudr/` | ✅ PR #631 |
 | FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
 | FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | FE.3 |

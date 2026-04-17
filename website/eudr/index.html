@@ -50,6 +50,15 @@
   </div>
 </nav>
 
+<!-- EUDR regulation context bar -->
+<div class="eudr-regulation-bar">
+  <span class="eudr-reg-ref">EU Regulation 2023/1115</span>
+  <span class="eudr-reg-sep" aria-hidden="true">|</span>
+  <span>Cutoff date: <strong>31 December 2020</strong></span>
+  <span class="eudr-reg-sep" aria-hidden="true">|</span>
+  <span>Multi-source satellite evidence for due diligence</span>
+</div>
+
 <main class="app-main">
 
   <section id="app-unauthenticated" class="app-gate">
@@ -93,7 +102,7 @@
           <div class="app-first-run-content">
             <div class="section-label">Get Started</div>
             <h3>Welcome to EUDR Due Diligence</h3>
-            <p class="app-first-run-note">You have no due diligence runs yet. Upload a KML file with your parcel boundaries. Canopex will search post-2020 satellite imagery, assess deforestation risk, and assemble an evidence pack for EUDR compliance.</p>
+            <p class="app-first-run-note">You have no due diligence runs yet. Upload a KML file with your parcel boundaries. Canopex will search post-2020 satellite imagery across Sentinel-2, ESA WorldCover, IO LULC, ALOS radar, and more — then assess deforestation risk and assemble an evidence pack for EUDR compliance.</p>
             <div class="app-first-run-actions">
               <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Assessment</a>
               <a class="btn btn-secondary" href="/docs/kml-guide.html">KML Guide</a>
@@ -105,8 +114,9 @@
             <ol>
               <li>Prepare a KML or KMZ file with parcel polygon boundaries</li>
               <li>Upload it in the New Due Diligence panel below</li>
-              <li>Queue the pipeline — imagery is restricted to post-Dec 2020</li>
-              <li>Review satellite evidence, NDVI, and deforestation-risk assessment</li>
+              <li>Queue the pipeline — imagery is restricted to post-Dec 2020 per Regulation 2023/1115</li>
+              <li>Review multi-source evidence: NDVI time series, land cover, radar, fire, weather</li>
+              <li>Export audit-grade PDF with per-parcel deforestation-free determination</li>
             </ol>
           </div>
         </article>
@@ -192,10 +202,10 @@
           <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
             <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing parcels and validating geometry</div>
-            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2 imagery</div>
-            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping, and reprojection</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI, deforestation risk, and evidence layers</div>
-            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Complete</div>
+            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2 imagery and polling scene availability</div>
+            <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping to parcel boundaries</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI time series, deforestation risk, weather, fire, and WorldCover/IO LULC/ALOS land-cover evidence</div>
+            <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Evidence pack complete — ready for review</div>
           </div>
           <dl class="app-stats compact" id="app-analysis-run" hidden>
             <div><dt>Instance</dt><dd id="app-analysis-instance">—</dd></div>
@@ -235,7 +245,7 @@
               <div class="section-label">Evidence</div>
               <h3 id="app-content-title">Satellite Evidence &amp; EUDR Assessment</h3>
             </div>
-            <p class="app-evidence-hero-note" id="app-content-copy">Select a completed run to review satellite imagery, vegetation health, and deforestation-risk assessment for EUDR compliance.</p>
+            <p class="app-evidence-hero-note" id="app-content-copy">Select a completed run to review multi-source satellite evidence, vegetation health trends, and per-parcel deforestation-free determination for EUDR compliance.</p>
           </div>
 
           <!-- Phase status (shown during active runs) -->
@@ -244,17 +254,17 @@
               <div class="app-content-block">
                 <span class="app-content-label">Imagery stack</span>
                 <strong id="app-content-imagery">Waiting for a run</strong>
-                <p id="app-content-imagery-note">Before/after imagery and NDVI layers will appear here as the evidence stack forms.</p>
+                <p id="app-content-imagery-note">Sentinel-2 optical, WorldCover land classification, IO LULC, and ALOS radar evidence will appear here.</p>
               </div>
               <div class="app-content-block">
                 <span class="app-content-label">Enrichment</span>
                 <strong id="app-content-enrichment">Context pending</strong>
-                <p id="app-content-enrichment-note">Deforestation-risk assessment and narrative context will follow once the imagery pipeline is stable.</p>
+                <p id="app-content-enrichment-note">Per-parcel deforestation-free determination, NDVI time series, weather, and fire context will follow.</p>
               </div>
               <div class="app-content-block">
                 <span class="app-content-label">Exports</span>
                 <strong id="app-content-exports">Evidence pack next</strong>
-                <p id="app-content-exports-note">EUDR due diligence statement and compliance exports will land here once evidence is assembled.</p>
+                <p id="app-content-exports-note">Audit-grade PDF with per-parcel evidence, GeoJSON, and CSV exports for compliance records.</p>
               </div>
             </div>
           </div>
@@ -411,8 +421,42 @@
   </section>
 </main>
 
-<footer>
-  <div class="container">Canopex — satellite evidence for EU Deforestation Regulation due diligence.</div>
+<footer class="eudr-footer">
+  <div class="container">
+    <div>
+      <h4>EUDR Evidence Platform</h4>
+      <p>Canopex provides multi-source satellite evidence to support EU Deforestation Regulation (2023/1115) due diligence obligations.</p>
+      <div class="eudr-data-sources">
+        <span class="eudr-source-badge">Sentinel-2 L2A</span>
+        <span class="eudr-source-badge">ESA WorldCover</span>
+        <span class="eudr-source-badge">IO Annual LULC</span>
+        <span class="eudr-source-badge">ALOS PALSAR FNF</span>
+        <span class="eudr-source-badge">FIRMS / MODIS</span>
+        <span class="eudr-source-badge">WDPA</span>
+        <span class="eudr-source-badge">Open-Meteo</span>
+      </div>
+    </div>
+    <div>
+      <h4>Resources</h4>
+      <ul>
+        <li><a href="/docs/eudr-methodology.html">Assessment Methodology</a></li>
+        <li><a href="/docs/kml-guide.html">KML Preparation Guide</a></li>
+        <li><a href="/#pricing">Plans &amp; Pricing</a></li>
+        <li><a href="/#faq">FAQ</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <ul>
+        <li><a href="/terms.html">Terms of Service</a></li>
+        <li><a href="/privacy.html">Privacy Policy</a></li>
+        <li><a href="mailto:support@canopex.io">Contact</a></li>
+      </ul>
+    </div>
+    <div class="eudr-footer-disclaimer">
+      Canopex satellite analysis provides supporting evidence for EUDR due diligence but does not constitute a complete assessment under Regulation 2023/1115. Operators remain responsible for all EUDR obligations including supply-chain traceability, in-country verification, and declaration submission.
+    </div>
+  </div>
 </footer>
 <!-- Expanded map viewer modal (must be direct child of body to avoid transform containment) -->
 <div class="app-map-expanded-backdrop" id="app-map-expanded-backdrop" hidden>
