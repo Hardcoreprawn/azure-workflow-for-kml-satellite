@@ -241,6 +241,12 @@
 .app-pipeline-progress .pipeline-step.active{color:var(--c-text);font-weight:600;transform:translateX(2px)}
 .app-pipeline-progress .pipeline-step.done{color:var(--c-green)}
 .app-pipeline-progress .pipeline-step.failed{color:#ffb2ad}
+.app-pipeline-progress .pipeline-sub-steps{display:grid;gap:4px;margin:4px 0 2px 30px}
+.app-pipeline-progress .pipeline-sub-step{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:400;color:var(--c-muted);transition:color .2s ease}
+.app-pipeline-progress .pipeline-sub-step.active{color:var(--c-text);font-weight:600}
+.app-pipeline-progress .pipeline-sub-step.done{color:var(--c-green)}
+.app-pipeline-progress .sub-icon{width:14px;text-align:center;font-size:.75rem;flex:0 0 14px}
+.app-pipeline-progress .pipeline-sub-step .spinner{width:10px;height:10px;border-width:1.5px}
 .app-pipeline-progress .step-icon{width:20px;text-align:center;font-size:.9rem;flex:0 0 20px}
 .app-pipeline-progress .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--c-border);border-top-color:var(--c-accent);border-radius:50%;animation:spin .8s linear infinite}
 .app-run-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
