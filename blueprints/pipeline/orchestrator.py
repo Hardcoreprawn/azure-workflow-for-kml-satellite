@@ -597,6 +597,42 @@ def _safe_release_quota(
         )
 
 
+def _safe_complete_billing(
+    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
+) -> Generator[Any, Any, None]:
+    """Mark billing ledger as charged on success (#589)."""
+    billing_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
+    try:
+        yield context.call_activity_with_retry(
+            "complete_billing",
+            billing_retry,
+            {"user_id": user_id, "instance_id": instance_id},
+        )
+    except Exception:
+        logger.exception("Failed to complete billing for instance=%s", instance_id)
+
+
+def _safe_fail_billing(
+    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
+) -> Generator[Any, Any, None]:
+    """Mark billing ledger as refunded on failure (#589)."""
+    billing_retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
+    )
+    try:
+        yield context.call_activity_with_retry(
+            "fail_billing",
+            billing_retry,
+            {"user_id": user_id, "instance_id": instance_id, "reason": "pipeline_failure"},
+        )
+    except Exception:
+        logger.exception("Failed to record billing failure for instance=%s", instance_id)
+
+
 # ---------------------------------------------------------------------------
 # Progressive delivery — sub-orchestrator fan-out (#585)
 # ---------------------------------------------------------------------------
@@ -690,7 +726,6 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     instance_id, ctx = context.instance_id, derive_project_context(inp.get("blob_name", ""))
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
-
     try:
         ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
         acq_s, ful_s = yield from _dispatch_acq_ful(context, inp, ctx, ing, instance_id)
@@ -713,8 +748,11 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         if enrichment.get("manifest_path"):
             summary["enrichment_manifest"] = enrichment["manifest_path"]
             summary["enrichment_duration"] = enrichment.get("enrichment_duration_seconds")
+        if user_id and tier != "demo":
+            yield from _safe_complete_billing(context, user_id, instance_id)
         return summary
     except Exception:
         if user_id and tier != "demo":
             yield from _safe_release_quota(context, user_id, instance_id)
+            yield from _safe_fail_billing(context, user_id, instance_id)
         raise

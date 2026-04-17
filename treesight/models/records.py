@@ -52,6 +52,14 @@ class RunRecord(BaseModel):
     completed_at: str | None = None
     duration_seconds: float | None = None
 
+    # Billing ledger fields (#589)
+    tier_at_submission: str | None = None
+    billing_type: str | None = None  # included | overage | free | demo
+    overage_unit_price: float | None = None
+    billing_status: str | None = None  # pending | charged | refunded
+    payment_ref: str | None = None  # external ID from payment provider
+    refund_reason: str | None = None  # reason recorded when a charge is refunded
+
     model_config = ConfigDict(extra="allow")
 
 

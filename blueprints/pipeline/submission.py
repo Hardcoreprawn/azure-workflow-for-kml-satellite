@@ -16,6 +16,7 @@ from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 from treesight.security.quota import consume_quota, release_quota
+from treesight.security.redact import redact_user_id as _redact
 
 from . import bp
 from .history import _extract_submission_context, _persist_submission_record
@@ -165,14 +166,25 @@ async def _submit_analysis_request(
     # transiently unavailable we log the error but still allow the
     # submission so a temporary outage doesn't block users.
     quota_consumed = False
+    billing_fields: dict[str, Any] = {}
     try:
         consume_quota(user_id)
         quota_consumed = True
+        # Classify the run for the billing ledger (#589).
+        try:
+            from treesight.security.billing_ledger import billing_fields_for_submission
+
+            billing_fields = billing_fields_for_submission(user_id)
+        except Exception:
+            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
     except ValueError as exc:
         # Quota genuinely exhausted — hard block.
         return error_response(403, str(exc), req=req)
     except Exception:
-        logger.exception("Quota storage unavailable for user=%s — allowing submission", user_id)
+        logger.exception(
+            "Quota storage unavailable for user=%s — allowing submission",
+            _redact(user_id),
+        )
 
     try:
         body = req.get_json()
@@ -238,6 +250,7 @@ async def _submit_analysis_request(
             status="submitted",
             eudr_mode=eudr_mode is True,
             **ctx,
+            **billing_fields,
         )
         record = run.model_dump(exclude_none=True)
         _persist_submission_record(storage, record, user_id, submission_id)
