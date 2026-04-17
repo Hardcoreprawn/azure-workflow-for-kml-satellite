@@ -265,7 +265,7 @@
 .eudr-regulation-bar .eudr-reg-ref{color:var(--c-accent);font-weight:600}
 .eudr-regulation-bar .eudr-reg-sep{color:rgba(94,236,196,.3)}
 /* EUDR footer — richer than default for compliance context */
-.eudr-footer{padding:40px 0 32px;border-top:1px solid var(--c-border);font-size:.78rem;color:var(--c-muted);line-height:1.7}
+.eudr-footer{padding:40px 0 32px;border-top:1px solid var(--c-border);font-size:.78rem;color:var(--c-muted);line-height:1.7;text-align:left}
 .eudr-footer .container{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:32px}
 .eudr-footer h4{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--c-accent);font-weight:600;margin-bottom:10px}
 .eudr-footer p{margin-bottom:8px}

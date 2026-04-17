@@ -53,9 +53,9 @@
 <!-- EUDR regulation context bar -->
 <div class="eudr-regulation-bar">
   <span class="eudr-reg-ref">EU Regulation 2023/1115</span>
-  <span class="eudr-reg-sep">|</span>
+  <span class="eudr-reg-sep" aria-hidden="true">|</span>
   <span>Cutoff date: <strong>31 December 2020</strong></span>
-  <span class="eudr-reg-sep">|</span>
+  <span class="eudr-reg-sep" aria-hidden="true">|</span>
   <span>Multi-source satellite evidence for due diligence</span>
 </div>
 
@@ -202,9 +202,9 @@
           <div id="app-analysis-progress" class="app-pipeline-progress" hidden>
             <div class="pipeline-step" data-phase="submit"><span class="step-icon">○</span> Uploading KML and reserving pipeline capacity</div>
             <div class="pipeline-step" data-phase="ingestion"><span class="step-icon">○</span> Parsing parcels and validating geometry</div>
-            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2, WorldCover, IO LULC, and ALOS imagery</div>
+            <div class="pipeline-step" data-phase="acquisition"><span class="step-icon">○</span> Searching post-2020 Sentinel-2 imagery and polling scene availability</div>
             <div class="pipeline-step" data-phase="fulfilment"><span class="step-icon">○</span> Downloading scenes, clipping to parcel boundaries</div>
-            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI time series, deforestation risk, weather, fire, and land-cover evidence</div>
+            <div class="pipeline-step" data-phase="enrichment"><span class="step-icon">○</span> Building NDVI time series, deforestation risk, weather, fire, and WorldCover/IO LULC/ALOS land-cover evidence</div>
             <div class="pipeline-step" data-phase="complete"><span class="step-icon">○</span> Evidence pack complete — ready for review</div>
           </div>
           <dl class="app-stats compact" id="app-analysis-run" hidden>
@@ -450,7 +450,7 @@
       <ul>
         <li><a href="/terms.html">Terms of Service</a></li>
         <li><a href="/privacy.html">Privacy Policy</a></li>
-        <li><a href="/contact.html">Contact</a></li>
+        <li><a href="mailto:support@canopex.io">Contact</a></li>
       </ul>
     </div>
     <div class="eudr-footer-disclaimer">
