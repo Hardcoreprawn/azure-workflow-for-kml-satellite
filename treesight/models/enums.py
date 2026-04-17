@@ -15,7 +15,6 @@ class OrderState(StrEnum):
 class WorkflowState(StrEnum):
     READY = "ready"
     COMPLETED = "completed"
-    SUCCESS = "success"  # Deprecated: use COMPLETED instead
     PENDING = "pending"
     PROCESSING = "processing"
     FAILED = "failed"
