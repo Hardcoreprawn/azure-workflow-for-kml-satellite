@@ -304,6 +304,16 @@ def submit_contact(
     )
 
 
+def _parse_json_field(value: Any) -> Any:
+    """Parse a Durable Functions status field that may be a JSON string."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return value
+
+
 async def fetch_enrichment_manifest(
     req: func.HttpRequest,
     client: Any,
@@ -330,17 +340,13 @@ async def fetch_enrichment_manifest(
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
     # Verify the authenticated user owns this orchestration
-    inp = status.input_ if hasattr(status, "input_") else None
+    inp = getattr(status, "input_", None)
+    inp = _parse_json_field(inp)
     owner_id = inp.get("user_id", "") if isinstance(inp, dict) else ""
     if not owner_id or owner_id != caller_user_id:
         return None, error_response(404, "Pipeline not found or not complete", req=req)
 
-    output = status.output
-    if isinstance(output, str):
-        try:
-            output = json.loads(output)
-        except (json.JSONDecodeError, TypeError):
-            output = {}
+    output = _parse_json_field(status.output)
     if not isinstance(output, dict):
         output = {}
     if reshape_output is not None:
