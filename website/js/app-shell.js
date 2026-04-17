@@ -967,8 +967,9 @@
     showEvidenceSurface(true);
     clearEvidencePanels();
 
+    var shortId = instanceId.slice(0, 8);
     var footerEl = document.getElementById('app-content-footer');
-    if (footerEl) footerEl.textContent = 'Loading evidence for run ' + instanceId.slice(0, 8) + '…';
+    if (footerEl) footerEl.textContent = 'Loading evidence for run ' + shortId + '…';
 
     try {
       await apiDiscoveryReady;
@@ -998,7 +999,7 @@
     // Show persistent run reference in the evidence header.
     var runRefEl = document.getElementById('app-evidence-run-ref');
     if (runRefEl) {
-      runRefEl.textContent = 'Run ' + instanceId.slice(0, 8);
+      runRefEl.textContent = 'Run ' + shortId;
       runRefEl.title = instanceId;
       runRefEl.hidden = false;
     }
@@ -1031,7 +1032,7 @@
     var noteEl = document.getElementById('app-evidence-ndvi-note');
     if (noteEl) noteEl.textContent = '';
     var runRefEl = document.getElementById('app-evidence-run-ref');
-    if (runRefEl) { runRefEl.textContent = ''; runRefEl.hidden = true; }
+    if (runRefEl) { runRefEl.textContent = ''; runRefEl.title = ''; runRefEl.hidden = true; }
     var canvases = ['app-evidence-ndvi-canvas', 'app-evidence-weather-canvas'];
     canvases.forEach(function(id) {
       var c = document.getElementById(id);
