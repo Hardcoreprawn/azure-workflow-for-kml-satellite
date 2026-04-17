@@ -323,3 +323,78 @@ class TestSafeBlobPath:
         from treesight.storage.client import _safe_blob_path
 
         assert _safe_blob_path("demo-submissions/abc123.json") == "demo-submissions/abc123.json"
+
+
+# ---------------------------------------------------------------------------
+# fetch_enrichment_manifest — ownership check (#636)
+# ---------------------------------------------------------------------------
+
+
+class TestFetchEnrichmentManifest:
+    """Regression tests for ``fetch_enrichment_manifest``."""
+
+    @pytest.mark.asyncio
+    async def test_get_status_called_with_show_input(self) -> None:
+        """get_status must pass show_input=True so the ownership check works."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from blueprints._helpers import fetch_enrichment_manifest
+
+        # Build a fake DurableOrchestrationStatus with input and output
+        fake_status = MagicMock()
+        fake_status.output = {"enrichmentManifest": "enrichment/abc/payload.json"}
+        fake_status.input_ = {"user_id": "user-123"}
+
+        client = AsyncMock()
+        client.get_status = AsyncMock(return_value=fake_status)
+
+        req = func.HttpRequest(
+            method="GET",
+            url="https://example.com/api/timelapse-data/abc",
+            route_params={"instance_id": "abc"},
+            headers={"Origin": TEST_ORIGIN},
+            body=b"",
+        )
+
+        with (
+            patch("blueprints._helpers.check_auth", return_value=({}, "user-123")),
+            patch(
+                "treesight.storage.client.BlobStorageClient.download_json",
+                return_value={"frames": []},
+            ),
+        ):
+            manifest, err = await fetch_enrichment_manifest(req, client)
+
+        # The critical assertion: show_input MUST be True
+        client.get_status.assert_called_once_with("abc", show_input=True)
+        assert err is None
+        assert manifest == {"frames": []}
+
+    @pytest.mark.asyncio
+    async def test_ownership_mismatch_returns_404(self) -> None:
+        """Different user_id in input vs caller returns 404."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from blueprints._helpers import fetch_enrichment_manifest
+
+        fake_status = MagicMock()
+        fake_status.output = {"enrichmentManifest": "enrichment/abc/payload.json"}
+        fake_status.input_ = {"user_id": "other-user"}
+
+        client = AsyncMock()
+        client.get_status = AsyncMock(return_value=fake_status)
+
+        req = func.HttpRequest(
+            method="GET",
+            url="https://example.com/api/timelapse-data/abc",
+            route_params={"instance_id": "abc"},
+            headers={"Origin": TEST_ORIGIN},
+            body=b"",
+        )
+
+        with patch("blueprints._helpers.check_auth", return_value=({}, "user-123")):
+            manifest, err = await fetch_enrichment_manifest(req, client)
+
+        assert manifest is None
+        assert err is not None
+        assert err.status_code == 404
