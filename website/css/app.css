@@ -49,6 +49,7 @@
 .app-evidence-hero-card{padding:24px;min-height:auto}
 .app-evidence-hero-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap}
 .app-evidence-hero-note{font-size:.88rem;color:var(--c-muted);max-width:48ch;margin:0}
+.app-evidence-run-ref{display:inline-block;font-size:.72rem;font-family:monospace;color:var(--c-muted);background:rgba(230,237,243,.06);border:1px solid var(--c-border);border-radius:4px;padding:1px 7px;margin-top:4px;cursor:default;user-select:all}
 .app-evidence-status-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .app-evidence-two-col{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;align-items:start}
 .app-evidence-primary .app-evidence-map-wrap{height:420px}
