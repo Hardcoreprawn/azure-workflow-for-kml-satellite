@@ -39,11 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #629 | Billing ledger, payment provider, run lifecycle, PII redaction (fixes #589) |
+| #631 | EUDR UI polish: landing page, phase copy, app-shell branching (fixes #630, #632) |
 | #615 | EUDR landing page, per-parcel export, audit PDF (fixes #533, #605) |
 | #626 | Progressive delivery: per-AOI sub-orchestrators (fixes #585) |
 | #624 | DF retry on acquisition activities, remove dead Cosmos IP rules, infracost fix |
 | #620 | aoi_limit enforcement, AOI count fix, EUDR date filter, data models, per-AOI enrichment, orgs, JS decomposition (#575, #580, #600, #583, #578, #614, #611) |
-| #592 | Frontend + backend hardening: auth, IDOR, data integrity, anti-abuse (fixes #571) |
 
 ---
 
@@ -126,7 +127,7 @@ Auth + billing security. Prerequisites for any paid product.
 |-------|-------|-------|--------|------------|
 | R.0 | #553 | Enforce REQUIRE_AUTH everywhere | ✅ PR #554 | — |
 | R.1 | #534 | Auth header verification (HMAC) | ✅ PR #620 | — |
-| R.2 | #589 | Billing ledger, metered overage, refunds | 🔄 Active | — |
+| R.2 | #589 | Billing ledger, metered overage, refunds | ✅ PR #629 | — |
 | R.3 | #535 | E2e Stripe billing flow on live site | Open | R.2 |
 | R.4 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
 | R.5 | #572 | Audit unauthenticated API endpoints | Open | — |
