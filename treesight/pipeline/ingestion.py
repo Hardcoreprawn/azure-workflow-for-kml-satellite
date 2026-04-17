@@ -71,11 +71,23 @@ def enforce_aoi_limit(feature_count: int, tier: str | None) -> None:
         return
 
     if feature_count > aoi_limit:
+        suggestion = _suggest_tier(feature_count, PLAN_CATALOG)
         raise ValueError(
             f"This file contains {feature_count} AOIs but your "
             f"{label} plan allows {aoi_limit} per submission. "
-            f"Upgrade your plan for higher limits."
+            f"{suggestion}"
         )
+
+
+def _suggest_tier(feature_count: int, catalog: dict[str, dict]) -> str:
+    """Return a human-readable suggestion for the cheapest tier that fits."""
+    for plan in catalog.values():
+        limit = plan.get("aoi_limit")
+        if limit is None:
+            return f"The {plan['label']} plan supports unlimited AOIs per submission."
+        if feature_count <= limit:
+            return f"The {plan['label']} plan supports up to {limit} AOIs per submission."
+    return "Upgrade your plan for higher limits."
 
 
 def prepare_aois(features: list[Feature], buffer_m: float | None = None) -> list[AOI]:

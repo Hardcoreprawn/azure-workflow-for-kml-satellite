@@ -393,12 +393,12 @@ class TestEnforceAoiLimit:
             enforce_aoi_limit(feature_count=6, tier="unknown_tier")
 
     def test_error_message_includes_upgrade_hint(self) -> None:
-        """Error message should tell the user to upgrade."""
+        """Error message should suggest a suitable tier."""
         import pytest
 
         from treesight.pipeline.ingestion import enforce_aoi_limit
 
-        with pytest.raises(ValueError, match=r"[Uu]pgrade"):
+        with pytest.raises(ValueError, match=r"Starter plan supports up to 15"):
             enforce_aoi_limit(feature_count=6, tier="free")
 
     def test_none_tier_defaults_to_free(self) -> None:
@@ -410,3 +410,35 @@ class TestEnforceAoiLimit:
         enforce_aoi_limit(feature_count=5, tier=None)
         with pytest.raises(ValueError, match=r"6 AOIs.*Free.*allows 5"):
             enforce_aoi_limit(feature_count=6, tier=None)
+
+    def test_error_message_suggests_suitable_tier(self) -> None:
+        """Error should name the cheapest tier that fits the AOI count."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        # 6 AOIs on free (limit 5) → suggest Starter (limit 15)
+        with pytest.raises(ValueError, match=r"Starter plan supports up to 15"):
+            enforce_aoi_limit(feature_count=6, tier="free")
+
+        # 16 AOIs on free → suggest Pro (limit 50)
+        with pytest.raises(ValueError, match=r"Pro plan supports up to 50"):
+            enforce_aoi_limit(feature_count=16, tier="free")
+
+        # 56 AOIs on free → suggest Team (limit 200)
+        with pytest.raises(ValueError, match=r"Team plan supports up to 200"):
+            enforce_aoi_limit(feature_count=56, tier="free")
+
+        # 201 AOIs on free → suggest Enterprise (unlimited)
+        with pytest.raises(ValueError, match=r"Enterprise plan supports unlimited"):
+            enforce_aoi_limit(feature_count=201, tier="free")
+
+    def test_error_message_suggests_next_tier_from_current(self) -> None:
+        """When over the Pro limit, suggestion should be Team, not Starter."""
+        import pytest
+
+        from treesight.pipeline.ingestion import enforce_aoi_limit
+
+        # 51 AOIs on pro (limit 50) → suggest Team (limit 200)
+        with pytest.raises(ValueError, match=r"Team plan supports up to 200"):
+            enforce_aoi_limit(feature_count=51, tier="pro")
