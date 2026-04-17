@@ -165,9 +165,17 @@ async def _submit_analysis_request(
     # transiently unavailable we log the error but still allow the
     # submission so a temporary outage doesn't block users.
     quota_consumed = False
+    billing_fields: dict[str, Any] = {}
     try:
         consume_quota(user_id)
         quota_consumed = True
+        # Classify the run for the billing ledger (#589).
+        try:
+            from treesight.security.billing_ledger import billing_fields_for_submission
+
+            billing_fields = billing_fields_for_submission(user_id)
+        except Exception:
+            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
     except ValueError as exc:
         # Quota genuinely exhausted — hard block.
         return error_response(403, str(exc), req=req)
@@ -238,6 +246,7 @@ async def _submit_analysis_request(
             status="submitted",
             eudr_mode=eudr_mode is True,
             **ctx,
+            **billing_fields,
         )
         record = run.model_dump(exclude_none=True)
         _persist_submission_record(storage, record, user_id, submission_id)

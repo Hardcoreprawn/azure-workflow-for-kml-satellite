@@ -126,10 +126,14 @@ Auth + billing security. Prerequisites for any paid product.
 |-------|-------|-------|--------|------------|
 | R.0 | #553 | Enforce REQUIRE_AUTH everywhere | ✅ PR #554 | — |
 | R.1 | #534 | Auth header verification (HMAC) | ✅ PR #620 | — |
-| R.2 | #535 | E2e Stripe billing flow on live site | Open | #520 |
-| R.3 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
-| R.4 | #589 | Billing ledger, metered overage, refunds | Open | R.2 |
+| R.2 | #589 | Billing ledger, metered overage, refunds | 🔄 Active | — |
+| R.3 | #535 | E2e Stripe billing flow on live site | Open | R.2 |
+| R.4 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
 | R.5 | #572 | Audit unauthenticated API endpoints | Open | — |
+
+Approach: billing ledger is provider-agnostic (PaymentProvider protocol).
+Stripe is one implementation behind the abstraction. Ledger + included/
+overage logic ships first; live Stripe verification (R.3) follows.
 
 **Exit:** Forged headers rejected. Free → paid upgrade → Stripe → quota
 increase works. Overage metered. Failed runs refunded. Docs match reality.

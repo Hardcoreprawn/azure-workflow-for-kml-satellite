@@ -184,9 +184,16 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
 
     # Consume quota upfront so the runs counter decrements immediately.
     quota_consumed = False
+    billing_fields: dict = {}
     try:
         consume_quota(user_id)
         quota_consumed = True
+        try:
+            from treesight.security.billing_ledger import billing_fields_for_submission
+
+            billing_fields = billing_fields_for_submission(user_id)
+        except Exception:
+            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
     except ValueError as exc:
         return error_response(403, str(exc), req=req)
     except Exception:
@@ -249,6 +256,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         status="submitted",
         eudr_mode=body.get("eudr_mode") is True,
         **ctx,
+        **billing_fields,
     )
     _persist_submission_record(submission_id, run.model_dump(exclude_none=True), user_id)
 

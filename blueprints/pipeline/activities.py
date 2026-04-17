@@ -434,3 +434,26 @@ def release_quota(payload: _Payload) -> dict[str, Any]:
         remaining,
     )
     return {"released": True, "remaining": remaining}
+
+
+@bp.activity_trigger(input_name="payload")
+def complete_billing(payload: _Payload) -> dict[str, Any]:
+    """Mark a run as charged in the billing ledger (#589)."""
+    from treesight.security.billing_ledger import complete_run_billing
+
+    user_id: str = payload["user_id"]
+    instance_id: str = payload["instance_id"]
+    complete_run_billing(user_id, instance_id)
+    return {"completed": True}
+
+
+@bp.activity_trigger(input_name="payload")
+def fail_billing(payload: _Payload) -> dict[str, Any]:
+    """Mark a run as refunded in the billing ledger (#589)."""
+    from treesight.security.billing_ledger import fail_run_billing
+
+    user_id: str = payload["user_id"]
+    instance_id: str = payload["instance_id"]
+    reason: str = payload.get("reason", "pipeline_failure")
+    fail_run_billing(user_id, instance_id, reason=reason)
+    return {"refunded": True}
