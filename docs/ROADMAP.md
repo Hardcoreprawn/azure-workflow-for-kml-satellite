@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-17
+Last updated: 2026-04-18
 
 ---
 
@@ -52,72 +52,9 @@ Stages 2D and 2E can proceed in parallel.
 
 ## Completed Stages
 
-<details>
-<summary>M1–M4, Stage 1, Stage 2A/2B (expand)</summary>
-
-| Milestone | Summary |
-|-----------|---------|
-| **M1 — Deployable Product** | CI/CD, Azure deploy, App Insights, AI Foundry, KMZ |
-| **M2 — Free Tier Launch** | SWA auth, onboarding, KML guide, terms/privacy |
-| **M3 — Core Analysis Value** | NDVI, weather, AI summaries, change detection, multi-polygon |
-| **M4 — Revenue** | Stripe billing, quota, pricing page, export, EUDR mode, WorldCover, WDPA |
-| **Stage 1 — Launch Readiness** | Cosmos migration, billing gate, dashboard, SSO, branding |
-| **Stage 2A/2B — Scaling + Pipeline** | Fan-out/fan-in, bulk AOI, Rust accel, Batch fallback, BYOF consolidation |
-
-### P0 — Live Site Fixes ✅
-
-| Issue | Title | Status |
-|-------|-------|--------|
-| #438 | CSP violations + deploy health check regression | ✅ PR #442 |
-| #446 | SWA strips Authorization header → built-in auth | ✅ PR #472 |
-
-### P1 — Event-Driven Pipeline + BFF ✅
-
-| Issue | Title | Status |
-|-------|-------|--------|
-| #421 | KML/KMZ input sanitisation | ✅ PR #425 |
-| #422 | SAS token minting + status polling | ✅ PR #427 |
-| #423 | Unify on event-driven path | ✅ Merged |
-| #424 | Migrate read-only endpoints | ✅ PR #444, #481, #483, #484 |
-| #446 | Switch to SWA built-in auth | ✅ PR #472 |
-| #464 | App Insights instrumentation | ✅ PR #478 |
-
-### P2 — Code Quality ✅
-
-| Issue | Title | Status |
-|-------|-------|--------|
-| #452, #457, #458, #459 | Orchestrator decomp, code quality | ✅ PR #487 |
-| #437 | E2E validation (200+ AOI) | Partial (#488) |
-| #439, #381, #440 | Scanning alerts, CVEs | ✅ Closed |
-
-### P3 — BYOF Consolidation ✅
-
-All 12 items completed. SWA managed API deleted. All `/api/*` on
-Container Apps FA via `api-config.json`.
-
-</details>
-
----
-
-## Stage 2C — Pipeline Verification & User Journey
-
-Prove the pipeline works, fix bugs, establish `/eudr/` as the entry point.
-
-| Order | Issue | Title | Status |
-|-------|-------|-------|--------|
-| 2C.1 | #531 | E2e pipeline verification in Azure | ✅ Verified 2026-04-12 |
-| 2C.1 | #520 | Fix billing/status 500 | ✅ PR #536 |
-| 2C.2 | #532 | Remove demo mode — Free Tier entry point | ✅ PR #546 |
-| 2C.3 | #533 | EUDR pricing on pricing page | ✅ PR #615 |
-| 2C.4 | #555 | Dashboard UX overhaul (6 slices) | ✅ PR #557, #559 |
-| 2C.5 | #565 | Upload quota & Cosmos user management | ✅ PR #566 |
-| 2C.6 | #575 | `aoi_limit` never enforced at submission | ✅ PR #620 |
-| 2C.6 | #580 | Feature/AOI count mismatch (56→57) | ✅ PR #620 |
-| 2C.7 | #590 | Pipeline retry model + quota refund | ✅ |
-| 2C.8 | #610 | Create `/eudr/` app entry point | ✅ PR #615 |
-
-**Exit:** Visitor → `/` landing page → `/eudr/` → free trial → submit
-parcels → evidence → pricing. AOI limits enforced. Retries work.
+M1–M4, Stage 1, Stage 2A/2B, P0–P3, Stage 2C, Stage 2F, and most of
+Stage 2G are complete. Full detail in
+[docs/archive/COMPLETED_STAGES.md](archive/COMPLETED_STAGES.md).
 
 ---
 
@@ -150,33 +87,12 @@ Build once, promote dev → prod.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 2E.1 | #401 | Separate dev and prod deployment flows | 🔄 In PR |
-| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | Open (needs #401) |
-| 2E.3 | #402 | Security-gated production deploys | Open (needs #401) |
-| 2E.4 | #403 | Smoke gates, promotion/demotion | Open (needs #401) |
+| 2E.1 | #401 | Separate dev and prod deployment flows | ✅ Closed |
+| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | Open |
+| 2E.3 | #402 | Security-gated production deploys | Open |
+| 2E.4 | #403 | Smoke gates, promotion/demotion | Open |
 
 **Exit:** Immutable artifact promotion. Security-gated. Smoke before traffic.
-
----
-
-## Stage 2F — Per-Parcel Evidence & EUDR Export
-
-Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidence.
-**Do not start until 2C.6 bugs are fixed.**
-
-| Order | Issue | Title | Status | Depends On |
-|-------|-------|-------|--------|------------|
-| F.0 | #583 | Data model cleanup: typed models, manifest, run timing | ✅ PR #620 | — |
-| F.1 | #578 | Per-AOI enrichment: weather, NDVI, change detection | ✅ PR #620 | #583 |
-| F.2 | #574 | Enrichment sub-step progress in UI | ✅ | #578 |
-| F.3 | #579 | Frontend per-AOI evidence + polygon interaction | ✅ PR #620 | #578 |
-| F.4 | #581 | Spatial clustering for wide-spread submissions | ✅ d01f642 | #578 |
-| F.5 | #582 | EUDR per-parcel deforestation evidence export | ✅ aee1756 | #578, #579 |
-| F.6 | #585 | Progressive delivery: stream per-AOI results | ✅ PR #626 | #578 |
-| F.7 | #587 | Audit-grade EUDR PDF report | ✅ f586892 | #578, #582 |
-
-**Exit:** 50-polygon submission → per-AOI NDVI/weather/change. Click polygon
-→ see that AOI's results. EUDR PDF with per-parcel evidence.
 
 ---
 
@@ -185,9 +101,10 @@ Per-AOI enrichment so multi-polygon submissions produce audit-grade EUDR evidenc
 Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
-**Status:** 20/22 issues closed. Pipeline, data sources, frontend, org
-management, and evidence export are complete. Revenue items (#589, #613)
-tracked in 2D/2G.5. Batch ops (#588) moved to Stage 4.1.
+**Status:** 21/22 issues closed. Pipeline, data sources, frontend, org
+management, and evidence export are complete. Only #613 (EUDR metered
+Stripe billing) remains — tracked in 2D (R.3) and 2G.5. #589 (billing
+ledger) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 
