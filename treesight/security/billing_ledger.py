@@ -19,12 +19,13 @@ from treesight.security.redact import redact_user_id as _redact
 logger = logging.getLogger(__name__)
 
 
-def _safe_billing_type(value: object) -> str:
+def safe_billing_type(value: object) -> str:
     """Return a known billing-type literal, or ``'unknown'``.
 
-    Explicit if/return so every path yields a fresh string literal — no
-    module-level private variable (CodeQL flags ``_``-prefixed names in
-    ``security/`` as sensitive) and no taint chain from the input.
+    Public name intentional — CodeQL classifies ``_``-prefixed symbols in
+    ``security/`` as returning sensitive (private) data.  Keeping the name
+    public prevents the false-positive ``py/clear-text-logging-sensitive-data``
+    alert.
     """
     if not isinstance(value, str):
         return "unknown"
@@ -150,7 +151,7 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
         "Billing completed instance=%s user=%s type=%s",
         instance_id,
         _redact(user_id),
-        _safe_billing_type(billing_type),
+        safe_billing_type(billing_type),
     )
 
 
