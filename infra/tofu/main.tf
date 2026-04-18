@@ -426,23 +426,15 @@ resource "azurerm_cosmosdb_account" "main" {
   }
 
   # --- Security hardening ---
-  local_authentication_disabled         = true     # Disable key-based auth; RBAC only
-  public_network_access_enabled         = false    # No static egress IPs without VNet; keep disabled
+  # Auth: local (key-based) auth disabled — Entra Managed Identity + RBAC only.
+  # Network: public access gated by var.cosmos_public_network_access (dev only).
+  # Container Apps has no static egress IPs / VNet integration yet.
+  # Add VNet + private endpoint when user volume justifies the cost.
+  local_authentication_disabled         = true
+  public_network_access_enabled         = var.cosmos_public_network_access  # fixes #640
   minimal_tls_version                   = "Tls12"
-  network_acl_bypass_for_azure_services = true     # Allows Azure-internal traffic (portal, diagnostics, Function App via MI)
-  ip_range_filter                       = []       # Re-add when VNet + NAT gateway provides static egress IPs
-
-  lifecycle {
-    ignore_changes = [public_network_access_enabled, ip_range_filter]
-  }
+  network_acl_bypass_for_azure_services = true
 }
-
-# NOTE: Cosmos IP-allowlist (cosmos_ip_rules) removed — Container Apps
-# Function Apps do not expose possibleOutboundIpAddresses.  Without a
-# VNet + NAT gateway, there are no static egress IPs to allowlist.
-# The base resource keeps publicNetworkAccess=Disabled, and
-# network_acl_bypass_for_azure_services=true allows Azure-internal
-# traffic.  Re-add IP rules when the environment moves to VNet egress.
 
 resource "azurerm_cosmosdb_sql_database" "main" {
   count               = var.enable_cosmos_db ? 1 : 0

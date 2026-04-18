@@ -140,6 +140,12 @@ variable "enable_cosmos_db" {
   default     = false
 }
 
+variable "cosmos_public_network_access" {
+  description = "Allow public network access to Cosmos DB. Enable only in dev (no VNet/private endpoint yet)."
+  type        = bool
+  default     = false
+}
+
 # --- Stripe billing (M4) ---
 
 variable "enable_stripe" {
