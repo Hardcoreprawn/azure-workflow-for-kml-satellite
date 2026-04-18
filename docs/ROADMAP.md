@@ -38,7 +38,7 @@ Stages 2D and 2E can proceed in parallel.
 ## Recently Landed
 
 | PR | Summary |
-|----|---------|
+|----|---------|  
 | — | Stage 2G completion: EUDR metered billing, Landsat deep integration, EUDR content cluster (fixes #613, #612, #617) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
@@ -144,7 +144,7 @@ invited users auto-join on sign-in via SWA email matching.
 | FE.2 | #630 | EUDR-specific UI polish on `/eudr/` | ✅ PR #631 |
 | FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
-| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | FE.3 |
+| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | ✅ |
 
 ### 2G.5 — Revenue
 
