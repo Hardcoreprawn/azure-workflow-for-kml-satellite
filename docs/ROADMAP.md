@@ -39,7 +39,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|  
-| — | Stage 2G completion: EUDR metered billing, Landsat deep integration, EUDR content cluster (fixes #613, #612, #617) |
+| #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
@@ -50,10 +50,10 @@ Stages 2D and 2E can proceed in parallel.
 
 ## Completed Stages
 
-M1–M4, Stage 1, Stage 2A/2B, P0–P3, Stage 2C, Stage 2F, and most of
+M1–M4, Stage 1, Stage 2A/2B, P0–P3, Stage 2C, Stage 2F, and
 Stage 2G are complete. Completed-stage detail lives in
 [docs/archive/COMPLETED_STAGES.md](archive/COMPLETED_STAGES.md); any
-still-open Stage 2G items remain tracked below.
+still-open Stage 2D/2E items remain tracked below.
 
 ---
 
@@ -95,15 +95,16 @@ Build once, promote dev → prod.
 
 ---
 
-## Stage 2G — EUDR Compliance Product ✅ (bar revenue)
+## Stage 2G — EUDR Compliance Product ✅
 
 Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
 **Status:** All 22 issues closed. Pipeline, core data sources, frontend,
 org management, evidence export, EUDR metered billing, Landsat deep
-integration, and EUDR content cluster are complete. Billing ledger
-(#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
+integration, and EUDR content cluster are complete. Revenue enablement
+(REV.1) merged as PR #657. Billing ledger (#589) merged as PR #629.
+Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 
@@ -113,7 +114,7 @@ integration, and EUDR content cluster are complete. Billing ledger
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
-| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | ✅ |
+| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | ✅ PR #657 |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 D.4 registered the source; D.5 adds full cross-sensor NDVI computation,
@@ -144,13 +145,13 @@ invited users auto-join on sign-in via SWA email matching.
 | FE.2 | #630 | EUDR-specific UI polish on `/eudr/` | ✅ PR #631 |
 | FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
-| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | ✅ |
+| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | ✅ PR #657 |
 
 ### 2G.5 — Revenue
 
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
-| REV.1 | #613 | EUDR per-parcel metered Stripe billing | ✅ | #610, #589, #614 |
+| REV.1 | #613 | EUDR per-parcel metered Stripe billing | ✅ PR #657 | #610, #589, #614 |
 
 **Exit:** Compliance officer uploads parcels → multi-source evidence →
 deforestation-free determination → audit-grade PDF → metered billing.
