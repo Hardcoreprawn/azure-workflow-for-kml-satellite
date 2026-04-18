@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Understanding Your Evidence — Canopex</title>
+<meta name="description" content="How to read NDVI charts, interpret deforestation determinations, understand confidence levels, and handle flagged parcels in your EUDR evidence pack.">
+<link rel="canonical" href="/docs/understanding-evidence.html">
+<meta property="og:title" content="Understanding Your Evidence — Canopex">
+<meta property="og:description" content="How to read your EUDR satellite evidence — NDVI, determinations, confidence levels, and what to do with flagged parcels.">
+<meta property="og:url" content="/docs/understanding-evidence.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Understanding Your Evidence — Canopex">
+<meta name="twitter:description" content="How to read your EUDR satellite evidence.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.guide-section{padding:40px 0}
+.guide-section + .guide-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+.tip{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-green);margin:16px 0}
+.tip::before{content:'💡 ';font-size:1rem}
+.warning{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-orange);margin:16px 0}
+.warning::before{content:'⚠️ ';font-size:1rem}
+.concern{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.25);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:#f85149;margin:16px 0}
+.concern::before{content:'🔴 ';font-size:1rem}
+code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:2px 6px;font-size:.85rem;font-family:'SF Mono',SFMono-Regular,Consolas,monospace}
+.evidence-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.85rem}
+.evidence-table th,.evidence-table td{text-align:left;padding:10px 14px;border:1px solid var(--c-border)}
+.evidence-table th{background:var(--c-surface);font-weight:600;color:var(--c-text)}
+.evidence-table td{color:var(--c-muted)}
+.ndvi-scale{display:flex;align-items:center;gap:0;margin:16px 0;border-radius:var(--radius);overflow:hidden;height:24px;font-size:.75rem;font-weight:600}
+.ndvi-scale span{flex:1;text-align:center;padding:4px 8px;color:#fff}
+.cta-row{display:flex;gap:12px;justify-content:center;margin-top:28px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<header class="hero-sm">
+  <div class="container">
+    <h1>Understanding Your Evidence</h1>
+    <p>How to read satellite evidence, interpret determinations, and decide what to do with flagged parcels</p>
+  </div>
+</header>
+
+<main>
+
+<!-- NDVI -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Core Metric</div>
+    <h2>NDVI — Vegetation Health Index</h2>
+    <p>NDVI (Normalised Difference Vegetation Index) is the primary metric Canopex uses to detect vegetation change. It measures how much healthy green vegetation is present on the ground by comparing how plants reflect red and near-infrared light.</p>
+
+    <h3>Reading the scale</h3>
+    <p>NDVI values range from <strong style="color:var(--c-text)">-1.0</strong> to <strong style="color:var(--c-text)">+1.0</strong>:</p>
+
+    <div class="ndvi-scale">
+      <span style="background:#b33">-1.0 Water</span>
+      <span style="background:#964B00">0.0 Bare soil</span>
+      <span style="background:#7a9e3a">0.2 Sparse</span>
+      <span style="background:#4a8c2a">0.5 Moderate</span>
+      <span style="background:#1a6b1a">0.8 Dense forest</span>
+    </div>
+
+    <table class="evidence-table">
+      <thead><tr><th>NDVI Range</th><th>What It Means</th><th>Typical Land Cover</th></tr></thead>
+      <tbody>
+        <tr><td>&lt; 0.0</td><td>Water or artificial surfaces</td><td>Rivers, lakes, roads, buildings</td></tr>
+        <tr><td>0.0 – 0.1</td><td>Bare ground, rock, sand</td><td>Recently cleared land, desert, mining</td></tr>
+        <tr><td>0.1 – 0.2</td><td>Sparse or stressed vegetation</td><td>Arid grassland, degraded pasture, post-fire recovery</td></tr>
+        <tr><td>0.2 – 0.4</td><td>Light vegetation</td><td>Crops (early growth), savanna, managed pasture</td></tr>
+        <tr><td>0.4 – 0.6</td><td>Moderate vegetation</td><td>Mature crops, scrubland, open woodland</td></tr>
+        <tr><td>0.6 – 0.8</td><td>Dense, healthy vegetation</td><td>Tropical forest, temperate woodland</td></tr>
+        <tr><td>&gt; 0.8</td><td>Very dense forest canopy</td><td>Primary rainforest, dense plantation</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Reading the NDVI sparkline</h3>
+    <p>In the evidence panel, the NDVI sparkline chart shows the <strong style="color:var(--c-text)">mean NDVI value</strong> for your parcel at each captured time frame (typically seasonal imagery from 2021 onwards, with historical baseline from Landsat going back to 2013).</p>
+    <ul>
+      <li><strong style="color:var(--c-text)">Flat line at 0.5–0.8</strong> — stable forest cover. Good news for EUDR compliance.</li>
+      <li><strong style="color:var(--c-text)">Gradual decline</strong> — could be drought, disease, or slow degradation. Check the weather panel.</li>
+      <li><strong style="color:var(--c-text)">Sharp drop</strong> — sudden clearing event. If it happens after Dec 2020, this is the key EUDR concern.</li>
+      <li><strong style="color:var(--c-text)">Seasonal waves</strong> — normal for agriculture and deciduous forest. Not a concern unless the baseline shifts down.</li>
+    </ul>
+    <div class="tip">The min/max range shown alongside the mean tells you how variable the NDVI is within your parcel. A wide range can mean mixed land use (part forest, part cleared) within the boundary.</div>
+  </div>
+</section>
+
+<!-- Weather context -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Context Layer</div>
+    <h2>Climate Context — Weather Correlation</h2>
+    <p>Not every NDVI decline is deforestation. Drought, flooding, and seasonal temperature changes all affect vegetation health. Canopex fetches historical weather data for your parcel's location and displays it alongside the NDVI trend.</p>
+
+    <h3>What to look for</h3>
+    <ul>
+      <li><strong style="color:var(--c-text)">NDVI drops during a dry period</strong> — likely drought stress, not clearing. The weather panel will show low precipitation in the same period.</li>
+      <li><strong style="color:var(--c-text)">NDVI drops with normal rainfall</strong> — more likely human-caused clearing. Vegetation should be maintaining or growing with adequate water.</li>
+      <li><strong style="color:var(--c-text)">NDVI drops after a fire hotspot</strong> — the fire/flood panel may show FIRMS fire detections in the area, confirming the cause.</li>
+    </ul>
+    <div class="info-card">
+      <h4>Why this matters for EUDR</h4>
+      <p>EUDR due diligence requires you to show that deforestation — <em>human-caused forest loss</em> — did not occur. Being able to attribute an NDVI decline to drought rather than clearing strengthens your compliance case. The weather data in Canopex gives you this evidence automatically.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Data sources -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Multi-Source Evidence</div>
+    <h2>Corroborating Data Sources</h2>
+    <p>Canopex doesn't rely on a single dataset. Each assessment draws from multiple independent sources. When they agree, your determination is stronger. When they disagree, flags are raised for closer review.</p>
+
+    <table class="evidence-table">
+      <thead><tr><th>Source</th><th>What It Shows</th><th>Why It Matters</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:var(--c-text)">Sentinel-2 L2A</strong></td>
+          <td>10m optical imagery, NDVI time series (2017 onwards)</td>
+          <td>Primary vegetation change detection — the core evidence layer</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">Landsat C2 L2</strong></td>
+          <td>30m NDVI baseline (2013 onwards)</td>
+          <td>Extends the record before Sentinel-2 existed, establishing what the land looked like years before the EUDR cutoff</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">ESA WorldCover</strong></td>
+          <td>10m land classification (tree cover, grassland, cropland, etc.)</td>
+          <td>Independent baseline of what land cover class the parcel was — confirms whether it was forest</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">IO Annual LULC</strong></td>
+          <td>Year-over-year land-use change (2017–2023)</td>
+          <td>Detects transitions like forest → cropland independently from NDVI</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">ALOS PALSAR FNF</strong></td>
+          <td>25m radar-based forest/non-forest classification</td>
+          <td>Works through cloud cover (radar), providing an independent forest confirmation</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">FIRMS / MODIS</strong></td>
+          <td>Fire hotspot detections</td>
+          <td>Identifies whether fires occurred in or near your parcel — relevant for burn-and-clear deforestation patterns</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">WDPA</strong></td>
+          <td>Protected area boundaries</td>
+          <td>Flags parcels that overlap with internationally recognised protected areas — higher regulatory scrutiny</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">Open-Meteo</strong></td>
+          <td>Historical temperature and precipitation</td>
+          <td>Distinguishes weather-driven vegetation changes from human-caused clearing</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>For a full technical reference, see the <a href="/docs/eudr-data-sources.html">EUDR Data Sources</a> page.</p>
+  </div>
+</section>
+
+<!-- Determinations -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Key Outcome</div>
+    <h2>Deforestation-Free Determination</h2>
+    <p>After analysing all evidence layers, Canopex produces an algorithmic determination for each parcel. This is the headline result you'll use in your EUDR due diligence records.</p>
+
+    <div class="info-card" style="border-color:var(--c-green)">
+      <h4 style="color:var(--c-green)">✓ Deforestation-free</h4>
+      <p>No significant vegetation loss detected after 31 December 2020. No change-detection flags were raised. This parcel can be included in your due diligence statement as assessed compliant.</p>
+    </div>
+
+    <div class="info-card" style="border-color:var(--c-orange)">
+      <h4 style="color:var(--c-orange)">⚠ Potential deforestation detected</h4>
+      <p>One or more flags were raised. This does not necessarily mean deforestation occurred — it means the satellite evidence warrants closer investigation. See the flags list for specific concerns.</p>
+    </div>
+
+    <h3>Confidence levels</h3>
+    <table class="evidence-table">
+      <thead><tr><th>Confidence</th><th>Meaning</th><th>What to Do</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:var(--c-green)">High</strong></td>
+          <td>Multiple data sources agree. Sufficient time frames were analysed.</td>
+          <td>Result is reliable. Include in your due diligence records.</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-orange)">Medium</strong></td>
+          <td>Some evidence supports the determination, but one flag or limited data creates uncertainty.</td>
+          <td>Review the specific flag. Consider supplementing with ground-level verification.</td>
+        </tr>
+        <tr>
+          <td><strong style="color:var(--c-text)">Low</strong></td>
+          <td>Insufficient satellite data to make a reliable assessment (e.g., persistent cloud cover, limited imagery availability).</td>
+          <td>Do not rely on this determination alone. Seek alternative evidence sources or ground-level verification.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Common flags and what they mean</h3>
+
+    <div class="info-card">
+      <h4>"Vegetation loss X% (Y ha) in [period]"</h4>
+      <p>The change detection algorithm found a significant drop in NDVI between two seasonal comparisons. Check the weather panel — if there was a drought in the same period, the loss may be natural. If rainfall was normal, this could indicate clearing. The percentage and hectarage help you judge the scale.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>"Overall NDVI trajectory is declining"</h4>
+      <p>Across all captured time frames, the trend is downward. This suggests ongoing degradation rather than a single clearing event. Consider whether the parcel is in a region experiencing long-term drought or whether it reflects progressive land-use change.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>"IO LULC detected significant land-cover change"</h4>
+      <p>The independent IO Annual LULC dataset — which classifies land use globally every year — found a transition on this parcel (e.g., from "forest" to "cropland"). This corroborates the NDVI evidence and increases concern.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>"IO LULC tree cover trend is declining"</h4>
+      <p>The year-over-year tree cover percentage from the IO LULC dataset shows a downward trend, suggesting progressive forest loss.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>"Overlaps a WDPA protected area"</h4>
+      <p>Your parcel falls within an internationally recognised protected area. This doesn't affect the deforestation determination, but it increases regulatory scrutiny — production in protected areas may face additional legal requirements beyond EUDR.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>"Mean NDVI delta below threshold"</h4>
+      <p>The average change in NDVI between compared time frames is more negative than the detection threshold. This is a quantitative signal that vegetation health across the parcel is worsening.</p>
+    </div>
+  </div>
+</section>
+
+<!-- What to do with flagged parcels -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Taking Action</div>
+    <h2>What to Do With Flagged Parcels</h2>
+    <p>A flagged parcel is not automatically non-compliant. It means the satellite evidence needs human review. Here's how to work through a flagged result:</p>
+
+    <ol>
+      <li>
+        <strong style="color:var(--c-text)">Read the specific flags.</strong> Each flag tells you what was detected and when. A "vegetation loss 8% in Q2 2023" is different from "overall trajectory declining."
+      </li>
+      <li>
+        <strong style="color:var(--c-text)">Check the weather context.</strong> Was there a drought or extreme weather event in the flagged period? If so, the vegetation change may be natural.
+      </li>
+      <li>
+        <strong style="color:var(--c-text)">Review the imagery timeline.</strong> Use the RGB layer and timeline slider to visually inspect the parcel before and after the flagged period. Look for obvious signs of clearing (geometric patterns, exposed soil) versus natural change (browning from drought, seasonal leaf loss).
+      </li>
+      <li>
+        <strong style="color:var(--c-text)">Cross-reference with other sources.</strong> Did the IO LULC and ALOS radar layers also flag changes? If multiple independent sources agree, the signal is stronger. If only one source flagged it, it may be noise or a sensor artefact.
+      </li>
+      <li>
+        <strong style="color:var(--c-text)">Consider local knowledge.</strong> If you or your supplier have ground-level information (planned replanting, controlled burns, infrastructure development), factor that in. EUDR concerns deforestation specifically — not all vegetation change is deforestation.
+      </li>
+      <li>
+        <strong style="color:var(--c-text)">Document your reasoning.</strong> Whether you conclude the parcel is compliant (natural change, not deforestation) or non-compliant (actual clearing after Dec 2020), record your reasoning. The EUDR audit PDF with scene IDs provides the satellite evidence; your recorded interpretation completes the due diligence file.
+      </li>
+    </ol>
+
+    <div class="warning">Canopex provides satellite evidence to support your due diligence — it does not make the legal determination of compliance. You remain responsible for interpreting the evidence and filing your due diligence statement. When in doubt, consult with a compliance specialist.</div>
+  </div>
+</section>
+
+<!-- Using exports -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Exports</div>
+    <h2>Working With Your Export Files</h2>
+
+    <h3>EUDR Audit PDF</h3>
+    <p>The PDF report contains everything an auditor needs: parcel locations, NDVI time-series data, per-parcel deforestation-free determinations with confidence levels, flag details, satellite scene IDs for reproducibility, and a methodology summary. Keep this document in your due diligence records alongside your supplier documentation.</p>
+
+    <h3>GeoJSON</h3>
+    <p>A machine-readable file containing your parcel geometries with all computed metrics as properties. You can open this in QGIS, ArcGIS, or any GIS tool for further analysis. You can also load it into compliance databases that accept geospatial formats.</p>
+
+    <h3>CSV</h3>
+    <p>A tabular export with one row per parcel and columns for all key metrics (NDVI mean, area, determination, confidence, flags). Open in Excel, Google Sheets, or any spreadsheet tool. Useful for creating summary tables or importing into your own compliance tracking systems.</p>
+
+    <div class="tip">The EUDR-specific export variants (available via the API as <code>eudr-pdf</code>, <code>eudr-geojson</code>, <code>eudr-csv</code>) include additional EUDR-specific fields like the cutoff date reference and regulation citation.</div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="guide-section" style="text-align:center">
+  <div class="container">
+    <h2>Need more help?</h2>
+    <p>Check the methodology or start your next assessment.</p>
+    <div class="cta-row">
+      <a href="/docs/eudr-methodology.html" class="btn btn-secondary">EUDR Methodology</a>
+      <a href="/eudr/" class="btn btn-primary">Open EUDR App</a>
+      <a href="/docs/managing-assessments.html" class="btn btn-secondary">Managing Assessments</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

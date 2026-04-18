@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Getting Started — Canopex</title>
+<meta name="description" content="Step-by-step guide to your first EUDR due diligence assessment on Canopex — from sign-in to evidence export in under 10 minutes.">
+<link rel="canonical" href="/docs/getting-started.html">
+<meta property="og:title" content="Getting Started — Canopex">
+<meta property="og:description" content="Your first EUDR assessment in under 10 minutes — sign in, upload parcels, review evidence, export the report.">
+<meta property="og:url" content="/docs/getting-started.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Getting Started — Canopex">
+<meta name="twitter:description" content="Your first EUDR assessment in under 10 minutes.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.guide-section{padding:40px 0}
+.guide-section + .guide-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.step-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.step-card h3{margin-top:0;color:var(--c-accent)}
+.step-number{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--c-accent);color:#fff;font-size:.85rem;font-weight:700;margin-right:8px;flex-shrink:0}
+.tip{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-green);margin:16px 0}
+.tip::before{content:'💡 ';font-size:1rem}
+.warning{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-orange);margin:16px 0}
+.warning::before{content:'⚠️ ';font-size:1rem}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:2px 6px;font-size:.85rem;font-family:'SF Mono',SFMono-Regular,Consolas,monospace}
+.cta-row{display:flex;gap:12px;justify-content:center;margin-top:28px;flex-wrap:wrap}
+.journey-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0}
+.journey-step{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:14px 16px;text-align:center;font-size:.85rem}
+.journey-step strong{display:block;font-size:1.1rem;margin-bottom:4px;color:var(--c-accent)}
+.journey-step span{color:var(--c-muted)}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<header class="hero-sm">
+  <div class="container">
+    <h1>Getting Started</h1>
+    <p>Your first EUDR due diligence assessment — from sign-in to evidence export in under 10 minutes</p>
+  </div>
+</header>
+
+<main>
+
+<!-- Overview -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Overview</div>
+    <h2>What You'll Do</h2>
+    <p>Canopex takes your parcel boundaries and produces multi-source satellite evidence for EU Deforestation Regulation (EUDR) due diligence. Here's the journey at a glance:</p>
+
+    <div class="journey-overview">
+      <div class="journey-step"><strong>1</strong><span>Sign in</span></div>
+      <div class="journey-step"><strong>2</strong><span>Upload parcels</span></div>
+      <div class="journey-step"><strong>3</strong><span>Check preflight</span></div>
+      <div class="journey-step"><strong>4</strong><span>Queue pipeline</span></div>
+      <div class="journey-step"><strong>5</strong><span>Review evidence</span></div>
+      <div class="journey-step"><strong>6</strong><span>Export report</span></div>
+    </div>
+
+    <div class="info-card">
+      <h4>What you'll need</h4>
+      <ul>
+        <li>A KML or KMZ file with your parcel polygon boundaries (see the <a href="/docs/kml-guide.html">KML Guide</a> if you need to create one)</li>
+        <li>A web browser — no software to install</li>
+      </ul>
+      <p>Your first 2 parcel assessments are free, no credit card required.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Step 1: Sign In -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Step by Step</div>
+    <h2>Your First Assessment</h2>
+
+    <div class="step-card">
+      <h3><span class="step-number">1</span> Sign in</h3>
+      <p>Go to <a href="/eudr/">canopex.io/eudr/</a> and click <strong style="color:var(--c-text)">Start Free</strong>. You'll sign in with a Microsoft, Google, or email account. No separate registration is needed — signing in creates your account automatically.</p>
+      <p>Once signed in, you'll see the EUDR workspace with your plan status, parcel quota, and run history.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">2</span> Upload your parcel boundaries</h3>
+      <p>In the <strong style="color:var(--c-text)">New Due Diligence</strong> panel on the right, either:</p>
+      <ul>
+        <li><strong style="color:var(--c-text)">Drag and drop</strong> a KML or KMZ file onto the file input, or</li>
+        <li><strong style="color:var(--c-text)">Paste KML text</strong> directly into the text area below</li>
+      </ul>
+      <p>Your file can contain one parcel or many. Each polygon in the KML becomes a separate parcel that Canopex will assess individually.</p>
+      <div class="tip">Don't have a KML file? See the <a href="/docs/kml-guide.html">KML Guide</a> for how to create one in Google Earth (free), or the <a href="/docs/eudr-supplier-guide.html">Supplier Guide</a> if you're collecting coordinates from producers.</div>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">3</span> Check the preflight summary</h3>
+      <p>After uploading, the <strong style="color:var(--c-text)">Preflight</strong> panel shows:</p>
+      <ul>
+        <li><strong style="color:var(--c-text)">Features</strong> — total geometric features found in the KML</li>
+        <li><strong style="color:var(--c-text)">Parcels</strong> — number of areas that will be assessed (after splitting multi-polygons)</li>
+        <li><strong style="color:var(--c-text)">Spread</strong> — geographic extent of your parcels</li>
+        <li><strong style="color:var(--c-text)">Quota impact</strong> — how many of your parcel credits this will use</li>
+      </ul>
+      <p>A mini-map preview shows your parcels on a satellite base layer so you can confirm the right areas were detected. If there are any issues (self-intersecting polygons, areas outside coverage), warnings appear below the map.</p>
+      <div class="warning">If the parcel count is higher than expected, your KML may contain overlapping or duplicate polygons. Open it in Google Earth to check.</div>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">4</span> Queue the due diligence pipeline</h3>
+      <p>Click <strong style="color:var(--c-text)">Queue Due Diligence</strong>. The pipeline progress tracker appears, showing each stage in real time:</p>
+      <ol>
+        <li><strong style="color:var(--c-text)">Uploading</strong> — your KML is uploaded and pipeline capacity is reserved</li>
+        <li><strong style="color:var(--c-text)">Parsing</strong> — parcels are extracted and geometry is validated</li>
+        <li><strong style="color:var(--c-text)">Acquisition</strong> — the system searches for post-December 2020 satellite imagery across Sentinel-2 and Landsat</li>
+        <li><strong style="color:var(--c-text)">Fulfilment</strong> — scenes are downloaded and clipped to your parcel boundaries</li>
+        <li><strong style="color:var(--c-text)">Enrichment</strong> — evidence layers are built: weather, fire/flood, WorldCover land classification, IO LULC, ALOS radar, per-parcel change detection and deforestation determination</li>
+        <li><strong style="color:var(--c-text)">Complete</strong> — your evidence pack is ready for review</li>
+      </ol>
+      <p>A typical assessment with 3–5 parcels takes about 5 minutes. You can leave the page and come back — your run will continue in the background and appear in History when complete.</p>
+      <div class="tip">Each step shows a progress indicator. The enrichment stage expands to show sub-steps as they complete, so you know exactly where things stand.</div>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">5</span> Review the satellite evidence</h3>
+      <p>When the pipeline completes, the <strong style="color:var(--c-text)">Evidence</strong> panel opens automatically. You'll see:</p>
+
+      <h3>Satellite imagery map</h3>
+      <p>An interactive map showing your parcels with satellite imagery overlays. Use the controls to switch between:</p>
+      <ul>
+        <li><strong style="color:var(--c-text)">RGB</strong> — true-colour satellite imagery (what the ground looks like from space)</li>
+        <li><strong style="color:var(--c-text)">NDVI</strong> — vegetation health index (green = healthy vegetation, red/brown = bare soil or stressed vegetation)</li>
+      </ul>
+      <p>If multiple time frames were captured, use the <strong style="color:var(--c-text)">timeline slider</strong> or <strong style="color:var(--c-text)">Play</strong> button to step through imagery over time and see how the land has changed.</p>
+
+      <h3>Vegetation health panel</h3>
+      <p>Shows the NDVI (Normalised Difference Vegetation Index) trend for your parcels. The sparkline chart shows how vegetation health has changed across each captured time frame. Stable green values indicate consistent forest cover; declining values may indicate clearing.</p>
+
+      <h3>Climate context</h3>
+      <p>Temperature and precipitation data for the assessment period, correlated with the NDVI data. This helps distinguish natural vegetation changes (drought, seasonal cycles) from human-caused clearing.</p>
+
+      <h3>Change detection</h3>
+      <p>Where enough time frames are available, Canopex runs pixel-level change detection comparing seasonal imagery. This shows areas of vegetation loss or gain with estimated hectarage.</p>
+
+      <h3>Per-parcel evidence</h3>
+      <p>For multi-parcel assessments, a selector lets you drill into each parcel individually. Each parcel shows its own NDVI statistics, determination status, and confidence level. Click a parcel name to see its specific evidence.</p>
+    </div>
+
+    <div class="step-card">
+      <h3><span class="step-number">6</span> Run the EUDR assessment and export</h3>
+      <p>Below the evidence display, two action buttons appear:</p>
+      <ul>
+        <li><strong style="color:var(--c-text)">Assess EUDR</strong> — runs the deforestation-risk assessment against EU Deforestation Regulation thresholds. You'll see a clear result: <span style="color:var(--c-green)">✓ No deforestation detected since Dec 2020</span> or <span style="color:var(--c-orange)">⚠ Potential deforestation detected</span>, with a summary explanation.</li>
+        <li><strong style="color:var(--c-text)">Analyze with AI</strong> — generates a plain-English interpretation of the satellite evidence, explaining what changed, likely causes, and what it means for compliance.</li>
+      </ul>
+
+      <p>Finally, use the <strong style="color:var(--c-text)">export bar</strong> at the bottom to download your evidence:</p>
+      <ul>
+        <li><strong style="color:var(--c-text)">PDF</strong> — audit-grade report with per-parcel determinations, NDVI data, and scene provenance. This is the document to attach to your EUDR due diligence records.</li>
+        <li><strong style="color:var(--c-text)">GeoJSON</strong> — machine-readable geospatial data with all metrics, suitable for integration with GIS tools or compliance databases.</li>
+        <li><strong style="color:var(--c-text)">CSV</strong> — tabular export of parcel metrics for spreadsheet analysis.</li>
+      </ul>
+      <div class="tip">The PDF export is designed for audit use. It includes satellite scene IDs so any finding can be independently reproduced using the same source imagery.</div>
+    </div>
+  </div>
+</section>
+
+<!-- What's Next -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">What's Next</div>
+    <h2>After Your First Assessment</h2>
+
+    <div class="info-card">
+      <h4>Reopen a previous run</h4>
+      <p>All your due diligence runs are saved in the <strong style="color:var(--c-text)">History</strong> panel on the left side of the workspace. Click any run to reload its evidence and exports. You can return to any assessment at any time.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Assess more parcels</h4>
+      <p>Your free trial includes 2 parcel assessments. After that, subscribe for <strong style="color:var(--c-text)">£49/month</strong> with 10 parcels included, and additional parcels at £3 each (volume discounts at 100+ and 500+ parcels). Click <strong style="color:var(--c-text)">Billing</strong> in the workspace header to manage your subscription.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Invite your team</h4>
+      <p>Canopex billing is per-organisation. The account owner can invite team members by email — invited users automatically join your org when they sign in, sharing your parcel quota and run history.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Learn more</h4>
+      <ul>
+        <li><a href="/docs/understanding-evidence.html">Understanding Your Evidence</a> — how to read NDVI charts, interpret determinations, and handle flagged parcels</li>
+        <li><a href="/docs/eudr-methodology.html">EUDR Assessment Methodology</a> — the data sources and algorithms behind each determination</li>
+        <li><a href="/docs/managing-assessments.html">Managing Your Assessments</a> — running multiple assessments, history, billing, and team management</li>
+        <li><a href="/docs/eudr-supplier-guide.html">Supplier Guide</a> — how to collect geolocation data from your supply chain</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="guide-section" style="text-align:center">
+  <div class="container">
+    <h2>Ready to start?</h2>
+    <p>Upload your parcel boundaries and get satellite evidence in minutes.</p>
+    <div class="cta-row">
+      <a href="/eudr/" class="btn btn-primary">Start Free</a>
+      <a href="/docs/kml-guide.html" class="btn btn-secondary">KML Guide</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

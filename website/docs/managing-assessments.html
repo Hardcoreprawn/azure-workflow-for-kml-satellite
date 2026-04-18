@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Managing Your Assessments — Canopex</title>
+<meta name="description" content="How to manage multiple EUDR assessments, navigate your run history, handle billing and subscriptions, and invite team members on Canopex.">
+<link rel="canonical" href="/docs/managing-assessments.html">
+<meta property="og:title" content="Managing Your Assessments — Canopex">
+<meta property="og:description" content="Run history, billing, team management, and tips for batch assessments on Canopex.">
+<meta property="og:url" content="/docs/managing-assessments.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Managing Your Assessments — Canopex">
+<meta name="twitter:description" content="Run history, billing, team management, and batch assessments.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.guide-section{padding:40px 0}
+.guide-section + .guide-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.step-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.step-card h3{margin-top:0;color:var(--c-accent)}
+.step-number{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--c-accent);color:#fff;font-size:.85rem;font-weight:700;margin-right:8px;flex-shrink:0}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+.tip{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.2);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-green);margin:16px 0}
+.tip::before{content:'💡 ';font-size:1rem}
+.warning{background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.25);border-radius:var(--radius);padding:12px 16px;font-size:.85rem;color:var(--c-orange);margin:16px 0}
+.warning::before{content:'⚠️ ';font-size:1rem}
+code{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:2px 6px;font-size:.85rem;font-family:'SF Mono',SFMono-Regular,Consolas,monospace}
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:16px 0}
+.pricing-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;text-align:center}
+.pricing-card h4{font-size:1rem;font-weight:600;margin-bottom:4px}
+.pricing-card .price{font-size:1.6rem;font-weight:700;color:var(--c-accent);margin:8px 0}
+.pricing-card .price small{font-size:.75rem;font-weight:400;color:var(--c-muted)}
+.pricing-card ul{list-style:none;margin:12px 0 0;padding:0;text-align:left}
+.pricing-card li{padding:4px 0;font-size:.85rem;color:var(--c-muted)}
+.pricing-card li::before{content:'✓ ';color:var(--c-green)}
+.evidence-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.85rem}
+.evidence-table th,.evidence-table td{text-align:left;padding:10px 14px;border:1px solid var(--c-border)}
+.evidence-table th{background:var(--c-surface);font-weight:600;color:var(--c-text)}
+.evidence-table td{color:var(--c-muted)}
+.cta-row{display:flex;gap:12px;justify-content:center;margin-top:28px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<header class="hero-sm">
+  <div class="container">
+    <h1>Managing Your Assessments</h1>
+    <p>Run history, batch assessments, billing, team management, and tips for ongoing EUDR monitoring</p>
+  </div>
+</header>
+
+<main>
+
+<!-- Run History -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Day-to-Day</div>
+    <h2>Working With Run History</h2>
+    <p>Every due diligence run you queue is saved permanently. The <strong style="color:var(--c-text)">History</strong> panel on the left side of the workspace shows all your runs, most recent first.</p>
+
+    <h3>Reopening a run</h3>
+    <p>Click any run in the history list to reload its evidence, determinations, and export options. The evidence panel repopulates with the same satellite imagery, NDVI charts, and weather data from when the assessment was run.</p>
+    <div class="tip">If you need to compare the same parcels across different time periods, queue a new assessment with the same KML file. Both runs will appear in your history, and you can click between them to compare evidence side by side.</div>
+
+    <h3>Understanding run metadata</h3>
+    <p>Each run entry shows:</p>
+    <ul>
+      <li><strong style="color:var(--c-text)">Run ID</strong> — unique identifier for this assessment</li>
+      <li><strong style="color:var(--c-text)">Date</strong> — when the pipeline was queued</li>
+      <li><strong style="color:var(--c-text)">Parcel count</strong> — number of parcels in the assessment</li>
+      <li><strong style="color:var(--c-text)">Status</strong> — queued, running, complete, or failed</li>
+      <li><strong style="color:var(--c-text)">Filename</strong> — the KML/KMZ file or paste reference that was submitted</li>
+    </ul>
+
+    <h3>Failed runs</h3>
+    <p>If a run fails (due to malformed KML, server issues, or connectivity problems), it appears in history with an error status and a brief explanation. Failed runs do not consume parcel credits. You can fix the issue and re-queue.</p>
+  </div>
+</section>
+
+<!-- Batch Assessments -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Scale</div>
+    <h2>Batch Assessments — Multiple Parcels</h2>
+    <p>Canopex is designed for multi-parcel workflows. A single KML file can contain hundreds of parcels, and the pipeline will process them in parallel.</p>
+
+    <h3>Preparing a multi-parcel KML</h3>
+    <ul>
+      <li>Each <code>&lt;Placemark&gt;</code> with a <code>&lt;Polygon&gt;</code> in your KML becomes one parcel.</li>
+      <li>Multi-polygons are automatically split into individual parcels.</li>
+      <li>Name your placemarks with meaningful labels (farm names, supplier IDs, lot numbers) — these names carry through into the evidence panel and export files.</li>
+    </ul>
+    <div class="tip">Google Earth Pro lets you organise placemarks into folders and export the whole folder as a single KML file. This is an easy way to build a multi-parcel assessment file.</div>
+
+    <h3>Per-parcel evidence</h3>
+    <p>After the pipeline completes, the evidence panel shows a <strong style="color:var(--c-text)">parcel selector</strong> — a dropdown or list of all parcels in the run. Each parcel has its own NDVI data, determination, confidence level, and flags. Click a parcel to view its individual evidence.</p>
+    <p>The export files (PDF, GeoJSON, CSV) include all parcels in the run, with per-parcel sections in the PDF and per-parcel rows in the CSV.</p>
+
+    <h3>Limits</h3>
+    <table class="evidence-table">
+      <thead><tr><th>Limit</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Max file size</td><td>10 MB</td><td>KML or KMZ file. For larger files, split into batches.</td></tr>
+        <tr><td>Max features per file</td><td>500</td><td>Total geometric features. Multi-polygons count as one feature but expand to multiple parcels.</td></tr>
+        <tr><td>Max parcel area</td><td>25,000 ha</td><td>Individual parcels larger than this are rejected — split them into sub-areas.</td></tr>
+        <tr><td>Min parcel area</td><td>0.01 ha (100 m²)</td><td>Very small parcels may not contain enough pixels for meaningful analysis.</td></tr>
+        <tr><td>Coordinate system</td><td>WGS 84 (EPSG:4326)</td><td>Standard GPS coordinates. This is the default for Google Earth exports.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Billing -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Billing</div>
+    <h2>Plans and Pricing</h2>
+    <p>Canopex uses a simple parcel-based billing model. You pay for the number of parcels assessed, not the number of satellite images or data layers used.</p>
+
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <h4>Free Trial</h4>
+        <div class="price">£0<small>/forever</small></div>
+        <ul>
+          <li>2 parcel assessments</li>
+          <li>Full evidence pack</li>
+          <li>All export formats</li>
+          <li>No credit card required</li>
+        </ul>
+      </div>
+      <div class="pricing-card" style="border-color:var(--c-accent)">
+        <h4>Professional</h4>
+        <div class="price">£49<small>/month</small></div>
+        <ul>
+          <li>10 parcels included</li>
+          <li>£3 per additional parcel</li>
+          <li>Volume discounts at 100+ / 500+</li>
+          <li>Org & team management</li>
+          <li>Priority support</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>How parcel credits work</h3>
+    <ul>
+      <li>Each parcel in a submitted KML uses one credit from your quota.</li>
+      <li>Credits reset monthly on your billing anniversary.</li>
+      <li>Unused credits do not roll over.</li>
+      <li>Failed runs do not consume credits — only successful pipeline completions are charged.</li>
+      <li>Re-assessing the same parcel (e.g., for ongoing monitoring) costs one credit per assessment.</li>
+    </ul>
+
+    <h3>Managing your subscription</h3>
+    <p>Click your account name in the workspace header, then expand <strong style="color:var(--c-text)">Billing</strong> in the settings panel. From there you can:</p>
+    <ul>
+      <li>View your current plan and parcel usage</li>
+      <li>See remaining credits for the current billing period</li>
+      <li>Upgrade to Professional or adjust your plan</li>
+      <li>View payment history</li>
+    </ul>
+    <div class="warning">If you hit your parcel limit mid-month, you'll be prompted to upgrade or purchase additional credits before you can queue another assessment.</div>
+  </div>
+</section>
+
+<!-- Team Management -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Team</div>
+    <h2>Organisation and Team Management</h2>
+    <p>Canopex billing is per-organisation, not per-user. One subscription covers your entire team.</p>
+
+    <h3>How organisations work</h3>
+    <ul>
+      <li>The first person to sign up becomes the <strong style="color:var(--c-text)">account owner</strong>.</li>
+      <li>The owner can invite team members by email address.</li>
+      <li>When an invited person signs in, they automatically join the owner's organisation.</li>
+      <li>All team members share the same parcel quota, run history, and evidence archive.</li>
+      <li>Any team member can queue assessments and view any run in the org's history.</li>
+    </ul>
+
+    <h3>Inviting team members</h3>
+    <p>Open <strong style="color:var(--c-text)">Account Settings</strong> → <strong style="color:var(--c-text)">Organisation</strong>. Enter the email address of the person you want to invite and click <strong style="color:var(--c-text)">Invite</strong>. They'll receive an email with a link to sign in and join your organisation.</p>
+
+    <div class="tip">For consultancies managing assessments for multiple clients, each client should have their own organisation. This keeps parcel credits, history, and evidence separate between clients.</div>
+  </div>
+</section>
+
+<!-- Ongoing Monitoring -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Monitoring</div>
+    <h2>Ongoing Monitoring</h2>
+    <p>EUDR compliance isn't a one-time check. Regulations require operators to maintain monitoring throughout their supply chain relationship. Canopex supports this by letting you re-assess the same parcels over time.</p>
+
+    <h3>Recommended monitoring approach</h3>
+    <ol>
+      <li><strong style="color:var(--c-text)">Initial assessment</strong> — run a full due diligence on all parcels when onboarding a supplier.</li>
+      <li><strong style="color:var(--c-text)">Quarterly re-assessment</strong> — re-submit the same KML file quarterly to check for changes. Each re-assessment captures fresh satellite imagery from the latest available scenes.</li>
+      <li><strong style="color:var(--c-text)">Flag investigation</strong> — if a re-assessment raises new flags on a previously clean parcel, investigate promptly. Compare the new evidence with the previous run in your history.</li>
+      <li><strong style="color:var(--c-text)">Annual review</strong> — review all parcel determinations annually. Update your KML files to reflect any changes in your supplier portfolio (new parcels, discontinued suppliers).</li>
+    </ol>
+
+    <div class="info-card">
+      <h4>Keeping your KML files organised</h4>
+      <p>We recommend maintaining a "master KML" for each supplier or commodity, updated as parcels change. Name the file with the supplier and date (e.g., <code>supplier-abc-2026-Q1.kml</code>) so you can track which version was used for each assessment. Keep these files in your compliance records alongside the exported PDFs.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Tips -->
+<section class="guide-section">
+  <div class="container">
+    <div class="section-label">Best Practices</div>
+    <h2>Tips for Efficient Due Diligence</h2>
+
+    <div class="info-card">
+      <h4>Name your placemarks</h4>
+      <p>Meaningful placemark names (farm ID, supplier name, lot number) make it much easier to navigate multi-parcel evidence and create clear export reports. Unnamed placemarks get generic labels like "Parcel 1."</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Group related parcels</h4>
+      <p>Put all parcels from one supplier into one KML file. This way, each assessment run in your history corresponds to one supplier, making audits straightforward.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Check the preflight</h4>
+      <p>Always review the preflight summary before queuing. Catching a misdrawn polygon or accidental duplicate before the pipeline runs saves credits and time.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Use the AI analysis for audit documentation</h4>
+      <p>The AI analysis feature generates a plain-English explanation of the satellite evidence. This can be included alongside your PDF export in due diligence records to demonstrate that you reviewed and interpreted the evidence.</p>
+    </div>
+
+    <div class="info-card">
+      <h4>Export early, export often</h4>
+      <p>Export a PDF after every assessment, even if results are clean. If your compliance records are ever audited, you'll want dated evidence of every check you performed.</p>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="guide-section" style="text-align:center">
+  <div class="container">
+    <h2>Ready for your next assessment?</h2>
+    <div class="cta-row">
+      <a href="/eudr/" class="btn btn-primary">Open EUDR App</a>
+      <a href="/docs/getting-started.html" class="btn btn-secondary">Getting Started</a>
+      <a href="/docs/understanding-evidence.html" class="btn btn-secondary">Understanding Evidence</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> · <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
