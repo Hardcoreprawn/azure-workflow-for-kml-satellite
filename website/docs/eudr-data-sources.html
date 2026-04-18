@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUDR Data Sources — Canopex</title>
+<meta name="description" content="Technical reference for satellite and authoritative datasets used in EUDR deforestation assessments — Sentinel-2, Landsat, PRODES, DETER, MapBiomas, ESA WorldCover, and more.">
+<link rel="canonical" href="/docs/eudr-data-sources.html">
+<meta property="og:title" content="EUDR Data Sources — Canopex">
+<meta property="og:description" content="Satellite and authoritative datasets for EUDR deforestation assessment.">
+<meta property="og:url" content="/docs/eudr-data-sources.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="EUDR Data Sources — Canopex">
+<meta name="twitter:description" content="Satellite and authoritative datasets for EUDR deforestation assessment.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "EUDR Data Sources",
+  "description": "Technical reference for satellite and authoritative datasets used in EUDR deforestation assessments.",
+  "author": {"@type": "Organization", "name": "Canopex"},
+  "publisher": {"@type": "Organization", "name": "Canopex"},
+  "datePublished": "2026-04-18",
+  "mainEntityOfPage": "/docs/eudr-data-sources.html"
+}
+</script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.ds-section{padding:40px 0}
+.ds-section + .ds-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+h3{font-size:1.05rem;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.source-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.source-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+.source-meta{display:flex;flex-wrap:wrap;gap:12px;margin:8px 0 0;font-size:.8rem}
+.source-meta span{background:var(--c-surface);border:1px solid var(--c-border);border-radius:4px;padding:3px 10px;color:var(--c-muted)}
+.source-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.85rem}
+.source-table th,.source-table td{text-align:left;padding:10px 14px;border:1px solid var(--c-border)}
+.source-table th{background:var(--c-surface);font-weight:600;color:var(--c-text)}
+.source-table td{color:var(--c-muted)}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<main>
+  <section class="hero-sm">
+    <div class="container" style="text-align:center;padding:48px 0 32px">
+      <h1>EUDR Data Sources</h1>
+      <p>Satellite imagery and authoritative datasets used for deforestation assessment</p>
+    </div>
+  </section>
+
+  <div class="container">
+
+    <!-- Overview -->
+    <section class="ds-section">
+      <h2>Overview</h2>
+      <p>EUDR deforestation assessment requires multiple data layers. No single dataset is sufficient — each has strengths and limitations that complement the others. Canopex combines these sources to produce evidence that is both technically defensible and auditor-friendly.</p>
+
+      <table class="source-table">
+        <thead>
+        <tr>
+          <th>Dataset</th>
+          <th>Resolution</th>
+          <th>Revisit</th>
+          <th>Coverage</th>
+          <th>Role</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr><td>Sentinel-2 L2A</td><td>10 m</td><td>5 days</td><td>Global, 2017+</td><td>Primary NDVI &amp; change detection</td></tr>
+        <tr><td>Landsat C2 L2</td><td>30 m</td><td>16 days</td><td>Global, 1982+</td><td>Pre-2017 historical baseline</td></tr>
+        <tr><td>ESA WorldCover</td><td>10 m</td><td>Annual</td><td>Global</td><td>Land classification</td></tr>
+        <tr><td>IO Annual LULC</td><td>10 m</td><td>Annual</td><td>Global, 2017+</td><td>Year-over-year land use change</td></tr>
+        <tr><td>ALOS PALSAR FNF</td><td>25 m</td><td>Annual</td><td>Global</td><td>Radar-based forest classification</td></tr>
+        <tr><td>PRODES</td><td>30 m</td><td>Annual</td><td>Brazil biomes</td><td>Authoritative deforestation mapping</td></tr>
+        <tr><td>DETER</td><td>~25 m</td><td>Daily</td><td>Brazil biomes</td><td>Near-real-time deforestation alerts</td></tr>
+        <tr><td>MapBiomas</td><td>30 m</td><td>Annual</td><td>Brazil (35+ years)</td><td>Historical land classification</td></tr>
+        <tr><td>WDPA</td><td>Vector</td><td>Monthly</td><td>Global</td><td>Protected area overlap</td></tr>
+        <tr><td>FIRMS/MODIS</td><td>1 km</td><td>Daily</td><td>Global</td><td>Active fire detection</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Sentinel-2 -->
+    <section class="ds-section">
+      <h2>Sentinel-2 L2A</h2>
+      <p>The primary data source for post-2017 deforestation assessment. Sentinel-2 is a pair of optical satellites operated by the European Space Agency (ESA) under the Copernicus programme.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>10 m/pixel (visible + NIR)</span>
+          <span>5-day revisit (equator)</span>
+          <span>13 spectral bands</span>
+          <span>Free and open access</span>
+        </div>
+      </div>
+
+      <h3>What Canopex uses it for</h3>
+      <ul>
+        <li><strong>NDVI computation</strong> — Normalised Difference Vegetation Index from Band 4 (Red) and Band 8 (NIR) tracks vegetation health over time</li>
+        <li><strong>Change detection</strong> — comparing seasonal NDVI values reveals clearing events, regrowth, and degradation</li>
+        <li><strong>Visual mosaics</strong> — cloud-free composites for before/after comparisons</li>
+      </ul>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>Available only from mid-2015 (limited data before 2017)</li>
+        <li>Optical sensor — blocked by persistent cloud cover in tropical wet seasons</li>
+        <li>SCL (Scene Classification Layer) quality varies; some cloud/shadow pixels pass the filter</li>
+      </ul>
+    </section>
+
+    <!-- Landsat -->
+    <section class="ds-section">
+      <h2>Landsat Collection 2 Level 2</h2>
+      <p>Landsat extends the satellite record back to the 1980s. For EUDR purposes, Landsat is critical for establishing a <strong>pre-2017 baseline</strong> showing land use in the years before Sentinel-2 coverage began.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>30 m/pixel</span>
+          <span>16-day revisit</span>
+          <span>Landsat 8/9 OLI (B4=Red, B5=NIR)</span>
+          <span>QA_PIXEL cloud masking</span>
+        </div>
+      </div>
+
+      <h3>What Canopex uses it for</h3>
+      <ul>
+        <li><strong>Historical NDVI baseline (2013–2017)</strong> — establishes vegetation state before the EUDR cutoff period, giving auditors evidence that land was already cleared (or forested) years before the regulation applies</li>
+        <li><strong>Cross-sensor validation</strong> — Landsat and Sentinel-2 overlap in 2017–2018, providing independent verification</li>
+      </ul>
+
+      <h3>QA_PIXEL cloud masking</h3>
+      <p>Landsat Collection 2 uses a 16-bit QA_PIXEL band with bit flags for cloud (bit 3), cloud shadow (bit 4), snow (bit 5), and dilated cloud (bit 1). Canopex masks all flagged pixels before computing NDVI to ensure only clear observations contribute to the baseline.</p>
+    </section>
+
+    <!-- PRODES -->
+    <section class="ds-section">
+      <h2>PRODES (INPE)</h2>
+      <p><strong>PRODES</strong> (Programa de Monitoramento da Floresta Amazônica Brasileira por Satélite) is Brazil's official annual deforestation monitoring programme, operated by INPE (National Institute for Space Research) since 1988.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>30 m resolution</span>
+          <span>Annual mapping</span>
+          <span>Amazon + all biomes</span>
+          <span>Authoritative / government</span>
+        </div>
+      </div>
+
+      <h3>Why PRODES matters for EUDR</h3>
+      <p>PRODES is the <strong>gold standard</strong> for deforestation measurement in Brazil. It is used by the Brazilian government for official statistics, by the UN for REDD+ reporting, and by international bodies for policy decisions. An EUDR assessment that aligns with PRODES findings carries significant credibility.</p>
+      <p>PRODES data is available via the <a href="https://terrabrasilis.dpi.inpe.br/" target="_blank" rel="noopener">TerraBrasilis platform</a> as polygons with year, area, state, and biome attributes.</p>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>Annual cadence — clearing events are attributed to the mapping year, not the exact date</li>
+        <li>Minimum mappable area is ~6.25 hectares — smaller clearings may not appear</li>
+        <li>Publication lag of several months after the reference period</li>
+        <li>Covers Brazil only (Amazon, Cerrado, Mata Atlântica, Caatinga, Pampa, Pantanal)</li>
+      </ul>
+    </section>
+
+    <!-- DETER -->
+    <section class="ds-section">
+      <h2>DETER (INPE)</h2>
+      <p><strong>DETER</strong> (Real-Time Deforestation Detection System) provides near-real-time deforestation alerts for Brazil's biomes. Where PRODES gives authoritative annual totals, DETER gives rapid situational awareness.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>~25 m resolution</span>
+          <span>Daily alerts</span>
+          <span>Amazon + Cerrado</span>
+          <span>Rapid detection (&lt;1 week lag)</span>
+        </div>
+      </div>
+
+      <p>DETER alerts are used by IBAMA (Brazilian environmental enforcement agency) to prioritise inspections. For EUDR purposes, DETER provides an early warning that land use may have changed recently — even before the next PRODES annual mapping cycle confirms it.</p>
+    </section>
+
+    <!-- MapBiomas -->
+    <section class="ds-section">
+      <h2>MapBiomas</h2>
+      <p><strong>MapBiomas</strong> is a multi-institutional initiative that produces annual land-cover and land-use maps for Brazil from 1985 to the present — a 35+ year record unmatched in temporal depth.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>30 m resolution</span>
+          <span>Annual, 1985–present</span>
+          <span>Brazil (expanding to other countries)</span>
+          <span>Machine-learning classification</span>
+        </div>
+      </div>
+
+      <h3>EUDR relevance</h3>
+      <p>MapBiomas provides historical context that no other single dataset can: what was the land cover in 2000? In 2010? Was the area forest, pasture, or cropland before the EUDR cutoff? This long time series helps auditors distinguish between recently cleared land and areas that have been agricultural for decades.</p>
+      <p>MapBiomas also operates an <strong>Alerta</strong> system that cross-references deforestation detections with CAR boundaries, identifying which properties are associated with clearing events.</p>
+    </section>
+
+    <!-- ESA WorldCover -->
+    <section class="ds-section">
+      <h2>ESA WorldCover</h2>
+      <p>A global land-cover map at 10-metre resolution, derived from Sentinel-1 (radar) and Sentinel-2 (optical) data. Available for 2020 and 2021.</p>
+
+      <div class="source-card">
+        <h4>Key characteristics</h4>
+        <div class="source-meta">
+          <span>10 m resolution</span>
+          <span>11 land-cover classes</span>
+          <span>Global coverage</span>
+          <span>Free and open</span>
+        </div>
+      </div>
+
+      <p>WorldCover is used to classify the land type at the EUDR cutoff date (2020/2021). Was the area tree cover, grassland, cropland, or built-up? This classification provides the baseline against which subsequent changes are measured.</p>
+    </section>
+
+    <!-- WDPA + other layers -->
+    <section class="ds-section">
+      <h2>Other Data Layers</h2>
+
+      <h3>WDPA (World Database on Protected Areas)</h3>
+      <p>Global database of protected areas maintained by UNEP-WCMC. Canopex checks whether an area of interest overlaps with any nationally or internationally designated protected area — a significant risk factor for EUDR compliance.</p>
+
+      <h3>ALOS PALSAR Forest/Non-Forest</h3>
+      <p>Radar-based forest classification at 25-metre resolution from JAXA's ALOS-2 satellite. Unlike optical sensors, radar penetrates cloud cover and works in all weather conditions, providing an independent confirmation of forest presence.</p>
+
+      <h3>IO Annual Land Use / Land Cover</h3>
+      <p>Global 10-metre annual land use/land cover maps (2017–present) from Impact Observatory and Esri. Provides year-over-year change tracking at the same resolution as Sentinel-2.</p>
+
+      <h3>FIRMS / MODIS Active Fire</h3>
+      <p>NASA's Fire Information for Resource Management System detects active fires globally using MODIS and VIIRS sensors. Fire events near an area of interest may indicate land clearing by burning — a common deforestation method.</p>
+    </section>
+
+    <!-- How they work together -->
+    <section class="ds-section">
+      <h2>How These Sources Work Together</h2>
+      <p>No single dataset proves or disproves deforestation. Canopex combines multiple independent data sources to build a weight-of-evidence assessment:</p>
+      <ol>
+        <li><strong>Classification</strong> — WorldCover, ALOS FNF, and IO LULC establish what the land was at and after the cutoff date</li>
+        <li><strong>Change detection</strong> — Sentinel-2 and Landsat NDVI time series reveal vegetation removal or degradation</li>
+        <li><strong>Authoritative confirmation</strong> — PRODES, DETER, and MapBiomas provide government-backed and peer-reviewed deforestation records</li>
+        <li><strong>Context layers</strong> — WDPA (protected areas), FIRMS (fire), and weather data add environmental context</li>
+        <li><strong>Determination</strong> — all evidence is synthesised into a deforestation-free / risk / non-compliant determination per area of interest</li>
+      </ol>
+
+      <div class="info-card">
+        <h4>Cross-sensor timeline</h4>
+        <p>Landsat provides NDVI data from 2013. Sentinel-2 takes over from 2017. The two sensors overlap in 2017–2018, creating a continuous vegetation record spanning 13+ years — from well before the EUDR cutoff date through to the present day.</p>
+      </div>
+    </section>
+
+    <!-- Related resources -->
+    <section class="ds-section">
+      <h2>Related Resources</h2>
+      <ul>
+        <li><a href="/docs/eudr-methodology.html">EUDR Assessment Methodology</a> — how Canopex processes these data sources</li>
+        <li><a href="/docs/eudr-supplier-guide.html">EUDR Supplier Guide</a> — what geolocation data suppliers need to provide</li>
+        <li><a href="/docs/eudr-faq.html">EUDR FAQ</a> — frequently asked questions</li>
+        <li><a href="/docs/eudr-glossary.html">EUDR Glossary</a> — definitions of technical terms</li>
+        <li><a href="https://terrabrasilis.dpi.inpe.br/" target="_blank" rel="noopener">TerraBrasilis (INPE)</a> — PRODES and DETER data portal</li>
+        <li><a href="https://mapbiomas.org/" target="_blank" rel="noopener">MapBiomas</a> — annual land-cover maps for Brazil</li>
+        <li><a href="https://planetarycomputer.microsoft.com/" target="_blank" rel="noopener">Microsoft Planetary Computer</a> — Sentinel-2, Landsat, WorldCover data catalogue</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> &middot; <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+</body>
+</html>

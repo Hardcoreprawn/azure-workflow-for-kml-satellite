@@ -39,6 +39,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| — | feat: EUDR content cluster — supplier guide, data sources, FAQ, glossary (fixes #617) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
@@ -103,7 +104,7 @@ Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 **Status:** 21/22 issues closed. Pipeline, core data sources, frontend,
 org management, and evidence export are complete. Remaining: #613 (EUDR
 metered Stripe billing — also in 2D/R.3), #612 (Landsat deep
-integration, D.5), #617 (EUDR content cluster, FE.5). Billing ledger
+integration, D.5). #617 (EUDR content cluster, FE.5) done. Billing ledger
 (#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
@@ -145,7 +146,7 @@ invited users auto-join on sign-in via SWA email matching.
 | FE.2 | #630 | EUDR-specific UI polish on `/eudr/` | ✅ PR #631 |
 | FE.3 | #605 | EUDR landing page + sitemap | ✅ 6c3727b |
 | FE.4 | #602 | Methodology page | ✅ 9f1b61e |
-| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | FE.3 |
+| FE.5 | #617 | EUDR content cluster (supplier guide, data sources, FAQ) | ✅ |
 
 ### 2G.5 — Revenue
 

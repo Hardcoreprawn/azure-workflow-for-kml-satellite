@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUDR Glossary — Canopex</title>
+<meta name="description" content="Definitions of technical terms used in EUDR deforestation assessments — NDVI, SCL, PRODES, CAR, QA_PIXEL, and more.">
+<link rel="canonical" href="/docs/eudr-glossary.html">
+<meta property="og:title" content="EUDR Glossary — Canopex">
+<meta property="og:description" content="Definitions of technical terms for EUDR satellite deforestation assessment.">
+<meta property="og:url" content="/docs/eudr-glossary.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="EUDR Glossary — Canopex">
+<meta name="twitter:description" content="Definitions of technical terms for EUDR satellite deforestation assessment.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "DefinedTermSet",
+  "name": "EUDR Glossary",
+  "description": "Definitions of technical terms used in EUDR deforestation assessments.",
+  "url": "/docs/eudr-glossary.html"
+}
+</script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.glossary-section{padding:40px 0}
+.glossary-section + .glossary-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:16px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+dl{margin:0}
+dt{font-weight:600;color:var(--c-text);font-size:.95rem;margin:20px 0 4px;padding-top:8px}
+dt:first-child{margin-top:0}
+dd{margin:0 0 0 0;color:var(--c-muted);font-size:.9rem;line-height:1.7}
+dd + dt{border-top:1px solid var(--c-border)}
+.alpha-nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px;padding:16px 0;border-bottom:1px solid var(--c-border)}
+.alpha-nav a{font-size:.85rem;font-weight:600;color:var(--c-accent);text-decoration:none;padding:4px 8px;border-radius:4px}
+.alpha-nav a:hover{background:var(--c-surface)}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<main>
+  <section class="hero-sm">
+    <div class="container" style="text-align:center;padding:48px 0 32px">
+      <h1>EUDR Glossary</h1>
+      <p>Definitions of technical terms used in deforestation assessments</p>
+    </div>
+  </section>
+
+  <div class="container">
+
+    <nav class="alpha-nav" aria-label="Glossary navigation">
+      <a href="#a">A</a>
+      <a href="#b">B</a>
+      <a href="#c">C</a>
+      <a href="#d">D</a>
+      <a href="#e">E</a>
+      <a href="#f">F</a>
+      <a href="#g">G</a>
+      <a href="#i">I</a>
+      <a href="#k">K</a>
+      <a href="#l">L</a>
+      <a href="#m">M</a>
+      <a href="#n">N</a>
+      <a href="#o">O</a>
+      <a href="#p">P</a>
+      <a href="#q">Q</a>
+      <a href="#r">R</a>
+      <a href="#s">S</a>
+      <a href="#w">W</a>
+    </nav>
+
+    <!-- A -->
+    <section class="glossary-section" id="a">
+      <h2>A</h2>
+      <dl>
+        <dt>ALOS PALSAR</dt>
+        <dd>Japanese radar satellite (JAXA) producing global forest/non-forest maps at 25 m resolution. Radar penetrates cloud cover, providing independent confirmation of forest presence. See <a href="/docs/eudr-data-sources.html">Data Sources</a>.</dd>
+
+        <dt>AOI (Area of Interest)</dt>
+        <dd>A geographic region defined by a polygon boundary that is submitted for analysis. Each AOI receives its own independent deforestation assessment.</dd>
+      </dl>
+    </section>
+
+    <!-- B -->
+    <section class="glossary-section" id="b">
+      <h2>B</h2>
+      <dl>
+        <dt>Biome</dt>
+        <dd>A large ecological region characterised by its climate, flora, and fauna. Brazil has six major biomes: Amazon, Cerrado, Mata Atl&acirc;ntica, Caatinga, Pampa, and Pantanal. PRODES monitors deforestation across all six.</dd>
+      </dl>
+    </section>
+
+    <!-- C -->
+    <section class="glossary-section" id="c">
+      <h2>C</h2>
+      <dl>
+        <dt>CAR (Cadastro Ambiental Rural)</dt>
+        <dd>Brazil's Rural Environmental Registry. Every rural property must be registered with a boundary polygon, legal reserve area, and riparian protection zones. CAR boundaries are self-reported by landowners and available through SICAR. Useful for property identification but not authoritative for deforestation evidence.</dd>
+
+        <dt>Change detection</dt>
+        <dd>The process of comparing satellite observations from different dates to identify changes in land cover. A significant drop in NDVI between two time periods may indicate vegetation removal (deforestation).</dd>
+
+        <dt>Cloud masking</dt>
+        <dd>Filtering out pixels obscured by clouds, cloud shadows, or snow before analysis. Sentinel-2 uses the SCL (Scene Classification Layer); Landsat uses the QA_PIXEL bit-flag band.</dd>
+
+        <dt>COG (Cloud Optimised GeoTIFF)</dt>
+        <dd>A GeoTIFF file format optimised for efficient access over HTTP. Allows reading just the spatial subset needed without downloading the entire file. Used by Planetary Computer for serving satellite data.</dd>
+
+        <dt>Cutoff date</dt>
+        <dd>31 December 2020. The EUDR reference date. Any deforestation after this date on production plots makes associated commodities non-compliant, regardless of national law.</dd>
+      </dl>
+    </section>
+
+    <!-- D -->
+    <section class="glossary-section" id="d">
+      <h2>D</h2>
+      <dl>
+        <dt>Deforestation</dt>
+        <dd>The conversion of forest to agricultural use or any other non-forest land use. Under the EUDR, deforestation is assessed against the cutoff date of 31 December 2020.</dd>
+
+        <dt>DETER</dt>
+        <dd>INPE's Real-Time Deforestation Detection System. Provides daily near-real-time deforestation alerts for Brazil's Amazon and Cerrado biomes at approximately 25 m resolution. Used by IBAMA for enforcement prioritisation.</dd>
+
+        <dt>Due diligence</dt>
+        <dd>Under the EUDR, the obligation on operators to gather information, assess risk, and mitigate risk of deforestation in their supply chains before placing products on the EU market. Includes collecting geolocation data, assessing deforestation risk via satellite analysis, and submitting a due-diligence statement.</dd>
+      </dl>
+    </section>
+
+    <!-- E -->
+    <section class="glossary-section" id="e">
+      <h2>E</h2>
+      <dl>
+        <dt>ESA WorldCover</dt>
+        <dd>A global land-cover map at 10 m resolution produced by ESA from Sentinel-1 (radar) and Sentinel-2 (optical) data. Classifies land into 11 types including tree cover, grassland, cropland, and built-up areas.</dd>
+
+        <dt>EUDR</dt>
+        <dd>EU Deforestation Regulation (Regulation 2023/1115). Requires operators placing covered commodities on the EU market to prove those products were not linked to deforestation after 31 December 2020.</dd>
+      </dl>
+    </section>
+
+    <!-- F -->
+    <section class="glossary-section" id="f">
+      <h2>F</h2>
+      <dl>
+        <dt>FIRMS</dt>
+        <dd>NASA's Fire Information for Resource Management System. Detects active fires globally using MODIS and VIIRS satellite sensors. Fire events near an AOI may indicate land clearing by burning.</dd>
+
+        <dt>Forest degradation</dt>
+        <dd>Structural changes to forest that reduce its ecological value without fully converting it to non-forest land use. The EUDR covers both deforestation and forest degradation.</dd>
+      </dl>
+    </section>
+
+    <!-- G -->
+    <section class="glossary-section" id="g">
+      <h2>G</h2>
+      <dl>
+        <dt>GeoJSON</dt>
+        <dd>A JSON-based format for encoding geographic data structures (points, lines, polygons). Widely used in web mapping applications and accepted by Canopex as input.</dd>
+
+        <dt>Geolocation</dt>
+        <dd>In the EUDR context, the geographic coordinates or boundary polygon identifying a production plot. Required for every plot where a regulated commodity was produced.</dd>
+
+        <dt>GTA (Guia de Tr&acirc;nsito Animal)</dt>
+        <dd>Brazilian animal transit document. Records the movement of cattle between properties. Essential for tracing the supply chain back to the production plot for EUDR cattle compliance.</dd>
+      </dl>
+    </section>
+
+    <!-- I -->
+    <section class="glossary-section" id="i">
+      <h2>I</h2>
+      <dl>
+        <dt>IBAMA</dt>
+        <dd>Brazilian Institute of Environment and Renewable Natural Resources. The federal environmental enforcement agency. Uses DETER alerts to prioritise inspections of illegal deforestation.</dd>
+
+        <dt>INPE</dt>
+        <dd>Brazil's National Institute for Space Research. Operates PRODES (annual deforestation mapping) and DETER (daily deforestation alerts). The authoritative source for deforestation data in Brazil.</dd>
+      </dl>
+    </section>
+
+    <!-- K -->
+    <section class="glossary-section" id="k">
+      <h2>K</h2>
+      <dl>
+        <dt>KML / KMZ</dt>
+        <dd>Keyhole Markup Language. An XML-based format for geographic data, commonly used in Google Earth. KMZ is a compressed (zipped) KML file. Canopex's primary input format for areas of interest.</dd>
+      </dl>
+    </section>
+
+    <!-- L -->
+    <section class="glossary-section" id="l">
+      <h2>L</h2>
+      <dl>
+        <dt>Landsat</dt>
+        <dd>A series of Earth-observation satellites operated by NASA/USGS since 1972. Landsat 8 and 9 provide 30 m resolution multispectral imagery with a 16-day revisit cycle. Canopex uses Landsat Collection 2 Level 2 data for pre-2017 historical baselines.</dd>
+      </dl>
+    </section>
+
+    <!-- M -->
+    <section class="glossary-section" id="m">
+      <h2>M</h2>
+      <dl>
+        <dt>MapBiomas</dt>
+        <dd>A Brazilian multi-institutional initiative producing annual land-cover maps from 1985 to the present using Landsat imagery and machine-learning classification. Provides the longest continuous land-cover record for Brazil.</dd>
+
+        <dt>Mosaic</dt>
+        <dd>A composite image created by combining multiple satellite scenes to produce a seamless, cloud-free view of an area. Canopex generates seasonal mosaics for visual before/after comparison.</dd>
+      </dl>
+    </section>
+
+    <!-- N -->
+    <section class="glossary-section" id="n">
+      <h2>N</h2>
+      <dl>
+        <dt>NDVI (Normalised Difference Vegetation Index)</dt>
+        <dd>A ratio computed from near-infrared (NIR) and red reflectance: (NIR - Red) / (NIR + Red). Values range from -1 to +1. Healthy green vegetation typically shows NDVI of 0.3&ndash;0.8; bare soil or cleared land shows 0.0&ndash;0.2. A significant NDVI drop between dates indicates vegetation loss.</dd>
+
+        <dt>NIR (Near-Infrared)</dt>
+        <dd>Electromagnetic radiation just beyond visible red light (~700&ndash;1100 nm). Healthy vegetation strongly reflects NIR light, making it essential for vegetation analysis. Sentinel-2 Band 8 and Landsat Band 5 capture NIR.</dd>
+      </dl>
+    </section>
+
+    <!-- O -->
+    <section class="glossary-section" id="o">
+      <h2>O</h2>
+      <dl>
+        <dt>Operator</dt>
+        <dd>Under the EUDR, a natural or legal person who places a regulated commodity or derived product on the EU market for the first time. Operators bear the primary due-diligence obligation.</dd>
+      </dl>
+    </section>
+
+    <!-- P -->
+    <section class="glossary-section" id="p">
+      <h2>P</h2>
+      <dl>
+        <dt>Planetary Computer</dt>
+        <dd>Microsoft's platform providing access to petabytes of environmental data, including Sentinel-2, Landsat, ESA WorldCover, and ALOS datasets. Canopex uses Planetary Computer's STAC API to query and retrieve satellite data.</dd>
+
+        <dt>PRODES</dt>
+        <dd>Brazil's official satellite deforestation monitoring programme, operated by INPE since 1988. Maps deforestation annually across all Brazilian biomes at 30 m resolution. Considered the gold standard for deforestation measurement in Brazil and used for official government statistics.</dd>
+      </dl>
+    </section>
+
+    <!-- Q -->
+    <section class="glossary-section" id="q">
+      <h2>Q</h2>
+      <dl>
+        <dt>QA_PIXEL</dt>
+        <dd>Landsat Collection 2's quality assessment band. A 16-bit raster where individual bits flag conditions such as cloud (bit 3), cloud shadow (bit 4), snow (bit 5), and dilated cloud (bit 1). Used for cloud masking before NDVI computation.</dd>
+      </dl>
+    </section>
+
+    <!-- R -->
+    <section class="glossary-section" id="r">
+      <h2>R</h2>
+      <dl>
+        <dt>REDD+</dt>
+        <dd>Reducing Emissions from Deforestation and Forest Degradation. A UN Framework Convention on Climate Change mechanism that creates financial incentives for developing countries to reduce deforestation. PRODES data is used for Brazil's REDD+ reporting.</dd>
+      </dl>
+    </section>
+
+    <!-- S -->
+    <section class="glossary-section" id="s">
+      <h2>S</h2>
+      <dl>
+        <dt>SCL (Scene Classification Layer)</dt>
+        <dd>Sentinel-2's pixel-level classification band that categorises each pixel as cloud, cloud shadow, vegetation, water, bare soil, etc. Used by Canopex to mask non-clear pixels before NDVI computation.</dd>
+
+        <dt>Sentinel-2</dt>
+        <dd>A pair of optical satellites operated by ESA under the Copernicus programme. Provides 10 m resolution multispectral imagery with a 5-day revisit at the equator. Canopex's primary data source for post-2017 NDVI analysis. See <a href="/docs/eudr-data-sources.html">Data Sources</a>.</dd>
+
+        <dt>SICAR</dt>
+        <dd>Sistema Nacional de Cadastro Ambiental Rural. Brazil's national CAR registry system. Provides access to rural property boundary polygons registered under the CAR programme.</dd>
+
+        <dt>SIGEF</dt>
+        <dd>Sistema de Gest&atilde;o Fundi&aacute;ria. INCRA's land tenure management system for certified rural property boundaries in Brazil. More accurate than CAR for surveyed properties.</dd>
+
+        <dt>STAC (SpatioTemporal Asset Catalog)</dt>
+        <dd>An open standard for describing and searching geospatial data. Canopex uses the STAC API on Planetary Computer to discover and retrieve satellite imagery for specific locations and time ranges.</dd>
+      </dl>
+    </section>
+
+    <!-- W -->
+    <section class="glossary-section" id="w">
+      <h2>W</h2>
+      <dl>
+        <dt>WDPA (World Database on Protected Areas)</dt>
+        <dd>A comprehensive global database of marine and terrestrial protected areas, maintained by UNEP-WCMC and IUCN. Canopex checks AOI overlap with protected areas as a risk factor for EUDR assessments.</dd>
+      </dl>
+    </section>
+
+    <!-- Related resources -->
+    <section class="glossary-section">
+      <h2>Related Resources</h2>
+      <ul>
+        <li><a href="/docs/eudr-methodology.html">EUDR Assessment Methodology</a> — how Canopex performs satellite analysis</li>
+        <li><a href="/docs/eudr-data-sources.html">EUDR Data Sources</a> — technical reference for datasets</li>
+        <li><a href="/docs/eudr-supplier-guide.html">EUDR Supplier Guide</a> — what geolocation data suppliers need to provide</li>
+        <li><a href="/docs/eudr-faq.html">EUDR FAQ</a> — frequently asked questions</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> &middot; <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+</body>
+</html>
