@@ -5,7 +5,10 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import contextlib
+import json
+import logging
 import math
+import os
 import re
 
 import azure.functions as func
@@ -166,4 +169,215 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200,
         mimetype="application/vnd.google-earth.kml+xml",
         headers=headers,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EUDR billing endpoints (#613)
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
+
+@bp.route(
+    route="eudr/billing",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/eudr/billing — EUDR billing status for the caller's org."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    from treesight.security.eudr_billing import get_eudr_billing_status
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    if not org:
+        return func.HttpResponse(
+            json.dumps(get_eudr_billing_status("")),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+
+    status = get_eudr_billing_status(org["org_id"])
+    return func.HttpResponse(
+        json.dumps(status),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
+@bp.route(
+    route="eudr/entitlement",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_entitlement_check(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/eudr/entitlement — check if the org can submit an assessment."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    from treesight.security.eudr_billing import check_eudr_entitlement
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    if not org:
+        return func.HttpResponse(
+            json.dumps({"allowed": False, "reason": "no_org"}),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+
+    result = check_eudr_entitlement(org["org_id"])
+    return func.HttpResponse(
+        json.dumps(result),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
+@bp.route(
+    route="eudr/subscribe",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/eudr/subscribe — create Stripe Checkout for EUDR plan.
+
+    Owner-only. Creates a checkout session with both the base subscription
+    price and the metered usage price.
+    """
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    from treesight.security.eudr_billing import is_org_owner
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    if not org:
+        return error_response(404, "You do not belong to an organisation", req=req)
+
+    org_id = org["org_id"]
+    if not is_org_owner(org_id, user_id):
+        return error_response(403, "Only organisation owners can subscribe", req=req)
+
+    # Check not already subscribed
+    billing = org.get("billing", {})
+    if billing.get("eudr_status") == "active":
+        return error_response(409, "Organisation already has an active EUDR subscription", req=req)
+
+    from treesight.config import (
+        STRIPE_API_KEY,
+        STRIPE_PRICE_ID_EUDR_BASE_EUR,
+        STRIPE_PRICE_ID_EUDR_BASE_GBP,
+        STRIPE_PRICE_ID_EUDR_BASE_USD,
+        STRIPE_PRICE_ID_EUDR_METERED_EUR,
+        STRIPE_PRICE_ID_EUDR_METERED_GBP,
+        STRIPE_PRICE_ID_EUDR_METERED_USD,
+        STRIPE_WEBHOOK_SECRET,
+    )
+
+    if not STRIPE_API_KEY or not STRIPE_WEBHOOK_SECRET:
+        return error_response(503, "Billing not configured", req=req)
+
+    from treesight.constants import DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
+
+    # Determine currency
+    currency = req.params.get("currency", "").upper()
+    if not currency and req.get_body():
+        with contextlib.suppress(ValueError, UnicodeDecodeError):
+            body = json.loads(req.get_body())
+            currency = body.get("currency", "").upper() if isinstance(body, dict) else ""
+    if currency not in SUPPORTED_CURRENCIES:
+        currency = DEFAULT_CURRENCY
+
+    # Select price IDs for this currency
+    base_prices = {
+        "GBP": STRIPE_PRICE_ID_EUDR_BASE_GBP,
+        "USD": STRIPE_PRICE_ID_EUDR_BASE_USD,
+        "EUR": STRIPE_PRICE_ID_EUDR_BASE_EUR,
+    }
+    metered_prices = {
+        "GBP": STRIPE_PRICE_ID_EUDR_METERED_GBP,
+        "USD": STRIPE_PRICE_ID_EUDR_METERED_USD,
+        "EUR": STRIPE_PRICE_ID_EUDR_METERED_EUR,
+    }
+
+    base_price = base_prices.get(currency)
+    metered_price = metered_prices.get(currency)
+    if not base_price or not metered_price:
+        return error_response(503, f"EUDR pricing not configured for {currency}", req=req)
+
+    import stripe
+
+    stripe.api_key = STRIPE_API_KEY
+
+    from blueprints._helpers import _cors_origin
+
+    origin = _cors_origin(req) or os.environ.get("PRIMARY_SITE_URL", "")
+    if not origin:
+        return error_response(503, "Site URL not configured", req=req)
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[
+                {"price": base_price, "quantity": 1},
+                {"price": metered_price},
+            ],
+            success_url=f"{origin}/eudr/?subscribed=true",
+            cancel_url=f"{origin}/eudr/?billing=cancel",
+            client_reference_id=user_id,
+            metadata={
+                "user_id": user_id,
+                "org_id": org_id,
+                "product": "eudr",
+                "currency": currency,
+            },
+            billing_address_collection="required",
+            automatic_tax={"enabled": True},
+            consent_collection={"terms_of_service": "required"},
+            custom_text={
+                "terms_of_service_acceptance": {
+                    "message": (
+                        "I agree to the [Terms of Service]"
+                        f"({origin}/terms.html)"
+                        " and acknowledge my right to cancel within"
+                        " 14 days under the Consumer Contracts"
+                        " Regulations 2013."
+                    )
+                }
+            },
+            allow_promotion_codes=True,
+        )
+    except stripe.StripeError as exc:
+        logger.exception("EUDR Stripe checkout session creation failed")
+        msg = getattr(exc, "user_message", None) or "unknown"
+        return error_response(502, f"Payment provider error: {msg}", req=req)
+
+    return func.HttpResponse(
+        json.dumps({"checkout_url": session.url}),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
     )

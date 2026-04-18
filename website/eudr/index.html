@@ -86,6 +86,7 @@
         </div>
         <div class="app-welcome-stats">
           <div class="app-stat-pill"><span class="app-utility-label">Plan</span><strong id="app-hero-plan">Loading…</strong><span class="app-utility-note" id="app-hero-plan-note">Checking entitlement…</span></div>
+          <div class="app-stat-pill" id="eudr-parcels-pill"><span class="app-utility-label">Parcels</span><strong id="eudr-parcels-used">—</strong><span class="app-utility-note" id="eudr-parcels-note">Loading usage…</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Runs Left</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">Quota refreshes with your plan.</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">EUDR due diligence</strong><span class="app-utility-note" id="app-hero-mode-note">Imagery restricted to post-Dec 2020 for EUDR compliance.</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Loading your recent runs.</span></div>
@@ -486,5 +487,150 @@
     <div class="app-evidence-frame-label" id="app-map-expanded-label"></div>
   </div>
 </div>
+
+<!-- EUDR subscribe modal (#613) -->
+<div class="eudr-subscribe-backdrop" id="eudr-subscribe-backdrop" hidden>
+  <div class="eudr-subscribe-modal">
+    <h3>Subscribe to EUDR Pro</h3>
+    <p>You've used your 2 free assessments. Subscribe for <strong>£49/month</strong> to continue assessing parcels.</p>
+    <ul class="eudr-subscribe-features">
+      <li>10 parcel assessments included per month</li>
+      <li>Additional parcels at £3 each (volume discounts available)</li>
+      <li>Full multi-source satellite evidence</li>
+      <li>Audit-grade PDF export</li>
+      <li>Unlimited team members</li>
+    </ul>
+    <div class="eudr-subscribe-actions">
+      <button class="btn btn-primary" id="eudr-subscribe-btn" type="button">Subscribe Now</button>
+      <button class="btn btn-secondary" id="eudr-subscribe-cancel-btn" type="button">Not Now</button>
+    </div>
+    <p class="eudr-subscribe-note">Powered by Stripe. Cancel anytime within 14 days under the Consumer Contracts Regulations 2013.</p>
+  </div>
+</div>
+
+<script>
+/* EUDR billing overlay (#613) — fetches org-scoped billing from /api/eudr/billing */
+(function () {
+  'use strict';
+
+  var eudrBillingData = null;
+
+  function isEudrPage() { return window.location.pathname.indexOf('/eudr/') === 0; }
+  if (!isEudrPage()) return;
+
+  function waitForShell() {
+    return new Promise(function (resolve) {
+      if (typeof window.apiFetch === 'function') { resolve(); return; }
+      var t = setInterval(function () {
+        if (typeof window.apiFetch === 'function') { clearInterval(t); resolve(); }
+      }, 100);
+    });
+  }
+
+  async function loadEudrBilling() {
+    await waitForShell();
+    try {
+      var res = await window.apiFetch('/api/eudr/billing');
+      var data = await res.json();
+      eudrBillingData = data;
+      applyEudrBilling(data);
+    } catch (e) {
+      console.warn('EUDR billing load failed', e);
+    }
+  }
+
+  function applyEudrBilling(data) {
+    var planEl = document.getElementById('app-hero-plan');
+    var planNoteEl = document.getElementById('app-hero-plan-note');
+    var parcelsEl = document.getElementById('eudr-parcels-used');
+    var parcelsNoteEl = document.getElementById('eudr-parcels-note');
+
+    if (planEl && data.plan) {
+      planEl.textContent = data.subscribed ? 'EUDR Pro' : 'Free Trial';
+      planNoteEl.textContent = data.subscribed
+        ? 'Active subscription'
+        : data.trial_remaining + ' of 2 free assessments remaining';
+    }
+
+    if (parcelsEl) {
+      if (data.subscribed) {
+        parcelsEl.textContent = data.period_parcels_used + ' / ' + data.included_parcels;
+        parcelsNoteEl.textContent = data.overage_parcels > 0
+          ? data.overage_parcels + ' overage parcels this period'
+          : 'Included parcels used this period';
+      } else {
+        parcelsEl.textContent = data.assessments_used + ' / 2';
+        parcelsNoteEl.textContent = data.trial_remaining > 0
+          ? data.trial_remaining + ' free assessment' + (data.trial_remaining > 1 ? 's' : '') + ' remaining'
+          : 'Free trial exhausted — subscribe to continue';
+      }
+    }
+  }
+
+  function showSubscribeModal() {
+    var backdrop = document.getElementById('eudr-subscribe-backdrop');
+    if (backdrop) backdrop.hidden = false;
+  }
+
+  function hideSubscribeModal() {
+    var backdrop = document.getElementById('eudr-subscribe-backdrop');
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  async function handleSubscribe() {
+    var btn = document.getElementById('eudr-subscribe-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+    try {
+      await waitForShell();
+      var res = await window.apiFetch('/api/eudr/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      var data = await res.json();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        alert('Could not start checkout. Please try again.');
+      }
+    } catch (e) {
+      console.error('Subscribe error:', e);
+      if (e && e.status === 403) {
+        alert('Only organisation owners can subscribe.');
+      } else {
+        alert((e && e.message) || 'Could not connect to billing. Please try again.');
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Subscribe Now'; }
+    }
+  }
+
+  /* Expose for the app shell to call when entitlement check fails */
+  window.showEudrSubscribeModal = showSubscribeModal;
+  window.eudrBillingData = function () { return eudrBillingData; };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var cancelBtn = document.getElementById('eudr-subscribe-cancel-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', hideSubscribeModal);
+
+    var subBtn = document.getElementById('eudr-subscribe-btn');
+    if (subBtn) subBtn.addEventListener('click', handleSubscribe);
+
+    /* Check for ?subscribed=true after Stripe redirect */
+    if (window.location.search.indexOf('subscribed=true') !== -1) {
+      /* Clean URL and reload billing */
+      history.replaceState(null, '', window.location.pathname);
+      loadEudrBilling();
+    }
+  });
+
+  /* Load EUDR billing when the shell signals auth is ready */
+  document.addEventListener('canopex:auth-ready', loadEudrBilling);
+  /* Also try loading on DOMContentLoaded in case auth-ready already fired */
+  document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(loadEudrBilling, 500);
+  });
+})();
+</script>
 </body>
 </html>

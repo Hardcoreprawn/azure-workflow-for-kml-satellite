@@ -13,6 +13,7 @@ from typing import Any
 from treesight.constants import (
     DEMO_TIER_RUN_LIMIT,
     ENTERPRISE_TIER_RUN_LIMIT,
+    EUDR_INCLUDED_PARCELS,
     FREE_TIER_RUN_LIMIT,
     PRO_TIER_RUN_LIMIT,
     STANDARD_RETENTION_DAYS,
@@ -101,6 +102,19 @@ PLAN_CATALOG: dict[str, dict[str, Any]] = {
         "temporal_cadence": "maximum",
         "max_history_years": None,
         "overage_rate": None,
+    },
+    "eudr_pro": {
+        "label": "EUDR Pro",
+        "run_limit": EUDR_INCLUDED_PARCELS,
+        "aoi_limit": None,
+        "concurrency": 5,
+        "ai_insights": True,
+        "api_access": False,
+        "export": True,
+        "retention_days": STANDARD_RETENTION_DAYS,
+        "temporal_cadence": "monthly",
+        "max_history_years": None,
+        "overage_rate": 3.00,
     },
 }
 

@@ -328,6 +328,12 @@ def _handle_event(event: dict) -> None:
         logger.warning("Stripe event %s has no user_id mapping — skipping", event_type)
         return
 
+    # Route EUDR-product events to org-scoped billing
+    product = metadata.get("product") if isinstance(metadata, dict) else None
+    if product == "eudr":
+        _handle_eudr_event(event_type, obj, metadata)
+        return
+
     if event_type == "checkout.session.completed":
         save_subscription(
             user_id,
@@ -368,6 +374,75 @@ def _handle_event(event: dict) -> None:
             },
         )
         logger.warning("Payment failed for user=%s", user_id)
+
+
+def _handle_eudr_event(event_type: str, obj: dict, metadata: dict) -> None:
+    """Handle Stripe events for EUDR org-scoped subscriptions (#613)."""
+    from treesight.security.eudr_billing import save_eudr_subscription
+
+    org_id = metadata.get("org_id") if isinstance(metadata, dict) else None
+    if not org_id:
+        logger.warning("EUDR event %s missing org_id in metadata — skipping", event_type)
+        return
+
+    if event_type == "checkout.session.completed":
+        # Extract the metered subscription item ID from the subscription
+        sub_id = obj.get("subscription")
+        sub_item_id = _extract_metered_sub_item(sub_id)
+
+        save_eudr_subscription(
+            org_id,
+            tier="eudr_pro",
+            status="active",
+            stripe_customer_id=obj.get("customer"),
+            stripe_subscription_id=sub_id,
+            stripe_subscription_item_id=sub_item_id,
+        )
+        logger.info("EUDR subscription activated org=%s", org_id)
+
+    elif event_type in (
+        "customer.subscription.updated",
+        "customer.subscription.deleted",
+    ):
+        status = obj.get("status", "unknown")
+        tier = "eudr_pro"
+        save_eudr_subscription(
+            org_id,
+            tier=tier,
+            status=status,
+            stripe_customer_id=obj.get("customer"),
+            stripe_subscription_id=obj.get("id"),
+        )
+        logger.info("EUDR subscription %s org=%s status=%s", event_type, org_id, status)
+
+    elif event_type == "invoice.payment_failed":
+        save_eudr_subscription(
+            org_id,
+            tier="eudr_pro",
+            status="past_due",
+            stripe_customer_id=obj.get("customer"),
+            stripe_subscription_id=obj.get("subscription"),
+        )
+        logger.warning("EUDR payment failed org=%s", org_id)
+
+
+def _extract_metered_sub_item(subscription_id: str | None) -> str | None:
+    """Look up the metered subscription item ID from a Stripe subscription.
+
+    Returns the ``si_...`` ID for the metered price, or None if unavailable.
+    """
+    if not subscription_id:
+        return None
+    try:
+        stripe = _get_stripe()
+        sub = stripe.Subscription.retrieve(subscription_id)
+        for item in sub.get("items", {}).get("data", []):
+            price = item.get("price", {})
+            if price.get("recurring", {}).get("usage_type") == "metered":
+                return item.get("id")
+    except Exception:
+        logger.exception("Failed to extract metered sub item from sub=%s", subscription_id)
+    return None
 
 
 _customer_to_user_cache: dict[str, str | None] = {}

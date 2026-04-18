@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19
 
 ---
 
@@ -39,7 +39,6 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
-| #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 | #650 | Evidence run ID badge in evidence header |
@@ -66,7 +65,7 @@ Auth + billing security. Prerequisites for any paid product.
 | R.0 | #553 | Enforce REQUIRE_AUTH everywhere | ✅ PR #554 | — |
 | R.1 | #534 | Auth header verification (HMAC) | ✅ PR #620 | — |
 | R.2 | #589 | Billing ledger, metered overage, refunds | ✅ PR #629 | — |
-| R.3 | #535 | E2e Stripe billing flow on live site | Open | R.2 |
+| R.3 | #535 | E2e Stripe billing flow on live site | 🔄 (EUDR billing PR) | R.2 |
 | R.4 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
 | R.5 | #572 | Audit unauthenticated API endpoints | ✅ PR #653 | — |
 
@@ -101,10 +100,12 @@ Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
 **Status:** 21/22 issues closed. Pipeline, core data sources, frontend,
-org management, and evidence export are complete. Remaining: #613 (EUDR
-metered Stripe billing — also in 2D/R.3), #612 (Landsat deep
-integration, D.5), #617 (EUDR content cluster, FE.5). Billing ledger
-(#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
+org management, and evidence export are complete. Issue #613 (EUDR
+metered Stripe billing) implementation in PR — covers org-scoped free
+trial, subscribe endpoint, metered usage, webhook handling, and frontend
+billing overlay. Remaining: #612 (Landsat deep integration, D.5) and
+issue #617 (EUDR content cluster, FE.5). Billing ledger (#589) merged
+as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 
@@ -149,9 +150,9 @@ invited users auto-join on sign-in via SWA email matching.
 
 ### 2G.5 — Revenue
 
-| Order | Issue | Title | Depends On |
-|-------|-------|-------|------------|
-| REV.1 | #613 | EUDR per-parcel metered Stripe billing | #610, #589, #614 |
+| Order | Issue | Title | Status | Depends On |
+|-------|-------|-------|--------|------------|
+| REV.1 | #613 | EUDR per-parcel metered Stripe billing | 🔄 PR pending | #610, #589, #614 |
 
 **Exit:** Compliance officer uploads parcels → multi-source evidence →
 deforestation-free determination → audit-grade PDF → metered billing.
