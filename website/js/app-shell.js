@@ -1416,7 +1416,7 @@
     try {
       await apiDiscoveryReady;
 
-      var ndviTimeseries = (evidenceManifest.ndvi_stats || []).map(function(f) {
+      var ndviTimeseries = (evidenceManifest.ndvi_stats || []).filter(Boolean).map(function(f) {
         return { date: f.date || f.label, mean: f.mean, min: f.min, max: f.max, year: f.year, season: f.season };
       });
       var center = evidenceManifest.center || evidenceManifest.coords;
