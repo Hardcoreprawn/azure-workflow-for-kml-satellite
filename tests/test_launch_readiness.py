@@ -1020,28 +1020,38 @@ class TestEndpointAuthAudit:
             # that calls check_auth, the whole file is transitively protected.
             file_has_auth = any(pattern in src for pattern in self._AUTH_PATTERNS)
 
-            # Find all @bp.route(...) decorators and their associated functions
-            for route_match in re.finditer(
-                r'@bp\.route\(route="([^"]+)".*?\n'
-                r"((?:@\w+.*\n)*)"
-                r"(?:def |async def )(\w+)\(.*?\n"
-                r"(.*?)(?=\n(?:@bp\.|def |async def |class |\Z))",
-                src,
-                re.DOTALL,
-            ):
-                route = route_match.group(1)
-                decorators = route_match.group(2)
-                func_body = route_match.group(4)
+            # Find all @bp.route(...) declarations and their surrounding context.
+            # We parse line-by-line to avoid exponential-backtracking regex (CodeQL).
+            lines = src.split("\n")
+            i = 0
+            while i < len(lines):
+                route_m = re.match(r'\s*@bp\.route\(route="([^"]+)"', lines[i])
+                if not route_m:
+                    i += 1
+                    continue
+
+                route = route_m.group(1)
+                # Collect decorator block + function body until next route/def/class/EOF
+                block_start = i
+                i += 1
+                # Skip additional decorators
+                while i < len(lines) and re.match(r"\s*@\w+", lines[i]):
+                    i += 1
+                # Skip function signature
+                if i < len(lines) and re.match(r"\s*(?:async )?def ", lines[i]):
+                    i += 1
+                # Collect body until next top-level construct
+                while i < len(lines) and not re.match(
+                    r"(?:@bp\.|(?:async )?def |class )\S", lines[i]
+                ):
+                    i += 1
+                block = "\n".join(lines[block_start:i])
 
                 if route in self._EXEMPT_ROUTES:
                     continue
 
-                # Check decorator-level auth first (strongest signal)
-                has_decorator_auth = any(pattern in decorators for pattern in self._AUTH_PATTERNS)
-                # Check direct call in handler body
-                has_body_auth = any(pattern in func_body for pattern in self._AUTH_PATTERNS)
-                # If neither, fall back to file-level auth (transitive via helper)
-                if not has_decorator_auth and not has_body_auth and not file_has_auth:
+                has_auth = any(pattern in block for pattern in self._AUTH_PATTERNS)
+                if not has_auth and not file_has_auth:
                     rel = py_file.relative_to(ROOT)
                     unprotected.append(f"{rel}: route='{route}'")
 
