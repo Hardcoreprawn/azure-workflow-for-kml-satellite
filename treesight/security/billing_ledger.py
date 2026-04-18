@@ -18,6 +18,13 @@ from treesight.security.redact import redact_user_id as _redact
 
 logger = logging.getLogger(__name__)
 
+_KNOWN_BILLING_TYPES = frozenset({"demo", "free", "included", "overage"})
+
+
+def _safe_billing_type(value: object) -> str:
+    """Return *value* only if it is a known billing type, else ``'unknown'``."""
+    return str(value) if value in _KNOWN_BILLING_TYPES else "unknown"
+
 
 # ---------------------------------------------------------------------------
 # Classification
@@ -130,7 +137,7 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
         "Billing completed instance=%s user=%s type=%s",
         instance_id,
         _redact(user_id),
-        billing_type,
+        _safe_billing_type(billing_type),
     )
 
 
