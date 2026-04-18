@@ -427,11 +427,11 @@ resource "azurerm_cosmosdb_account" "main" {
 
   # --- Security hardening ---
   # Auth: local (key-based) auth disabled — Entra Managed Identity + RBAC only.
-  # Network: public access enabled because Container Apps has no static egress
-  # IPs and no VNet integration yet.  Entra MI is the access-control gate;
-  # add VNet + private endpoint when user volume justifies the cost.
+  # Network: public access gated by var.cosmos_public_network_access (dev only).
+  # Container Apps has no static egress IPs / VNet integration yet.
+  # Add VNet + private endpoint when user volume justifies the cost.
   local_authentication_disabled         = true
-  public_network_access_enabled         = true     # fixes #640 — MI is the auth gate
+  public_network_access_enabled         = var.cosmos_public_network_access  # fixes #640
   minimal_tls_version                   = "Tls12"
   network_acl_bypass_for_azure_services = true
 }

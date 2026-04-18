@@ -7,7 +7,7 @@
 # endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
 AZU-0012 # exp:2026-07-09 Storage network ACL — accepted dev risk
 AZU-0013 # exp:2026-07-09 Key Vault network ACL — accepted dev risk
-AZU-0022 # exp:2026-07-09 Cosmos DB public network — Entra MI + RBAC is the auth gate (#640)
+# AZU-0022 removed — Cosmos public network is now env-scoped via cosmos_public_network_access
 
 # AVD-AZU-0016: Trivy cannot resolve variable references. purge_protection_enabled
 # defaults to true via var.enable_key_vault_purge_protection.
