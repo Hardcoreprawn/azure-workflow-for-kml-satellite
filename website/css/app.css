@@ -312,3 +312,12 @@
   .app-preflight-grid{grid-template-columns:1fr}
   .app-select-row{flex-direction:column;align-items:stretch}
 }
+
+/* ── EUDR subscribe modal (#613) ── */
+.eudr-subscribe-backdrop{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
+.eudr-subscribe-modal{background:var(--bg,#fff);border-radius:12px;padding:32px;max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.eudr-subscribe-modal h3{margin:0 0 12px;font-size:1.3rem}
+.eudr-subscribe-features{margin:16px 0;padding-left:20px}
+.eudr-subscribe-features li{margin-bottom:6px}
+.eudr-subscribe-actions{display:flex;gap:12px;margin-top:20px}
+.eudr-subscribe-note{font-size:.8rem;color:var(--text-secondary,#666);margin-top:12px}

@@ -102,6 +102,11 @@ SUPPORTED_CURRENCIES = ("GBP", "USD", "EUR")
 DEFAULT_CURRENCY = "GBP"
 SUBSCRIPTIONS_PREFIX = "subscriptions"
 
+# --- EUDR Billing (org-scoped, per-parcel metered) ---
+EUDR_FREE_ASSESSMENTS = 2  # Lifetime free parcel assessments per org
+EUDR_INCLUDED_PARCELS = 10  # Parcels included in base subscription per period
+EUDR_BASE_PRICE_PENCE = 49_00  # £49/month base subscription
+
 # --- Rate limiting (demo) ---
 # RATE_LIMIT_DEMO_MAX caps API requests per window (HTTP rate-limiter);
 # DEMO_TIER_RUN_LIMIT caps total pipeline runs (billing quota).

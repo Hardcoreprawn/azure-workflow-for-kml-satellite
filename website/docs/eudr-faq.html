@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUDR FAQ — Canopex</title>
+<meta name="description" content="Frequently asked questions about EU Deforestation Regulation (EUDR) compliance — what it covers, who it applies to, deadlines, and how satellite analysis helps.">
+<link rel="canonical" href="/docs/eudr-faq.html">
+<meta property="og:title" content="EUDR FAQ — Canopex">
+<meta property="og:description" content="Frequently asked questions about EUDR compliance and satellite-based deforestation assessment.">
+<meta property="og:url" content="/docs/eudr-faq.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="EUDR FAQ — Canopex">
+<meta name="twitter:description" content="Frequently asked questions about EUDR compliance and satellite-based deforestation assessment.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script src="/js/analytics.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "What is the EUDR?", "acceptedAnswer": {"@type": "Answer", "text": "The EU Deforestation Regulation (2023/1115) requires operators placing certain commodities on the EU market to prove those products were not produced on land subject to deforestation after 31 December 2020."}},
+    {"@type": "Question", "name": "What commodities does the EUDR cover?", "acceptedAnswer": {"@type": "Answer", "text": "Cattle (and beef/leather), soy, palm oil, cocoa, coffee, rubber, and wood — plus derived products like chocolate, furniture, printed paper, and certain biofuels."}},
+    {"@type": "Question", "name": "What is the EUDR cutoff date?", "acceptedAnswer": {"@type": "Answer", "text": "31 December 2020. Any deforestation on production plots after this date makes the associated commodity non-compliant."}},
+    {"@type": "Question", "name": "What geolocation data is required?", "acceptedAnswer": {"@type": "Answer", "text": "A coordinate point for plots under 4 hectares, or a polygon boundary for plots of 4 hectares or more."}},
+    {"@type": "Question", "name": "How does satellite analysis help with EUDR compliance?", "acceptedAnswer": {"@type": "Answer", "text": "Satellite imagery provides objective evidence of whether land was forested before and after the cutoff date. NDVI analysis, change detection, and authoritative datasets like PRODES create a defensible evidence package."}}
+  ]
+}
+</script>
+<style>
+main .container{max-width:780px}
+.hero-sm p{font-size:1rem;max-width:600px;margin:12px auto 0}
+.faq-section{padding:40px 0}
+.faq-section + .faq-section{border-top:1px solid var(--c-border)}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:16px}
+p,li{color:var(--c-muted);font-size:.9rem;line-height:1.7}
+ol,ul{margin:12px 0 12px 24px}
+li{margin-bottom:8px}
+li strong{color:var(--c-text)}
+.faq-item{margin:0 0 24px}
+.faq-item h3{font-size:1rem;font-weight:600;color:var(--c-text);margin:0 0 8px}
+.faq-item p{margin:0 0 8px}
+.info-card{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--radius);padding:20px 24px;margin:16px 0}
+.info-card h4{font-size:.95rem;font-weight:600;margin-bottom:8px}
+</style>
+</head>
+<body>
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/eudr/">Start Free</a></li>
+      <li><a href="/#how-it-works">How It Works</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/" aria-current="page">Docs</a></li>
+      <li><a href="/#faq">FAQ</a></li>
+    </ul>
+    <div class="auth-area">
+      <a href="/" class="auth-btn">Sign In</a>
+    </div>
+  </div>
+</nav>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<main>
+  <section class="hero-sm">
+    <div class="container" style="text-align:center;padding:48px 0 32px">
+      <h1>EUDR FAQ</h1>
+      <p>Frequently asked questions about EU Deforestation Regulation compliance</p>
+    </div>
+  </section>
+
+  <div class="container">
+
+    <!-- The Regulation -->
+    <section class="faq-section">
+      <h2>About the Regulation</h2>
+
+      <div class="faq-item">
+        <h3>What is the EUDR?</h3>
+        <p>The EU Deforestation Regulation (Regulation 2023/1115, commonly called "EUDR") requires operators and traders placing certain commodities on the EU market to demonstrate that those products were not produced on land subject to deforestation or forest degradation after <strong>31 December 2020</strong>.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What commodities does the EUDR cover?</h3>
+        <p>Seven commodity groups and their derived products:</p>
+        <ul>
+          <li><strong>Cattle</strong> — beef, leather, tallow</li>
+          <li><strong>Soy</strong> — soybean oil, soy meal, tofu</li>
+          <li><strong>Palm oil</strong> — palm kernel oil, oleochemicals</li>
+          <li><strong>Cocoa</strong> — chocolate, cocoa butter</li>
+          <li><strong>Coffee</strong> — roasted, instant, extracts</li>
+          <li><strong>Rubber</strong> — tyres, latex products</li>
+          <li><strong>Wood</strong> — timber, furniture, paper, printed products</li>
+        </ul>
+        <p>The full list of product codes is in Annex I of the regulation.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is the cutoff date?</h3>
+        <p><strong>31 December 2020.</strong> Products sourced from land that was deforested after this date cannot be placed on the EU market, regardless of whether the deforestation was legal in the country of origin.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Who does the EUDR apply to?</h3>
+        <p><strong>Operators</strong> (companies placing products on the EU market for the first time) and <strong>traders</strong> (companies making products available on the market after initial placement). Large operators must comply from 30 December 2025. SMEs have until 30 June 2026.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What are the penalties for non-compliance?</h3>
+        <p>Fines of up to <strong>4% of EU-wide annual turnover</strong>. Additional penalties may include confiscation of products, exclusion from public procurement, and prohibition from placing products on the EU market.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does the EUDR apply to products produced outside the EU?</h3>
+        <p>Yes. The EUDR applies regardless of where the commodity was produced. If the product enters the EU market, it must comply. This is why suppliers worldwide — from Brazilian ranchers to Indonesian palm oil plantations — are affected.</p>
+      </div>
+    </section>
+
+    <!-- Geolocation requirements -->
+    <section class="faq-section">
+      <h2>Geolocation Requirements</h2>
+
+      <div class="faq-item">
+        <h3>What geolocation data is required?</h3>
+        <p>Article 9 requires geolocation for every plot of land where the commodity was produced:</p>
+        <ul>
+          <li><strong>Plots under 4 hectares:</strong> a single latitude/longitude coordinate point</li>
+          <li><strong>Plots of 4 hectares or more:</strong> a polygon boundary defining the plot perimeter</li>
+        </ul>
+      </div>
+
+      <div class="faq-item">
+        <h3>What format should the geolocation data be in?</h3>
+        <p>The EUDR does not mandate a specific file format. Common formats include KML/KMZ (Google Earth), Shapefile, GeoJSON, and coordinate lists (CSV). Canopex accepts KML, KMZ, GeoJSON, and direct coordinate input.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Do I need geolocation for every property in the supply chain?</h3>
+        <p>Yes. For cattle, this means every property where the animal was raised — not just the final farm before slaughter. For crops, it means every plot where the commodity was grown. Indirect suppliers are included.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What if my supplier won't provide geolocation data?</h3>
+        <p>Without geolocation data, you cannot complete the due-diligence statement required by the EUDR. You would need to either obtain the data from the supplier, use an alternative supplier who can provide it, or accept the compliance risk. The regulation places the burden on the operator, not the supplier.</p>
+      </div>
+    </section>
+
+    <!-- Satellite analysis -->
+    <section class="faq-section">
+      <h2>Satellite Analysis</h2>
+
+      <div class="faq-item">
+        <h3>How does satellite analysis help with EUDR compliance?</h3>
+        <p>Satellite imagery provides objective, timestamped evidence of land cover before and after the cutoff date. By analysing vegetation indices (NDVI), change detection algorithms, and authoritative deforestation datasets, satellite analysis can determine whether deforestation occurred on a specific plot of land after 31 December 2020.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is satellite analysis legally sufficient for EUDR compliance?</h3>
+        <p>Satellite analysis provides <strong>evidence to support due diligence</strong> — it does not replace the full due-diligence obligation. Operators must also consider supplier declarations, certifications, and other relevant information. Canopex provides the geolocation evidence component; the operator remains responsible for the overall due-diligence statement.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is NDVI and why does it matter?</h3>
+        <p>NDVI (Normalised Difference Vegetation Index) measures vegetation health using the ratio of near-infrared to red light reflected by the surface. Healthy vegetation reflects more NIR light, producing high NDVI values (0.3–0.8). Bare soil or cleared land has low NDVI (0.0–0.2). A sudden drop in NDVI indicates vegetation removal — potential deforestation.</p>
+        <p>See the <a href="/docs/eudr-glossary.html">glossary</a> for more technical terms.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>How far back can the analysis go?</h3>
+        <p>Sentinel-2 data is available from 2017. Landsat extends the record back to 2013. Together, they provide 13+ years of vegetation history — well before the EUDR cutoff date of 31 December 2020.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What about cloud cover?</h3>
+        <p>Tropical regions often have persistent cloud cover. Canopex uses cloud-masking algorithms (SCL for Sentinel-2, QA_PIXEL for Landsat) to exclude cloudy observations. The system selects the least-cloudy scenes within each seasonal window and can draw on radar data (ALOS PALSAR) that penetrates clouds.</p>
+      </div>
+    </section>
+
+    <!-- Using Canopex -->
+    <section class="faq-section">
+      <h2>Using Canopex</h2>
+
+      <div class="faq-item">
+        <h3>How long does an assessment take?</h3>
+        <p>Typically 3–5 minutes per area of interest. Upload your KML/KMZ file, and Canopex automatically acquires imagery, computes NDVI, runs change detection, and produces a determination.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Do I need GIS expertise?</h3>
+        <p>No. Canopex is designed for compliance officers, procurement teams, and sustainability managers who are not GIS specialists. Upload a boundary file and the system handles the satellite analysis automatically.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I analyse multiple plots at once?</h3>
+        <p>Yes. A single KML/KMZ file can contain multiple areas of interest. Each area receives its own independent assessment and determination.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>What output formats are available?</h3>
+        <p>PDF reports (for auditors and filing), GeoJSON (for GIS integration), and CSV (for spreadsheet analysis). All formats include the full evidence chain: coordinates, NDVI statistics, change detection results, and determination.</p>
+      </div>
+
+      <div class="faq-item">
+        <h3>Is there a free trial?</h3>
+        <p>Yes. Your first EUDR assessment is free — no credit card required. <a href="/eudr/">Start your free assessment &rarr;</a></p>
+      </div>
+    </section>
+
+    <!-- Related resources -->
+    <section class="faq-section">
+      <h2>Related Resources</h2>
+      <ul>
+        <li><a href="/docs/eudr-supplier-guide.html">EUDR Supplier Guide</a> — what geolocation data suppliers need to provide</li>
+        <li><a href="/docs/eudr-data-sources.html">EUDR Data Sources</a> — technical reference for datasets used in assessments</li>
+        <li><a href="/docs/eudr-methodology.html">EUDR Assessment Methodology</a> — how Canopex performs satellite analysis</li>
+        <li><a href="/docs/eudr-glossary.html">EUDR Glossary</a> — definitions of technical terms</li>
+        <li><a href="https://eur-lex.europa.eu/eli/reg/2023/1115/oj" target="_blank" rel="noopener">Regulation (EU) 2023/1115</a> — full EUDR text</li>
+      </ul>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="container">
+    <p>&copy; 2026 Canopex. <a href="/terms.html">Terms of Service</a> &middot; <a href="/privacy.html">Privacy Policy</a></p>
+  </div>
+</footer>
+</body>
+</html>
