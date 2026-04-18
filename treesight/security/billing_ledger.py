@@ -126,11 +126,27 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
     doc["billing_status"] = "charged"
     upsert_item("runs", doc)
 
+    # Inline billing-type sanitisation — only literal strings reach the
+    # logger.  CodeQL cannot trace taint through equality checks, so this
+    # avoids the false-positive py/clear-text-logging-sensitive-data alert
+    # that fires when the tainted ``billing_type`` (fetched via user_id)
+    # is passed through a function call.
+    if billing_type == "overage":
+        logged_type = "overage"
+    elif billing_type == "included":
+        logged_type = "included"
+    elif billing_type == "free":
+        logged_type = "free"
+    elif billing_type == "demo":
+        logged_type = "demo"
+    else:
+        logged_type = "unknown"
+
     logger.info(
         "Billing completed instance=%s user=%s type=%s",
         instance_id,
         _redact(user_id),
-        billing_type,
+        logged_type,
     )
 
 

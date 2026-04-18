@@ -402,7 +402,6 @@ class TestFetchEnrichmentManifest:
     @pytest.mark.asyncio
     async def test_input_as_json_string(self) -> None:
         """input_ from the Durable Functions SDK is a JSON string, not a dict."""
-        import json
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from blueprints._helpers import fetch_enrichment_manifest
