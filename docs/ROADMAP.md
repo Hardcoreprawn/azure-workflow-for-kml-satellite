@@ -39,6 +39,7 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #650 | Evidence run ID badge in evidence header |
 | #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
 | #644 | Enrichment sub-steps: nested progress indicators (#644) |
@@ -70,7 +71,7 @@ Auth + billing security. Prerequisites for any paid product.
 | R.2 | #589 | Billing ledger, metered overage, refunds | ✅ PR #629 | — |
 | R.3 | #535 | E2e Stripe billing flow on live site | Open | R.2 |
 | R.4 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
-| R.5 | #572 | Audit unauthenticated API endpoints | Open | — |
+| R.5 | #572 | Audit unauthenticated API endpoints | ✅ PR #653 | — |
 
 Approach: billing ledger is provider-agnostic (PaymentProvider protocol).
 Stripe is one implementation behind the abstraction. Ledger + included/
