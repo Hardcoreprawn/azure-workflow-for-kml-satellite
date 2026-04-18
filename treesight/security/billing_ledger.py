@@ -18,12 +18,23 @@ from treesight.security.redact import redact_user_id as _redact
 
 logger = logging.getLogger(__name__)
 
-_KNOWN_BILLING_TYPES = frozenset({"demo", "free", "included", "overage"})
+_KNOWN_BILLING_TYPES: dict[str, str] = {
+    "demo": "demo",
+    "free": "free",
+    "included": "included",
+    "overage": "overage",
+}
 
 
 def _safe_billing_type(value: object) -> str:
-    """Return *value* only if it is a known billing type, else ``'unknown'``."""
-    return str(value) if value in _KNOWN_BILLING_TYPES else "unknown"
+    """Return a known billing-type literal, or ``'unknown'``.
+
+    Uses a lookup dict so the returned string is never the original
+    (tainted) value — this breaks the CodeQL data-flow chain.
+    """
+    if isinstance(value, str):
+        return _KNOWN_BILLING_TYPES.get(value, "unknown")
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------
