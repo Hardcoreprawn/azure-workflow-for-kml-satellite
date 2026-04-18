@@ -39,11 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| — | Stage 2G completion: EUDR metered billing, Landsat deep integration, EUDR content cluster (fixes #613, #612, #617) |
+| #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 | #650 | Evidence run ID badge in evidence header |
 | #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
-| #644 | Enrichment sub-steps: nested progress indicators (#644) |
 
 ---
 
@@ -99,13 +100,10 @@ Build once, promote dev → prod.
 Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
-**Status:** 21/22 issues closed. Pipeline, core data sources, frontend,
-org management, and evidence export are complete. Issue #613 (EUDR
-metered Stripe billing) implementation in PR — covers org-scoped free
-trial, subscribe endpoint, metered usage, webhook handling, and frontend
-billing overlay. Remaining: #612 (Landsat deep integration, D.5) and
-issue #617 (EUDR content cluster, FE.5). Billing ledger (#589) merged
-as PR #629. Batch ops (#588) moved to Stage 4.1.
+**Status:** All 22 issues closed. Pipeline, core data sources, frontend,
+org management, evidence export, EUDR metered billing, Landsat deep
+integration, and EUDR content cluster are complete. Billing ledger
+(#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 
@@ -115,7 +113,7 @@ as PR #629. Batch ops (#588) moved to Stage 4.1.
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
-| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | D.4 |
+| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | ✅ |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 D.4 registered the source; D.5 adds full cross-sensor NDVI computation,
@@ -152,7 +150,7 @@ invited users auto-join on sign-in via SWA email matching.
 
 | Order | Issue | Title | Status | Depends On |
 |-------|-------|-------|--------|------------|
-| REV.1 | #613 | EUDR per-parcel metered Stripe billing | 🔄 PR pending | #610, #589, #614 |
+| REV.1 | #613 | EUDR per-parcel metered Stripe billing | ✅ | #610, #589, #614 |
 
 **Exit:** Compliance officer uploads parcels → multi-source evidence →
 deforestation-free determination → audit-grade PDF → metered billing.
