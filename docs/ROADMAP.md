@@ -39,14 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 | #650 | Evidence run ID badge in evidence header |
 | #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
 | #644 | Enrichment sub-steps: nested progress indicators (#644) |
-| #641 | Fix enrichment 404: parse Durable Functions `input_` from JSON string (fixes #637) |
-| #639 | Resolve code scanning alerts: hash-based PII redaction, dismiss base-image CVEs |
-| #636 | AOI limit tier suggestion (#635), enrichment 404 on completed runs (#637) |
 
 ---
 
