@@ -39,6 +39,8 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #650 | Evidence run ID badge in evidence header |
+| #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
 | #644 | Enrichment sub-steps: nested progress indicators (#644) |
 | #641 | Fix enrichment 404: parse Durable Functions `input_` from JSON string (fixes #637) |
 | #639 | Resolve code scanning alerts: hash-based PII redaction, dismiss base-image CVEs |
