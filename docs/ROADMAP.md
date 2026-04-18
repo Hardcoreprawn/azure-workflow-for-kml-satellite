@@ -53,8 +53,9 @@ Stages 2D and 2E can proceed in parallel.
 ## Completed Stages
 
 M1–M4, Stage 1, Stage 2A/2B, P0–P3, Stage 2C, Stage 2F, and most of
-Stage 2G are complete. Full detail in
-[docs/archive/COMPLETED_STAGES.md](archive/COMPLETED_STAGES.md).
+Stage 2G are complete. Completed-stage detail lives in
+[docs/archive/COMPLETED_STAGES.md](archive/COMPLETED_STAGES.md); any
+still-open Stage 2G items remain tracked below.
 
 ---
 
@@ -101,10 +102,11 @@ Build once, promote dev → prod.
 Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 `/eudr/` is the entry point; shared platform concerns live at `/account/`.
 
-**Status:** 21/22 issues closed. Pipeline, data sources, frontend, org
-management, and evidence export are complete. Only #613 (EUDR metered
-Stripe billing) remains — tracked in 2D (R.3) and 2G.5. #589 (billing
-ledger) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
+**Status:** 21/22 issues closed. Pipeline, core data sources, frontend,
+org management, and evidence export are complete. Remaining: #613 (EUDR
+metered Stripe billing — also in 2D/R.3), #612 (Landsat deep
+integration, D.5), #617 (EUDR content cluster, FE.5). Billing ledger
+(#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
 

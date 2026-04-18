@@ -43,8 +43,10 @@ potential deployment. These rules prevent regressions.
 - Verify the merge commit is clean (`git log --oneline -1`).
 - If the change affects deployed behavior, check the deployment
   (health endpoint, smoke test, or manual verification as appropriate).
-- Update `docs/ROADMAP.md` as part of the feature branch before merge —
-  mark stage items, update "Recently Landed", close the loop.
+- Finalize `docs/ROADMAP.md` at merge-time / immediately after merge:
+  update "Recently Landed", mark the shipped stage items, and close the
+  loop. If the PR included roadmap edits, treat them as candidate updates
+  to be confirmed or adjusted once the merge is complete.
 
 ## Regression prevention principles
 
