@@ -20,6 +20,7 @@ MONTHS: list[dict[str, Any]] = [
 ]
 
 SEASONAL_YEARS = list(range(2018, date.today().year + 1))
+LANDSAT_YEARS = list(range(2013, 2018))  # Pre-Sentinel-2 historical baseline
 NAIP_ONLY_YEARS = [2012, 2014, 2016]
 # NAIP imagery releases lag ~2 years; update this set when new vintages
 # are published on Planetary Computer (typically even-numbered years).
@@ -65,6 +66,26 @@ def _month_window(year: int, month: int) -> dict[str, str]:
     # First day of next month minus 1 day = last day of this month
     end = date(year, 12, 31) if month == 12 else date(year, month + 1, 1) - timedelta(days=1)
     return {"start": start.isoformat(), "end": end.isoformat()}
+
+
+def _build_landsat_frames() -> list[dict[str, Any]]:
+    """Generate seasonal frames for Landsat C2 L2 historical baseline (2013-2017)."""
+    frames: list[dict[str, Any]] = []
+    for yr in LANDSAT_YEARS:
+        for s in SEASONS:
+            w = _season_window(yr, s)
+            frames.append(
+                {
+                    "year": yr,
+                    "season": s["key"],
+                    "start": w["start"],
+                    "end": w["end"],
+                    "collection": "landsat-c2-l2",
+                    "asset": "red",
+                    "is_naip": False,
+                }
+            )
+    return frames
 
 
 def _build_monthly_frames() -> list[dict[str, Any]]:
@@ -159,6 +180,7 @@ def build_frame_plan(
     if cadence == "monthly":
         frames.extend(_build_monthly_frames())
     else:
+        frames.extend(_build_landsat_frames())
         frames.extend(_build_seasonal_frames(has_naip))
 
     # Apply date range filter

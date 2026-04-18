@@ -39,12 +39,12 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| — | Landsat deep integration: 2013-2017 seasonal frames, cross-sensor NDVI, QA_PIXEL masking (fixes #612) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 | #650 | Evidence run ID badge in evidence header |
 | #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
-| #644 | Enrichment sub-steps: nested progress indicators (#644) |
 
 ---
 
@@ -102,8 +102,8 @@ Dedicated EUDR vertical on the multi-app platform. Master tracker: #606.
 
 **Status:** 21/22 issues closed. Pipeline, core data sources, frontend,
 org management, and evidence export are complete. Remaining: #613 (EUDR
-metered Stripe billing — also in 2D/R.3), #612 (Landsat deep
-integration, D.5), #617 (EUDR content cluster, FE.5). Billing ledger
+metered Stripe billing — also in 2D/R.3), #617 (EUDR content cluster, FE.5). D.5 (#612)
+Landsat deep integration implemented. Billing ledger
 (#589) merged as PR #629. Batch ops (#588) moved to Stage 4.1.
 
 ### 2G.1 — Data Sources
@@ -114,7 +114,7 @@ integration, D.5), #617 (EUDR content cluster, FE.5). Billing ledger
 | D.2 | #607 | IO Annual LULC year-over-year | `io-lulc-annual-v02` 10m | ✅ PR #620 |
 | D.3 | #608 | ALOS Forest/Non-Forest radar | `alos-fnf-mosaic` 25m | ✅ PR #620 |
 | D.4 | #609 | Landsat historical NDVI baseline | `landsat-c2-l2` 30m | ✅ PR #620 |
-| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | D.4 |
+| D.5 | #612 | Landsat deep integration (2013–2016 pre-Sentinel) | `landsat-c2-l2` 30m | ✅ D.4 |
 
 Already in pipeline: Sentinel-2 L2A, FIRMS/MODIS, WDPA, Open-Meteo.
 D.4 registered the source; D.5 adds full cross-sensor NDVI computation,

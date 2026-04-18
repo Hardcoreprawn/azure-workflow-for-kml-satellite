@@ -25,7 +25,11 @@ from treesight.pipeline.enrichment.fire import fetch_fire_hotspots
 from treesight.pipeline.enrichment.flood import fetch_flood_events
 from treesight.pipeline.enrichment.frames import build_frame_plan
 from treesight.pipeline.enrichment.mosaic import _coords_to_bbox, register_mosaic
-from treesight.pipeline.enrichment.ndvi import compute_ndvi, fetch_ndvi_stat
+from treesight.pipeline.enrichment.ndvi import (
+    compute_landsat_ndvi,
+    compute_ndvi,
+    fetch_ndvi_stat,
+)
 from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
@@ -182,9 +186,10 @@ def _run_mosaic_ndvi_phase(
     ndvi_search_ids: list[str | None] = [None] * len(frame_plan)
 
     def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None]:
+        cloud_collections = {"sentinel-2-l2a", "landsat-c2-l2"}
         extra: list[dict[str, Any]] = (
             [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}]
-            if f["collection"] == "sentinel-2-l2a"
+            if f["collection"] in cloud_collections
             else []
         )
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
@@ -230,22 +235,25 @@ def _run_mosaic_ndvi_phase(
     def _compute_one_ndvi(
         idx: int, f: dict[str, Any]
     ) -> tuple[int, dict[str, Any] | None, str | None]:
-        if f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
+        cog_result = None
+        if f["collection"] == "landsat-c2-l2":
+            cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
+        elif f["collection"] == "sentinel-2-l2a" or f["is_naip"]:
             cog_result = compute_ndvi(flat_bbox, f["start"], f["end"])
-            if cog_result is not None:
-                geotiff_bytes = cog_result.pop("geotiff_bytes", None)
-                raster_path = None
-                if geotiff_bytes:
-                    raster_path = (
-                        f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
-                    )
-                    storage.upload_bytes(
-                        output_container,
-                        raster_path,
-                        geotiff_bytes,
-                        content_type="image/tiff",
-                    )
-                return idx, cog_result, raster_path
+        if cog_result is not None:
+            geotiff_bytes = cog_result.pop("geotiff_bytes", None)
+            raster_path = None
+            if geotiff_bytes:
+                raster_path = (
+                    f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
+                )
+                storage.upload_bytes(
+                    output_container,
+                    raster_path,
+                    geotiff_bytes,
+                    content_type="image/tiff",
+                )
+            return idx, cog_result, raster_path
 
         # Fallback: tile-based sampling
         nsid = ndvi_search_ids[idx]
@@ -288,10 +296,19 @@ def _run_mosaic_ndvi_phase(
         year = f["year"]
         if f["is_naip"]:
             f["label"] = f"NAIP Summer {year}"
+        elif f["collection"] == "landsat-c2-l2":
+            f["label"] = f"Landsat {season_key.capitalize()} {year}"
         else:
             f["label"] = f"{season_key.capitalize()} {year}"
-        res = "0.6" if f["is_naip"] and year > 2014 else "1.0" if f["is_naip"] else "10"
-        src = "NAIP © USDA" if f["is_naip"] else "Sentinel-2 L2A"
+        if f["is_naip"]:
+            res = "0.6" if year > 2014 else "1.0"
+            src = "NAIP © USDA"
+        elif f["collection"] == "landsat-c2-l2":
+            res = "30"
+            src = "Landsat C2 L2"
+        else:
+            res = "10"
+            src = "Sentinel-2 L2A"
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
 
     return ndvi_stats, ndvi_raster_paths
