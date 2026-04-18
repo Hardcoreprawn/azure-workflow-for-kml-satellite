@@ -108,6 +108,12 @@ class TestGetUserId:
 
 
 class TestCheckAuth:
+    @pytest.fixture(autouse=True)
+    def _no_hmac(self):
+        """Ensure AUTH_HMAC_KEY is unset for non-HMAC tests (#572 review)."""
+        with patch("blueprints._helpers.AUTH_HMAC_KEY", ""):
+            yield
+
     def test_returns_anonymous_when_no_header_and_auth_not_required(self):
         from blueprints._helpers import check_auth
 
@@ -151,6 +157,50 @@ class TestCheckAuth:
 
         with pytest.raises(ValueError, match="Malformed"):
             check_auth(mock_req)
+
+    def test_verifies_hmac_when_key_configured(self):
+        """check_auth must verify HMAC when AUTH_HMAC_KEY is set (#572)."""
+        from blueprints._helpers import check_auth
+        from treesight.security.auth import sign_session_token
+
+        key = "test-hmac-key-32chars-minimum!!!"
+        session = sign_session_token("u-99", key=key)
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
+            "X-Auth-Session": session["token"],
+        }
+
+        with patch("blueprints._helpers.AUTH_HMAC_KEY", key):
+            _principal, user_id = check_auth(mock_req)
+            assert user_id == "u-99"
+
+    def test_rejects_missing_hmac_when_key_configured(self):
+        """check_auth must reject requests without HMAC when key is set (#572)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
+        }
+
+        with patch("blueprints._helpers.AUTH_HMAC_KEY", "some-key"):
+            with pytest.raises(ValueError, match="X-Auth-Session"):
+                check_auth(mock_req)
+
+    def test_rejects_forged_hmac_when_key_configured(self):
+        """check_auth must reject forged HMAC tokens (#572)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
+            "X-Auth-Session": "forged-token-value",
+        }
+
+        with patch("blueprints._helpers.AUTH_HMAC_KEY", "some-key"):
+            with pytest.raises(ValueError):
+                check_auth(mock_req)
 
 
 # ---------------------------------------------------------------------------

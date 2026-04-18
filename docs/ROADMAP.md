@@ -39,14 +39,14 @@ Stages 2D and 2E can proceed in parallel.
 
 | PR | Summary |
 |----|---------|
+| #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
+| #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 | #650 | Evidence run ID badge in evidence header |
 | #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
 | #644 | Enrichment sub-steps: nested progress indicators (#644) |
 | #641 | Fix enrichment 404: parse Durable Functions `input_` from JSON string (fixes #637) |
 | #639 | Resolve code scanning alerts: hash-based PII redaction, dismiss base-image CVEs |
 | #636 | AOI limit tier suggestion (#635), enrichment 404 on completed runs (#637) |
-| #629 | Billing ledger, payment provider, run lifecycle, PII redaction (fixes #589) |
-| #631 | EUDR UI polish: landing page, phase copy, app-shell branching (fixes #630, #632) |
 
 ---
 
@@ -70,7 +70,7 @@ Auth + billing security. Prerequisites for any paid product.
 | R.2 | #589 | Billing ledger, metered overage, refunds | ✅ PR #629 | — |
 | R.3 | #535 | E2e Stripe billing flow on live site | Open | R.2 |
 | R.4 | #406 | Reconcile docs with live routes | ✅ PR #615 | — |
-| R.5 | #572 | Audit unauthenticated API endpoints | Open | — |
+| R.5 | #572 | Audit unauthenticated API endpoints | ✅ PR #653 | — |
 
 Approach: billing ledger is provider-agnostic (PaymentProvider protocol).
 Stripe is one implementation behind the abstraction. Ledger + included/

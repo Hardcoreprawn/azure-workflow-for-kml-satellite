@@ -220,12 +220,15 @@ def require_auth_hmac_exempt(fn):
     return wrapper
 
 
-def check_auth(req: func.HttpRequest) -> tuple:
-    """Parse SWA X-MS-CLIENT-PRINCIPAL and return (principal, user_id).
+def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
+    """Parse SWA X-MS-CLIENT-PRINCIPAL, verify HMAC, return (principal, user_id).
 
     Returns ({}, "anonymous") when no principal header is present and
     REQUIRE_AUTH is not set.
     Raises ValueError with a user-safe message on auth failure.
+
+    When ``AUTH_HMAC_KEY`` is configured, also verifies the ``X-Auth-Session``
+    HMAC token (same check that ``@require_auth`` performs).
     """
     principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
     if not principal_header:
@@ -233,7 +236,13 @@ def check_auth(req: func.HttpRequest) -> tuple:
             return {}, "anonymous"
         raise ValueError("Authentication required")
     principal = parse_client_principal(principal_header)
-    return principal, get_user_id(principal)
+    uid = get_user_id(principal)
+
+    hmac_err = _verify_hmac(req, uid)
+    if hmac_err:
+        raise ValueError(hmac_err)
+
+    return principal, uid
 
 
 def submit_contact(

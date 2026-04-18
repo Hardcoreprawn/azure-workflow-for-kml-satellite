@@ -15,12 +15,14 @@ accidentally removed or misconfigured.  They cover:
 10. Event Grid wiring (trigger name and webhook key)
 11. Trivy signal quality and exception discipline
 12. (removed — CIAM replaced with SWA pre-configured providers in #495)
+13. Endpoint auth audit (#572) — HMAC enforcement and anonymous endpoint documentation
 """
 
 from __future__ import annotations
 
 import json
 import re
+import typing
 from pathlib import Path
 
 import pytest
@@ -932,4 +934,139 @@ class TestEudrModeToggle:
         # Must check for paid tiers
         assert "paidTiers" in content or "starter" in content, (
             "EUDR toggle visibility must be gated on paid tier list"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected
+# ---------------------------------------------------------------------------
+
+
+class TestEndpointAuthAudit:
+    """Ensure no endpoint that handles user data or triggers actions is unprotected.
+
+    Intentionally anonymous endpoints are documented in ``_EXEMPT_ROUTES``
+    with rationale. Everything else must use @require_auth or call check_auth().
+
+    See: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/572
+    """
+
+    # Auth mechanisms that count as "protected"
+    _AUTH_PATTERNS: typing.ClassVar[list[str]] = [
+        "require_auth",  # @require_auth or @require_auth_hmac_exempt
+        "check_auth",  # check_auth(req) call inside handler body
+        "_check_ops_key",  # ops-key header verification
+    ]
+
+    # Route patterns that are allowed without user auth
+    _EXEMPT_ROUTES: typing.ClassVar[set[str]] = {
+        # Intentionally anonymous (documented above)
+        "health",
+        "readiness",
+        "contract",
+        "billing/webhook",
+        "contact-form",
+        "demo-artifacts",
+        "auth/session",
+        # UUID-gated bearer pattern
+        "orchestrator/{instance_id}",
+        "timelapse-data/{instance_id}",
+        "export/{instance_id}/{format}",
+        # Ops-key protected (verified separately)
+        "ops/dashboard",
+        "ops/users",
+        "ops/users/lookup",
+        "ops/users/{user_id}/role",
+        # Demo valet tokens — function-level auth key, not user-facing
+        "demo-valet-tokens",
+        # CORS proxy — rate-limited, no user data
+        "proxy",
+    }
+
+    def test_check_auth_verifies_hmac(self):
+        """check_auth() must verify HMAC to prevent header forgery (#572)."""
+        src = (ROOT / "blueprints" / "_helpers.py").read_text()
+        func_match = re.search(
+            r"def check_auth\(.*?\n(.*?)(?=\ndef |\Z)",
+            src,
+            re.DOTALL,
+        )
+        assert func_match, "check_auth function not found in _helpers.py"
+        body = func_match.group(1)
+        assert "_verify_hmac" in body, (
+            "check_auth must call _verify_hmac to prevent X-MS-CLIENT-PRINCIPAL "
+            "header forgery when AUTH_HMAC_KEY is configured (#572)"
+        )
+
+    def test_every_endpoint_is_auth_protected_or_explicitly_exempt(self):
+        """Scan all blueprint @bp.route decorators and verify auth coverage.
+
+        Every endpoint must either:
+        1. Use @require_auth / @require_auth_hmac_exempt decorator, OR
+        2. Call check_auth() / _check_ops_key() in its body or in a helper
+           function within the same file that the handler delegates to, OR
+        3. Be listed in _EXEMPT_ROUTES with documented rationale.
+        """
+        bp_dir = ROOT / "blueprints"
+        unprotected = []
+
+        for py_file in sorted(bp_dir.rglob("*.py")):
+            if py_file.name.startswith("_"):
+                continue
+            src = py_file.read_text()
+
+            # Check if any auth pattern appears anywhere in the file.
+            # When a route handler delegates to a helper (e.g. _run_analysis)
+            # that calls check_auth, the whole file is transitively protected.
+            file_has_auth = any(pattern in src for pattern in self._AUTH_PATTERNS)
+
+            # Find all @bp.route(...) declarations and their surrounding context.
+            # We parse line-by-line to avoid exponential-backtracking regex (CodeQL).
+            lines = src.split("\n")
+            i = 0
+            while i < len(lines):
+                route_m = re.match(r'\s*@bp\.route\(route="([^"]+)"', lines[i])
+                if not route_m:
+                    i += 1
+                    continue
+
+                route = route_m.group(1)
+                # Collect decorator block + function body until next route/def/class/EOF
+                block_start = i
+                i += 1
+                # Skip additional decorators
+                while i < len(lines) and re.match(r"\s*@\w+", lines[i]):
+                    i += 1
+                # Skip function signature
+                if i < len(lines) and re.match(r"\s*(?:async )?def ", lines[i]):
+                    i += 1
+                # Collect body until next top-level construct
+                while i < len(lines) and not re.match(
+                    r"(?:@bp\.|(?:async )?def |class )\S", lines[i]
+                ):
+                    i += 1
+                block = "\n".join(lines[block_start:i])
+
+                if route in self._EXEMPT_ROUTES:
+                    continue
+
+                has_auth = any(pattern in block for pattern in self._AUTH_PATTERNS)
+                if not has_auth and not file_has_auth:
+                    rel = py_file.relative_to(ROOT)
+                    unprotected.append(f"{rel}: route='{route}'")
+
+        assert not unprotected, (
+            "Endpoints without auth protection and not in _EXEMPT_ROUTES:\n"
+            + "\n".join(f"  - {ep}" for ep in unprotected)
+            + "\nAdd auth or list in _EXEMPT_ROUTES with rationale."
+        )
+
+    def test_proxy_endpoint_is_rate_limited(self):
+        """The CORS proxy must use proxy_limiter.is_allowed() to prevent abuse."""
+        src = (ROOT / "blueprints" / "demo.py").read_text()
+        assert "proxy_limiter" in src, (
+            "demo.py must import proxy_limiter from treesight.security.rate_limit"
+        )
+        assert "proxy_limiter.is_allowed" in src, (
+            "demo.py proxy endpoint must call proxy_limiter.is_allowed() to rate-limit requests"
         )
