@@ -490,8 +490,8 @@
 
 <!-- EUDR subscribe modal (#613) -->
 <div class="eudr-subscribe-backdrop" id="eudr-subscribe-backdrop" hidden>
-  <div class="eudr-subscribe-modal">
-    <h3>Subscribe to EUDR Pro</h3>
+  <div class="eudr-subscribe-modal" role="dialog" aria-modal="true" aria-labelledby="eudr-modal-title">
+    <h3 id="eudr-modal-title">Subscribe to EUDR Pro</h3>
     <p>You've used your 2 free assessments. Subscribe for <strong>£49/month</strong> to continue assessing parcels.</p>
     <ul class="eudr-subscribe-features">
       <li>10 parcel assessments included per month</li>
@@ -519,10 +519,14 @@
   if (!isEudrPage()) return;
 
   function waitForShell() {
-    return new Promise(function (resolve) {
+    return new Promise(function (resolve, reject) {
       if (typeof window.apiFetch === 'function') { resolve(); return; }
+      var attempts = 0;
+      var maxAttempts = 100; /* 10 seconds at 100ms intervals */
       var t = setInterval(function () {
+        attempts++;
         if (typeof window.apiFetch === 'function') { clearInterval(t); resolve(); }
+        else if (attempts >= maxAttempts) { clearInterval(t); reject(new Error('App shell did not load')); }
       }, 100);
     });
   }
@@ -569,7 +573,11 @@
 
   function showSubscribeModal() {
     var backdrop = document.getElementById('eudr-subscribe-backdrop');
-    if (backdrop) backdrop.hidden = false;
+    if (backdrop) {
+      backdrop.hidden = false;
+      var firstBtn = backdrop.querySelector('button');
+      if (firstBtn) firstBtn.focus();
+    }
   }
 
   function hideSubscribeModal() {
@@ -615,6 +623,17 @@
 
     var subBtn = document.getElementById('eudr-subscribe-btn');
     if (subBtn) subBtn.addEventListener('click', handleSubscribe);
+
+    /* Close modal on Escape key or backdrop click */
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') hideSubscribeModal();
+    });
+    var backdrop = document.getElementById('eudr-subscribe-backdrop');
+    if (backdrop) {
+      backdrop.addEventListener('click', function (e) {
+        if (e.target === backdrop) hideSubscribeModal();
+      });
+    }
 
     /* Check for ?subscribed=true after Stripe redirect */
     if (window.location.search.indexOf('subscribed=true') !== -1) {

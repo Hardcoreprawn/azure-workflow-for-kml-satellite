@@ -354,6 +354,14 @@ def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
                 "product": "eudr",
                 "currency": currency,
             },
+            subscription_data={
+                "metadata": {
+                    "user_id": user_id,
+                    "org_id": org_id,
+                    "product": "eudr",
+                    "currency": currency,
+                }
+            },
             billing_address_collection="required",
             automatic_tax={"enabled": True},
             consent_collection={"terms_of_service": "required"},

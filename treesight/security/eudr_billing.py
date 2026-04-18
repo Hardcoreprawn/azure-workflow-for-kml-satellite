@@ -6,7 +6,9 @@ Org-scoped billing for EUDR compliance assessments:
 - Graduated tiers: 100+ £2.50, 500+ £1.80
 - Only org owners can subscribe
 
-All state lives on the org document in the ``billing`` sub-dict.
+Subscription state lives on the org document in the ``billing`` sub-dict.
+The free-trial usage counter is stored separately at top level as
+``org["eudr_assessments_used"]``.
 """
 
 from __future__ import annotations
@@ -252,4 +254,4 @@ def is_org_owner(org_id: str, user_id: str) -> bool:
     if not org:
         return False
     members = org.get("members", [])
-    return any(m["user_id"] == user_id and m.get("role") == "owner" for m in members)
+    return any(m.get("user_id") == user_id and m.get("role") == "owner" for m in members)

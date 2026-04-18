@@ -15,7 +15,6 @@ import pytest
 
 from treesight.constants import EUDR_FREE_ASSESSMENTS, EUDR_INCLUDED_PARCELS
 
-_READ_ITEM = "treesight.storage.cosmos.read_item"
 _UPSERT_ITEM = "treesight.storage.cosmos.upsert_item"
 _GET_ORG = "treesight.security.orgs.get_org"
 
