@@ -945,57 +945,47 @@ class TestEudrModeToggle:
 class TestEndpointAuthAudit:
     """Ensure no endpoint that handles user data or triggers actions is unprotected.
 
-    Intentionally anonymous endpoints are documented here with rationale.
-    Everything else must use @require_auth or call check_auth().
+    Intentionally anonymous endpoints are documented in ``_EXEMPT_ROUTES``
+    with rationale. Everything else must use @require_auth or call check_auth().
 
     See: https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/572
     """
 
-    # Endpoints that are intentionally anonymous — with rationale
-    INTENTIONALLY_ANONYMOUS: typing.ClassVar[dict[str, str]] = {
-        # Infrastructure probes — must work without auth for health checks
-        "health": "Infrastructure liveness probe",
-        "readiness": "Infrastructure readiness probe",
-        "contract": "API contract version — public metadata",
-        # Stripe webhook — verified by Stripe signature, not user auth
-        "billing/webhook": "Stripe signature-verified, not user-facing",
-        # Contact form — public submission, honeypot + rate-limited
-        "contact-form": "Public marketing form, rate-limited + honeypot",
-        # Demo — read-only public sample data
-        "demo-artifacts": "Read-only demo data, no user context",
-        # Auth session — issues the HMAC token, must run pre-auth
-        "auth/session": "Issues HMAC token, exempt from HMAC by design",
-    }
+    # Auth mechanisms that count as "protected"
+    _AUTH_PATTERNS: typing.ClassVar[list[str]] = [
+        "require_auth",  # @require_auth or @require_auth_hmac_exempt
+        "check_auth",  # check_auth(req) call inside handler body
+        "_check_ops_key",  # ops-key header verification
+    ]
 
-    # Endpoints using UUID-as-bearer-token pattern — acceptable with rate limiting
-    UUID_GATED_ENDPOINTS: typing.ClassVar[dict[str, str]] = {
-        "orchestrator/{instance_id}": "UUID-gated + rate-limited, read-only status",
-        "timelapse-data/{instance_id}": "UUID-gated, read-only enrichment data",
-        "export/{instance_id}/{format}": "UUID-gated + rate-limited, read-only export",
-    }
-
-    # Endpoints protected by ops-key (separate auth mechanism)
-    OPS_KEY_PROTECTED: typing.ClassVar[set[str]] = {
+    # Route patterns that are allowed without user auth
+    _EXEMPT_ROUTES: typing.ClassVar[set[str]] = {
+        # Intentionally anonymous (documented above)
+        "health",
+        "readiness",
+        "contract",
+        "billing/webhook",
+        "contact-form",
+        "demo-artifacts",
+        "auth/session",
+        # UUID-gated bearer pattern
+        "orchestrator/{instance_id}",
+        "timelapse-data/{instance_id}",
+        "export/{instance_id}/{format}",
+        # Ops-key protected (verified separately)
         "ops/dashboard",
         "ops/users",
         "ops/users/lookup",
         "ops/users/{user_id}/role",
+        # Demo valet tokens — function-level auth key, not user-facing
+        "demo-valet-tokens",
+        # CORS proxy — rate-limited, no user data
+        "proxy",
     }
-
-    def _get_blueprint_sources(self) -> dict[str, str]:
-        """Read all blueprint Python files."""
-        bp_dir = ROOT / "blueprints"
-        sources = {}
-        for py_file in bp_dir.rglob("*.py"):
-            if py_file.name.startswith("_"):
-                continue
-            sources[str(py_file.relative_to(ROOT))] = py_file.read_text()
-        return sources
 
     def test_check_auth_verifies_hmac(self):
         """check_auth() must verify HMAC to prevent header forgery (#572)."""
         src = (ROOT / "blueprints" / "_helpers.py").read_text()
-        # check_auth function must call _verify_hmac
         func_match = re.search(
             r"def check_auth\(.*?\n(.*?)(?=\ndef |\Z)",
             src,
@@ -1008,22 +998,65 @@ class TestEndpointAuthAudit:
             "header forgery when AUTH_HMAC_KEY is configured (#572)"
         )
 
-    def test_all_endpoints_with_check_auth_also_call_hmac(self):
-        """Every blueprint using check_auth() gets HMAC protection via _verify_hmac."""
-        # This is a structural test: check_auth itself handles HMAC,
-        # so any caller of check_auth is transitively protected.
-        src = (ROOT / "blueprints" / "_helpers.py").read_text()
-        func_match = re.search(
-            r"def check_auth\(.*?\n(.*?)(?=\ndef |\Z)",
-            src,
-            re.DOTALL,
+    def test_every_endpoint_is_auth_protected_or_explicitly_exempt(self):
+        """Scan all blueprint @bp.route decorators and verify auth coverage.
+
+        Every endpoint must either:
+        1. Use @require_auth / @require_auth_hmac_exempt decorator, OR
+        2. Call check_auth() / _check_ops_key() in its body or in a helper
+           function within the same file that the handler delegates to, OR
+        3. Be listed in _EXEMPT_ROUTES with documented rationale.
+        """
+        bp_dir = ROOT / "blueprints"
+        unprotected = []
+
+        for py_file in sorted(bp_dir.rglob("*.py")):
+            if py_file.name.startswith("_"):
+                continue
+            src = py_file.read_text()
+
+            # Check if any auth pattern appears anywhere in the file.
+            # When a route handler delegates to a helper (e.g. _run_analysis)
+            # that calls check_auth, the whole file is transitively protected.
+            file_has_auth = any(pattern in src for pattern in self._AUTH_PATTERNS)
+
+            # Find all @bp.route(...) decorators and their associated functions
+            for route_match in re.finditer(
+                r'@bp\.route\(route="([^"]+)".*?\n'
+                r"((?:@\w+.*\n)*)"
+                r"(?:def |async def )(\w+)\(.*?\n"
+                r"(.*?)(?=\n(?:@bp\.|def |async def |class |\Z))",
+                src,
+                re.DOTALL,
+            ):
+                route = route_match.group(1)
+                decorators = route_match.group(2)
+                func_body = route_match.group(4)
+
+                if route in self._EXEMPT_ROUTES:
+                    continue
+
+                # Check decorator-level auth first (strongest signal)
+                has_decorator_auth = any(pattern in decorators for pattern in self._AUTH_PATTERNS)
+                # Check direct call in handler body
+                has_body_auth = any(pattern in func_body for pattern in self._AUTH_PATTERNS)
+                # If neither, fall back to file-level auth (transitive via helper)
+                if not has_decorator_auth and not has_body_auth and not file_has_auth:
+                    rel = py_file.relative_to(ROOT)
+                    unprotected.append(f"{rel}: route='{route}'")
+
+        assert not unprotected, (
+            "Endpoints without auth protection and not in _EXEMPT_ROUTES:\n"
+            + "\n".join(f"  - {ep}" for ep in unprotected)
+            + "\nAdd auth or list in _EXEMPT_ROUTES with rationale."
         )
-        assert func_match, "check_auth function not found"
-        assert "_verify_hmac" in func_match.group(1), "check_auth must include HMAC verification"
 
     def test_proxy_endpoint_is_rate_limited(self):
-        """The CORS proxy must be rate-limited to prevent abuse."""
+        """The CORS proxy must use proxy_limiter.is_allowed() to prevent abuse."""
         src = (ROOT / "blueprints" / "demo.py").read_text()
-        assert "is_allowed" in src or "rate_limit" in src.lower(), (
-            "demo.py proxy endpoint must be rate-limited"
+        assert "proxy_limiter" in src, (
+            "demo.py must import proxy_limiter from treesight.security.rate_limit"
+        )
+        assert "proxy_limiter.is_allowed" in src, (
+            "demo.py proxy endpoint must call proxy_limiter.is_allowed() to rate-limit requests"
         )

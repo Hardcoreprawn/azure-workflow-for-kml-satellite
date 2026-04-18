@@ -108,6 +108,12 @@ class TestGetUserId:
 
 
 class TestCheckAuth:
+    @pytest.fixture(autouse=True)
+    def _no_hmac(self):
+        """Ensure AUTH_HMAC_KEY is unset for non-HMAC tests (#572 review)."""
+        with patch("blueprints._helpers.AUTH_HMAC_KEY", ""):
+            yield
+
     def test_returns_anonymous_when_no_header_and_auth_not_required(self):
         from blueprints._helpers import check_auth
 

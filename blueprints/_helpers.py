@@ -220,7 +220,7 @@ def require_auth_hmac_exempt(fn):
     return wrapper
 
 
-def check_auth(req: func.HttpRequest) -> tuple:
+def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     """Parse SWA X-MS-CLIENT-PRINCIPAL, verify HMAC, return (principal, user_id).
 
     Returns ({}, "anonymous") when no principal header is present and
