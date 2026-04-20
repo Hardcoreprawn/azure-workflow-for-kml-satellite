@@ -210,7 +210,7 @@ product surface.
 
 | Order  | Issue  | Title | Status |
 |--------|--------|-------|--------|
-| 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | ✅ In PR |
+| 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | ✅ #691 |
 | 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | Open |
 
 **Why now:** These are not growth features, but they directly reduce runtime
