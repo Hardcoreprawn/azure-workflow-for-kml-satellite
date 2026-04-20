@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────
+# Canopex Orchestrator Image  (#466)
+#
+# Slim variant of the application image: no GDAL, no rasterio,
+# no numpy, no Rust extension.  Handles HTTP endpoints, Durable
+# orchestrators, blob triggers, and submission — but NOT activity
+# functions that perform imagery acquisition / enrichment.
+#
+# The compute image (Dockerfile) continues to register activity
+# functions.  Both images share the same Durable task hub and
+# Azure Storage connection.
+#
+# Base image: ghcr.io/<owner>/treesight-base:latest
+# Built by CI alongside the compute image on every push to main.
+# ─────────────────────────────────────────────────────────────
+ARG BASE_IMAGE=treesight-base:latest
+FROM ${BASE_IMAGE}
+
+ARG APP_VERSION=0.0.0-dev
+ARG GIT_SHA=unknown
+
+LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite" \
+      org.opencontainers.image.description="Canopex orchestrator image — HTTP + Durable orchestrators, no GDAL" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}"
+
+ENV APP_VERSION=${APP_VERSION} \
+    GIT_SHA=${GIT_SHA} \
+    PIPELINE_ROLE=orchestrator
+
+# Install uv for fast, deterministic dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
+
+# Install only the lightweight subset: exclude GDAL-dependent packages.
+# fiona, rasterio, numpy, shapely, pyproj, pystac-client,
+# planetary-computer, and httpx are compute-only dependencies.
+COPY pyproject.toml uv.lock ./
+RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
+    grep -vE '^(fiona|rasterio|numpy|shapely|pyproj|pystac-client|planetary-computer|httpx)==' \
+        /tmp/requirements.txt > /tmp/orch-requirements.txt && \
+    uv pip install --system -r /tmp/orch-requirements.txt && \
+    rm -f /tmp/requirements.txt /tmp/orch-requirements.txt /usr/local/bin/uv
+
+# Copy application code only (no scripts/, typings/, tests/, docs/)
+# function_app_orch.py is the orchestrator entry point, installed as
+# function_app.py so the Functions runtime finds it automatically.
+COPY host.json function_app_orch.py ./
+RUN mv function_app_orch.py function_app.py
+COPY treesight/ treesight/
+COPY blueprints/ blueprints/

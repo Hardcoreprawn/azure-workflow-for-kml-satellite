@@ -66,6 +66,12 @@ variable "container_image" {
   default     = "mcr.microsoft.com/azure-functions/python:4-python3.12"
 }
 
+variable "orchestrator_image" {
+  description = "Orchestrator function app container image URI (slim, no GDAL). #466"
+  type        = string
+  default     = "mcr.microsoft.com/azure-functions/python:4-python3.12"
+}
+
 variable "default_tags" {
   description = "Additional tags merged with required baseline tags."
   type        = map(string)

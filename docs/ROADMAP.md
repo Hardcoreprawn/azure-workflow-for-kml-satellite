@@ -41,6 +41,8 @@ Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 | PR | Summary |
 |----|---------|  
+| #692 | feat: Stage 3B.5 #466 — Split Container Apps into orchestrator + compute images; PIPELINE_ROLE env var, Dockerfile.orchestrator, function_app_orch.py, dual-image CI build |
+| #691 | fix: Stage 3B.5 #688 — Monitoring delta fetch: pass date window to enrichment + store NDVI baseline |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 | #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
 | #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
@@ -211,7 +213,7 @@ product surface.
 | Order  | Issue  | Title | Status |
 |--------|--------|-------|--------|
 | 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | ✅ #691 |
-| 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | Open |
+| 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | ✅ #692 |
 
 **Why now:** These are not growth features, but they directly reduce runtime
 cost and cold-start overhead. `#688` bounds slow Planetary Computer waits to

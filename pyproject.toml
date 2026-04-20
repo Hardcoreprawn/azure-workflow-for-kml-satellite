@@ -91,6 +91,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "function_app.py" = ["E402"]  # logging must be configured before blueprint imports
+"function_app_orch.py" = ["E402"]  # logging must be configured before blueprint imports
 "tests/**" = ["S", "T20", "SIM117"]
 "scripts/**" = ["T20", "S", "C901", "E501"]
 "blueprints/analysis.py" = ["C901"]

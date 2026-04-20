@@ -18,6 +18,16 @@ output "function_app_default_hostname" {
   description = "Function app default hostname."
 }
 
+output "function_app_orch_name" {
+  value       = azapi_resource.function_app_orch.name
+  description = "Orchestrator function app name (#466)."
+}
+
+output "function_app_orch_default_hostname" {
+  value       = azapi_resource.function_app_orch.output.properties.defaultHostName
+  description = "Orchestrator function app default hostname (#466)."
+}
+
 output "function_app_cli_app_settings" {
   value       = local.function_app_cli_app_settings
   description = "CLI-managed Function App app settings sourced from Terraform."

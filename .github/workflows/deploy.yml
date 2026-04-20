@@ -69,6 +69,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     outputs:
       image_uri: ${{ steps.resolve.outputs.image_uri || steps.meta.outputs.image_uri }}
+      orch_image_uri: ${{ steps.resolve-orch.outputs.orch_image_uri || steps.orch-meta.outputs.orch_image_uri }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -91,6 +92,16 @@ jobs:
           echo "image_uri=${IMAGE_NAME}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "### ♻️ Promoting existing image: \`${IMAGE_NAME}:${IMAGE_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve existing orchestrator image for promotion
+        id: resolve-orch
+        if: ${{ inputs.image_tag != '' }}
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          source .github/image-config.env
+          ORCH_IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${ORCH_IMAGE_REPO}"
+          echo "orch_image_uri=${ORCH_IMAGE_NAME}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
       # ── Normal path: build fresh image ──────────────────────
       - name: Log in to GHCR
         if: ${{ inputs.image_tag == '' }}
@@ -106,11 +117,22 @@ jobs:
         run: |
           source .github/image-config.env
           IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${APP_IMAGE_REPO}"
+          ORCH_IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${ORCH_IMAGE_REPO}"
           TAG="${{ github.sha }}"
           APP_VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_uri=${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "orch_image_name=${ORCH_IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "orch_image_uri=${ORCH_IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
           echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set orchestrator image metadata
+        if: ${{ inputs.image_tag == '' }}
+        id: orch-meta
+        run: |
+          source .github/image-config.env
+          ORCH_IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${ORCH_IMAGE_REPO}"
+          echo "orch_image_uri=${ORCH_IMAGE_NAME}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve base image
         if: ${{ inputs.image_tag == '' }}
@@ -143,6 +165,20 @@ jobs:
             -t "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}" \
             -t "${IMAGE_NAME}:latest" .
 
+      - name: Build orchestrator image
+        if: ${{ inputs.image_tag == '' }}
+        env:
+          ORCH_IMAGE_NAME: ${{ steps.meta.outputs.orch_image_name }}
+        run: |
+          docker build \
+            -f Dockerfile.orchestrator \
+            --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg APP_VERSION="${{ steps.meta.outputs.app_version }}" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
+            -t "${ORCH_IMAGE_NAME}:${{ github.sha }}" \
+            -t "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}" \
+            -t "${ORCH_IMAGE_NAME}:latest" .
+
       - name: Run container smoke tests
         if: ${{ inputs.image_tag == '' }}
         env:
@@ -157,10 +193,14 @@ jobs:
         if: ${{ inputs.image_tag == '' }}
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
+          ORCH_IMAGE_NAME: ${{ steps.meta.outputs.orch_image_name }}
         run: |
           docker push "${IMAGE_NAME}:${{ github.sha }}"
           docker push "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
           docker push "${IMAGE_NAME}:latest"
+          docker push "${ORCH_IMAGE_NAME}:${{ github.sha }}"
+          docker push "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
+          docker push "${ORCH_IMAGE_NAME}:latest"
 
       - name: Trivy container scan
         if: ${{ inputs.image_tag == '' }}
@@ -282,6 +322,7 @@ jobs:
           tofu plan -out=tfplan \
             -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             -var="container_image=${{ needs.build-image.outputs.image_uri }}" \
+            -var="orchestrator_image=${{ needs.build-image.outputs.orch_image_uri }}" \
             -var-file="environments/${{ env.DEPLOY_ENV }}.tfvars"
 
       - name: Tofu Apply
@@ -383,6 +424,60 @@ jobs:
             | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
           echo "Scaling config: $ACTUAL"
 
+      - name: Configure Orchestrator Function App
+        id: configure-orch-app
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          FUNC_RG=$(tofu output -raw resource_group_name)
+          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+
+          az functionapp config container set \
+            --name "$ORCH_NAME" \
+            --resource-group "$FUNC_RG" \
+            --image "${{ needs.build-image.outputs.orch_image_uri }}"
+
+          mapfile -t APP_SETTINGS < <(
+            tofu output -json function_app_cli_app_settings \
+              | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
+          )
+
+          az webapp config appsettings set \
+            --name "$ORCH_NAME" \
+            --resource-group "$FUNC_RG" \
+            --settings "${APP_SETTINGS[@]}" PIPELINE_ROLE=orchestrator
+
+          ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
+          if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
+            echo "❌ Refusing to clear Orchestrator Function App CORS: browser_allowed_origins is empty"
+            exit 1
+          fi
+
+          ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
+          az rest --method PATCH \
+            --url "${ORCH_ID}/config/web?api-version=2024-04-01" \
+            --body "$CORS_BODY"
+
+          MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
+          MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
+          if [ "$MIN_INSTANCES" -gt 0 ]; then
+            ALWAYS_READY='[{"name":"http","instanceCount":'"${MIN_INSTANCES}"'}]'
+          else
+            ALWAYS_READY='[]'
+          fi
+          SCALE_BODY=$(jq -cn \
+            --argjson max "$MAX_INSTANCES" \
+            --argjson ready "$ALWAYS_READY" \
+            '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
+          az rest --method PATCH \
+            --url "${ORCH_ID}?api-version=2024-04-01" \
+            --body "$SCALE_BODY"
+
       - name: Verify browser CORS contract
         id: verify-browser-cors
         working-directory: infra/tofu
@@ -393,7 +488,7 @@ jobs:
           ARM_USE_OIDC: "true"
         run: |
           RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_HOST=$(tofu output -raw function_app_default_hostname)
+          FUNC_HOST=$(tofu output -raw function_app_orch_default_hostname)
           STORAGE_NAME=$(tofu output -raw storage_account_name)
           ORIGINS_JSON=$(tofu output -json browser_allowed_origins)
 
@@ -451,7 +546,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
 
       - name: Export SWA hostname
@@ -488,7 +583,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           BASE_URL="https://${HOSTNAME}"
           MAX_WAIT=90           # normal startup is <60s; if not up by 90s it's broken
           INTERVAL=5
@@ -552,8 +647,8 @@ jobs:
           ARM_USE_OIDC: "true"
         run: |
           RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_name)
-          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          FUNC_NAME=$(tofu output -raw function_app_orch_name)
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
 
           python ../../scripts/reconcile_eventgrid_subscription.py \
@@ -572,8 +667,8 @@ jobs:
           ARM_USE_OIDC: "true"
         run: |
           RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_name)
-          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          FUNC_NAME=$(tofu output -raw function_app_orch_name)
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
           EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/${{ env.DEPLOY_ENV }}.tfvars)
           : "${EXPECTED_CAP:=0.1}"
