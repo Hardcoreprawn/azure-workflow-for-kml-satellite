@@ -163,7 +163,7 @@ All at `/eudr/`. Shared billing/account at `/account/`.
 
 **Current priority.** Thin vertical slices that improve how compliance
 officers manage, understand, and act on their EUDR assessments.
-Driven by the EUDR user journey gap analysis (`docs/EUDR_USER_JOURNEYS.md`).
+Driven by the EUDR user journey gap analysis (`EUDR_USER_JOURNEYS.md`).
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|

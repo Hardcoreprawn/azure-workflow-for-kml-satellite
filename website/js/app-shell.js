@@ -2225,9 +2225,17 @@
       return;
     }
 
-    // EUDR entitlement gate: show subscribe modal when trial is exhausted
+    // EUDR entitlement gate: show subscribe modal when trial is exhausted.
+    // If billing hasn't loaded yet, fetch it before deciding.
     if (EUDR_LOCKED && typeof window.eudrBillingData === 'function') {
       var billing = window.eudrBillingData();
+      if (!billing) {
+        try {
+          await apiDiscoveryReady;
+          var billingRes = await apiFetch('/api/eudr/billing');
+          billing = await billingRes.json();
+        } catch (_) { /* proceed — server will enforce */ }
+      }
       if (billing && !billing.subscribed && billing.trial_remaining != null && billing.trial_remaining <= 0) {
         if (typeof window.showEudrSubscribeModal === 'function') {
           window.showEudrSubscribeModal();
