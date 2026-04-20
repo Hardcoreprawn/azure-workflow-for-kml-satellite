@@ -30,8 +30,8 @@ entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
 T2/T3 split (#466, #467) deferred until user volume justifies it.
 
-**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3 → 4 → 5.
-Stages 2D and 2E can proceed in parallel. Stage 3B is next priority.
+**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3C → 3 → 4 → 5.
+Stages 2D and 2E can proceed in parallel. Stage 3C is next priority after 3B.
 
 ---
 
@@ -199,9 +199,30 @@ interactively.
 
 ---
 
+## Stage 3C — EUDR Compliance Officer UX
+
+**Do not start until Stage 3B is complete.** Closes the workflow gaps
+identified in `EUDR_USER_JOURNEYS.md` for compliance officers managing
+more than a handful of parcels.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 3C.0 | #673 | Supplier portfolio dashboard — all parcels, status, stats | Open |
+| 3C.1 | #671 | Before/after imagery comparison view | Open |
+| 3C.2 | #669 | Annotation / notes per parcel for audit trail | Open |
+| 3C.3 | #672 | Human override of determination with recorded reason | Open |
+| 3C.4 | #674 | Aggregated compliance summary report across multiple runs | Open |
+| 3C.5 | #670 | Usage dashboard — monthly parcel consumption and billing summary | Open |
+
+**Exit:** Compliance officer with 200+ parcels can triage by determination,
+annotate flagged parcels with context, override with a recorded reason,
+and export a board-ready summary report.
+
+---
+
 ## Stage 3 — Growth & Retention
 
-**Do not start until Stage 3B is complete.**
+**Do not start until Stage 3C is complete.**
 Growth features target the EUDR vertical first. Conservation/agriculture
 verticals start here as separate `/conservation/` or `/agri/` apps,
 reusing the shared pipeline and platform.
@@ -215,10 +236,15 @@ reusing the shared pipeline and platform.
 | 3.5 | #79 | Catalogue API endpoints | Open (needs #78) |
 | 3.6 | #488 | Pipeline performance optimisation | Open |
 | 3.7 | #586 | Per-user AOI imagery reuse + data retention | Open |
-| 3.8 | — | Shareable analysis links | — |
+| 3.8 | #679 | Shareable analysis links — read-only permalink to a run | Open |
 | 3.9 | #618 | Brazilian authoritative data enrichment (PRODES, DETER, CAR) | Open |
 | 3.10 | #619 | Evaluate Mapbox/Maxar satellite basemap | Open |
 | 3.11 | #437 | End-to-end validation: 200+ AOI KMZ at scale | Open |
+| 3.12 | #675 | DMS and UTM coordinate format support in converter | Open |
+| 3.13 | #676 | Supplier data collection template (Excel/CSV download) | Open |
+| 3.14 | #678 | Country-risk auto-flagging using EU EUDR benchmarking list | Open |
+| 3.15 | #677 | Commodity tracking per parcel / run for EUDR compliance | Open |
+| 3.16 | #680 | GeoJSON and shapefile upload support alongside KML/KMZ | Open |
 
 Future enrichment sources: INPE PRODES & DETER (confirmed WFS access),
 CAR/SICAR property registry, MapBiomas, MODIS Burned Area, ESA CCI Land Cover,
@@ -228,7 +254,9 @@ GFW alerts.
 
 ## Stage 4 — Team & API
 
-**Do not start until Stage 3 is retaining users.**
+**Do not start until Stage 3 is complete.**
+
+Execution order note: Stage 3C should also be complete before Stage 4 begins.
 
 | Order | Issue | Title | Depends On |
 |-------|-------|-------|------------|
@@ -236,6 +264,12 @@ GFW alerts.
 | 4.2 | #313 | Team workspaces + tenant segregation | — |
 | 4.3 | — | Interactive OpenAPI portal | — |
 | 4.4 | — | Webhook / Slack notifications | — |
+| 4.5 | #681 | Immutable audit log — tamper-evident record of all assessments | — |
+| 4.6 | #682 | Per-parcel assessment history — determination timeline across runs | #673 |
+| 4.7 | #685 | Role-based access control within org (viewer / analyst / admin) | — |
+| 4.8 | #686 | Multi-org management for consultancy accounts | — |
+| 4.9 | #684 | White-label / branded PDF reports for consultancy accounts | #686 |
+| 4.10 | #683 | Annual billing option for enterprise customers | — |
 
 ---
 
