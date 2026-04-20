@@ -39,7 +39,7 @@ Stages 2D and 2E can proceed in parallel. Stage 3B is next priority.
 
 | PR | Summary |
 |----|---------|  
-| (pending) | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
+| #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
 | #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
 | #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |

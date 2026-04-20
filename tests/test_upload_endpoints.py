@@ -489,10 +489,14 @@ class TestUploadTokenEudrEntitlement:
         mock_consume_trial.side_effect = ValueError("Trial exhausted")
 
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+        with (
+            patch("blueprints.upload._safe_release_quota") as mock_release,
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
             resp = upload_token(req)
 
         assert resp.status_code == 403
+        mock_release.assert_called_once()
 
 
 # ===================================================================

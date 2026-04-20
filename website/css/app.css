@@ -188,6 +188,7 @@
 .app-flag-banner{padding:10px 14px;border-radius:var(--radius);font-size:.82rem;font-weight:600;line-height:1.5}
 .app-flag-banner.has-high{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.28);color:#ffb2ad}
 .app-flag-banner.moderate-only{background:rgba(227,176,42,.12);border:1px solid rgba(227,176,42,.28);color:#f0d877}
+.app-flag-banner.info-only{background:rgba(56,132,244,.12);border:1px solid rgba(56,132,244,.28);color:#79b8ff}
 .app-flag-card{padding:10px 14px;border-radius:var(--radius);font-size:.8rem;line-height:1.5;background:var(--c-surface);border:1px solid var(--c-border)}
 .app-flag-card .flag-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .app-flag-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}

@@ -181,7 +181,22 @@ def _check_eudr_entitlement(
 
     Returns (org_id, entitlement_dict, error_response_or_None).
     """
-    org = get_user_org(user_id)
+    try:
+        org = get_user_org(user_id)
+    except Exception:
+        logger.exception(
+            "Failed to resolve org for EUDR entitlement",
+            extra={"user_id": _redact(user_id)},
+        )
+        return (
+            "",
+            {},
+            error_response(
+                503,
+                "Unable to verify EUDR entitlement right now. Please retry shortly.",
+                req=req,
+            ),
+        )
     if not org:
         return (
             "",
@@ -193,7 +208,22 @@ def _check_eudr_entitlement(
             ),
         )
     org_id = org["org_id"]
-    entitlement = check_eudr_entitlement(org_id)
+    try:
+        entitlement = check_eudr_entitlement(org_id)
+    except Exception:
+        logger.exception(
+            "EUDR entitlement check failed during upload flow",
+            extra={"org_id": org_id, "user_id": _redact(user_id)},
+        )
+        return (
+            org_id,
+            {},
+            error_response(
+                503,
+                "EUDR entitlement service is temporarily unavailable. Please retry.",
+                req=req,
+            ),
+        )
     if not entitlement["allowed"]:
         return (
             org_id,
@@ -304,6 +334,18 @@ def _consume_eudr_trial_if_needed(
         return error_response(
             403,
             "EUDR entitlement exhausted — subscription required",
+            req=req,
+        )
+    except Exception:
+        logger.exception(
+            "EUDR trial consumption failed unexpectedly org=%s",
+            eudr_org_id,
+        )
+        if quota_consumed:
+            _safe_release_quota(user_id, instance_id=submission_id)
+        return error_response(
+            503,
+            "EUDR entitlement service is temporarily unavailable. Please retry.",
             req=req,
         )
     return None

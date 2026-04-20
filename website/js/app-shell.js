@@ -2032,18 +2032,18 @@
 
     if (!billing.subscribed) {
       var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
-      if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' of 2 free left';
+      if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' free assessment' + (remaining !== 1 ? 's' : '') + ' left';
       return 'Subscribe to continue';
     }
 
-    // Pro subscriber — check included parcels vs overage
+    // Pro subscriber — estimate only the incremental overage caused by this submission
     var used = billing.period_parcels_used || 0;
     var included = billing.included_parcels || 10;
-    var afterSubmit = used + parcelCount;
-    if (afterSubmit <= included) {
+    var remainingIncluded = Math.max(included - used, 0);
+    var overageParcels = Math.max(parcelCount - remainingIncluded, 0);
+    if (overageParcels === 0) {
       return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
     }
-    var overageParcels = afterSubmit - included;
     var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
     var cost = (overageParcels * rate).toFixed(2);
     return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + cost;

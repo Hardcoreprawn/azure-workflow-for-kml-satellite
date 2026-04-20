@@ -458,7 +458,13 @@
 
     // Summary banner
     var banner = document.createElement('div');
-    banner.className = 'app-flag-banner ' + (highCount > 0 ? 'has-high' : 'moderate-only');
+    var bannerStateClass = 'info-only';
+    if (highCount > 0) {
+      bannerStateClass = 'has-high';
+    } else if (modCount > 0) {
+      bannerStateClass = 'moderate-only';
+    }
+    banner.className = 'app-flag-banner ' + bannerStateClass;
     var parts = [];
     if (highCount > 0) parts.push(highCount + ' high concern');
     if (modCount > 0) parts.push(modCount + ' moderate');
@@ -476,7 +482,13 @@
 
       var badge = document.createElement('span');
       badge.className = 'app-flag-badge ' + flag.severity;
-      badge.textContent = flag.severity === 'high' ? 'High' : flag.severity === 'moderate' ? 'Moderate' : 'Info';
+      var badgeLabel = 'Info';
+      if (flag.severity === 'high') {
+        badgeLabel = 'High';
+      } else if (flag.severity === 'moderate') {
+        badgeLabel = 'Moderate';
+      }
+      badge.textContent = badgeLabel;
       header.appendChild(badge);
 
       var text = document.createElement('span');
