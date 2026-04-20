@@ -28,10 +28,12 @@ entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 
 **Backend:** Single Container Apps Function App — all endpoints + pipeline
 in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
-T2/T3 split (#466, #467) deferred until user volume justifies it.
+Near-term cost work pulls forward monitoring delta/fan-out (#688) and the
+orchestrator/compute split (#466). Container Apps Jobs (#467) stay deferred
+until scale evidence justifies the added complexity.
 
-**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3C → 3 → 4 → 5.
-Stages 2D and 2E can proceed in parallel. Stage 3C is next priority after 3B.
+**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3B.5 → 3C → 3 → 4 → 5.
+Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 ---
 
@@ -199,9 +201,32 @@ interactively.
 
 ---
 
+## Stage 3B.5 — Runtime Cost Reduction
+
+**Do not start until Stage 3B is complete.** Small architectural work that
+cuts Function wall-clock time and idle cost without changing the user-facing
+product surface.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | Open |
+| 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | Open |
+
+**Why now:** These are not growth features, but they directly reduce runtime
+cost and cold-start overhead. `#688` bounds slow Planetary Computer waits to
+new scenes only and avoids one long timer invocation processing all monitors.
+`#466` lets the lightweight orchestrator stay warm cheaply while the heavy
+GDAL compute image scales independently.
+
+**Exit:** Monitoring checks fetch only deltas, queue one monitor per worker,
+and the deploy architecture runs a slim orchestrator image separate from the
+heavy compute image.
+
+---
+
 ## Stage 3C — EUDR Compliance Officer UX
 
-**Do not start until Stage 3B is complete.** Closes the workflow gaps
+**Do not start until Stage 3B.5 is complete.** Closes the workflow gaps
 identified in `EUDR_USER_JOURNEYS.md` for compliance officers managing
 more than a handful of parcels.
 
@@ -280,7 +305,7 @@ Execution order note: Stage 3C should also be complete before Stage 4 begins.
 | Order | Issue | Title |
 |-------|-------|-------|
 | 5.1 | #466 | T2/T3 Container Apps split |
-| 5.2 | #467 | Container Apps Jobs for burst compute |
+| 5.2 | #467 | Container Apps Jobs for burst compute (keep deferred until post-#466 and #437 evidence) |
 | 5.3 | #82 | Tree detection model + inference pipeline |
 | 5.4 | #83 | Tree health classification + temporal tracking |
 | 5.5 | #84 | Annotation-driven model fine-tuning |
