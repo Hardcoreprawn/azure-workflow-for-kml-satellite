@@ -15,6 +15,7 @@ from blueprints.export import (
     _build_eudr_geojson,
     _build_geojson,
     _build_pdf,
+    _pdf_scene_provenance_section,
     build_eudr_audit_pdf,
 )
 
@@ -302,6 +303,62 @@ class TestBuildPDF:
         ]
 
         result = _build_pdf(manifest, "run-legacy")
+        assert result.startswith(b"%PDF")
+
+    def test_pdf_includes_scene_provenance_when_present(self, enrichment_manifest):
+        """#647 — PDF must render without error when frame_plan has provenance fields."""
+        manifest = dict(enrichment_manifest)
+        manifest["frame_plan"] = [
+            {
+                "label": "2023 Wet Season",
+                "year": 2023,
+                "season": "wet",
+                "start": "2023-03-01",
+                "end": "2023-05-31",
+                "collection": "sentinel-2-l2a",
+                "provenance": {
+                    "collection": "sentinel-2-l2a",
+                    "ndvi_scene_id": "S2_20230415_T18NXM",
+                    "resolution_m": 10.0,
+                    "cloud_cover_pct": 5.2,
+                    "acquired_at": "2023-04-15",
+                },
+            }
+        ]
+        result = _build_pdf(manifest, "run-provenance-647")
+        assert result.startswith(b"%PDF")
+
+    def test_pdf_scene_provenance_section_renders_scene_id(self):
+        """#647 — _pdf_scene_provenance_section must surface scene ID and resolution."""
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        frame_plan = [
+            {
+                "label": "2023-wet",
+                "collection": "sentinel-2-l2a",
+                "provenance": {
+                    "ndvi_scene_id": "S2A_MSIL2A_20230415",
+                    "resolution_m": 10.0,
+                    "cloud_cover_pct": 3.1,
+                    "acquired_at": "2023-04-15",
+                },
+            }
+        ]
+        _pdf_scene_provenance_section(pdf, frame_plan)
+        result = bytes(pdf.output())
+        assert result.startswith(b"%PDF")
+
+    def test_pdf_scene_provenance_section_tolerates_missing_provenance(self):
+        """#647 — section must not crash when provenance key is absent."""
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        frame_plan = [{"label": "2023-wet", "collection": "sentinel-2-l2a"}]
+        _pdf_scene_provenance_section(pdf, frame_plan)
+        result = bytes(pdf.output())
         assert result.startswith(b"%PDF")
 
 
