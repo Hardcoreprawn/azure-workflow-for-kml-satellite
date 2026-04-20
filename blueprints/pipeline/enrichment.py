@@ -49,9 +49,15 @@ async def timelapse_data(
     )
     if err:
         return err
+    if manifest is None:
+        return error_response(404, "No enrichment data for this pipeline run", req=req)
+
+    # Internal cost telemetry should not be exposed in user-facing API payloads.
+    sanitized_manifest = manifest.copy()
+    sanitized_manifest.pop("estimated_cost_pence", None)
 
     return func.HttpResponse(
-        json.dumps(manifest, default=str),
+        json.dumps(sanitized_manifest, default=str),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),

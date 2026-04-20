@@ -1029,10 +1029,21 @@
   }
 
   function clearEvidencePanels() {
-    var ids = ['app-evidence-ndvi-grid', 'app-evidence-weather-grid', 'app-evidence-change-list', 'app-evidence-ai-content', 'app-evidence-eudr-content'];
+    var ids = [
+      'app-evidence-ndvi-grid',
+      'app-evidence-weather-grid',
+      'app-evidence-change-list',
+      'app-evidence-ai-content',
+      'app-evidence-eudr-content',
+      'app-evidence-resources-grid'
+    ];
     ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.textContent = ''; });
     var noteEl = document.getElementById('app-evidence-ndvi-note');
     if (noteEl) noteEl.textContent = '';
+    var resourceNote = document.getElementById('app-evidence-resources-note');
+    if (resourceNote) resourceNote.textContent = '';
+    var resourcesBlock = document.getElementById('app-evidence-resources-block');
+    if (resourcesBlock) resourcesBlock.hidden = true;
     var runRefEl = document.getElementById('app-evidence-run-ref');
     if (runRefEl) { runRefEl.textContent = ''; runRefEl.title = ''; runRefEl.hidden = true; }
     var canvases = ['app-evidence-ndvi-canvas', 'app-evidence-weather-canvas'];

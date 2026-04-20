@@ -533,10 +533,14 @@
     var note = document.getElementById('app-evidence-resources-note');
     if (!block || !grid) return;
 
+    // Always clear previous content so switching runs cannot leave stale stats.
+    grid.textContent = '';
+    if (note) note.textContent = '';
+    block.hidden = true;
+
     var usage = manifest.resource_usage;
     if (!usage) return;
 
-    block.hidden = false;
     var items = [];
     var sources = usage.data_sources_queried || [];
     if (sources.length) items.push(['Data sources', String(sources.length), '']);
@@ -554,13 +558,8 @@
     if (usage.per_aoi_enrichments) items.push(['Per-parcel enrichments', String(usage.per_aoi_enrichments), '']);
 
     if (!items.length) return;
+    block.hidden = false;
     setStatGrid(grid, items);
-
-    // Cost note — only for logged-in users with cost visibility
-    var costPence = manifest.estimated_cost_pence;
-    if (note && typeof costPence === 'number' && costPence > 0) {
-      note.textContent = 'Est. platform cost: \u00A3' + (costPence / 100).toFixed(2);
-    }
   }
 
   window.CanopexEvidenceRender = {

@@ -17,7 +17,7 @@ _VALID_COUNTERS = frozenset(
 class ResourceAccumulator:
     """Accumulates resource usage metrics during enrichment.
 
-    Thread-safe for single-writer use within each phase function.
+    Intended for single-threaded mutation within each phase function.
     Designed to be merged after parallel fan-out (data_sources ∥ imagery).
     """
 
