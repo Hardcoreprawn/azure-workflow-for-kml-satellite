@@ -63,6 +63,8 @@ class RunRecord(BaseModel):
     # Resource consumption (#666)
     resource_summary: dict[str, Any] | None = None
     estimated_cost_pence: float | None = None
+    wasted_cost_pence: float | None = None
+    # Set if run is refunded or failed after partial resource use.
 
     model_config = ConfigDict(extra="allow")
 

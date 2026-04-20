@@ -1405,6 +1405,43 @@
   }
 
   /* ---- EUDR assessment ---- */
+  function activeEvidenceContext() {
+    if (!evidenceManifest) return null;
+    var perAoi = evidenceManifest.per_aoi_enrichment || [];
+    if (evidenceSelectedAoi >= 0 && evidenceSelectedAoi < perAoi.length) {
+      return perAoi[evidenceSelectedAoi];
+    }
+    return evidenceManifest;
+  }
+
+  function buildEvidenceNdviTimeseries(source) {
+    if (!source) return [];
+    return (source.ndvi_stats || []).map(function(f, i) {
+      if (!f) return null;
+      var fp = (source.frame_plan || [])[i] || {};
+      return {
+        date: f.datetime || f.date || fp.start || fp.label,
+        mean: f.mean,
+        min: f.min,
+        max: f.max,
+        year: f.year || fp.year,
+        season: f.season || fp.season
+      };
+    }).filter(Boolean);
+  }
+
+  function evidenceLatLon(source) {
+    if (!source) return { lat: 0, lon: 0 };
+    var center = source.center || source.coords;
+    if (Array.isArray(center)) {
+      return { lat: center[0] || 0, lon: center[1] || 0 };
+    }
+    return {
+      lat: (center && (center.lat || center.latitude)) || 0,
+      lon: (center && (center.lon || center.longitude)) || 0
+    };
+  }
+
   async function requestEudrAssessment() {
     var loading = document.getElementById('app-evidence-eudr-loading');
     var content = document.getElementById('app-evidence-eudr-content');
@@ -1418,18 +1455,15 @@
     try {
       await apiDiscoveryReady;
 
-      var ndviTimeseries = (evidenceManifest.ndvi_stats || []).filter(Boolean).map(function(f) {
-        return { date: f.date || f.label, mean: f.mean, min: f.min, max: f.max, year: f.year, season: f.season };
-      });
-      var center = evidenceManifest.center || evidenceManifest.coords;
-      var lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
-      var lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
+      var source = activeEvidenceContext();
+      var ndviTimeseries = buildEvidenceNdviTimeseries(source);
+      var latLon = evidenceLatLon(source);
 
       var body = {
         context: {
-          aoi_name: 'Analysis area',
-          latitude: lat,
-          longitude: lon,
+          aoi_name: source && source.name ? source.name : 'Analysis area',
+          latitude: latLon.lat,
+          longitude: latLon.lon,
           ndvi_timeseries: ndviTimeseries,
           reference_date: '2020-12-31'
         }
