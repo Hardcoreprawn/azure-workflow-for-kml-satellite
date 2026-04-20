@@ -10,6 +10,8 @@ from typing import Any
 from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
     METRES_PER_DEGREE_LATITUDE,
+    NAIP_LEGACY_GSD_M,
+    NAIP_LEGACY_MAX_YEAR,
     RGB_DISPLAY_MIN_PIXELS,
 )
 
@@ -65,7 +67,11 @@ def _annotate_display_metadata(
 
     for frame in frames:
         collection = str(frame["collection"])
-        display_gsd_m = float(COLLECTION_DISPLAY_GSD_M.get(collection, 10.0))
+        # Older NAIP acquisitions (≤ 2014) were collected at 1 m/px, not 0.6 m/px.
+        if collection.startswith("naip") and int(frame.get("year", 9999)) <= NAIP_LEGACY_MAX_YEAR:
+            display_gsd_m = float(NAIP_LEGACY_GSD_M)
+        else:
+            display_gsd_m = float(COLLECTION_DISPLAY_GSD_M.get(collection, 10.0))
         estimated_pixels = max_span_m / display_gsd_m if display_gsd_m > 0 else 0.0
         rgb_display_suitable = estimated_pixels >= RGB_DISPLAY_MIN_PIXELS
         warning = ""

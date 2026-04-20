@@ -236,6 +236,39 @@ class TestFramePlanIntegrity:
         assert all(f["rgb_display_suitable"] is True for f in naip_frames)
         assert all(f["preferred_layer"] == "rgb" for f in naip_frames)
 
+    def test_legacy_naip_frames_use_higher_gsd(self):
+        """NAIP frames from 2014 or earlier must use 1.0 m/px GSD, not 0.6 m/px.
+
+        Pre-2015 NAIP was collected at 1 m/px; using 0.6 m/px under-estimates
+        the display-pixel count and could incorrectly flag frames as unsuitable.
+        """
+        from treesight.constants import NAIP_LEGACY_GSD_M
+        from treesight.pipeline.enrichment.frames import _annotate_display_metadata
+
+        legacy_frame = {
+            "label": "2014 Summer",
+            "year": 2014,
+            "season": "summer",
+            "start": "2014-06-01",
+            "end": "2014-08-31",
+            "collection": "naip",
+            "is_naip": True,
+        }
+        modern_frame = dict(legacy_frame, year=2020, label="2020 Summer")
+
+        annotated = _annotate_display_metadata([legacy_frame, modern_frame], TINY_US_COORDS)
+        legacy = annotated[0]
+        modern = annotated[1]
+
+        assert legacy["display_resolution_m"] == NAIP_LEGACY_GSD_M, (
+            "2014 NAIP frame should use the legacy 1.0 m/px GSD"
+        )
+        assert modern["display_resolution_m"] < NAIP_LEGACY_GSD_M, (
+            "post-2014 NAIP frame should use the finer 0.6 m/px GSD"
+        )
+        # Legacy is coarser → fewer estimated pixels for the same AOI
+        assert legacy["estimated_display_pixels"] < modern["estimated_display_pixels"]
+
 
 class TestFrontendTransform:
     """Verify the Python replica of the JS data transform is correct."""

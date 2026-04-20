@@ -1009,6 +1009,22 @@
     });
   }
 
+  // Sync the active/inactive classes on all RGB and NDVI buttons (both inline
+  // panel and expanded modal) to match the current evidenceLayerMode.
+  // Called any time evidenceLayerMode is changed programmatically so the
+  // visual state is always consistent with what is rendered on the map.
+  function syncLayerModeButtons() {
+    var isRgb = evidenceLayerMode === 'rgb';
+    ['app-map-btn-rgb', 'app-map-expanded-btn-rgb'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', isRgb);
+    });
+    ['app-map-btn-ndvi', 'app-map-expanded-btn-ndvi'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', !isRgb);
+    });
+  }
+
   // #646 — update layer button aria-labels and titles with per-frame
   // collection and resolution so the picker is self-documenting.
   function updateLayerButtonLabels(frame) {
@@ -1371,6 +1387,7 @@
     });
 
     evidenceLayerMode = pickEvidenceDefaultLayer(evidenceMapLayers[0]);
+    syncLayerModeButtons();
     showEvidenceFrame(0);
   }
 
@@ -1388,6 +1405,8 @@
     if (activeFrame.rgbDisplaySuitable === false && activeFrame.ndvi) {
       evidenceLayerMode = 'ndvi';
     }
+    // Keep button active classes in sync after any programmatic mode change.
+    syncLayerModeButtons();
 
     evidenceMapLayers.forEach(function(frame, i) {
       var showRgb = (i === idx && evidenceLayerMode === 'rgb');

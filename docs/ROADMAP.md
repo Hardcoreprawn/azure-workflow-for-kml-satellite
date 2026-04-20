@@ -208,8 +208,8 @@ interactively.
 cuts Function wall-clock time and idle cost without changing the user-facing
 product surface.
 
-| Order | Issue | Title | Status |
-|-------|-------|-------|--------|
+| Order  | Issue  | Title | Status |
+|--------|--------|-------|--------|
 | 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | Open |
 | 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | Open |
 

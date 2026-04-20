@@ -1022,6 +1022,14 @@ class TestEvidenceMapQualityGate:
             "so updateLayerButtonLabels has per-frame context without re-reading the DOM"
         )
 
+    def test_layer_mode_buttons_synced_on_init(self):
+        """#690 review — buildEvidenceFrames must sync button active state after setting mode."""
+        content = self.APP_SHELL.read_text()
+        assert "syncLayerModeButtons" in content, (
+            "app-shell.js must define syncLayerModeButtons() and call it whenever "
+            "evidenceLayerMode is changed programmatically so buttons match the map"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected

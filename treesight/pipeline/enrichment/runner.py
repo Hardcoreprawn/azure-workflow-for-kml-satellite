@@ -235,7 +235,11 @@ def _run_mosaic_ndvi_phase(
                 sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
 
             nsid = sid
-            if sid is None and f["collection"] == "sentinel-2-l2a":
+            # When the RGB mosaic was skipped (unsuitable) or failed, register a
+            # Sentinel-2 mosaic for NDVI so the viewer has a vegetation tile to show.
+            # This covers sentinel-2-l2a (direct) and landsat-c2-l2 (cross-sensor) —
+            # previously Landsat frames were left with nsid=None here.
+            if sid is None and f["collection"] in {"sentinel-2-l2a", "landsat-c2-l2"}:
                 nsid = register_mosaic(
                     "sentinel-2-l2a",
                     f["start"],

@@ -168,6 +168,34 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
     @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    def test_landsat_unsuitable_rgb_still_registers_s2_ndvi(self, mock_mosaic, mock_ndvi):
+        """Landsat frames with rgb_display_suitable=False must still register an S2 NDVI mosaic.
+
+        Previously the Landsat fallback branch was missing, leaving ndvi_search_ids[idx]=None
+        which disabled tile-based NDVI for that frame entirely.
+        """
+        frames = [
+            {
+                **_make_frame(collection="landsat-c2-l2", is_naip=False),
+                "rgb_display_suitable": False,
+                "preferred_layer": "ndvi",
+            }
+        ]
+        mock_mosaic.return_value = "sid-sentinel-2-l2a"
+        mock_ndvi.return_value = {"mean": 0.4}
+        storage = MagicMock()
+        results: dict = {}
+
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+
+        # RGB mosaic skipped — search_ids[0] must be None
+        assert results["search_ids"][0] is None
+        # But a Sentinel-2 NDVI mosaic must have been registered as fallback
+        assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
+        mock_mosaic.assert_called_once()
+
+    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
+    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
     def test_frame_plan_records_normalized_provenance(self, mock_mosaic, mock_ndvi):
         """Each frame should carry a normalized provenance bundle for viewer/export use."""
         frames = [_make_frame(collection="sentinel-2-l2a", is_naip=False)]
