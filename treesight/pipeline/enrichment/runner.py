@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from treesight.constants import (
+    COLLECTION_DISPLAY_GSD_M,
     DEFAULT_ENRICHMENT_CONCURRENCY,
     DEFAULT_HTTP_TIMEOUT_SECONDS,
     EUDR_CUTOFF_DATE,
@@ -229,8 +230,24 @@ def _run_mosaic_ndvi_phase(
             else []
         )
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
-            sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+            sid = None
+            if f.get("rgb_display_suitable", True):
+                sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+
             nsid = sid
+            # When the RGB mosaic was skipped (unsuitable) or failed, register a
+            # Sentinel-2 mosaic for NDVI so the viewer has a vegetation tile to show.
+            # This covers sentinel-2-l2a (direct) and landsat-c2-l2 (cross-sensor) —
+            # previously Landsat frames were left with nsid=None here.
+            if sid is None and f["collection"] in {"sentinel-2-l2a", "landsat-c2-l2"}:
+                nsid = register_mosaic(
+                    "sentinel-2-l2a",
+                    f["start"],
+                    f["end"],
+                    bbox,
+                    [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
+                    cl,
+                )
             if f["is_naip"]:
                 nsid = register_mosaic(
                     "sentinel-2-l2a",
@@ -346,6 +363,19 @@ def _run_mosaic_ndvi_phase(
             res = "10"
             src = "Sentinel-2 L2A"
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
+        ndvi_stat = ndvi_stats[i] if i < len(ndvi_stats) else None
+        f["provenance"] = {
+            "collection": f.get("collection", ""),
+            "display_search_id": search_ids[i],
+            "ndvi_search_id": ndvi_search_ids[i],
+            "ndvi_scene_id": ndvi_stat.get("scene_id") if ndvi_stat else None,
+            "resolution_m": f.get("display_resolution_m")
+            or COLLECTION_DISPLAY_GSD_M.get(str(f.get("collection", ""))),
+            "cloud_cover_pct": ndvi_stat.get("cloud_cover") if ndvi_stat else None,
+            "acquired_at": ndvi_stat.get("datetime") if ndvi_stat else None,
+            "artifact_path": f.get("ndvi_raster_path"),
+            "label": f.get("label", ""),
+        }
 
     if acc:
         mosaic_count = sum(1 for s in search_ids if s)
@@ -811,9 +841,9 @@ def enrich_imagery(
         max_history_years=max_history_years,
     )
 
-    results: dict[str, Any] = {}
+    results: dict[str, Any] = {"frame_plan": frame_plan}
     if not frame_plan:
-        return results
+        return {}
 
     acc = ResourceAccumulator()
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
@@ -902,9 +932,10 @@ def enrich_finalize(
     the final manifest to blob storage.
     """
     # Merge: data_sources is the base, imagery overlays
-    ds_usage = data_sources.pop("resource_usage", None)
-    img_usage = imagery.pop("resource_usage", None)
+    ds_usage = data_sources.get("resource_usage")
+    img_usage = imagery.get("resource_usage")
     merged = {**data_sources, **imagery}
+    merged.pop("resource_usage", None)
 
     # Combine resource accumulators from parallel fan-out
     acc = ResourceAccumulator()

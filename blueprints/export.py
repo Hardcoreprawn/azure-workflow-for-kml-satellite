@@ -58,6 +58,7 @@ def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             "end_date": frame.get("end", ""),
             "collection": frame.get("collection", ""),
             "is_naip": frame.get("is_naip", False),
+            "provenance": frame.get("provenance", {}),
         }
         if ndvi:
             props["ndvi_mean"] = ndvi.get("mean")
@@ -141,6 +142,13 @@ def _build_csv(manifest: dict[str, Any]) -> str:
         "end_date",
         "collection",
         "is_naip",
+        "display_search_id",
+        "ndvi_search_id",
+        "ndvi_scene_id",
+        "resolution_m",
+        "cloud_cover_pct",
+        "acquired_at",
+        "artifact_path",
         "ndvi_mean",
         "ndvi_min",
         "ndvi_max",
@@ -191,6 +199,7 @@ def _build_csv(manifest: dict[str, Any]) -> str:
         change = change_lookup.get((frame.get("season", ""), frame.get("year", 0)))
         ndvi_delta = change.get("mean_delta") if change else None
 
+        provenance = frame.get("provenance", {})
         row = {
             "frame_index": i,
             "label": frame.get("label", ""),
@@ -200,6 +209,17 @@ def _build_csv(manifest: dict[str, Any]) -> str:
             "end_date": frame.get("end", ""),
             "collection": frame.get("collection", ""),
             "is_naip": frame.get("is_naip", False),
+            "display_search_id": provenance.get("display_search_id", ""),
+            "ndvi_search_id": provenance.get("ndvi_search_id", ""),
+            "ndvi_scene_id": provenance.get(
+                "ndvi_scene_id", ndvi.get("scene_id", "") if ndvi else ""
+            ),
+            "resolution_m": provenance.get("resolution_m", ""),
+            "cloud_cover_pct": provenance.get(
+                "cloud_cover_pct", ndvi.get("cloud_cover", "") if ndvi else ""
+            ),
+            "acquired_at": provenance.get("acquired_at", ndvi.get("datetime", "") if ndvi else ""),
+            "artifact_path": provenance.get("artifact_path", frame.get("ndvi_raster_path", "")),
             "ndvi_mean": ndvi.get("mean", "") if ndvi else "",
             "ndvi_min": ndvi.get("min", "") if ndvi else "",
             "ndvi_max": ndvi.get("max", "") if ndvi else "",
@@ -466,6 +486,63 @@ def _build_eudr_csv(manifest: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # PDF export (EUDR audit report)
 # ---------------------------------------------------------------------------
+
+
+def _pdf_scene_provenance_section(pdf: Any, frame_plan: list[dict[str, Any]]) -> None:
+    """Write a scene-provenance table for every frame in the report (#647).
+
+    Each row records the satellite scene identifier, collection, spatial
+    resolution, cloud-cover percentage, and acquisition date so the imagery
+    evidence can be independently verified.
+    """
+    if not frame_plan:
+        return
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Scene Provenance", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0,
+        5,
+        "The table below records the satellite scene used for each analysis "
+        "window so that imagery evidence can be independently verified.",
+    )
+    pdf.ln(3)
+
+    # Column widths (fractions of effective page width)
+    col_ratios = [0.18, 0.14, 0.12, 0.28, 0.12, 0.16]
+    page_w = pdf.epw
+    col_widths = [round(r * page_w, 1) for r in col_ratios]
+    headers = ["Label", "Collection", "Res (m)", "Scene ID", "Cloud %", "Acquired"]
+
+    pdf.set_font("Helvetica", "B", 8)
+    for i, h in enumerate(headers):
+        pdf.cell(col_widths[i], 6, h, border=1)
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 7)
+    for frame in frame_plan:
+        prov = frame.get("provenance") or {}
+        scene_id = prov.get("ndvi_scene_id") or prov.get("display_search_id") or "--"
+        resolution = prov.get("resolution_m")
+        cloud = prov.get("cloud_cover_pct")
+        acquired = (prov.get("acquired_at") or "")[:10]
+        collection = prov.get("collection") or frame.get("collection") or "--"
+
+        row = [
+            _safe_text(frame.get("label", ""))[:18],
+            collection[:14],
+            str(resolution) if resolution is not None else "--",
+            _safe_text(str(scene_id))[:28],
+            f"{float(cloud):.1f}" if cloud is not None else "--",
+            acquired or "--",
+        ]
+        for i, val in enumerate(row):
+            pdf.cell(col_widths[i], 5, val, border=1)
+        pdf.ln()
+
+    pdf.ln(6)
 
 
 def _pdf_header(pdf: Any, manifest: dict[str, Any], instance_id: str) -> None:
@@ -808,6 +885,10 @@ def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
     per_aoi = manifest.get("per_aoi_enrichment", [])
     if per_aoi:
         _pdf_per_parcel_sections(pdf, per_aoi)
+
+    # Scene provenance table (#647) — traceability appendix listing scene IDs,
+    # resolution and cloud cover for every analysis frame.
+    _pdf_scene_provenance_section(pdf, manifest.get("frame_plan", []))
 
     # Disclaimer
     pdf.set_font("Helvetica", "I", 8)

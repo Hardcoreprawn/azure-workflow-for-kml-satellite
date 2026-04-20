@@ -1,10 +1,19 @@
-"""Frame planning — season/year matrix and NAIP detection."""
+"""Frame planning — season/year matrix, NAIP detection, and display suitability."""
 
 from __future__ import annotations
 
 import calendar
+import math
 from datetime import date, timedelta
 from typing import Any
+
+from treesight.constants import (
+    COLLECTION_DISPLAY_GSD_M,
+    METRES_PER_DEGREE_LATITUDE,
+    NAIP_LEGACY_GSD_M,
+    NAIP_LEGACY_MAX_YEAR,
+    RGB_DISPLAY_MIN_PIXELS,
+)
 
 # Seasonal definitions matching the frontend
 SEASONS: list[dict[str, Any]] = [
@@ -32,6 +41,58 @@ NAIP_SUMMERS = {
     "2020-summer",
     "2022-summer",
 }
+
+
+def _max_aoi_span_m(coords: list[list[float]]) -> float:
+    """Approximate the larger AOI span in metres from lon/lat coordinates."""
+    if not coords:
+        return 0.0
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    mid_lat = (min(lats) + max(lats)) / 2.0
+    lat_span_m = (max(lats) - min(lats)) * METRES_PER_DEGREE_LATITUDE
+    lon_span_m = (
+        (max(lons) - min(lons)) * METRES_PER_DEGREE_LATITUDE * math.cos(math.radians(mid_lat))
+    )
+    return max(lat_span_m, lon_span_m)
+
+
+def _annotate_display_metadata(
+    frames: list[dict[str, Any]],
+    coords: list[list[float]],
+) -> list[dict[str, Any]]:
+    """Attach RGB suitability metadata used by the evidence viewer."""
+    max_span_m = _max_aoi_span_m(coords)
+    annotated: list[dict[str, Any]] = []
+
+    for frame in frames:
+        collection = str(frame["collection"])
+        # Older NAIP acquisitions (≤ 2014) were collected at 1 m/px, not 0.6 m/px.
+        if collection.startswith("naip") and int(frame.get("year", 9999)) <= NAIP_LEGACY_MAX_YEAR:
+            display_gsd_m = float(NAIP_LEGACY_GSD_M)
+        else:
+            display_gsd_m = float(COLLECTION_DISPLAY_GSD_M.get(collection, 10.0))
+        estimated_pixels = max_span_m / display_gsd_m if display_gsd_m > 0 else 0.0
+        rgb_display_suitable = estimated_pixels >= RGB_DISPLAY_MIN_PIXELS
+        warning = ""
+        if not rgb_display_suitable:
+            warning = (
+                f"{collection} imagery is {display_gsd_m:.1f} m/px; "
+                "RGB detail is limited at this AOI size. NDVI remains informative."
+            )
+
+        annotated.append(
+            {
+                **frame,
+                "display_resolution_m": display_gsd_m,
+                "estimated_display_pixels": round(estimated_pixels, 1),
+                "rgb_display_suitable": rgb_display_suitable,
+                "preferred_layer": "rgb" if rgb_display_suitable else "ndvi",
+                "rgb_display_warning": warning,
+            }
+        )
+
+    return annotated
 
 
 def _aoi_has_naip(coords: list[list[float]]) -> bool:
@@ -192,4 +253,4 @@ def build_frame_plan(
             and not (date_end and f["start"] > date_end)
         ]
 
-    return frames
+    return _annotate_display_metadata(frames, coords)

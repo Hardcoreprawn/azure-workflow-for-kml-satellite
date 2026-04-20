@@ -31,6 +31,14 @@ DEFAULT_MAX_OFF_NADIR_DEG = 30.0
 MAX_OFF_NADIR_DEG_LIMIT = 45.0
 MIN_RESOLUTION_M = 0.01
 DEFAULT_PROVIDER = "planetary_computer"
+RGB_DISPLAY_MIN_PIXELS = 12
+COLLECTION_DISPLAY_GSD_M = {
+    "naip": 0.6,  # post-2014 NAIP (0.6 m/px)
+    "sentinel-2-l2a": 10.0,
+    "landsat-c2-l2": 30.0,
+}
+NAIP_LEGACY_GSD_M = 1.0  # vintages ≤ 2014 were collected at 1 m/px
+NAIP_LEGACY_MAX_YEAR = 2014
 
 # --- Polling / batching ---
 DEFAULT_POLL_INTERVAL_SECONDS = 30

@@ -947,10 +947,107 @@
     }
     if (counter) counter.textContent = (evidenceFrameIndex + 1) + '/' + evidenceMapLayers.length;
     if (label && evidenceMapLayers[evidenceFrameIndex]) {
-      label.textContent = evidenceMapLayers[evidenceFrameIndex].label + ' — ' + evidenceMapLayers[evidenceFrameIndex].info;
+      var expandedFrame = evidenceMapLayers[evidenceFrameIndex];
+      label.textContent = expandedFrame.label + ' — ' + expandedFrame.info +
+        (expandedFrame.rgbDisplayWarning ? ' — ' + expandedFrame.rgbDisplayWarning : '');
     }
+    syncEvidenceLayerButtons(evidenceMapLayers[evidenceFrameIndex]);
     if (rgbBtn) rgbBtn.classList.toggle('active', evidenceLayerMode === 'rgb');
     if (ndviBtn) ndviBtn.classList.toggle('active', evidenceLayerMode === 'ndvi');
+  }
+
+  function pickEvidenceDefaultLayer(frame) {
+    if (!frame) return 'rgb';
+    if (frame.preferredLayer === 'ndvi' || frame.preferred_layer === 'ndvi') return 'ndvi';
+    return 'rgb';
+  }
+
+  function syncEvidenceLayerButtons(frame) {
+    var rgbBtn = document.getElementById('app-map-btn-rgb');
+    var ndviBtn = document.getElementById('app-map-btn-ndvi');
+    var expandedRgbBtn = document.getElementById('app-map-expanded-btn-rgb');
+    var expandedNdviBtn = document.getElementById('app-map-expanded-btn-ndvi');
+    var rgbDisabled = !!(frame && frame.rgbDisplaySuitable === false);
+    var warning = frame && frame.rgbDisplayWarning ? frame.rgbDisplayWarning : '';
+
+    [rgbBtn, expandedRgbBtn].forEach(function(btn) {
+      if (!btn) return;
+      btn.disabled = rgbDisabled;
+      btn.title = rgbDisabled ? warning : '';
+      btn.classList.toggle('is-disabled', rgbDisabled);
+    });
+    [ndviBtn, expandedNdviBtn].forEach(function(btn) {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.title = '';
+      btn.classList.remove('is-disabled');
+    });
+  }
+
+  // #646 — update layer button aria-labels and titles with per-frame
+  // collection and resolution so the picker is self-documenting.
+  function updateLayerButtonLabels(frame) {
+    var btnRgb = document.getElementById('app-map-btn-rgb');
+    var btnNdvi = document.getElementById('app-map-btn-ndvi');
+    var expRgb = document.getElementById('app-map-expanded-btn-rgb');
+    var expNdvi = document.getElementById('app-map-expanded-btn-ndvi');
+    if (!frame) return;
+    var info = frame.collectionLabel
+      ? (frame.collectionLabel + (frame.resLabel || ''))
+      : '';
+    [btnRgb, expRgb].forEach(function(btn) {
+      if (!btn) return;
+      var base = info ? 'True-colour RGB — ' + info : 'True-colour RGB';
+      // Preserve quality warning set by syncEvidenceLayerButtons when disabled.
+      if (!btn.disabled) btn.title = base;
+      btn.setAttribute('aria-label', info ? 'RGB (' + info + ')' : 'RGB');
+    });
+    [btnNdvi, expNdvi].forEach(function(btn) {
+      if (!btn) return;
+      btn.title = info ? 'Vegetation index (NDVI) — ' + info : 'Vegetation index (NDVI)';
+      btn.setAttribute('aria-label', info ? 'NDVI (' + info + ')' : 'NDVI');
+    });
+  }
+
+  // Sync the active/inactive classes on all RGB and NDVI buttons (both inline
+  // panel and expanded modal) to match the current evidenceLayerMode.
+  // Called any time evidenceLayerMode is changed programmatically so the
+  // visual state is always consistent with what is rendered on the map.
+  function syncLayerModeButtons() {
+    var isRgb = evidenceLayerMode === 'rgb';
+    ['app-map-btn-rgb', 'app-map-expanded-btn-rgb'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', isRgb);
+    });
+    ['app-map-btn-ndvi', 'app-map-expanded-btn-ndvi'].forEach(function(id) {
+      var btn = document.getElementById(id);
+      if (btn) btn.classList.toggle('active', !isRgb);
+    });
+  }
+
+  // #646 — update layer button aria-labels and titles with per-frame
+  // collection and resolution so the picker is self-documenting.
+  function updateLayerButtonLabels(frame) {
+    var btnRgb = document.getElementById('app-map-btn-rgb');
+    var btnNdvi = document.getElementById('app-map-btn-ndvi');
+    var expRgb = document.getElementById('app-map-expanded-btn-rgb');
+    var expNdvi = document.getElementById('app-map-expanded-btn-ndvi');
+    if (!frame) return;
+    var info = frame.collectionLabel
+      ? (frame.collectionLabel + (frame.resLabel || ''))
+      : '';
+    [btnRgb, expRgb].forEach(function(btn) {
+      if (!btn) return;
+      var base = info ? 'True-colour RGB \u2014 ' + info : 'True-colour RGB';
+      // Preserve any quality warning appended by syncEvidenceLayerButtons.
+      if (!btn.disabled) btn.title = base;
+      btn.setAttribute('aria-label', info ? 'RGB (' + info + ')' : 'RGB');
+    });
+    [btnNdvi, expNdvi].forEach(function(btn) {
+      if (!btn) return;
+      btn.title = info ? 'Vegetation index (NDVI) \u2014 ' + info : 'Vegetation index (NDVI)';
+      btn.setAttribute('aria-label', info ? 'NDVI (' + info + ')' : 'NDVI');
+    });
   }
 
   function showEvidenceSurface(visible) {
@@ -1252,7 +1349,7 @@
       var sid = searchIds[idx];
       var ndviSid = ndviSearchIds[idx] || sid;
       var collection = frame.collection || 'sentinel-2-l2a';
-      var asset = collection.indexOf('naip') >= 0 ? 'image' : 'visual';
+      var asset = frame.asset || (collection.indexOf('naip') >= 0 ? 'image' : 'visual');
 
       var rgbLayer = null;
       var ndviLayer = null;
@@ -1265,20 +1362,51 @@
         ndviLayer.addTo(evidenceMap);
       }
 
+      // #646 — store human-readable collection label and resolution suffix so
+      // updateLayerButtonLabels can build informative button titles per frame.
+      var collectionLabel = collection.indexOf('naip') >= 0 ? 'NAIP'
+        : collection.indexOf('sentinel') >= 0 ? 'Sentinel-2'
+        : collection.indexOf('landsat') >= 0 ? 'Landsat'
+        : collection;
+      var resolutionM = (frame.provenance && frame.provenance.resolution_m)
+        || frame.display_resolution_m
+        || null;
+      var resLabel = resolutionM ? (' \u00b7 ' + resolutionM + 'm') : '';
+
       evidenceMapLayers.push({
         rgb: rgbLayer,
         ndvi: ndviLayer,
         label: frame.label || ('Frame ' + (idx + 1)),
-        info: [collection, frame.start_date, frame.end_date].filter(Boolean).join(' | ')
+        info: [collection, frame.start_date, frame.end_date].filter(Boolean).join(' | '),
+        rgbDisplaySuitable: frame.rgb_display_suitable !== false,
+        rgbDisplayWarning: frame.rgb_display_warning || '',
+        preferredLayer: frame.preferred_layer || 'rgb',
+        collectionLabel: collectionLabel,
+        resLabel: resLabel
       });
     });
 
+    evidenceLayerMode = pickEvidenceDefaultLayer(evidenceMapLayers[0]);
+    syncLayerModeButtons();
     showEvidenceFrame(0);
   }
 
   function showEvidenceFrame(idx) {
     if (idx < 0 || idx >= evidenceMapLayers.length) return;
     evidenceFrameIndex = idx;
+    var activeFrame = evidenceMapLayers[idx];
+
+    // #646 — bidirectional mode adaptation:
+    // Fall back to rgb when the user is in ndvi mode but this frame has no ndvi layer.
+    if (evidenceLayerMode === 'ndvi' && !activeFrame.ndvi) {
+      evidenceLayerMode = 'rgb';
+    }
+    // Promote to ndvi for coarse frames where rgb is unsuitable (established in #645).
+    if (activeFrame.rgbDisplaySuitable === false && activeFrame.ndvi) {
+      evidenceLayerMode = 'ndvi';
+    }
+    // Keep button active classes in sync after any programmatic mode change.
+    syncLayerModeButtons();
 
     evidenceMapLayers.forEach(function(frame, i) {
       var showRgb = (i === idx && evidenceLayerMode === 'rgb');
@@ -1292,7 +1420,12 @@
     var label = document.getElementById('app-map-frame-label');
     if (slider) slider.value = idx;
     if (counter) counter.textContent = (idx + 1) + '/' + evidenceMapLayers.length;
-    if (label) label.textContent = evidenceMapLayers[idx].label + ' — ' + evidenceMapLayers[idx].info;
+    if (label) {
+      label.textContent = activeFrame.label + ' — ' + activeFrame.info +
+        (activeFrame.rgbDisplayWarning ? ' — ' + activeFrame.rgbDisplayWarning : '');
+    }
+    syncEvidenceLayerButtons(activeFrame);
+    updateLayerButtonLabels(activeFrame);
 
     // Sync expanded controls if open
     if (evidenceMapExpanded) syncExpandedControls();

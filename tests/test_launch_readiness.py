@@ -976,6 +976,61 @@ class TestEudrModeToggle:
         ), "requestEudrAssessment must send a real NDVI observation date, not only a display label"
 
 
+class TestEvidenceMapQualityGate:
+    """Ensure the evidence map respects frame-plan display quality metadata."""
+
+    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+
+    def test_evidence_map_reads_frame_quality_metadata(self):
+        content = self.APP_SHELL.read_text()
+        assert "rgb_display_suitable" in content, (
+            "app-shell.js must read frame_plan.rgb_display_suitable "
+            "so coarse RGB frames can be demoted"
+        )
+        assert "preferred_layer" in content, (
+            "app-shell.js must read frame_plan.preferred_layer to choose RGB vs NDVI intelligently"
+        )
+
+    def test_evidence_map_chooses_default_layer_from_frame_plan(self):
+        content = self.APP_SHELL.read_text()
+        assert "pickEvidenceDefaultLayer" in content, (
+            "app-shell.js must define a helper that chooses the default evidence layer "
+            "from frame metadata"
+        )
+
+    def test_layer_button_labels_update_per_frame(self):
+        """#646 — layer picker shows per-frame collection + resolution as button labels."""
+        content = self.APP_SHELL.read_text()
+        assert "updateLayerButtonLabels" in content, (
+            "app-shell.js must define updateLayerButtonLabels(frame) so each frame's "
+            "collection and resolution are surfaced in the layer picker buttons"
+        )
+
+    def test_layer_mode_falls_back_to_rgb_when_ndvi_unavailable(self):
+        """#646 — navigating to a frame without NDVI must not leave the viewer broken."""
+        content = self.APP_SHELL.read_text()
+        assert "evidenceLayerMode === 'ndvi' && !activeFrame.ndvi" in content, (
+            "showEvidenceFrame must fall back from ndvi to rgb when the active frame "
+            "has no ndvi layer, so the viewer never shows a blank tile"
+        )
+
+    def test_layer_picker_stores_collection_label_per_frame(self):
+        """#646 — buildEvidenceFrames must record collectionLabel per entry."""
+        content = self.APP_SHELL.read_text()
+        assert "collectionLabel" in content, (
+            "buildEvidenceFrames must store a collectionLabel per map-layer entry "
+            "so updateLayerButtonLabels has per-frame context without re-reading the DOM"
+        )
+
+    def test_layer_mode_buttons_synced_on_init(self):
+        """#690 review — buildEvidenceFrames must sync button active state after setting mode."""
+        content = self.APP_SHELL.read_text()
+        assert "syncLayerModeButtons" in content, (
+            "app-shell.js must define syncLayerModeButtons() and call it whenever "
+            "evidenceLayerMode is changed programmatically so buttons match the map"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected
 # ---------------------------------------------------------------------------

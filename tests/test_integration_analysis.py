@@ -86,8 +86,24 @@ def _frontend_transform_weather(
 # All coordinates are [lon, lat] per project convention (see constants.py).
 UK_COORDS = [[-1.15, 52.72], [-1.14, 52.72], [-1.14, 52.71], [-1.15, 52.71]]
 
+# Tiny UK parcel (~20 m across) — too small for useful Sentinel-2 RGB.
+TINY_UK_COORDS = [
+    [-1.15000, 52.72000],
+    [-1.14972, 52.72000],
+    [-1.14972, 52.71982],
+    [-1.15000, 52.71982],
+]
+
 # US coords (Colorado, within CONUS — has NAIP)
 US_COORDS = [[-105.0, 39.0], [-104.9, 39.0], [-104.9, 38.9], [-105.0, 38.9]]
+
+# Tiny US parcel (~20 m across) — still suitable for NAIP RGB.
+TINY_US_COORDS = [
+    [-105.00000, 39.00000],
+    [-104.99978, 39.00000],
+    [-104.99978, 38.99982],
+    [-105.00000, 38.99982],
+]
 
 
 def _make_fake_ndvi_stats(
@@ -199,6 +215,59 @@ class TestFramePlanIntegrity:
         plan = build_frame_plan(UK_COORDS)
         starts = [f["start"] for f in plan]
         assert starts == sorted(starts)
+
+    def test_small_non_naip_aoi_marks_rgb_as_unsuitable(self):
+        """Tiny non-US AOIs should prefer NDVI over coarse RGB display."""
+        plan = build_frame_plan(TINY_UK_COORDS)
+        assert len(plan) > 0
+
+        s2_frames = [f for f in plan if f["collection"] == "sentinel-2-l2a"]
+        assert s2_frames, "expected Sentinel-2 frames for tiny UK AOI"
+        assert any(f["rgb_display_suitable"] is False for f in s2_frames)
+        assert all(
+            f["preferred_layer"] == "ndvi" for f in s2_frames if not f["rgb_display_suitable"]
+        )
+
+    def test_small_naip_aoi_keeps_rgb_as_suitable(self):
+        """Tiny CONUS AOIs should keep NAIP RGB as the preferred display layer."""
+        plan = build_frame_plan(TINY_US_COORDS)
+        naip_frames = [f for f in plan if f.get("is_naip")]
+        assert naip_frames, "expected NAIP frames for tiny US AOI"
+        assert all(f["rgb_display_suitable"] is True for f in naip_frames)
+        assert all(f["preferred_layer"] == "rgb" for f in naip_frames)
+
+    def test_legacy_naip_frames_use_higher_gsd(self):
+        """NAIP frames from 2014 or earlier must use 1.0 m/px GSD, not 0.6 m/px.
+
+        Pre-2015 NAIP was collected at 1 m/px; using 0.6 m/px under-estimates
+        the display-pixel count and could incorrectly flag frames as unsuitable.
+        """
+        from treesight.constants import NAIP_LEGACY_GSD_M
+        from treesight.pipeline.enrichment.frames import _annotate_display_metadata
+
+        legacy_frame = {
+            "label": "2014 Summer",
+            "year": 2014,
+            "season": "summer",
+            "start": "2014-06-01",
+            "end": "2014-08-31",
+            "collection": "naip",
+            "is_naip": True,
+        }
+        modern_frame = dict(legacy_frame, year=2020, label="2020 Summer")
+
+        annotated = _annotate_display_metadata([legacy_frame, modern_frame], TINY_US_COORDS)
+        legacy = annotated[0]
+        modern = annotated[1]
+
+        assert legacy["display_resolution_m"] == NAIP_LEGACY_GSD_M, (
+            "2014 NAIP frame should use the legacy 1.0 m/px GSD"
+        )
+        assert modern["display_resolution_m"] < NAIP_LEGACY_GSD_M, (
+            "post-2014 NAIP frame should use the finer 0.6 m/px GSD"
+        )
+        # Legacy is coarser → fewer estimated pixels for the same AOI
+        assert legacy["estimated_display_pixels"] < modern["estimated_display_pixels"]
 
 
 class TestFrontendTransform:

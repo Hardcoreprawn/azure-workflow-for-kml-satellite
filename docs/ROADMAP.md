@@ -41,6 +41,7 @@ Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 | PR | Summary |
 |----|---------|  
+| #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 | #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
 | #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
 | #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
@@ -190,10 +191,10 @@ deforestation-free determinations.
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 3B.0 | #666 | Pipeline cost accumulator + resources consumed evidence card | ✅ #667 |
-| 3B.1 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | Open |
-| 3B.2 | #649 | Evidence provenance: traceability from viewer back to source imagery | Open |
-| 3B.3 | #646 | Imagery viewer: dynamic layer picker with smart defaults | Open |
-| 3B.4 | #645 | Imagery quality gate: reject/deprioritise low-res for small AOIs | Open |
+| 3B.1 | #645 | Imagery quality gate: reject/deprioritise low-res for small AOIs | ✅ #690 |
+| 3B.2 | #649 | Evidence provenance: traceability from viewer back to source imagery | ✅ #690 |
+| 3B.3 | #646 | Imagery viewer: dynamic layer picker with smart defaults | ✅ #690 |
+| 3B.4 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | ✅ #690 |
 
 **Exit:** Compliance officer can export audit-grade PDF with embedded
 evidence, trace any result back to source imagery, and review layers
@@ -207,8 +208,8 @@ interactively.
 cuts Function wall-clock time and idle cost without changing the user-facing
 product surface.
 
-| Order | Issue | Title | Status |
-|-------|-------|-------|--------|
+| Order  | Issue  | Title | Status |
+|--------|--------|-------|--------|
 | 3B.5.0 | #688 | Monitoring delta fetch + fan-out queue to cut PC wait time | Open |
 | 3B.5.1 | #466 | Split Container Apps into orchestrator + compute images | Open |
 
