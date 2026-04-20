@@ -39,6 +39,7 @@
   var pcNdviTileUrl = CanopexEvidenceRender.pcNdviTileUrl;
   var renderAoiDetail = CanopexEvidenceRender.renderAoiDetail;
   var clearAoiDetail = CanopexEvidenceRender.clearAoiDetail;
+  var renderResourceUsage = CanopexEvidenceRender.renderResourceUsage;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -994,6 +995,7 @@
     renderEvidenceNdvi(evidenceManifest);
     renderEvidenceWeather(evidenceManifest);
     renderEvidenceChangeDetection(evidenceManifest);
+    renderResourceUsage(evidenceManifest);
     initEvidenceMap(evidenceManifest);
 
     // Show persistent run reference in the evidence header.

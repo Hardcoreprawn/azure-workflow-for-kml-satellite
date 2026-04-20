@@ -715,6 +715,16 @@ def _dispatch_acq_ful(
 # ---------------------------------------------------------------------------
 
 
+def _apply_enrichment_to_summary(summary: dict[str, Any], enrichment: dict[str, Any]) -> None:
+    """Copy enrichment outputs into the pipeline summary."""
+    if enrichment.get("manifest_path"):
+        summary["enrichment_manifest"] = enrichment["manifest_path"]
+        summary["enrichment_duration"] = enrichment.get("enrichment_duration_seconds")
+    for k in ("resource_usage", "estimated_cost_pence"):
+        if enrichment.get(k) is not None:
+            summary[k] = enrichment[k]
+
+
 @bp.orchestration_trigger(context_name="context")
 def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ignore[return-type]
     """Orchestrator with per-AOI progressive delivery (#585).
@@ -745,9 +755,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             acquisition=acq_s,
             fulfilment=ful_s,
         )
-        if enrichment.get("manifest_path"):
-            summary["enrichment_manifest"] = enrichment["manifest_path"]
-            summary["enrichment_duration"] = enrichment.get("enrichment_duration_seconds")
+        _apply_enrichment_to_summary(summary, enrichment)
         if user_id and tier != "demo":
             yield from _safe_complete_billing(context, user_id, instance_id)
         return summary
