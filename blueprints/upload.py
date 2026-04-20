@@ -24,6 +24,8 @@ from azure.storage.blob import (
 
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.security.eudr_billing import check_eudr_entitlement, consume_eudr_trial
+from treesight.security.orgs import get_user_org
 from treesight.security.quota import consume_quota, release_quota
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
@@ -172,52 +174,82 @@ def _build_ticket(body: dict, user_id: str, submission_context: dict) -> dict:
     return ticket
 
 
-@bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-@require_auth
-def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
-    """Mint a write-only SAS URL for direct-to-blob KML upload."""
-    if not user_id:
-        return error_response(401, "Missing user identity", req=req)
+def _check_eudr_entitlement(
+    user_id: str, req: func.HttpRequest
+) -> tuple[str, dict, func.HttpResponse | None]:
+    """Validate EUDR entitlement for the requesting user's org.
 
-    if not STORAGE_ACCOUNT_NAME:
-        logger.error("Storage account not configured for SAS generation")
-        return error_response(503, "Service not configured", req=req)
+    Returns (org_id, entitlement_dict, error_response_or_None).
+    """
+    org = get_user_org(user_id)
+    if not org:
+        return (
+            "",
+            {},
+            error_response(
+                403,
+                "EUDR assessments require an org. Create or join an org first.",
+                req=req,
+            ),
+        )
+    org_id = org["org_id"]
+    entitlement = check_eudr_entitlement(org_id)
+    if not entitlement["allowed"]:
+        return (
+            org_id,
+            entitlement,
+            error_response(
+                403,
+                "EUDR entitlement exhausted — subscription required",
+                req=req,
+            ),
+        )
+    return org_id, entitlement, None
 
-    # Consume quota upfront so the runs counter decrements immediately.
-    quota_consumed = False
+
+def _consume_upload_quota(
+    user_id: str, req: func.HttpRequest
+) -> tuple[bool, dict, func.HttpResponse | None]:
+    """Consume quota and compute billing fields.
+
+    Returns (quota_consumed, billing_fields, error_response_or_None).
+    """
     billing_fields: dict = {}
     try:
         consume_quota(user_id)
-        quota_consumed = True
-        try:
-            from treesight.security.billing_ledger import billing_fields_for_submission
-
-            billing_fields = billing_fields_for_submission(user_id)
-        except Exception:
-            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
     except ValueError as exc:
-        return error_response(403, str(exc), req=req)
+        return False, {}, error_response(403, str(exc), req=req)
     except Exception:
         logger.exception(
             "Quota storage unavailable for user=%s — allowing submission",
             _redact(user_id),
         )
+        return False, {}, None
 
-    submission_id = str(uuid.uuid4())
-    blob_name = f"analysis/{submission_id}.kml"
-
-    # Parse optional submission context from request body
     try:
-        body = json.loads(req.get_body()) if req.get_body() else {}
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        body = {}
+        from treesight.security.billing_ledger import billing_fields_for_submission
 
-    submission_context = _sanitise_submission_context(body.get("submission_context") or {})
-    effective_provider = _resolve_provider(body, submission_context)
+        billing_fields = billing_fields_for_submission(user_id)
+    except Exception:
+        logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
 
-    # Write ticket blob — trusted server-side record of who initiated the upload
+    return True, billing_fields, None
+
+
+def _write_ticket_and_mint_sas(
+    body: dict,
+    user_id: str,
+    submission_id: str,
+    blob_name: str,
+    submission_context: dict,
+    quota_consumed: bool,
+    req: func.HttpRequest,
+) -> tuple[str | None, func.HttpResponse | None]:
+    """Write ticket blob and mint SAS URL.
+
+    Returns (sas_url, error_response_or_None).
+    """
     ticket = _build_ticket(body, user_id, submission_context)
-
     try:
         blob_service = get_blob_service_client()
         ticket_blob = blob_service.get_blob_client(
@@ -232,7 +264,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
         if quota_consumed:
             _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(502, "Storage service temporarily unavailable", req=req)
+        return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
         sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id)
@@ -240,10 +272,108 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
         if quota_consumed:
             _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(502, "Storage service temporarily unavailable", req=req)
+        return None, error_response(502, "Storage service temporarily unavailable", req=req)
+
+    return sas_url, None
+
+
+def _consume_eudr_trial_if_needed(
+    is_eudr: bool,
+    entitlement: dict,
+    eudr_org_id: str,
+    quota_consumed: bool,
+    user_id: str,
+    submission_id: str,
+    req: func.HttpRequest,
+) -> func.HttpResponse | None:
+    """Decrement EUDR free-trial counter if applicable.
+
+    Returns error_response or None on success.
+    """
+    if not (is_eudr and entitlement.get("reason") == "free_trial"):
+        return None
+    try:
+        consume_eudr_trial(eudr_org_id)
+    except ValueError:
+        logger.warning(
+            "EUDR trial race: entitlement passed but consume failed org=%s",
+            eudr_org_id,
+        )
+        if quota_consumed:
+            _safe_release_quota(user_id, instance_id=submission_id)
+        return error_response(
+            403,
+            "EUDR entitlement exhausted — subscription required",
+            req=req,
+        )
+    return None
+
+
+@bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@require_auth
+def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
+    """Mint a write-only SAS URL for direct-to-blob KML upload."""
+    if not user_id:
+        return error_response(401, "Missing user identity", req=req)
+
+    if not STORAGE_ACCOUNT_NAME:
+        logger.error("Storage account not configured for SAS generation")
+        return error_response(503, "Service not configured", req=req)
+
+    # Parse request body early — needed for EUDR entitlement check.
+    try:
+        body = json.loads(req.get_body()) if req.get_body() else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        body = {}
+
+    is_eudr = body.get("eudr_mode") is True
+
+    # ── EUDR entitlement gate ──────────────────────────────────────
+    eudr_org_id: str = ""
+    entitlement: dict = {}
+    if is_eudr:
+        eudr_org_id, entitlement, err = _check_eudr_entitlement(user_id, req)
+        if err:
+            return err
+
+    # Consume quota upfront so the runs counter decrements immediately.
+    quota_consumed, billing_fields, quota_err = _consume_upload_quota(user_id, req)
+    if quota_err:
+        return quota_err
+
+    submission_id = str(uuid.uuid4())
+    blob_name = f"analysis/{submission_id}.kml"
+
+    submission_context = _sanitise_submission_context(body.get("submission_context") or {})
+    effective_provider = _resolve_provider(body, submission_context)
+
+    # Write ticket blob + mint SAS URL
+    sas_url, storage_err = _write_ticket_and_mint_sas(
+        body,
+        user_id,
+        submission_id,
+        blob_name,
+        submission_context,
+        quota_consumed,
+        req,
+    )
+    if storage_err:
+        return storage_err
+
+    # ── EUDR trial consumption ─────────────────────────────────────
+    eudr_err = _consume_eudr_trial_if_needed(
+        is_eudr,
+        entitlement,
+        eudr_org_id,
+        quota_consumed,
+        user_id,
+        submission_id,
+        req,
+    )
+    if eudr_err:
+        return eudr_err
 
     # Persist submission record only after SAS minting succeeds
-    # so a minting failure doesn't leave a phantom run.
     submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
     from treesight.models.records import RunRecord
 

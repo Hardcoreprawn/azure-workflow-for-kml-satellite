@@ -2024,6 +2024,144 @@
     });
   }
 
+  // ── Cost estimator for EUDR preflight ────────────────────────
+  function computeEudrCostEstimate(parcelCount) {
+    if (!EUDR_LOCKED || !parcelCount) return '—';
+    var billing = typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null;
+    if (!billing) return '—';
+
+    if (!billing.subscribed) {
+      var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
+      if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' of 2 free left';
+      return 'Subscribe to continue';
+    }
+
+    // Pro subscriber — check included parcels vs overage
+    var used = billing.period_parcels_used || 0;
+    var included = billing.included_parcels || 10;
+    var afterSubmit = used + parcelCount;
+    if (afterSubmit <= included) {
+      return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
+    }
+    var overageParcels = afterSubmit - included;
+    var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
+    var cost = (overageParcels * rate).toFixed(2);
+    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + cost;
+  }
+
+  // ── Input tab switching (KML / CSV) ──────────────────────────
+  function switchInputTab(tabName) {
+    var tabs = document.querySelectorAll('[data-input-tab]');
+    tabs.forEach(function(tab) {
+      var isActive = tab.getAttribute('data-input-tab') === tabName;
+      tab.classList.toggle('active', isActive);
+      tab.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+    var kmlPanel = document.getElementById('app-input-panel-kml');
+    var csvPanel = document.getElementById('app-input-panel-csv');
+    if (kmlPanel) kmlPanel.hidden = tabName !== 'kml';
+    if (csvPanel) csvPanel.hidden = tabName !== 'csv';
+  }
+
+  // ── CSV coordinate parsing and conversion ───────────────────
+  function parseCSVCoordinates(text) {
+    var lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length === 0) return { plots: [], errors: ['No data entered'] };
+
+    var plots = [];
+    var errors = [];
+    var startIdx = 0;
+
+    // Detect header row
+    var firstLine = lines[0].toLowerCase().replace(/\s/g, '');
+    if (firstLine.indexOf('name') >= 0 && (firstLine.indexOf('lat') >= 0 || firstLine.indexOf('lon') >= 0)) {
+      startIdx = 1;
+    }
+
+    for (var i = startIdx; i < lines.length; i++) {
+      var parts = lines[i].split(',').map(function(s) { return s.trim(); });
+      if (parts.length < 3) {
+        errors.push('Row ' + (i + 1) + ': expected name, lat, lon — got ' + parts.length + ' columns');
+        continue;
+      }
+      var name = parts[0] || 'Parcel ' + (plots.length + 1);
+      var lat = parseFloat(parts[1]);
+      var lon = parseFloat(parts[2]);
+      if (isNaN(lat) || isNaN(lon)) {
+        errors.push('Row ' + (i + 1) + ': invalid coordinates (' + parts[1] + ', ' + parts[2] + ')');
+        continue;
+      }
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        errors.push('Row ' + (i + 1) + ': coordinates out of range (lat: ' + lat + ', lon: ' + lon + ')');
+        continue;
+      }
+      plots.push({ name: name, lat: lat, lon: lon });
+    }
+    return { plots: plots, errors: errors };
+  }
+
+  async function convertCSVToKml() {
+    var textarea = document.getElementById('app-csv-input');
+    var statusEl = document.getElementById('app-csv-status');
+    var convertBtn = document.getElementById('app-csv-convert-btn');
+    if (!textarea || !statusEl) return;
+
+    var text = textarea.value.trim();
+    if (!text) {
+      statusEl.hidden = false;
+      statusEl.setAttribute('data-tone', 'error');
+      statusEl.textContent = 'Paste coordinate data first.';
+      return;
+    }
+
+    var parsed = parseCSVCoordinates(text);
+    if (parsed.errors.length > 0 && parsed.plots.length === 0) {
+      statusEl.hidden = false;
+      statusEl.setAttribute('data-tone', 'error');
+      statusEl.textContent = parsed.errors.join('; ');
+      return;
+    }
+    if (parsed.plots.length === 0) {
+      statusEl.hidden = false;
+      statusEl.setAttribute('data-tone', 'error');
+      statusEl.textContent = 'No valid coordinates found.';
+      return;
+    }
+
+    if (convertBtn) { convertBtn.disabled = true; convertBtn.textContent = 'Converting…'; }
+    statusEl.hidden = false;
+    statusEl.setAttribute('data-tone', 'info');
+    var warningText = parsed.errors.length > 0 ? ' (' + parsed.errors.length + ' rows skipped)' : '';
+    statusEl.textContent = 'Converting ' + parsed.plots.length + ' parcels…' + warningText;
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/convert-coordinates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ doc_name: 'EUDR Parcels', buffer_m: 100, plots: parsed.plots })
+      });
+      var kmlText = await res.text();
+
+      // Put converted KML into the KML textarea and switch to KML tab
+      var kmlTextarea = document.getElementById('app-analysis-kml');
+      if (kmlTextarea) {
+        kmlTextarea.value = kmlText;
+        updateAnalysisPreflight(kmlText);
+      }
+      switchInputTab('kml');
+      statusEl.hidden = true;
+
+      var fileNote = document.getElementById('app-analysis-file-note');
+      if (fileNote) fileNote.textContent = 'Generated from ' + parsed.plots.length + ' coordinate' + (parsed.plots.length !== 1 ? 's' : '') + '.';
+    } catch (err) {
+      statusEl.setAttribute('data-tone', 'error');
+      statusEl.textContent = (err.body && err.body.error) || 'Coordinate conversion failed. Check your data and try again.';
+    } finally {
+      if (convertBtn) { convertBtn.disabled = false; convertBtn.textContent = 'Convert to KML'; }
+    }
+  }
+
   function updateAnalysisPreflight(text) {
     var headlineEl = document.getElementById('app-preflight-headline');
     var modeEl = document.getElementById('app-preflight-mode');
@@ -2032,6 +2170,7 @@
     var aoisEl = document.getElementById('app-preflight-aois');
     var spreadEl = document.getElementById('app-preflight-spread');
     var quotaEl = document.getElementById('app-preflight-quota');
+    var costEl = document.getElementById('app-preflight-cost');
     if (!headlineEl || !modeEl || !summaryEl || !featuresEl || !aoisEl || !spreadEl || !quotaEl) return null;
 
     var role = currentRoleConfig();
@@ -2045,6 +2184,7 @@
       aoisEl.textContent = '0';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
+      if (costEl) costEl.textContent = '—';
       renderPreflightWarnings([{ tone: 'info', text: 'Preflight will show warnings here after you paste or upload KML.' }]);
       renderPreflightMap(null);
       var submitBtn = document.getElementById('app-analysis-submit-btn');
@@ -2062,6 +2202,7 @@
       aoisEl.textContent = '—';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
+      if (costEl) costEl.textContent = '—';
       renderPreflightWarnings([{ tone: 'error', text: preflight.error }]);
       renderPreflightMap(null);
       return preflight;
@@ -2074,6 +2215,7 @@
     aoisEl.textContent = String(preflight.aoiCount);
     spreadEl.textContent = formatDistance(preflight.maxSpreadKm);
     quotaEl.textContent = preflight.quotaImpact;
+    if (costEl) costEl.textContent = computeEudrCostEstimate(preflight.aoiCount);
     renderPreflightWarnings(preflight.warnings);
     renderPreflightMap(preflight.polygons);
     var submitBtn = document.getElementById('app-analysis-submit-btn');
@@ -2789,6 +2931,12 @@
   if (kmlInput) kmlInput.addEventListener('input', function() { updateAnalysisPreflight(this.value); });
   var fileInput = document.getElementById('app-analysis-file');
   if (fileInput) fileInput.addEventListener('change', function() { if (this.files && this.files[0]) loadAnalysisFile(this.files[0]); });
+
+  // Input tab switching (KML / CSV)
+  document.querySelectorAll('[data-input-tab]').forEach(function(tab) {
+    tab.addEventListener('click', function() { switchInputTab(this.getAttribute('data-input-tab')); });
+  });
+  bindClick('app-csv-convert-btn', convertCSVToKml);
 
   // Evidence surface controls
   bindClick('app-map-play-btn', toggleEvidencePlay);

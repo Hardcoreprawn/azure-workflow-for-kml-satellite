@@ -103,7 +103,7 @@
           <div class="app-first-run-content">
             <div class="section-label">Get Started</div>
             <h3>Welcome to EUDR Due Diligence</h3>
-            <p class="app-first-run-note">You have no due diligence runs yet. Upload a KML file with your parcel boundaries. Canopex will search post-2020 satellite imagery across Sentinel-2, ESA WorldCover, IO LULC, ALOS radar, and more — then assess deforestation risk and assemble an evidence pack for EUDR compliance.</p>
+            <p class="app-first-run-note">You have no due diligence runs yet. Upload a KML file with your parcel boundaries, or paste CSV coordinates (name, lat, lon). Canopex will search post-2020 satellite imagery across Sentinel-2, ESA WorldCover, IO LULC, ALOS radar, and more — then assess deforestation risk and assemble an evidence pack for EUDR compliance.</p>
             <div class="app-first-run-actions">
               <a class="btn btn-primary" id="app-first-run-cta" href="#app-analysis-card">Start Your First Assessment</a>
               <a class="btn btn-secondary" href="/docs/kml-guide.html">KML Guide</a>
@@ -113,8 +113,8 @@
           <div class="app-first-run-checklist">
             <div class="section-label">Quick Checklist</div>
             <ol>
-              <li>Prepare a KML or KMZ file with parcel polygon boundaries</li>
-              <li>Upload it in the New Due Diligence panel below</li>
+              <li>Prepare a KML/KMZ file with parcel boundaries, or a CSV with name, lat, lon columns</li>
+              <li>Upload the file or paste coordinates in the New Due Diligence panel below</li>
               <li>Queue the pipeline — imagery is restricted to post-Dec 2020 per Regulation 2023/1115</li>
               <li>Review multi-source evidence: NDVI time series, land cover, radar, fire, weather</li>
               <li>Export audit-grade PDF with per-parcel deforestation-free determination</li>
@@ -167,11 +167,32 @@
             </div>
           </div>
           <div id="app-analysis-form-fields" hidden>
+          <!-- ── Input mode tabs ── -->
+          <div class="app-input-tabs" id="app-input-tabs">
+            <button class="app-input-tab active" type="button" data-input-tab="kml" aria-pressed="true">Upload KML</button>
+            <button class="app-input-tab" type="button" data-input-tab="csv" aria-pressed="false">Paste Coordinates</button>
+          </div>
+
+          <!-- ── KML tab ── -->
+          <div class="app-input-panel" id="app-input-panel-kml">
           <label class="app-field-label" for="app-analysis-file">KML or KMZ file</label>
           <input id="app-analysis-file" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz">
           <p class="app-note" id="app-analysis-file-note">Choose a KML or KMZ file with your parcel boundaries, or paste KML below.</p>
           <label class="app-field-label" for="app-analysis-kml">KML Content</label>
           <textarea id="app-analysis-kml" placeholder="Paste KML content here…"></textarea>
+          </div>
+
+          <!-- ── CSV coordinates tab ── -->
+          <div class="app-input-panel" id="app-input-panel-csv" hidden>
+          <label class="app-field-label" for="app-csv-input">Parcel coordinates (CSV)</label>
+          <textarea id="app-csv-input" placeholder="name, lat, lon&#10;Plot A, -3.4653, -62.2159&#10;Plot B, -2.8912, -60.0217"></textarea>
+          <p class="app-note" id="app-csv-input-note">One row per parcel: <code>name, lat, lon</code>. Points are buffered to 100 m polygons.</p>
+          <div class="app-csv-actions">
+            <button class="btn btn-secondary" id="app-csv-convert-btn" type="button">Convert to KML</button>
+          </div>
+          <div class="app-csv-status" id="app-csv-status" hidden></div>
+          </div>
+
           <div class="app-preflight-card" id="app-analysis-preflight">
             <div class="app-preflight-header">
               <div>
@@ -190,6 +211,7 @@
               <div><span>Parcels</span><strong id="app-preflight-aois">0</strong></div>
               <div><span>Spread</span><strong id="app-preflight-spread">—</strong></div>
               <div><span>Quota impact</span><strong id="app-preflight-quota">—</strong></div>
+              <div><span>Cost estimate</span><strong id="app-preflight-cost">—</strong></div>
             </div>
             <div class="app-preflight-list" id="app-preflight-warnings">
               <div class="app-preflight-item" data-tone="info">Preflight will show warnings here after you paste or upload KML.</div>
@@ -339,6 +361,7 @@
                     <div class="app-evidence-aoi-detail-name" id="app-evidence-aoi-detail-name"></div>
                     <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
                     <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
+                    <div class="app-evidence-flags" id="app-evidence-flags" hidden></div>
                   </div>
                 </div>
               </div>

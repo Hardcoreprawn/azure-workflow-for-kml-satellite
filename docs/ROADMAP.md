@@ -30,8 +30,8 @@ entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
 T2/T3 split (#466, #467) deferred until user volume justifies it.
 
-**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3 → 4 → 5.
-Stages 2D and 2E can proceed in parallel. Stage 3A is current priority.
+**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3 → 4 → 5.
+Stages 2D and 2E can proceed in parallel. Stage 3B is next priority.
 
 ---
 
@@ -39,12 +39,12 @@ Stages 2D and 2E can proceed in parallel. Stage 3A is current priority.
 
 | PR | Summary |
 |----|---------|  
+| (pending) | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
+| #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
 | #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
 | #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
 | #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
 | #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
-| #650 | Evidence run ID badge in evidence header |
-| #642 | Cosmos DB: scope public network access to dev only (fixes #640) |
 
 ---
 
@@ -159,26 +159,47 @@ All at `/eudr/`. Shared billing/account at `/account/`.
 
 ---
 
-## Stage 3A — EUDR Assessment Management 🔄
+## Stage 3A — EUDR Assessment Management ✅
 
-**Current priority.** Thin vertical slices that improve how compliance
+**Complete.** Thin vertical slices that improve how compliance
 officers manage, understand, and act on their EUDR assessments.
 Driven by the EUDR user journey gap analysis (`EUDR_USER_JOURNEYS.md`).
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 3A.1 | #662 | CSV / coordinate paste upload in EUDR frontend | 🔄 |
-| 3A.2 | #661 | Cost estimator in preflight panel | 🔄 |
-| 3A.3 | #660 | Flagged-parcel quick-review UX in evidence panel | 🔄 |
+| 3A.0 | #664 | Server-side EUDR entitlement enforcement | ✅ |
+| 3A.1 | #662 | CSV / coordinate paste upload in EUDR frontend | ✅ |
+| 3A.2 | #661 | Cost estimator in preflight panel | ✅ |
+| 3A.3 | #660 | Flagged-parcel quick-review UX in evidence panel | ✅ |
 
-**Exit:** Compliance officer can paste CSV coordinates, see cost before
-queueing, and understand flagged parcels without external help.
+**Exit:** Server-side billing enforcement is load-bearing. Compliance
+officer can paste CSV coordinates, see cost before queueing, and
+understand flagged parcels without external help.
+
+---
+
+## Stage 3B — EUDR Evidence Quality
+
+**Do not start until Stage 3A is complete.** Improves evidence
+trustworthiness and usability for compliance officers reviewing
+deforestation-free determinations.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 3B.1 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | Open |
+| 3B.2 | #649 | Evidence provenance: traceability from viewer back to source imagery | Open |
+| 3B.3 | #646 | Imagery viewer: dynamic layer picker with smart defaults | Open |
+| 3B.4 | #645 | Imagery quality gate: reject/deprioritise low-res for small AOIs | Open |
+
+**Exit:** Compliance officer can export audit-grade PDF with embedded
+evidence, trace any result back to source imagery, and review layers
+interactively.
 
 ---
 
 ## Stage 3 — Growth & Retention
 
-**Do not start until Stage 3A is complete.**
+**Do not start until Stage 3B is complete.**
 Growth features target the EUDR vertical first. Conservation/agriculture
 verticals start here as separate `/conservation/` or `/agri/` apps,
 reusing the shared pipeline and platform.
@@ -195,6 +216,7 @@ reusing the shared pipeline and platform.
 | 3.8 | — | Shareable analysis links | — |
 | 3.9 | #618 | Brazilian authoritative data enrichment (PRODES, DETER, CAR) | Open |
 | 3.10 | #619 | Evaluate Mapbox/Maxar satellite basemap | Open |
+| 3.11 | #437 | End-to-end validation: 200+ AOI KMZ at scale | Open |
 
 Future enrichment sources: INPE PRODES & DETER (confirmed WFS access),
 CAR/SICAR property registry, MapBiomas, MODIS Burned Area, ESA CCI Land Cover,
@@ -250,6 +272,9 @@ GFW alerts.
 | #525 | Skip unchanged app settings | Next deploy PR |
 | #526 | Batch tofu output calls | Next deploy PR |
 | #529 | Split function app BFF + pipeline | Superseded by #466 |
+| #463 | 3-tier architecture (SWA API / orchestrator / compute) | Superseded by #466 |
+| #424 | Migrate read-only endpoints to SWA functions | Stage 5 infra split |
+| #599 | EUDR competitive analysis & feature gap assessment | Next product review |
 
 ---
 
