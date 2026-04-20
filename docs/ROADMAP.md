@@ -39,7 +39,7 @@ Stages 2D and 2E can proceed in parallel. Stage 3B is next priority.
 
 | PR | Summary |
 |----|---------|  
-| (pending) | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (#666) |
+| #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
 | #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
 | #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
 | #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
@@ -187,7 +187,7 @@ deforestation-free determinations.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 3B.0 | #666 | Pipeline cost accumulator + resources consumed evidence card | ✅ (pending PR) |
+| 3B.0 | #666 | Pipeline cost accumulator + resources consumed evidence card | ✅ #667 |
 | 3B.1 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | Open |
 | 3B.2 | #649 | Evidence provenance: traceability from viewer back to source imagery | Open |
 | 3B.3 | #646 | Imagery viewer: dynamic layer picker with smart defaults | Open |
