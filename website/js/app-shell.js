@@ -984,6 +984,56 @@
     });
   }
 
+  // #646 — update layer button aria-labels and titles with per-frame
+  // collection and resolution so the picker is self-documenting.
+  function updateLayerButtonLabels(frame) {
+    var btnRgb = document.getElementById('app-map-btn-rgb');
+    var btnNdvi = document.getElementById('app-map-btn-ndvi');
+    var expRgb = document.getElementById('app-map-expanded-btn-rgb');
+    var expNdvi = document.getElementById('app-map-expanded-btn-ndvi');
+    if (!frame) return;
+    var info = frame.collectionLabel
+      ? (frame.collectionLabel + (frame.resLabel || ''))
+      : '';
+    [btnRgb, expRgb].forEach(function(btn) {
+      if (!btn) return;
+      var base = info ? 'True-colour RGB — ' + info : 'True-colour RGB';
+      // Preserve quality warning set by syncEvidenceLayerButtons when disabled.
+      if (!btn.disabled) btn.title = base;
+      btn.setAttribute('aria-label', info ? 'RGB (' + info + ')' : 'RGB');
+    });
+    [btnNdvi, expNdvi].forEach(function(btn) {
+      if (!btn) return;
+      btn.title = info ? 'Vegetation index (NDVI) — ' + info : 'Vegetation index (NDVI)';
+      btn.setAttribute('aria-label', info ? 'NDVI (' + info + ')' : 'NDVI');
+    });
+  }
+
+  // #646 — update layer button aria-labels and titles with per-frame
+  // collection and resolution so the picker is self-documenting.
+  function updateLayerButtonLabels(frame) {
+    var btnRgb = document.getElementById('app-map-btn-rgb');
+    var btnNdvi = document.getElementById('app-map-btn-ndvi');
+    var expRgb = document.getElementById('app-map-expanded-btn-rgb');
+    var expNdvi = document.getElementById('app-map-expanded-btn-ndvi');
+    if (!frame) return;
+    var info = frame.collectionLabel
+      ? (frame.collectionLabel + (frame.resLabel || ''))
+      : '';
+    [btnRgb, expRgb].forEach(function(btn) {
+      if (!btn) return;
+      var base = info ? 'True-colour RGB \u2014 ' + info : 'True-colour RGB';
+      // Preserve any quality warning appended by syncEvidenceLayerButtons.
+      if (!btn.disabled) btn.title = base;
+      btn.setAttribute('aria-label', info ? 'RGB (' + info + ')' : 'RGB');
+    });
+    [btnNdvi, expNdvi].forEach(function(btn) {
+      if (!btn) return;
+      btn.title = info ? 'Vegetation index (NDVI) \u2014 ' + info : 'Vegetation index (NDVI)';
+      btn.setAttribute('aria-label', info ? 'NDVI (' + info + ')' : 'NDVI');
+    });
+  }
+
   function showEvidenceSurface(visible) {
     var surface = document.getElementById('app-evidence-surface');
     var phaseStatus = document.getElementById('app-content-phase-status');
@@ -1296,6 +1346,17 @@
         ndviLayer.addTo(evidenceMap);
       }
 
+      // #646 — store human-readable collection label and resolution suffix so
+      // updateLayerButtonLabels can build informative button titles per frame.
+      var collectionLabel = collection.indexOf('naip') >= 0 ? 'NAIP'
+        : collection.indexOf('sentinel') >= 0 ? 'Sentinel-2'
+        : collection.indexOf('landsat') >= 0 ? 'Landsat'
+        : collection;
+      var resolutionM = (frame.provenance && frame.provenance.resolution_m)
+        || frame.display_resolution_m
+        || null;
+      var resLabel = resolutionM ? (' \u00b7 ' + resolutionM + 'm') : '';
+
       evidenceMapLayers.push({
         rgb: rgbLayer,
         ndvi: ndviLayer,
@@ -1303,7 +1364,9 @@
         info: [collection, frame.start_date, frame.end_date].filter(Boolean).join(' | '),
         rgbDisplaySuitable: frame.rgb_display_suitable !== false,
         rgbDisplayWarning: frame.rgb_display_warning || '',
-        preferredLayer: frame.preferred_layer || 'rgb'
+        preferredLayer: frame.preferred_layer || 'rgb',
+        collectionLabel: collectionLabel,
+        resLabel: resLabel
       });
     });
 
@@ -1316,6 +1379,12 @@
     evidenceFrameIndex = idx;
     var activeFrame = evidenceMapLayers[idx];
 
+    // #646 — bidirectional mode adaptation:
+    // Fall back to rgb when the user is in ndvi mode but this frame has no ndvi layer.
+    if (evidenceLayerMode === 'ndvi' && !activeFrame.ndvi) {
+      evidenceLayerMode = 'rgb';
+    }
+    // Promote to ndvi for coarse frames where rgb is unsuitable (established in #645).
     if (activeFrame.rgbDisplaySuitable === false && activeFrame.ndvi) {
       evidenceLayerMode = 'ndvi';
     }
@@ -1337,6 +1406,7 @@
         (activeFrame.rgbDisplayWarning ? ' — ' + activeFrame.rgbDisplayWarning : '');
     }
     syncEvidenceLayerButtons(activeFrame);
+    updateLayerButtonLabels(activeFrame);
 
     // Sync expanded controls if open
     if (evidenceMapExpanded) syncExpandedControls();

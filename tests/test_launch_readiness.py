@@ -998,6 +998,30 @@ class TestEvidenceMapQualityGate:
             "from frame metadata"
         )
 
+    def test_layer_button_labels_update_per_frame(self):
+        """#646 — layer picker shows per-frame collection + resolution as button labels."""
+        content = self.APP_SHELL.read_text()
+        assert "updateLayerButtonLabels" in content, (
+            "app-shell.js must define updateLayerButtonLabels(frame) so each frame's "
+            "collection and resolution are surfaced in the layer picker buttons"
+        )
+
+    def test_layer_mode_falls_back_to_rgb_when_ndvi_unavailable(self):
+        """#646 — navigating to a frame without NDVI must not leave the viewer broken."""
+        content = self.APP_SHELL.read_text()
+        assert "evidenceLayerMode === 'ndvi' && !activeFrame.ndvi" in content, (
+            "showEvidenceFrame must fall back from ndvi to rgb when the active frame "
+            "has no ndvi layer, so the viewer never shows a blank tile"
+        )
+
+    def test_layer_picker_stores_collection_label_per_frame(self):
+        """#646 — buildEvidenceFrames must record collectionLabel per entry."""
+        content = self.APP_SHELL.read_text()
+        assert "collectionLabel" in content, (
+            "buildEvidenceFrames must store a collectionLabel per map-layer entry "
+            "so updateLayerButtonLabels has per-frame context without re-reading the DOM"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected
