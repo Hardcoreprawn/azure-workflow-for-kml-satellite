@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
 
 ---
 
@@ -30,8 +30,8 @@ entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
 T2/T3 split (#466, #467) deferred until user volume justifies it.
 
-**Execution order:** 2C → 2D → 2E → 2F → 2G → 3 → 4 → 5.
-Stages 2D and 2E can proceed in parallel.
+**Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3 → 4 → 5.
+Stages 2D and 2E can proceed in parallel. Stage 3A is current priority.
 
 ---
 
@@ -159,9 +159,26 @@ All at `/eudr/`. Shared billing/account at `/account/`.
 
 ---
 
+## Stage 3A — EUDR Assessment Management 🔄
+
+**Current priority.** Thin vertical slices that improve how compliance
+officers manage, understand, and act on their EUDR assessments.
+Driven by the EUDR user journey gap analysis (`docs/EUDR_USER_JOURNEYS.md`).
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 3A.1 | #662 | CSV / coordinate paste upload in EUDR frontend | 🔄 |
+| 3A.2 | #661 | Cost estimator in preflight panel | 🔄 |
+| 3A.3 | #660 | Flagged-parcel quick-review UX in evidence panel | 🔄 |
+
+**Exit:** Compliance officer can paste CSV coordinates, see cost before
+queueing, and understand flagged parcels without external help.
+
+---
+
 ## Stage 3 — Growth & Retention
 
-**Do not start until Stages 2C–2G are materially complete.**
+**Do not start until Stage 3A is complete.**
 Growth features target the EUDR vertical first. Conservation/agriculture
 verticals start here as separate `/conservation/` or `/agri/` apps,
 reusing the shared pipeline and platform.

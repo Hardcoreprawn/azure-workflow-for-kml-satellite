@@ -2225,6 +2225,17 @@
       return;
     }
 
+    // EUDR entitlement gate: show subscribe modal when trial is exhausted
+    if (EUDR_LOCKED && typeof window.eudrBillingData === 'function') {
+      var billing = window.eudrBillingData();
+      if (billing && !billing.subscribed && billing.trial_remaining != null && billing.trial_remaining <= 0) {
+        if (typeof window.showEudrSubscribeModal === 'function') {
+          window.showEudrSubscribeModal();
+        }
+        return;
+      }
+    }
+
     var button = document.getElementById('app-analysis-submit-btn');
     var textarea = document.getElementById('app-analysis-kml');
     if (!button || !textarea) return;
