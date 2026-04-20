@@ -411,19 +411,119 @@
         detEl.textContent = det.deforestation_free
           ? '\u2705 Deforestation-free (' + (det.confidence || 'medium') + ' confidence)'
           : '\u26A0\uFE0F Risk detected — ' + (det.reason || 'see full report');
+        renderFlagCards(det.flags || []);
       } else {
         detEl.hidden = true;
+        renderFlagCards([]);
       }
     }
+  }
+
+  // ── Flag severity classification and rendering ─────────────
+  var FLAG_RULES = [
+    { pattern: /vegetation loss/i, severity: 'high', source: 'Change detection', action: 'Compare RGB imagery in the timeline to verify the loss area.' },
+    { pattern: /NDVI trajectory is declining/i, severity: 'high', source: 'NDVI analysis', action: 'Check the weather panel for drought correlation before concluding deforestation.' },
+    { pattern: /Mean NDVI delta/i, severity: 'moderate', source: 'NDVI analysis', action: 'Review the NDVI time series for seasonal patterns vs permanent loss.' },
+    { pattern: /WDPA protected area/i, severity: 'info', source: 'WDPA overlay', action: 'Verify the parcel boundary does not overlap a protected area buffer zone.' },
+    { pattern: /IO LULC.*land-cover change/i, severity: 'moderate', source: 'IO Annual LULC', action: 'Review the IO LULC transition data for the specific land-cover class change.' },
+    { pattern: /IO LULC.*tree cover.*declining/i, severity: 'high', source: 'IO Annual LULC', action: 'Cross-reference with WorldCover baseline to confirm tree cover loss timeline.' },
+    { pattern: /ALOS.*forest/i, severity: 'moderate', source: 'ALOS FNF', action: 'Compare ALOS forest/non-forest classification with Sentinel-2 imagery.' }
+  ];
+
+  function classifyFlag(flagText) {
+    for (var i = 0; i < FLAG_RULES.length; i++) {
+      var rule = FLAG_RULES[i];
+      if (rule.pattern.test(flagText)) {
+        return { text: flagText, severity: rule.severity, source: rule.source, action: rule.action };
+      }
+    }
+    return { text: flagText, severity: 'info', source: 'Assessment', action: '' };
+  }
+
+  function renderFlagCards(flags) {
+    var container = document.getElementById('app-evidence-flags');
+    if (!container) return;
+    container.textContent = '';
+
+    if (!flags || !flags.length) {
+      container.hidden = true;
+      return;
+    }
+    container.hidden = false;
+
+    var classified = flags.map(classifyFlag);
+    var highCount = classified.filter(function(f) { return f.severity === 'high'; }).length;
+    var modCount = classified.filter(function(f) { return f.severity === 'moderate'; }).length;
+    var infoCount = classified.filter(function(f) { return f.severity === 'info'; }).length;
+
+    // Summary banner
+    var banner = document.createElement('div');
+    var bannerStateClass = 'info-only';
+    if (highCount > 0) {
+      bannerStateClass = 'has-high';
+    } else if (modCount > 0) {
+      bannerStateClass = 'moderate-only';
+    }
+    banner.className = 'app-flag-banner ' + bannerStateClass;
+    var parts = [];
+    if (highCount > 0) parts.push(highCount + ' high concern');
+    if (modCount > 0) parts.push(modCount + ' moderate');
+    if (infoCount > 0) parts.push(infoCount + ' informational');
+    banner.textContent = flags.length + ' flag' + (flags.length !== 1 ? 's' : '') + ' raised \u2014 ' + parts.join(', ');
+    container.appendChild(banner);
+
+    // Individual flag cards
+    classified.forEach(function(flag) {
+      var card = document.createElement('div');
+      card.className = 'app-flag-card';
+
+      var header = document.createElement('div');
+      header.className = 'flag-header';
+
+      var badge = document.createElement('span');
+      badge.className = 'app-flag-badge ' + flag.severity;
+      var badgeLabel = 'Info';
+      if (flag.severity === 'high') {
+        badgeLabel = 'High';
+      } else if (flag.severity === 'moderate') {
+        badgeLabel = 'Moderate';
+      }
+      badge.textContent = badgeLabel;
+      header.appendChild(badge);
+
+      var text = document.createElement('span');
+      text.textContent = flag.text;
+      header.appendChild(text);
+
+      card.appendChild(header);
+
+      if (flag.source) {
+        var source = document.createElement('div');
+        source.className = 'flag-source';
+        source.textContent = 'Source: ' + flag.source;
+        card.appendChild(source);
+      }
+
+      if (flag.action) {
+        var action = document.createElement('div');
+        action.className = 'flag-action';
+        action.textContent = '\uD83D\uDCA1 ' + flag.action;
+        card.appendChild(action);
+      }
+
+      container.appendChild(card);
+    });
   }
 
   function clearAoiDetail() {
     var detail = document.getElementById('app-evidence-aoi-detail');
     var grid = document.getElementById('app-evidence-aoi-detail-grid');
     var detEl = document.getElementById('app-evidence-aoi-determination');
+    var flagsEl = document.getElementById('app-evidence-flags');
     if (detail) detail.hidden = true;
     if (grid) grid.textContent = '';
     if (detEl) { detEl.hidden = true; detEl.textContent = ''; }
+    if (flagsEl) { flagsEl.hidden = true; flagsEl.textContent = ''; }
   }
 
   window.CanopexEvidenceRender = {

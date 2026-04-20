@@ -267,9 +267,15 @@ class TestUploadToken:
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 
+    @patch("blueprints.upload.consume_eudr_trial")
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": True, "reason": "free_trial"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas):
+    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial):
         from blueprints.upload import upload_token
 
         mock_blob_client = MagicMock()
@@ -325,9 +331,17 @@ class TestUploadToken:
         ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
         assert "eudr_mode" not in ticket_data
 
+    @patch("blueprints.upload.consume_eudr_trial")
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": True, "reason": "free_trial"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_stored_in_run_record(self, mock_bsc, mock_gen_sas):
+    def test_eudr_mode_stored_in_run_record(
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial
+    ):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -340,6 +354,149 @@ class TestUploadToken:
 
         record = self.mock_persist.call_args[0][1]
         assert record["eudr_mode"] is True
+
+
+# ===================================================================
+# EUDR entitlement enforcement on upload/token
+# ===================================================================
+
+
+class TestUploadTokenEudrEntitlement:
+    """Server-side EUDR entitlement gate (#664)."""
+
+    def setup_method(self):
+        self._quota_patcher = patch("blueprints.upload.consume_quota")
+        self._release_patcher = patch("blueprints.upload.release_quota")
+        self._persist_patcher = patch("blueprints.upload._persist_submission_record")
+        self.mock_consume_quota = self._quota_patcher.start()
+        self.mock_release_quota = self._release_patcher.start()
+        self.mock_persist = self._persist_patcher.start()
+
+    def teardown_method(self):
+        self._persist_patcher.stop()
+        self._release_patcher.stop()
+        self._quota_patcher.stop()
+
+    @patch("blueprints.upload.get_user_org", return_value=None)
+    def test_eudr_mode_rejects_user_without_org(self, mock_org):
+        from blueprints.upload import upload_token
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 403
+        data = json.loads(resp.get_body())
+        assert "org" in data["error"].lower()
+        self.mock_consume_quota.assert_not_called()
+
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": False, "reason": "subscription_required"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    def test_eudr_mode_rejects_when_entitlement_denied(self, mock_org, mock_ent):
+        from blueprints.upload import upload_token
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 403
+        data = json.loads(resp.get_body())
+        assert "subscription" in data["error"].lower() or "entitlement" in data["error"].lower()
+        self.mock_consume_quota.assert_not_called()
+
+    @patch("blueprints.upload.consume_eudr_trial")
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": True, "reason": "free_trial"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_consumes_trial_when_free(
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+    ):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        mock_consume_trial.assert_called_once_with("org-1")
+        self.mock_consume_quota.assert_called_once()
+
+    @patch("blueprints.upload.consume_eudr_trial")
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": True, "reason": "subscription"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_skips_trial_when_subscribed(
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+    ):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        mock_consume_trial.assert_not_called()
+        self.mock_consume_quota.assert_called_once()
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_non_eudr_mode_skips_entitlement_check(self, mock_bsc, mock_gen_sas):
+        """Non-EUDR submissions should not check EUDR entitlement."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": False})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+
+    @patch("blueprints.upload.consume_eudr_trial")
+    @patch(
+        "blueprints.upload.check_eudr_entitlement",
+        return_value={"allowed": True, "reason": "free_trial"},
+    )
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_eudr_mode_refunds_quota_on_trial_consume_failure(
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+    ):
+        """If trial consumption fails after quota was consumed, quota is refunded."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+        mock_consume_trial.side_effect = ValueError("Trial exhausted")
+
+        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
+        with (
+            patch("blueprints.upload._safe_release_quota") as mock_release,
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            resp = upload_token(req)
+
+        assert resp.status_code == 403
+        mock_release.assert_called_once()
 
 
 # ===================================================================
