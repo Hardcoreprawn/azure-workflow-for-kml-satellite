@@ -123,6 +123,13 @@ def _process_monitor(monitor: Any) -> None:
 
     run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
+    # Delta fetch: only request scenes since the last successful run so we do
+    # not re-download the full historical archive on every 6-hourly check.
+    # The first run (last_run_at is None) has no date_start, so build_frame_plan
+    # returns its normal cadence window.
+    date_end = datetime.now(UTC).date().isoformat()
+    date_start = monitor.last_run_at.date().isoformat() if monitor.last_run_at else None
+
     enrichment_result = run_enrichment(
         coords=coords,
         project_name=f"monitor-{monitor.id}",
@@ -130,6 +137,8 @@ def _process_monitor(monitor: Any) -> None:
         output_container="kml-output",
         storage=storage,
         cadence="monthly",
+        date_start=date_start,
+        date_end=date_end,
     )
 
     # Extract change detection results
@@ -139,6 +148,13 @@ def _process_monitor(monitor: Any) -> None:
     alert = evaluate_alert(monitor, change_result)
     if alert:
         send_monitoring_alert(monitor, alert)
+
+    # Persist the latest NDVI mean so the next delta run has an updated baseline.
+    ndvi_stats: list[dict] = enrichment_result.get("ndvi_stats") or []
+    valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    if valid_stats:
+        latest = max(valid_stats, key=lambda s: s.get("datetime", ""))
+        monitor.baseline_ndvi_mean = latest["mean"]
 
     # Advance schedule regardless of alert
     advance_schedule(monitor, run_id=f"monitoring-{monitor.id}")
