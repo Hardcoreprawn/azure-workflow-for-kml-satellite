@@ -121,14 +121,22 @@ def _process_monitor(monitor: Any) -> None:
     coords = [centroid]
     storage = BlobStorageClient()
 
-    run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.now(UTC)
+    run_ts = now.strftime("%Y%m%dT%H%M%SZ")
 
-    # Delta fetch: only request scenes since the last successful run so we do
-    # not re-download the full historical archive on every 6-hourly check.
-    # The first run (last_run_at is None) has no date_start, so build_frame_plan
-    # returns its normal cadence window.
-    date_end = datetime.now(UTC).date().isoformat()
-    date_start = monitor.last_run_at.date().isoformat() if monitor.last_run_at else None
+    # Delta fetch: only request scenes since the last successful monitoring
+    # enrichment run so we do not re-download the full historical archive on
+    # every 6-hourly check. Skip runs (for example, missing centroid) advance
+    # schedule bookkeeping but must not narrow the first real enrichment
+    # window.
+    date_end = now.date().isoformat()
+    last_run_id = getattr(monitor, "last_run_id", None)
+    has_successful_monitoring_run = bool(
+        monitor.last_run_at
+        and isinstance(last_run_id, str)
+        and last_run_id.startswith("monitoring-")
+    )
+    date_start = monitor.last_run_at.date().isoformat() if has_successful_monitoring_run else None
 
     enrichment_result = run_enrichment(
         coords=coords,

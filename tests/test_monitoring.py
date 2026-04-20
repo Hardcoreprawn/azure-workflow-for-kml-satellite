@@ -641,6 +641,7 @@ class TestMonitoringScheduler:
             aoi_geometry=_SAMPLE_GEOMETRY,
         )
         m.last_run_at = last_run
+        m.last_run_id = "monitoring-abc123"  # marks a prior successful enrichment run
 
         captured_kwargs: dict = {}
 
