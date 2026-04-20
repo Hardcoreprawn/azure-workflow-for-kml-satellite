@@ -212,6 +212,45 @@ class TestCompleteRunBilling:
 class TestFailRunBilling:
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
+    def test_sets_wasted_cost_on_refund(self, mock_read, mock_upsert):
+        mock_read.return_value = {
+            "id": "inst-2",
+            "user_id": "u1",
+            "billing_type": "included",
+            "billing_status": "pending",
+            "resource_summary": {"api_calls": 5},
+            "estimated_cost_pence": 123.4,
+        }
+
+        fail_run_billing("u1", "inst-2", reason="manual_refund")
+
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["billing_status"] == "refunded"
+        assert doc["refund_reason"] == "manual_refund"
+        assert doc["wasted_cost_pence"] == 123.4
+        assert doc["resource_summary"] == {"api_calls": 5}
+
+    @patch(_COSMOS_UPSERT)
+    @patch(_COSMOS_READ)
+    def test_does_not_set_wasted_cost_if_missing(self, mock_read, mock_upsert):
+        mock_read.return_value = {
+            "id": "inst-3",
+            "user_id": "u1",
+            "billing_type": "included",
+            "billing_status": "pending",
+        }
+
+        fail_run_billing("u1", "inst-3", reason="manual_refund")
+
+        mock_upsert.assert_called_once()
+        doc = mock_upsert.call_args[0][1]
+        assert doc["billing_status"] == "refunded"
+        assert doc["refund_reason"] == "manual_refund"
+        assert "wasted_cost_pence" not in doc
+
+    @patch(_COSMOS_UPSERT)
+    @patch(_COSMOS_READ)
     def test_marks_pending_run_as_refunded(self, mock_read, mock_upsert):
         mock_read.return_value = {
             "id": "inst-1",
@@ -252,16 +291,13 @@ class TestFailRunBilling:
             "billing_status": "charged",
             "tier_at_submission": "pro",
         }
-        # Simulate _credit_overage setting payment_ref (provider succeeded)
         mock_credit.side_effect = lambda uid, iid, d, r: d.__setitem__("payment_ref", "cr_789")
 
-        # Capture doc snapshots at each upsert call (dict is mutated in place)
         snapshots = []
         mock_upsert.side_effect = lambda coll, doc: snapshots.append(dict(doc))
 
         fail_run_billing("u1", "inst-3", reason="timeout")
 
-        # First upsert writes credit_pending, second writes refunded
         assert len(snapshots) == 2
         assert snapshots[0]["billing_status"] == "credit_pending"
         assert snapshots[1]["billing_status"] == "refunded"
@@ -296,13 +332,11 @@ class TestFailRunBilling:
             "billing_status": "charged",
             "tier_at_submission": "pro",
         }
-        # Provider returns None — no payment_ref set
         mock_credit.side_effect = lambda uid, iid, d, r: None
 
         with pytest.raises(RuntimeError, match="Overage credit not confirmed"):
             fail_run_billing("u1", "inst-5", reason="pipeline_failure")
 
-        # Status should be credit_pending, not refunded
         interim_doc = mock_upsert.call_args_list[0][0][1]
         assert interim_doc["billing_status"] == "credit_pending"
 

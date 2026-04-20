@@ -936,6 +936,45 @@ class TestEudrModeToggle:
             "EUDR toggle visibility must be gated on paid tier list"
         )
 
+    def test_eudr_request_uses_selected_aoi_context(self):
+        content = self.APP_SHELL.read_text()
+        fn_start = content.find("async function requestEudrAssessment()")
+        assert fn_start != -1, "requestEudrAssessment function not found in app-shell.js"
+        fn_end = content.find(
+            "\n  /* ------------------------------------------------------------------ */",
+            fn_start,
+        )
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+        assert "activeEvidenceContext" in content, (
+            "app-shell.js must define a helper that resolves the active parcel context"
+        )
+        assert "activeEvidenceContext()" in fn_body or (
+            "evidenceSelectedAoi" in fn_body and "per_aoi_enrichment" in fn_body
+        ), "requestEudrAssessment must pivot to the selected parcel when a per-AOI chip is active"
+
+    def test_eudr_request_uses_real_ndvi_dates(self):
+        content = self.APP_SHELL.read_text()
+        fn_start = content.find("async function requestEudrAssessment()")
+        assert fn_start != -1, "requestEudrAssessment function not found in app-shell.js"
+        fn_end = content.find(
+            "\n  /* ------------------------------------------------------------------ */",
+            fn_start,
+        )
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+        assert "buildEvidenceNdviTimeseries" in content, (
+            "app-shell.js must define a helper that builds"
+            " dated NDVI timeseries for evidence requests"
+        )
+        assert (
+            "buildEvidenceNdviTimeseries(source)" in fn_body
+            or "f.datetime" in fn_body
+            or "fp.start" in fn_body
+        ), "requestEudrAssessment must send a real NDVI observation date, not only a display label"
+
 
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected

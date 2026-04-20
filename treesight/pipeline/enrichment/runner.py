@@ -30,6 +30,7 @@ from treesight.pipeline.enrichment.ndvi import (
     compute_ndvi,
     fetch_ndvi_stat,
 )
+from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulator
 from treesight.pipeline.enrichment.weather import (
     aggregate_weather_monthly,
     fetch_weather,
@@ -48,8 +49,10 @@ def _run_weather_phase(
     first_date: str,
     last_date: str,
     results: dict[str, Any],
+    acc: ResourceAccumulator | None = None,
 ) -> None:
     """Phase 1: fetch daily weather data and aggregate monthly summaries."""
+    t0 = time.monotonic()
     log_phase("enrichment", "weather_start", lat=center_lat, lon=center_lon)
     today = datetime.now(UTC).strftime("%Y-%m-%d")
     end_date = min(last_date, today)
@@ -64,14 +67,21 @@ def _run_weather_phase(
         results["weather_monthly"] = None
         log_phase("enrichment", "weather_failed")
 
+    if acc:
+        acc.add_source("open-meteo")
+        acc.add_api_call("open_meteo")
+        acc.record_phase_duration("weather", time.monotonic() - t0)
+
 
 def _run_flood_fire_phase(
     bbox: list[list[float]],
     center_lat: float,
     center_lon: float,
     results: dict[str, Any],
+    acc: ResourceAccumulator | None = None,
 ) -> None:
     """Phase 1b/1c: flood event detection and fire hotspot detection."""
+    t0 = time.monotonic()
     log_phase("enrichment", "flood_start")
     flood_data = fetch_flood_events(bbox, center_lat, center_lon)
     results["flood_events"] = flood_data
@@ -82,12 +92,20 @@ def _run_flood_fire_phase(
     results["fire_hotspots"] = fire_data
     log_phase("enrichment", "fire_done", source=fire_data["source"], count=fire_data["count"])
 
+    if acc:
+        acc.add_source("gfd-flood")
+        acc.add_source("firms-fire")
+        acc.add_api_call("gfd")
+        acc.add_api_call("firms")
+        acc.record_phase_duration("flood_fire", time.monotonic() - t0)
+
 
 def _run_eudr_phase(
     bbox: list[list[float]],
     center_lat: float,
     center_lon: float,
     results: dict[str, Any],
+    acc: ResourceAccumulator | None = None,
 ) -> None:
     """Phase 1d: EUDR-specific enrichments (WorldCover + WDPA + IO LULC + ALOS FNF)."""
     from treesight.pipeline.eudr import (
@@ -97,6 +115,7 @@ def _run_eudr_phase(
         query_worldcover,
     )
 
+    t0 = time.monotonic()
     flat_bbox_eudr = [bbox[0][0], bbox[0][1], bbox[2][0], bbox[2][1]]
 
     log_phase("enrichment", "worldcover_start")
@@ -132,6 +151,21 @@ def _run_eudr_phase(
         checked=wdpa.get("checked", False),
         protected=wdpa.get("is_protected", False),
     )
+
+    if acc:
+        acc.add_source("esa-worldcover")
+        acc.add_source("wdpa")
+        acc.add_source("io-lulc")
+        acc.add_source("alos-fnf")
+        acc.add_api_call("worldcover")
+        acc.add_api_call("wdpa")
+        acc.add_api_call("lulc")
+        acc.add_api_call("alos")
+        landsat_baseline = results.get("landsat_baseline", {})
+        if landsat_baseline.get("available"):
+            acc.add_source("landsat-c2-l2")
+            acc.increment("landsat_scenes_sampled", len(landsat_baseline.get("scenes", [])))
+        acc.record_phase_duration("eudr_datasets", time.monotonic() - t0)
 
 
 def _run_landsat_baseline(
@@ -178,8 +212,10 @@ def _run_mosaic_ndvi_phase(
     output_container: str,
     storage: BlobStorageClient,
     results: dict[str, Any],
+    acc: ResourceAccumulator | None = None,
 ) -> tuple[list[dict[str, Any] | None], list[str | None]]:
     """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback)."""
+    t0 = time.monotonic()
     # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
     search_ids: list[str | None] = [None] * len(frame_plan)
@@ -311,6 +347,20 @@ def _run_mosaic_ndvi_phase(
             src = "Sentinel-2 L2A"
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
 
+    if acc:
+        mosaic_count = sum(1 for s in search_ids if s)
+        acc.increment("mosaic_registrations", mosaic_count)
+        acc.increment("ndvi_computations", ndvi_count)
+        s2_count = sum(
+            1 for f in frame_plan if f["collection"] == "sentinel-2-l2a" and f.get("search_id")
+        )
+        if s2_count:
+            acc.add_source("sentinel-2-l2a")
+            acc.increment("sentinel2_scenes_registered", s2_count)
+        # PC API calls: 1 per mosaic registration + 1 per NDVI computation
+        acc.add_api_call("planetary_computer", count=mosaic_count + ndvi_count)
+        acc.record_phase_duration("mosaic_ndvi", time.monotonic() - t0)
+
     return ndvi_stats, ndvi_raster_paths
 
 
@@ -322,8 +372,10 @@ def _run_change_detection_phase(
     timestamp: str,
     storage: BlobStorageClient,
     results: dict[str, Any],
+    acc: ResourceAccumulator | None = None,
 ) -> None:
     """Phase 5: compare same-season NDVI rasters year-over-year."""
+    t0 = time.monotonic()
     if any(ndvi_raster_paths):
         log_phase("enrichment", "change_detection_start")
         change_results = detect_changes(
@@ -335,14 +387,20 @@ def _run_change_detection_phase(
             storage=storage,
         )
         results["change_detection"] = change_results
+        comparisons = change_results["summary"]["comparisons"]
         log_phase(
             "enrichment",
             "change_detection_done",
-            comparisons=change_results["summary"]["comparisons"],
+            comparisons=comparisons,
             trajectory=change_results["summary"].get("trajectory"),
         )
+        if acc:
+            acc.increment("change_detection_comparisons", comparisons)
     else:
         results["change_detection"] = {"season_changes": [], "summary": {}}
+
+    if acc:
+        acc.record_phase_duration("change_detection", time.monotonic() - t0)
 
 
 def _run_aoi_metrics_phase(
@@ -416,11 +474,12 @@ def _enrich_single_aoi(
 
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
-    _run_weather_phase(center_lat, center_lon, first_date, last_date, result)
-    _run_flood_fire_phase(bbox, center_lat, center_lon, result)
+    aoi_acc = ResourceAccumulator()
+    _run_weather_phase(center_lat, center_lon, first_date, last_date, result, acc=aoi_acc)
+    _run_flood_fire_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, result)
+        _run_eudr_phase(bbox, center_lat, center_lon, result, acc=aoi_acc)
 
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
         bbox,
@@ -431,6 +490,7 @@ def _enrich_single_aoi(
         output_container,
         storage,
         result,
+        acc=aoi_acc,
     )
 
     _run_change_detection_phase(
@@ -441,6 +501,7 @@ def _enrich_single_aoi(
         timestamp,
         storage,
         result,
+        acc=aoi_acc,
     )
 
     # Deforestation-free determination (#603)
@@ -451,6 +512,7 @@ def _enrich_single_aoi(
 
         result["determination"] = determine_deforestation_free(result)
 
+    result["resource_usage"] = aoi_acc.to_dict()
     return result
 
 
@@ -532,14 +594,15 @@ def run_enrichment(
     # 1. Weather data
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
-    _run_weather_phase(center_lat, center_lon, first_date, last_date, results)
+    acc = ResourceAccumulator()
+    _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
 
     # 1b/1c. Flood + fire
-    _run_flood_fire_phase(bbox, center_lat, center_lon, results)
+    _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA)
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results)
+        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     # 2/3. Mosaic registration + NDVI computation
     ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
@@ -551,6 +614,7 @@ def run_enrichment(
         output_container,
         storage,
         results,
+        acc=acc,
     )
 
     # 5. Change detection
@@ -562,6 +626,7 @@ def run_enrichment(
         timestamp,
         storage,
         results,
+        acc=acc,
     )
 
     # 6. Per-AOI quantitative metrics
@@ -607,6 +672,18 @@ def run_enrichment(
     # 7. Store manifest
     duration = time.monotonic() - start
     results["enrichment_duration_seconds"] = round(duration, 1)
+
+    # Merge per-AOI resource usage into the top-level accumulator
+    per_aoi_enrichment = results.get("per_aoi_enrichment", [])
+    succeeded_aois = [r for r in per_aoi_enrichment if "error" not in r]
+    acc.increment("per_aoi_enrichments", len(succeeded_aois))
+    for aoi_r in succeeded_aois:
+        usage = aoi_r.get("resource_usage")
+        if isinstance(usage, dict):
+            acc.merge(ResourceAccumulator.from_dict(usage))
+    results["resource_usage"] = acc.to_dict()
+    results["estimated_cost_pence"] = acc.estimate_cost_pence()
+
     results["enriched_at"] = datetime.now(UTC).isoformat()
     if eudr_mode:
         results["eudr_mode"] = True
@@ -689,14 +766,16 @@ def enrich_data_sources(
 
     first_date = frame_plan[0]["start"]
     last_date = frame_plan[-1]["end"]
-    _run_weather_phase(center_lat, center_lon, first_date, last_date, results)
-    _run_flood_fire_phase(bbox, center_lat, center_lon, results)
+    acc = ResourceAccumulator()
+    _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
+    _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
     if eudr_mode:
-        _run_eudr_phase(bbox, center_lat, center_lon, results)
+        _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
 
+    results["resource_usage"] = acc.to_dict()
     return results
 
 
@@ -736,14 +815,31 @@ def enrich_imagery(
     if not frame_plan:
         return results
 
+    acc = ResourceAccumulator()
     _ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
-        bbox, coords, frame_plan, project_name, timestamp, output_container, storage, results
+        bbox,
+        coords,
+        frame_plan,
+        project_name,
+        timestamp,
+        output_container,
+        storage,
+        results,
+        acc=acc,
     )
 
     _run_change_detection_phase(
-        frame_plan, ndvi_raster_paths, output_container, project_name, timestamp, storage, results
+        frame_plan,
+        ndvi_raster_paths,
+        output_container,
+        project_name,
+        timestamp,
+        storage,
+        results,
+        acc=acc,
     )
 
+    results["resource_usage"] = acc.to_dict()
     return results
 
 
@@ -806,13 +902,30 @@ def enrich_finalize(
     the final manifest to blob storage.
     """
     # Merge: data_sources is the base, imagery overlays
+    ds_usage = data_sources.pop("resource_usage", None)
+    img_usage = imagery.pop("resource_usage", None)
     merged = {**data_sources, **imagery}
+
+    # Combine resource accumulators from parallel fan-out
+    acc = ResourceAccumulator()
+    if ds_usage:
+        acc.merge(ResourceAccumulator.from_dict(ds_usage))
+    if img_usage:
+        acc.merge(ResourceAccumulator.from_dict(img_usage))
 
     if per_aoi_results:
         merged["per_aoi_enrichment"] = per_aoi_results
-        succeeded = sum(1 for r in per_aoi_results if "error" not in r)
-        log_phase("enrichment", "per_aoi_done", total=len(per_aoi_results), succeeded=succeeded)
+        succeeded = [r for r in per_aoi_results if "error" not in r]
+        acc.increment("per_aoi_enrichments", len(succeeded))
+        log_phase(
+            "enrichment",
+            "per_aoi_done",
+            total=len(per_aoi_results),
+            succeeded=len(succeeded),
+        )
 
+    merged["resource_usage"] = acc.to_dict()
+    merged["estimated_cost_pence"] = acc.estimate_cost_pence()
     merged["enriched_at"] = datetime.now(UTC).isoformat()
     if eudr_mode:
         merged["eudr_mode"] = True

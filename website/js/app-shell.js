@@ -39,6 +39,7 @@
   var pcNdviTileUrl = CanopexEvidenceRender.pcNdviTileUrl;
   var renderAoiDetail = CanopexEvidenceRender.renderAoiDetail;
   var clearAoiDetail = CanopexEvidenceRender.clearAoiDetail;
+  var renderResourceUsage = CanopexEvidenceRender.renderResourceUsage;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -994,6 +995,7 @@
     renderEvidenceNdvi(evidenceManifest);
     renderEvidenceWeather(evidenceManifest);
     renderEvidenceChangeDetection(evidenceManifest);
+    renderResourceUsage(evidenceManifest);
     initEvidenceMap(evidenceManifest);
 
     // Show persistent run reference in the evidence header.
@@ -1027,10 +1029,21 @@
   }
 
   function clearEvidencePanels() {
-    var ids = ['app-evidence-ndvi-grid', 'app-evidence-weather-grid', 'app-evidence-change-list', 'app-evidence-ai-content', 'app-evidence-eudr-content'];
+    var ids = [
+      'app-evidence-ndvi-grid',
+      'app-evidence-weather-grid',
+      'app-evidence-change-list',
+      'app-evidence-ai-content',
+      'app-evidence-eudr-content',
+      'app-evidence-resources-grid'
+    ];
     ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.textContent = ''; });
     var noteEl = document.getElementById('app-evidence-ndvi-note');
     if (noteEl) noteEl.textContent = '';
+    var resourceNote = document.getElementById('app-evidence-resources-note');
+    if (resourceNote) resourceNote.textContent = '';
+    var resourcesBlock = document.getElementById('app-evidence-resources-block');
+    if (resourcesBlock) resourcesBlock.hidden = true;
     var runRefEl = document.getElementById('app-evidence-run-ref');
     if (runRefEl) { runRefEl.textContent = ''; runRefEl.title = ''; runRefEl.hidden = true; }
     var canvases = ['app-evidence-ndvi-canvas', 'app-evidence-weather-canvas'];
@@ -1403,6 +1416,43 @@
   }
 
   /* ---- EUDR assessment ---- */
+  function activeEvidenceContext() {
+    if (!evidenceManifest) return null;
+    var perAoi = evidenceManifest.per_aoi_enrichment || [];
+    if (evidenceSelectedAoi >= 0 && evidenceSelectedAoi < perAoi.length) {
+      return perAoi[evidenceSelectedAoi];
+    }
+    return evidenceManifest;
+  }
+
+  function buildEvidenceNdviTimeseries(source) {
+    if (!source) return [];
+    return (source.ndvi_stats || []).map(function(f, i) {
+      if (!f) return null;
+      var fp = (source.frame_plan || [])[i] || {};
+      return {
+        date: f.datetime || f.date || fp.start || fp.label,
+        mean: f.mean,
+        min: f.min,
+        max: f.max,
+        year: f.year || fp.year,
+        season: f.season || fp.season
+      };
+    }).filter(Boolean);
+  }
+
+  function evidenceLatLon(source) {
+    if (!source) return { lat: 0, lon: 0 };
+    var center = source.center || source.coords;
+    if (Array.isArray(center)) {
+      return { lat: center[0] || 0, lon: center[1] || 0 };
+    }
+    return {
+      lat: (center && (center.lat || center.latitude)) || 0,
+      lon: (center && (center.lon || center.longitude)) || 0
+    };
+  }
+
   async function requestEudrAssessment() {
     var loading = document.getElementById('app-evidence-eudr-loading');
     var content = document.getElementById('app-evidence-eudr-content');
@@ -1416,18 +1466,15 @@
     try {
       await apiDiscoveryReady;
 
-      var ndviTimeseries = (evidenceManifest.ndvi_stats || []).filter(Boolean).map(function(f) {
-        return { date: f.date || f.label, mean: f.mean, min: f.min, max: f.max, year: f.year, season: f.season };
-      });
-      var center = evidenceManifest.center || evidenceManifest.coords;
-      var lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
-      var lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
+      var source = activeEvidenceContext();
+      var ndviTimeseries = buildEvidenceNdviTimeseries(source);
+      var latLon = evidenceLatLon(source);
 
       var body = {
         context: {
-          aoi_name: 'Analysis area',
-          latitude: lat,
-          longitude: lon,
+          aoi_name: source && source.name ? source.name : 'Analysis area',
+          latitude: latLon.lat,
+          longitude: latLon.lon,
           ndvi_timeseries: ndviTimeseries,
           reference_date: '2020-12-31'
         }

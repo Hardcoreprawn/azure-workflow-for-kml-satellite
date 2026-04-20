@@ -526,6 +526,42 @@
     if (flagsEl) { flagsEl.hidden = true; flagsEl.textContent = ''; }
   }
 
+  /* ---- Resources consumed evidence card (#666) ---- */
+  function renderResourceUsage(manifest) {
+    var block = document.getElementById('app-evidence-resources-block');
+    var grid = document.getElementById('app-evidence-resources-grid');
+    var note = document.getElementById('app-evidence-resources-note');
+    if (!block || !grid) return;
+
+    // Always clear previous content so switching runs cannot leave stale stats.
+    grid.textContent = '';
+    if (note) note.textContent = '';
+    block.hidden = true;
+
+    var usage = manifest.resource_usage;
+    if (!usage) return;
+
+    var items = [];
+    var sources = usage.data_sources_queried || [];
+    if (sources.length) items.push(['Data sources', String(sources.length), '']);
+
+    var apiTotal = 0;
+    var calls = usage.api_calls || {};
+    for (var svc in calls) { if (calls.hasOwnProperty(svc)) apiTotal += calls[svc]; }
+    if (apiTotal) items.push(['API calls', String(apiTotal), '']);
+
+    if (usage.sentinel2_scenes_registered) items.push(['Sentinel-2 scenes', String(usage.sentinel2_scenes_registered), '']);
+    if (usage.landsat_scenes_sampled) items.push(['Landsat scenes', String(usage.landsat_scenes_sampled), '']);
+    if (usage.ndvi_computations) items.push(['NDVI computations', String(usage.ndvi_computations), '']);
+    if (usage.mosaic_registrations) items.push(['Mosaic registrations', String(usage.mosaic_registrations), '']);
+    if (usage.change_detection_comparisons) items.push(['Change comparisons', String(usage.change_detection_comparisons), '']);
+    if (usage.per_aoi_enrichments) items.push(['Per-parcel enrichments', String(usage.per_aoi_enrichments), '']);
+
+    if (!items.length) return;
+    block.hidden = false;
+    setStatGrid(grid, items);
+  }
+
   window.CanopexEvidenceRender = {
     renderEvidenceNdvi: renderEvidenceNdvi,
     drawNdviSparkline: drawNdviSparkline,
@@ -537,5 +573,6 @@
     pcNdviTileUrl: pcNdviTileUrl,
     renderAoiDetail: renderAoiDetail,
     clearAoiDetail: clearAoiDetail,
+    renderResourceUsage: renderResourceUsage,
   };
 })();

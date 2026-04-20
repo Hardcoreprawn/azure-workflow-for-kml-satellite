@@ -196,6 +196,12 @@ def fail_run_billing(
                 f"Overage credit not confirmed instance={instance_id} user={_redact(user_id)}"
             )
 
+    # Preserve estimated cost so refunded work can be tracked as wasted cost.
+    estimated_cost_pence = doc.get("estimated_cost_pence")
+    if estimated_cost_pence is not None:
+        doc["wasted_cost_pence"] = estimated_cost_pence
+    # (If estimated_cost_pence is missing, do not overwrite.)
+
     doc["billing_status"] = "refunded"
     doc["refund_reason"] = reason
     upsert_item("runs", doc)

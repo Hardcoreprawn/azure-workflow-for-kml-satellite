@@ -112,3 +112,16 @@ EUDR_BASE_PRICE_PENCE = 49_00  # £49/month base subscription
 # DEMO_TIER_RUN_LIMIT caps total pipeline runs (billing quota).
 RATE_LIMIT_DEMO_MAX = 3
 RATE_LIMIT_DEMO_WINDOW = 3600  # 1 hour
+
+# --- Resource cost estimation (#666) ---
+# Indicative per-unit costs in pence (GBP) for internal cost tracking.
+# These are platform costs, not user charges.
+RESOURCE_UNIT_COSTS_PENCE: dict[str, float] = {
+    "sentinel2_scenes_registered": 0.2,  # Planetary Computer query + tile fetch
+    "landsat_scenes_sampled": 0.15,  # Planetary Computer query + tile fetch
+    "ndvi_computations": 0.05,  # compute + blob write
+    "change_detection_comparisons": 0.08,  # compute
+    "mosaic_registrations": 0.10,  # STAC query + registration
+    "per_aoi_enrichments": 1.0,  # full per-AOI pipeline
+    "api_call": 0.01,  # generic external API call
+}
