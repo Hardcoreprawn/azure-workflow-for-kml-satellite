@@ -136,6 +136,22 @@ class TestBuildGeoJSON:
         assert props["end_date"] == "2023-05-31"
         assert props["collection"] == "sentinel-2-l2a"
 
+    def test_frame_properties_include_normalized_provenance(self, enrichment_manifest):
+        enrichment_manifest["frame_plan"][0]["provenance"] = {
+            "collection": "sentinel-2-l2a",
+            "display_search_id": "sid-s2-spring-2023",
+            "ndvi_search_id": "sid-s2-spring-2023",
+            "ndvi_scene_id": "S2A_123",
+            "resolution_m": 10.0,
+            "cloud_cover_pct": 8.5,
+            "acquired_at": "2023-03-17T10:20:00Z",
+            "artifact_path": "enrichment/run-1/ndvi/2023_spring.tif",
+        }
+        result = _build_geojson(enrichment_manifest)
+        props = result["features"][0]["properties"]
+        assert props["provenance"]["display_search_id"] == "sid-s2-spring-2023"
+        assert props["provenance"]["ndvi_scene_id"] == "S2A_123"
+
     def test_summary_feature_is_point(self, enrichment_manifest):
         result = _build_geojson(enrichment_manifest)
         summary = result["features"][-1]
@@ -178,7 +194,25 @@ class TestBuildCSV:
         header = next(reader)
         assert "frame_index" in header
         assert "ndvi_mean" in header
-        assert "mean_temp_c" in header
+
+    def test_flattens_normalized_provenance_fields(self, enrichment_manifest):
+        enrichment_manifest["frame_plan"][0]["provenance"] = {
+            "display_search_id": "sid-s2-spring-2023",
+            "ndvi_search_id": "sid-s2-spring-2023",
+            "ndvi_scene_id": "S2A_123",
+            "resolution_m": 10.0,
+            "cloud_cover_pct": 8.5,
+            "acquired_at": "2023-03-17T10:20:00Z",
+            "artifact_path": "enrichment/run-1/ndvi/2023_spring.tif",
+        }
+        result = _build_csv(enrichment_manifest)
+        reader = csv.DictReader(io.StringIO(result))
+        row = next(reader)
+        assert row["display_search_id"] == "sid-s2-spring-2023"
+        assert row["ndvi_scene_id"] == "S2A_123"
+        assert row["artifact_path"] == "enrichment/run-1/ndvi/2023_spring.tif"
+        assert reader.fieldnames is not None
+        assert "mean_temp_c" in reader.fieldnames
 
     def test_one_row_per_frame(self, enrichment_manifest):
         result = _build_csv(enrichment_manifest)

@@ -976,6 +976,29 @@ class TestEudrModeToggle:
         ), "requestEudrAssessment must send a real NDVI observation date, not only a display label"
 
 
+class TestEvidenceMapQualityGate:
+    """Ensure the evidence map respects frame-plan display quality metadata."""
+
+    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+
+    def test_evidence_map_reads_frame_quality_metadata(self):
+        content = self.APP_SHELL.read_text()
+        assert "rgb_display_suitable" in content, (
+            "app-shell.js must read frame_plan.rgb_display_suitable "
+            "so coarse RGB frames can be demoted"
+        )
+        assert "preferred_layer" in content, (
+            "app-shell.js must read frame_plan.preferred_layer to choose RGB vs NDVI intelligently"
+        )
+
+    def test_evidence_map_chooses_default_layer_from_frame_plan(self):
+        content = self.APP_SHELL.read_text()
+        assert "pickEvidenceDefaultLayer" in content, (
+            "app-shell.js must define a helper that chooses the default evidence layer "
+            "from frame metadata"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Endpoint auth audit (#572) — ensure every non-anonymous endpoint is protected
 # ---------------------------------------------------------------------------

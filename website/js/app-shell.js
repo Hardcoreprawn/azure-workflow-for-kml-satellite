@@ -947,10 +947,41 @@
     }
     if (counter) counter.textContent = (evidenceFrameIndex + 1) + '/' + evidenceMapLayers.length;
     if (label && evidenceMapLayers[evidenceFrameIndex]) {
-      label.textContent = evidenceMapLayers[evidenceFrameIndex].label + ' — ' + evidenceMapLayers[evidenceFrameIndex].info;
+      var expandedFrame = evidenceMapLayers[evidenceFrameIndex];
+      label.textContent = expandedFrame.label + ' — ' + expandedFrame.info +
+        (expandedFrame.rgbDisplayWarning ? ' — ' + expandedFrame.rgbDisplayWarning : '');
     }
+    syncEvidenceLayerButtons(evidenceMapLayers[evidenceFrameIndex]);
     if (rgbBtn) rgbBtn.classList.toggle('active', evidenceLayerMode === 'rgb');
     if (ndviBtn) ndviBtn.classList.toggle('active', evidenceLayerMode === 'ndvi');
+  }
+
+  function pickEvidenceDefaultLayer(frame) {
+    if (!frame) return 'rgb';
+    if (frame.preferredLayer === 'ndvi' || frame.preferred_layer === 'ndvi') return 'ndvi';
+    return 'rgb';
+  }
+
+  function syncEvidenceLayerButtons(frame) {
+    var rgbBtn = document.getElementById('app-map-btn-rgb');
+    var ndviBtn = document.getElementById('app-map-btn-ndvi');
+    var expandedRgbBtn = document.getElementById('app-map-expanded-btn-rgb');
+    var expandedNdviBtn = document.getElementById('app-map-expanded-btn-ndvi');
+    var rgbDisabled = !!(frame && frame.rgbDisplaySuitable === false);
+    var warning = frame && frame.rgbDisplayWarning ? frame.rgbDisplayWarning : '';
+
+    [rgbBtn, expandedRgbBtn].forEach(function(btn) {
+      if (!btn) return;
+      btn.disabled = rgbDisabled;
+      btn.title = rgbDisabled ? warning : '';
+      btn.classList.toggle('is-disabled', rgbDisabled);
+    });
+    [ndviBtn, expandedNdviBtn].forEach(function(btn) {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.title = '';
+      btn.classList.remove('is-disabled');
+    });
   }
 
   function showEvidenceSurface(visible) {
@@ -1252,7 +1283,7 @@
       var sid = searchIds[idx];
       var ndviSid = ndviSearchIds[idx] || sid;
       var collection = frame.collection || 'sentinel-2-l2a';
-      var asset = collection.indexOf('naip') >= 0 ? 'image' : 'visual';
+      var asset = frame.asset || (collection.indexOf('naip') >= 0 ? 'image' : 'visual');
 
       var rgbLayer = null;
       var ndviLayer = null;
@@ -1269,16 +1300,25 @@
         rgb: rgbLayer,
         ndvi: ndviLayer,
         label: frame.label || ('Frame ' + (idx + 1)),
-        info: [collection, frame.start_date, frame.end_date].filter(Boolean).join(' | ')
+        info: [collection, frame.start_date, frame.end_date].filter(Boolean).join(' | '),
+        rgbDisplaySuitable: frame.rgb_display_suitable !== false,
+        rgbDisplayWarning: frame.rgb_display_warning || '',
+        preferredLayer: frame.preferred_layer || 'rgb'
       });
     });
 
+    evidenceLayerMode = pickEvidenceDefaultLayer(evidenceMapLayers[0]);
     showEvidenceFrame(0);
   }
 
   function showEvidenceFrame(idx) {
     if (idx < 0 || idx >= evidenceMapLayers.length) return;
     evidenceFrameIndex = idx;
+    var activeFrame = evidenceMapLayers[idx];
+
+    if (activeFrame.rgbDisplaySuitable === false && activeFrame.ndvi) {
+      evidenceLayerMode = 'ndvi';
+    }
 
     evidenceMapLayers.forEach(function(frame, i) {
       var showRgb = (i === idx && evidenceLayerMode === 'rgb');
@@ -1292,7 +1332,11 @@
     var label = document.getElementById('app-map-frame-label');
     if (slider) slider.value = idx;
     if (counter) counter.textContent = (idx + 1) + '/' + evidenceMapLayers.length;
-    if (label) label.textContent = evidenceMapLayers[idx].label + ' — ' + evidenceMapLayers[idx].info;
+    if (label) {
+      label.textContent = activeFrame.label + ' — ' + activeFrame.info +
+        (activeFrame.rgbDisplayWarning ? ' — ' + activeFrame.rgbDisplayWarning : '');
+    }
+    syncEvidenceLayerButtons(activeFrame);
 
     // Sync expanded controls if open
     if (evidenceMapExpanded) syncExpandedControls();

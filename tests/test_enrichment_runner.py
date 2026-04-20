@@ -146,6 +146,52 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
     @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    def test_skips_visual_registration_when_rgb_is_unsuitable(self, mock_mosaic, mock_ndvi):
+        """Tiny coarse frames should skip RGB mosaic registration but keep NDVI search."""
+        frames = [
+            {
+                **_make_frame(collection="sentinel-2-l2a", is_naip=False),
+                "rgb_display_suitable": False,
+                "preferred_layer": "ndvi",
+            }
+        ]
+        mock_mosaic.return_value = "sid-sentinel-2-l2a"
+        mock_ndvi.return_value = {"mean": 0.5}
+        storage = MagicMock()
+        results: dict = {}
+
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+
+        mock_mosaic.assert_called_once()
+        assert results["search_ids"][0] is None
+        assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
+    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    def test_frame_plan_records_normalized_provenance(self, mock_mosaic, mock_ndvi):
+        """Each frame should carry a normalized provenance bundle for viewer/export use."""
+        frames = [_make_frame(collection="sentinel-2-l2a", is_naip=False)]
+        mock_mosaic.return_value = "sid-sentinel-2-l2a"
+        mock_ndvi.return_value = {
+            "mean": 0.5,
+            "scene_id": "S2A_123",
+            "cloud_cover": 8.5,
+            "datetime": "2024-03-17T10:20:00Z",
+        }
+        storage = MagicMock()
+        results: dict = {}
+
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+
+        provenance = frames[0].get("provenance")
+        assert provenance is not None
+        assert provenance["collection"] == "sentinel-2-l2a"
+        assert provenance["display_search_id"] == "sid-sentinel-2-l2a"
+        assert provenance["ndvi_scene_id"] == "S2A_123"
+        assert provenance["resolution_m"] == 10.0
+
+    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
+    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
     def test_cog_result_with_geotiff_uploads_raster(self, mock_mosaic, mock_ndvi):
         """When compute_ndvi returns geotiff_bytes, the raster is uploaded."""
         frames = [_make_frame(year=2025, season="winter")]
@@ -431,6 +477,32 @@ class TestEnrichImagery:
             storage=storage,
         )
         assert result == {}
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_returns_annotated_frame_plan_for_finalize(self, mock_plan, mock_mosaic, mock_change):
+        frame_plan = [_make_frame()]
+        mock_plan.return_value = frame_plan
+
+        def annotate_frame(*args, **kwargs):
+            frame_plan[0]["label"] = "Spring 2024"
+            frame_plan[0]["provenance"] = {"ndvi_scene_id": "S2A_123"}
+            return ({}, {})
+
+        mock_mosaic.side_effect = annotate_frame
+        storage = MagicMock()
+
+        result = enrich_imagery(
+            COORDS,
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        assert result["frame_plan"][0]["label"] == "Spring 2024"
+        assert result["frame_plan"][0]["provenance"]["ndvi_scene_id"] == "S2A_123"
 
 
 class TestEnrichSingleAoiStep:

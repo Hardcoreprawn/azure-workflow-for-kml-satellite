@@ -58,6 +58,7 @@ def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             "end_date": frame.get("end", ""),
             "collection": frame.get("collection", ""),
             "is_naip": frame.get("is_naip", False),
+            "provenance": frame.get("provenance", {}),
         }
         if ndvi:
             props["ndvi_mean"] = ndvi.get("mean")
@@ -141,6 +142,13 @@ def _build_csv(manifest: dict[str, Any]) -> str:
         "end_date",
         "collection",
         "is_naip",
+        "display_search_id",
+        "ndvi_search_id",
+        "ndvi_scene_id",
+        "resolution_m",
+        "cloud_cover_pct",
+        "acquired_at",
+        "artifact_path",
         "ndvi_mean",
         "ndvi_min",
         "ndvi_max",
@@ -191,6 +199,7 @@ def _build_csv(manifest: dict[str, Any]) -> str:
         change = change_lookup.get((frame.get("season", ""), frame.get("year", 0)))
         ndvi_delta = change.get("mean_delta") if change else None
 
+        provenance = frame.get("provenance", {})
         row = {
             "frame_index": i,
             "label": frame.get("label", ""),
@@ -200,6 +209,17 @@ def _build_csv(manifest: dict[str, Any]) -> str:
             "end_date": frame.get("end", ""),
             "collection": frame.get("collection", ""),
             "is_naip": frame.get("is_naip", False),
+            "display_search_id": provenance.get("display_search_id", ""),
+            "ndvi_search_id": provenance.get("ndvi_search_id", ""),
+            "ndvi_scene_id": provenance.get(
+                "ndvi_scene_id", ndvi.get("scene_id", "") if ndvi else ""
+            ),
+            "resolution_m": provenance.get("resolution_m", ""),
+            "cloud_cover_pct": provenance.get(
+                "cloud_cover_pct", ndvi.get("cloud_cover", "") if ndvi else ""
+            ),
+            "acquired_at": provenance.get("acquired_at", ndvi.get("datetime", "") if ndvi else ""),
+            "artifact_path": provenance.get("artifact_path", frame.get("ndvi_raster_path", "")),
             "ndvi_mean": ndvi.get("mean", "") if ndvi else "",
             "ndvi_min": ndvi.get("min", "") if ndvi else "",
             "ndvi_max": ndvi.get("max", "") if ndvi else "",

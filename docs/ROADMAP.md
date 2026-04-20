@@ -190,10 +190,10 @@ deforestation-free determinations.
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 3B.0 | #666 | Pipeline cost accumulator + resources consumed evidence card | ✅ #667 |
-| 3B.1 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | Open |
+| 3B.1 | #645 | Imagery quality gate: reject/deprioritise low-res for small AOIs | Open |
 | 3B.2 | #649 | Evidence provenance: traceability from viewer back to source imagery | Open |
 | 3B.3 | #646 | Imagery viewer: dynamic layer picker with smart defaults | Open |
-| 3B.4 | #645 | Imagery quality gate: reject/deprioritise low-res for small AOIs | Open |
+| 3B.4 | #647 | Defensible PDF export: embed imagery, maps, and visual evidence | Open |
 
 **Exit:** Compliance officer can export audit-grade PDF with embedded
 evidence, trace any result back to source imagery, and review layers
