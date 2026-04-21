@@ -89,7 +89,9 @@ app.register_functions(org_bp)
 # Register upload/history BFF endpoints
 app.register_functions(upload_bp)
 
-# Register monitoring blueprint (Timer Trigger + HTTP)
+# Register monitoring HTTP endpoints only.
+# The timer-triggered scheduler stays in the compute image because it
+# calls compute-only enrichment code.
 app.register_functions(monitoring_bp)
 
 # Register ops dashboard (operator visibility)
