@@ -962,6 +962,52 @@
     return 'rgb';
   }
 
+  function pickInitialEvidenceFrameIndex(frames) {
+    if (!Array.isArray(frames) || !frames.length) return 0;
+
+    var bestIndex = 0;
+    var bestScore = null;
+
+    frames.forEach(function(frame, idx) {
+      if (!frame) return;
+
+      var rgbSuitable = frame.rgbDisplaySuitable !== false;
+      var resolution = Number(frame.displayResolutionM || 9999);
+      var score = {
+        rgbSuitable: rgbSuitable ? 1 : 0,
+        resolution: Number.isFinite(resolution) ? -resolution : -9999,
+        recency: idx
+      };
+
+      if (!bestScore) {
+        bestScore = score;
+        bestIndex = idx;
+        return;
+      }
+
+      if (score.rgbSuitable > bestScore.rgbSuitable) {
+        bestScore = score;
+        bestIndex = idx;
+        return;
+      }
+
+      if (score.rgbSuitable < bestScore.rgbSuitable) return;
+
+      if (score.resolution > bestScore.resolution) {
+        bestScore = score;
+        bestIndex = idx;
+        return;
+      }
+
+      if (score.resolution === bestScore.resolution && score.recency > bestScore.recency) {
+        bestScore = score;
+        bestIndex = idx;
+      }
+    });
+
+    return bestIndex;
+  }
+
   function syncEvidenceLayerButtons(frame) {
     var rgbBtn = document.getElementById('app-map-btn-rgb');
     var ndviBtn = document.getElementById('app-map-btn-ndvi');
@@ -1348,7 +1394,7 @@
     framePlan.forEach(function(frame, idx) {
       var sid = searchIds[idx];
       var ndviSid = ndviSearchIds[idx] || sid;
-      var collection = frame.collection || 'sentinel-2-l2a';
+      var collection = frame.display_collection || frame.collection || 'sentinel-2-l2a';
       var asset = frame.asset || (collection.indexOf('naip') >= 0 ? 'image' : 'visual');
 
       var rgbLayer = null;
@@ -1381,14 +1427,16 @@
         rgbDisplaySuitable: frame.rgb_display_suitable !== false,
         rgbDisplayWarning: frame.rgb_display_warning || '',
         preferredLayer: frame.preferred_layer || 'rgb',
+        displayResolutionM: frame.display_resolution_m || null,
         collectionLabel: collectionLabel,
         resLabel: resLabel
       });
     });
 
-    evidenceLayerMode = pickEvidenceDefaultLayer(evidenceMapLayers[0]);
+    evidenceFrameIndex = pickInitialEvidenceFrameIndex(evidenceMapLayers);
+    evidenceLayerMode = pickEvidenceDefaultLayer(evidenceMapLayers[evidenceFrameIndex]);
     syncLayerModeButtons();
-    showEvidenceFrame(0);
+    showEvidenceFrame(evidenceFrameIndex);
   }
 
   function showEvidenceFrame(idx) {
