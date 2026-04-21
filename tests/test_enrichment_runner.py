@@ -146,6 +146,28 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
     @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    def test_naip_rgb_falls_back_to_sentinel_when_naip_missing(self, mock_mosaic, mock_ndvi):
+        """If NAIP has no RGB mosaic for a frame, Sentinel-2 should be used for display."""
+        frames = [_make_frame(collection="naip", is_naip=True)]
+
+        def _mosaic_side_effect(coll, start, end, bbox, extra, cl):
+            if coll == "naip":
+                return None
+            return "sid-sentinel-2-l2a"
+
+        mock_mosaic.side_effect = _mosaic_side_effect
+        mock_ndvi.return_value = {"mean": 0.5}
+        storage = MagicMock()
+        results: dict = {}
+
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
+
+        assert results["search_ids"][0] == "sid-sentinel-2-l2a"
+        assert results["display_collections"][0] == "sentinel-2-l2a"
+        assert frames[0]["display_collection"] == "sentinel-2-l2a"
+
+    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
+    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
     def test_skips_visual_registration_when_rgb_is_unsuitable(self, mock_mosaic, mock_ndvi):
         """Tiny coarse frames should skip RGB mosaic registration but keep NDVI search."""
         frames = [

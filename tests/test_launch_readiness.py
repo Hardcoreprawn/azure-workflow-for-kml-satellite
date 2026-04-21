@@ -998,6 +998,17 @@ class TestEvidenceMapQualityGate:
             "from frame metadata"
         )
 
+    def test_evidence_map_chooses_initial_frame_from_best_display_candidate(self):
+        content = self.APP_SHELL.read_text()
+        assert "pickInitialEvidenceFrameIndex" in content, (
+            "app-shell.js must define a helper that picks the initial evidence frame "
+            "from the best available display candidate, not always frame 0"
+        )
+        assert "showEvidenceFrame(evidenceFrameIndex)" in content, (
+            "buildEvidenceFrames must open the chosen initial evidence frame rather "
+            "than hard-coding showEvidenceFrame(0)"
+        )
+
     def test_layer_button_labels_update_per_frame(self):
         """#646 — layer picker shows per-frame collection + resolution as button labels."""
         content = self.APP_SHELL.read_text()

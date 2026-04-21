@@ -173,6 +173,13 @@ class TestBuildFramePlanCadence:
         naip = [f for f in plan if f["is_naip"]]
         assert len(naip) > 0
 
+    def test_seasonal_us_prefers_naip_for_all_summer_frames(self):
+        """US summer frames should attempt NAIP by default (runtime can fallback)."""
+        plan = build_frame_plan(US_COORDS, cadence="seasonal")
+        summer = [f for f in plan if f["season"] == "summer" and f["year"] >= 2018]
+        assert summer, "expected seasonal summer frames"
+        assert all(f["collection"] == "naip" for f in summer)
+
 
 class TestBuildFramePlanMaxHistory:
     """Test build_frame_plan with max_history_years capping."""

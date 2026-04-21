@@ -8,6 +8,7 @@ locals {
     key_vault                  = "kv-${local.name_suffix}"
     container_apps_environment = "cae-${local.name_suffix}"
     function_app               = "func-${local.name_suffix}"
+    function_app_orch          = "func-${local.name_suffix}-orch"
     event_grid_system_topic    = "evgt-${local.name_suffix}"
     event_grid_subscription    = "evgs-kml-upload"
     static_web_app             = "stapp-${local.name_suffix}-site"

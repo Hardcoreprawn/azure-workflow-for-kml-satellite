@@ -612,9 +612,14 @@ class TestMonitoringScheduler:
 
         mock_enrichment = {
             "change_detection": {
-                "loss_pct": 8.0,
-                "gain_pct": 1.0,
-                "mean_delta": -0.12,
+                "season_changes": [
+                    {
+                        "loss_pct": 8.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.12,
+                    }
+                ],
+                "summary": {"comparisons": 1},
             }
         }
 
@@ -629,6 +634,156 @@ class TestMonitoringScheduler:
             patch("treesight.email.send_email", return_value=True),
         ):
             _process_monitor(m)
+
+    def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        m = create_monitor(
+            user_id="user-1",
+            aoi_name="Latest Change Test",
+            aoi_geometry=_SAMPLE_GEOMETRY,
+            alert_email="test@example.com",
+        )
+
+        mock_enrichment = {
+            "change_detection": {
+                "season_changes": [
+                    {
+                        "season": "Summer",
+                        "year_from": 2024,
+                        "year_to": 2025,
+                        "loss_pct": 2.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.02,
+                    },
+                    {
+                        "season": "Winter",
+                        "year_from": 2023,
+                        "year_to": 2024,
+                        "loss_pct": 11.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.18,
+                    },
+                ],
+                "summary": {"comparisons": 2},
+            }
+        }
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch(
+                "treesight.pipeline.enrichment.run_enrichment",
+                return_value=mock_enrichment,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.email.send_email", return_value=True) as mock_send,
+        ):
+            _process_monitor(m)
+
+        assert mock_send.call_count == 0, (
+            "Monitoring should evaluate alerts against the newest year pair, not the "
+            "last season_changes entry"
+        )
+
+    def test_process_monitor_passes_delta_window_on_repeat_run(self, _mock_cosmos):
+        """Repeat runs pass date_start=last_run_at so only new scenes are fetched."""
+        from treesight.monitoring import create_monitor
+
+        last_run = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
+        m = create_monitor(
+            user_id="user-1",
+            aoi_name="Delta Test",
+            aoi_geometry=_SAMPLE_GEOMETRY,
+        )
+        m.last_run_at = last_run
+        m.last_run_id = "monitoring-abc123"  # marks a prior successful enrichment run
+
+        captured_kwargs: dict = {}
+
+        def _capture_run_enrichment(**kwargs):
+            captured_kwargs.update(kwargs)
+            return {}
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch(
+                "treesight.pipeline.enrichment.run_enrichment",
+                side_effect=_capture_run_enrichment,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            _process_monitor(m)
+
+        assert captured_kwargs.get("date_start") == "2026-03-01"
+        assert captured_kwargs.get("date_end") is not None
+
+    def test_process_monitor_first_run_has_no_date_start(self, _mock_cosmos):
+        """First run (last_run_at=None) passes date_start=None — full initial window."""
+        from treesight.monitoring import create_monitor
+
+        m = create_monitor(
+            user_id="user-1",
+            aoi_name="First Run Test",
+            aoi_geometry=_SAMPLE_GEOMETRY,
+        )
+        assert m.last_run_at is None
+
+        captured_kwargs: dict = {}
+
+        def _capture_run_enrichment(**kwargs):
+            captured_kwargs.update(kwargs)
+            return {}
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch(
+                "treesight.pipeline.enrichment.run_enrichment",
+                side_effect=_capture_run_enrichment,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            _process_monitor(m)
+
+        assert captured_kwargs.get("date_start") is None
+
+    def test_process_monitor_stores_ndvi_baseline_after_run(self, _mock_cosmos):
+        """NDVI mean from latest scene is persisted to baseline_ndvi_mean."""
+        from treesight.monitoring import create_monitor
+
+        m = create_monitor(
+            user_id="user-1",
+            aoi_name="Baseline Store Test",
+            aoi_geometry=_SAMPLE_GEOMETRY,
+        )
+
+        mock_enrichment = {
+            "ndvi_stats": [
+                {"mean": 0.45, "datetime": datetime(2026, 2, 1, tzinfo=UTC)},
+                {"mean": 0.62, "datetime": "2026-03-01"},
+            ]
+        }
+
+        saved: list = []
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch(
+                "treesight.pipeline.enrichment.run_enrichment",
+                return_value=mock_enrichment,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch(
+                "treesight.monitoring.advance_schedule",
+                side_effect=lambda mon, **_kw: saved.append(mon.baseline_ndvi_mean),
+            ),
+        ):
+            _process_monitor(m)
+
+        assert saved == [0.62]
 
     def test_cors_preflight_monitoring(self, _mock_auth):
         from blueprints.monitoring import monitoring_endpoint

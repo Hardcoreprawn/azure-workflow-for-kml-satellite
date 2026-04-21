@@ -31,16 +31,16 @@ MONTHS: list[dict[str, Any]] = [
 SEASONAL_YEARS = list(range(2018, date.today().year + 1))
 LANDSAT_YEARS = list(range(2013, 2018))  # Pre-Sentinel-2 historical baseline
 NAIP_ONLY_YEARS = [2012, 2014, 2016]
-# NAIP imagery releases lag ~2 years; update this set when new vintages
-# are published on Planetary Computer (typically even-numbered years).
-NAIP_SUMMERS = {
-    "2012-summer",
-    "2014-summer",
-    "2016-summer",
-    "2018-summer",
-    "2020-summer",
-    "2022-summer",
-}
+
+
+def _prefer_naip_for_summer(year: int, season_key: str) -> bool:
+    """Return whether a CONUS seasonal frame should try NAIP first.
+
+    We intentionally prefer NAIP for all summer frames in supported years and
+    rely on runtime mosaic fallback when NAIP coverage is missing for a year/AOI.
+    This avoids stale hard-coded vintage lists that silently skip usable imagery.
+    """
+    return season_key == "summer" and year >= min(NAIP_ONLY_YEARS)
 
 
 def _max_aoi_span_m(coords: list[list[float]]) -> float:
@@ -175,8 +175,7 @@ def _build_seasonal_frames(has_naip: bool) -> list[dict[str, Any]]:
     for yr in SEASONAL_YEARS:
         for s in SEASONS:
             w = _season_window(yr, s)
-            naip_key = f"{yr}-{s['key']}"
-            use_naip = has_naip and naip_key in NAIP_SUMMERS
+            use_naip = has_naip and _prefer_naip_for_summer(yr, s["key"])
             frames.append(
                 {
                     "year": yr,

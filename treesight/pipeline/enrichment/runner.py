@@ -221,8 +221,9 @@ def _run_mosaic_ndvi_phase(
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
     search_ids: list[str | None] = [None] * len(frame_plan)
     ndvi_search_ids: list[str | None] = [None] * len(frame_plan)
+    display_collections: list[str] = [str(f.get("collection", "")) for f in frame_plan]
 
-    def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None]:
+    def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None, str]:
         cloud_collections = {"sentinel-2-l2a", "landsat-c2-l2"}
         extra: list[dict[str, Any]] = (
             [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}]
@@ -231,8 +232,24 @@ def _run_mosaic_ndvi_phase(
         )
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
             sid = None
+            display_collection = str(f.get("collection", ""))
             if f.get("rgb_display_suitable", True):
                 sid = register_mosaic(f["collection"], f["start"], f["end"], bbox, extra, cl)
+
+            # If NAIP is preferred but unavailable for this frame/year, fall
+            # back to Sentinel-2 RGB so the viewer still gets the best
+            # available visual source instead of a missing/blank RGB layer.
+            if f["is_naip"] and sid is None and f.get("rgb_display_suitable", True):
+                sid = register_mosaic(
+                    "sentinel-2-l2a",
+                    f["start"],
+                    f["end"],
+                    bbox,
+                    [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
+                    cl,
+                )
+                if sid:
+                    display_collection = "sentinel-2-l2a"
 
             nsid = sid
             # When the RGB mosaic was skipped (unsuitable) or failed, register a
@@ -249,29 +266,34 @@ def _run_mosaic_ndvi_phase(
                     cl,
                 )
             if f["is_naip"]:
-                nsid = register_mosaic(
-                    "sentinel-2-l2a",
-                    f["start"],
-                    f["end"],
-                    bbox,
-                    [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
-                    cl,
-                )
-        return idx, sid, nsid
+                if display_collection == "sentinel-2-l2a" and sid is not None:
+                    nsid = sid
+                else:
+                    nsid = register_mosaic(
+                        "sentinel-2-l2a",
+                        f["start"],
+                        f["end"],
+                        bbox,
+                        [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}],
+                        cl,
+                    )
+        return idx, sid, nsid, display_collection
 
     with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
         futures = [pool.submit(_register_one, i, f) for i, f in enumerate(frame_plan)]
         for fut in as_completed(futures):
             try:
-                idx, sid, nsid = fut.result()
+                idx, sid, nsid, display_collection = fut.result()
             except Exception:
                 logger.warning("mosaic registration failed for one frame", exc_info=True)
                 continue
             search_ids[idx] = sid
             ndvi_search_ids[idx] = nsid
+            display_collections[idx] = display_collection
 
     results["search_ids"] = search_ids
     results["ndvi_search_ids"] = ndvi_search_ids
+    results["display_collections"] = display_collections
     log_phase(
         "enrichment",
         "mosaic_done",
@@ -345,18 +367,19 @@ def _run_mosaic_ndvi_phase(
         f["ndvi_search_id"] = ndvi_search_ids[i]
         f["ndvi_stat"] = ndvi_stats[i]
         f["ndvi_raster_path"] = ndvi_raster_paths[i] if i < len(ndvi_raster_paths) else None
+        f["display_collection"] = display_collections[i]
         season_key = f["season"]
         year = f["year"]
-        if f["is_naip"]:
+        if f["display_collection"] == "naip":
             f["label"] = f"NAIP Summer {year}"
-        elif f["collection"] == "landsat-c2-l2":
+        elif f["display_collection"] == "landsat-c2-l2":
             f["label"] = f"Landsat {season_key.capitalize()} {year}"
         else:
             f["label"] = f"{season_key.capitalize()} {year}"
-        if f["is_naip"]:
+        if f["display_collection"] == "naip":
             res = "0.6" if year > 2014 else "1.0"
             src = "NAIP © USDA"
-        elif f["collection"] == "landsat-c2-l2":
+        elif f["display_collection"] == "landsat-c2-l2":
             res = "30"
             src = "Landsat C2 L2"
         else:
@@ -365,7 +388,8 @@ def _run_mosaic_ndvi_phase(
         f["info"] = f"{src} | {res} m/px | {f['start']} → {f['end']}"
         ndvi_stat = ndvi_stats[i] if i < len(ndvi_stats) else None
         f["provenance"] = {
-            "collection": f.get("collection", ""),
+            "collection": f.get("display_collection") or f.get("collection", ""),
+            "requested_collection": f.get("collection", ""),
             "display_search_id": search_ids[i],
             "ndvi_search_id": ndvi_search_ids[i],
             "ndvi_scene_id": ndvi_stat.get("scene_id") if ndvi_stat else None,

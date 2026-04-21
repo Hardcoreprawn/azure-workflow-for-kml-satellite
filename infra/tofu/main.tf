@@ -797,6 +797,148 @@ resource "azapi_resource" "function_app" {
   response_export_values = ["id", "name", "properties.defaultHostName"]
 }
 
+# Orchestrator function app (#466): slim image — HTTP + Durable orchestrators, no GDAL/rasterio.
+# Shares the same Container Apps environment, storage account, and Durable task hub
+# ("TreeSightHub", set in host.json) as the compute function app so orchestrators
+# can dispatch activity calls to the compute image's worker queue.
+resource "azapi_resource" "function_app_orch" {
+  type      = "Microsoft.Web/sites@2024-04-01"
+  parent_id = azurerm_resource_group.main.id
+  name      = local.names.function_app_orch
+  location  = azurerm_resource_group.main.location
+  tags      = local.tags
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  lifecycle {
+    ignore_changes = [identity, body]
+  }
+
+  body = {
+    kind = "functionapp,linux,container,azurecontainerapps"
+    properties = {
+      managedEnvironmentId = azurerm_container_app_environment.main.id
+      httpsOnly            = true
+      functionAppConfig = {
+        scaleAndConcurrency = {
+          maximumInstanceCount = var.function_max_instances
+        }
+      }
+      siteConfig = {
+        linuxFxVersion = "DOCKER|${var.orchestrator_image}"
+        cors = {
+          allowedOrigins     = local.browser_allowed_origins
+          supportCredentials = false
+        }
+        appSettings = concat(
+          [
+            {
+              name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+              value = azurerm_application_insights.main.connection_string
+            },
+            {
+              name  = "FUNCTIONS_WORKER_RUNTIME"
+              value = "python"
+            },
+            {
+              name  = "FUNCTIONS_EXTENSION_VERSION"
+              value = "~4"
+            },
+            {
+              name  = "AzureFunctionsJobHost__extensions__durableTask__storageProvider__type"
+              value = "AzureStorage"
+            },
+            {
+              name  = "PIPELINE_ROLE"
+              value = "orchestrator"
+            },
+            {
+              name  = "KEY_VAULT_URI"
+              value = azurerm_key_vault.main.vault_uri
+            },
+            {
+              name  = "KEYVAULT_URL"
+              value = azurerm_key_vault.main.vault_uri
+            },
+            {
+              name  = "DEFAULT_INPUT_CONTAINER"
+              value = "kml-input"
+            },
+            {
+              name  = "DEFAULT_OUTPUT_CONTAINER"
+              value = "kml-output"
+            },
+            {
+              name  = "IMAGERY_PROVIDER"
+              value = "planetary_computer"
+            }
+          ],
+          [
+            for name, value in local.function_app_cli_app_settings : {
+              name  = name
+              value = value
+            }
+          ],
+          var.enable_azure_ai ? [
+            {
+              name  = "AZURE_AI_ENDPOINT"
+              value = azurerm_cognitive_account.openai[0].endpoint
+            },
+            {
+              name  = "AZURE_AI_API_KEY"
+              value = azurerm_cognitive_account.openai[0].primary_access_key
+            },
+            {
+              name  = "AZURE_AI_DEPLOYMENT"
+              value = "gpt-4o-mini"
+            }
+          ] : [],
+          var.enable_stripe ? [
+            {
+              name  = "STRIPE_API_KEY"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.api_key})"
+            },
+            {
+              name  = "STRIPE_WEBHOOK_SECRET"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.webhook_secret})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_GBP"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_gbp})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_USD"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_usd})"
+            },
+            {
+              name  = "STRIPE_PRICE_ID_PRO_EUR"
+              value = "@Microsoft.KeyVault(SecretUri=${local.stripe_secret_uris.price_id_pro_eur})"
+            }
+          ] : [],
+          var.enable_email ? [
+            {
+              name  = "COMMUNICATION_SERVICES_CONNECTION_STRING"
+              value = azurerm_communication_service.main[0].primary_connection_string
+            },
+            {
+              name  = "EMAIL_SENDER_ADDRESS"
+              value = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed[0].mail_from_sender_domain}"
+            },
+            {
+              name  = "NOTIFICATION_EMAIL"
+              value = var.notification_email
+            }
+          ] : []
+        )
+      }
+    }
+  }
+
+  response_export_values = ["id", "name", "properties.defaultHostName"]
+}
+
 resource "azurerm_static_web_app" "main" {
   name                = local.names.static_web_app
   location            = var.static_web_app_location
@@ -863,6 +1005,37 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   principal_id         = azapi_resource.function_app.identity[0].principal_id
 }
 
+# Orchestrator function app RBAC — same access as compute app (#466)
+resource "azurerm_role_assignment" "orch_storage_blob_data_owner" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Blob Data Owner"
+  principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "orch_storage_queue_data_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Queue Data Contributor"
+  principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "orch_storage_table_data_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Table Data Contributor"
+  principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "orch_storage_account_contributor" {
+  scope                = azurerm_storage_account.main.id
+  role_definition_name = "Storage Account Contributor"
+  principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "orch_key_vault_secrets_user" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
+}
+
 # Allow the deployer (tofu apply / setup scripts) to manage secrets
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   count                = var.enable_stripe ? 1 : 0
@@ -878,6 +1051,15 @@ resource "azurerm_cosmosdb_sql_role_assignment" "function_app" {
   account_name        = azurerm_cosmosdb_account.main[0].name
   role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
   principal_id        = azapi_resource.function_app.identity[0].principal_id
+  scope               = azurerm_cosmosdb_account.main[0].id
+}
+
+resource "azurerm_cosmosdb_sql_role_assignment" "function_app_orch" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  role_definition_id  = "${azurerm_cosmosdb_account.main[0].id}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002"
+  principal_id        = azapi_resource.function_app_orch.identity[0].principal_id
   scope               = azurerm_cosmosdb_account.main[0].id
 }
 

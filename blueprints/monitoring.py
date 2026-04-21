@@ -29,6 +29,7 @@ from treesight.security.billing import get_effective_subscription, plan_capabili
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
+scheduler_bp = func.Blueprint()
 
 # --- Tier gating -------------------------------------------------------
 
@@ -65,7 +66,7 @@ def _check_monitor_limit(user_id: str) -> str | None:
 # --- Timer Trigger: scheduled monitoring check --------------------------
 
 
-@bp.timer_trigger(schedule="0 0 */6 * * *", arg_name="timer", run_on_startup=False)
+@scheduler_bp.timer_trigger(schedule="0 0 */6 * * *", arg_name="timer", run_on_startup=False)
 def monitoring_scheduler(timer: func.TimerRequest) -> None:
     """Run every 6 hours: find due monitors and kick off re-analysis."""
     from treesight.storage.cosmos import cosmos_available
@@ -121,7 +122,22 @@ def _process_monitor(monitor: Any) -> None:
     coords = [centroid]
     storage = BlobStorageClient()
 
-    run_ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    now = datetime.now(UTC)
+    run_ts = now.strftime("%Y%m%dT%H%M%SZ")
+
+    # Delta fetch: only request scenes since the last successful monitoring
+    # enrichment run so we do not re-download the full historical archive on
+    # every 6-hourly check. Skip runs (for example, missing centroid) advance
+    # schedule bookkeeping but must not narrow the first real enrichment
+    # window.
+    date_end = now.date().isoformat()
+    last_run_id = getattr(monitor, "last_run_id", None)
+    has_successful_monitoring_run = bool(
+        monitor.last_run_at
+        and isinstance(last_run_id, str)
+        and last_run_id.startswith("monitoring-")
+    )
+    date_start = monitor.last_run_at.date().isoformat() if has_successful_monitoring_run else None
 
     enrichment_result = run_enrichment(
         coords=coords,
@@ -130,15 +146,47 @@ def _process_monitor(monitor: Any) -> None:
         output_container="kml-output",
         storage=storage,
         cadence="monthly",
+        date_start=date_start,
+        date_end=date_end,
     )
 
-    # Extract change detection results
+    # Extract the latest change metrics from the enrichment payload.
+    # The live enrichment contract returns {"season_changes": [...], "summary": {...}},
+    # while older tests/mocks may still pass a flat metrics dict directly.
     change_result = enrichment_result.get("change_detection")
+    season_changes = (
+        change_result.get("season_changes") if isinstance(change_result, dict) else None
+    )
+    if isinstance(season_changes, list) and season_changes:
+        dated_changes = [
+            change
+            for change in season_changes
+            if isinstance(change, dict)
+            and isinstance(change.get("year_to"), int)
+            and isinstance(change.get("year_from"), int)
+        ]
+        if dated_changes:
+            change_result = max(
+                dated_changes,
+                key=lambda change: (change["year_to"], change["year_from"]),
+            )
+        else:
+            change_result = season_changes[-1]
 
     # Evaluate alert thresholds
     alert = evaluate_alert(monitor, change_result)
     if alert:
         send_monitoring_alert(monitor, alert)
+
+    # Persist the latest NDVI mean so the next delta run has an updated baseline.
+    ndvi_stats: list[dict] = enrichment_result.get("ndvi_stats") or []
+    valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
+    if valid_stats:
+        # ndvi_stats follows the chronological frame order, so the last valid
+        # stat is the latest baseline candidate without relying on mixed-type
+        # datetime comparisons.
+        latest = valid_stats[-1]
+        monitor.baseline_ndvi_mean = latest["mean"]
 
     # Advance schedule regardless of alert
     advance_schedule(monitor, run_id=f"monitoring-{monitor.id}")

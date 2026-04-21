@@ -1,4 +1,12 @@
-"""Azure Functions entry point — registers all blueprints."""
+"""Azure Functions entry point for the orchestrator image (#466).
+
+Registers all HTTP blueprints and Durable orchestration blueprints.
+Does NOT register activity functions — those run in the compute image.
+
+Both images share the same Durable task hub and Azure Storage connection.
+PIPELINE_ROLE=orchestrator is set in Dockerfile.orchestrator so
+blueprints/pipeline/__init__.py skips importing the activities module.
+"""
 
 import logging
 
@@ -27,10 +35,9 @@ from blueprints.eudr import bp as eudr_bp
 from blueprints.export import bp as export_bp
 from blueprints.health import bp as health_bp
 from blueprints.monitoring import bp as monitoring_bp
-from blueprints.monitoring import scheduler_bp as monitoring_scheduler_bp
 from blueprints.ops import bp as ops_bp
 from blueprints.org import bp as org_bp
-from blueprints.pipeline import bp as pipeline_bp
+from blueprints.pipeline import bp as pipeline_bp  # PIPELINE_ROLE=orchestrator: no activities
 from blueprints.upload import bp as upload_bp
 
 # Fail-fast config validation (§8.6)
@@ -82,12 +89,14 @@ app.register_functions(org_bp)
 # Register upload/history BFF endpoints
 app.register_functions(upload_bp)
 
-# Register monitoring blueprint (Timer Trigger + HTTP)
+# Register monitoring HTTP endpoints only.
+# The timer-triggered scheduler stays in the compute image because it
+# calls compute-only enrichment code.
 app.register_functions(monitoring_bp)
-app.register_functions(monitoring_scheduler_bp)
 
 # Register ops dashboard (operator visibility)
 app.register_functions(ops_bp)
 
-# Register durable pipeline blueprint
+# Register durable pipeline blueprint (orchestrators, blob trigger, submission)
+# Activity functions are intentionally excluded — they run in the compute image.
 app.register_functions(pipeline_bp)
