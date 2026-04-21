@@ -32,11 +32,13 @@ ENV APP_VERSION=${APP_VERSION} \
 COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
 
 # Install only the lightweight subset: exclude GDAL-dependent packages.
-# fiona, rasterio, numpy, shapely, pyproj, pystac-client,
-# planetary-computer, and httpx are compute-only dependencies.
+# fiona, rasterio, numpy, shapely, pyproj, pystac-client, and
+# planetary-computer are compute-only dependencies. httpx is kept
+# because blueprints/analysis.py → treesight.ai.client imports it
+# at module load time; excluding it causes a startup ModuleNotFoundError.
 COPY pyproject.toml uv.lock ./
 RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
-    grep -vE '^(fiona|rasterio|numpy|shapely|pyproj|pystac-client|planetary-computer|httpx)==' \
+    grep -vE '^(fiona|rasterio|numpy|shapely|pyproj|pystac-client|planetary-computer)==' \
         /tmp/requirements.txt > /tmp/orch-requirements.txt && \
     uv pip install --system -r /tmp/orch-requirements.txt && \
     rm -f /tmp/requirements.txt /tmp/orch-requirements.txt /usr/local/bin/uv
