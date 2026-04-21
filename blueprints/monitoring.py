@@ -158,7 +158,20 @@ def _process_monitor(monitor: Any) -> None:
         change_result.get("season_changes") if isinstance(change_result, dict) else None
     )
     if isinstance(season_changes, list) and season_changes:
-        change_result = season_changes[-1]
+        dated_changes = [
+            change
+            for change in season_changes
+            if isinstance(change, dict)
+            and isinstance(change.get("year_to"), int)
+            and isinstance(change.get("year_from"), int)
+        ]
+        if dated_changes:
+            change_result = max(
+                dated_changes,
+                key=lambda change: (change["year_to"], change["year_from"]),
+            )
+        else:
+            change_result = season_changes[-1]
 
     # Evaluate alert thresholds
     alert = evaluate_alert(monitor, change_result)

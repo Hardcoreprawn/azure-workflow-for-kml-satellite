@@ -115,6 +115,25 @@ def test_function_app_registers_monitoring_scheduler():
     assert "app.register_functions(monitoring_scheduler_bp)" in source
 
 
+def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypatch):
+    """The orchestrator entry point must import cleanly and omit the timer trigger."""
+    import importlib
+    import sys
+
+    monkeypatch.setenv("PIPELINE_ROLE", "orchestrator")
+    sys.modules.pop("function_app_orch", None)
+
+    orch = importlib.import_module("function_app_orch")
+    orch.app.functions_bindings = {}
+    functions = orch.app.get_functions()
+    names = {fn.get_function_name() for fn in functions}
+
+    assert functions, "function_app_orch must index at least one function"
+    assert "monitoring_scheduler" not in names, (
+        "function_app_orch must not register the monitoring timer trigger"
+    )
+
+
 # ── 3. Dockerfile.orchestrator ──────────────────────────────────────────
 
 

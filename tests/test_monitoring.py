@@ -635,6 +635,57 @@ class TestMonitoringScheduler:
         ):
             _process_monitor(m)
 
+    def test_process_monitor_uses_latest_change_comparison_by_year(self, _mock_cosmos):
+        from treesight.monitoring import create_monitor
+
+        m = create_monitor(
+            user_id="user-1",
+            aoi_name="Latest Change Test",
+            aoi_geometry=_SAMPLE_GEOMETRY,
+            alert_email="test@example.com",
+        )
+
+        mock_enrichment = {
+            "change_detection": {
+                "season_changes": [
+                    {
+                        "season": "Summer",
+                        "year_from": 2024,
+                        "year_to": 2025,
+                        "loss_pct": 2.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.02,
+                    },
+                    {
+                        "season": "Winter",
+                        "year_from": 2023,
+                        "year_to": 2024,
+                        "loss_pct": 11.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.18,
+                    },
+                ],
+                "summary": {"comparisons": 2},
+            }
+        }
+
+        from blueprints.monitoring import _process_monitor
+
+        with (
+            patch(
+                "treesight.pipeline.enrichment.run_enrichment",
+                return_value=mock_enrichment,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.email.send_email", return_value=True) as mock_send,
+        ):
+            _process_monitor(m)
+
+        assert mock_send.call_count == 0, (
+            "Monitoring should evaluate alerts against the newest year pair, not the "
+            "last season_changes entry"
+        )
+
     def test_process_monitor_passes_delta_window_on_repeat_run(self, _mock_cosmos):
         """Repeat runs pass date_start=last_run_at so only new scenes are fetched."""
         from treesight.monitoring import create_monitor
