@@ -41,6 +41,7 @@ Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 | PR | Summary |
 |----|---------|  
+| #692 | feat: Stage 3C.0 — org-scoped portfolio history and dashboard stats (closes #673) |
 | #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 | #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
@@ -234,7 +235,7 @@ more than a handful of parcels.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 3C.0 | #673 | Supplier portfolio dashboard — all parcels, status, stats | Open |
+| 3C.0 | #673 | Supplier portfolio dashboard — all parcels, status, stats | 🔄 PR #692 |
 | 3C.1 | #671 | Before/after imagery comparison view | Open |
 | 3C.2 | #669 | Annotation / notes per parcel for audit trail | Open |
 | 3C.3 | #672 | Human override of determination with recorded reason | Open |

@@ -996,16 +996,72 @@ paths:
     get:
       operationId: analysisHistory
       tags: [analysis]
-      summary: User analysis run history
+      summary: User or org-scoped analysis run history
       security:
         - swaAuth: []
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          description: History scope (`user` default, `org` aggregates org member runs)
+          schema:
+            type: string
+            enum: [user, org]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 200
       responses:
         "200":
-          description: List of past analysis runs
+          description: List of past analysis runs with optional portfolio stats
           content:
             application/json:
               schema:
                 type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                  activeRun:
+                    type: object
+                    nullable: true
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+                  scope:
+                    type: string
+                  orgId:
+                    type: string
+                    nullable: true
+                  memberCount:
+                    type: integer
+                  stats:
+                    type: object
+                    properties:
+                      totalRuns:
+                        type: integer
+                      activeRuns:
+                        type: integer
+                      completedRuns:
+                        type: integer
+                      failedRuns:
+                        type: integer
+                      totalParcels:
+                        type: integer
+                      lastSubmittedAt:
+                        type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
 

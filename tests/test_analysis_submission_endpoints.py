@@ -338,6 +338,116 @@ class TestAnalysisSubmissionRoutes:
         }
         assert data["runs"][1]["artifactCount"] == 1
 
+    def test_analysis_history_org_scope_returns_portfolio_stats(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        client = _HistoryDurableClient(
+            {
+                "member-a-run": _FakeDurableStatus(
+                    "member-a-run",
+                    runtime_status="Running",
+                    created_time=datetime(2026, 4, 10, 11, 0, 0, tzinfo=UTC),
+                    last_updated_time=datetime(2026, 4, 10, 11, 2, 0, tzinfo=UTC),
+                    custom_status={"phase": "acquisition"},
+                ),
+                "member-b-run": _FakeDurableStatus(
+                    "member-b-run",
+                    runtime_status="Completed",
+                    created_time=datetime(2026, 4, 10, 9, 0, 0, tzinfo=UTC),
+                    last_updated_time=datetime(2026, 4, 10, 9, 5, 0, tzinfo=UTC),
+                    output={"feature_count": 2, "aoi_count": 2},
+                ),
+            }
+        )
+        req = _make_req(
+            "/api/analysis/history",
+            body={},
+            method="GET",
+            params={"limit": "6", "scope": "org"},
+        )
+
+        def _list_blobs(_container: str, *, prefix: str):
+            if prefix.endswith("user-123/"):
+                return [f"{prefix}member-a-run.json"]
+            if prefix.endswith("member-b/"):
+                return [f"{prefix}member-b-run.json"]
+            return []
+
+        def _download_json(_container: str, blob_name: str):
+            if blob_name.endswith("member-a-run.json"):
+                return {
+                    "submission_id": "member-a-run",
+                    "instance_id": "member-a-run",
+                    "user_id": "user-123",
+                    "submitted_at": "2026-04-10T11:00:00+00:00",
+                    "aoi_count": 5,
+                    "provider_name": "planetary_computer",
+                    "status": "submitted",
+                }
+            return {
+                "submission_id": "member-b-run",
+                "instance_id": "member-b-run",
+                "user_id": "member-b",
+                "submitted_at": "2026-04-10T09:00:00+00:00",
+                "aoi_count": 2,
+                "provider_name": "planetary_computer",
+                "status": "submitted",
+            }
+
+        with (
+            patch("blueprints.pipeline.history.get_user_org") as mock_get_org,
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            mock_get_org.return_value = {
+                "org_id": "org-1",
+                "members": [
+                    {"user_id": "user-123", "role": "owner"},
+                    {"user_id": "member-b", "role": "member"},
+                ],
+            }
+            mock_storage_cls.return_value.list_blobs.side_effect = _list_blobs
+            mock_storage_cls.return_value.download_json.side_effect = _download_json
+
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["scope"] == "org"
+        assert data["orgId"] == "org-1"
+        assert data["memberCount"] == 2
+        assert [run["instanceId"] for run in data["runs"]] == ["member-a-run", "member-b-run"]
+        assert data["stats"] == {
+            "totalRuns": 2,
+            "activeRuns": 1,
+            "completedRuns": 1,
+            "failedRuns": 0,
+            "totalParcels": 7,
+            "lastSubmittedAt": "2026-04-10T11:00:00+00:00",
+        }
+
+    def test_analysis_history_org_scope_falls_back_to_user_scope_without_org(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        client = _HistoryDurableClient({})
+        req = _make_req(
+            "/api/analysis/history",
+            body={},
+            method="GET",
+            params={"limit": "2", "scope": "org"},
+        )
+
+        with (
+            patch("blueprints.pipeline.history.get_user_org", return_value=None),
+            patch("blueprints.pipeline.history._fetch_submission_records", return_value=[]),
+        ):
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["scope"] == "user"
+        assert data["orgId"] is None
+        assert data["memberCount"] == 1
+
 
 class TestBlobTriggerIngress:
     def _make_blob_event(self, blob_name: str, event_id: str) -> MagicMock:

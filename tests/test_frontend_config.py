@@ -184,6 +184,15 @@ class TestAuthConfig:
             "app-shell.js must read /api-config.json for BYOF hostname discovery"
         )
 
+    def test_app_shell_supports_org_scope_history(self, app_shell_js):
+        """EUDR dashboard should request org-scoped analysis history for portfolio triage."""
+        assert "scope=' + encodeURIComponent(historyScope)" in app_shell_js, (
+            "app-shell.js must include scope parameter when loading analysis history"
+        )
+        assert "history-org" in app_shell_js, (
+            "app-shell.js must keep org history cache separate from user-scoped history cache"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CORS — backend must include all frontend origins
@@ -314,3 +323,15 @@ class TestEudrEntryPoint:
     def test_eudr_index_loads_app_shell(self):
         content = (WEBSITE / "eudr" / "index.html").read_text()
         assert "app-shell.js" in content, "eudr/index.html must load the shared app-shell.js module"
+
+    def test_eudr_index_has_portfolio_summary_slots(self):
+        content = (WEBSITE / "eudr" / "index.html").read_text()
+        assert 'id="app-portfolio-summary"' in content
+        assert 'id="app-portfolio-total-runs"' in content
+        assert 'id="app-portfolio-total-parcels"' in content
+
+    def test_app_index_has_portfolio_summary_slots(self):
+        content = (WEBSITE / "app" / "index.html").read_text()
+        assert 'id="app-portfolio-summary"' in content
+        assert 'id="app-portfolio-active-runs"' in content
+        assert 'id="app-portfolio-completed-runs"' in content

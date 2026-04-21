@@ -15,6 +15,7 @@ import azure.functions as func
 
 from blueprints._helpers import cors_headers
 from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
+from treesight.security.orgs import get_user_org
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._helpers import _durable_status_payload
@@ -190,15 +191,95 @@ def _fetch_submission_records(
     return records[offset : offset + limit]
 
 
+def _fetch_portfolio_submission_records(
+    user_id: str, limit: int, *, offset: int = 0
+) -> tuple[list[dict[str, Any]], str, str | None, int]:
+    """Retrieve history records for the signed-in user's org portfolio.
+
+    Falls back to user scope when no org is configured.
+    """
+    org = get_user_org(user_id)
+    if not org:
+        return _fetch_submission_records(user_id, limit, offset=offset), "user", None, 1
+
+    members = org.get("members", []) if isinstance(org, dict) else []
+    member_ids = [
+        str(member.get("user_id", "")).strip()
+        for member in members
+        if isinstance(member, dict) and str(member.get("user_id", "")).strip()
+    ]
+    if user_id not in member_ids:
+        member_ids.append(user_id)
+
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    deduped_member_ids: list[str] = []
+    for member_id in member_ids:
+        if member_id in seen:
+            continue
+        seen.add(member_id)
+        deduped_member_ids.append(member_id)
+
+    fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
+    records: list[dict[str, Any]] = []
+    for member_id in deduped_member_ids:
+        records.extend(_fetch_submission_records(member_id, fetch_limit, offset=0, max_results=200))
+
+    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+    return (
+        records[offset : offset + limit],
+        "org",
+        str(org.get("org_id", "")) or None,
+        len(deduped_member_ids),
+    )
+
+
+def _history_stats_from_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    failed_statuses = {"failed", "terminated", "canceled"}
+    completed = 0
+    failed = 0
+    active = 0
+    total_parcels = 0
+    for run in runs:
+        runtime_status = str(run.get("runtimeStatus") or "").strip().lower()
+        if runtime_status == "completed":
+            completed += 1
+        elif runtime_status in failed_statuses:
+            failed += 1
+        else:
+            active += 1
+        with contextlib.suppress(TypeError, ValueError):
+            total_parcels += int(run.get("aoiCount") or 0)
+
+    return {
+        "totalRuns": len(runs),
+        "activeRuns": active,
+        "completedRuns": completed,
+        "failedRuns": failed,
+        "totalParcels": total_parcels,
+        "lastSubmittedAt": (runs[0].get("submittedAt") if runs else ""),
+    }
+
+
 async def _build_analysis_history_response(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
     user_id: str,
 ) -> func.HttpResponse:
-    """Build the signed-in history response for a single authenticated user."""
+    """Build signed-in history response for user or org portfolio scope."""
     limit = _parse_history_limit(req.params.get("limit", ""))
     offset = _parse_history_offset(req.params.get("offset", ""))
-    records = _fetch_submission_records(user_id, limit, offset=offset)
+    scope = str(req.params.get("scope", "user")).strip().lower()
+
+    if scope == "org":
+        records, resolved_scope, org_id, member_count = _fetch_portfolio_submission_records(
+            user_id, limit, offset=offset
+        )
+    else:
+        records = _fetch_submission_records(user_id, limit, offset=offset)
+        resolved_scope = "user"
+        org_id = None
+        member_count = 1
 
     import asyncio
 
@@ -212,6 +293,10 @@ async def _build_analysis_history_response(
         "activeRun": active_run,
         "offset": offset,
         "limit": limit,
+        "scope": resolved_scope,
+        "orgId": org_id,
+        "memberCount": member_count,
+        "stats": _history_stats_from_runs(runs),
     }
     return func.HttpResponse(
         json.dumps(payload, default=str),

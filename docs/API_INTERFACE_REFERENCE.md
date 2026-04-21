@@ -27,7 +27,7 @@ Function App base URL (dev): `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.
 | GET | /api/proxy | anonymous | — | Tile proxy |
 | POST | /api/contact-form | anonymous | — | Contact form |
 | GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics |
-| GET | /api/analysis/history | SWA session | 401 | Analysis history |
+| GET | /api/analysis/history | SWA session | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |
 | POST | /api/convert-coordinates | SWA session | 401 | Coordinate conversion |
 | GET | /api/export/{id}/{fmt} | SWA session | 401 | Export artifacts |
 

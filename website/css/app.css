@@ -115,6 +115,7 @@
 .app-mini-item span{color:var(--c-muted)}
 .app-mini-item strong{text-align:right;color:var(--c-text)}
 .app-history-list{display:grid;gap:10px}
+.app-portfolio-summary{margin-top:2px;padding-top:8px;border-top:1px solid rgba(230,237,243,.08)}
 .app-history-item{appearance:none;width:100%;padding:14px 16px;border-radius:14px;border:1px solid rgba(230,237,243,.08);background:rgba(255,255,255,.02);color:var(--c-text);display:grid;gap:8px;text-align:left;cursor:pointer;transition:transform .2s ease,border-color .2s ease,background .2s ease,box-shadow .2s ease}
 .app-history-item:hover{transform:translateY(-1px);border-color:var(--app-role-border)}
 .app-history-item[data-selected="true"]{background:var(--app-role-tint);border-color:var(--app-role-border);box-shadow:0 14px 30px rgba(0,0,0,.2)}

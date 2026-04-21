@@ -209,6 +209,7 @@
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
+  let latestPortfolioSummary = null;
   let analysisHistoryRuns = [];
   let analysisHistoryLoaded = false;
   let selectedAnalysisRunId = null;
@@ -596,6 +597,8 @@
     var pathEl = document.getElementById('app-history-latest-path');
     if (!statusEl || !noteEl || !instanceEl || !phaseEl || !pathEl) return;
 
+    renderPortfolioSummary();
+
     if (!data) {
       if (!analysisHistoryLoaded && currentAccount) {
         statusEl.textContent = 'Loading recent runs';
@@ -630,6 +633,30 @@
     instanceEl.textContent = instanceId;
     phaseEl.textContent = phase;
     pathEl.textContent = runtimeStatus === 'Completed' ? role.completedPath : role.activePath;
+  }
+
+  function renderPortfolioSummary() {
+    var summaryEl = document.getElementById('app-portfolio-summary');
+    if (!summaryEl) return;
+
+    var scope = latestPortfolioSummary && latestPortfolioSummary.scope;
+    var stats = latestPortfolioSummary && latestPortfolioSummary.stats;
+    if (scope !== 'org' || !stats) {
+      summaryEl.hidden = true;
+      return;
+    }
+
+    summaryEl.hidden = false;
+    setText('app-portfolio-total-runs', String(stats.totalRuns || 0));
+    setText('app-portfolio-active-runs', String(stats.activeRuns || 0));
+    setText('app-portfolio-completed-runs', String(stats.completedRuns || 0));
+    setText('app-portfolio-total-parcels', String(stats.totalParcels || 0));
+
+    var memberCount = latestPortfolioSummary.memberCount || 1;
+    var scopeNote = memberCount > 1
+      ? 'Org portfolio view (' + memberCount + ' members)'
+      : 'Org portfolio view';
+    setText('app-portfolio-scope-note', scopeNote);
   }
 
   function normalizeAnalysisRun(run) {
@@ -817,6 +844,13 @@
     options = options || {};
     var locationSelection = readRunSelectionFromLocation();
 
+    latestPortfolioSummary = {
+      scope: payload && payload.scope,
+      orgId: payload && payload.orgId,
+      memberCount: payload && payload.memberCount,
+      stats: payload && payload.stats
+    };
+
     var normalizedActiveRun = normalizeAnalysisRun(payload && payload.activeRun);
     analysisHistoryRuns = sortAnalysisHistoryRuns(payload && payload.runs);
     if (normalizedActiveRun && !analysisHistoryRuns.some(function(run) {
@@ -852,6 +886,7 @@
       resetAnalysisProgress();
       renderAnalysisHistoryList();
       updateAnalysisRun(null);
+      updateHistorySummary(null);
       return;
     }
 
@@ -2923,8 +2958,11 @@
     await apiDiscoveryReady;
     if (!currentAccount && authEnabled()) return;
 
+    var historyScope = EUDR_LOCKED ? 'org' : 'user';
+    var historyCacheKey = historyScope === 'org' ? 'history-org' : 'history';
+
     // Render cached history instantly while fetching fresh data
-    const cached = readCache('history');
+    const cached = readCache(historyCacheKey);
     if (cached && !analysisHistoryLoaded) {
       analysisHistoryLoaded = true;
       applyAnalysisHistory(cached, options || {});
@@ -2932,9 +2970,9 @@
     }
 
     try {
-      const res = await apiFetch('/api/analysis/history?limit=6');
+      const res = await apiFetch('/api/analysis/history?limit=6&scope=' + encodeURIComponent(historyScope));
       const data = await res.json();
-      writeCache('history', data, CACHE_TTL_HISTORY);
+      writeCache(historyCacheKey, data, CACHE_TTL_HISTORY);
       analysisHistoryLoaded = true;
       applyAnalysisHistory(data, options || {});
       applyFirstRunLayout();
