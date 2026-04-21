@@ -96,9 +96,15 @@ variable "function_max_instances" {
 }
 
 variable "function_min_instances" {
-  description = "Minimum always-ready instances. Set to 1 to avoid cold-start 504s."
+  description = "Minimum always-ready instances for the compute Function App. Set to 0 to allow scale-to-zero; heavy GDAL image cold-starts are acceptable."
   type        = number
   default     = 0
+}
+
+variable "orch_min_instances" {
+  description = "Minimum always-ready instances for the orchestrator Function App. Set to 1 to keep it warm so Durable orchestration and interactive HTTP requests never hit a cold-start 504."
+  type        = number
+  default     = 1
 }
 
 variable "ops_dashboard_key" {

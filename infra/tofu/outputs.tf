@@ -41,7 +41,12 @@ output "function_app_cli_maximum_instance_count" {
 
 output "function_app_cli_minimum_instance_count" {
   value       = var.function_min_instances
-  description = "CLI-managed Function App minimum always-ready instance count."
+  description = "CLI-managed compute Function App minimum always-ready instance count."
+}
+
+output "function_app_orch_minimum_instance_count" {
+  value       = var.orch_min_instances
+  description = "CLI-managed orchestrator Function App minimum always-ready instance count."
 }
 
 output "static_web_app_name" {

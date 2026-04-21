@@ -464,9 +464,9 @@ jobs:
             --body "$CORS_BODY"
 
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
-          if [ "$MIN_INSTANCES" -gt 0 ]; then
-            ALWAYS_READY='[{"name":"http","instanceCount":'"${MIN_INSTANCES}"'}]'
+          ORCH_MIN_INSTANCES=$(tofu output -raw function_app_orch_minimum_instance_count)
+          if [ "$ORCH_MIN_INSTANCES" -gt 0 ]; then
+            ALWAYS_READY='[{"name":"http","instanceCount":'"${ORCH_MIN_INSTANCES}"'}]'
           else
             ALWAYS_READY='[]'
           fi

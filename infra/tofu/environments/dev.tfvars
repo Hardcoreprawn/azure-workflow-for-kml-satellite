@@ -23,4 +23,5 @@ enable_azure_ai         = false
 enable_stripe           = true
 enable_cosmos_db              = true
 cosmos_public_network_access  = true   # dev only — no VNet/private endpoint yet
-function_min_instances        = 1
+function_min_instances        = 0
+orch_min_instances            = 1
