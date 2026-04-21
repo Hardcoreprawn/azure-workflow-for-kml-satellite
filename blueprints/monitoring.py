@@ -150,8 +150,15 @@ def _process_monitor(monitor: Any) -> None:
         date_end=date_end,
     )
 
-    # Extract change detection results
+    # Extract the latest change metrics from the enrichment payload.
+    # The live enrichment contract returns {"season_changes": [...], "summary": {...}},
+    # while older tests/mocks may still pass a flat metrics dict directly.
     change_result = enrichment_result.get("change_detection")
+    season_changes = (
+        change_result.get("season_changes") if isinstance(change_result, dict) else None
+    )
+    if isinstance(season_changes, list) and season_changes:
+        change_result = season_changes[-1]
 
     # Evaluate alert thresholds
     alert = evaluate_alert(monitor, change_result)
@@ -162,7 +169,10 @@ def _process_monitor(monitor: Any) -> None:
     ndvi_stats: list[dict] = enrichment_result.get("ndvi_stats") or []
     valid_stats = [s for s in ndvi_stats if s and s.get("mean") is not None]
     if valid_stats:
-        latest = max(valid_stats, key=lambda s: s.get("datetime", ""))
+        # ndvi_stats follows the chronological frame order, so the last valid
+        # stat is the latest baseline candidate without relying on mixed-type
+        # datetime comparisons.
+        latest = valid_stats[-1]
         monitor.baseline_ndvi_mean = latest["mean"]
 
     # Advance schedule regardless of alert

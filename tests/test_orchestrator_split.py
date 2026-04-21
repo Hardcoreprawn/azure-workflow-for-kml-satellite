@@ -39,17 +39,6 @@ def test_pipeline_activities_guarded_by_pipeline_role():
     init_path = REPO_ROOT / "blueprints" / "pipeline" / "__init__.py"
     tree = ast.parse(init_path.read_text(), filename=str(init_path))
 
-    # Find all top-level unconditional imports of activities
-    unconditional_activities_imports = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module is None:
-            # from . import activities
-            for alias in node.names:
-                if alias.name == "activities":
-                    # Check if this import is inside an if block or at top level
-                    # We check by seeing if parent is an If node
-                    unconditional_activities_imports.append(node)
-
     # Check differently: look for pattern at module level (not in If)
     module_level_unconditional = []
     for node in tree.body:

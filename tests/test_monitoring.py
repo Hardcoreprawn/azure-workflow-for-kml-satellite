@@ -612,9 +612,14 @@ class TestMonitoringScheduler:
 
         mock_enrichment = {
             "change_detection": {
-                "loss_pct": 8.0,
-                "gain_pct": 1.0,
-                "mean_delta": -0.12,
+                "season_changes": [
+                    {
+                        "loss_pct": 8.0,
+                        "gain_pct": 1.0,
+                        "mean_delta": -0.12,
+                    }
+                ],
+                "summary": {"comparisons": 1},
             }
         }
 
@@ -705,7 +710,7 @@ class TestMonitoringScheduler:
 
         mock_enrichment = {
             "ndvi_stats": [
-                {"mean": 0.45, "datetime": "2026-02-01"},
+                {"mean": 0.45, "datetime": datetime(2026, 2, 1, tzinfo=UTC)},
                 {"mean": 0.62, "datetime": "2026-03-01"},
             ]
         }
