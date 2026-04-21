@@ -112,6 +112,20 @@ def test_function_app_orch_does_not_hardcode_activities():
     assert "import activities" not in source
 
 
+def test_function_app_orch_does_not_register_monitoring_scheduler():
+    """The orchestrator image must not register the monitoring timer trigger."""
+    source = (REPO_ROOT / "function_app_orch.py").read_text()
+    assert "app.register_functions(monitoring_bp)" in source
+    assert "monitoring_scheduler_bp" not in source
+
+
+def test_function_app_registers_monitoring_scheduler():
+    """The compute image must keep the monitoring timer trigger."""
+    source = (REPO_ROOT / "function_app.py").read_text()
+    assert "from blueprints.monitoring import scheduler_bp as monitoring_scheduler_bp" in source
+    assert "app.register_functions(monitoring_scheduler_bp)" in source
+
+
 # ── 3. Dockerfile.orchestrator ──────────────────────────────────────────
 
 

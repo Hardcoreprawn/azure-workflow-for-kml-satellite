@@ -29,6 +29,7 @@ from treesight.security.billing import get_effective_subscription, plan_capabili
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
+scheduler_bp = func.Blueprint()
 
 # --- Tier gating -------------------------------------------------------
 
@@ -65,7 +66,7 @@ def _check_monitor_limit(user_id: str) -> str | None:
 # --- Timer Trigger: scheduled monitoring check --------------------------
 
 
-@bp.timer_trigger(schedule="0 0 */6 * * *", arg_name="timer", run_on_startup=False)
+@scheduler_bp.timer_trigger(schedule="0 0 */6 * * *", arg_name="timer", run_on_startup=False)
 def monitoring_scheduler(timer: func.TimerRequest) -> None:
     """Run every 6 hours: find due monitors and kick off re-analysis."""
     from treesight.storage.cosmos import cosmos_available
