@@ -105,6 +105,7 @@
 .app-rail-header h3{font-size:1.15rem;letter-spacing:-.02em}
 .app-rail-copy{font-size:.9rem;line-height:1.6;color:var(--c-muted)}
 .app-rail-footer{margin-top:auto;padding-top:14px;border-top:1px solid rgba(230,237,243,.08);font-size:.8rem;line-height:1.5;color:var(--c-muted)}
+.app-history-export-row{display:flex;align-items:center;gap:10px;padding-top:10px;flex-wrap:wrap}
 .app-run-snapshot{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:14px;background:rgba(94,236,196,.08);border:1px solid rgba(94,236,196,.18)}
 .app-run-label,.app-content-label{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--c-muted)}
 .app-run-snapshot strong,.app-content-block strong{font-size:1rem;letter-spacing:-.01em;color:var(--c-text)}

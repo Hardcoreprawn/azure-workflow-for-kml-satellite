@@ -3,6 +3,8 @@
 Covers:
 - GET /api/eudr/billing (status endpoint)
 - GET /api/eudr/entitlement (entitlement check)
+- GET /api/eudr/usage (usage dashboard)
+- GET /api/eudr/summary-export (aggregated CSV export)
 - POST /api/eudr/subscribe (Stripe checkout creation)
 - Webhook routing for EUDR events
 - _handle_eudr_event dispatch
@@ -11,8 +13,9 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.conftest import TEST_ORIGIN, make_test_request
 
@@ -423,3 +426,189 @@ class TestExtractMeteredSubItem:
             mock_stripe.return_value.Subscription.retrieve.side_effect = Exception("boom")
             result = _extract_metered_sub_item("sub_test_1")
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# §5 — GET /api/eudr/summary-export (#674)
+# ---------------------------------------------------------------------------
+
+
+class TestSummaryRowsFromManifest:
+    """Unit tests for _summary_rows_from_manifest — pure helper."""
+
+    def test_returns_row_per_aoi(self):
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Parcel A",
+                    "area_ha": 10.5,
+                    "center": {"lat": -1.5, "lon": 37.5},
+                    "determination": {
+                        "deforestation_free": True,
+                        "confidence": "high",
+                        "flags": [],
+                    },
+                }
+            ]
+        }
+        rows = _summary_rows_from_manifest("run-001", "2026-01-15T10:00:00Z", manifest, None)
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["run_id"] == "run-001"
+        assert row["parcel_name"] == "Parcel A"
+        assert row["determination_status"] == "compliant"
+        assert row["determination_confidence"] == "high"
+        assert row["overridden"] == "no"
+        assert row["note"] == ""
+
+    def test_non_compliant_parcel(self):
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Parcel B",
+                    "area_ha": 5.0,
+                    "center": {"lat": 0.0, "lon": 0.0},
+                    "determination": {
+                        "deforestation_free": False,
+                        "confidence": "high",
+                        "flags": ["Vegetation loss 12.0% (1.5 ha) in 2024-Q1"],
+                    },
+                }
+            ]
+        }
+        rows = _summary_rows_from_manifest("run-002", "2026-02-01T08:00:00Z", manifest, None)
+        assert rows[0]["determination_status"] == "non_compliant"
+        assert "Vegetation loss" in rows[0]["determination_flags"]
+
+    def test_merges_override_and_note(self):
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Parcel C",
+                    "area_ha": 3.0,
+                    "center": {"lat": 1.0, "lon": 30.0},
+                    "determination": {
+                        "deforestation_free": False,
+                        "confidence": "medium",
+                        "flags": [],
+                    },
+                }
+            ]
+        }
+        run_record = {
+            "parcel_notes": {"0": "Verified on-site — no change visible"},
+            "parcel_overrides": {
+                "0": {"reason": "Ground-truthed as compliant after site visit", "reverted": False}
+            },
+        }
+        rows = _summary_rows_from_manifest("run-003", "2026-03-01T00:00:00Z", manifest, run_record)
+        assert rows[0]["overridden"] == "yes"
+        assert "Ground-truthed" in rows[0]["override_reason"]
+        assert "Verified" in rows[0]["note"]
+
+    def test_empty_per_aoi_enrichment(self):
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        rows = _summary_rows_from_manifest("run-x", "2026-01-01T00:00:00Z", {}, None)
+        assert rows == []
+
+    def test_reverted_override_not_marked_overridden(self):
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "P",
+                    "area_ha": 1.0,
+                    "center": {},
+                    "determination": {
+                        "deforestation_free": False,
+                        "confidence": "low",
+                        "flags": [],
+                    },
+                }
+            ]
+        }
+        run_record = {
+            "parcel_overrides": {"0": {"reason": "Some reason", "reverted": True}},
+        }
+        rows = _summary_rows_from_manifest("run-r", "2026-01-01T00:00:00Z", manifest, run_record)
+        assert rows[0]["overridden"] == "no"
+
+
+class TestEudrSummaryExport:
+    """GET /api/eudr/summary-export — aggregated org CSV."""
+
+    @_REQUIRE_AUTH
+    @patch("blueprints.eudr.check_auth", side_effect=ValueError("No token"))
+    def test_unauthenticated_returns_401(self, _auth):
+        from blueprints.eudr import _eudr_summary_export
+
+        req = make_test_request(
+            url="/api/eudr/summary-export", auth_header=None, principal_user_id=None
+        )
+        client = AsyncMock()
+        resp = asyncio.run(_eudr_summary_export(req, client))
+        assert resp.status_code == 401
+
+    @_REQUIRE_AUTH
+    @patch(
+        "blueprints.eudr._fetch_org_run_records",
+        return_value=[
+            {"instance_id": "inst-001", "submitted_at": "2026-01-10T12:00:00Z"},
+        ],
+    )
+    @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))
+    def test_returns_csv_with_header_and_rows(self, _auth, _runs):
+        from blueprints.eudr import _eudr_summary_export
+
+        fake_manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Parcel Alpha",
+                    "area_ha": 8.0,
+                    "center": {"lat": -2.0, "lon": 36.0},
+                    "determination": {
+                        "deforestation_free": True,
+                        "confidence": "high",
+                        "flags": [],
+                    },
+                }
+            ]
+        }
+        mock_status = MagicMock()
+        mock_status.output = {"enrichment_manifest": "enrichment/p/t/timelapse_payload.json"}
+        client = AsyncMock()
+        client.get_status = AsyncMock(return_value=mock_status)
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = fake_manifest
+            req = make_test_request(url="/api/eudr/summary-export")
+            resp = asyncio.run(_eudr_summary_export(req, client))
+
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/csv"
+        body = resp.get_body().decode()
+        assert "run_id" in body  # header present
+        assert "Parcel Alpha" in body
+        assert "compliant" in body
+
+    @_REQUIRE_AUTH
+    @patch(
+        "blueprints.eudr._fetch_org_run_records",
+        return_value=[],
+    )
+    @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))
+    def test_no_runs_returns_404(self, _auth, _runs):
+        from blueprints.eudr import _eudr_summary_export
+
+        client = AsyncMock()
+        req = make_test_request(url="/api/eudr/summary-export")
+        resp = asyncio.run(_eudr_summary_export(req, client))
+        assert resp.status_code == 404

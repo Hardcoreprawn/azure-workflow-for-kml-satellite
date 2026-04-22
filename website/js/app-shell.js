@@ -657,6 +657,10 @@
       ? 'Org portfolio view (' + memberCount + ' members)'
       : 'Org portfolio view';
     setText('app-portfolio-scope-note', scopeNote);
+
+    // Show the summary export button when org scope is active (#674)
+    var exportRow = document.getElementById('app-summary-export-row');
+    if (exportRow) exportRow.hidden = false;
   }
 
   function normalizeAnalysisRun(run) {
@@ -3747,6 +3751,35 @@
     if (overrideBackdrop) overrideBackdrop.addEventListener('click', function(e) { if (e.target === this) closeOverrideModal(); });
     var overrideReasonInput = document.getElementById('app-override-reason-input');
     if (overrideReasonInput) overrideReasonInput.addEventListener('input', onOverrideReasonInput);
+
+    // Portfolio summary export (#674)
+    bindClick('app-summary-export-btn', function() {
+      var btn = document.getElementById('app-summary-export-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+      apiFetch('/api/eudr/summary-export')
+        .then(function(res) {
+          if (!res.ok) throw new Error('Export failed (' + res.status + ')');
+          return res.blob();
+        })
+        .then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'eudr_summary_export.csv';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .catch(function(err) {
+          console.warn('EUDR summary export error:', err);
+          var note = document.getElementById('app-summary-export-note');
+          if (note) note.textContent = 'Export failed — try again';
+        })
+        .finally(function() {
+          if (btn) { btn.disabled = false; btn.textContent = 'Export all runs (CSV)'; }
+        });
+    });
 
     // Expanded map viewer controls
   bindClick('app-map-expand-btn', expandEvidenceMap);

@@ -5,13 +5,17 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import contextlib
+import csv
+import io
 import json
 import logging
 import math
 import os
 import re
 from datetime import UTC, datetime
+from typing import Any
 
+import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
@@ -536,4 +540,161 @@ def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
+    )
+
+
+# ---------------------------------------------------------------------------
+# §5 — GET /api/eudr/summary-export  (#674)
+# ---------------------------------------------------------------------------
+
+_SUMMARY_CSV_FIELDS = [
+    "run_id",
+    "submitted_at",
+    "parcel_name",
+    "area_ha",
+    "center_lat",
+    "center_lon",
+    "determination_status",
+    "determination_confidence",
+    "determination_flags",
+    "overridden",
+    "override_reason",
+    "note",
+]
+
+
+def _summary_rows_from_manifest(
+    run_id: str,
+    submitted_at: str,
+    manifest: dict[str, Any],
+    run_record: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Extract per-AOI CSV rows from a single run manifest + run record annotations."""
+    per_aoi = manifest.get("per_aoi_enrichment", [])
+    if not per_aoi:
+        return []
+
+    parcel_notes: dict[str, str] = {}
+    parcel_overrides: dict[str, dict[str, Any]] = {}
+    if run_record:
+        parcel_notes = run_record.get("parcel_notes") or {}
+        parcel_overrides = run_record.get("parcel_overrides") or {}
+
+    rows = []
+    for idx, aoi in enumerate(per_aoi):
+        parcel_key = str(idx)
+        center = aoi.get("center", {})
+        det = aoi.get("determination", {})
+        override = parcel_overrides.get(parcel_key, {})
+        overridden = bool(override) and not override.get("reverted")
+
+        rows.append(
+            {
+                "run_id": run_id,
+                "submitted_at": submitted_at,
+                "parcel_name": aoi.get("name", parcel_key),
+                "area_ha": aoi.get("area_ha", ""),
+                "center_lat": center.get("lat", ""),
+                "center_lon": center.get("lon", ""),
+                "determination_status": (
+                    "error"
+                    if "error" in aoi
+                    else ("compliant" if det.get("deforestation_free") else "non_compliant")
+                ),
+                "determination_confidence": det.get("confidence", ""),
+                "determination_flags": "; ".join(det.get("flags", [])),
+                "overridden": "yes" if overridden else "no",
+                "override_reason": override.get("reason", "") if overridden else "",
+                "note": parcel_notes.get(parcel_key, ""),
+            }
+        )
+    return rows
+
+
+def _build_summary_csv(rows: list[dict[str, Any]]) -> str:
+    """Serialise a list of summary row dicts as a CSV string."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_SUMMARY_CSV_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+@bp.route(
+    route="eudr/summary-export",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@bp.durable_client_input(client_name="client")
+async def eudr_summary_export(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """GET /api/eudr/summary-export — aggregated per-parcel CSV across org runs (#674)."""
+    return await _eudr_summary_export(req, client)
+
+
+async def _eudr_summary_export(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """Inner implementation for testing without Azure middleware."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    from blueprints.pipeline._helpers import _reshape_output
+    from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    run_records = _fetch_org_run_records(user_id, limit=20)
+
+    all_rows: list[dict[str, Any]] = []
+    for record in run_records:
+        instance_id = record.get("instance_id") or record.get("run_id", "")
+        submitted_at = record.get("submitted_at", "")
+        if not instance_id:
+            continue
+
+        try:
+            status = await client.get_status(instance_id, show_input=False)
+            if not status or not status.output:
+                continue
+            output = status.output
+            if isinstance(output, str):
+                with contextlib.suppress(Exception):
+                    output = json.loads(output)
+            if isinstance(output, dict):
+                output = _reshape_output(output)
+            manifest_path = (
+                output.get("enrichment_manifest") or output.get("enrichmentManifest")
+                if isinstance(output, dict)
+                else None
+            )
+            if not manifest_path:
+                continue
+
+            manifest = storage.download_json(DEFAULT_OUTPUT_CONTAINER, manifest_path)
+            rows = _summary_rows_from_manifest(instance_id, submitted_at, manifest, record)
+            all_rows.extend(rows)
+        except Exception:
+            logger.warning("summary-export: skipping run %s due to fetch error", instance_id)
+            continue
+
+    if not all_rows:
+        return error_response(404, "No completed EUDR runs found for export", req=req)
+
+    csv_body = _build_summary_csv(all_rows)
+    headers = cors_headers(req)
+    headers["Content-Disposition"] = 'attachment; filename="eudr_summary_export.csv"'
+    return func.HttpResponse(
+        csv_body,
+        status_code=200,
+        mimetype="text/csv",
+        headers=headers,
     )
