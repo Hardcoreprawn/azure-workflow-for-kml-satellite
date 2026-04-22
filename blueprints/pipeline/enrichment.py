@@ -22,7 +22,7 @@ from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 
 from . import bp
 from ._helpers import _reshape_output
-from .history import get_run_record_by_instance_id
+from .history import assert_run_write_access, get_run_record_by_instance_id
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +89,12 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
         return cors_preflight(req)
 
     try:
-        check_auth(req)
+        _claims, user_id = check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+
+    if user_id == "anonymous":
+        return error_response(401, "Authentication required", req=req)
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_ANALYSIS_BODY_BYTES:
@@ -109,6 +112,14 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
 
     if not instance_id or not analysis:
         return error_response(400, "instance_id and analysis are required", req=req)
+
+    run_record = get_run_record_by_instance_id(instance_id)
+    if not run_record:
+        return error_response(404, "Run not found", req=req)
+    try:
+        assert_run_write_access(run_record, user_id)
+    except ValueError as exc:
+        return error_response(403, str(exc), req=req)
 
     from treesight.storage.client import BlobStorageClient
 

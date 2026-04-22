@@ -7,6 +7,45 @@ Last updated: 2026-04-22
 
 ---
 
+## Execution Order
+
+**The stacked PR queue. Work top-to-bottom. Each row is one PR unless noted.**
+Update status as work moves. Add new items at the correct priority position,
+not at the bottom.
+
+| # | Issue(s) | PR | Description | Status |
+|---|----------|----|-------------|--------|
+| 1 | #701 | #702 | fix: remove subscription_item_id from logs — CodeQL taint | 🔄 CI running |
+| 2 | #696 | — | fix: timelapse-analysis-save missing ownership check | 🔄 In progress |
+| 3 | #697 + #698 + #550 + #551 | — | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | Open |
+| 4 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
+| 5 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
+| 6 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 7 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 8 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 9 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 10 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 11 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 12 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 13 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 14 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 15 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 16 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 17 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 18 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 19 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 20 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 21 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+
+**Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
+`#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
+`#519` self-host Leaflet · `#569` old domain · `#570` ops docs risk · `#584` data model ·
+`#525`/`#526` deploy perf · `#252`/`#228` rate limiter/replay (Stage 4)
+
+**Stage 4 starts after Stage 3 is generating revenue** — see Stage 4 section below.
+
+---
+
 ## Direction
 
 **EUDR compliance is the product.** Conservation monitoring is mothballed
