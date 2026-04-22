@@ -478,6 +478,78 @@ jobs:
             --url "${ORCH_ID}?api-version=2024-04-01" \
             --body "$SCALE_BODY"
 
+      - name: Verify Function App config contract
+        id: verify-config-contract
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          set -euo pipefail
+
+          FUNC_RG=$(tofu output -raw resource_group_name)
+          FUNC_NAME=$(tofu output -raw function_app_name)
+          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+
+          DESIRED_SETTINGS=$(tofu output -json function_app_cli_app_settings)
+
+          verify_settings_subset() {
+            local app_name="$1"
+            local expected_json="$2"
+
+            ACTUAL_SETTINGS_JSON=$(az webapp config appsettings list \
+              --name "$app_name" \
+              --resource-group "$FUNC_RG" \
+              | jq 'map({(.name): .value}) | add')
+
+            MISMATCHES=$(jq -n \
+              --argjson expected "$expected_json" \
+              --argjson actual "$ACTUAL_SETTINGS_JSON" \
+              '[
+                $expected
+                | to_entries[]
+                | select(($actual[.key] // null) != .value)
+                | {key: .key, expected: .value, actual: ($actual[.key] // "<missing>")}
+              ]')
+
+            if [ "$(echo "$MISMATCHES" | jq 'length')" -gt 0 ]; then
+              echo "❌ App settings drift detected for $app_name"
+              echo "$MISMATCHES" | jq '.'
+              exit 1
+            fi
+
+            echo "✅ App settings contract verified for $app_name"
+          }
+
+          verify_container_image() {
+            local app_name="$1"
+            local expected_image="$2"
+
+            ACTUAL_IMAGE=$(az functionapp config container show \
+              --name "$app_name" \
+              --resource-group "$FUNC_RG" \
+              --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv)
+
+            if [ "$ACTUAL_IMAGE" != "$expected_image" ]; then
+              echo "❌ Container image drift for $app_name: expected=$expected_image actual=$ACTUAL_IMAGE"
+              exit 1
+            fi
+
+            echo "✅ Container image contract verified for $app_name"
+          }
+
+          ORCH_SETTINGS=$(jq -n \
+            --argjson base "$DESIRED_SETTINGS" \
+            '$base + {"PIPELINE_ROLE":"orchestrator"}')
+
+          verify_settings_subset "$FUNC_NAME" "$DESIRED_SETTINGS"
+          verify_settings_subset "$ORCH_NAME" "$ORCH_SETTINGS"
+
+          verify_container_image "$FUNC_NAME" "${{ needs.build-image.outputs.image_uri }}"
+          verify_container_image "$ORCH_NAME" "${{ needs.build-image.outputs.orch_image_uri }}"
+
       - name: Verify browser CORS contract
         id: verify-browser-cors
         working-directory: infra/tofu

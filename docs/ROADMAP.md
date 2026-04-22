@@ -15,25 +15,24 @@ not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
 | --- | ---------- | ---- | ------------- | -------- |
-| 1 | #697 + #698 + #550 + #551 | #706 | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | 🔄 In progress |
-| 2 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
-| 3 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
-| 4 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
-| 5 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 6 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 7 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 8 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 9 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 10 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 11 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 12 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 13 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 14 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 15 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 16 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 17 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 18 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 19 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+| 1 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | 🔄 In progress |
+| 2 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
+| 3 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 4 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 5 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 6 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 7 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 8 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 9 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 10 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 11 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 12 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 13 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 14 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 15 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 16 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 17 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 18 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
 
 **Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
@@ -86,12 +85,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #706 | chore: CI/security release-safety hardening — action pin upgrades (Trivy, CodeQL v4, Node24-compatible actions) + deploy readiness gate diagnostics/timeout hardening (closes #697, #698, #550, #551) |
 | #703 | fix: enforce run ownership for timelapse save/load and return 503 on run-lookup backend failures (closes #696) |
 | #702 | fix: CodeQL taint chain for subscription_item_id logging — drop si from log messages (closes #701) |
 | #695 | feat: Stage 3C complete — before/after imagery (#671), annotation notes (#669), human override (#672), usage dashboard (#670), aggregated summary export (#674), portfolio dashboard (#673) |
 | #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
-| #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
 
 ---
 
