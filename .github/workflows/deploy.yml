@@ -585,17 +585,30 @@ jobs:
         run: |
           HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           BASE_URL="https://${HOSTNAME}"
-          MAX_WAIT=90           # normal startup is <60s; if not up by 90s it's broken
+          MAX_WAIT=300          # container startup + route registration can exceed 90s under cold start
           INTERVAL=5
           elapsed=0
           health_code=0
           ready_code=0
 
+          probe_code() {
+            local url="$1"
+            local code
+            # curl prints 000 on connection errors; avoid `|| echo 000` which can
+            # produce 000000 and obscure diagnostics.
+            code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 8 "$url" 2>/dev/null || true)
+            if [[ "$code" =~ ^[0-9]{3}$ ]]; then
+              echo "$code"
+            else
+              echo "000"
+            fi
+          }
+
           echo "Waiting for ${BASE_URL}/api/health to become ready..."
 
           while [ $elapsed -lt $MAX_WAIT ]; do
-            health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
-            ready_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/readiness" 2>/dev/null || echo "000")
+            health_code=$(probe_code "${BASE_URL}/api/health")
+            ready_code=$(probe_code "${BASE_URL}/api/readiness")
 
             echo "  [${elapsed}s] health=${health_code} readiness=${ready_code}"
 
@@ -630,6 +643,13 @@ jobs:
           echo "  health:    ${health_code}"
           echo "  readiness: ${ready_code}"
           echo "  elapsed:   ${elapsed}s"
+          echo "  hostname:  ${HOSTNAME}"
+          echo ""
+          echo "── DNS lookup ──"
+          getent hosts "${HOSTNAME}" || true
+          echo ""
+          echo "── Final curl diagnostics (/api/health) ──"
+          curl -sv --connect-timeout 5 --max-time 10 "${BASE_URL}/api/health" -o /dev/null 2>&1 | tail -n 40 || true
           echo ""
           echo "This may indicate:"
           echo "  - Container image failed to start (check Container Apps logs)"
