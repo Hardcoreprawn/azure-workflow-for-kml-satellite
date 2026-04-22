@@ -1647,6 +1647,164 @@
     }
   }
 
+
+  /* ---- Human override determination (#672) ---- */
+
+  var currentOverrideParcelKey = null;
+  var currentOverrideAoiData = null;
+
+  function renderParcelOverride(parcelKey, aoiData) {
+    currentOverrideParcelKey = parcelKey;
+    currentOverrideAoiData = aoiData;
+
+    var overrideEl = document.getElementById('app-evidence-override');
+    var badgeEl = document.getElementById('app-evidence-override-badge');
+    var overrideBtn = document.getElementById('app-evidence-override-btn');
+    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    if (!overrideEl) return;
+
+    var override = null;
+    if (evidenceManifest && evidenceManifest.parcel_overrides) {
+      override = evidenceManifest.parcel_overrides[parcelKey] || null;
+    }
+
+    var det = aoiData && aoiData.determination;
+    var isNonCompliant = det && !det.deforestation_free;
+
+    overrideEl.hidden = !(isNonCompliant || override);
+
+    if (override) {
+      if (badgeEl) {
+        badgeEl.hidden = false;
+        badgeEl.className = 'app-evidence-override-badge';
+        badgeEl.textContent = '\u2705 Compliant (overridden)';
+      }
+      if (overrideBtn) overrideBtn.hidden = true;
+      if (revertBtn) revertBtn.hidden = false;
+    } else {
+      if (badgeEl) badgeEl.hidden = true;
+      if (overrideBtn) overrideBtn.hidden = !isNonCompliant;
+      if (revertBtn) revertBtn.hidden = true;
+    }
+  }
+
+  function openOverrideModal(parcelKey, aoiData) {
+    var backdrop = document.getElementById('app-override-backdrop');
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var charCount = document.getElementById('app-override-charcount');
+    var errorEl = document.getElementById('app-override-error');
+    var originalEl = document.getElementById('app-override-original');
+    if (!backdrop) return;
+
+    if (reasonInput) reasonInput.value = '';
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (charCount) charCount.textContent = '0 / 500';
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
+    if (originalEl) {
+      var det = aoiData && aoiData.determination;
+      var reason = det && det.reason ? det.reason : 'Risk detected';
+      originalEl.textContent = 'Algorithmic determination: ' + reason;
+    }
+
+    backdrop.hidden = false;
+    if (reasonInput) reasonInput.focus();
+  }
+
+  function closeOverrideModal() {
+    var backdrop = document.getElementById('app-override-backdrop');
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  function onOverrideReasonInput() {
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var charCount = document.getElementById('app-override-charcount');
+    if (!reasonInput) return;
+    var len = reasonInput.value.trim().length;
+    if (charCount) charCount.textContent = len + ' / 500';
+    if (confirmBtn) confirmBtn.disabled = len < 20;
+  }
+
+  async function confirmOverride() {
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var errorEl = document.getElementById('app-override-error');
+    if (!reasonInput || !evidenceInstanceId || currentOverrideParcelKey === null) return;
+
+    var reason = reasonInput.value.trim();
+    if (reason.length < 20) return;
+
+    var originalText = confirmBtn ? confirmBtn.textContent : 'Confirm override';
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentOverrideParcelKey,
+          reason: reason,
+          revert: false,
+        }),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        if (errorEl) {
+          errorEl.textContent = (err && err.message) || 'Failed to save override. Try again.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+      // Update local manifest state
+      if (!evidenceManifest.parcel_overrides) evidenceManifest.parcel_overrides = {};
+      evidenceManifest.parcel_overrides[currentOverrideParcelKey] = {
+        reason: reason,
+        overridden_at: new Date().toISOString(),
+        override_determination: 'compliant',
+      };
+      closeOverrideModal();
+      renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+    } catch (e) {
+      if (errorEl) { errorEl.textContent = 'Failed to save override. Try again.'; errorEl.hidden = false; }
+      console.warn('Override save error:', e);
+    } finally {
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+    }
+  }
+
+  async function revertOverride() {
+    if (!evidenceInstanceId || currentOverrideParcelKey === null) return;
+    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentOverrideParcelKey,
+          reason: '',
+          revert: true,
+        }),
+      });
+      if (res.ok) {
+        if (evidenceManifest.parcel_overrides) {
+          delete evidenceManifest.parcel_overrides[currentOverrideParcelKey];
+        }
+        renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+      }
+    } catch (e) {
+      console.warn('Override revert error:', e);
+    } finally {
+      if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }
+    }
+  }
   function selectAoi(idx) {
     if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
     var perAoi = evidenceManifest.per_aoi_enrichment;
@@ -1678,6 +1836,7 @@
     // Render per-AOI detail
     renderAoiDetail(aoi);
     renderParcelNotes(parcelKeyForIndex(idx));
+    renderParcelOverride(parcelKeyForIndex(idx), aoi);
   }
 
   function resetAoiSelection() {
@@ -1710,6 +1869,8 @@
     if (savedEl) savedEl.hidden = true;
     if (editEl) editEl.hidden = true;
     if (addBtn) { addBtn.hidden = false; addBtn.textContent = '+ Add note'; }
+    var overrideEl = document.getElementById('app-evidence-override');
+    if (overrideEl) overrideEl.hidden = true;
   }
 
   function buildEvidenceFrames(framePlan, searchIds, ndviSearchIds) {
@@ -3518,6 +3679,16 @@
     bindClick('app-evidence-notes-add-btn', showNoteEditor);
     bindClick('app-evidence-notes-cancel-btn', hideNoteEditor);
     bindClick('app-evidence-notes-save-btn', saveParcelNote);
+
+    // Override determination controls (#672)
+    bindClick('app-evidence-override-btn', function() { openOverrideModal(currentOverrideParcelKey, currentOverrideAoiData); });
+    bindClick('app-evidence-override-revert-btn', revertOverride);
+    bindClick('app-override-confirm-btn', confirmOverride);
+    bindClick('app-override-cancel-btn', closeOverrideModal);
+    var overrideBackdrop = document.getElementById('app-override-backdrop');
+    if (overrideBackdrop) overrideBackdrop.addEventListener('click', function(e) { if (e.target === this) closeOverrideModal(); });
+    var overrideReasonInput = document.getElementById('app-override-reason-input');
+    if (overrideReasonInput) overrideReasonInput.addEventListener('input', onOverrideReasonInput);
 
     // Expanded map viewer controls
   bindClick('app-map-expand-btn', expandEvidenceMap);

@@ -357,6 +357,25 @@
   .app-select-row{flex-direction:column;align-items:stretch}
 }
 
+/* ── Override determination widget and modal (#672) ── */
+.app-evidence-override{margin-top:10px;padding-top:10px;border-top:1px solid rgba(230,237,243,.08);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.app-evidence-override-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:600;background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:#3fb950}
+.app-evidence-override-badge.reverted{background:rgba(248,81,73,.1);border-color:rgba(248,81,73,.24);color:#ff7b72}
+.app-evidence-override-btn,.app-evidence-override-revert-btn{font-size:.76rem;padding:4px 10px}
+.app-override-backdrop{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
+.app-override-backdrop[hidden]{display:none}
+.app-override-modal{background:var(--c-surface);color:var(--c-text);border:1px solid var(--c-border);border-radius:12px;padding:28px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.app-override-modal h3{margin:0 0 8px;font-size:1.2rem;color:var(--app-role-accent,#58a6ff)}
+.app-override-modal-hint{font-size:.82rem;color:var(--c-muted);margin-bottom:12px}
+.app-override-original{font-size:.8rem;background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.2);border-radius:8px;padding:8px 12px;margin-bottom:12px;color:#ff7b72}
+.app-override-label{display:block;font-size:.82rem;font-weight:600;margin-bottom:4px}
+.app-override-required{font-size:.74rem;font-weight:400;color:var(--c-muted)}
+.app-override-reason-input{width:100%;box-sizing:border-box;resize:vertical;font-size:.82rem;background:var(--c-surface);color:var(--c-text);border:1px solid var(--c-border);border-radius:8px;padding:8px 10px;font-family:inherit;line-height:1.5}
+.app-override-reason-input:focus{outline:none;border-color:var(--app-role-accent)}
+.app-override-charcount{font-size:.72rem;color:var(--c-muted);text-align:right;margin-top:3px}
+.app-override-actions{display:flex;gap:10px;margin-top:16px}
+.app-override-error{font-size:.8rem;color:#ff7b72;margin-top:8px;padding:8px 12px;background:rgba(248,81,73,.08);border-radius:8px;border:1px solid rgba(248,81,73,.2)}
+
 /* ── EUDR subscribe modal (#613) ── */
 .eudr-subscribe-backdrop{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center}
 .eudr-subscribe-backdrop[hidden]{display:none}

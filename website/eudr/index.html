@@ -388,6 +388,12 @@
                     <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
                     <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
                     <div class="app-evidence-flags" id="app-evidence-flags" hidden></div>
+                    <!-- Human override (#672) -->
+                    <div class="app-evidence-override" id="app-evidence-override" hidden>
+                      <div class="app-evidence-override-badge" id="app-evidence-override-badge" hidden></div>
+                      <button class="btn btn-secondary btn-sm app-evidence-override-btn" id="app-evidence-override-btn" type="button" hidden>Override determination</button>
+                      <button class="btn btn-secondary btn-sm app-evidence-override-revert-btn" id="app-evidence-override-revert-btn" type="button" hidden>Revert to algorithmic</button>
+                    </div>
                     <!-- Parcel notes (#669) -->
                     <div class="app-evidence-notes" id="app-evidence-notes">
                       <div class="app-evidence-notes-saved" id="app-evidence-notes-saved" hidden>
@@ -549,6 +555,23 @@
       <span id="app-map-expanded-counter">0/0</span>
     </div>
     <div class="app-evidence-frame-label" id="app-map-expanded-label"></div>
+  </div>
+</div>
+
+<!-- Override reason modal (#672) -->
+<div class="app-override-backdrop" id="app-override-backdrop" hidden>
+  <div class="app-override-modal" role="dialog" aria-modal="true" aria-labelledby="app-override-modal-title">
+    <h3 id="app-override-modal-title">Override determination</h3>
+    <p class="app-override-modal-hint">Record a reason why this parcel should be marked compliant despite the algorithmic flag. This creates an immutable audit trail.</p>
+    <div class="app-override-original" id="app-override-original"></div>
+    <label class="app-override-label" for="app-override-reason-input">Reason <span class="app-override-required">(min 20 characters)</span></label>
+    <textarea class="app-override-reason-input" id="app-override-reason-input" rows="4" maxlength="500" placeholder="Explain why the algorithmic determination is incorrect for this parcel&#x2026;" aria-label="Override reason"></textarea>
+    <div class="app-override-charcount" id="app-override-charcount">0 / 500</div>
+    <div class="app-override-actions">
+      <button class="btn btn-primary" id="app-override-confirm-btn" type="button" disabled>Confirm override</button>
+      <button class="btn btn-secondary" id="app-override-cancel-btn" type="button">Cancel</button>
+    </div>
+    <div class="app-override-error" id="app-override-error" hidden></div>
   </div>
 </div>
 
