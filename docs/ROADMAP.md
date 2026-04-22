@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
 
 ---
 
@@ -41,6 +41,7 @@ Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 | PR | Summary |
 |----|---------|  
+| #702 | fix: CodeQL taint chain for subscription_item_id logging — drop si from log messages (closes #701) |
 | #695 | feat: Stage 3C complete — before/after imagery (#671), annotation notes (#669), human override (#672), usage dashboard (#670), aggregated summary export (#674), portfolio dashboard (#673) |
 | #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
@@ -242,6 +243,25 @@ more than a handful of parcels.
 **Exit:** Compliance officer with 200+ parcels can triage by determination,
 annotate flagged parcels with context, override with a recorded reason,
 and export a board-ready summary report.
+
+---
+
+## Security & Housekeeping Queue
+
+Small targeted fixes that don't belong to a product stage. Work through these
+in parallel with Stage 3 or as a warm-up before each stage PR.
+
+| Priority | Issue | Title | Status |
+|----------|-------|-------|--------|
+| 1 | #696 | `timelapse_analysis_save` missing run ownership check | Open — next up |
+| 2 | #697 + #698 + #550 + #551 | CI: Trivy v0.70.0, Actions Node.js 24, CodeQL v4 (bundle) | Open |
+| 3 | #573 | CSP connect-src wildcards too broad | Bundle with next CSP change |
+| 4 | #593 | Pydantic v2 deprecation warning (planetary-computer) | Bundle with next dep update |
+| 5 | #625 | Refactor poll_order to DF monitor pattern | Bundle with next pipeline PR |
+| 6 | #519 | Self-host Leaflet | Nice-to-have |
+| 7 | #569 | Old domain treesight.jablab.dev — verify/decommission | Bundle with next infra PR |
+| 8 | #570 | Public repo operational docs — risk acceptance | Bundle with next security review |
+| 9 | #584 | Data model internal consistency | Bundle with next model PR |
 
 ---
 
