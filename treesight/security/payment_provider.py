@@ -122,7 +122,6 @@ class StripeProvider:
         metadata: dict[str, str] | None = None,
     ) -> str | None:
         stripe = self._get_stripe()
-        si_suffix = subscription_item_id[-4:] if subscription_item_id else "?"
         try:
             record = stripe.SubscriptionItem.create_usage_record(
                 subscription_item_id,
@@ -131,18 +130,16 @@ class StripeProvider:
                 idempotency_key=idempotency_key,
             )
             logger.info(
-                "Stripe usage reported user=%s si=***%s qty=%d record=%s",
+                "Stripe usage reported user=%s qty=%d record=%s",
                 user_id,
-                si_suffix,
                 quantity,
                 record.id,
             )
             return record.id
         except Exception:
             logger.exception(
-                "Stripe usage report failed user=%s si=***%s qty=%d",
+                "Stripe usage report failed user=%s qty=%d",
                 user_id,
-                si_suffix,
                 quantity,
             )
             return None
@@ -157,7 +154,6 @@ class StripeProvider:
         reason: str = "",
     ) -> str | None:
         stripe = self._get_stripe()
-        si_suffix = subscription_item_id[-4:] if subscription_item_id else "?"
         try:
             record = stripe.SubscriptionItem.create_usage_record(
                 subscription_item_id,
@@ -166,9 +162,8 @@ class StripeProvider:
                 idempotency_key=idempotency_key,
             )
             logger.info(
-                "Stripe credit reported user=%s si=***%s qty=%d reason=%s record=%s",
+                "Stripe credit reported user=%s qty=%d reason=%s record=%s",
                 user_id,
-                si_suffix,
                 quantity,
                 reason,
                 record.id,
@@ -176,9 +171,8 @@ class StripeProvider:
             return record.id
         except Exception:
             logger.exception(
-                "Stripe credit failed user=%s si=***%s qty=%d reason=%s",
+                "Stripe credit failed user=%s qty=%d reason=%s",
                 user_id,
-                si_suffix,
                 quantity,
                 reason,
             )
