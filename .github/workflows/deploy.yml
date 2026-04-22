@@ -105,7 +105,7 @@ jobs:
       # ── Normal path: build fresh image ──────────────────────
       - name: Log in to GHCR
         if: ${{ inputs.image_tag == '' }}
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -204,7 +204,7 @@ jobs:
 
       - name: Trivy container scan
         if: ${{ inputs.image_tag == '' }}
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.image_uri }}
           format: sarif
@@ -216,7 +216,7 @@ jobs:
 
       - name: Upload Trivy image SARIF
         if: ${{ always() && inputs.image_tag == '' }}
-        uses: github/codeql-action/upload-sarif@480db559a14342288b67e54bd959dd52dc3ee68f # v3
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
@@ -236,19 +236,19 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Azure Login (OIDC)
-        uses: azure/login@1384c340ab2dda50fed2bee3041d1d87018aa5e8 # v2
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1
+        uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
 
       - name: Cache OpenTofu providers
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: infra/tofu/.terraform/providers
           key: tofu-providers-${{ hashFiles('infra/tofu/.terraform.lock.hcl') }}
@@ -585,17 +585,30 @@ jobs:
         run: |
           HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           BASE_URL="https://${HOSTNAME}"
-          MAX_WAIT=90           # normal startup is <60s; if not up by 90s it's broken
+          MAX_WAIT=300          # container startup + route registration can exceed 90s under cold start
           INTERVAL=5
           elapsed=0
           health_code=0
           ready_code=0
 
+          probe_code() {
+            local url="$1"
+            local code
+            # curl prints 000 on connection errors; avoid `|| echo 000` which can
+            # produce 000000 and obscure diagnostics.
+            code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 3 --max-time 8 "$url" 2>/dev/null || true)
+            if [[ "$code" =~ ^[0-9]{3}$ ]]; then
+              echo "$code"
+            else
+              echo "000"
+            fi
+          }
+
           echo "Waiting for ${BASE_URL}/api/health to become ready..."
 
           while [ $elapsed -lt $MAX_WAIT ]; do
-            health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
-            ready_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/readiness" 2>/dev/null || echo "000")
+            health_code=$(probe_code "${BASE_URL}/api/health")
+            ready_code=$(probe_code "${BASE_URL}/api/readiness")
 
             echo "  [${elapsed}s] health=${health_code} readiness=${ready_code}"
 
@@ -630,6 +643,13 @@ jobs:
           echo "  health:    ${health_code}"
           echo "  readiness: ${ready_code}"
           echo "  elapsed:   ${elapsed}s"
+          echo "  hostname:  ${HOSTNAME}"
+          echo ""
+          echo "── DNS lookup ──"
+          getent hosts "${HOSTNAME}" || true
+          echo ""
+          echo "── Final curl diagnostics (/api/health) ──"
+          curl -sv --connect-timeout 5 --max-time 10 "${BASE_URL}/api/health" -o /dev/null 2>&1 | tail -n 40 || true
           echo ""
           echo "This may indicate:"
           echo "  - Container image failed to start (check Container Apps logs)"

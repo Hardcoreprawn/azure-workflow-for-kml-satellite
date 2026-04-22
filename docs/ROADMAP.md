@@ -14,28 +14,26 @@ Update status as work moves. Add new items at the correct priority position,
 not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
-|---|----------|----|-------------|--------|
-| 1 | #701 | #702 | fix: remove subscription_item_id from logs — CodeQL taint | 🔄 CI running |
-| 2 | #696 | — | fix: timelapse-analysis-save missing ownership check | 🔄 In progress |
-| 3 | #697 + #698 + #550 + #551 | — | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | Open |
-| 4 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
-| 5 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
-| 6 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
-| 7 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 8 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 9 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 10 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 11 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 12 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 13 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 14 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 15 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 16 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 17 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 18 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 19 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 20 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 21 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+| --- | ---------- | ---- | ------------- | -------- |
+| 1 | #697 + #698 + #550 + #551 | #706 | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | 🔄 In progress |
+| 2 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
+| 3 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
+| 4 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 5 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 6 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 7 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 8 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 9 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 10 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 11 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 12 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 13 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 14 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 15 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 16 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 17 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 18 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 19 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
 
 **Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
@@ -74,20 +72,26 @@ until scale evidence justifies the added complexity.
 **Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3B.5 → 3C → 3 → 4 → 5.
 Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
+**Policy-watch gate (EUDR amendments):** Treat Parliament/Council alignment notices as directional only.
+Before shipping compliance-interpretation changes, revalidate assumptions against final trilogue text,
+published legal acts, and latest Commission implementation guidance.
+
+**Value focus while rules evolve:** Prioritise low-regret capabilities that remain useful under both
+strict and simplified obligations: evidence provenance, reproducible exports, audit trails, and
+portfolio-level risk visibility.
+
 ---
 
 ## Recently Landed
 
 | PR | Summary |
 |----|---------|  
+| #703 | fix: enforce run ownership for timelapse save/load and return 503 on run-lookup backend failures (closes #696) |
 | #702 | fix: CodeQL taint chain for subscription_item_id logging — drop si from log messages (closes #701) |
 | #695 | feat: Stage 3C complete — before/after imagery (#671), annotation notes (#669), human override (#672), usage dashboard (#670), aggregated summary export (#674), portfolio dashboard (#673) |
 | #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 | #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
-| #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
-| #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
-| #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
 
 ---
 
@@ -408,3 +412,4 @@ Execution order note: Stage 3C should also be complete before Stage 4 begins.
 5. **Multi-app platform.** Pipeline is shared; each vertical gets its own URL namespace. Shared concerns (auth, billing, org) go in `/account/` or shared modules.
 6. **Pipeline foundation first.** Stage 2F (#578, #583) before 2G data sources.
 7. **No infrastructure without users.** T2/T3, Container Apps Jobs, ML — deferred until volume justifies it.
+8. **Revalidate legal assumptions.** Before merging EUDR rule-interpretation changes, verify against current final legal text and Commission guidance; if assumptions changed, log a focused issue and update roadmap ordering.
