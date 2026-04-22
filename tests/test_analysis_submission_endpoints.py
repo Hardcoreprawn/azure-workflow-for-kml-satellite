@@ -1050,3 +1050,256 @@ class TestCoordinateSubmission:
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
+
+
+# ---------------------------------------------------------------------------
+# Parcel annotation and override endpoints (Stage 3C.2 / 3C.3)
+# ---------------------------------------------------------------------------
+
+_FAKE_RUN = {
+    "id": "inst-abc",
+    "user_id": "user-123",
+    "submitted_at": "2026-04-01T10:00:00Z",
+    "status": "completed",
+}
+
+
+class TestRunRecordLookup:
+    """Unit tests for get_run_record_by_instance_id and assert_run_write_access."""
+
+    def test_get_run_record_returns_none_when_cosmos_unavailable(self):
+        from blueprints.pipeline.history import get_run_record_by_instance_id
+
+        with patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=False):
+            result = get_run_record_by_instance_id("inst-abc")
+
+        assert result is None
+
+    def test_get_run_record_queries_cosmos_by_id(self):
+        from blueprints.pipeline.history import get_run_record_by_instance_id
+
+        with (
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.history._cosmos_mod.query_items",
+                return_value=[_FAKE_RUN],
+            ) as mock_query,
+        ):
+            result = get_run_record_by_instance_id("inst-abc")
+
+        assert result == _FAKE_RUN
+        mock_query.assert_called_once()
+        call_args = mock_query.call_args
+        assert "@id" in str(call_args)
+
+    def test_get_run_record_returns_none_when_not_found(self):
+        from blueprints.pipeline.history import get_run_record_by_instance_id
+
+        with (
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch("blueprints.pipeline.history._cosmos_mod.query_items", return_value=[]),
+        ):
+            result = get_run_record_by_instance_id("no-such-id")
+
+        assert result is None
+
+    def test_assert_run_write_access_permits_owner(self):
+        from blueprints.pipeline.history import assert_run_write_access
+
+        # Should not raise
+        assert_run_write_access(_FAKE_RUN, "user-123")
+
+    def test_assert_run_write_access_permits_org_member(self):
+        from blueprints.pipeline.history import assert_run_write_access
+
+        org = {"members": [{"user_id": "user-123"}, {"user_id": "user-456"}]}
+        with patch("blueprints.pipeline.history.get_user_org", return_value=org):
+            # user-456 is an org member; user-123 is the owner → access granted
+            assert_run_write_access(_FAKE_RUN, "user-456")
+
+    def test_assert_run_write_access_denies_stranger(self):
+        import pytest
+
+        from blueprints.pipeline.history import assert_run_write_access
+
+        with (
+            patch("blueprints.pipeline.history.get_user_org", return_value=None),
+            pytest.raises(ValueError, match="permission"),
+        ):
+            assert_run_write_access(_FAKE_RUN, "stranger-999")
+
+
+class TestAnnotationEndpoints:
+    """Endpoint-level tests for /api/analysis/notes and /api/analysis/override."""
+
+    def _make_req(self, url: str, body: dict) -> func.HttpRequest:
+        return make_test_request(
+            url=url,
+            method="POST",
+            body=body,
+            origin=TEST_LOCAL_ORIGIN,
+            auth_header="Bearer fake-token",
+        )
+
+    def test_notes_requires_auth(self):
+        from blueprints.pipeline.annotations import analysis_notes
+
+        req = make_test_request(
+            url="/api/analysis/notes",
+            method="POST",
+            body={"instance_id": "inst-abc", "parcel_key": "0", "note": "test"},
+            origin=TEST_LOCAL_ORIGIN,
+            auth_header=None,
+        )
+        with patch(
+            "blueprints.pipeline.annotations.check_auth",
+            side_effect=ValueError("Unauthorized"),
+        ):
+            resp = analysis_notes(req)
+        assert resp.status_code == 401
+
+    def test_notes_saves_note_to_cosmos(self):
+        from blueprints.pipeline.annotations import analysis_notes
+
+        req = self._make_req(
+            "/api/analysis/notes",
+            {"instance_id": "inst-abc", "parcel_key": "0", "note": "This parcel looks fine."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            resp = analysis_notes(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["saved"] is True
+        assert data["parcel_key"] == "0"
+        mock_cosmos.upsert_item.assert_called_once()
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        assert "parcel_notes" in upserted
+        assert upserted["parcel_notes"]["0"]["text"] == "This parcel looks fine."
+        assert upserted["parcel_notes"]["0"]["author_id"] == "user-123"
+
+    def test_notes_denies_non_owner(self):
+        from blueprints.pipeline.annotations import analysis_notes
+
+        req = self._make_req(
+            "/api/analysis/notes",
+            {"instance_id": "inst-abc", "parcel_key": "0", "note": "sneaky"},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "stranger-999")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch(
+                "blueprints.pipeline.annotations.assert_run_write_access",
+                side_effect=ValueError("permission"),
+            ),
+        ):
+            resp = analysis_notes(req)
+
+        assert resp.status_code == 403
+
+    def test_override_requires_reason_min_length(self):
+        from blueprints.pipeline.annotations import analysis_override
+
+        req = self._make_req(
+            "/api/analysis/override",
+            {"instance_id": "inst-abc", "parcel_key": "0", "reason": "too short"},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+        ):
+            resp = analysis_override(req)
+
+        assert resp.status_code == 400
+        assert b"20 characters" in resp.get_body()
+
+    def test_override_saves_to_cosmos_with_audit_trail(self):
+        from blueprints.pipeline.annotations import analysis_override
+
+        reason = "Seasonal clearing — farmer confirmed replanting schedule on record."
+        req = self._make_req(
+            "/api/analysis/override",
+            {"instance_id": "inst-abc", "parcel_key": "1", "reason": reason},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            resp = analysis_override(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["saved"] is True
+        assert data["reverted"] is False
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        override = upserted["parcel_overrides"]["1"]
+        assert override["override_determination"] == "compliant"
+        assert override["overridden_by"] == "user-123"
+        assert override["reason"] == reason
+
+    def test_override_revert_removes_entry(self):
+        from blueprints.pipeline.annotations import analysis_override
+
+        run_with_override = dict(_FAKE_RUN)
+        run_with_override["parcel_overrides"] = {
+            "0": {
+                "reason": "old reason",
+                "overridden_by": "user-123",
+                "override_determination": "compliant",
+            }
+        }
+        req = self._make_req(
+            "/api/analysis/override",
+            {"instance_id": "inst-abc", "parcel_key": "0", "revert": True},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=run_with_override,
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            resp = analysis_override(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["reverted"] is True
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        assert "0" not in upserted.get("parcel_overrides", {})

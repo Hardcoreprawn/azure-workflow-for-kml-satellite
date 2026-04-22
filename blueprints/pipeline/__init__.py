@@ -24,6 +24,7 @@ _PIPELINE_ROLE = os.environ.get("PIPELINE_ROLE", "full")
 # Import submodules to trigger decorator registration on ``bp``.
 # Order does not matter — each module imports ``bp`` from this package.
 from . import (  # noqa: E402  — must follow bp = df.Blueprint()
+    annotations,  # noqa: F401  — registers notes + override endpoints
     aoi_orchestrator,  # noqa: F401  — registers per-AOI sub-orchestrator (#585)
     blob_trigger,  # noqa: F401  — registers blob trigger
     diagnostics,  # noqa: F401  — registers diagnostic endpoints

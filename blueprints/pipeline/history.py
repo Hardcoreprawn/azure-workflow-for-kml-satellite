@@ -45,6 +45,60 @@ def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
     return f"{_analysis_submission_prefix(user_id)}{submission_id}.json"
 
 
+# ---------------------------------------------------------------------------
+# Run record lookup and write-access guard
+# ---------------------------------------------------------------------------
+
+
+def get_run_record_by_instance_id(instance_id: str) -> dict[str, Any] | None:
+    """Fetch a single run record by instance ID using a cross-partition Cosmos query.
+
+    Returns None when the record is not found or Cosmos is not available.
+    Blob fallback is not supported for cross-user lookups (owner unknown).
+    """
+    if not _cosmos_mod.cosmos_available():
+        return None
+    try:
+        from treesight.storage import cosmos
+
+        results = cosmos.query_items(
+            "runs",
+            "SELECT * FROM c WHERE c.id = @id",
+            parameters=[{"name": "@id", "value": instance_id}],
+        )
+        return results[0] if results else None
+    except Exception:
+        logger.warning("Cosmos run lookup failed for instance=%s", instance_id, exc_info=True)
+        return None
+
+
+def assert_run_write_access(run_record: dict[str, Any], requesting_user_id: str) -> None:
+    """Raise ValueError if *requesting_user_id* is not permitted to write to *run_record*.
+
+    Permits the run owner directly, or any member of the owner's org.
+    Raises ValueError with a generic message to avoid leaking run ownership
+    to unauthorised callers.
+    """
+    owner_id = str(run_record.get("user_id", "")).strip()
+    if owner_id and owner_id == requesting_user_id:
+        return
+
+    try:
+        org = get_user_org(requesting_user_id)
+        if org and isinstance(org, dict):
+            member_ids = {
+                str(m.get("user_id", "")).strip()
+                for m in org.get("members", [])
+                if isinstance(m, dict)
+            }
+            if owner_id in member_ids:
+                return
+    except Exception:
+        logger.warning("Org lookup failed for user=%s", requesting_user_id, exc_info=True)
+
+    raise ValueError("Run not found or you do not have permission to modify it")
+
+
 def _extract_submission_context(body: Any) -> dict[str, Any]:
     if not isinstance(body, dict):
         return {}

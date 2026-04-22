@@ -28,6 +28,8 @@ Function App base URL (dev): `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.
 | POST | /api/contact-form | anonymous | — | Contact form |
 | GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics |
 | GET | /api/analysis/history | SWA session | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |
+| POST | /api/analysis/notes | SWA session | 401/403/404 | Save/delete a parcel note on a run (owner or org member only) |
+| POST | /api/analysis/override | SWA session | 401/403/404 | Record or revert a human determination override (reason required, min 20 chars) |
 | POST | /api/convert-coordinates | SWA session | 401 | Coordinate conversion |
 | GET | /api/export/{id}/{fmt} | SWA session | 401 | Export artifacts |
 
