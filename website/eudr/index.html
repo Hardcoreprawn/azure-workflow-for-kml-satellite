@@ -388,6 +388,21 @@
                     <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
                     <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
                     <div class="app-evidence-flags" id="app-evidence-flags" hidden></div>
+                    <!-- Parcel notes (#669) -->
+                    <div class="app-evidence-notes" id="app-evidence-notes">
+                      <div class="app-evidence-notes-saved" id="app-evidence-notes-saved" hidden>
+                        <span class="app-evidence-notes-text" id="app-evidence-notes-text"></span>
+                        <span class="app-evidence-notes-meta" id="app-evidence-notes-meta"></span>
+                      </div>
+                      <div class="app-evidence-notes-edit" id="app-evidence-notes-edit" hidden>
+                        <textarea class="app-evidence-notes-input" id="app-evidence-notes-input" rows="3" maxlength="2000" placeholder="Add a note for this parcel…" aria-label="Parcel note"></textarea>
+                        <div class="app-evidence-notes-actions">
+                          <button class="btn btn-primary btn-sm" id="app-evidence-notes-save-btn" type="button">Save note</button>
+                          <button class="btn btn-secondary btn-sm" id="app-evidence-notes-cancel-btn" type="button">Cancel</button>
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary btn-sm app-evidence-notes-add-btn" id="app-evidence-notes-add-btn" type="button">+ Add note</button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1535,6 +1535,118 @@
     }
   }
 
+  /* ---- Parcel notes (#669) ---- */
+
+  var currentNoteParcelKey = null; // key of AOI whose notes are currently shown
+
+  function parcelKeyForIndex(idx) {
+    // Use the AOI index as a stable string key matching the backend convention.
+    return String(idx);
+  }
+
+  function renderParcelNotes(parcelKey) {
+    currentNoteParcelKey = parcelKey;
+    var notesEl = document.getElementById('app-evidence-notes');
+    var savedEl = document.getElementById('app-evidence-notes-saved');
+    var textEl = document.getElementById('app-evidence-notes-text');
+    var metaEl = document.getElementById('app-evidence-notes-meta');
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (!notesEl) return;
+
+    // Reset edit state
+    if (editEl) editEl.hidden = true;
+    if (addBtn) addBtn.hidden = false;
+    var input = document.getElementById('app-evidence-notes-input');
+    if (input) input.value = '';
+
+    var note = null;
+    if (evidenceManifest && evidenceManifest.parcel_notes) {
+      note = evidenceManifest.parcel_notes[parcelKey] || null;
+    }
+
+    if (note && note.text) {
+      if (savedEl) savedEl.hidden = false;
+      if (textEl) textEl.textContent = note.text;
+      if (metaEl) {
+        var when = note.updated_at ? new Date(note.updated_at).toLocaleDateString() : '';
+        metaEl.textContent = when ? 'Note — ' + when : 'Note saved';
+      }
+      if (addBtn) addBtn.textContent = 'Edit note';
+    } else {
+      if (savedEl) savedEl.hidden = true;
+      if (textEl) textEl.textContent = '';
+      if (metaEl) metaEl.textContent = '';
+      if (addBtn) addBtn.textContent = '+ Add note';
+    }
+  }
+
+  function showNoteEditor() {
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    var input = document.getElementById('app-evidence-notes-input');
+    if (!editEl) return;
+
+    // Pre-populate with existing note text
+    if (input && evidenceManifest && evidenceManifest.parcel_notes && currentNoteParcelKey) {
+      var existing = evidenceManifest.parcel_notes[currentNoteParcelKey];
+      input.value = existing ? (existing.text || '') : '';
+    }
+    if (editEl) editEl.hidden = false;
+    if (addBtn) addBtn.hidden = true;
+    if (input) input.focus();
+  }
+
+  function hideNoteEditor() {
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (editEl) editEl.hidden = true;
+    if (addBtn) addBtn.hidden = false;
+  }
+
+  async function saveParcelNote() {
+    var input = document.getElementById('app-evidence-notes-input');
+    if (!input || !evidenceInstanceId || currentNoteParcelKey === null) return;
+
+    var noteText = input.value.trim();
+    var saveBtn = document.getElementById('app-evidence-notes-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentNoteParcelKey,
+          note: noteText,
+        }),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        console.warn('Note save failed:', err);
+        return;
+      }
+      // Update local manifest state so the note appears immediately
+      if (!evidenceManifest.parcel_notes) evidenceManifest.parcel_notes = {};
+      if (noteText) {
+        evidenceManifest.parcel_notes[currentNoteParcelKey] = {
+          text: noteText,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        delete evidenceManifest.parcel_notes[currentNoteParcelKey];
+      }
+      hideNoteEditor();
+      renderParcelNotes(currentNoteParcelKey);
+    } catch (e) {
+      console.warn('Note save error:', e);
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save note'; }
+    }
+  }
+
   function selectAoi(idx) {
     if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
     var perAoi = evidenceManifest.per_aoi_enrichment;
@@ -1565,6 +1677,7 @@
 
     // Render per-AOI detail
     renderAoiDetail(aoi);
+    renderParcelNotes(parcelKeyForIndex(idx));
   }
 
   function resetAoiSelection() {
@@ -1588,6 +1701,15 @@
 
     // Clear per-AOI detail
     clearAoiDetail();
+    // Clear parcel notes panel
+    currentNoteParcelKey = null;
+    var notesEl = document.getElementById('app-evidence-notes');
+    var savedEl = document.getElementById('app-evidence-notes-saved');
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (savedEl) savedEl.hidden = true;
+    if (editEl) editEl.hidden = true;
+    if (addBtn) { addBtn.hidden = false; addBtn.textContent = '+ Add note'; }
   }
 
   function buildEvidenceFrames(framePlan, searchIds, ndviSearchIds) {
@@ -3391,8 +3513,13 @@
   });
   bindClick('app-evidence-ai-btn', requestAiAnalysis);
   bindClick('app-evidence-eudr-btn', requestEudrAssessment);
-
   // Expanded map viewer controls
+    // Parcel notes (#669)
+    bindClick('app-evidence-notes-add-btn', showNoteEditor);
+    bindClick('app-evidence-notes-cancel-btn', hideNoteEditor);
+    bindClick('app-evidence-notes-save-btn', saveParcelNote);
+
+    // Expanded map viewer controls
   bindClick('app-map-expand-btn', expandEvidenceMap);
   bindClick('app-map-collapse-btn', collapseEvidenceMap);
   bindClick('app-map-btn-compare', toggleCompareView);  // #671 before/after comparison

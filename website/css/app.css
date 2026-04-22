@@ -194,6 +194,18 @@
 .app-evidence-aoi-determination.non-compliant{background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.24)}
 /* Flag detail cards */
 .app-evidence-flags{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+
+/* Parcel notes (#669) */
+.app-evidence-notes{margin-top:10px;padding-top:10px;border-top:1px solid rgba(230,237,243,.08)}
+.app-evidence-notes-saved{margin-bottom:6px}
+.app-evidence-notes-text{display:block;font-size:.82rem;color:var(--c-text);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.app-evidence-notes-meta{display:block;font-size:.72rem;color:var(--c-muted);margin-top:3px}
+.app-evidence-notes-edit{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.app-evidence-notes-input{width:100%;box-sizing:border-box;resize:vertical;font-size:.82rem;background:var(--c-surface);color:var(--c-text);border:1px solid var(--c-border);border-radius:8px;padding:8px 10px;font-family:inherit;line-height:1.5}
+.app-evidence-notes-input:focus{outline:none;border-color:var(--app-role-accent)}
+.app-evidence-notes-actions{display:flex;gap:6px}
+.app-evidence-notes-add-btn{font-size:.78rem;padding:4px 10px;opacity:.75}
+.app-evidence-notes-add-btn:hover{opacity:1}
 .app-flag-banner{padding:10px 14px;border-radius:var(--radius);font-size:.82rem;font-weight:600;line-height:1.5}
 .app-flag-banner.has-high{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.28);color:#ffb2ad}
 .app-flag-banner.moderate-only{background:rgba(227,176,42,.12);border:1px solid rgba(227,176,42,.28);color:#f0d877}
