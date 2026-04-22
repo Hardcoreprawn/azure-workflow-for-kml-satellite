@@ -41,16 +41,13 @@ Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
 
 | PR | Summary |
 |----|---------|  
-| #695 | feat: Stage 3C.0 — org-scoped portfolio history and dashboard stats (closes #673) |
+| #695 | feat: Stage 3C complete — before/after imagery (#671), annotation notes (#669), human override (#672), usage dashboard (#670), aggregated summary export (#674), portfolio dashboard (#673) |
 | #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
 | #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 | #667 | feat: Stage 3B.0 — Pipeline cost accumulator + resources consumed evidence card (closes #666) |
 | #665 | feat: Stage 3A — EUDR assessment management: entitlement gate, CSV upload, cost estimator, flagged-parcel review (closes #660, #661, #662, #664) |
 | #663 | fix: Subscribe modal hard-wall bug, EUDR entitlement gate on submit, dark theme modal styling |
 | #657 | feat: Stage 2G completion — EUDR metered billing, Landsat deep integration, EUDR content cluster (closes #612, #613, #535, #617) |
-| #655 | fix: Resolve code scanning alerts — repeated import, clear-text logging |
-| #653 | fix: Close check_auth() HMAC bypass — endpoint auth audit (fixes #572) |
-| #652 | Archive completed stages, fix stale statuses, add verification instructions (closes #538, #420) |
 
 ---
 
@@ -235,12 +232,12 @@ more than a handful of parcels.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 3C.0 | #673 | Supplier portfolio dashboard — all parcels, status, stats | 🔄 PR #695 |
-| 3C.1 | #671 | Before/after imagery comparison view | Open |
-| 3C.2 | #669 | Annotation / notes per parcel for audit trail | Open |
-| 3C.3 | #672 | Human override of determination with recorded reason | Open |
-| 3C.4 | #674 | Aggregated compliance summary report across multiple runs | Open |
-| 3C.5 | #670 | Usage dashboard — monthly parcel consumption and billing summary | Open |
+| 3C.0 | #673 | Supplier portfolio dashboard — all parcels, status, stats | ✅ PR #695 |
+| 3C.1 | #671 | Before/after imagery comparison view | ✅ PR #695 |
+| 3C.2 | #669 | Annotation / notes per parcel for audit trail | ✅ PR #695 |
+| 3C.3 | #672 | Human override of determination with recorded reason | ✅ PR #695 |
+| 3C.4 | #674 | Aggregated compliance summary report across multiple runs | ✅ PR #695 |
+| 3C.5 | #670 | Usage dashboard — monthly parcel consumption and billing summary | ✅ PR #695 |
 
 **Exit:** Compliance officer with 200+ parcels can triage by determination,
 annotate flagged parcels with context, override with a recorded reason,
