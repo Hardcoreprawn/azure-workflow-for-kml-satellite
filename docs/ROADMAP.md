@@ -15,7 +15,7 @@ not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
 | --- | ---------- | ---- | ------------- | -------- |
-| 1 | #697 + #698 + #550 + #551 | — | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | 🔄 In progress |
+| 1 | #697 + #698 + #550 + #551 | #706 | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | 🔄 In progress |
 | 2 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
 | 3 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
 | 4 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
