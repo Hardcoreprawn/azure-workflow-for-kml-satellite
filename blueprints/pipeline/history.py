@@ -30,6 +30,7 @@ _SIGNED_IN_SUBMISSIONS_PREFIX = "analysis-submissions"
 _DEFAULT_HISTORY_LIMIT = 8
 _MAX_HISTORY_LIMIT = 20
 _MAX_HISTORY_OFFSET = 200
+_MAX_ORG_MEMBERS = 50
 
 
 # ---------------------------------------------------------------------------
@@ -276,8 +277,10 @@ def _fetch_portfolio_submission_records(
 
     fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
     records: list[dict[str, Any]] = []
-    for member_id in deduped_member_ids:
-        records.extend(_fetch_submission_records(member_id, fetch_limit, offset=0, max_results=200))
+    for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
+        records.extend(
+            _fetch_submission_records(member_id, fetch_limit, offset=0, max_results=fetch_limit)
+        )
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
     return (

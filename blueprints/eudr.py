@@ -187,9 +187,10 @@ logger = logging.getLogger(__name__)
 def _parse_iso_datetime(value: str) -> datetime | None:
     if not value:
         return None
-    with contextlib.suppress(ValueError, TypeError):
+    try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return None
+    except (ValueError, TypeError):
+        return None
 
 
 def _month_key(dt: datetime) -> str:
