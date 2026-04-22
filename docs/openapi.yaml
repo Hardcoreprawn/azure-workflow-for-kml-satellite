@@ -498,8 +498,20 @@ paths:
                 $ref: "#/components/schemas/AnalysisResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller does not own this run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
-          description: Analysis not found
+          description: Run or analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Cosmos DB temporarily unavailable
           content:
             application/json:
               schema:

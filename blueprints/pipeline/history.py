@@ -51,13 +51,28 @@ def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def get_run_record_by_instance_id(instance_id: str) -> dict[str, Any] | None:
+class RunRecordLookupError(RuntimeError):
+    """Raised when a run record lookup fails due to backend availability/errors."""
+
+
+def get_run_record_by_instance_id(
+    instance_id: str,
+    *,
+    raise_on_error: bool = False,
+) -> dict[str, Any] | None:
     """Fetch a single run record by instance ID using a cross-partition Cosmos query.
 
-    Returns None when the record is not found or Cosmos is not available.
+    Returns None when the record is not found.
+
+    When ``raise_on_error`` is False (default), returns None when Cosmos is
+    unavailable or the query fails. When True, raises RunRecordLookupError in
+    those cases so callers can distinguish backend failures from true not-found.
+
     Blob fallback is not supported for cross-user lookups (owner unknown).
     """
     if not _cosmos_mod.cosmos_available():
+        if raise_on_error:
+            raise RunRecordLookupError("Cosmos unavailable")
         return None
     try:
         from treesight.storage import cosmos
@@ -68,8 +83,10 @@ def get_run_record_by_instance_id(instance_id: str) -> dict[str, Any] | None:
             parameters=[{"name": "@id", "value": instance_id}],
         )
         return results[0] if results else None
-    except Exception:
+    except Exception as exc:
         logger.warning("Cosmos run lookup failed for instance=%s", instance_id, exc_info=True)
+        if raise_on_error:
+            raise RunRecordLookupError("Run lookup failed") from exc
         return None
 
 

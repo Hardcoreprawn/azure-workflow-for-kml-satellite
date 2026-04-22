@@ -1103,6 +1103,38 @@ class TestRunRecordLookup:
 
         assert result is None
 
+    def test_get_run_record_raises_when_configured_and_cosmos_unavailable(self):
+        import pytest
+
+        from blueprints.pipeline.history import (
+            RunRecordLookupError,
+            get_run_record_by_instance_id,
+        )
+
+        with (
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=False),
+            pytest.raises(RunRecordLookupError, match="Cosmos unavailable"),
+        ):
+            get_run_record_by_instance_id("inst-abc", raise_on_error=True)
+
+    def test_get_run_record_raises_when_configured_and_query_fails(self):
+        import pytest
+
+        from blueprints.pipeline.history import (
+            RunRecordLookupError,
+            get_run_record_by_instance_id,
+        )
+
+        with (
+            patch("blueprints.pipeline.history._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.history._cosmos_mod.query_items",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RunRecordLookupError, match="Run lookup failed"),
+        ):
+            get_run_record_by_instance_id("inst-abc", raise_on_error=True)
+
     def test_assert_run_write_access_permits_owner(self):
         from blueprints.pipeline.history import assert_run_write_access
 
@@ -1371,13 +1403,14 @@ class TestTimelapseAnalysisSave:
 
     def test_returns_503_when_cosmos_unavailable(self):
         from blueprints.pipeline.enrichment import timelapse_analysis_save
+        from blueprints.pipeline.history import RunRecordLookupError
 
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
             patch(
-                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
-                return_value=False,
+                "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
+                side_effect=RunRecordLookupError("Cosmos unavailable"),
             ),
         ):
             resp = timelapse_analysis_save(req)
@@ -1390,10 +1423,6 @@ class TestTimelapseAnalysisSave:
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
-            patch(
-                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
-                return_value=True,
-            ),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=None,
@@ -1410,10 +1439,6 @@ class TestTimelapseAnalysisSave:
         run = {"id": "inst-abc", "user_id": "owner-999", "org_id": "org-1"}
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456")),
-            patch(
-                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
-                return_value=True,
-            ),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
@@ -1438,10 +1463,6 @@ class TestTimelapseAnalysisSave:
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
             patch(
-                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
-                return_value=True,
-            ),
-            patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
             ),
@@ -1457,3 +1478,120 @@ class TestTimelapseAnalysisSave:
         data = json.loads(resp.get_body())
         assert data["saved"] is True
         mock_storage.upload_json.assert_called_once()
+
+
+class TestTimelapseAnalysisLoad:
+    """Regression tests for the run ownership gate on GET /api/timelapse-analysis-load."""
+
+    def _make_req(
+        self,
+        instance_id: str,
+        auth_header: str | None = "Bearer fake-token",
+    ) -> func.HttpRequest:
+        headers: dict[str, str] = {"Origin": TEST_LOCAL_ORIGIN}
+        if auth_header:
+            headers["Authorization"] = auth_header
+
+        return func.HttpRequest(
+            method="GET",
+            url=f"https://example.com/api/timelapse-analysis-load/{instance_id}",
+            headers=headers,
+            params={},
+            route_params={"instance_id": instance_id} if instance_id else {},
+            body=b"",
+        )
+
+    def test_rejects_unauthenticated(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+
+        req = self._make_req("inst-abc", auth_header=None)
+        with patch(
+            "blueprints.pipeline.enrichment.check_auth",
+            side_effect=ValueError("Unauthorized"),
+        ):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 401
+
+    def test_rejects_anonymous_user(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+
+        req = self._make_req("inst-abc")
+        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "anonymous")):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 401
+
+    def test_returns_503_on_lookup_error(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+        from blueprints.pipeline.history import RunRecordLookupError
+
+        req = self._make_req("inst-abc")
+        with (
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
+                side_effect=RunRecordLookupError("Run lookup failed"),
+            ),
+        ):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 503
+
+    def test_returns_404_when_run_missing(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+
+        req = self._make_req("inst-abc")
+        with (
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
+                return_value=None,
+            ),
+        ):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 404
+
+    def test_rejects_non_owner(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+
+        req = self._make_req("inst-abc")
+        run = {"id": "inst-abc", "user_id": "owner-999", "org_id": "org-1"}
+        with (
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456")),
+            patch(
+                "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
+                return_value=run,
+            ),
+            patch(
+                "blueprints.pipeline.enrichment.assert_run_write_access",
+                side_effect=ValueError("Access denied"),
+            ),
+        ):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 403
+
+    def test_permits_owner_and_loads(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_load
+
+        req = self._make_req("inst-abc")
+        run = {"id": "inst-abc", "user_id": "user-123", "org_id": "org-1"}
+        mock_storage = MagicMock()
+        mock_storage.download_json.return_value = {"summary": "ok"}
+        with (
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
+                return_value=run,
+            ),
+            patch("blueprints.pipeline.enrichment.assert_run_write_access"),
+            patch("treesight.storage.client.BlobStorageClient", return_value=mock_storage),
+        ):
+            resp = timelapse_analysis_load(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["summary"] == "ok"
+        mock_storage.download_json.assert_called_once()
