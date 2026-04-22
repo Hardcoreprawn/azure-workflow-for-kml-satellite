@@ -122,6 +122,7 @@ class StripeProvider:
         metadata: dict[str, str] | None = None,
     ) -> str | None:
         stripe = self._get_stripe()
+        si_suffix = subscription_item_id[-4:] if subscription_item_id else "?"
         try:
             record = stripe.SubscriptionItem.create_usage_record(
                 subscription_item_id,
@@ -132,7 +133,7 @@ class StripeProvider:
             logger.info(
                 "Stripe usage reported user=%s si=***%s qty=%d record=%s",
                 user_id,
-                subscription_item_id[-4:] if subscription_item_id else "?",
+                si_suffix,
                 quantity,
                 record.id,
             )
@@ -141,7 +142,7 @@ class StripeProvider:
             logger.exception(
                 "Stripe usage report failed user=%s si=***%s qty=%d",
                 user_id,
-                subscription_item_id[-4:] if subscription_item_id else "?",
+                si_suffix,
                 quantity,
             )
             return None
@@ -156,6 +157,7 @@ class StripeProvider:
         reason: str = "",
     ) -> str | None:
         stripe = self._get_stripe()
+        si_suffix = subscription_item_id[-4:] if subscription_item_id else "?"
         try:
             record = stripe.SubscriptionItem.create_usage_record(
                 subscription_item_id,
@@ -166,7 +168,7 @@ class StripeProvider:
             logger.info(
                 "Stripe credit reported user=%s si=***%s qty=%d reason=%s record=%s",
                 user_id,
-                subscription_item_id[-4:] if subscription_item_id else "?",
+                si_suffix,
                 quantity,
                 reason,
                 record.id,
@@ -176,7 +178,7 @@ class StripeProvider:
             logger.exception(
                 "Stripe credit failed user=%s si=***%s qty=%d reason=%s",
                 user_id,
-                subscription_item_id[-4:] if subscription_item_id else "?",
+                si_suffix,
                 quantity,
                 reason,
             )
