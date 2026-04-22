@@ -443,13 +443,40 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
+                  saved:
+                    type: boolean
+                    example: true
+                  path:
                     type: string
-                    example: saved
+                    example: analysis/abc123/timelapse_analysis.json
+        "400":
+          description: Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller does not own this run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "413":
           description: Payload too large (> 128 KiB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Cosmos DB temporarily unavailable
           content:
             application/json:
               schema:
@@ -471,8 +498,20 @@ paths:
                 $ref: "#/components/schemas/AnalysisResult"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller does not own this run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
-          description: Analysis not found
+          description: Run or analysis not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Cosmos DB temporarily unavailable
           content:
             application/json:
               schema:
