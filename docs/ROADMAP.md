@@ -267,9 +267,10 @@ reusing the shared pipeline and platform.
 | 3.11 | #437 | End-to-end validation: 200+ AOI KMZ at scale | Open |
 | 3.12 | #675 | DMS and UTM coordinate format support in converter | Open |
 | 3.13 | #676 | Supplier data collection template (Excel/CSV download) | Open |
-| 3.14 | #678 | Country-risk auto-flagging using EU EUDR benchmarking list | Open |
-| 3.15 | #677 | Commodity tracking per parcel / run for EUDR compliance | Open |
-| 3.16 | #680 | GeoJSON and shapefile upload support alongside KML/KMZ | Open |
+| 3.14 | #699 | Supplier parcel intake via valet-token — delegate location entry to suppliers | Open (needs research; may supersede #676) |
+| 3.15 | #678 | Country-risk auto-flagging using EU EUDR benchmarking list | Open |
+| 3.16 | #677 | Commodity tracking per parcel / run for EUDR compliance | Open |
+| 3.17 | #680 | GeoJSON and shapefile upload support alongside KML/KMZ | Open |
 
 Future enrichment sources: INPE PRODES & DETER (confirmed WFS access),
 CAR/SICAR property registry, MapBiomas, MODIS Burned Area, ESA CCI Land Cover,
