@@ -14,7 +14,7 @@ Update status as work moves. Add new items at the correct priority position,
 not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
-|---|----------|----|-------------|--------|
+| --- | ---------- | ---- | ------------- | -------- |
 | 1 | #697 + #698 + #550 + #551 | — | chore: CI upgrades — Trivy 0.70, Actions Node 24, CodeQL v4 (bundle) | 🔄 In progress |
 | 2 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | Open |
 | 3 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
@@ -71,6 +71,14 @@ until scale evidence justifies the added complexity.
 
 **Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3B.5 → 3C → 3 → 4 → 5.
 Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
+
+**Policy-watch gate (EUDR amendments):** Treat Parliament/Council alignment notices as directional only.
+Before shipping compliance-interpretation changes, revalidate assumptions against final trilogue text,
+published legal acts, and latest Commission implementation guidance.
+
+**Value focus while rules evolve:** Prioritise low-regret capabilities that remain useful under both
+strict and simplified obligations: evidence provenance, reproducible exports, audit trails, and
+portfolio-level risk visibility.
 
 ---
 
@@ -404,3 +412,4 @@ Execution order note: Stage 3C should also be complete before Stage 4 begins.
 5. **Multi-app platform.** Pipeline is shared; each vertical gets its own URL namespace. Shared concerns (auth, billing, org) go in `/account/` or shared modules.
 6. **Pipeline foundation first.** Stage 2F (#578, #583) before 2G data sources.
 7. **No infrastructure without users.** T2/T3, Container Apps Jobs, ML — deferred until volume justifies it.
+8. **Revalidate legal assumptions.** Before merging EUDR rule-interpretation changes, verify against current final legal text and Commission guidance; if assumptions changed, log a focused issue and update roadmap ordering.
