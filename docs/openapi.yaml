@@ -992,20 +992,174 @@ paths:
         "404":
           description: Submission not found
 
-  /analysis/history:
-    get:
-      operationId: analysisHistory
+  /analysis/notes:
+    post:
+      operationId: analysisNotes
+      summary: Save or delete a parcel note on a run
+      description: |
+        Saves a text note against a specific parcel (identified by parcel_key) within a
+        completed run. Passing an empty string for `note` deletes the existing note.
+        The caller must be the run owner or an org member.
+        Notes are stored in Cosmos and included in EUDR PDF exports.
       tags: [analysis]
-      summary: User analysis run history
       security:
         - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instance_id, parcel_key]
+              properties:
+                instance_id:
+                  type: string
+                parcel_key:
+                  type: string
+                  description: Parcel AOI index (e.g. "0") or name
+                note:
+                  type: string
+                  maxLength: 2000
       responses:
         "200":
-          description: List of past analysis runs
+          description: Note saved
           content:
             application/json:
               schema:
                 type: object
+                properties:
+                  saved: {type: boolean}
+                  parcel_key: {type: string}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Forbidden — caller is not the owner or an org member
+        "404":
+          description: Run not found
+
+  /analysis/override:
+    post:
+      operationId: analysisOverride
+      summary: Record or revert a human determination override on a parcel
+      description: |
+        Overrides the algorithmic determination for a specific parcel to "compliant"
+        with a mandatory audit-trail reason (min 20 characters).
+        Set `revert: true` to remove an existing override and restore the original
+        algorithmic determination.
+        The caller must be the run owner or an org member.
+      tags: [analysis]
+      security:
+        - swaAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [instance_id, parcel_key]
+              properties:
+                instance_id:
+                  type: string
+                parcel_key:
+                  type: string
+                reason:
+                  type: string
+                  minLength: 20
+                  maxLength: 1000
+                  description: Required when revert is false
+                revert:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Override saved or reverted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved: {type: boolean}
+                  parcel_key: {type: string}
+                  reverted: {type: boolean}
+        "400":
+          description: Reason too short or missing required fields
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Forbidden — caller is not the owner or an org member
+        "404":
+          description: Run not found
+
+  /analysis/history:
+    get:
+      operationId: analysisHistory
+      tags: [analysis]
+      summary: User or org-scoped analysis run history
+      security:
+        - swaAuth: []
+      parameters:
+        - name: scope
+          in: query
+          required: false
+          description: History scope (`user` default, `org` aggregates org member runs)
+          schema:
+            type: string
+            enum: [user, org]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 200
+      responses:
+        "200":
+          description: List of past analysis runs with optional portfolio stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      type: object
+                  activeRun:
+                    type: object
+                    nullable: true
+                  offset:
+                    type: integer
+                  limit:
+                    type: integer
+                  scope:
+                    type: string
+                  orgId:
+                    type: string
+                    nullable: true
+                  memberCount:
+                    type: integer
+                  stats:
+                    type: object
+                    properties:
+                      totalRuns:
+                        type: integer
+                      activeRuns:
+                        type: integer
+                      completedRuns:
+                        type: integer
+                      failedRuns:
+                        type: integer
+                      totalParcels:
+                        type: integer
+                      lastSubmittedAt:
+                        type: string
         "401":
           $ref: "#/components/responses/Unauthorized"
 

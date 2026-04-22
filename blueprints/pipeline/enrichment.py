@@ -22,6 +22,7 @@ from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 
 from . import bp
 from ._helpers import _reshape_output
+from .history import get_run_record_by_instance_id
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,19 @@ async def timelapse_data(
     # Internal cost telemetry should not be exposed in user-facing API payloads.
     sanitized_manifest = manifest.copy()
     sanitized_manifest.pop("estimated_cost_pence", None)
+
+    # Merge user-generated annotations stored in Cosmos (parcel_notes, parcel_overrides).
+    # Failures are non-fatal — manifest data always takes precedence.
+    instance_id = req.route_params.get("instance_id", "")
+    try:
+        run_record = get_run_record_by_instance_id(instance_id)
+        if run_record:
+            if run_record.get("parcel_notes"):
+                sanitized_manifest["parcel_notes"] = run_record["parcel_notes"]
+            if run_record.get("parcel_overrides"):
+                sanitized_manifest["parcel_overrides"] = run_record["parcel_overrides"]
+    except Exception:
+        logger.warning("Could not merge annotation data into manifest for run %s", instance_id)
 
     return func.HttpResponse(
         json.dumps(sanitized_manifest, default=str),

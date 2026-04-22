@@ -15,6 +15,7 @@ import azure.functions as func
 
 from blueprints._helpers import cors_headers
 from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
+from treesight.security.orgs import get_user_org
 from treesight.storage import cosmos as _cosmos_mod
 
 from ._helpers import _durable_status_payload
@@ -29,6 +30,7 @@ _SIGNED_IN_SUBMISSIONS_PREFIX = "analysis-submissions"
 _DEFAULT_HISTORY_LIMIT = 8
 _MAX_HISTORY_LIMIT = 20
 _MAX_HISTORY_OFFSET = 200
+_MAX_ORG_MEMBERS = 50
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +44,60 @@ def _analysis_submission_prefix(user_id: str) -> str:
 
 def _analysis_submission_blob_name(user_id: str, submission_id: str) -> str:
     return f"{_analysis_submission_prefix(user_id)}{submission_id}.json"
+
+
+# ---------------------------------------------------------------------------
+# Run record lookup and write-access guard
+# ---------------------------------------------------------------------------
+
+
+def get_run_record_by_instance_id(instance_id: str) -> dict[str, Any] | None:
+    """Fetch a single run record by instance ID using a cross-partition Cosmos query.
+
+    Returns None when the record is not found or Cosmos is not available.
+    Blob fallback is not supported for cross-user lookups (owner unknown).
+    """
+    if not _cosmos_mod.cosmos_available():
+        return None
+    try:
+        from treesight.storage import cosmos
+
+        results = cosmos.query_items(
+            "runs",
+            "SELECT * FROM c WHERE c.id = @id",
+            parameters=[{"name": "@id", "value": instance_id}],
+        )
+        return results[0] if results else None
+    except Exception:
+        logger.warning("Cosmos run lookup failed for instance=%s", instance_id, exc_info=True)
+        return None
+
+
+def assert_run_write_access(run_record: dict[str, Any], requesting_user_id: str) -> None:
+    """Raise ValueError if *requesting_user_id* is not permitted to write to *run_record*.
+
+    Permits the run owner directly, or any member of the owner's org.
+    Raises ValueError with a generic message to avoid leaking run ownership
+    to unauthorised callers.
+    """
+    owner_id = str(run_record.get("user_id", "")).strip()
+    if owner_id and owner_id == requesting_user_id:
+        return
+
+    try:
+        org = get_user_org(requesting_user_id)
+        if org and isinstance(org, dict):
+            member_ids = {
+                str(m.get("user_id", "")).strip()
+                for m in org.get("members", [])
+                if isinstance(m, dict)
+            }
+            if owner_id in member_ids:
+                return
+    except Exception:
+        logger.warning("Org lookup failed for user=%s", requesting_user_id, exc_info=True)
+
+    raise ValueError("Run not found or you do not have permission to modify it")
 
 
 def _extract_submission_context(body: Any) -> dict[str, Any]:
@@ -190,15 +246,97 @@ def _fetch_submission_records(
     return records[offset : offset + limit]
 
 
+def _fetch_portfolio_submission_records(
+    user_id: str, limit: int, *, offset: int = 0
+) -> tuple[list[dict[str, Any]], str, str | None, int]:
+    """Retrieve history records for the signed-in user's org portfolio.
+
+    Falls back to user scope when no org is configured.
+    """
+    org = get_user_org(user_id)
+    if not org:
+        return _fetch_submission_records(user_id, limit, offset=offset), "user", None, 1
+
+    members = org.get("members", []) if isinstance(org, dict) else []
+    member_ids = [
+        str(member.get("user_id", "")).strip()
+        for member in members
+        if isinstance(member, dict) and str(member.get("user_id", "")).strip()
+    ]
+    if user_id not in member_ids:
+        member_ids.append(user_id)
+
+    # Deduplicate while preserving order.
+    seen: set[str] = set()
+    deduped_member_ids: list[str] = []
+    for member_id in member_ids:
+        if member_id in seen:
+            continue
+        seen.add(member_id)
+        deduped_member_ids.append(member_id)
+
+    fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
+    records: list[dict[str, Any]] = []
+    for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
+        records.extend(
+            _fetch_submission_records(member_id, fetch_limit, offset=0, max_results=fetch_limit)
+        )
+
+    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+    return (
+        records[offset : offset + limit],
+        "org",
+        str(org.get("org_id", "")) or None,
+        len(deduped_member_ids),
+    )
+
+
+def _history_stats_from_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    failed_statuses = {"failed", "terminated", "canceled"}
+    completed = 0
+    failed = 0
+    active = 0
+    total_parcels = 0
+    for run in runs:
+        runtime_status = str(run.get("runtimeStatus") or "").strip().lower()
+        if runtime_status == "completed":
+            completed += 1
+        elif runtime_status in failed_statuses:
+            failed += 1
+        else:
+            active += 1
+        with contextlib.suppress(TypeError, ValueError):
+            total_parcels += int(run.get("aoiCount") or 0)
+
+    return {
+        "totalRuns": len(runs),
+        "activeRuns": active,
+        "completedRuns": completed,
+        "failedRuns": failed,
+        "totalParcels": total_parcels,
+        "lastSubmittedAt": (runs[0].get("submittedAt") if runs else ""),
+    }
+
+
 async def _build_analysis_history_response(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
     user_id: str,
 ) -> func.HttpResponse:
-    """Build the signed-in history response for a single authenticated user."""
+    """Build signed-in history response for user or org portfolio scope."""
     limit = _parse_history_limit(req.params.get("limit", ""))
     offset = _parse_history_offset(req.params.get("offset", ""))
-    records = _fetch_submission_records(user_id, limit, offset=offset)
+    scope = str(req.params.get("scope", "user")).strip().lower()
+
+    if scope == "org":
+        records, resolved_scope, org_id, member_count = _fetch_portfolio_submission_records(
+            user_id, limit, offset=offset
+        )
+    else:
+        records = _fetch_submission_records(user_id, limit, offset=offset)
+        resolved_scope = "user"
+        org_id = None
+        member_count = 1
 
     import asyncio
 
@@ -212,6 +350,10 @@ async def _build_analysis_history_response(
         "activeRun": active_run,
         "offset": offset,
         "limit": limit,
+        "scope": resolved_scope,
+        "orgId": org_id,
+        "memberCount": member_count,
+        "stats": _history_stats_from_runs(runs),
     }
     return func.HttpResponse(
         json.dumps(payload, default=str),

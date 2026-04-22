@@ -209,6 +209,7 @@
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
+  let latestPortfolioSummary = null;
   let analysisHistoryRuns = [];
   let analysisHistoryLoaded = false;
   let selectedAnalysisRunId = null;
@@ -596,6 +597,8 @@
     var pathEl = document.getElementById('app-history-latest-path');
     if (!statusEl || !noteEl || !instanceEl || !phaseEl || !pathEl) return;
 
+    renderPortfolioSummary();
+
     if (!data) {
       if (!analysisHistoryLoaded && currentAccount) {
         statusEl.textContent = 'Loading recent runs';
@@ -630,6 +633,34 @@
     instanceEl.textContent = instanceId;
     phaseEl.textContent = phase;
     pathEl.textContent = runtimeStatus === 'Completed' ? role.completedPath : role.activePath;
+  }
+
+  function renderPortfolioSummary() {
+    var summaryEl = document.getElementById('app-portfolio-summary');
+    if (!summaryEl) return;
+
+    var scope = latestPortfolioSummary && latestPortfolioSummary.scope;
+    var stats = latestPortfolioSummary && latestPortfolioSummary.stats;
+    if (scope !== 'org' || !stats) {
+      summaryEl.hidden = true;
+      return;
+    }
+
+    summaryEl.hidden = false;
+    setText('app-portfolio-total-runs', String(stats.totalRuns || 0));
+    setText('app-portfolio-active-runs', String(stats.activeRuns || 0));
+    setText('app-portfolio-completed-runs', String(stats.completedRuns || 0));
+    setText('app-portfolio-total-parcels', String(stats.totalParcels || 0));
+
+    var memberCount = latestPortfolioSummary.memberCount || 1;
+    var scopeNote = memberCount > 1
+      ? 'Org portfolio view (' + memberCount + ' members)'
+      : 'Org portfolio view';
+    setText('app-portfolio-scope-note', scopeNote);
+
+    // Show the summary export button when org scope is active (#674)
+    var exportRow = document.getElementById('app-summary-export-row');
+    if (exportRow) exportRow.hidden = false;
   }
 
   function normalizeAnalysisRun(run) {
@@ -817,6 +848,13 @@
     options = options || {};
     var locationSelection = readRunSelectionFromLocation();
 
+    latestPortfolioSummary = {
+      scope: payload && payload.scope,
+      orgId: payload && payload.orgId,
+      memberCount: payload && payload.memberCount,
+      stats: payload && payload.stats
+    };
+
     var normalizedActiveRun = normalizeAnalysisRun(payload && payload.activeRun);
     analysisHistoryRuns = sortAnalysisHistoryRuns(payload && payload.runs);
     if (normalizedActiveRun && !analysisHistoryRuns.some(function(run) {
@@ -852,6 +890,7 @@
       resetAnalysisProgress();
       renderAnalysisHistoryList();
       updateAnalysisRun(null);
+      updateHistorySummary(null);
       return;
     }
 
@@ -1140,6 +1179,7 @@
     renderEvidenceChangeDetection(evidenceManifest);
     renderResourceUsage(evidenceManifest);
     initEvidenceMap(evidenceManifest);
+    initCompareView(evidenceManifest);  // #671 before/after compare button
 
     // Show persistent run reference in the evidence header.
     var runRefEl = document.getElementById('app-evidence-run-ref');
@@ -1171,7 +1211,166 @@
     }
   }
 
-  function clearEvidencePanels() {
+  let evidenceCompareMode = false; // #671 before/after compare state
+  let evidenceCompareMaps = null;  // { before: L.Map, after: L.Map } | null
+
+  /* ---- Before/after comparison view (#671) ---- */
+
+  function initCompareView(manifest) {
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!compareWrap) return;
+
+    var searchIds = manifest.search_ids || [];
+    var framePlan = manifest.frame_plan || [];
+    if (searchIds.length < 2) {
+      // Not enough frames for a meaningful before/after
+      if (compareBtn) compareBtn.hidden = true;
+      return;
+    }
+
+    if (compareBtn) compareBtn.hidden = false;
+  }
+
+  function openCompareView(manifest) {
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var frameControls = document.getElementById('app-evidence-frame-controls');
+    var frameLabel = document.getElementById('app-map-frame-label');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!mainWrap || !compareWrap) return;
+
+    // Stop playback
+    if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
+
+    mainWrap.hidden = true;
+    if (frameControls) frameControls.hidden = true;
+    if (frameLabel) frameLabel.textContent = '';
+    compareWrap.hidden = false;
+    evidenceCompareMode = true;
+    if (compareBtn) compareBtn.classList.add('active');
+
+    buildCompareView(manifest);
+  }
+
+  function closeCompareView() {
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!mainWrap || !compareWrap) return;
+
+    destroyCompareMaps();
+    compareWrap.hidden = true;
+    mainWrap.hidden = false;
+    evidenceCompareMode = false;
+    if (compareBtn) compareBtn.classList.remove('active');
+
+    var frameControls = document.getElementById('app-evidence-frame-controls');
+    if (frameControls && evidenceMapLayers.length) frameControls.hidden = false;
+    showEvidenceFrame(evidenceFrameIndex);
+  }
+
+  function destroyCompareMaps() {
+    if (evidenceCompareMaps) {
+      if (evidenceCompareMaps.before) { evidenceCompareMaps.before.remove(); }
+      if (evidenceCompareMaps.after) { evidenceCompareMaps.after.remove(); }
+      evidenceCompareMaps = null;
+    }
+    var before = document.getElementById('app-evidence-compare-map-before');
+    var after = document.getElementById('app-evidence-compare-map-after');
+    if (before) before.textContent = '';
+    if (after) after.textContent = '';
+  }
+
+  function buildCompareView(manifest) {
+    destroyCompareMaps();
+
+    var searchIds = manifest.search_ids || [];
+    var framePlan = manifest.frame_plan || [];
+    var center = manifest.center || manifest.coords;
+    if (!center || !searchIds.length) return;
+
+    var lat = Array.isArray(center) ? center[0] : center.lat || center.latitude;
+    var lon = Array.isArray(center) ? center[1] : center.lon || center.longitude;
+    if (!lat || !lon) return;
+
+    var firstFrame = framePlan[0] || {};
+    var lastFrame = framePlan[framePlan.length - 1] || {};
+    var firstSid = searchIds[0];
+    var lastSid = searchIds[searchIds.length - 1];
+
+    var firstCollection = firstFrame.display_collection || firstFrame.collection || 'sentinel-2-l2a';
+    var lastCollection = lastFrame.display_collection || lastFrame.collection || 'sentinel-2-l2a';
+    var firstAsset = firstFrame.asset || (firstCollection.indexOf('naip') >= 0 ? 'image' : 'visual');
+    var lastAsset = lastFrame.asset || (lastCollection.indexOf('naip') >= 0 ? 'image' : 'visual');
+
+    var labelBefore = document.getElementById('app-evidence-compare-label-before');
+    var labelAfter = document.getElementById('app-evidence-compare-label-after');
+    if (labelBefore) labelBefore.textContent = 'Before — ' + (firstFrame.label || 'earliest');
+    if (labelAfter) labelAfter.textContent = 'After — ' + (lastFrame.label || 'most recent');
+
+    var mapOptions = { zoomControl: false, attributionControl: false };
+    var basemapUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+    var beforeEl = document.getElementById('app-evidence-compare-map-before');
+    var afterEl = document.getElementById('app-evidence-compare-map-after');
+    if (!beforeEl || !afterEl) return;
+
+    var beforeMap = L.map(beforeEl, mapOptions).setView([lat, lon], 13);
+    L.tileLayer(basemapUrl, { maxZoom: 18 }).addTo(beforeMap);
+    if (firstSid) {
+      L.tileLayer(pcTileUrl(firstSid, firstCollection, firstAsset), { maxZoom: 18 }).addTo(beforeMap);
+    }
+
+    var afterMap = L.map(afterEl, mapOptions).setView([lat, lon], 13);
+    L.tileLayer(basemapUrl, { maxZoom: 18 }).addTo(afterMap);
+    if (lastSid) {
+      L.tileLayer(pcTileUrl(lastSid, lastCollection, lastAsset), { maxZoom: 18 }).addTo(afterMap);
+    }
+
+    // Keep the two maps in sync when panning/zooming
+    function syncMaps(source, target) {
+      source.on('moveend', function() {
+        target.setView(source.getCenter(), source.getZoom(), { animate: false });
+      });
+    }
+    syncMaps(beforeMap, afterMap);
+    syncMaps(afterMap, beforeMap);
+
+    evidenceCompareMaps = { before: beforeMap, after: afterMap };
+
+    // Fit to AOI bounds if available
+    var perAoi = manifest.per_aoi_enrichment || [];
+    try {
+      var allBounds = L.latLngBounds([]);
+      perAoi.forEach(function(aoi) {
+        if (!aoi.coords || !aoi.coords.length) return;
+        aoi.coords.forEach(function(c) { allBounds.extend([c[1], c[0]]); });
+      });
+      if (!allBounds.isValid() && manifest.coords && manifest.coords.length) {
+        manifest.coords.forEach(function(c) { allBounds.extend([c[1], c[0]]); });
+      }
+      if (allBounds.isValid()) {
+        beforeMap.fitBounds(allBounds.pad(0.1));
+        afterMap.fitBounds(allBounds.pad(0.1));
+      }
+    } catch (e) { /* keep default view */ }
+
+    setTimeout(function() {
+      beforeMap.invalidateSize();
+      afterMap.invalidateSize();
+    }, 150);
+  }
+
+  function toggleCompareView() {
+    if (evidenceCompareMode) {
+      closeCompareView();
+    } else if (evidenceManifest) {
+      openCompareView(evidenceManifest);
+    }
+  }
+
+
     var ids = [
       'app-evidence-ndvi-grid',
       'app-evidence-weather-grid',
@@ -1200,6 +1399,15 @@
     clearAoiDetail();
     var aoiBlock = document.getElementById('app-evidence-aoi-block');
     if (aoiBlock) aoiBlock.hidden = true;
+    // Reset compare mode so it doesn't persist across runs
+    destroyCompareMaps();
+    evidenceCompareMode = false;
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (compareWrap) compareWrap.hidden = true;
+    if (mainWrap) mainWrap.hidden = false;
+    if (compareBtn) { compareBtn.hidden = true; compareBtn.classList.remove('active'); }
   }
 
   /* ---- Map viewer ---- */
@@ -1331,6 +1539,276 @@
     }
   }
 
+  /* ---- Parcel notes (#669) ---- */
+
+  var currentNoteParcelKey = null; // key of AOI whose notes are currently shown
+
+  function parcelKeyForIndex(idx) {
+    // Use the AOI index as a stable string key matching the backend convention.
+    return String(idx);
+  }
+
+  function renderParcelNotes(parcelKey) {
+    currentNoteParcelKey = parcelKey;
+    var notesEl = document.getElementById('app-evidence-notes');
+    var savedEl = document.getElementById('app-evidence-notes-saved');
+    var textEl = document.getElementById('app-evidence-notes-text');
+    var metaEl = document.getElementById('app-evidence-notes-meta');
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (!notesEl) return;
+
+    // Reset edit state
+    if (editEl) editEl.hidden = true;
+    if (addBtn) addBtn.hidden = false;
+    var input = document.getElementById('app-evidence-notes-input');
+    if (input) input.value = '';
+
+    var note = null;
+    if (evidenceManifest && evidenceManifest.parcel_notes) {
+      note = evidenceManifest.parcel_notes[parcelKey] || null;
+    }
+
+    if (note && note.text) {
+      if (savedEl) savedEl.hidden = false;
+      if (textEl) textEl.textContent = note.text;
+      if (metaEl) {
+        var when = note.updated_at ? new Date(note.updated_at).toLocaleDateString() : '';
+        metaEl.textContent = when ? 'Note — ' + when : 'Note saved';
+      }
+      if (addBtn) addBtn.textContent = 'Edit note';
+    } else {
+      if (savedEl) savedEl.hidden = true;
+      if (textEl) textEl.textContent = '';
+      if (metaEl) metaEl.textContent = '';
+      if (addBtn) addBtn.textContent = '+ Add note';
+    }
+  }
+
+  function showNoteEditor() {
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    var input = document.getElementById('app-evidence-notes-input');
+    if (!editEl) return;
+
+    // Pre-populate with existing note text
+    if (input && evidenceManifest && evidenceManifest.parcel_notes && currentNoteParcelKey) {
+      var existing = evidenceManifest.parcel_notes[currentNoteParcelKey];
+      input.value = existing ? (existing.text || '') : '';
+    }
+    if (editEl) editEl.hidden = false;
+    if (addBtn) addBtn.hidden = true;
+    if (input) input.focus();
+  }
+
+  function hideNoteEditor() {
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (editEl) editEl.hidden = true;
+    if (addBtn) addBtn.hidden = false;
+  }
+
+  async function saveParcelNote() {
+    var input = document.getElementById('app-evidence-notes-input');
+    if (!input || !evidenceInstanceId || currentNoteParcelKey === null) return;
+
+    var noteText = input.value.trim();
+    var saveBtn = document.getElementById('app-evidence-notes-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentNoteParcelKey,
+          note: noteText,
+        }),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        console.warn('Note save failed:', err);
+        return;
+      }
+      // Update local manifest state so the note appears immediately
+      if (!evidenceManifest.parcel_notes) evidenceManifest.parcel_notes = {};
+      if (noteText) {
+        evidenceManifest.parcel_notes[currentNoteParcelKey] = {
+          text: noteText,
+          updated_at: new Date().toISOString(),
+        };
+      } else {
+        delete evidenceManifest.parcel_notes[currentNoteParcelKey];
+      }
+      hideNoteEditor();
+      renderParcelNotes(currentNoteParcelKey);
+    } catch (e) {
+      console.warn('Note save error:', e);
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save note'; }
+    }
+  }
+
+
+  /* ---- Human override determination (#672) ---- */
+
+  var currentOverrideParcelKey = null;
+  var currentOverrideAoiData = null;
+
+  function renderParcelOverride(parcelKey, aoiData) {
+    currentOverrideParcelKey = parcelKey;
+    currentOverrideAoiData = aoiData;
+
+    var overrideEl = document.getElementById('app-evidence-override');
+    var badgeEl = document.getElementById('app-evidence-override-badge');
+    var overrideBtn = document.getElementById('app-evidence-override-btn');
+    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    if (!overrideEl) return;
+
+    var override = null;
+    if (evidenceManifest && evidenceManifest.parcel_overrides) {
+      override = evidenceManifest.parcel_overrides[parcelKey] || null;
+    }
+
+    var det = aoiData && aoiData.determination;
+    var isNonCompliant = det && !det.deforestation_free;
+
+    overrideEl.hidden = !(isNonCompliant || override);
+
+    if (override) {
+      if (badgeEl) {
+        badgeEl.hidden = false;
+        badgeEl.className = 'app-evidence-override-badge';
+        badgeEl.textContent = '\u2705 Compliant (overridden)';
+      }
+      if (overrideBtn) overrideBtn.hidden = true;
+      if (revertBtn) revertBtn.hidden = false;
+    } else {
+      if (badgeEl) badgeEl.hidden = true;
+      if (overrideBtn) overrideBtn.hidden = !isNonCompliant;
+      if (revertBtn) revertBtn.hidden = true;
+    }
+  }
+
+  function openOverrideModal(parcelKey, aoiData) {
+    var backdrop = document.getElementById('app-override-backdrop');
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var charCount = document.getElementById('app-override-charcount');
+    var errorEl = document.getElementById('app-override-error');
+    var originalEl = document.getElementById('app-override-original');
+    if (!backdrop) return;
+
+    if (reasonInput) reasonInput.value = '';
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (charCount) charCount.textContent = '0 / 500';
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
+    if (originalEl) {
+      var det = aoiData && aoiData.determination;
+      var reason = det && det.reason ? det.reason : 'Risk detected';
+      originalEl.textContent = 'Algorithmic determination: ' + reason;
+    }
+
+    backdrop.hidden = false;
+    if (reasonInput) reasonInput.focus();
+  }
+
+  function closeOverrideModal() {
+    var backdrop = document.getElementById('app-override-backdrop');
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  function onOverrideReasonInput() {
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var charCount = document.getElementById('app-override-charcount');
+    if (!reasonInput) return;
+    var len = reasonInput.value.trim().length;
+    if (charCount) charCount.textContent = len + ' / 500';
+    if (confirmBtn) confirmBtn.disabled = len < 20;
+  }
+
+  async function confirmOverride() {
+    var reasonInput = document.getElementById('app-override-reason-input');
+    var confirmBtn = document.getElementById('app-override-confirm-btn');
+    var errorEl = document.getElementById('app-override-error');
+    if (!reasonInput || !evidenceInstanceId || currentOverrideParcelKey === null) return;
+
+    var reason = reasonInput.value.trim();
+    if (reason.length < 20) return;
+
+    var originalText = confirmBtn ? confirmBtn.textContent : 'Confirm override';
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentOverrideParcelKey,
+          reason: reason,
+          revert: false,
+        }),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        if (errorEl) {
+          errorEl.textContent = (err && err.message) || 'Failed to save override. Try again.';
+          errorEl.hidden = false;
+        }
+        return;
+      }
+      // Update local manifest state
+      if (!evidenceManifest.parcel_overrides) evidenceManifest.parcel_overrides = {};
+      evidenceManifest.parcel_overrides[currentOverrideParcelKey] = {
+        reason: reason,
+        overridden_at: new Date().toISOString(),
+        override_determination: 'compliant',
+      };
+      closeOverrideModal();
+      renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+    } catch (e) {
+      if (errorEl) { errorEl.textContent = 'Failed to save override. Try again.'; errorEl.hidden = false; }
+      console.warn('Override save error:', e);
+    } finally {
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
+    }
+  }
+
+  async function revertOverride() {
+    if (!evidenceInstanceId || currentOverrideParcelKey === null) return;
+    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
+    if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
+
+    try {
+      await apiDiscoveryReady;
+      var res = await apiFetch('/api/analysis/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instance_id: evidenceInstanceId,
+          parcel_key: currentOverrideParcelKey,
+          reason: '',
+          revert: true,
+        }),
+      });
+      if (res.ok) {
+        if (evidenceManifest.parcel_overrides) {
+          delete evidenceManifest.parcel_overrides[currentOverrideParcelKey];
+        }
+        renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+      }
+    } catch (e) {
+      console.warn('Override revert error:', e);
+    } finally {
+      if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }
+    }
+  }
   function selectAoi(idx) {
     if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
     var perAoi = evidenceManifest.per_aoi_enrichment;
@@ -1361,6 +1839,8 @@
 
     // Render per-AOI detail
     renderAoiDetail(aoi);
+    renderParcelNotes(parcelKeyForIndex(idx));
+    renderParcelOverride(parcelKeyForIndex(idx), aoi);
   }
 
   function resetAoiSelection() {
@@ -1384,6 +1864,17 @@
 
     // Clear per-AOI detail
     clearAoiDetail();
+    // Clear parcel notes panel
+    currentNoteParcelKey = null;
+    var notesEl = document.getElementById('app-evidence-notes');
+    var savedEl = document.getElementById('app-evidence-notes-saved');
+    var editEl = document.getElementById('app-evidence-notes-edit');
+    var addBtn = document.getElementById('app-evidence-notes-add-btn');
+    if (savedEl) savedEl.hidden = true;
+    if (editEl) editEl.hidden = true;
+    if (addBtn) { addBtn.hidden = false; addBtn.textContent = '+ Add note'; }
+    var overrideEl = document.getElementById('app-evidence-override');
+    if (overrideEl) overrideEl.hidden = true;
   }
 
   function buildEvidenceFrames(framePlan, searchIds, ndviSearchIds) {
@@ -2919,12 +3410,72 @@
     }
   }
 
+  /* ---- EUDR usage dashboard (#670) ---- */
+
+  async function loadEudrUsage() {
+    await apiDiscoveryReady;
+    if (!currentAccount) return;
+
+    var includedEl = document.getElementById('app-eudr-usage-included');
+    var overageEl = document.getElementById('app-eudr-usage-overage');
+    var spendEl = document.getElementById('app-eudr-usage-spend');
+    var nextTierEl = document.getElementById('app-eudr-usage-next-tier');
+    var historyListEl = document.getElementById('app-eudr-usage-history-list');
+    if (!includedEl) return;  // card not present in this build
+
+    try {
+      var res = await apiFetch('/api/eudr/usage');
+      if (!res.ok) return;
+      var data = await res.json();
+      var cur = data.current || {};
+
+      var periodUsed = cur.periodParcelsUsed || 0;
+      var included = cur.includedParcels || 0;
+      if (includedEl) includedEl.textContent = periodUsed + ' / ' + included;
+      if (overageEl) overageEl.textContent = (cur.overageParcels || 0) + ' parcels';
+      if (spendEl) {
+        var spend = cur.estimatedSpendGbp;
+        spendEl.textContent = (spend != null) ? ('£' + spend.toFixed(2)) : '—';
+      }
+      if (nextTierEl) {
+        if (cur.nextTierThreshold) {
+          var msg = cur.parcelsToNextTier + ' until next tier (£' + cur.nextTierRateGbp + '/parcel)';
+          nextTierEl.textContent = msg;
+          if (cur.within20PercentOfNextTier) nextTierEl.style.fontWeight = '600';
+        } else {
+          nextTierEl.textContent = 'Maximum tier reached';
+        }
+      }
+
+      if (historyListEl && data.history && data.history.length) {
+        var html = '<div class="app-usage-history-list">';
+        data.history.forEach(function(m) {
+          html += '<div class="app-usage-row">' +
+            '<strong>' + (m.month || '') + '</strong>' +
+            '<span>' + (m.runs || 0) + ' runs</span>' +
+            '<span>' + (m.parcels || 0) + ' parcels</span>' +
+            (m.overageRuns ? '<span class="app-warning-text">' + m.overageRuns + ' overage</span>' : '') +
+            '</div>';
+        });
+        html += '</div>';
+        historyListEl.innerHTML = html;
+      } else if (historyListEl) {
+        historyListEl.textContent = 'No usage history yet.';
+      }
+    } catch (e) {
+      console.warn('EUDR usage load error:', e);
+    }
+  }
+
   async function loadAnalysisHistory(options) {
     await apiDiscoveryReady;
     if (!currentAccount && authEnabled()) return;
 
+    var historyScope = EUDR_LOCKED ? 'org' : 'user';
+    var historyCacheKey = historyScope === 'org' ? 'history-org' : 'history';
+
     // Render cached history instantly while fetching fresh data
-    const cached = readCache('history');
+    const cached = readCache(historyCacheKey);
     if (cached && !analysisHistoryLoaded) {
       analysisHistoryLoaded = true;
       applyAnalysisHistory(cached, options || {});
@@ -2932,9 +3483,9 @@
     }
 
     try {
-      const res = await apiFetch('/api/analysis/history?limit=6');
+      const res = await apiFetch('/api/analysis/history?limit=6&scope=' + encodeURIComponent(historyScope));
       const data = await res.json();
-      writeCache('history', data, CACHE_TTL_HISTORY);
+      writeCache(historyCacheKey, data, CACHE_TTL_HISTORY);
       analysisHistoryLoaded = true;
       applyAnalysisHistory(data, options || {});
       applyFirstRunLayout();
@@ -3015,6 +3566,7 @@
         renderAnalysisHistoryList();
       }
       apiDiscoveryReady.then(loadBillingStatus);
+      apiDiscoveryReady.then(loadEudrUsage);
       apiDiscoveryReady.then(function() {
         loadAnalysisHistory();
       });
@@ -3184,10 +3736,55 @@
   });
   bindClick('app-evidence-ai-btn', requestAiAnalysis);
   bindClick('app-evidence-eudr-btn', requestEudrAssessment);
-
   // Expanded map viewer controls
+    // Parcel notes (#669)
+    bindClick('app-evidence-notes-add-btn', showNoteEditor);
+    bindClick('app-evidence-notes-cancel-btn', hideNoteEditor);
+    bindClick('app-evidence-notes-save-btn', saveParcelNote);
+
+    // Override determination controls (#672)
+    bindClick('app-evidence-override-btn', function() { openOverrideModal(currentOverrideParcelKey, currentOverrideAoiData); });
+    bindClick('app-evidence-override-revert-btn', revertOverride);
+    bindClick('app-override-confirm-btn', confirmOverride);
+    bindClick('app-override-cancel-btn', closeOverrideModal);
+    var overrideBackdrop = document.getElementById('app-override-backdrop');
+    if (overrideBackdrop) overrideBackdrop.addEventListener('click', function(e) { if (e.target === this) closeOverrideModal(); });
+    var overrideReasonInput = document.getElementById('app-override-reason-input');
+    if (overrideReasonInput) overrideReasonInput.addEventListener('input', onOverrideReasonInput);
+
+    // Portfolio summary export (#674)
+    bindClick('app-summary-export-btn', function() {
+      var btn = document.getElementById('app-summary-export-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+      apiFetch('/api/eudr/summary-export')
+        .then(function(res) {
+          if (!res.ok) throw new Error('Export failed (' + res.status + ')');
+          return res.blob();
+        })
+        .then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'eudr_summary_export.csv';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .catch(function(err) {
+          console.warn('EUDR summary export error:', err);
+          var note = document.getElementById('app-summary-export-note');
+          if (note) note.textContent = 'Export failed — try again';
+        })
+        .finally(function() {
+          if (btn) { btn.disabled = false; btn.textContent = 'Export all runs (CSV)'; }
+        });
+    });
+
+    // Expanded map viewer controls
   bindClick('app-map-expand-btn', expandEvidenceMap);
   bindClick('app-map-collapse-btn', collapseEvidenceMap);
+  bindClick('app-map-btn-compare', toggleCompareView);  // #671 before/after comparison
   var expandedBackdrop = document.getElementById('app-map-expanded-backdrop');
   if (expandedBackdrop) expandedBackdrop.addEventListener('click', function(e) { if (e.target === this) collapseEvidenceMap(); });
   bindClick('app-map-expanded-play-btn', toggleEvidencePlay);

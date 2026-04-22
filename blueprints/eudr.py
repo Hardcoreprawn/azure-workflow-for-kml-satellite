@@ -5,12 +5,17 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import contextlib
+import csv
+import io
 import json
 import logging
 import math
 import os
 import re
+from datetime import UTC, datetime
+from typing import Any
 
+import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
@@ -177,6 +182,154 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _month_key(dt: datetime) -> str:
+    return dt.strftime("%Y-%m")
+
+
+def _last_n_month_keys(n: int, *, now: datetime | None = None) -> list[str]:
+    now = now or datetime.now(UTC)
+    y = now.year
+    m = now.month
+    keys: list[str] = []
+    for _ in range(n):
+        keys.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    keys.reverse()
+    return keys
+
+
+def _org_member_ids_for_user(user_id: str) -> list[str]:
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    if not org:
+        return [user_id]
+    members = org.get("members", [])
+    member_ids: list[str] = []
+    for member in members:
+        if isinstance(member, dict):
+            mid = str(member.get("user_id", "")).strip()
+            if mid and mid not in member_ids:
+                member_ids.append(mid)
+    if user_id not in member_ids:
+        member_ids.append(user_id)
+    return member_ids
+
+
+def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
+    from blueprints.pipeline.history import _fetch_submission_records
+
+    all_records: list[dict] = []
+    for member_id in _org_member_ids_for_user(user_id):
+        all_records.extend(_fetch_submission_records(member_id, limit, offset=0, max_results=300))
+    all_records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+    return all_records[:limit]
+
+
+def _eudr_usage_payload(user_id: str) -> dict:
+    from treesight.constants import EUDR_INCLUDED_PARCELS
+    from treesight.security.eudr_billing import get_eudr_billing_status
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    org_id = org.get("org_id") if isinstance(org, dict) else ""
+    billing = get_eudr_billing_status(org_id or "")
+
+    period_used = int(billing.get("period_parcels_used", 0) or 0)
+    included = int(billing.get("included_parcels", EUDR_INCLUDED_PARCELS) or EUDR_INCLUDED_PARCELS)
+    overage = max(period_used - included, 0)
+
+    # Tier break guidance for graduated EUDR rates.
+    next_threshold = None
+    next_rate = None
+    for threshold, rate in ((100, 2.50), (500, 1.80)):
+        if period_used < threshold:
+            next_threshold = threshold
+            next_rate = rate
+            break
+
+    records = _fetch_org_run_records(user_id, limit=400)
+    month_keys = _last_n_month_keys(6)
+    by_month: dict[str, dict[str, int]] = {
+        k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys
+    }
+    for record in records:
+        submitted = _parse_iso_datetime(str(record.get("submitted_at", "")))
+        if not submitted:
+            continue
+        key = _month_key(submitted)
+        if key not in by_month:
+            continue
+        by_month[key]["runs"] += 1
+        by_month[key]["parcels"] += int(record.get("aoi_count", 0) or 0)
+        if str(record.get("billing_type", "")) == "overage":
+            by_month[key]["overage_runs"] += 1
+
+    months = [
+        {
+            "month": key,
+            "runs": by_month[key]["runs"],
+            "parcels": by_month[key]["parcels"],
+            "overageRuns": by_month[key]["overage_runs"],
+        }
+        for key in month_keys
+    ]
+
+    estimated_spend_gbp = round((overage * 3.0), 2)
+
+    return {
+        "current": {
+            "periodParcelsUsed": period_used,
+            "includedParcels": included,
+            "overageParcels": overage,
+            "estimatedSpendGbp": estimated_spend_gbp,
+            "nextTierThreshold": next_threshold,
+            "nextTierRateGbp": next_rate,
+            "parcelsToNextTier": (next_threshold - period_used) if next_threshold else 0,
+            "within20PercentOfNextTier": bool(
+                next_threshold and period_used >= int(next_threshold * 0.8)
+            ),
+        },
+        "history": months,
+    }
+
+
+@bp.route(
+    route="eudr/usage",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_usage_status(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/eudr/usage — org-scoped usage and billing summary for dashboard."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    payload = _eudr_usage_payload(user_id)
+    return func.HttpResponse(
+        json.dumps(payload),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
 
 @bp.route(
@@ -388,4 +541,161 @@ def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
+    )
+
+
+# ---------------------------------------------------------------------------
+# §5 — GET /api/eudr/summary-export  (#674)
+# ---------------------------------------------------------------------------
+
+_SUMMARY_CSV_FIELDS = [
+    "run_id",
+    "submitted_at",
+    "parcel_name",
+    "area_ha",
+    "center_lat",
+    "center_lon",
+    "determination_status",
+    "determination_confidence",
+    "determination_flags",
+    "overridden",
+    "override_reason",
+    "note",
+]
+
+
+def _summary_rows_from_manifest(
+    run_id: str,
+    submitted_at: str,
+    manifest: dict[str, Any],
+    run_record: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Extract per-AOI CSV rows from a single run manifest + run record annotations."""
+    per_aoi = manifest.get("per_aoi_enrichment", [])
+    if not per_aoi:
+        return []
+
+    parcel_notes: dict[str, str] = {}
+    parcel_overrides: dict[str, dict[str, Any]] = {}
+    if run_record:
+        parcel_notes = run_record.get("parcel_notes") or {}
+        parcel_overrides = run_record.get("parcel_overrides") or {}
+
+    rows = []
+    for idx, aoi in enumerate(per_aoi):
+        parcel_key = str(idx)
+        center = aoi.get("center", {})
+        det = aoi.get("determination", {})
+        override = parcel_overrides.get(parcel_key, {})
+        overridden = bool(override) and not override.get("reverted")
+
+        rows.append(
+            {
+                "run_id": run_id,
+                "submitted_at": submitted_at,
+                "parcel_name": aoi.get("name", parcel_key),
+                "area_ha": aoi.get("area_ha", ""),
+                "center_lat": center.get("lat", ""),
+                "center_lon": center.get("lon", ""),
+                "determination_status": (
+                    "error"
+                    if "error" in aoi
+                    else ("compliant" if det.get("deforestation_free") else "non_compliant")
+                ),
+                "determination_confidence": det.get("confidence", ""),
+                "determination_flags": "; ".join(det.get("flags", [])),
+                "overridden": "yes" if overridden else "no",
+                "override_reason": override.get("reason", "") if overridden else "",
+                "note": parcel_notes.get(parcel_key, ""),
+            }
+        )
+    return rows
+
+
+def _build_summary_csv(rows: list[dict[str, Any]]) -> str:
+    """Serialise a list of summary row dicts as a CSV string."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_SUMMARY_CSV_FIELDS, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+@bp.route(
+    route="eudr/summary-export",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@bp.durable_client_input(client_name="client")
+async def eudr_summary_export(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """GET /api/eudr/summary-export — aggregated per-parcel CSV across org runs (#674)."""
+    return await _eudr_summary_export(req, client)
+
+
+async def _eudr_summary_export(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """Inner implementation for testing without Azure middleware."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    from blueprints.pipeline._helpers import _reshape_output
+    from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+    from treesight.storage.client import BlobStorageClient
+
+    storage = BlobStorageClient()
+    run_records = _fetch_org_run_records(user_id, limit=20)
+
+    all_rows: list[dict[str, Any]] = []
+    for record in run_records:
+        instance_id = record.get("instance_id") or record.get("run_id", "")
+        submitted_at = record.get("submitted_at", "")
+        if not instance_id:
+            continue
+
+        try:
+            status = await client.get_status(instance_id, show_input=False)
+            if not status or not status.output:
+                continue
+            output = status.output
+            if isinstance(output, str):
+                with contextlib.suppress(Exception):
+                    output = json.loads(output)
+            if isinstance(output, dict):
+                output = _reshape_output(output)
+            manifest_path = (
+                output.get("enrichment_manifest") or output.get("enrichmentManifest")
+                if isinstance(output, dict)
+                else None
+            )
+            if not manifest_path:
+                continue
+
+            manifest = storage.download_json(DEFAULT_OUTPUT_CONTAINER, manifest_path)
+            rows = _summary_rows_from_manifest(instance_id, submitted_at, manifest, record)
+            all_rows.extend(rows)
+        except Exception:
+            logger.warning("summary-export: skipping run %s due to fetch error", instance_id)
+            continue
+
+    if not all_rows:
+        return error_response(404, "No completed EUDR runs found for export", req=req)
+
+    csv_body = _build_summary_csv(all_rows)
+    headers = cors_headers(req)
+    headers["Content-Disposition"] = 'attachment; filename="eudr_summary_export.csv"'
+    return func.HttpResponse(
+        csv_body,
+        status_code=200,
+        mimetype="text/csv",
+        headers=headers,
     )

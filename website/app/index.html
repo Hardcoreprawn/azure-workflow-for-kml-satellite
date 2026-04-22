@@ -132,6 +132,13 @@
             <div class="app-mini-item"><span>Next step</span><strong id="app-history-latest-path">Checking workspace</strong></div>
           </div>
           <div class="app-history-list" id="app-history-list" aria-live="polite">Loading your history…</div>
+          <div class="app-mini-list app-portfolio-summary" id="app-portfolio-summary" hidden>
+            <div class="app-mini-item"><span>Portfolio runs</span><strong id="app-portfolio-total-runs">0</strong></div>
+            <div class="app-mini-item"><span>Active runs</span><strong id="app-portfolio-active-runs">0</strong></div>
+            <div class="app-mini-item"><span>Completed runs</span><strong id="app-portfolio-completed-runs">0</strong></div>
+            <div class="app-mini-item"><span>Parcels assessed</span><strong id="app-portfolio-total-parcels">0</strong></div>
+            <div class="app-mini-item"><span>Scope</span><strong id="app-portfolio-scope-note">Org portfolio view</strong></div>
+          </div>
           <div class="app-rail-footer">Select a run to reopen this workspace state.</div>
         </article>
 
@@ -304,12 +311,24 @@
                     <div class="app-evidence-map-controls">
                       <button class="app-evidence-layer-btn active" id="app-map-btn-rgb" type="button">RGB</button>
                       <button class="app-evidence-layer-btn" id="app-map-btn-ndvi" type="button">NDVI</button>
+                      <button class="app-evidence-layer-btn" id="app-map-btn-compare" type="button" title="Before / after comparison" hidden>Compare</button>
                       <button class="app-evidence-layer-btn" id="app-map-expand-btn" type="button" title="Expand viewer">&#x26F6;</button>
                     </div>
                   </div>
                   <div class="app-evidence-map-wrap" id="app-evidence-map-wrap">
                     <div id="app-evidence-map"></div>
                     <div class="app-evidence-map-overlay" id="app-evidence-map-overlay">Loading map&hellip;</div>
+                  </div>
+                  <!-- Before / after split view (#671) -->
+                  <div class="app-evidence-compare-wrap" id="app-evidence-compare-wrap" hidden>
+                    <div class="app-evidence-compare-panel">
+                      <div class="app-evidence-compare-label" id="app-evidence-compare-label-before"></div>
+                      <div class="app-evidence-compare-map" id="app-evidence-compare-map-before"></div>
+                    </div>
+                    <div class="app-evidence-compare-panel">
+                      <div class="app-evidence-compare-label" id="app-evidence-compare-label-after"></div>
+                      <div class="app-evidence-compare-map" id="app-evidence-compare-map-after"></div>
+                    </div>
                   </div>
                   <div class="app-evidence-frame-controls" id="app-evidence-frame-controls" hidden>
                     <button class="btn btn-secondary app-evidence-play-btn" id="app-map-play-btn" type="button">&#9654; Play</button>
@@ -362,6 +381,27 @@
                     <div class="app-evidence-aoi-detail-grid" id="app-evidence-aoi-detail-grid"></div>
                     <div class="app-evidence-aoi-determination" id="app-evidence-aoi-determination" hidden></div>
                     <div class="app-evidence-flags" id="app-evidence-flags" hidden></div>
+                    <!-- Human override (#672) -->
+                    <div class="app-evidence-override" id="app-evidence-override" hidden>
+                      <div class="app-evidence-override-badge" id="app-evidence-override-badge" hidden></div>
+                      <button class="btn btn-secondary btn-sm app-evidence-override-btn" id="app-evidence-override-btn" type="button" hidden>Override determination</button>
+                      <button class="btn btn-secondary btn-sm app-evidence-override-revert-btn" id="app-evidence-override-revert-btn" type="button" hidden>Revert to algorithmic</button>
+                    </div>
+                    <!-- Parcel notes (#669) -->
+                    <div class="app-evidence-notes" id="app-evidence-notes">
+                      <div class="app-evidence-notes-saved" id="app-evidence-notes-saved" hidden>
+                        <span class="app-evidence-notes-text" id="app-evidence-notes-text"></span>
+                        <span class="app-evidence-notes-meta" id="app-evidence-notes-meta"></span>
+                      </div>
+                      <div class="app-evidence-notes-edit" id="app-evidence-notes-edit" hidden>
+                        <textarea class="app-evidence-notes-input" id="app-evidence-notes-input" rows="3" maxlength="2000" placeholder="Add a note for this parcel…" aria-label="Parcel note"></textarea>
+                        <div class="app-evidence-notes-actions">
+                          <button class="btn btn-primary btn-sm" id="app-evidence-notes-save-btn" type="button">Save note</button>
+                          <button class="btn btn-secondary btn-sm" id="app-evidence-notes-cancel-btn" type="button">Cancel</button>
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary btn-sm app-evidence-notes-add-btn" id="app-evidence-notes-add-btn" type="button">+ Add note</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -521,6 +561,22 @@
       <span id="app-map-expanded-counter">0/0</span>
     </div>
     <div class="app-evidence-frame-label" id="app-map-expanded-label"></div>
+  </div>
+</div>
+<!-- Override reason modal (#672) -->
+<div class="app-override-backdrop" id="app-override-backdrop" hidden>
+  <div class="app-override-modal" role="dialog" aria-modal="true" aria-labelledby="app-override-modal-title">
+    <h3 id="app-override-modal-title">Override determination</h3>
+    <p class="app-override-modal-hint">Record a reason why this parcel should be marked compliant despite the algorithmic flag. This creates an immutable audit trail.</p>
+    <div class="app-override-original" id="app-override-original"></div>
+    <label class="app-override-label" for="app-override-reason-input">Reason <span class="app-override-required">(min 20 characters)</span></label>
+    <textarea class="app-override-reason-input" id="app-override-reason-input" rows="4" maxlength="500" placeholder="Explain why the algorithmic determination is incorrect for this parcel&#x2026;" aria-label="Override reason"></textarea>
+    <div class="app-override-charcount" id="app-override-charcount">0 / 500</div>
+    <div class="app-override-actions">
+      <button class="btn btn-primary" id="app-override-confirm-btn" type="button" disabled>Confirm override</button>
+      <button class="btn btn-secondary" id="app-override-cancel-btn" type="button">Cancel</button>
+    </div>
+    <div class="app-override-error" id="app-override-error" hidden></div>
   </div>
 </div>
 </body>
