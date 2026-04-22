@@ -1353,12 +1353,47 @@ class TestTimelapseAnalysisSave:
 
         assert resp.status_code == 401
 
+    def test_rejects_non_dict_body(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_save
+
+        # JSON array instead of object
+        req = make_test_request(
+            url="https://example.com/api/timelapse-analysis-save",
+            method="POST",
+            body=b"[1, 2, 3]",
+            origin=TEST_LOCAL_ORIGIN,
+            auth_header="Bearer fake-token",
+        )
+        with patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")):
+            resp = timelapse_analysis_save(req)
+
+        assert resp.status_code == 400
+
+    def test_returns_503_when_cosmos_unavailable(self):
+        from blueprints.pipeline.enrichment import timelapse_analysis_save
+
+        req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
+        with (
+            patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
+                return_value=False,
+            ),
+        ):
+            resp = timelapse_analysis_save(req)
+
+        assert resp.status_code == 503
+
     def test_rejects_missing_run(self):
         from blueprints.pipeline.enrichment import timelapse_analysis_save
 
         req = self._make_req({"instance_id": "inst-abc", "analysis": {"result": "ok"}})
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
+                return_value=True,
+            ),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=None,
@@ -1375,6 +1410,10 @@ class TestTimelapseAnalysisSave:
         run = {"id": "inst-abc", "user_id": "owner-999", "org_id": "org-1"}
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "attacker-456")),
+            patch(
+                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
+                return_value=True,
+            ),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,
@@ -1398,6 +1437,10 @@ class TestTimelapseAnalysisSave:
         mock_storage = MagicMock()
         with (
             patch("blueprints.pipeline.enrichment.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.enrichment._cosmos_mod.cosmos_available",
+                return_value=True,
+            ),
             patch(
                 "blueprints.pipeline.enrichment.get_run_record_by_instance_id",
                 return_value=run,

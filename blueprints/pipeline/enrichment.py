@@ -19,6 +19,7 @@ from blueprints._helpers import (
     fetch_enrichment_manifest,
 )
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
+from treesight.storage import cosmos as _cosmos_mod
 
 from . import bp
 from ._helpers import _reshape_output
@@ -107,11 +108,17 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError:
         return error_response(400, "Invalid JSON body", req=req)
 
+    if not isinstance(body, dict):
+        return error_response(400, "Request body must be a JSON object", req=req)
+
     instance_id = body.get("instance_id", "")
     analysis = body.get("analysis", {})
 
-    if not instance_id or not analysis:
+    if not instance_id or not isinstance(analysis, dict) or not analysis:
         return error_response(400, "instance_id and analysis are required", req=req)
+
+    if not _cosmos_mod.cosmos_available():
+        return error_response(503, "Service temporarily unavailable", req=req)
 
     run_record = get_run_record_by_instance_id(instance_id)
     if not run_record:
