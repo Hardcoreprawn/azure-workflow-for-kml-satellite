@@ -511,11 +511,15 @@ jobs:
                 $expected
                 | to_entries[]
                 | select(($actual[.key] // null) != .value)
-                | {key: .key, expected: .value, actual: ($actual[.key] // "<missing>")}
+                | {
+                    key: .key,
+                    status: (if ($actual[.key] // null) == null then "missing" else "different" end)
+                  }
               ]')
 
             if [ "$(echo "$MISMATCHES" | jq 'length')" -gt 0 ]; then
               echo "❌ App settings drift detected for $app_name"
+              echo "Drifted keys (values redacted):"
               echo "$MISMATCHES" | jq '.'
               exit 1
             fi
@@ -526,14 +530,20 @@ jobs:
           verify_container_image() {
             local app_name="$1"
             local expected_image="$2"
+            local actual_linux_fx_version
+            local normalized_actual_image
+            local normalized_expected_image
 
-            ACTUAL_IMAGE=$(az functionapp config container show \
+            actual_linux_fx_version=$(az functionapp show \
               --name "$app_name" \
               --resource-group "$FUNC_RG" \
-              --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv)
+              --query 'siteConfig.linuxFxVersion' -o tsv)
 
-            if [ "$ACTUAL_IMAGE" != "$expected_image" ]; then
-              echo "❌ Container image drift for $app_name: expected=$expected_image actual=$ACTUAL_IMAGE"
+            normalized_actual_image="${actual_linux_fx_version#DOCKER|}"
+            normalized_expected_image="${expected_image#DOCKER|}"
+
+            if [ "$normalized_actual_image" != "$normalized_expected_image" ]; then
+              echo "❌ Container image drift for $app_name: expected=$expected_image actual=$actual_linux_fx_version"
               exit 1
             fi
 

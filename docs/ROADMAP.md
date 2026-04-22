@@ -133,7 +133,7 @@ Build once, promote dev → prod.
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 2E.1 | #401 | Separate dev and prod deployment flows | ✅ Closed |
-| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | Open |
+| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | 🔄 In progress |
 | 2E.3 | #402 | Security-gated production deploys | Open |
 | 2E.4 | #403 | Smoke gates, promotion/demotion | Open |
 
