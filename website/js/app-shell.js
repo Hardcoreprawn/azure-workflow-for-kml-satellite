@@ -1175,6 +1175,7 @@
     renderEvidenceChangeDetection(evidenceManifest);
     renderResourceUsage(evidenceManifest);
     initEvidenceMap(evidenceManifest);
+    initCompareView(evidenceManifest);  // #671 before/after compare button
 
     // Show persistent run reference in the evidence header.
     var runRefEl = document.getElementById('app-evidence-run-ref');
@@ -1206,7 +1207,166 @@
     }
   }
 
-  function clearEvidencePanels() {
+  let evidenceCompareMode = false; // #671 before/after compare state
+  let evidenceCompareMaps = null;  // { before: L.Map, after: L.Map } | null
+
+  /* ---- Before/after comparison view (#671) ---- */
+
+  function initCompareView(manifest) {
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!compareWrap) return;
+
+    var searchIds = manifest.search_ids || [];
+    var framePlan = manifest.frame_plan || [];
+    if (searchIds.length < 2) {
+      // Not enough frames for a meaningful before/after
+      if (compareBtn) compareBtn.hidden = true;
+      return;
+    }
+
+    if (compareBtn) compareBtn.hidden = false;
+  }
+
+  function openCompareView(manifest) {
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var frameControls = document.getElementById('app-evidence-frame-controls');
+    var frameLabel = document.getElementById('app-map-frame-label');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!mainWrap || !compareWrap) return;
+
+    // Stop playback
+    if (evidencePlayInterval) { clearInterval(evidencePlayInterval); evidencePlayInterval = null; }
+
+    mainWrap.hidden = true;
+    if (frameControls) frameControls.hidden = true;
+    if (frameLabel) frameLabel.textContent = '';
+    compareWrap.hidden = false;
+    evidenceCompareMode = true;
+    if (compareBtn) compareBtn.classList.add('active');
+
+    buildCompareView(manifest);
+  }
+
+  function closeCompareView() {
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (!mainWrap || !compareWrap) return;
+
+    destroyCompareMaps();
+    compareWrap.hidden = true;
+    mainWrap.hidden = false;
+    evidenceCompareMode = false;
+    if (compareBtn) compareBtn.classList.remove('active');
+
+    var frameControls = document.getElementById('app-evidence-frame-controls');
+    if (frameControls && evidenceMapLayers.length) frameControls.hidden = false;
+    showEvidenceFrame(evidenceFrameIndex);
+  }
+
+  function destroyCompareMaps() {
+    if (evidenceCompareMaps) {
+      if (evidenceCompareMaps.before) { evidenceCompareMaps.before.remove(); }
+      if (evidenceCompareMaps.after) { evidenceCompareMaps.after.remove(); }
+      evidenceCompareMaps = null;
+    }
+    var before = document.getElementById('app-evidence-compare-map-before');
+    var after = document.getElementById('app-evidence-compare-map-after');
+    if (before) before.textContent = '';
+    if (after) after.textContent = '';
+  }
+
+  function buildCompareView(manifest) {
+    destroyCompareMaps();
+
+    var searchIds = manifest.search_ids || [];
+    var framePlan = manifest.frame_plan || [];
+    var center = manifest.center || manifest.coords;
+    if (!center || !searchIds.length) return;
+
+    var lat = Array.isArray(center) ? center[0] : center.lat || center.latitude;
+    var lon = Array.isArray(center) ? center[1] : center.lon || center.longitude;
+    if (!lat || !lon) return;
+
+    var firstFrame = framePlan[0] || {};
+    var lastFrame = framePlan[framePlan.length - 1] || {};
+    var firstSid = searchIds[0];
+    var lastSid = searchIds[searchIds.length - 1];
+
+    var firstCollection = firstFrame.display_collection || firstFrame.collection || 'sentinel-2-l2a';
+    var lastCollection = lastFrame.display_collection || lastFrame.collection || 'sentinel-2-l2a';
+    var firstAsset = firstFrame.asset || (firstCollection.indexOf('naip') >= 0 ? 'image' : 'visual');
+    var lastAsset = lastFrame.asset || (lastCollection.indexOf('naip') >= 0 ? 'image' : 'visual');
+
+    var labelBefore = document.getElementById('app-evidence-compare-label-before');
+    var labelAfter = document.getElementById('app-evidence-compare-label-after');
+    if (labelBefore) labelBefore.textContent = 'Before — ' + (firstFrame.label || 'earliest');
+    if (labelAfter) labelAfter.textContent = 'After — ' + (lastFrame.label || 'most recent');
+
+    var mapOptions = { zoomControl: false, attributionControl: false };
+    var basemapUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+    var beforeEl = document.getElementById('app-evidence-compare-map-before');
+    var afterEl = document.getElementById('app-evidence-compare-map-after');
+    if (!beforeEl || !afterEl) return;
+
+    var beforeMap = L.map(beforeEl, mapOptions).setView([lat, lon], 13);
+    L.tileLayer(basemapUrl, { maxZoom: 18 }).addTo(beforeMap);
+    if (firstSid) {
+      L.tileLayer(pcTileUrl(firstSid, firstCollection, firstAsset), { maxZoom: 18 }).addTo(beforeMap);
+    }
+
+    var afterMap = L.map(afterEl, mapOptions).setView([lat, lon], 13);
+    L.tileLayer(basemapUrl, { maxZoom: 18 }).addTo(afterMap);
+    if (lastSid) {
+      L.tileLayer(pcTileUrl(lastSid, lastCollection, lastAsset), { maxZoom: 18 }).addTo(afterMap);
+    }
+
+    // Keep the two maps in sync when panning/zooming
+    function syncMaps(source, target) {
+      source.on('moveend', function() {
+        target.setView(source.getCenter(), source.getZoom(), { animate: false });
+      });
+    }
+    syncMaps(beforeMap, afterMap);
+    syncMaps(afterMap, beforeMap);
+
+    evidenceCompareMaps = { before: beforeMap, after: afterMap };
+
+    // Fit to AOI bounds if available
+    var perAoi = manifest.per_aoi_enrichment || [];
+    try {
+      var allBounds = L.latLngBounds([]);
+      perAoi.forEach(function(aoi) {
+        if (!aoi.coords || !aoi.coords.length) return;
+        aoi.coords.forEach(function(c) { allBounds.extend([c[1], c[0]]); });
+      });
+      if (!allBounds.isValid() && manifest.coords && manifest.coords.length) {
+        manifest.coords.forEach(function(c) { allBounds.extend([c[1], c[0]]); });
+      }
+      if (allBounds.isValid()) {
+        beforeMap.fitBounds(allBounds.pad(0.1));
+        afterMap.fitBounds(allBounds.pad(0.1));
+      }
+    } catch (e) { /* keep default view */ }
+
+    setTimeout(function() {
+      beforeMap.invalidateSize();
+      afterMap.invalidateSize();
+    }, 150);
+  }
+
+  function toggleCompareView() {
+    if (evidenceCompareMode) {
+      closeCompareView();
+    } else if (evidenceManifest) {
+      openCompareView(evidenceManifest);
+    }
+  }
+
+
     var ids = [
       'app-evidence-ndvi-grid',
       'app-evidence-weather-grid',
@@ -1235,6 +1395,15 @@
     clearAoiDetail();
     var aoiBlock = document.getElementById('app-evidence-aoi-block');
     if (aoiBlock) aoiBlock.hidden = true;
+    // Reset compare mode so it doesn't persist across runs
+    destroyCompareMaps();
+    evidenceCompareMode = false;
+    var compareWrap = document.getElementById('app-evidence-compare-wrap');
+    var mainWrap = document.getElementById('app-evidence-map-wrap');
+    var compareBtn = document.getElementById('app-map-btn-compare');
+    if (compareWrap) compareWrap.hidden = true;
+    if (mainWrap) mainWrap.hidden = false;
+    if (compareBtn) { compareBtn.hidden = true; compareBtn.classList.remove('active'); }
   }
 
   /* ---- Map viewer ---- */
@@ -3226,6 +3395,7 @@
   // Expanded map viewer controls
   bindClick('app-map-expand-btn', expandEvidenceMap);
   bindClick('app-map-collapse-btn', collapseEvidenceMap);
+  bindClick('app-map-btn-compare', toggleCompareView);  // #671 before/after comparison
   var expandedBackdrop = document.getElementById('app-map-expanded-backdrop');
   if (expandedBackdrop) expandedBackdrop.addEventListener('click', function(e) { if (e.target === this) collapseEvidenceMap(); });
   bindClick('app-map-expanded-play-btn', toggleEvidencePlay);

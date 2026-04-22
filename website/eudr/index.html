@@ -318,12 +318,24 @@
                     <div class="app-evidence-map-controls">
                       <button class="app-evidence-layer-btn active" id="app-map-btn-rgb" type="button">RGB</button>
                       <button class="app-evidence-layer-btn" id="app-map-btn-ndvi" type="button">NDVI</button>
+                      <button class="app-evidence-layer-btn" id="app-map-btn-compare" type="button" title="Before / after comparison" hidden>Compare</button>
                       <button class="app-evidence-layer-btn" id="app-map-expand-btn" type="button" title="Expand viewer">&#x26F6;</button>
                     </div>
                   </div>
                   <div class="app-evidence-map-wrap" id="app-evidence-map-wrap">
                     <div id="app-evidence-map"></div>
                     <div class="app-evidence-map-overlay" id="app-evidence-map-overlay">Loading map&hellip;</div>
+                  </div>
+                  <!-- Before / after split view (#671) -->
+                  <div class="app-evidence-compare-wrap" id="app-evidence-compare-wrap" hidden>
+                    <div class="app-evidence-compare-panel">
+                      <div class="app-evidence-compare-label" id="app-evidence-compare-label-before"></div>
+                      <div class="app-evidence-compare-map" id="app-evidence-compare-map-before"></div>
+                    </div>
+                    <div class="app-evidence-compare-panel">
+                      <div class="app-evidence-compare-label" id="app-evidence-compare-label-after"></div>
+                      <div class="app-evidence-compare-map" id="app-evidence-compare-map-after"></div>
+                    </div>
                   </div>
                   <div class="app-evidence-frame-controls" id="app-evidence-frame-controls" hidden>
                     <button class="btn btn-secondary app-evidence-play-btn" id="app-map-play-btn" type="button">&#9654; Play</button>
