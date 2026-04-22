@@ -206,6 +206,12 @@
 .app-evidence-notes-actions{display:flex;gap:6px}
 .app-evidence-notes-add-btn{font-size:.78rem;padding:4px 10px;opacity:.75}
 .app-evidence-notes-add-btn:hover{opacity:1}
+
+/* EUDR usage dashboard (#670) */
+.app-usage-history-list{display:grid;gap:6px}
+.app-usage-row{display:flex;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--c-text);padding:4px 0;border-bottom:1px solid rgba(230,237,243,.06)}
+.app-usage-row:last-child{border-bottom:none}
+.app-usage-row span{color:var(--c-muted)}
 .app-flag-banner{padding:10px 14px;border-radius:var(--radius);font-size:.82rem;font-weight:600;line-height:1.5}
 .app-flag-banner.has-high{background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.28);color:#ffb2ad}
 .app-flag-banner.moderate-only{background:rgba(227,176,42,.12);border:1px solid rgba(227,176,42,.28);color:#f0d877}

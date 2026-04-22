@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import re
+from datetime import UTC, datetime
 
 import azure.functions as func
 
@@ -177,6 +178,153 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    with contextlib.suppress(ValueError, TypeError):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None
+
+
+def _month_key(dt: datetime) -> str:
+    return dt.strftime("%Y-%m")
+
+
+def _last_n_month_keys(n: int, *, now: datetime | None = None) -> list[str]:
+    now = now or datetime.now(UTC)
+    y = now.year
+    m = now.month
+    keys: list[str] = []
+    for _ in range(n):
+        keys.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    keys.reverse()
+    return keys
+
+
+def _org_member_ids_for_user(user_id: str) -> list[str]:
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    if not org:
+        return [user_id]
+    members = org.get("members", [])
+    member_ids: list[str] = []
+    for member in members:
+        if isinstance(member, dict):
+            mid = str(member.get("user_id", "")).strip()
+            if mid and mid not in member_ids:
+                member_ids.append(mid)
+    if user_id not in member_ids:
+        member_ids.append(user_id)
+    return member_ids
+
+
+def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
+    from blueprints.pipeline.history import _fetch_submission_records
+
+    all_records: list[dict] = []
+    for member_id in _org_member_ids_for_user(user_id):
+        all_records.extend(_fetch_submission_records(member_id, limit, offset=0, max_results=300))
+    all_records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+    return all_records[:limit]
+
+
+def _eudr_usage_payload(user_id: str) -> dict:
+    from treesight.constants import EUDR_INCLUDED_PARCELS
+    from treesight.security.eudr_billing import get_eudr_billing_status
+    from treesight.security.orgs import get_user_org
+
+    org = get_user_org(user_id)
+    org_id = org.get("org_id") if isinstance(org, dict) else ""
+    billing = get_eudr_billing_status(org_id or "")
+
+    period_used = int(billing.get("period_parcels_used", 0) or 0)
+    included = int(billing.get("included_parcels", EUDR_INCLUDED_PARCELS) or EUDR_INCLUDED_PARCELS)
+    overage = max(period_used - included, 0)
+
+    # Tier break guidance for graduated EUDR rates.
+    next_threshold = None
+    next_rate = None
+    for threshold, rate in ((100, 2.50), (500, 1.80)):
+        if period_used < threshold:
+            next_threshold = threshold
+            next_rate = rate
+            break
+
+    records = _fetch_org_run_records(user_id, limit=400)
+    month_keys = _last_n_month_keys(6)
+    by_month: dict[str, dict[str, int]] = {
+        k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys
+    }
+    for record in records:
+        submitted = _parse_iso_datetime(str(record.get("submitted_at", "")))
+        if not submitted:
+            continue
+        key = _month_key(submitted)
+        if key not in by_month:
+            continue
+        by_month[key]["runs"] += 1
+        by_month[key]["parcels"] += int(record.get("aoi_count", 0) or 0)
+        if str(record.get("billing_type", "")) == "overage":
+            by_month[key]["overage_runs"] += 1
+
+    months = [
+        {
+            "month": key,
+            "runs": by_month[key]["runs"],
+            "parcels": by_month[key]["parcels"],
+            "overageRuns": by_month[key]["overage_runs"],
+        }
+        for key in month_keys
+    ]
+
+    estimated_spend_gbp = round((overage * 3.0), 2)
+
+    return {
+        "current": {
+            "periodParcelsUsed": period_used,
+            "includedParcels": included,
+            "overageParcels": overage,
+            "estimatedSpendGbp": estimated_spend_gbp,
+            "nextTierThreshold": next_threshold,
+            "nextTierRateGbp": next_rate,
+            "parcelsToNextTier": (next_threshold - period_used) if next_threshold else 0,
+            "within20PercentOfNextTier": bool(
+                next_threshold and period_used >= int(next_threshold * 0.8)
+            ),
+        },
+        "history": months,
+    }
+
+
+@bp.route(
+    route="eudr/usage",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+def eudr_usage_status(req: func.HttpRequest) -> func.HttpResponse:
+    """GET /api/eudr/usage — org-scoped usage and billing summary for dashboard."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+    payload = _eudr_usage_payload(user_id)
+    return func.HttpResponse(
+        json.dumps(payload),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
 
 
 @bp.route(

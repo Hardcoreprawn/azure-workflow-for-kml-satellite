@@ -168,6 +168,54 @@ class TestEudrEntitlement:
 
 
 # ---------------------------------------------------------------------------
+# §2.1 — GET /api/eudr/usage
+# ---------------------------------------------------------------------------
+
+
+class TestEudrUsage:
+    @_REQUIRE_AUTH
+    @patch(
+        "blueprints.eudr._eudr_usage_payload",
+        return_value={
+            "current": {
+                "periodParcelsUsed": 47,
+                "includedParcels": 50,
+                "overageParcels": 0,
+                "estimatedSpendGbp": 0.0,
+                "nextTierThreshold": 100,
+                "nextTierRateGbp": 2.5,
+                "parcelsToNextTier": 53,
+                "within20PercentOfNextTier": False,
+            },
+            "history": [
+                {"month": "2026-01", "runs": 2, "parcels": 18, "overageRuns": 0},
+                {"month": "2026-02", "runs": 3, "parcels": 22, "overageRuns": 1},
+            ],
+        },
+    )
+    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
+    def test_returns_usage_payload(self, _auth, _payload):
+        from blueprints.eudr import eudr_usage_status
+
+        req = _make_req(url="/api/eudr/usage")
+        resp = eudr_usage_status(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["current"]["periodParcelsUsed"] == 47
+        assert data["history"][0]["month"] == "2026-01"
+
+    @_REQUIRE_AUTH
+    @patch("blueprints.eudr.check_auth", side_effect=ValueError("No token"))
+    def test_unauthenticated_returns_401(self, _auth):
+        from blueprints.eudr import eudr_usage_status
+
+        req = make_test_request(url="/api/eudr/usage", auth_header=None, principal_user_id=None)
+        resp = eudr_usage_status(req)
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # §3 — POST /api/eudr/subscribe
 # ---------------------------------------------------------------------------
 

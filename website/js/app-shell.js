@@ -3406,6 +3406,63 @@
     }
   }
 
+  /* ---- EUDR usage dashboard (#670) ---- */
+
+  async function loadEudrUsage() {
+    await apiDiscoveryReady;
+    if (!currentAccount) return;
+
+    var includedEl = document.getElementById('app-eudr-usage-included');
+    var overageEl = document.getElementById('app-eudr-usage-overage');
+    var spendEl = document.getElementById('app-eudr-usage-spend');
+    var nextTierEl = document.getElementById('app-eudr-usage-next-tier');
+    var historyListEl = document.getElementById('app-eudr-usage-history-list');
+    if (!includedEl) return;  // card not present in this build
+
+    try {
+      var res = await apiFetch('/api/eudr/usage');
+      if (!res.ok) return;
+      var data = await res.json();
+      var cur = data.current || {};
+
+      var periodUsed = cur.periodParcelsUsed || 0;
+      var included = cur.includedParcels || 0;
+      if (includedEl) includedEl.textContent = periodUsed + ' / ' + included;
+      if (overageEl) overageEl.textContent = (cur.overageParcels || 0) + ' parcels';
+      if (spendEl) {
+        var spend = cur.estimatedSpendGbp;
+        spendEl.textContent = (spend != null) ? ('£' + spend.toFixed(2)) : '—';
+      }
+      if (nextTierEl) {
+        if (cur.nextTierThreshold) {
+          var msg = cur.parcelsToNextTier + ' until next tier (£' + cur.nextTierRateGbp + '/parcel)';
+          nextTierEl.textContent = msg;
+          if (cur.within20PercentOfNextTier) nextTierEl.style.fontWeight = '600';
+        } else {
+          nextTierEl.textContent = 'Maximum tier reached';
+        }
+      }
+
+      if (historyListEl && data.history && data.history.length) {
+        var html = '<div class="app-usage-history-list">';
+        data.history.forEach(function(m) {
+          html += '<div class="app-usage-row">' +
+            '<strong>' + (m.month || '') + '</strong>' +
+            '<span>' + (m.runs || 0) + ' runs</span>' +
+            '<span>' + (m.parcels || 0) + ' parcels</span>' +
+            (m.overageRuns ? '<span class="app-warning-text">' + m.overageRuns + ' overage</span>' : '') +
+            '</div>';
+        });
+        html += '</div>';
+        historyListEl.innerHTML = html;
+      } else if (historyListEl) {
+        historyListEl.textContent = 'No usage history yet.';
+      }
+    } catch (e) {
+      console.warn('EUDR usage load error:', e);
+    }
+  }
+
   async function loadAnalysisHistory(options) {
     await apiDiscoveryReady;
     if (!currentAccount && authEnabled()) return;
@@ -3505,6 +3562,7 @@
         renderAnalysisHistoryList();
       }
       apiDiscoveryReady.then(loadBillingStatus);
+      apiDiscoveryReady.then(loadEudrUsage);
       apiDiscoveryReady.then(function() {
         loadAnalysisHistory();
       });
