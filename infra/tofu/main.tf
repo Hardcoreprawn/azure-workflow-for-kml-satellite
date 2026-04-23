@@ -34,6 +34,21 @@ resource "azurerm_storage_account" "main" {
       max_age_in_seconds = 3600
     }
   }
+
+  identity {
+    type         = "SystemAssigned, UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.storage_cmk.id]
+  }
+
+  customer_managed_key {
+    key_vault_key_id          = azurerm_key_vault_key.storage_cmk.id
+    user_assigned_identity_id = azurerm_user_assigned_identity.storage_cmk.id
+  }
+
+  depends_on = [
+    azurerm_role_assignment.storage_cmk_kv_crypto_user,
+  ]
+
   tags = local.tags
 }
 
@@ -326,6 +341,35 @@ resource "azurerm_key_vault" "main" {
   tags                          = local.tags
 }
 
+resource "azurerm_user_assigned_identity" "storage_cmk" {
+  name                = "id-${local.name_suffix}-storage-cmk"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = local.tags
+}
+
+resource "azurerm_key_vault_key" "storage_cmk" {
+  name         = "cmk-storage-${local.name_suffix}"
+  key_vault_id = azurerm_key_vault.main.id
+  key_type     = "RSA"
+  key_size     = 2048
+  key_opts = [
+    "decrypt",
+    "encrypt",
+    "sign",
+    "unwrapKey",
+    "verify",
+    "wrapKey",
+  ]
+  tags = local.tags
+}
+
+resource "azurerm_role_assignment" "storage_cmk_kv_crypto_user" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Crypto Service Encryption User"
+  principal_id         = azurerm_user_assigned_identity.storage_cmk.principal_id
+}
+
 # --- Azure Communication Services Email ---
 
 resource "azurerm_communication_service" "main" {
@@ -431,7 +475,7 @@ resource "azurerm_cosmosdb_account" "main" {
   # Container Apps has no static egress IPs / VNet integration yet.
   # Add VNet + private endpoint when user volume justifies the cost.
   local_authentication_disabled         = true
-  public_network_access_enabled         = var.cosmos_public_network_access  # fixes #640
+  public_network_access_enabled         = var.cosmos_public_network_access # fixes #640
   minimal_tls_version                   = "Tls12"
   network_acl_bypass_for_azure_services = true
 }
