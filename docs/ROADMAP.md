@@ -40,7 +40,7 @@ not at the bottom.
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
 `#519` self-host Leaflet · `#569` old domain · `#570` ops docs risk · `#584` data model ·
 `#525`/`#526` deploy perf · `#252`/`#228` rate limiter/replay (Stage 4) ·
-`#402` security-gated prd deploys (deferred — single environment makes full scope premature; Trivy container scan blocking already enabled in deploy.yml)
+`#402` security-gated production deploys (deferred in single-environment operation; keep minimal blocking scan control shipped in PR #711)
 
 **Stage 4 starts after Stage 3 is generating revenue** — see Stage 4 section below.
 
@@ -88,13 +88,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #711 | chore: defer full #402 gating scope for single-env operation and make deploy image Trivy scan blocking (refs #402) |
 | #707 | fix: Stage 2E.2 reduce OpenTofu/CLI drift — deploy-time contract verification for Function App settings/images + ownership boundary docs (closes #405) |
 | #706 | chore: CI/security release-safety hardening — action pin upgrades (Trivy, CodeQL v4, Node24-compatible actions) + deploy readiness gate diagnostics/timeout hardening (closes #697, #698, #550, #551) |
 | #703 | fix: enforce run ownership for timelapse save/load and return 503 on run-lookup backend failures (closes #696) |
 | #702 | fix: CodeQL taint chain for subscription_item_id logging — drop si from log messages (closes #701) |
 | #695 | feat: Stage 3C complete — before/after imagery (#671), annotation notes (#669), human override (#672), usage dashboard (#670), aggregated summary export (#674), portfolio dashboard (#673) |
-| #691 | feat: Stage 3B.5 #466 + #688 — Orchestrator/compute image split (PIPELINE_ROLE, Dockerfile.orchestrator, dual-image CI) + monitoring delta fetch + NDVI baseline persistence |
-| #690 | feat: Stage 3B complete — imagery quality gate, provenance contract, dynamic layer picker, defensible PDF (closes #645, #649, #646, #647) |
 
 ---
 
@@ -138,7 +137,7 @@ Build once, promote dev → prod.
 |-------|-------|-------|--------|
 | 2E.1 | #401 | Separate dev and prod deployment flows | ✅ Closed |
 | 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | ✅ PR #707 |
-| 2E.3 | #402 | Security-gated production deploys | ⏸ Deferred (single env) |
+| 2E.3 | #402 | Security-gated production deploys | ⏸ Deferred (single env; partial hardening in PR #711) |
 | 2E.4 | #403 | Smoke gates, promotion/demotion | Open |
 
 **Exit:** Immutable artifact promotion. Security-gated. Smoke before traffic.
