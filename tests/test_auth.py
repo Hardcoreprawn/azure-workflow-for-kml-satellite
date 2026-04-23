@@ -11,6 +11,7 @@ import pytest
 from treesight.security.auth import (
     auth_enabled,
     get_user_id,
+    parse_bearer_token,
     parse_client_principal,
 )
 
@@ -100,6 +101,96 @@ class TestGetUserId:
 
     def test_returns_empty_when_missing(self):
         assert get_user_id({}) == ""
+
+
+class TestParseBearerToken:
+    def test_extracts_token(self):
+        assert parse_bearer_token("Bearer abc.def.ghi") == "abc.def.ghi"
+
+    def test_returns_none_when_missing(self):
+        assert parse_bearer_token("") is None
+
+    def test_returns_none_on_non_bearer(self):
+        assert parse_bearer_token("Basic abc123") is None
+
+    def test_returns_none_on_non_string_header(self):
+        assert parse_bearer_token(None) is None
+
+    def test_raises_on_empty_bearer_value(self):
+        with pytest.raises(ValueError, match="Missing bearer token"):
+            parse_bearer_token("Bearer   ")
+
+
+class TestVerifyBearerToken:
+    def test_rejects_when_bearer_disabled(self):
+        from treesight.security.auth import verify_bearer_token
+
+        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", False):
+            with pytest.raises(ValueError, match="not enabled"):
+                verify_bearer_token("token")
+
+    def test_rejects_when_config_missing(self):
+        from treesight.security.auth import verify_bearer_token
+
+        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
+            with patch("treesight.security.auth.CIAM_JWT_ISSUER", ""):
+                with pytest.raises(ValueError, match="not configured"):
+                    verify_bearer_token("token")
+
+    def test_verifies_token_with_expected_claims(self):
+        from treesight.security.auth import verify_bearer_token
+
+        fake_key_client = MagicMock()
+        fake_key_client.get_signing_key_from_jwt.return_value = MagicMock(key="public-key")
+
+        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
+            with patch("treesight.security.auth.CIAM_JWT_ISSUER", "https://issuer.example"):
+                with patch("treesight.security.auth.CIAM_JWT_AUDIENCE", "audience-id"):
+                    with patch(
+                        "treesight.security.auth.CIAM_JWKS_URL", "https://issuer.example/keys"
+                    ):
+                        with patch("treesight.security.auth.CIAM_JWT_LEEWAY_SECONDS", 60):
+                            with patch(
+                                "treesight.security.auth._jwks_client",
+                                return_value=fake_key_client,
+                            ):
+                                with patch("jwt.decode") as decode:
+                                    decode.return_value = {"sub": "user-sub"}
+
+                                    claims = verify_bearer_token("abc.def.ghi")
+
+        assert claims["sub"] == "user-sub"
+        decode.assert_called_once_with(
+            "abc.def.ghi",
+            key="public-key",
+            algorithms=["RS256"],
+            audience="audience-id",
+            issuer="https://issuer.example",
+            leeway=60,
+            options={"require": ["exp", "iss", "aud", "sub"]},
+        )
+
+    def test_rejects_when_subject_missing(self):
+        from treesight.security.auth import verify_bearer_token
+
+        fake_key_client = MagicMock()
+        fake_key_client.get_signing_key_from_jwt.return_value = MagicMock(key="public-key")
+
+        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
+            with patch("treesight.security.auth.CIAM_JWT_ISSUER", "https://issuer.example"):
+                with patch("treesight.security.auth.CIAM_JWT_AUDIENCE", "audience-id"):
+                    with patch(
+                        "treesight.security.auth.CIAM_JWKS_URL", "https://issuer.example/keys"
+                    ):
+                        with patch(
+                            "treesight.security.auth._jwks_client",
+                            return_value=fake_key_client,
+                        ):
+                            with patch(
+                                "jwt.decode", return_value={"iss": "https://issuer.example"}
+                            ):
+                                with pytest.raises(ValueError, match="missing subject"):
+                                    verify_bearer_token("abc.def.ghi")
 
 
 # ---------------------------------------------------------------------------

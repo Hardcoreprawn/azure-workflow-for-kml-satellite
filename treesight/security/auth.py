@@ -18,6 +18,7 @@ import hmac as _hmac
 import json
 import logging
 import time
+from functools import lru_cache
 from typing import Any
 
 from treesight.config import (
@@ -101,12 +102,11 @@ def verify_bearer_token(token: str) -> dict[str, Any]:
 
     try:
         import jwt
-        from jwt import PyJWKClient
     except Exception as exc:  # pragma: no cover - dependency wiring failure
         raise ValueError("Bearer token verification dependency is unavailable") from exc
 
     try:
-        signing_key = PyJWKClient(CIAM_JWKS_URL).get_signing_key_from_jwt(token).key
+        signing_key = _jwks_client(CIAM_JWKS_URL).get_signing_key_from_jwt(token).key
         claims = jwt.decode(
             token,
             key=signing_key,
@@ -125,6 +125,14 @@ def verify_bearer_token(token: str) -> dict[str, Any]:
         raise ValueError("Bearer token missing subject")
 
     return claims
+
+
+@lru_cache(maxsize=4)
+def _jwks_client(jwks_url: str):
+    """Return a cached PyJWKClient for the given JWKS URL."""
+    from jwt import PyJWKClient
+
+    return PyJWKClient(jwks_url)
 
 
 # ---------------------------------------------------------------------------
