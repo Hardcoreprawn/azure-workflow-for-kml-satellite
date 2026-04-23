@@ -95,12 +95,16 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 # X-MS-CLIENT-PRINCIPAL header in production.
 REQUIRE_AUTH = _env_bool("REQUIRE_AUTH", False)
 
-# CIAM-native bearer JWT auth (#709).
-# Disabled by default while the frontend migrates from SWA principal headers.
-CIAM_BEARER_AUTH_ENABLED = _env_bool("CIAM_BEARER_AUTH_ENABLED", False)
-CIAM_JWT_ISSUER = _env("CIAM_JWT_ISSUER")
-CIAM_JWT_AUDIENCE = _env("CIAM_JWT_AUDIENCE")
-CIAM_JWKS_URL = _env("CIAM_JWKS_URL")
+# Auth mode migration switch (#709).
+# - legacy_principal: SWA X-MS-CLIENT-PRINCIPAL (+ optional HMAC)
+# - dual: bearer JWT first, fallback to legacy principal
+# - bearer_only: bearer JWT required for protected routes
+AUTH_MODE = _env("AUTH_MODE", "legacy_principal").strip().lower() or "legacy_principal"
+
+# CIAM-native bearer JWT config (#709).
+CIAM_AUTHORITY = _env("CIAM_AUTHORITY")
+CIAM_TENANT_ID = _env("CIAM_TENANT_ID")
+CIAM_API_AUDIENCE = _env("CIAM_API_AUDIENCE")
 CIAM_JWT_LEEWAY_SECONDS = _env_int("CIAM_JWT_LEEWAY_SECONDS", 60)
 
 # HMAC auth verification (#534).  When set, require_auth verifies a
@@ -152,14 +156,16 @@ def validate_config() -> None:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:
         errors.append(f"AOI_MAX_AREA_HA must be > 0, got {AOI_MAX_AREA_HA}")
-    if CIAM_BEARER_AUTH_ENABLED:
-        if not CIAM_JWT_ISSUER:
-            errors.append("CIAM_JWT_ISSUER must be set when CIAM_BEARER_AUTH_ENABLED=true")
-        if not CIAM_JWT_AUDIENCE:
-            errors.append("CIAM_JWT_AUDIENCE must be set when CIAM_BEARER_AUTH_ENABLED=true")
-        if not CIAM_JWKS_URL:
-            errors.append("CIAM_JWKS_URL must be set when CIAM_BEARER_AUTH_ENABLED=true")
-        if CIAM_JWT_LEEWAY_SECONDS < 0:
-            errors.append("CIAM_JWT_LEEWAY_SECONDS must be >= 0 when CIAM_BEARER_AUTH_ENABLED=true")
+    if AUTH_MODE not in {"legacy_principal", "dual", "bearer_only"}:
+        errors.append("AUTH_MODE must be one of legacy_principal, dual, bearer_only")
+    if AUTH_MODE in {"dual", "bearer_only"}:
+        if not CIAM_AUTHORITY:
+            errors.append("CIAM_AUTHORITY must be set when AUTH_MODE is dual or bearer_only")
+        if not CIAM_TENANT_ID:
+            errors.append("CIAM_TENANT_ID must be set when AUTH_MODE is dual or bearer_only")
+        if not CIAM_API_AUDIENCE:
+            errors.append("CIAM_API_AUDIENCE must be set when AUTH_MODE is dual or bearer_only")
+    if CIAM_JWT_LEEWAY_SECONDS < 0:
+        errors.append("CIAM_JWT_LEEWAY_SECONDS must be >= 0")
     if errors:
         raise ConfigValidationError("; ".join(errors))

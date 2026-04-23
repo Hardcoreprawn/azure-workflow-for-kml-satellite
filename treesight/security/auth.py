@@ -21,12 +21,14 @@ import time
 from functools import lru_cache
 from typing import Any
 
+import requests
+
 from treesight.config import (
-    CIAM_BEARER_AUTH_ENABLED,
-    CIAM_JWKS_URL,
-    CIAM_JWT_AUDIENCE,
-    CIAM_JWT_ISSUER,
+    AUTH_MODE,
+    CIAM_API_AUDIENCE,
+    CIAM_AUTHORITY,
     CIAM_JWT_LEEWAY_SECONDS,
+    CIAM_TENANT_ID,
 )
 
 logger = logging.getLogger(__name__)
@@ -87,17 +89,21 @@ def parse_bearer_token(authorization_header: str) -> str | None:
 
 def get_user_id_from_bearer_claims(claims: dict[str, Any]) -> str:
     """Extract stable user id from verified JWT claims."""
-    return str(claims.get("oid") or claims.get("sub") or "")
+    tenant_id = claims.get("tid")
+    object_id = claims.get("oid")
+    if tenant_id and object_id:
+        return f"{tenant_id}:{object_id}"
+    return ""
 
 
 def verify_bearer_token(token: str) -> dict[str, Any]:
     """Verify CIAM bearer JWT and return decoded claims.
 
-    Verification is disabled unless ``CIAM_BEARER_AUTH_ENABLED`` is true.
+    Verification is enabled only in ``AUTH_MODE`` dual or bearer_only.
     """
-    if not CIAM_BEARER_AUTH_ENABLED:
+    if AUTH_MODE not in {"dual", "bearer_only"}:
         raise ValueError("Bearer token auth is not enabled")
-    if not CIAM_JWT_ISSUER or not CIAM_JWT_AUDIENCE or not CIAM_JWKS_URL:
+    if not CIAM_AUTHORITY or not CIAM_TENANT_ID or not CIAM_API_AUDIENCE:
         raise ValueError("Bearer token auth is not configured")
 
     try:
@@ -106,20 +112,24 @@ def verify_bearer_token(token: str) -> dict[str, Any]:
         raise ValueError("Bearer token verification dependency is unavailable") from exc
 
     try:
-        signing_key = _jwks_client(CIAM_JWKS_URL).get_signing_key_from_jwt(token).key
+        metadata = _oidc_metadata(CIAM_AUTHORITY, CIAM_TENANT_ID)
+        signing_key = _jwks_client(metadata["jwks_uri"]).get_signing_key_from_jwt(token).key
         claims = jwt.decode(
             token,
             key=signing_key,
             algorithms=["RS256"],
-            audience=CIAM_JWT_AUDIENCE,
-            issuer=CIAM_JWT_ISSUER,
+            audience=CIAM_API_AUDIENCE,
+            issuer=metadata["issuer"],
             leeway=CIAM_JWT_LEEWAY_SECONDS,
             options={
-                "require": ["exp", "iss", "aud", "sub"],
+                "require": ["exp", "iss", "aud", "nbf", "tid", "oid", "ver"],
             },
         )
     except Exception:
         raise ValueError("Invalid bearer token") from None
+
+    if claims.get("ver") not in {"1.0", "2.0"}:
+        raise ValueError("Invalid bearer token")
 
     if not get_user_id_from_bearer_claims(claims):
         raise ValueError("Bearer token missing subject")
@@ -133,6 +143,26 @@ def _jwks_client(jwks_url: str):
     from jwt import PyJWKClient
 
     return PyJWKClient(jwks_url)
+
+
+@lru_cache(maxsize=2)
+def _oidc_metadata(authority: str, tenant_id: str) -> dict[str, str]:
+    """Fetch OIDC metadata and return issuer/JWKS values."""
+    authority = authority.rstrip("/")
+    url = f"{authority}/{tenant_id}/v2.0/.well-known/openid-configuration"
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    metadata = response.json()
+
+    issuer = metadata.get("issuer")
+    jwks_uri = metadata.get("jwks_uri")
+    if not issuer or not jwks_uri:
+        raise ValueError("Invalid OIDC metadata")
+
+    return {
+        "issuer": issuer,
+        "jwks_uri": jwks_uri,
+    }
 
 
 # ---------------------------------------------------------------------------

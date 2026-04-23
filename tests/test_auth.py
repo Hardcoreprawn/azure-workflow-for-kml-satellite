@@ -125,15 +125,15 @@ class TestVerifyBearerToken:
     def test_rejects_when_bearer_disabled(self):
         from treesight.security.auth import verify_bearer_token
 
-        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", False):
+        with patch("treesight.security.auth.AUTH_MODE", "legacy_principal"):
             with pytest.raises(ValueError, match="not enabled"):
                 verify_bearer_token("token")
 
     def test_rejects_when_config_missing(self):
         from treesight.security.auth import verify_bearer_token
 
-        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
-            with patch("treesight.security.auth.CIAM_JWT_ISSUER", ""):
+        with patch("treesight.security.auth.AUTH_MODE", "dual"):
+            with patch("treesight.security.auth.CIAM_AUTHORITY", ""):
                 with pytest.raises(ValueError, match="not configured"):
                     verify_bearer_token("token")
 
@@ -143,23 +143,35 @@ class TestVerifyBearerToken:
         fake_key_client = MagicMock()
         fake_key_client.get_signing_key_from_jwt.return_value = MagicMock(key="public-key")
 
-        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
-            with patch("treesight.security.auth.CIAM_JWT_ISSUER", "https://issuer.example"):
-                with patch("treesight.security.auth.CIAM_JWT_AUDIENCE", "audience-id"):
-                    with patch(
-                        "treesight.security.auth.CIAM_JWKS_URL", "https://issuer.example/keys"
-                    ):
+        metadata = {"issuer": "https://issuer.example", "jwks_uri": "https://issuer.example/keys"}
+
+        with patch("treesight.security.auth.AUTH_MODE", "dual"):
+            with patch("treesight.security.auth.CIAM_AUTHORITY", "https://issuer.example"):
+                with patch("treesight.security.auth.CIAM_TENANT_ID", "tenant-id"):
+                    with patch("treesight.security.auth.CIAM_API_AUDIENCE", "audience-id"):
                         with patch("treesight.security.auth.CIAM_JWT_LEEWAY_SECONDS", 60):
                             with patch(
-                                "treesight.security.auth._jwks_client",
-                                return_value=fake_key_client,
+                                "treesight.security.auth._oidc_metadata",
+                                return_value=metadata,
                             ):
-                                with patch("jwt.decode") as decode:
-                                    decode.return_value = {"sub": "user-sub"}
+                                with patch(
+                                    "treesight.security.auth._jwks_client",
+                                    return_value=fake_key_client,
+                                ):
+                                    with patch("jwt.decode") as decode:
+                                        decode.return_value = {
+                                            "tid": "tenant-id",
+                                            "oid": "object-id",
+                                            "ver": "2.0",
+                                            "nbf": 1,
+                                            "exp": 2,
+                                            "iss": "https://issuer.example",
+                                            "aud": "audience-id",
+                                        }
 
-                                    claims = verify_bearer_token("abc.def.ghi")
+                                        claims = verify_bearer_token("abc.def.ghi")
 
-        assert claims["sub"] == "user-sub"
+        assert claims["oid"] == "object-id"
         decode.assert_called_once_with(
             "abc.def.ghi",
             key="public-key",
@@ -167,7 +179,7 @@ class TestVerifyBearerToken:
             audience="audience-id",
             issuer="https://issuer.example",
             leeway=60,
-            options={"require": ["exp", "iss", "aud", "sub"]},
+            options={"require": ["exp", "iss", "aud", "nbf", "tid", "oid", "ver"]},
         )
 
     def test_rejects_when_subject_missing(self):
@@ -176,21 +188,29 @@ class TestVerifyBearerToken:
         fake_key_client = MagicMock()
         fake_key_client.get_signing_key_from_jwt.return_value = MagicMock(key="public-key")
 
-        with patch("treesight.security.auth.CIAM_BEARER_AUTH_ENABLED", True):
-            with patch("treesight.security.auth.CIAM_JWT_ISSUER", "https://issuer.example"):
-                with patch("treesight.security.auth.CIAM_JWT_AUDIENCE", "audience-id"):
-                    with patch(
-                        "treesight.security.auth.CIAM_JWKS_URL", "https://issuer.example/keys"
-                    ):
-                        with patch(
-                            "treesight.security.auth._jwks_client",
-                            return_value=fake_key_client,
-                        ):
+        metadata = {"issuer": "https://issuer.example", "jwks_uri": "https://issuer.example/keys"}
+
+        with patch("treesight.security.auth.AUTH_MODE", "dual"):
+            with patch("treesight.security.auth.CIAM_AUTHORITY", "https://issuer.example"):
+                with patch("treesight.security.auth.CIAM_TENANT_ID", "tenant-id"):
+                    with patch("treesight.security.auth.CIAM_API_AUDIENCE", "audience-id"):
+                        with patch("treesight.security.auth._oidc_metadata", return_value=metadata):
                             with patch(
-                                "jwt.decode", return_value={"iss": "https://issuer.example"}
+                                "treesight.security.auth._jwks_client",
+                                return_value=fake_key_client,
                             ):
-                                with pytest.raises(ValueError, match="missing subject"):
-                                    verify_bearer_token("abc.def.ghi")
+                                with patch(
+                                    "jwt.decode",
+                                    return_value={
+                                        "ver": "2.0",
+                                        "nbf": 1,
+                                        "exp": 2,
+                                        "iss": "https://issuer.example",
+                                        "aud": "audience-id",
+                                    },
+                                ):
+                                    with pytest.raises(ValueError, match="missing subject"):
+                                        verify_bearer_token("abc.def.ghi")
 
 
 # ---------------------------------------------------------------------------
@@ -302,12 +322,13 @@ class TestCheckAuth:
             "Authorization": "Bearer valid.jwt.token",
         }
 
-        with patch("blueprints._helpers.verify_bearer_token") as verify:
-            verify.return_value = {"sub": "jwt-user", "iss": "https://issuer.example"}
-            claims, user_id = check_auth(mock_req)
+        with patch("blueprints._helpers.AUTH_MODE", "dual"):
+            with patch("blueprints._helpers.verify_bearer_token") as verify:
+                verify.return_value = {"tid": "tenant-id", "oid": "object-id", "ver": "2.0"}
+                claims, user_id = check_auth(mock_req)
 
-        assert claims["sub"] == "jwt-user"
-        assert user_id == "jwt-user"
+        assert claims["oid"] == "object-id"
+        assert user_id == "tenant-id:object-id"
 
     def test_rejects_invalid_bearer_token(self):
         """check_auth rejects invalid bearer JWT with a user-safe message (#709)."""
@@ -318,10 +339,37 @@ class TestCheckAuth:
             "Authorization": "Bearer invalid.jwt.token",
         }
 
-        with patch("blueprints._helpers.verify_bearer_token") as verify:
-            verify.side_effect = ValueError("Invalid bearer token")
-            with pytest.raises(ValueError, match="Invalid bearer token"):
+        with patch("blueprints._helpers.AUTH_MODE", "dual"):
+            with patch("blueprints._helpers.verify_bearer_token") as verify:
+                verify.side_effect = ValueError("Invalid bearer token")
+                with pytest.raises(ValueError, match="Invalid bearer token"):
+                    check_auth(mock_req)
+
+    def test_bearer_only_requires_bearer_token(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
+        }
+
+        with patch("blueprints._helpers.AUTH_MODE", "bearer_only"):
+            with pytest.raises(ValueError, match="Authentication required"):
                 check_auth(mock_req)
+
+    def test_dual_mode_keeps_legacy_fallback(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
+        }
+
+        with patch("blueprints._helpers.AUTH_MODE", "dual"):
+            principal, user_id = check_auth(mock_req)
+
+        assert principal["userId"] == "u-99"
+        assert user_id == "u-99"
 
 
 # ---------------------------------------------------------------------------
@@ -440,13 +488,14 @@ class TestRequireAuth:
             "Authorization": "Bearer valid.jwt.token",
         }
 
-        with patch("blueprints._helpers.verify_bearer_token") as verify:
-            verify.return_value = {"sub": "jwt-user"}
-            resp = my_endpoint(mock_req)
+        with patch("blueprints._helpers.AUTH_MODE", "dual"):
+            with patch("blueprints._helpers.verify_bearer_token") as verify:
+                verify.return_value = {"tid": "tenant-id", "oid": "object-id", "ver": "2.0"}
+                resp = my_endpoint(mock_req)
 
         body = json.loads(resp.get_body())
-        assert body["user"] == "jwt-user"
-        assert body["subject"] == "jwt-user"
+        assert body["user"] == "tenant-id:object-id"
+        assert body["subject"] is None
 
     def test_rejects_invalid_bearer_token(self):
         from blueprints._helpers import require_auth
@@ -463,8 +512,27 @@ class TestRequireAuth:
             "Authorization": "Bearer invalid.jwt.token",
         }
 
-        with patch("blueprints._helpers.verify_bearer_token") as verify:
-            verify.side_effect = ValueError("Invalid bearer token")
+        with patch("blueprints._helpers.AUTH_MODE", "dual"):
+            with patch("blueprints._helpers.verify_bearer_token") as verify:
+                verify.side_effect = ValueError("Invalid bearer token")
+                resp = my_endpoint(mock_req)
+
+        assert resp.status_code == 401
+
+    def test_bearer_only_rejects_legacy_principal(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse("OK")
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-1")}
+
+        with patch("blueprints._helpers.AUTH_MODE", "bearer_only"):
             resp = my_endpoint(mock_req)
 
         assert resp.status_code == 401
