@@ -9,8 +9,15 @@ from typing import Any
 
 import azure.functions as func
 
-from treesight.config import AUTH_HMAC_KEY
-from treesight.security.auth import get_user_id, parse_client_principal, verify_session_token
+from treesight.config import AUTH_HMAC_KEY, AUTH_MODE
+from treesight.security.auth import (
+    get_user_id,
+    get_user_id_from_bearer_claims,
+    parse_bearer_token,
+    parse_client_principal,
+    verify_bearer_token,
+    verify_session_token,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +136,28 @@ def _verify_hmac(req: func.HttpRequest, uid: str) -> str | None:
     return None
 
 
+def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
+    """Return verified bearer claims, or None when bearer mode is not active.
+
+    This keeps legacy SWA-principal auth working during the CIAM transition
+    when callers still send placeholder Authorization headers.
+    """
+    mode = (
+        AUTH_MODE
+        if AUTH_MODE in {"legacy_principal", "dual", "bearer_only"}
+        else "legacy_principal"
+    )
+    if mode == "legacy_principal":
+        return None
+
+    auth_header = req.headers.get("Authorization", "")
+    bearer = parse_bearer_token(auth_header)
+    if not bearer:
+        return None
+
+    return verify_bearer_token(bearer)
+
+
 def require_auth(fn):
     """Decorator that validates SWA X-MS-CLIENT-PRINCIPAL on the request.
 
@@ -152,6 +181,21 @@ def require_auth(fn):
         import time as _time
 
         _t0 = _time.monotonic()
+        try:
+            claims = _resolve_bearer_claims(req)
+        except ValueError as exc:
+            return error_response(401, str(exc), req=req)
+
+        if claims:
+            uid = get_user_id_from_bearer_claims(claims)
+            logger.info("auth_path=bearer mode=%s", AUTH_MODE)
+            resp = fn(req, auth_claims=claims, user_id=uid)
+            _track_req(req, resp, uid, _t0)
+            return resp
+
+        if AUTH_MODE == "bearer_only":
+            return error_response(401, "Authentication required", req=req)
+
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if not principal_header:
             if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
@@ -171,6 +215,7 @@ def require_auth(fn):
         if hmac_err:
             return error_response(401, hmac_err, req=req)
 
+        logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
         resp = fn(req, auth_claims=principal, user_id=uid)
         _track_req(req, resp, uid, _t0)
         return resp
@@ -198,6 +243,21 @@ def require_auth_hmac_exempt(fn):
         import time as _time
 
         _t0 = _time.monotonic()
+        try:
+            claims = _resolve_bearer_claims(req)
+        except ValueError as exc:
+            return error_response(401, str(exc), req=req)
+
+        if claims:
+            uid = get_user_id_from_bearer_claims(claims)
+            logger.info("auth_path=bearer mode=%s", AUTH_MODE)
+            resp = fn(req, auth_claims=claims, user_id=uid)
+            _track_req(req, resp, uid, _t0)
+            return resp
+
+        if AUTH_MODE == "bearer_only":
+            return error_response(401, "Authentication required", req=req)
+
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if not principal_header:
             if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
@@ -212,6 +272,7 @@ def require_auth_hmac_exempt(fn):
             return error_response(401, str(exc), req=req)
 
         uid = get_user_id(principal)
+        logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
         resp = fn(req, auth_claims=principal, user_id=uid)
         _track_req(req, resp, uid, _t0)
         return resp
@@ -230,6 +291,14 @@ def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     When ``AUTH_HMAC_KEY`` is configured, also verifies the ``X-Auth-Session``
     HMAC token (same check that ``@require_auth`` performs).
     """
+    claims = _resolve_bearer_claims(req)
+    if claims:
+        logger.info("auth_path=bearer mode=%s", AUTH_MODE)
+        return claims, get_user_id_from_bearer_claims(claims)
+
+    if AUTH_MODE == "bearer_only":
+        raise ValueError("Authentication required")
+
     principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
     if not principal_header:
         if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
@@ -242,6 +311,7 @@ def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     if hmac_err:
         raise ValueError(hmac_err)
 
+    logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
     return principal, uid
 
 

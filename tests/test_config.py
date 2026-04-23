@@ -63,3 +63,45 @@ class TestValidateConfig:
             with pytest.raises(ConfigValidationError):
                 cfg.validate_config()
             importlib.reload(cfg)
+
+    def test_dual_mode_requires_ciam_settings(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_MODE": "dual",
+                "CIAM_AUTHORITY": "",
+                "CIAM_TENANT_ID": "",
+                "CIAM_API_AUDIENCE": "",
+            },
+            clear=False,
+        ):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            with pytest.raises(ConfigValidationError, match="CIAM_AUTHORITY"):
+                cfg.validate_config()
+            importlib.reload(cfg)
+
+    def test_dual_mode_with_valid_settings_passes(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_MODE": "dual",
+                "CIAM_AUTHORITY": "https://issuer.example",
+                "CIAM_TENANT_ID": "tenant-id",
+                "CIAM_API_AUDIENCE": "client-id",
+                "CIAM_JWT_LEEWAY_SECONDS": "60",
+            },
+            clear=False,
+        ):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            cfg.validate_config()
+            importlib.reload(cfg)
+
+    def test_rejects_invalid_auth_mode(self):
+        with patch.dict(os.environ, {"AUTH_MODE": "unsupported-mode"}, clear=False):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            with pytest.raises(ConfigValidationError, match="AUTH_MODE"):
+                cfg.validate_config()
+            importlib.reload(cfg)
