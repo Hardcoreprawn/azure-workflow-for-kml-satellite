@@ -76,12 +76,16 @@ def parse_bearer_token(authorization_header: str) -> str | None:
     """Extract a bearer token from ``Authorization`` header value."""
     if not isinstance(authorization_header, str):
         return None
-    if not authorization_header:
-        return None
-    if not authorization_header.startswith("Bearer "):
+    header_value = authorization_header.strip()
+    if not header_value:
         return None
 
-    token = authorization_header[7:].strip()
+    parts = header_value.split(None, 1)
+    scheme = parts[0]
+    if scheme.lower() != "bearer":
+        return None
+
+    token = parts[1].strip() if len(parts) > 1 else ""
     if not token:
         raise ValueError("Missing bearer token")
     return token

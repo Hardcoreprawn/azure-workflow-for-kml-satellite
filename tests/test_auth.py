@@ -107,6 +107,9 @@ class TestParseBearerToken:
     def test_extracts_token(self):
         assert parse_bearer_token("Bearer abc.def.ghi") == "abc.def.ghi"
 
+    def test_extracts_token_with_lowercase_scheme(self):
+        assert parse_bearer_token("bearer abc.def.ghi") == "abc.def.ghi"
+
     def test_returns_none_when_missing(self):
         assert parse_bearer_token("") is None
 
