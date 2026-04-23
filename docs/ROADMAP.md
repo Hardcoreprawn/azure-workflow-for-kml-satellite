@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ---
 
@@ -15,29 +15,32 @@ not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
 | --- | ---------- | ---- | ------------- | -------- |
-| 1 | #405 | — | fix: reduce config drift (OpenTofu vs az CLI) — Stage 2E.2 | 🔄 In progress |
-| 2 | #402 | — | fix: security-gated production deploys — Stage 2E.3 | Open |
-| 3 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
-| 4 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 5 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 6 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 7 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 8 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 9 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 10 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 11 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 12 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 13 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 14 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 15 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 16 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 17 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 18 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+| 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | Open |
+| 2 | #710 | — | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | Open (post #709) |
+| 3 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocking revenue |
+| 4 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
+| 5 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 6 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 7 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 8 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 9 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 10 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 11 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 12 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 13 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 14 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 15 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 16 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 17 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 18 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 19 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 20 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
 
 **Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
 `#519` self-host Leaflet · `#569` old domain · `#570` ops docs risk · `#584` data model ·
-`#525`/`#526` deploy perf · `#252`/`#228` rate limiter/replay (Stage 4)
+`#525`/`#526` deploy perf · `#252`/`#228` rate limiter/replay (Stage 4) ·
+`#402` security-gated prd deploys (deferred — single environment makes full scope premature; Trivy container scan blocking already enabled in deploy.yml)
 
 **Stage 4 starts after Stage 3 is generating revenue** — see Stage 4 section below.
 
@@ -85,6 +88,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #707 | fix: Stage 2E.2 reduce OpenTofu/CLI drift — deploy-time contract verification for Function App settings/images + ownership boundary docs (closes #405) |
 | #706 | chore: CI/security release-safety hardening — action pin upgrades (Trivy, CodeQL v4, Node24-compatible actions) + deploy readiness gate diagnostics/timeout hardening (closes #697, #698, #550, #551) |
 | #703 | fix: enforce run ownership for timelapse save/load and return 503 on run-lookup backend failures (closes #696) |
 | #702 | fix: CodeQL taint chain for subscription_item_id logging — drop si from log messages (closes #701) |
@@ -133,8 +137,8 @@ Build once, promote dev → prod.
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
 | 2E.1 | #401 | Separate dev and prod deployment flows | ✅ Closed |
-| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | 🔄 In progress |
-| 2E.3 | #402 | Security-gated production deploys | Open |
+| 2E.2 | #405 | Reduce config drift (OpenTofu vs az CLI) | ✅ PR #707 |
+| 2E.3 | #402 | Security-gated production deploys | ⏸ Deferred (single env) |
 | 2E.4 | #403 | Smoke gates, promotion/demotion | Open |
 
 **Exit:** Immutable artifact promotion. Security-gated. Smoke before traffic.
