@@ -36,12 +36,12 @@ resource "azurerm_storage_account" "main" {
   }
 
   identity {
-    type         = "SystemAssigned, UserAssigned"
+    type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.storage_cmk.id]
   }
 
   customer_managed_key {
-    key_vault_key_id          = azurerm_key_vault_key.storage_cmk.id
+    key_vault_key_id          = azurerm_key_vault_key.storage_cmk.versionless_id
     user_assigned_identity_id = azurerm_user_assigned_identity.storage_cmk.id
   }
 
@@ -354,18 +354,14 @@ resource "azurerm_key_vault_key" "storage_cmk" {
   key_type     = "RSA"
   key_size     = 2048
   key_opts = [
-    "decrypt",
-    "encrypt",
-    "sign",
     "unwrapKey",
-    "verify",
     "wrapKey",
   ]
   tags = local.tags
 }
 
 resource "azurerm_role_assignment" "storage_cmk_kv_crypto_user" {
-  scope                = azurerm_key_vault.main.id
+  scope                = azurerm_key_vault_key.storage_cmk.resource_versionless_id
   role_definition_name = "Key Vault Crypto Service Encryption User"
   principal_id         = azurerm_user_assigned_identity.storage_cmk.principal_id
 }
