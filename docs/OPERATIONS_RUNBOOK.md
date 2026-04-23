@@ -13,7 +13,7 @@ Issue: #18
 | API config | `curl -sS https://green-moss-0e849ac03.2.azurestaticapps.net/api-config.json` |
 | Resource Group | `rg-kmlsat-dev` |
 | Cosmos DB | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
-| Auth | SWA built-in Azure AD (pre-configured provider) |
+| Auth | Transition mode: SWA principal (+ optional HMAC) by default; CIAM bearer JWT path available when enabled |
 | Container image | `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:{sha}` |
 
 **Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details).
@@ -32,6 +32,16 @@ Issue: #18
 Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 ## Access Model
+
+### Auth Transition Notes (#709 phase 1)
+
+- Default mode (`CIAM_BEARER_AUTH_ENABLED=false`): endpoints authenticate via
+ `X-MS-CLIENT-PRINCIPAL` (SWA) and, when configured, `X-Auth-Session` HMAC.
+- CIAM bearer mode (`CIAM_BEARER_AUTH_ENABLED=true`): Authorization bearer JWT
+ validation is enabled and requires `CIAM_JWT_ISSUER`, `CIAM_JWT_AUDIENCE`,
+ and `CIAM_JWKS_URL` app settings.
+- During transition, if bearer mode is disabled/unconfigured, Authorization
+ headers do not override or break the legacy SWA-principal auth path.
 
 Anonymous operator endpoints:
 

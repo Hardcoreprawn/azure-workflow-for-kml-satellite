@@ -71,7 +71,8 @@ This means:
 - `/api/*` routes are served by the Container Apps Function App
 - SWA handles only static hosting and Azure AD auth (login/logout/me)
 - Auth forwarding: frontend reads `clientPrincipal` from `/.auth/me`, base64-encodes it, and sends it as `X-MS-CLIENT-PRINCIPAL` header on cross-origin calls
-- The FA `require_auth` decorator parses `X-MS-CLIENT-PRINCIPAL` to identify the user
+- Backend auth currently supports a transition path: CIAM bearer JWT (Authorization header) when enabled, otherwise SWA `X-MS-CLIENT-PRINCIPAL` (+ optional `X-Auth-Session` HMAC)
+- The FA `require_auth` decorator verifies bearer JWT first when enabled, else falls back to `X-MS-CLIENT-PRINCIPAL`
 - CORS is configured on the FA to allow requests from the SWA hostname
 - Container Apps FA uses managed identity for Blob, Cosmos, Key Vault access
 
@@ -89,6 +90,21 @@ Auth works as follows:
 3. Frontend base64-encodes the raw `clientPrincipal` JSON
 4. Frontend sends it as `X-MS-CLIENT-PRINCIPAL` header on each cross-origin API call
 5. Container Apps FA `require_auth` decorator decodes and reads `userId`/`userRoles`
+
+#### CIAM Bearer Transition (#709 Phase 1)
+
+Backend bearer validation is implemented but disabled by default while frontend
+cutover is still tracked in #710.
+
+- `CIAM_BEARER_AUTH_ENABLED=false` (default): legacy SWA principal path remains authoritative.
+- `CIAM_BEARER_AUTH_ENABLED=true`: bearer JWT verification is active and requires:
+  - `CIAM_JWT_ISSUER`
+  - `CIAM_JWT_AUDIENCE`
+  - `CIAM_JWKS_URL`
+  - optional `CIAM_JWT_LEEWAY_SECONDS` (default 60)
+
+If bearer verification is disabled or not configured, requests continue through
+the existing SWA principal + optional HMAC flow.
 
 **Mitigation (PR #620):** When ``AUTH_HMAC_KEY`` is set, the FA requires a
 backend-signed HMAC session token (``X-Auth-Session`` header) alongside
