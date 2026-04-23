@@ -202,6 +202,36 @@ class TestCheckAuth:
             with pytest.raises(ValueError):
                 check_auth(mock_req)
 
+    def test_accepts_valid_bearer_token(self):
+        """check_auth accepts bearer JWT when verification succeeds (#709)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "Authorization": "Bearer valid.jwt.token",
+        }
+
+        with patch("blueprints._helpers.verify_bearer_token") as verify:
+            verify.return_value = {"sub": "jwt-user", "iss": "https://issuer.example"}
+            claims, user_id = check_auth(mock_req)
+
+        assert claims["sub"] == "jwt-user"
+        assert user_id == "jwt-user"
+
+    def test_rejects_invalid_bearer_token(self):
+        """check_auth rejects invalid bearer JWT with a user-safe message (#709)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "Authorization": "Bearer invalid.jwt.token",
+        }
+
+        with patch("blueprints._helpers.verify_bearer_token") as verify:
+            verify.side_effect = ValueError("Invalid bearer token")
+            with pytest.raises(ValueError, match="Invalid bearer token"):
+                check_auth(mock_req)
+
 
 # ---------------------------------------------------------------------------
 # require_auth decorator
@@ -300,6 +330,53 @@ class TestRequireAuth:
 
         resp = my_endpoint(mock_req)
         assert resp.status_code == 204
+
+    def test_accepts_valid_bearer_token(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse(
+                json.dumps({"user": user_id, "subject": auth_claims.get("sub")}),
+                mimetype="application/json",
+            )
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {
+            "Authorization": "Bearer valid.jwt.token",
+        }
+
+        with patch("blueprints._helpers.verify_bearer_token") as verify:
+            verify.return_value = {"sub": "jwt-user"}
+            resp = my_endpoint(mock_req)
+
+        body = json.loads(resp.get_body())
+        assert body["user"] == "jwt-user"
+        assert body["subject"] == "jwt-user"
+
+    def test_rejects_invalid_bearer_token(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse("OK")
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {
+            "Authorization": "Bearer invalid.jwt.token",
+        }
+
+        with patch("blueprints._helpers.verify_bearer_token") as verify:
+            verify.side_effect = ValueError("Invalid bearer token")
+            resp = my_endpoint(mock_req)
+
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------

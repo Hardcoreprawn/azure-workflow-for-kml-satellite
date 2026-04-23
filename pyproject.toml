@@ -25,6 +25,7 @@ dependencies = [
     "azure-communication-email>=1.0.0",
     "azure-cosmos>=4.9.0",
     "orjson>=3.11.6",  # CVE-2025-67221: override vulnerable base image version
+    "PyJWT[crypto]>=2.10.1",
 ]
 
 [project.optional-dependencies]

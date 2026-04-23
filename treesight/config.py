@@ -40,6 +40,13 @@ def _env_int(key: str, default: int) -> int:
         return default
 
 
+def _env_bool(key: str, default: bool = False) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    return raw.lower() in ("true", "1", "yes")
+
+
 def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
     """Defensive integer coercion (§8.7)."""
     val = d.get(key)
@@ -86,7 +93,15 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 # Authentication
 # SWA built-in auth — no config needed; REQUIRE_AUTH enforces the
 # X-MS-CLIENT-PRINCIPAL header in production.
-REQUIRE_AUTH = _env("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
+REQUIRE_AUTH = _env_bool("REQUIRE_AUTH", False)
+
+# CIAM-native bearer JWT auth (#709).
+# Disabled by default while the frontend migrates from SWA principal headers.
+CIAM_BEARER_AUTH_ENABLED = _env_bool("CIAM_BEARER_AUTH_ENABLED", False)
+CIAM_JWT_ISSUER = _env("CIAM_JWT_ISSUER")
+CIAM_JWT_AUDIENCE = _env("CIAM_JWT_AUDIENCE")
+CIAM_JWKS_URL = _env("CIAM_JWKS_URL")
+CIAM_JWT_LEEWAY_SECONDS = _env_int("CIAM_JWT_LEEWAY_SECONDS", 60)
 
 # HMAC auth verification (#534).  When set, require_auth verifies a
 # backend-signed HMAC alongside the client principal to prevent header
@@ -137,5 +152,14 @@ def validate_config() -> None:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:
         errors.append(f"AOI_MAX_AREA_HA must be > 0, got {AOI_MAX_AREA_HA}")
+    if CIAM_BEARER_AUTH_ENABLED:
+        if not CIAM_JWT_ISSUER:
+            errors.append("CIAM_JWT_ISSUER must be set when CIAM_BEARER_AUTH_ENABLED=true")
+        if not CIAM_JWT_AUDIENCE:
+            errors.append("CIAM_JWT_AUDIENCE must be set when CIAM_BEARER_AUTH_ENABLED=true")
+        if not CIAM_JWKS_URL:
+            errors.append("CIAM_JWKS_URL must be set when CIAM_BEARER_AUTH_ENABLED=true")
+        if CIAM_JWT_LEEWAY_SECONDS < 0:
+            errors.append("CIAM_JWT_LEEWAY_SECONDS must be >= 0 when CIAM_BEARER_AUTH_ENABLED=true")
     if errors:
         raise ConfigValidationError("; ".join(errors))

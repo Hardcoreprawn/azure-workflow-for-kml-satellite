@@ -63,3 +63,37 @@ class TestValidateConfig:
             with pytest.raises(ConfigValidationError):
                 cfg.validate_config()
             importlib.reload(cfg)
+
+    def test_ciam_enabled_requires_jwt_settings(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CIAM_BEARER_AUTH_ENABLED": "true",
+                "CIAM_JWT_ISSUER": "",
+                "CIAM_JWT_AUDIENCE": "",
+                "CIAM_JWKS_URL": "",
+            },
+            clear=False,
+        ):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            with pytest.raises(ConfigValidationError, match="CIAM_JWT_ISSUER"):
+                cfg.validate_config()
+            importlib.reload(cfg)
+
+    def test_ciam_enabled_with_valid_settings_passes(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CIAM_BEARER_AUTH_ENABLED": "true",
+                "CIAM_JWT_ISSUER": "https://issuer.example/tenant/v2.0",
+                "CIAM_JWT_AUDIENCE": "client-id",
+                "CIAM_JWKS_URL": "https://issuer.example/discovery/v2.0/keys",
+                "CIAM_JWT_LEEWAY_SECONDS": "60",
+            },
+            clear=False,
+        ):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            cfg.validate_config()
+            importlib.reload(cfg)

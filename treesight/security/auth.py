@@ -20,6 +20,14 @@ import logging
 import time
 from typing import Any
 
+from treesight.config import (
+    CIAM_BEARER_AUTH_ENABLED,
+    CIAM_JWKS_URL,
+    CIAM_JWT_AUDIENCE,
+    CIAM_JWT_ISSUER,
+    CIAM_JWT_LEEWAY_SECONDS,
+)
+
 logger = logging.getLogger(__name__)
 
 # Session token lifetime (seconds).  Tokens issued by /api/auth/session
@@ -59,6 +67,64 @@ def parse_client_principal(header_value: str) -> dict[str, Any]:
 def get_user_id(principal: dict[str, Any]) -> str:
     """Extract the user identifier from a decoded client principal."""
     return principal.get("userId", "")
+
+
+def parse_bearer_token(authorization_header: str) -> str | None:
+    """Extract a bearer token from ``Authorization`` header value."""
+    if not isinstance(authorization_header, str):
+        return None
+    if not authorization_header:
+        return None
+    if not authorization_header.startswith("Bearer "):
+        return None
+
+    token = authorization_header[7:].strip()
+    if not token:
+        raise ValueError("Missing bearer token")
+    return token
+
+
+def get_user_id_from_bearer_claims(claims: dict[str, Any]) -> str:
+    """Extract stable user id from verified JWT claims."""
+    return str(claims.get("oid") or claims.get("sub") or "")
+
+
+def verify_bearer_token(token: str) -> dict[str, Any]:
+    """Verify CIAM bearer JWT and return decoded claims.
+
+    Verification is disabled unless ``CIAM_BEARER_AUTH_ENABLED`` is true.
+    """
+    if not CIAM_BEARER_AUTH_ENABLED:
+        raise ValueError("Bearer token auth is not enabled")
+    if not CIAM_JWT_ISSUER or not CIAM_JWT_AUDIENCE or not CIAM_JWKS_URL:
+        raise ValueError("Bearer token auth is not configured")
+
+    try:
+        import jwt
+        from jwt import PyJWKClient
+    except Exception as exc:  # pragma: no cover - dependency wiring failure
+        raise ValueError("Bearer token verification dependency is unavailable") from exc
+
+    try:
+        signing_key = PyJWKClient(CIAM_JWKS_URL).get_signing_key_from_jwt(token).key
+        claims = jwt.decode(
+            token,
+            key=signing_key,
+            algorithms=["RS256"],
+            audience=CIAM_JWT_AUDIENCE,
+            issuer=CIAM_JWT_ISSUER,
+            leeway=CIAM_JWT_LEEWAY_SECONDS,
+            options={
+                "require": ["exp", "iss", "aud", "sub"],
+            },
+        )
+    except Exception:
+        raise ValueError("Invalid bearer token") from None
+
+    if not get_user_id_from_bearer_claims(claims):
+        raise ValueError("Bearer token missing subject")
+
+    return claims
 
 
 # ---------------------------------------------------------------------------
