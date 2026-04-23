@@ -96,11 +96,15 @@ Auth works as follows:
 Backend bearer validation is implemented but disabled by default while frontend
 cutover is still tracked in #710.
 
-- `CIAM_BEARER_AUTH_ENABLED=false` (default): legacy SWA principal path remains authoritative.
-- `CIAM_BEARER_AUTH_ENABLED=true`: bearer JWT verification is active and requires:
-  - `CIAM_JWT_ISSUER`
-  - `CIAM_JWT_AUDIENCE`
-  - `CIAM_JWKS_URL`
+- `AUTH_MODE=legacy_principal` (default): legacy SWA principal path remains authoritative.
+- `AUTH_MODE=dual`: bearer JWT verification is active, but legacy principal fallback is retained.
+- `AUTH_MODE=bearer_only`: bearer JWT verification is required for authenticated requests.
+
+Bearer-capable modes (`dual` and `bearer_only`) require:
+
+- `CIAM_AUTHORITY`
+- `CIAM_TENANT_ID`
+- `CIAM_API_AUDIENCE`
   - optional `CIAM_JWT_LEEWAY_SECONDS` (default 60)
 
 If bearer verification is disabled or not configured, requests continue through
