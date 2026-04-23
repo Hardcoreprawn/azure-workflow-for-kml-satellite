@@ -212,7 +212,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
-          exit-code: "0"        # warn, don't block deploy (set to "1" to gate)
+          exit-code: "1"        # block on CRITICAL/HIGH; exceptions documented in .trivyignore
 
       - name: Upload Trivy image SARIF
         if: ${{ always() && inputs.image_tag == '' }}
