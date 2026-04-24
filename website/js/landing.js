@@ -4,6 +4,10 @@
   let currentAccount = null;
   let _apiBase = '';
   let _clientPrincipal = null;
+  const SERVICE_STATUS_CACHE_KEY = 'canopex:service-status:v1';
+  const SERVICE_STATUS_TTL_MS = 2 * 60 * 1000;
+  const API_CONFIG_TIMEOUT_MS = 900;
+  const API_HEALTH_TIMEOUT_MS = 1200;
 
   function authEnabled() { return true; }
 
@@ -89,8 +93,15 @@
   }
 
   async function discoverApiBase() {
+    const badge = document.getElementById('status-badge');
+    const cachedStatus = readCachedServiceStatus();
+
+    if (badge && cachedStatus) {
+      applyServiceStatus(badge, cachedStatus);
+    }
+
     try {
-      const cfgRes = await fetch('/api-config.json');
+      const cfgRes = await fetchWithTimeout('/api-config.json', API_CONFIG_TIMEOUT_MS);
       if (cfgRes.ok) {
         const cfg = await cfgRes.json();
         if (cfg.apiBase) {
@@ -99,23 +110,69 @@
       }
     } catch (e) { /* local dev — no api-config.json, use same-origin */ }
 
-    const badge = document.getElementById('status-badge');
     if (!badge) return;
 
     try {
       const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      const res = await fetch(healthUrl);
+      const res = await fetchWithTimeout(healthUrl, API_HEALTH_TIMEOUT_MS);
       if (res.ok) {
-        badge.textContent = 'Online';
-        badge.className = 'online';
+        applyServiceStatus(badge, 'online');
+        writeCachedServiceStatus('online');
         return;
       }
     } catch (err) {
       console.warn('[canopex] Health check failed:', err);
     }
 
+    if (!cachedStatus) {
+      applyServiceStatus(badge, 'offline');
+    }
+    writeCachedServiceStatus('offline');
+  }
+
+  function applyServiceStatus(badge, status) {
+    if (!badge) return;
+    if (status === 'online') {
+      badge.textContent = 'Online';
+      badge.className = 'online';
+      return;
+    }
     badge.textContent = 'Unavailable';
     badge.className = 'offline';
+  }
+
+  function readCachedServiceStatus() {
+    try {
+      const raw = localStorage.getItem(SERVICE_STATUS_CACHE_KEY);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return '';
+      if (parsed.status !== 'online' && parsed.status !== 'offline') return '';
+      if (!parsed.ts || Date.now() - parsed.ts > SERVICE_STATUS_TTL_MS) return '';
+      return parsed.status;
+    } catch {
+      return '';
+    }
+  }
+
+  function writeCachedServiceStatus(status) {
+    try {
+      localStorage.setItem(SERVICE_STATUS_CACHE_KEY, JSON.stringify({ status: status, ts: Date.now() }));
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
+  async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(function() {
+      controller.abort();
+    }, timeoutMs);
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /* --- Sample Report Map (Planetary Computer S2 visual) --- */

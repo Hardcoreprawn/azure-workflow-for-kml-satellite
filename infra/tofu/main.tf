@@ -349,10 +349,21 @@ resource "azurerm_user_assigned_identity" "storage_cmk" {
 }
 
 resource "azurerm_key_vault_key" "storage_cmk" {
-  name         = "cmk-storage-${local.name_suffix}"
-  key_vault_id = azurerm_key_vault.main.id
-  key_type     = "RSA"
-  key_size     = 2048
+  name            = "cmk-storage-${local.name_suffix}"
+  key_vault_id    = azurerm_key_vault.main.id
+  key_type        = "RSA"
+  key_size        = 2048
+  expiration_date = "2036-01-01T00:00:00Z"
+
+  rotation_policy {
+    expire_after         = "P3650D"
+    notify_before_expiry = "P30D"
+
+    automatic {
+      time_after_creation = "P90D"
+    }
+  }
+
   key_opts = [
     "unwrapKey",
     "wrapKey",
