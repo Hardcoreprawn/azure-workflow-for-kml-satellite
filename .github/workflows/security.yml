@@ -70,8 +70,11 @@ jobs:
 
       - name: Run pip-audit
         run: |
+          # GHSA-58qw-9mgm-455v (CVE-2026-3219) currently has no patched pip
+          # release from upstream; keep audit strict for everything else.
           uvx pip-audit \
             --strict \
+            --ignore-vuln GHSA-58qw-9mgm-455v \
             --desc \
             --format json \
             --output pip-audit.json \
