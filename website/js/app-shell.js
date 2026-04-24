@@ -312,13 +312,59 @@
     return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   }
 
+  const SERVICE_STATUS_CACHE_KEY = 'canopex:service-status:v1';
+  const SERVICE_STATUS_TTL_MS = 2 * 60 * 1000;
+  const API_CONFIG_TIMEOUT_MS = 900;
+  const API_HEALTH_TIMEOUT_MS = 1200;
+
+  function readCachedServiceStatus() {
+    try {
+      const raw = localStorage.getItem(SERVICE_STATUS_CACHE_KEY);
+      if (!raw) return '';
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return '';
+      if (parsed.status !== 'online' && parsed.status !== 'offline') return '';
+      if (!parsed.ts || Date.now() - parsed.ts > SERVICE_STATUS_TTL_MS) return '';
+      return parsed.status;
+    } catch {
+      return '';
+    }
+  }
+
+  function writeCachedServiceStatus(status) {
+    try {
+      localStorage.setItem(SERVICE_STATUS_CACHE_KEY, JSON.stringify({ status: status, ts: Date.now() }));
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
+  async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(function() {
+      controller.abort();
+    }, timeoutMs);
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
 
 
   async function discoverApiBase() {
+    const cachedStatus = readCachedServiceStatus();
+    if (cachedStatus === 'online') {
+      setServiceStatus('Online', 'online');
+    } else if (cachedStatus === 'offline') {
+      setServiceStatus('Unavailable', 'offline');
+    }
+
     // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
     // Falls back to same-origin for local dev (func start serves /api/* locally).
     try {
-      const cfgRes = await fetch('/api-config.json');
+      const cfgRes = await fetchWithTimeout('/api-config.json', API_CONFIG_TIMEOUT_MS);
       if (cfgRes.ok) {
         const cfg = await cfgRes.json();
         if (cfg.apiBase) {
@@ -330,13 +376,18 @@
     // Probe health to confirm the API is reachable.
     try {
       const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      const res = await fetch(healthUrl);
+      const res = await fetchWithTimeout(healthUrl, API_HEALTH_TIMEOUT_MS);
       if (res.ok) {
         setServiceStatus('Online', 'online');
+        writeCachedServiceStatus('online');
         return;
       }
     } catch { /* ignore */ }
-    setServiceStatus('Unavailable', 'offline');
+
+    if (!cachedStatus) {
+      setServiceStatus('Unavailable', 'offline');
+    }
+    writeCachedServiceStatus('offline');
   }
 
   function login() {
