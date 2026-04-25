@@ -191,3 +191,37 @@ variable "notification_email" {
   type        = string
   default     = ""
 }
+
+# --- CIAM / Bearer Token Auth (Issue #709) ---
+
+variable "auth_mode" {
+  description = "Auth transition mode: legacy_principal (SWA headers only), dual (both paths), or bearer_only (JWT only)."
+  type        = string
+  default     = "legacy_principal"
+
+  validation {
+    condition     = contains(["legacy_principal", "dual", "bearer_only"], var.auth_mode)
+    error_message = "auth_mode must be one of: legacy_principal, dual, bearer_only."
+  }
+}
+
+variable "ciam_authority" {
+  description = "Azure Entra CIAM authority endpoint (https://login.microsoftonline.com/<tenant>). Required when auth_mode is 'dual' or 'bearer_only'."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ciam_tenant_id" {
+  description = "Azure Entra tenant ID for CIAM app registration. Required when auth_mode is 'dual' or 'bearer_only'."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "ciam_api_audience" {
+  description = "API audience (app ID URI) from CIAM app registration. Required when auth_mode is 'dual' or 'bearer_only'."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

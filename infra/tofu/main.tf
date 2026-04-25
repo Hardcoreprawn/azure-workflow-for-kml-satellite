@@ -1177,11 +1177,17 @@ locals {
       CORS_ALLOWED_ORIGINS                = join(",", local.browser_allowed_origins)
       PRIMARY_SITE_URL                    = local.primary_site_url
       REQUIRE_AUTH                        = "true"
+      AUTH_MODE                           = var.auth_mode
       OPS_DASHBOARD_KEY                   = var.ops_dashboard_key
     },
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
+    } : {},
+    var.auth_mode != "legacy_principal" ? {
+      CIAM_AUTHORITY     = var.ciam_authority
+      CIAM_TENANT_ID     = var.ciam_tenant_id
+      CIAM_API_AUDIENCE  = var.ciam_api_audience
     } : {}
   )
 

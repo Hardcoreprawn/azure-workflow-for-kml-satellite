@@ -41,6 +41,10 @@ jobs:
     environment: dev
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+      TF_VAR_auth_mode: ${{ secrets.TF_VAR_AUTH_MODE || 'legacy_principal' }}
+      TF_VAR_ciam_authority: ${{ secrets.TF_VAR_CIAM_AUTHORITY || '' }}
+      TF_VAR_ciam_tenant_id: ${{ secrets.TF_VAR_CIAM_TENANT_ID || '' }}
+      TF_VAR_ciam_api_audience: ${{ secrets.TF_VAR_CIAM_API_AUDIENCE || '' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -85,6 +89,35 @@ jobs:
         uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb # v2.0.0
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: Validate CIAM auth env wiring
+        if: steps.azure_login.outcome == 'success'
+        shell: bash
+        run: |
+          trim_space() {
+            local value="${1-}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+            printf '%s' "$value"
+          }
+          set -euo pipefail
+          mode="${TF_VAR_auth_mode:-legacy_principal}"
+          case "$mode" in
+            legacy_principal) ;;
+            dual|bearer_only)
+              ciam_authority="$(trim_space "${TF_VAR_ciam_authority:-}")"
+              ciam_tenant_id="$(trim_space "${TF_VAR_ciam_tenant_id:-}")"
+              ciam_api_audience="$(trim_space "${TF_VAR_ciam_api_audience:-}")"
+              if [[ -z "$ciam_authority" || -z "$ciam_tenant_id" || -z "$ciam_api_audience" ]]; then
+                echo "CIAM auth misconfigured: TF_VAR_auth_mode=${mode} requires TF_VAR_ciam_authority, TF_VAR_ciam_tenant_id, and TF_VAR_ciam_api_audience."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Invalid TF_VAR_auth_mode='${mode}'. Expected legacy_principal, dual, or bearer_only."
+              exit 1
+              ;;
+          esac
 
       - name: Cache OpenTofu providers
         if: steps.azure_login.outcome == 'success'
