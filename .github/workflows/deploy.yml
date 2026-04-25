@@ -202,7 +202,7 @@ jobs:
           docker push "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
           docker push "${ORCH_IMAGE_NAME}:latest"
 
-      - name: Trivy container scan
+      - name: Trivy container scan (single pass to JSON)
         id: trivy-scan
         if: ${{ inputs.image_tag == '' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -210,12 +210,37 @@ jobs:
           cache: false
           image-ref: ${{ steps.meta.outputs.image_uri }}
           scanners: vuln
-          format: sarif
-          output: trivy-image.sarif
+          format: json
+          output: trivy-image.json
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           trivyignores: .trivyignore
-          exit-code: "1"        # block on CRITICAL/HIGH; exceptions documented in .trivyignore
+          exit-code: "0"        # gate explicitly from JSON so SARIF and gate share one scan result
+
+      - name: Convert Trivy JSON to SARIF
+        if: ${{ inputs.image_tag == '' }}
+        run: |
+          trivy convert --format sarif --output trivy-image.sarif trivy-image.json
+
+      - name: Fail on HIGH/CRITICAL findings
+        if: ${{ inputs.image_tag == '' }}
+        run: |
+          findings=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-image.json)
+          if [ "${findings}" -gt 0 ]; then
+            echo "::error::Trivy found ${findings} HIGH/CRITICAL vulnerability findings after ignores."
+            echo "Top findings:"
+            jq -r '
+              [.Results[]?.Vulnerabilities[]?]
+              | sort_by(.Severity, .VulnerabilityID)
+              | .[]
+              | "- \(.Severity) \(.VulnerabilityID) pkg=\(.PkgName) installed=\(.InstalledVersion // \"unknown\") fixed=\(.FixedVersion // \"unfixed\")"
+            ' trivy-image.json | head -30
+            critical_count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-image.json)
+            high_count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-image.json)
+            echo "Summary: CRITICAL=${critical_count} HIGH=${high_count}"
+            exit 1
+          fi
+          echo "Trivy found 0 HIGH/CRITICAL vulnerability findings."
 
       - name: Upload Trivy image SARIF
         if: ${{ always() && inputs.image_tag == '' }}
