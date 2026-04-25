@@ -203,9 +203,11 @@ jobs:
           docker push "${ORCH_IMAGE_NAME}:latest"
 
       - name: Trivy container scan
+        id: trivy-scan
         if: ${{ inputs.image_tag == '' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          cache: false
           image-ref: ${{ steps.meta.outputs.image_uri }}
           scanners: vuln
           format: sarif
