@@ -207,6 +207,7 @@ jobs:
         if: ${{ inputs.image_tag == '' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.70.0
           cache: false
           image-ref: ${{ steps.meta.outputs.image_uri }}
           scanners: vuln
@@ -225,7 +226,7 @@ jobs:
       - name: Fail on HIGH/CRITICAL findings
         if: ${{ inputs.image_tag == '' }}
         run: |
-          findings=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-image.json)
+          findings=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" or .Severity == "HIGH")] | length' trivy-image.json)
           if [ "${findings}" -gt 0 ]; then
             echo "::error::Trivy found ${findings} HIGH/CRITICAL vulnerability findings after ignores."
             echo "Top findings:"
@@ -243,7 +244,7 @@ jobs:
           echo "Trivy found 0 HIGH/CRITICAL vulnerability findings."
 
       - name: Upload Trivy image SARIF
-        if: ${{ always() && inputs.image_tag == '' }}
+        if: ${{ always() && inputs.image_tag == '' && hashFiles('trivy-image.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
         with:
           sarif_file: trivy-image.sarif
