@@ -217,17 +217,6 @@ jobs:
           trivyignores: .trivyignore
           exit-code: "1"        # block on CRITICAL/HIGH; exceptions documented in .trivyignore
 
-      - name: Evict stale Trivy DB cache on scan failure
-        # If the scan fails, the cached DB may be out of date (e.g. a CVE reclassified during the day).
-        # Evicting it forces a fresh download on the next run, avoiding a stuck-until-midnight failure.
-        if: ${{ failure() && steps.trivy-scan.conclusion == 'failure' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --method DELETE \
-            "repos/${{ github.repository }}/actions/caches?key=cache-trivy-$(date +'%Y-%m-%d')" \
-            || true  # non-fatal: cache may already be absent
-
       - name: Upload Trivy image SARIF
         if: ${{ always() && inputs.image_tag == '' }}
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
