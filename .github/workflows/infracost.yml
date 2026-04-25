@@ -39,6 +39,8 @@ jobs:
     name: Cost Estimate
     runs-on: ubuntu-latest
     environment: dev
+    env:
+      TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -101,11 +103,24 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          tofu init \
-            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
-            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
-            -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"
+          MAX_RETRIES=3
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "tofu init attempt ${attempt}/${MAX_RETRIES}"
+            if tofu init \
+              -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+              -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+              -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER_DEV }}" \
+              -backend-config="key=${{ secrets.TF_STATE_KEY_DEV }}"; then
+              echo "✅ tofu init succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "⚠️ tofu init failed, retrying in 10s..."
+              sleep 10
+            fi
+          done
+          echo "❌ tofu init failed after ${MAX_RETRIES} attempts"
+          exit 1
 
       - name: Tofu Plan (JSON)
         if: steps.azure_login.outcome == 'success'
@@ -118,6 +133,7 @@ jobs:
         run: |
           tofu plan -out=tfplan \
             -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="deploy_principal_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
             -var-file="environments/dev.tfvars"
           tofu show -json tfplan > plan.json
 
