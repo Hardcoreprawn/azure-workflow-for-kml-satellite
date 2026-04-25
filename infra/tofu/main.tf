@@ -348,6 +348,27 @@ resource "azurerm_user_assigned_identity" "storage_cmk" {
   tags                = local.tags
 }
 
+resource "azurerm_role_assignment" "deployer_key_vault_crypto_officer" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Crypto Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+
+  lifecycle {
+    precondition {
+      condition     = data.azurerm_client_config.current.client_id == var.deploy_principal_client_id
+      error_message = "Authenticate OpenTofu as the configured deploy principal before managing the storage CMK key."
+    }
+  }
+}
+
+resource "time_sleep" "deployer_key_vault_crypto_officer_propagation" {
+  create_duration = "60s"
+
+  depends_on = [
+    azurerm_role_assignment.deployer_key_vault_crypto_officer,
+  ]
+}
+
 resource "azurerm_key_vault_key" "storage_cmk" {
   name            = "cmk-storage-${local.name_suffix}"
   key_vault_id    = azurerm_key_vault.main.id
@@ -369,6 +390,10 @@ resource "azurerm_key_vault_key" "storage_cmk" {
     "wrapKey",
   ]
   tags = local.tags
+
+  depends_on = [
+    time_sleep.deployer_key_vault_crypto_officer_propagation,
+  ]
 }
 
 resource "azurerm_role_assignment" "storage_cmk_kv_crypto_user" {

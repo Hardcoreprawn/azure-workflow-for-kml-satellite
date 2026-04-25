@@ -29,6 +29,12 @@ Issue: #18
 7. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
 8. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
 
+CMK deploy note (dev and prod):
+
+- Storage Account CMK rollout requires the configured GitHub Actions OIDC deploy principal to hold `Key Vault Crypto Officer` on the vault so OpenTofu can manage the CMK key lifecycle.
+- CMK authoring is pinned to that explicit deploy principal; local applies must authenticate as the same principal instead of relying on the caller's personal identity.
+- The infra stack assigns that role and waits for RBAC propagation before managing the key to avoid `ForbiddenByRbac` failures during `tofu apply`.
+
 Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 ## Access Model
