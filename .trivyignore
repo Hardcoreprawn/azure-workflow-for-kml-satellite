@@ -28,6 +28,7 @@ AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
 CVE-2026-25679 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
 CVE-2026-27139 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
 CVE-2026-27142 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
+CVE-2026-40894 # exp:2026-05-24 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3
 
 # libpng16-16: fix version 1.6.39-2+deb12u4 not yet in Debian bookworm mirrors.
 # apt-get upgrade cannot pull what the mirror doesn't have yet.
