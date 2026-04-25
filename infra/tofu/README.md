@@ -37,6 +37,8 @@ The script creates:
 - Entra app registration + service principal
 - federated credentials for `dev` and `prd` GitHub environments
 
+Use that same GitHub Actions app registration client ID as `deploy_principal_client_id` whenever OpenTofu needs to manage CMK-backed storage resources.
+
 ## Required GitHub Environment Secrets
 
 Configure for each environment (`dev`, `prd`):
@@ -58,8 +60,8 @@ tofu init \
   -backend-config="container_name=<TF_STATE_CONTAINER>" \
   -backend-config="key=kml-satellite-dev.tfstate"
 
-tofu plan -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.tfvars"
-tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var-file="environments/dev.tfvars"
+tofu plan -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var-file="environments/dev.tfvars"
+tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var-file="environments/dev.tfvars"
 ```
 
 ## Clean-Slate Migration Sequence (dev)

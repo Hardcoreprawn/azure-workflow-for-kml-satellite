@@ -3,6 +3,11 @@ variable "subscription_id" {
   type        = string
 }
 
+variable "deploy_principal_client_id" {
+  description = "Azure client ID for the GitHub Actions OIDC deploy principal that is allowed to manage CMK keys."
+  type        = string
+}
+
 variable "location" {
   description = "Azure region for deployment."
   type        = string
