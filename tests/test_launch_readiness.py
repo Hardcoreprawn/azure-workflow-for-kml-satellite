@@ -470,6 +470,37 @@ class TestDeployWorkflowSettings:
         )
         assert "curl" in deploy_yml, "deploy.yml smoke check must curl the FA health endpoint"
 
+    def test_verify_runtime_readiness_checks_both_function_apps(self, deploy_yml):
+        assert "COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)" in deploy_yml, (
+            "deploy.yml readiness verification must check compute app hostname"
+        )
+        assert (
+            "ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)" in deploy_yml
+        ), "deploy.yml readiness verification must check orchestrator app hostname"
+        assert 'verify_host_readiness "compute" "$COMPUTE_HOSTNAME"' in deploy_yml, (
+            "deploy.yml readiness verification must probe compute app health/readiness"
+        )
+        assert 'verify_host_readiness "orchestrator" "$ORCH_HOSTNAME"' in deploy_yml, (
+            "deploy.yml readiness verification must probe orchestrator app health/readiness"
+        )
+
+    def test_rollback_restores_both_function_apps(self, deploy_yml):
+        assert "steps.configure-orch-app.outcome == 'success'" in deploy_yml, (
+            "rollback guard must consider orchestrator configure step outcome"
+        )
+        assert "steps.current-image.outputs.image_compute" in deploy_yml, (
+            "rollback guard must use captured compute image output"
+        )
+        assert "steps.current-image.outputs.image_orch" in deploy_yml, (
+            "rollback guard must use captured orchestrator image output"
+        )
+        assert 'ORCH_NAME="${{ steps.current-image.outputs.orch_name }}"' in deploy_yml, (
+            "rollback step must restore orchestrator app image"
+        )
+        assert "steps.compute-hostname.outputs.hostname" in deploy_yml, (
+            "rollback step must validate compute app health after rollback"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
