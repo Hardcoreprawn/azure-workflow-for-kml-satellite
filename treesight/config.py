@@ -142,6 +142,11 @@ BILLING_ALLOWED_USERS: frozenset[str] = frozenset(
     uid.strip() for uid in _env("BILLING_ALLOWED_USERS", "").split(",") if uid.strip()
 )
 
+# Separate operator gate for billing plan emulation (distinct from real billing access).
+TIER_EMULATION_ALLOWED_USERS: frozenset[str] = frozenset(
+    uid.strip() for uid in _env("TIER_EMULATION_ALLOWED_USERS", "").split(",") if uid.strip()
+)
+
 
 def validate_config() -> None:
     """Fail-fast startup validation (§8.6)."""

@@ -145,7 +145,7 @@
     updateCapabilityFields(caps);
 
     if (data.tier_source === 'emulated') {
-      if (billingNoteEl) billingNoteEl.textContent = 'Local tier override active. Real billing is ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
+      if (billingNoteEl) billingNoteEl.textContent = 'Tier emulation active for this account. Real billing is ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
       if (billingBtn) billingBtn.style.display = data.billing_configured ? 'inline-block' : 'none';
       if (accountNote) accountNote.textContent = 'Use the role view and work preference controls to tune this workspace for the job at hand.';
     } else if (data.billing_gated) {

@@ -25,6 +25,10 @@ _BILLING_UNGATED = patch(
     "treesight.security.feature_gate.BILLING_ALLOWED_USERS",
     frozenset({"test-user"}),
 )
+_EMULATION_UNGATED = patch(
+    "treesight.security.feature_gate.TIER_EMULATION_ALLOWED_USERS",
+    frozenset({"test-user"}),
+)
 
 
 def _make_req(method="POST", body=b"", headers=None, url="/api/billing/webhook"):
@@ -244,7 +248,9 @@ class TestBillingStatus:
 
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
-    def test_local_origin_can_enable_tier_emulation(self, mock_read, mock_upsert):
+    @_BILLING_UNGATED
+    @_EMULATION_UNGATED
+    def test_allowlisted_operator_can_enable_tier_emulation(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation, billing_status
 
         store: dict[str, dict] = {}
@@ -261,7 +267,6 @@ class TestBillingStatus:
 
         emulate_req = _make_req(
             body=json.dumps({"tier": "team"}).encode("utf-8"),
-            headers={"Origin": TEST_LOCAL_ORIGIN},
             url="/api/billing/emulation",
         )
         emulate_resp = billing_emulation(emulate_req)
@@ -271,9 +276,7 @@ class TestBillingStatus:
         assert emulate_data["tier_source"] == "emulated"
         assert emulate_data["emulation"]["active"] is True
 
-        status_req = _make_req(
-            method="GET", headers={"Origin": TEST_LOCAL_ORIGIN}, url="/api/billing/status"
-        )
+        status_req = _make_req(method="GET", url="/api/billing/status")
         status_resp = billing_status(status_req)
         assert status_resp.status_code == 200
         status_data = json.loads(status_resp.get_body())
@@ -281,7 +284,7 @@ class TestBillingStatus:
         assert status_data["capabilities"]["api_access"] is True
 
     @patch("treesight.storage.cosmos.read_item", return_value=None)
-    def test_non_local_origin_rejects_tier_emulation(self, _mock_read):
+    def test_non_allowlisted_account_rejects_tier_emulation(self, _mock_read):
         from blueprints.billing import billing_emulation
 
         req = _make_req(
@@ -291,11 +294,29 @@ class TestBillingStatus:
         resp = billing_emulation(req)
         assert resp.status_code == 403
 
-    @_BILLING_UNGATED
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_localhost_origin_does_not_bypass_account_lock_for_non_allowlisted(self, _mock_read):
+        """Non-allowlisted users are rejected even on localhost origin."""
+        from blueprints.billing import billing_emulation
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "team"}).encode("utf-8"),
+            origin=TEST_LOCAL_ORIGIN,
+            principal_user_id="not-allowlisted-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 403
+        # Verify the account-lock policy applies (not origin-based)
+        body = resp.get_body().decode("utf-8")
+        assert "not yet available" in body
+
+    @_EMULATION_UNGATED
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
     def test_operator_can_emulate_from_non_local_origin(self, mock_read, mock_upsert):
-        """Billing-allowed users can use tier emulation from production origins."""
+        """Operator-allowlisted users can use tier emulation from production origins."""
         from blueprints.billing import billing_emulation
 
         store: dict[str, dict] = {}
@@ -310,7 +331,7 @@ class TestBillingStatus:
         mock_read.side_effect = _read_item
         mock_upsert.side_effect = _upsert_item
 
-        # Non-local origin but user is in BILLING_ALLOWED_USERS
+        # Non-local origin but user is in TIER_EMULATION_ALLOWED_USERS
         req = _make_req(
             body=json.dumps({"tier": "pro"}).encode("utf-8"),
             url="/api/billing/emulation",
@@ -324,7 +345,7 @@ class TestBillingStatus:
 
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
-    def test_local_origin_allows_anonymous_tier_emulation(self, mock_read, mock_upsert):
+    def test_anonymous_cannot_use_tier_emulation_even_on_local_origin(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation
 
         store: dict[str, dict] = {}
@@ -348,10 +369,93 @@ class TestBillingStatus:
             auth_header=None,
         )
         resp = billing_emulation(req)
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Cosmos-backed billing_allowed path
+# ---------------------------------------------------------------------------
+
+
+class TestCosmosBillingAllowed:
+    """Test tier emulation gate when user is allowlisted in Cosmos user record."""
+
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.get_user")
+    def test_tier_emulation_allowed_via_cosmos_user_record(
+        self, mock_get_user, mock_read, mock_upsert
+    ):
+        """User allowlisted in Cosmos user record can use tier emulation."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos tier_emulation_allowed flag
+        mock_get_user.return_value = {"id": "test-user", "tier_emulation_allowed": True}
+
+        store: dict[str, dict] = {}
+
+        def _read_item(container, item_id, partition_key):
+            return store.get(f"{container}/{item_id}")
+
+        def _upsert_item(container, item):
+            store[f"{container}/{item['id']}"] = item
+            return item
+
+        mock_read.side_effect = _read_item
+        mock_upsert.side_effect = _upsert_item
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="test-user",
+        )
+        resp = billing_emulation(req)
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
-        assert data["tier"] == "starter"
-        assert data["tier_source"] == "emulated"
+        assert data["billing_gated"] is True
+        assert data["emulation"]["available"] is True
+
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.get_user")
+    def test_tier_emulation_rejected_when_not_in_cosmos(self, mock_get_user, mock_read):
+        """User not allowlisted in Cosmos is rejected."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos user missing tier_emulation_allowed grant
+        mock_get_user.return_value = {"id": "not-allowlisted-user", "billing_allowed": True}
+        mock_read.return_value = None
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="not-allowlisted-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 403
+        body = resp.get_body().decode("utf-8")
+        assert "not yet available" in body
+
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.get_user")
+    def test_tier_emulation_rejected_on_cosmos_error(self, mock_get_user, mock_read):
+        """Cosmos error defaults to reject (safe failure)."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos error
+        mock_get_user.side_effect = Exception("Cosmos unavailable")
+        mock_read.return_value = None
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="test-user",
+        )
+        resp = billing_emulation(req)
+        # Should reject when Cosmos is down (safe default)
+        assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------

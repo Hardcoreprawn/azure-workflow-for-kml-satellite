@@ -289,7 +289,7 @@ If an API is later introduced, it must:
 
 ### 7.3 Billing emulation precedent
 
-The local-only emulation endpoint in [blueprints/billing.py](blueprints/billing.py) is a useful storage pattern reference, but it must not be reused as the production admin surface because it is intentionally limited to development origins.
+The account-locked emulation endpoint in [blueprints/billing.py](blueprints/billing.py) is a useful storage pattern reference, but it must not be reused as the production admin surface because it is intentionally restricted to explicitly allowlisted operator accounts.
 
 ---
 
