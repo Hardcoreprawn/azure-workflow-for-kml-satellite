@@ -30,6 +30,8 @@
   var _getAnalysisHistoryLoaded = null;
   var _getLatestAnalysisRun = null;
   var _clearAnalysisState = null;
+  var _clearAllCache = null;
+  var _postLoginDestinationKey = null;
 
   function init(deps) {
     _authEnabled = deps.authEnabled;
@@ -52,6 +54,31 @@
     _getAnalysisHistoryLoaded = deps.getAnalysisHistoryLoaded;
     _getLatestAnalysisRun = deps.getLatestAnalysisRun;
     _clearAnalysisState = deps.clearAnalysisState;
+    _clearAllCache = deps.clearAllCache;
+    _postLoginDestinationKey = deps.postLoginDestinationKey || 'canopex-post-login';
+  }
+
+  function authEnabled() {
+    return true;
+  }
+
+  function rememberPostLoginDestination() {
+    try {
+      sessionStorage.setItem(_postLoginDestinationKey, 'app');
+    } catch (_) { /* ignore */ }
+  }
+
+  function login() {
+    rememberPostLoginDestination();
+    window.location.href = '/.auth/login/aad';
+  }
+
+  function logout() {
+    if (_clearAllCache) _clearAllCache();
+    try {
+      sessionStorage.removeItem(_postLoginDestinationKey);
+    } catch (_) { /* ignore */ }
+    window.location.href = '/.auth/logout';
   }
 
   // ── updateAuthUI ─────────────────────────────────────────────
@@ -197,7 +224,10 @@
   // ── Public API ────────────────────────────────────────────────
 
   window.CanopexAuth = {
+    authEnabled: authEnabled,
     init: init,
+    login: login,
+    logout: logout,
     updateAuthUI: updateAuthUI,
     initAuth: initAuth,
   };

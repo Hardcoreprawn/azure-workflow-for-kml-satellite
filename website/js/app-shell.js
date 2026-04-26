@@ -304,10 +304,8 @@
     }
   }
 
-  function authEnabled() { return true; /* SWA built-in auth — always available */ }
-
-  function rememberPostLoginDestination() {
-    try { sessionStorage.setItem(POST_LOGIN_DESTINATION_KEY, 'app'); } catch { /* ignore */ }
+  function authEnabled() {
+    return typeof authModule.authEnabled === 'function' ? authModule.authEnabled() : true;
   }
 
   async function discoverApiBase() {
@@ -315,14 +313,11 @@
   }
 
   function login() {
-    rememberPostLoginDestination();
-    window.location.href = '/.auth/login/aad';
+    if (typeof authModule.login === 'function') return authModule.login();
   }
 
   function logout() {
-    clearAllCache();
-    try { sessionStorage.removeItem(POST_LOGIN_DESTINATION_KEY); } catch { /* ignore */ }
-    window.location.href = '/.auth/logout';
+    if (typeof authModule.logout === 'function') return authModule.logout();
   }
 
   async function apiFetch(path, opts) {
@@ -866,6 +861,8 @@
       updateAnalysisRun: updateAnalysisRun,
       getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
       getLatestAnalysisRun: function () { return latestAnalysisRun; },
+      clearAllCache: clearAllCache,
+      postLoginDestinationKey: POST_LOGIN_DESTINATION_KEY,
       clearAnalysisState: function () {
         analysisHistoryRuns = [];
         analysisHistoryLoaded = false;
