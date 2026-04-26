@@ -54,6 +54,7 @@
   var progressModule = window.CanopexAnalysisProgress || {};
   var evidenceDisplayModule = window.CanopexEvidenceDisplay || {};
   var authModule = window.CanopexAuth || {};
+  var bindingsModule = window.CanopexBindings || {};
   var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
@@ -1772,149 +1773,49 @@
   }
   renderWorkspaceGuidance();
 
-  document.querySelectorAll('[data-role-choice]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      setWorkspaceRole(button.getAttribute('data-role-choice'));
+  // All DOM event bindings — delegated to app-bindings.js
+  if (typeof bindingsModule.init === 'function') {
+    bindingsModule.init({
+      // auth
+      login: login,
+      logout: logout,
+      manageBilling: manageBilling,
+      saveTierEmulation: saveTierEmulation,
+      // workspace guidance
+      setWorkspaceRole: setWorkspaceRole,
+      setWorkspacePreference: setWorkspacePreference,
+      revealWorkflowTarget: revealWorkflowTarget,
+      currentPreferenceConfig: currentPreferenceConfig,
+      // analysis
+      queueAnalysis: queueAnalysis,
+      downloadRunExport: downloadRunExport,
+      updateAnalysisPreflight: updateAnalysisPreflight,
+      loadAnalysisFile: loadAnalysisFile,
+      switchInputTab: switchInputTab,
+      convertCSVToKml: convertCSVToKml,
+      // evidence surface
+      toggleEvidencePlay: toggleEvidencePlay,
+      showEvidenceFrame: showEvidenceFrame,
+      setEvidenceLayerMode: setEvidenceLayerMode,
+      requestAiAnalysis: requestAiAnalysis,
+      requestEudrAssessment: requestEudrAssessment,
+      expandEvidenceMap: expandEvidenceMap,
+      collapseEvidenceMap: collapseEvidenceMap,
+      toggleCompareView: toggleCompareView,
+      getOverrideContext: function () {
+        return evidenceDisplayModule.getOverrideContext ? evidenceDisplayModule.getOverrideContext() : {};
+      },
+      // parcel notes / override
+      showNoteEditor: showNoteEditor,
+      hideNoteEditor: hideNoteEditor,
+      saveParcelNote: saveParcelNote,
+      openOverrideModal: openOverrideModal,
+      closeOverrideModal: closeOverrideModal,
+      confirmOverride: confirmOverride,
+      revertOverride: revertOverride,
+      onOverrideReasonInput: onOverrideReasonInput,
+      // API access for export
+      apiFetch: apiFetch,
     });
-  });
-
-  document.querySelectorAll('[data-preference-choice]').forEach(function(button) {
-    button.addEventListener('click', function() {
-      setWorkspacePreference(button.getAttribute('data-preference-choice'));
-    });
-  });
-
-  // Bind click handlers — guarded for elements that only exist on some pages.
-  function bindClick(id, handler) {
-    if (typeof coreDom.bindClick === 'function') {
-      coreDom.bindClick(id, handler);
-      return;
-    }
-    var el = document.getElementById(id);
-    if (el) el.addEventListener('click', handler);
   }
-  bindClick('auth-login-btn', login);
-  bindClick('auth-logout-btn', logout);
-  bindClick('app-sign-in-btn', login);
-  bindClick('app-analysis-sign-in-btn', login);
-  bindClick('app-manage-billing-btn', manageBilling);
-  bindClick('app-apply-tier-emulation-btn', saveTierEmulation);
-  bindClick('app-guided-primary-btn', function() {
-    revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().primaryTarget);
-  });
-  bindClick('app-guided-secondary-btn', function() {
-    revealWorkflowTarget(this.getAttribute('data-target') || currentPreferenceConfig().secondaryTarget);
-  });
-  bindClick('app-analysis-submit-btn', queueAnalysis);
-  bindClick('app-run-link', function(event) {
-    const href = this.href;
-    if (!href) return;
-    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-      return; // Let normal navigation proceed
-    }
-    const fullUrl = new URL(href, window.location.origin).href;
-    event.preventDefault();
-    const el = document.getElementById('app-run-link');
-    try {
-      navigator.clipboard.writeText(fullUrl).then(function() {
-        if (el._copyTimer) clearTimeout(el._copyTimer);
-        const prev = el.textContent;
-        el.textContent = 'Link copied!';
-        el._copyTimer = setTimeout(function() {
-          if (el.textContent === 'Link copied!') el.textContent = prev;
-          el._copyTimer = null;
-        }, 1500);
-      }).catch(function() {
-        window.location.href = href;
-      });
-    } catch (_) {
-      window.location.href = href;
-    }
-  });
-  document.querySelectorAll('[data-export-format]').forEach(function(button) {
-    button.addEventListener('click', function(event) {
-      event.stopPropagation();
-      downloadRunExport(button.getAttribute('data-export-format'));
-    });
-  });
-
-  // Bind remaining controls — guarded so pages that omit elements don't crash.
-  var kmlInput = document.getElementById('app-analysis-kml');
-  if (kmlInput) kmlInput.addEventListener('input', function() { updateAnalysisPreflight(this.value); });
-  var fileInput = document.getElementById('app-analysis-file');
-  if (fileInput) fileInput.addEventListener('change', function() { if (this.files && this.files[0]) loadAnalysisFile(this.files[0]); });
-
-  // Input tab switching (KML / CSV)
-  document.querySelectorAll('[data-input-tab]').forEach(function(tab) {
-    tab.addEventListener('click', function() { switchInputTab(this.getAttribute('data-input-tab')); });
-  });
-  bindClick('app-csv-convert-btn', convertCSVToKml);
-
-  // Evidence surface controls
-  bindClick('app-map-play-btn', toggleEvidencePlay);
-  var frameSlider = document.getElementById('app-map-frame-slider');
-  if (frameSlider) frameSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
-  bindClick('app-map-btn-rgb', function() { setEvidenceLayerMode('rgb'); });
-  bindClick('app-map-btn-ndvi', function() { setEvidenceLayerMode('ndvi'); });
-  bindClick('app-evidence-ai-btn', requestAiAnalysis);
-  bindClick('app-evidence-eudr-btn', requestEudrAssessment);
-  // Expanded map viewer controls
-    // Parcel notes (#669)
-    bindClick('app-evidence-notes-add-btn', showNoteEditor);
-    bindClick('app-evidence-notes-cancel-btn', hideNoteEditor);
-    bindClick('app-evidence-notes-save-btn', saveParcelNote);
-
-    // Override determination controls (#672)
-    bindClick('app-evidence-override-btn', function() {
-      var ctx = evidenceDisplayModule.getOverrideContext ? evidenceDisplayModule.getOverrideContext() : {};
-      openOverrideModal(ctx.parcelKey, ctx.aoiData);
-    });
-    bindClick('app-evidence-override-revert-btn', revertOverride);
-    bindClick('app-override-confirm-btn', confirmOverride);
-    bindClick('app-override-cancel-btn', closeOverrideModal);
-    var overrideBackdrop = document.getElementById('app-override-backdrop');
-    if (overrideBackdrop) overrideBackdrop.addEventListener('click', function(e) { if (e.target === this) closeOverrideModal(); });
-    var overrideReasonInput = document.getElementById('app-override-reason-input');
-    if (overrideReasonInput) overrideReasonInput.addEventListener('input', onOverrideReasonInput);
-
-    // Portfolio summary export (#674)
-    bindClick('app-summary-export-btn', function() {
-      var btn = document.getElementById('app-summary-export-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
-      apiFetch('/api/eudr/summary-export')
-        .then(function(res) {
-          if (!res.ok) throw new Error('Export failed (' + res.status + ')');
-          return res.blob();
-        })
-        .then(function(blob) {
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'eudr_summary_export.csv';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        })
-        .catch(function(err) {
-          console.warn('EUDR summary export error:', err);
-          var note = document.getElementById('app-summary-export-note');
-          if (note) note.textContent = 'Export failed — try again';
-        })
-        .finally(function() {
-          if (btn) { btn.disabled = false; btn.textContent = 'Export all runs (CSV)'; }
-        });
-    });
-
-    // Expanded map viewer controls
-  bindClick('app-map-expand-btn', expandEvidenceMap);
-  bindClick('app-map-collapse-btn', collapseEvidenceMap);
-  bindClick('app-map-btn-compare', toggleCompareView);  // #671 before/after comparison
-  var expandedBackdrop = document.getElementById('app-map-expanded-backdrop');
-  if (expandedBackdrop) expandedBackdrop.addEventListener('click', function(e) { if (e.target === this) collapseEvidenceMap(); });
-  bindClick('app-map-expanded-play-btn', toggleEvidencePlay);
-  var expandedSlider = document.getElementById('app-map-expanded-slider');
-  if (expandedSlider) expandedSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
-  bindClick('app-map-expanded-btn-rgb', function() { setEvidenceLayerMode('rgb'); });
-  bindClick('app-map-expanded-btn-ndvi', function() { setEvidenceLayerMode('ndvi'); });
 })();
