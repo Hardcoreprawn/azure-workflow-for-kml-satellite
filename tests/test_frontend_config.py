@@ -22,6 +22,7 @@ APP_INDEX_HTML = WEBSITE / "app" / "index.html"
 EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
+APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
 APP_AUTH_JS = WEBSITE / "js" / "app-auth.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
@@ -51,6 +52,11 @@ def landing_js():
 @pytest.fixture()
 def app_shell_js():
     return APP_SHELL_JS.read_text()
+
+
+@pytest.fixture()
+def app_runs_js():
+    return APP_RUNS_JS.read_text()
 
 
 @pytest.fixture()
@@ -240,13 +246,13 @@ class TestAuthConfig:
             "/eudr/index.html must load canopex-api-client.js before app-shell.js"
         )
 
-    def test_app_shell_supports_org_scope_history(self, app_shell_js):
+    def test_app_shell_supports_org_scope_history(self, app_runs_js):
         """EUDR dashboard should request org-scoped analysis history for portfolio triage."""
-        assert "scope=' + encodeURIComponent(historyScope)" in app_shell_js, (
-            "app-shell.js must include scope parameter when loading analysis history"
+        assert "scope=' + encodeURIComponent(historyScope)" in app_runs_js, (
+            "app-runs.js must include scope parameter when loading analysis history"
         )
-        assert "history-org" in app_shell_js, (
-            "app-shell.js must keep org history cache separate from user-scoped history cache"
+        assert "history-org" in app_runs_js, (
+            "app-runs.js must keep org history cache separate from user-scoped history cache"
         )
 
 

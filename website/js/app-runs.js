@@ -7,6 +7,12 @@
 (function () {
   'use strict';
 
+  var _d = {};
+
+  function init(deps) {
+    _d = deps || {};
+  }
+
   function normalizeRun(run) {
     if (!run) return null;
     var normalized = Object.assign({}, run);
@@ -154,7 +160,51 @@
     } catch (_) { /* ignore */ }
   }
 
+  async function loadHistory(options) {
+    var opts = options || {};
+    var apiReady = _d.getApiReady ? _d.getApiReady() : Promise.resolve();
+    await apiReady;
+
+    var currentAccount = _d.getAccount ? _d.getAccount() : null;
+    var authEnabled = _d.authEnabled ? _d.authEnabled() : true;
+    if (!currentAccount && authEnabled) return;
+
+    var activeProfile = _d.getActiveProfile ? _d.getActiveProfile() : {};
+    var historyScope = activeProfile.historyScope || 'user';
+    var historyCacheKey = historyScope === 'org' ? 'history-org' : 'history';
+    var cached = _d.readCache ? _d.readCache(historyCacheKey) : null;
+    var historyLoaded = _d.getAnalysisHistoryLoaded ? _d.getAnalysisHistoryLoaded() : false;
+
+    if (cached && !historyLoaded) {
+      if (_d.setAnalysisHistoryLoaded) _d.setAnalysisHistoryLoaded(true);
+      if (_d.applyAnalysisHistory) _d.applyAnalysisHistory(cached, opts);
+      if (_d.applyFirstRunLayout) _d.applyFirstRunLayout();
+    }
+
+    try {
+      var apiFetch = _d.apiFetch || function () { return Promise.reject(new Error('apiFetch unavailable')); };
+      var res = await apiFetch('/api/analysis/history?limit=6&scope=' + encodeURIComponent(historyScope));
+      var data = await res.json();
+      if (_d.writeCache) _d.writeCache(historyCacheKey, data, _d.historyCacheTtlMs);
+      if (_d.setAnalysisHistoryLoaded) _d.setAnalysisHistoryLoaded(true);
+      if (_d.applyAnalysisHistory) _d.applyAnalysisHistory(data, opts);
+      if (_d.applyFirstRunLayout) _d.applyFirstRunLayout();
+    } catch (_) {
+      if (_d.setAnalysisHistoryLoaded) _d.setAnalysisHistoryLoaded(true);
+      var analysisHistoryRuns = _d.getAnalysisHistoryRuns ? _d.getAnalysisHistoryRuns() : [];
+      var latestAnalysisRun = _d.getLatestAnalysisRun ? _d.getLatestAnalysisRun() : null;
+      if (!cached && !analysisHistoryRuns.length && !latestAnalysisRun) {
+        if (_d.setAnalysisHistoryRuns) _d.setAnalysisHistoryRuns([]);
+        if (_d.setSelectedAnalysisRunId) _d.setSelectedAnalysisRunId(null);
+        if (_d.renderAnalysisHistoryList) _d.renderAnalysisHistoryList();
+        if (_d.updateHistorySummary) _d.updateHistorySummary(null);
+      }
+      if (_d.applyFirstRunLayout) _d.applyFirstRunLayout();
+    }
+  }
+
   window.CanopexAppRuns = {
+    init: init,
     normalizeRun: normalizeRun,
     sortRuns: sortRuns,
     isRunActive: isRunActive,
@@ -164,5 +214,6 @@
     readRunSelectionFromLocation: readRunSelectionFromLocation,
     selectedRunPermalink: selectedRunPermalink,
     updateRunSelectionLocation: updateRunSelectionLocation,
+    loadHistory: loadHistory,
   };
 })();

@@ -634,37 +634,7 @@
   }
 
   async function loadAnalysisHistory(options) {
-    await apiDiscoveryReady;
-    if (!currentAccount && authEnabled()) return;
-
-    var historyScope = activeProfile.historyScope || 'user';
-    var historyCacheKey = historyScope === 'org' ? 'history-org' : 'history';
-
-    // Render cached history instantly while fetching fresh data
-    const cached = readCache(historyCacheKey);
-    if (cached && !analysisHistoryLoaded) {
-      analysisHistoryLoaded = true;
-      applyAnalysisHistory(cached, options || {});
-      applyFirstRunLayout();
-    }
-
-    try {
-      const res = await apiFetch('/api/analysis/history?limit=6&scope=' + encodeURIComponent(historyScope));
-      const data = await res.json();
-      writeCache(historyCacheKey, data, CACHE_TTL_HISTORY);
-      analysisHistoryLoaded = true;
-      applyAnalysisHistory(data, options || {});
-      applyFirstRunLayout();
-    } catch {
-      analysisHistoryLoaded = true;
-      if (!cached && !analysisHistoryRuns.length && !latestAnalysisRun) {
-        analysisHistoryRuns = [];
-        selectedAnalysisRunId = null;
-        renderAnalysisHistoryList();
-        updateHistorySummary(null);
-      }
-      applyFirstRunLayout();
-    }
+    if (typeof appRuns.loadHistory === 'function') return appRuns.loadHistory(options);
   }
 
   /* ---- Auth UI + bootstrap — delegated to app-auth.js ---- */
@@ -731,6 +701,27 @@
     getLatestBillingStatus: function () { return latestBillingStatus; },
     getWorkspaceRoleConfig: function () { return currentRoleConfig(); },
     onPreflightUpdate: function (preflight) { analysisDraftSummary = preflight; },
+  });
+
+  initModule(appRuns, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getAccount: function () { return currentAccount; },
+    authEnabled: authEnabled,
+    getActiveProfile: function () { return activeProfile; },
+    readCache: readCache,
+    writeCache: writeCache,
+    historyCacheTtlMs: CACHE_TTL_HISTORY,
+    getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
+    setAnalysisHistoryLoaded: function (value) { analysisHistoryLoaded = value; },
+    getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
+    setAnalysisHistoryRuns: function (runs) { analysisHistoryRuns = runs; },
+    getLatestAnalysisRun: function () { return latestAnalysisRun; },
+    setSelectedAnalysisRunId: function (id) { selectedAnalysisRunId = id; },
+    applyAnalysisHistory: applyAnalysisHistory,
+    applyFirstRunLayout: applyFirstRunLayout,
+    renderAnalysisHistoryList: renderAnalysisHistoryList,
+    updateHistorySummary: updateHistorySummary,
   });
 
   initModule(progressModule, {
