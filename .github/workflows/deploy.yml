@@ -43,6 +43,16 @@ on:
         required: false
         type: boolean
         default: false
+      smoke_poll_interval_seconds:
+        description: Poll interval (seconds) for post-readiness async smoke gate.
+        required: false
+        type: string
+        default: "5"
+      smoke_max_attempts:
+        description: Max orchestrator poll attempts for post-readiness async smoke gate.
+        required: false
+        type: string
+        default: "60"
 
 permissions:
   contents: read
@@ -397,9 +407,9 @@ jobs:
           ARM_USE_OIDC: "true"
         run: tofu apply -auto-approve tfplan
 
-      # Capture the current container image so we can rollback if the
-      # new image fails readiness checks.
-      - name: Capture current container image
+      # Capture current container images so we can rollback if the
+      # new deployment fails readiness checks.
+      - name: Capture current container images
         id: current-image
         working-directory: infra/tofu
         env:
@@ -410,14 +420,45 @@ jobs:
         run: |
           FUNC_RG=$(tofu output -raw resource_group_name)
           FUNC_NAME=$(tofu output -raw function_app_name)
-          CURRENT_IMAGE=$(az functionapp config container show \
+          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+
+          CURRENT_COMPUTE_IMAGE=$(az functionapp config container show \
             --name "$FUNC_NAME" \
+            --resource-group "$FUNC_RG" \
+            --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv 2>/dev/null || echo "")
+
+          CURRENT_ORCH_IMAGE=$(az functionapp config container show \
+            --name "$ORCH_NAME" \
+            --resource-group "$FUNC_RG" \
+            --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv 2>/dev/null || echo "")
+
+          echo "image_compute=${CURRENT_COMPUTE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "image_orch=${CURRENT_ORCH_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "func_rg=${FUNC_RG}" >> "$GITHUB_OUTPUT"
+          echo "func_name=${FUNC_NAME}" >> "$GITHUB_OUTPUT"
+          echo "orch_name=${ORCH_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Previous compute image: ${CURRENT_COMPUTE_IMAGE:-<none>}"
+          echo "Previous orchestrator image: ${CURRENT_ORCH_IMAGE:-<none>}"
+
+      - name: Capture current orchestrator container image
+        id: current-orch-image
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          FUNC_RG=$(tofu output -raw resource_group_name)
+          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+          CURRENT_IMAGE=$(az functionapp config container show \
+            --name "$ORCH_NAME" \
             --resource-group "$FUNC_RG" \
             --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv 2>/dev/null || echo "")
           echo "image=${CURRENT_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "func_rg=${FUNC_RG}" >> "$GITHUB_OUTPUT"
-          echo "func_name=${FUNC_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Previous image: ${CURRENT_IMAGE:-<none>}"
+          echo "func_name=${ORCH_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Previous orchestrator image: ${CURRENT_IMAGE:-<none>}"
 
       # azapi v2 crashes when updating the function app body (identity bug).
       # So tofu ignores body changes and we apply mutable config via CLI.
@@ -694,6 +735,18 @@ jobs:
           HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
 
+      - name: Export Compute Function App hostname
+        id: compute-hostname
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
+
       - name: Export SWA hostname
         id: swa-hostname
         working-directory: infra/tofu
@@ -728,13 +781,10 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
-          BASE_URL="https://${HOSTNAME}"
           MAX_WAIT=300          # container startup + route registration can exceed 90s under cold start
           INTERVAL=5
-          elapsed=0
-          health_code=0
-          ready_code=0
+          COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
 
           probe_code() {
             local url="$1"
@@ -749,58 +799,68 @@ jobs:
             fi
           }
 
-          echo "Waiting for ${BASE_URL}/api/health to become ready..."
+          verify_host_readiness() {
+            local role="$1"
+            local hostname="$2"
+            local base_url="https://${hostname}"
+            local elapsed=0
+            local health_code=0
+            local ready_code=0
 
-          while [ $elapsed -lt $MAX_WAIT ]; do
-            health_code=$(probe_code "${BASE_URL}/api/health")
-            ready_code=$(probe_code "${BASE_URL}/api/readiness")
+            echo "Waiting for ${role} runtime ${base_url}/api/health to become ready..."
 
-            echo "  [${elapsed}s] health=${health_code} readiness=${ready_code}"
+            while [ $elapsed -lt $MAX_WAIT ]; do
+              health_code=$(probe_code "${base_url}/api/health")
+              ready_code=$(probe_code "${base_url}/api/readiness")
 
-            # Success: both return 200
-            if [ "$health_code" = "200" ] && [ "$ready_code" = "200" ]; then
-              echo "✅ Runtime is healthy and ready."
-              HEALTH_BODY=$(curl -s --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || true)
-              echo "  Deployed version: $(echo "$HEALTH_BODY" | jq -r '.version // "unknown"') ($(echo "$HEALTH_BODY" | jq -r '.commit // "unknown"'))"
-              exit 0
-            fi
+              echo "  ${role} [${elapsed}s] health=${health_code} readiness=${ready_code}"
 
-            # Fail fast on real server errors — but tolerate 502/503/504 which
-            # are normal during Container Apps cold start + Python worker init.
-            if [[ "$health_code" =~ ^5 ]] && ! [[ "$health_code" =~ ^50[234]$ ]]; then
-              echo "❌ Server error (health=${health_code}). Failing."
-              exit 1
-            fi
-            if [[ "$ready_code" =~ ^5 ]] && ! [[ "$ready_code" =~ ^50[234]$ ]]; then
-              echo "❌ Server error (readiness=${ready_code}). Failing."
-              exit 1
-            fi
+              if [ "$health_code" = "200" ] && [ "$ready_code" = "200" ]; then
+                echo "✅ ${role} runtime is healthy and ready."
+                HEALTH_BODY=$(curl -s --max-time 5 "${base_url}/api/health" 2>/dev/null || true)
+                echo "  ${role} deployed version: $(echo "$HEALTH_BODY" | jq -r '.version // "unknown"') ($(echo "$HEALTH_BODY" | jq -r '.commit // "unknown"'))"
+                return 0
+              fi
 
-            # 502/503/504 / 404 / 000 — transient during cold start, keep waiting
-            sleep $INTERVAL
-            elapsed=$((elapsed + INTERVAL))
-          done
+              # Fail fast on real server errors — but tolerate 502/503/504 which
+              # are normal during Container Apps cold start + Python worker init.
+              if [[ "$health_code" =~ ^5 ]] && ! [[ "$health_code" =~ ^50[234]$ ]]; then
+                echo "❌ ${role} server error (health=${health_code}). Failing."
+                return 1
+              fi
+              if [[ "$ready_code" =~ ^5 ]] && ! [[ "$ready_code" =~ ^50[234]$ ]]; then
+                echo "❌ ${role} server error (readiness=${ready_code}). Failing."
+                return 1
+              fi
 
-          # Final diagnostics
-          echo ""
-          echo "❌ Readiness checks did not pass within ${MAX_WAIT}s."
-          echo "── Endpoint probe matrix ──"
-          echo "  health:    ${health_code}"
-          echo "  readiness: ${ready_code}"
-          echo "  elapsed:   ${elapsed}s"
-          echo "  hostname:  ${HOSTNAME}"
-          echo ""
-          echo "── DNS lookup ──"
-          getent hosts "${HOSTNAME}" || true
-          echo ""
-          echo "── Final curl diagnostics (/api/health) ──"
-          curl -sv --connect-timeout 5 --max-time 10 "${BASE_URL}/api/health" -o /dev/null 2>&1 | tail -n 40 || true
-          echo ""
-          echo "This may indicate:"
-          echo "  - Container image failed to start (check Container Apps logs)"
-          echo "  - Route registration lag exceeded timeout"
-          echo "  - The function app hostname has changed"
-          exit 1
+              # 502/503/504 / 404 / 000 — transient during cold start, keep waiting
+              sleep $INTERVAL
+              elapsed=$((elapsed + INTERVAL))
+            done
+
+            echo ""
+            echo "❌ ${role} readiness checks did not pass within ${MAX_WAIT}s."
+            echo "── ${role} endpoint probe matrix ──"
+            echo "  health:    ${health_code}"
+            echo "  readiness: ${ready_code}"
+            echo "  elapsed:   ${elapsed}s"
+            echo "  hostname:  ${hostname}"
+            echo ""
+            echo "── DNS lookup (${role}) ──"
+            getent hosts "${hostname}" || true
+            echo ""
+            echo "── Final curl diagnostics (${role} /api/health) ──"
+            curl -sv --connect-timeout 5 --max-time 10 "${base_url}/api/health" -o /dev/null 2>&1 | tail -n 40 || true
+            echo ""
+            echo "This may indicate:"
+            echo "  - Container image failed to start (check Container Apps logs)"
+            echo "  - Route registration lag exceeded timeout"
+            echo "  - The function app hostname has changed"
+            return 1
+          }
+
+          verify_host_readiness "compute" "$COMPUTE_HOSTNAME"
+          verify_host_readiness "orchestrator" "$ORCH_HOSTNAME"
 
       - name: Reconcile Event Grid subscription
         id: reconcile-eventgrid
@@ -845,30 +905,141 @@ jobs:
             --system-topic-name "$TOPIC_NAME" \
             --expected-daily-cap-gb "$EXPECTED_CAP"
 
+      - name: Run async functional smoke gate
+        id: async-smoke-gate
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+          DEPLOY_SMOKE_BEARER_TOKEN: ${{ secrets.DEPLOY_SMOKE_BEARER_TOKEN }}
+          SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
+          SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
+        run: |
+          python -m pip install --disable-pip-version-check --quiet httpx
+
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          API_BASE="https://${HOSTNAME}"
+          echo "Running async smoke gate against ${API_BASE}"
+          echo "Smoke poll interval=${SMOKE_POLL_INTERVAL}s max_attempts=${SMOKE_MAX_ATTEMPTS}"
+
+          SMOKE_ARGS=(
+            --api-base "$API_BASE"
+            --kml-path ../../tests/fixtures/sample.kml
+            --poll-interval "$SMOKE_POLL_INTERVAL"
+            --max-attempts "$SMOKE_MAX_ATTEMPTS"
+          )
+
+          if [ -n "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
+            SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
+          fi
+
+          python ../../scripts/e2e_smoke_gate.py "${SMOKE_ARGS[@]}"
+
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image
-        if: failure() && steps.configure-app.outcome == 'success' && steps.current-image.outputs.image != ''
+        if: |
+          failure()
+          && (steps.configure-app.outcome == 'success' || steps.configure-orch-app.outcome == 'success')
+          && (steps.current-image.outputs.image_compute != '' || steps.current-image.outputs.image_orch != '')
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          PREV_IMAGE="${{ steps.current-image.outputs.image }}"
+          PREV_COMPUTE_IMAGE="${{ steps.current-image.outputs.image_compute }}"
+          PREV_ORCH_IMAGE="${{ steps.current-image.outputs.image_orch }}"
           FUNC_NAME="${{ steps.current-image.outputs.func_name }}"
+          ORCH_NAME="${{ steps.current-image.outputs.orch_name }}"
           FUNC_RG="${{ steps.current-image.outputs.func_rg }}"
 
-          echo "⚠️ Readiness checks failed — rolling back to previous image."
+          echo "⚠️ Readiness checks failed — rolling back to previous images."
+
+          if [ -n "$PREV_COMPUTE_IMAGE" ] && [ "${{ steps.configure-app.outcome }}" = "success" ]; then
+            echo "  Compute previous: ${PREV_COMPUTE_IMAGE}"
+            echo "  Compute failed:   ${{ needs.build-image.outputs.image_uri }}"
+            az functionapp config container set \
+              --name "$FUNC_NAME" \
+              --resource-group "$FUNC_RG" \
+              --image "$PREV_COMPUTE_IMAGE"
+          fi
+
+          if [ -n "$PREV_ORCH_IMAGE" ] && [ "${{ steps.configure-orch-app.outcome }}" = "success" ]; then
+            echo "  Orchestrator previous: ${PREV_ORCH_IMAGE}"
+            echo "  Orchestrator failed:   ${{ needs.build-image.outputs.orch_image_uri }}"
+            az functionapp config container set \
+              --name "$ORCH_NAME" \
+              --resource-group "$FUNC_RG" \
+              --image "$PREV_ORCH_IMAGE"
+          fi
+
+          check_health() {
+            local role="$1"
+            local hostname="$2"
+            local base_url="https://${hostname}"
+            for i in $(seq 1 12); do
+              sleep 10
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${base_url}/api/health" 2>/dev/null || echo "000")
+              echo "  ${role} [${i}0s] health=${code}"
+              if [ "$code" = "200" ]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          COMPUTE_HOSTNAME="${{ steps.compute-hostname.outputs.hostname }}"
+          ORCH_HOSTNAME="${{ steps.hostname.outputs.hostname }}"
+
+          if [ -z "$COMPUTE_HOSTNAME" ]; then
+            COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          fi
+          if [ -z "$ORCH_HOSTNAME" ]; then
+            ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          fi
+
+          if [ -z "$COMPUTE_HOSTNAME" ] || [ -z "$ORCH_HOSTNAME" ]; then
+            echo "❌ Rollback health verification could not resolve function app hostnames."
+            exit 1
+          fi
+
+          echo "Waiting for rolled-back containers to become healthy..."
+          if ! check_health "compute" "$COMPUTE_HOSTNAME"; then
+            echo "⚠️ Compute rollback applied but health did not recover within 120s."
+            exit 1
+          fi
+          if ! check_health "orchestrator" "$ORCH_HOSTNAME"; then
+            echo "⚠️ Orchestrator rollback applied but health did not recover within 120s."
+            exit 1
+          fi
+
+          echo "✅ Rollback successful — both previous images are healthy."
+
+      - name: Rollback orchestrator to previous image
+        if: failure() && steps.configure-orch-app.outcome == 'success' && steps.current-orch-image.outputs.image != ''
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          PREV_IMAGE="${{ steps.current-orch-image.outputs.image }}"
+          ORCH_NAME="${{ steps.current-orch-image.outputs.func_name }}"
+          FUNC_RG="${{ steps.current-orch-image.outputs.func_rg }}"
+
+          echo "⚠️ Readiness checks failed — rolling back orchestrator to previous image."
           echo "  Previous: ${PREV_IMAGE}"
-          echo "  Failed:   ${{ needs.build-image.outputs.image_uri }}"
+          echo "  Failed:   ${{ needs.build-image.outputs.orch_image_uri }}"
 
           az functionapp config container set \
-            --name "$FUNC_NAME" \
+            --name "$ORCH_NAME" \
             --resource-group "$FUNC_RG" \
             --image "$PREV_IMAGE"
 
           # Wait for the rollback to take effect
-          echo "Waiting for rolled-back container to become healthy..."
+          echo "Waiting for rolled-back orchestrator container to become healthy..."
           HOSTNAME="${{ steps.hostname.outputs.hostname }}"
           BASE_URL="https://${HOSTNAME}"
           for i in $(seq 1 12); do
@@ -876,11 +1047,11 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
             echo "  [${i}0s] health=${code}"
             if [ "$code" = "200" ]; then
-              echo "✅ Rollback successful — previous image is healthy."
+              echo "✅ Orchestrator rollback successful — previous image is healthy."
               exit 0
             fi
           done
-          echo "⚠️ Rollback applied but health check did not recover within 120s."
+          echo "⚠️ Orchestrator rollback applied but health check did not recover within 120s."
           echo "  Manual intervention may be required."
           exit 1
 

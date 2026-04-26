@@ -46,6 +46,8 @@ INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
+API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
+OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
 
 HTML_PAGES = [
     WEBSITE / "index.html",
@@ -470,9 +472,48 @@ class TestDeployWorkflowSettings:
         )
         assert "curl" in deploy_yml, "deploy.yml smoke check must curl the FA health endpoint"
 
+    def test_verify_runtime_readiness_checks_both_function_apps(self, deploy_yml):
+        assert "COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)" in deploy_yml, (
+            "deploy.yml readiness verification must check compute app hostname"
+        )
+        assert (
+            "ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)" in deploy_yml
+        ), "deploy.yml readiness verification must check orchestrator app hostname"
+        assert 'verify_host_readiness "compute" "$COMPUTE_HOSTNAME"' in deploy_yml, (
+            "deploy.yml readiness verification must probe compute app health/readiness"
+        )
+        assert 'verify_host_readiness "orchestrator" "$ORCH_HOSTNAME"' in deploy_yml, (
+            "deploy.yml readiness verification must probe orchestrator app health/readiness"
+        )
+
+    def test_rollback_restores_both_function_apps(self, deploy_yml):
+        assert "steps.configure-orch-app.outcome == 'success'" in deploy_yml, (
+            "rollback guard must consider orchestrator configure step outcome"
+        )
+        assert "steps.current-image.outputs.image_compute" in deploy_yml, (
+            "rollback guard must use captured compute image output"
+        )
+        assert "steps.current-image.outputs.image_orch" in deploy_yml, (
+            "rollback guard must use captured orchestrator image output"
+        )
+        assert 'ORCH_NAME="${{ steps.current-image.outputs.orch_name }}"' in deploy_yml, (
+            "rollback step must restore orchestrator app image"
+        )
+        assert "steps.compute-hostname.outputs.hostname" in deploy_yml, (
+            "rollback step must validate compute app health after rollback"
+        )
+
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):
         assert "rebuild_after_manual_teardown" in deploy_yml, (
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
+        )
+
+    def test_workflow_dispatch_supports_async_smoke_tuning(self, deploy_yml):
+        assert "smoke_poll_interval_seconds" in deploy_yml, (
+            "deploy.yml workflow_dispatch must expose smoke poll interval control"
+        )
+        assert "smoke_max_attempts" in deploy_yml, (
+            "deploy.yml workflow_dispatch must expose smoke max-attempts control"
         )
 
     def test_deploy_does_not_run_reset_helper(self, deploy_yml):
@@ -505,10 +546,71 @@ class TestDeployWorkflowSettings:
             "readiness so ingestion wiring is restored"
         )
 
+    def test_event_grid_reconcile_step_uses_orchestrator_outputs(self, deploy_yml):
+        match = re.search(
+            r"- name: Reconcile Event Grid subscription(?P<body>.*?)(?:\n\s*- name:|\Z)",
+            deploy_yml,
+            re.DOTALL,
+        )
+        assert match, "deploy.yml must include the Event Grid reconcile step"
+        body = match.group("body")
+        assert "tofu output -raw function_app_orch_name" in body, (
+            "Event Grid reconcile step must read the orchestrator function app name"
+        )
+        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+            "Event Grid reconcile step must read the orchestrator hostname"
+        )
+        assert "tofu output -raw function_app_name" not in body, (
+            "Event Grid reconcile step must not read the compute app name"
+        )
+        assert "tofu output -raw function_app_default_hostname" not in body, (
+            "Event Grid reconcile step must not read the compute hostname"
+        )
+
     def test_deploy_validates_infra_gate(self, deploy_yml):
         assert "validate_dev_infra_gate.py" in deploy_yml, (
             "deploy.yml must validate the infra gate after reconciliation "
             "so clean-slate redeploy failures stop the job"
+        )
+
+    def test_deploy_runs_async_functional_smoke_gate(self, deploy_yml):
+        assert "Run async functional smoke gate" in deploy_yml, (
+            "deploy.yml must run an async functional smoke gate after readiness checks"
+        )
+        assert "python ../../scripts/e2e_smoke_gate.py" in deploy_yml, (
+            "deploy.yml async smoke gate must execute scripts/e2e_smoke_gate.py"
+        )
+
+    def test_async_smoke_gate_is_bounded(self, deploy_yml):
+        assert "SMOKE_POLL_INTERVAL" in deploy_yml, (
+            "deploy.yml async smoke gate must define bounded poll interval"
+        )
+        assert "SMOKE_MAX_ATTEMPTS" in deploy_yml, (
+            "deploy.yml async smoke gate must define bounded max attempts"
+        )
+        assert "--poll-interval" in deploy_yml and "--max-attempts" in deploy_yml, (
+            "deploy.yml async smoke gate must pass bounded polling arguments"
+        )
+
+    def test_infra_gate_step_uses_orchestrator_outputs(self, deploy_yml):
+        match = re.search(
+            r"- name: Validate infra gate(?P<body>.*?)(?:\n\s*- name:|\Z)",
+            deploy_yml,
+            re.DOTALL,
+        )
+        assert match, "deploy.yml must include the infra gate validation step"
+        body = match.group("body")
+        assert "tofu output -raw function_app_orch_name" in body, (
+            "infra gate validation step must read the orchestrator function app name"
+        )
+        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+            "infra gate validation step must read the orchestrator hostname"
+        )
+        assert "tofu output -raw function_app_name" not in body, (
+            "infra gate validation step must not read the compute app name"
+        )
+        assert "tofu output -raw function_app_default_hostname" not in body, (
+            "infra gate validation step must not read the compute hostname"
         )
 
 
@@ -595,37 +697,112 @@ class TestEventGridWebhookWiring:
 
     def test_event_grid_webhook_includes_code_query_param(self):
         tf = MAIN_TF.read_text()
-        assert "&code=${local.eventgrid_key}" in tf, (
-            "Event Grid webhook endpointUrl must include the system key query param "
-            "and reference local.eventgrid_key for the authentication token"
+        match = re.search(
+            r'resource\s+"azapi_resource"\s+"event_grid_subscription"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
         )
-        # Additional verification: ensure endpointUrl in the event_grid_subscription
-        # resource actually contains the code parameter (not just elsewhere in the file)
-        endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
-        assert endpoint_match, "Event Grid subscription missing endpointUrl assignment"
-        endpoint_url = endpoint_match.group(1)
-        assert "code=" in endpoint_url, "Event Grid endpointUrl must contain code query parameter"
-        assert "local.eventgrid_key" in endpoint_url, (
-            "Event Grid endpointUrl must reference local.eventgrid_key for secure auth"
+        assert match, "main.tf must define azapi_resource.event_grid_subscription"
+        body = match.group("body")
+        endpoint_match = re.search(r'endpointUrl\s*=\s*"(?P<url>[^"]+)"', body)
+        assert endpoint_match, "event_grid_subscription must define destination endpointUrl"
+        endpoint_url = endpoint_match.group("url")
+        assert "functionName=blob_trigger" in endpoint_url, (
+            "Event Grid webhook endpointUrl must target the blob_trigger function"
+        )
+        assert "code=${urlencode(local.eventgrid_key)}" in endpoint_url, (
+            "Event Grid webhook endpointUrl must include URL-encoded local.eventgrid_key"
+        )
+
+    def test_event_grid_webhook_targets_orchestrator_host(self):
+        tf = MAIN_TF.read_text()
+        assert "azapi_resource.function_app_orch.output.properties.defaultHostName" in tf, (
+            "Event Grid webhook endpointUrl must target the orchestrator app hostname"
+        )
+        assert "azapi_resource.function_app.output.properties.defaultHostName" not in tf, (
+            "Event Grid webhook endpointUrl must not target the compute app hostname"
+        )
+
+    def test_event_grid_host_key_lookup_targets_orchestrator_app(self):
+        tf = MAIN_TF.read_text()
+        match = re.search(
+            r'resource\s+"azapi_resource_action"\s+"function_host_keys"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "main.tf must define azapi_resource_action.function_host_keys"
+        body = match.group("body")
+        assert "resource_id = azapi_resource.function_app_orch.id" in body, (
+            "Event Grid host key lookup must target the orchestrator app"
+        )
+        assert "resource_id = azapi_resource.function_app.id" not in body, (
+            "Event Grid host key lookup must not target the compute app"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 12. Public API ingress docs contract
+# ---------------------------------------------------------------------------
+
+
+class TestPublicApiIngressDocsContract:
+    """Public API docs must present orchestrator as the only ingress."""
+
+    @staticmethod
+    def _is_in_scope_api_host(host: str) -> bool:
+        if host in {"{productionHost}", "{developmentHost}"}:
+            return True
+        return host.endswith(".azurecontainerapps.io") or host.endswith(".azurewebsites.net")
+
+    @staticmethod
+    def _documented_api_hosts(text: str) -> list[str]:
+        urls = re.findall(r"https://[A-Za-z0-9{}.-]+", text)
+        hosts = [url.replace("https://", "", 1) for url in urls]
+        return [
+            host for host in hosts if TestPublicApiIngressDocsContract._is_in_scope_api_host(host)
+        ]
+
+    @classmethod
+    def _assert_uses_orchestrator_ingress_only(cls, text: str, *, source: str) -> None:
+        hosts = cls._documented_api_hosts(text)
+        assert hosts, f"{source} must document at least one API host"
+        assert not any(
+            host == "azurestaticapps.net" or host.endswith(".azurestaticapps.net") for host in hosts
+        ), f"{source} must not use Static Web App hostnames as API ingress"
+        assert not any(re.fullmatch(r"func-kmlsat-dev\.[A-Za-z0-9.-]+", host) for host in hosts), (
+            f"{source} must not document the compute ingress hostname"
+        )
+        assert any(host == "{productionHost}" or "-orch" in host for host in hosts), (
+            f"{source} must use orchestrator ingress (or production host variable)"
+        )
+
+    def test_api_interface_reference_uses_orchestrator_base_url(self):
+        text = API_INTERFACE_REFERENCE.read_text()
+        self._assert_uses_orchestrator_ingress_only(text, source="API interface reference")
+
+    def test_openapi_production_server_uses_orchestrator_ingress(self):
+        text = OPENAPI_YAML.read_text()
+        self._assert_uses_orchestrator_ingress_only(text, source="OpenAPI servers")
+        assert "azurestaticapps.net/api" not in text, (
+            "OpenAPI production server must not point to the static web app hostname"
         )
 
     def test_event_grid_webhook_targets_orchestrator_hostname(self):
-        """Event Grid webhook MUST target orchestrator, never compute app."""
         tf = MAIN_TF.read_text()
-        # Assertion 1: Verify orchestrator hostname is in Event Grid endpoint
-        assert "function_app_orch" in tf, (
-            "Event Grid webhook must reference function_app_orch orchestrator app"
+        assert "function_app_orch.output.properties.defaultHostName" in tf, (
+            "Event Grid subscription must target function_app_orch (orchestrator) hostname, "
+            "not function_app (compute) hostname. "
+            "Orchestrator is the canonical ingestion pipeline entry point."
         )
-        assert "defaultHostName" in tf, (
-            "Event Grid webhook must use defaultHostName output from orchestrator"
+        # Defensive check: ensure we're NOT pointing to the compute app
+        assert (
+            "azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid"
+            not in tf
+        ), (
+            "Event Grid webhook must NOT target the compute function_app. "
+            "blob_trigger is orchestrator-only and Event Grid must deliver to "
+            "the orchestrator hostname."
         )
-        # Assertion 2: Defensive check - compute app should NOT be in Event Grid webhook
-        endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
-        if endpoint_match:
-            endpoint_url = endpoint_match.group(1)
-            assert "function_app" not in endpoint_url or "function_app_orch" in endpoint_url, (
-                "Event Grid webhook must target orchestrator, not compute app"
-            )
 
 
 # ---------------------------------------------------------------------------

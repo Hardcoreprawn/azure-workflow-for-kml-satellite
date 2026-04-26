@@ -6,7 +6,7 @@ Issue: #18
 
 ### Quick Verification Reference
 
-Function App base URL (dev): `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io`
+Function App base URL (dev, orchestrator ingress): `https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io`
 
 | Method | Path | Auth | Expected (unauthed) | Purpose |
 | --- | --- | --- | --- | --- |

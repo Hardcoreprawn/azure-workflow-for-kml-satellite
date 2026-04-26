@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import json
+
 import pytest
 
 from scripts import e2e_smoke_gate as smoke
@@ -28,6 +31,30 @@ class _FakeClient:
         if not self._responses:
             raise AssertionError("no fake responses left")
         return self._responses.pop(0)
+
+
+def test_build_client_principal_header_encodes_expected_payload() -> None:
+    header = smoke.build_client_principal_header(
+        user_id="user-123",
+        user_details="smoke@example.com",
+        roles_csv="authenticated,admin",
+    )
+    payload = json.loads(base64.b64decode(header.encode("ascii")).decode("utf-8"))
+
+    assert payload["userId"] == "user-123"
+    assert payload["userDetails"] == "smoke@example.com"
+    assert payload["userRoles"] == ["authenticated", "admin"]
+
+
+def test_auth_headers_uses_principal_when_bearer_missing() -> None:
+    headers = smoke.auth_headers(
+        token=None,
+        principal_header="principal-header",
+        session_token="session-token",
+    )
+
+    assert headers["X-MS-CLIENT-PRINCIPAL"] == "principal-header"
+    assert headers["X-Auth-Session"] == "session-token"
 
 
 def test_verify_output_artifacts_requires_completed_status() -> None:

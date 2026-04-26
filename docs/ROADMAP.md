@@ -160,12 +160,12 @@ JTBD: submit once to one stable API surface and get reliable async completion.
 
 | Order | Issue | Title | Status |
 |-------|-------|-------|--------|
-| 2E.5.1 | #729 | single owner for Event Grid webhook target (orchestrator) | Open |
-| 2E.5.2 | #730 | drift guard tests: fail on compute-host Event Grid endpoint references | Open (post #729) |
-| 2E.5.3 | #731 | symmetric rollback and readiness for compute + orchestrator apps | Open (post #729, #730) |
-| 2E.5.4 | #732 | shared function registration module for dual entrypoints | Open (post #731) |
-| 2E.5.5 | #733 | orchestrator-only public API surface; compute host internalized | Open (post #732) |
-| 2E.5.6 | #734 | post-readiness async functional smoke gate as promotion blocker | Open (post #729–#733) |
+| 2E.5.1 | #729 | single owner for Event Grid webhook target (orchestrator) | ✅ PR #736 (draft) |
+| 2E.5.2 | #730 | drift guard tests: fail on compute-host Event Grid endpoint references | ✅ PR #736 (draft) |
+| 2E.5.3 | #731 | symmetric rollback and readiness for compute + orchestrator apps | ✅ PR #736 (draft) |
+| 2E.5.4 | #732 | shared function registration module for dual entrypoints | ✅ PR #736 (draft) |
+| 2E.5.5 | #733 | orchestrator-only public API surface; compute host internalized | ✅ PR #736 (draft) |
+| 2E.5.6 | #734 | post-readiness async functional smoke gate as promotion blocker | ✅ PR #736 (draft) |
 
 Validation gates for every slice:
 

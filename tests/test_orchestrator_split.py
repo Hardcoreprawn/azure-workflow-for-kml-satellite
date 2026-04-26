@@ -88,10 +88,21 @@ def test_function_app_orch_exists():
     )
 
 
-def test_function_app_orch_imports_pipeline_bp():
-    """function_app_orch.py must import blueprints.pipeline (orchestrator role)."""
+def test_function_app_orch_uses_shared_registration():
+    """function_app_orch.py must use shared registration helper."""
     source = (REPO_ROOT / "function_app_orch.py").read_text()
-    assert "from blueprints.pipeline import bp as pipeline_bp" in source
+    assert "from function_registration import register_function_blueprints" in source
+
+
+def test_entrypoints_use_shared_registration_module():
+    """Both entrypoints must register routes via one shared helper."""
+    compute_source = (REPO_ROOT / "function_app.py").read_text()
+    orch_source = (REPO_ROOT / "function_app_orch.py").read_text()
+
+    assert "from function_registration import register_function_blueprints" in compute_source
+    assert "from function_registration import register_function_blueprints" in orch_source
+    assert "register_function_blueprints(app, include_monitoring_scheduler=True)" in compute_source
+    assert "register_function_blueprints(app, include_monitoring_scheduler=False)" in orch_source
 
 
 def test_function_app_orch_does_not_hardcode_activities():
@@ -104,15 +115,14 @@ def test_function_app_orch_does_not_hardcode_activities():
 def test_function_app_orch_does_not_register_monitoring_scheduler():
     """The orchestrator image must not register the monitoring timer trigger."""
     source = (REPO_ROOT / "function_app_orch.py").read_text()
-    assert "app.register_functions(monitoring_bp)" in source
+    assert "register_function_blueprints(app, include_monitoring_scheduler=False)" in source
     assert "monitoring_scheduler_bp" not in source
 
 
 def test_function_app_registers_monitoring_scheduler():
     """The compute image must keep the monitoring timer trigger."""
     source = (REPO_ROOT / "function_app.py").read_text()
-    assert "from blueprints.monitoring import scheduler_bp as monitoring_scheduler_bp" in source
-    assert "app.register_functions(monitoring_scheduler_bp)" in source
+    assert "register_function_blueprints(app, include_monitoring_scheduler=True)" in source
 
 
 def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypatch):
