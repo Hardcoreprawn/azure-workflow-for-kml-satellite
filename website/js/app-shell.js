@@ -55,6 +55,7 @@
   var evidenceDisplayModule = window.CanopexEvidenceDisplay || {};
   var authModule = window.CanopexAuth || {};
   var bindingsModule = window.CanopexBindings || {};
+  var runLifecycleModule = window.CanopexRunLifecycle || {};
   var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
@@ -934,23 +935,7 @@
   /* ------------------------------------------------------------------ */
 
   function applyFirstRunLayout() {
-    var firstRun = document.getElementById('app-first-run-hero');
-    var evidenceHero = document.getElementById('app-evidence-hero');
-    var historyRail = document.getElementById('app-history-card');
-    var workflowStage = document.getElementById('app-workflow-stage');
-    var modePill = document.getElementById('app-hero-mode');
-    var activeRunPill = document.getElementById('app-hero-active-run');
-    if (!firstRun) return;
-
-    var isEmpty = analysisHistoryLoaded && analysisHistoryRuns.length === 0 && !latestAnalysisRun;
-    firstRun.hidden = !isEmpty;
-    if (evidenceHero) evidenceHero.hidden = isEmpty;
-
-    // Collapse first-load noise: hide history rail + extra pills for new users
-    if (historyRail) historyRail.hidden = isEmpty;
-    if (workflowStage) workflowStage.classList.toggle('first-run', isEmpty);
-    if (modePill) modePill.closest('.app-stat-pill').hidden = isEmpty;
-    if (activeRunPill) activeRunPill.closest('.app-stat-pill').hidden = isEmpty;
+    if (typeof runLifecycleModule.applyFirstRunLayout === 'function') return runLifecycleModule.applyFirstRunLayout();
   }
 
   /* ------------------------------------------------------------------ */
@@ -1060,532 +1045,29 @@
   /* ------------------------------------------------------------------ */
 
 
+  /* ---- Run lifecycle — delegated to app-run-lifecycle.js ---- */
+
   function updateContentSummary(data) {
-    var role = currentRoleConfig();
-    var imageryEl = document.getElementById('app-content-imagery');
-    var imageryNoteEl = document.getElementById('app-content-imagery-note');
-    var enrichmentEl = document.getElementById('app-content-enrichment');
-    var enrichmentNoteEl = document.getElementById('app-content-enrichment-note');
-    var exportsEl = document.getElementById('app-content-exports');
-    var exportsNoteEl = document.getElementById('app-content-exports-note');
-    if (!imageryEl || !imageryNoteEl || !enrichmentEl || !enrichmentNoteEl || !exportsEl || !exportsNoteEl) return;
-
-    if (!data) {
-      showEvidenceSurface(false);
-      imageryEl.textContent = role.emptyContent.imageryTitle;
-      imageryNoteEl.textContent = role.emptyContent.imageryNote;
-      enrichmentEl.textContent = role.emptyContent.enrichmentTitle;
-      enrichmentNoteEl.textContent = role.emptyContent.enrichmentNote;
-      exportsEl.textContent = role.emptyContent.exportsTitle;
-      exportsNoteEl.textContent = role.emptyContent.exportsNote;
-      return;
-    }
-
-    var runtimeStatus = data.runtimeStatus || 'Pending';
-    var phase = (data.customStatus && data.customStatus.phase) || 'queued';
-    var phaseCopy = (activeProfile.contentPhaseCopy && activeProfile.contentPhaseCopy[phase]) || {};
-
-    if (runtimeStatus === 'Completed') {
-      // Evidence surface is loaded by loadRunEvidence(), triggered from selectAnalysisRun
-      // Phase status is hidden; evidence surface is shown
-      return;
-    }
-
-    showEvidenceSurface(false);
-
-    if (runtimeStatus === 'Failed' || runtimeStatus === 'Canceled' || runtimeStatus === 'Terminated') {
-      imageryEl.textContent = 'Run interrupted';
-      imageryNoteEl.textContent = 'The pipeline stopped before the imagery stack completed.';
-      enrichmentEl.textContent = 'Context incomplete';
-      enrichmentNoteEl.textContent = 'This run needs explicit failure handling rather than silent fallback behavior.';
-      exportsEl.textContent = 'Nothing staged';
-      exportsNoteEl.textContent = 'No saved outputs should be implied when the real pipeline fails.';
-      return;
-    }
-
-    if (phase === 'ingestion' || phase === 'queued') {
-      imageryEl.textContent = 'AOIs preparing';
-      imageryNoteEl.textContent = 'The workspace is validating geometry and shaping the request for imagery search.';
-      enrichmentEl.textContent = 'Waiting on imagery';
-      enrichmentNoteEl.textContent = 'Context layers follow once the pipeline has something real to attach to.';
-      exportsEl.textContent = 'No outputs yet';
-      exportsNoteEl.textContent = 'Saved artifacts stay unavailable until a real run starts producing outputs.';
-      return;
-    }
-
-    if (phase === 'acquisition') {
-      imageryEl.textContent = 'Scene search underway';
-      imageryNoteEl.textContent = phaseCopy.imageryNote || 'NAIP and Sentinel-2 discovery is in progress so the run can pick the right source imagery.';
-      enrichmentEl.textContent = 'Queued behind acquisition';
-      enrichmentNoteEl.textContent = 'Context layers are staged after the imagery stack is selected.';
-      exportsEl.textContent = 'Awaiting artefacts';
-      exportsNoteEl.textContent = phaseCopy.exportsNote || 'There is nothing to export until imagery is actually acquired.';
-      return;
-    }
-
-    if (phase === 'fulfilment') {
-      imageryEl.textContent = 'Clipping and reprojection';
-      imageryNoteEl.textContent = phaseCopy.imageryNote || 'The pipeline is producing imagery assets for your analysis.';
-      enrichmentEl.textContent = 'Preparing next';
-      enrichmentNoteEl.textContent = phaseCopy.enrichmentNote || 'NDVI and weather context will follow immediately after fulfilment finishes.';
-      exportsEl.textContent = 'Outputs staging next';
-      exportsNoteEl.textContent = phaseCopy.exportsNote || 'The run is close enough that saved outputs should feel tangible, not hypothetical.';
-      return;
-    }
-
-    imageryEl.textContent = 'Imagery stack stabilizing';
-    imageryNoteEl.textContent = phaseCopy.imageryNote || 'Core imagery is in place and the workspace is adding the last supporting layers.';
-    enrichmentEl.textContent = 'Context packaging';
-    enrichmentNoteEl.textContent = phaseCopy.enrichmentNote || 'NDVI, weather, and derived context are being assembled for the run detail experience.';
-    exportsEl.textContent = 'Preparing results view';
-    exportsNoteEl.textContent = phaseCopy.exportsNote || 'Saved outputs, exports, and revisit paths will be available shortly.';
+    if (typeof runLifecycleModule.updateContentSummary === 'function') return runLifecycleModule.updateContentSummary(data);
   }
-
   function updateRunDetail(data) {
-    var submittedEl = document.getElementById('app-run-submitted');
-    var submittedNoteEl = document.getElementById('app-run-submitted-note');
-    var scopeEl = document.getElementById('app-run-scope');
-    var scopeNoteEl = document.getElementById('app-run-scope-note');
-    var deliveryEl = document.getElementById('app-run-delivery');
-    var deliveryNoteEl = document.getElementById('app-run-delivery-note');
-    var linkLabelEl = document.getElementById('app-run-link-label');
-    var linkEl = document.getElementById('app-run-link');
-    if (!submittedEl || !submittedNoteEl || !scopeEl || !scopeNoteEl || !deliveryEl || !deliveryNoteEl || !linkLabelEl || !linkEl) return;
-
-    if (!data) {
-      submittedEl.textContent = '—';
-      submittedNoteEl.textContent = 'Run details restore here after reload.';
-      scopeEl.textContent = '—';
-      scopeNoteEl.textContent = 'Feature and AOI counts appear when known.';
-      deliveryEl.textContent = '—';
-      deliveryNoteEl.textContent = 'Failure counts and tracked artifacts will appear here.';
-      linkLabelEl.textContent = 'Dashboard state';
-      linkEl.href = APP_BASE;
-      linkEl.textContent = 'Open dashboard';
-      document.querySelectorAll('[data-export-format]').forEach(function(button) {
-        button.disabled = true;
-      });
-      return;
-    }
-
-    var runtimeStatus = data.runtimeStatus || 'Pending';
-    var timing = summarizeRunTiming(data);
-    var scopeSummary = [
-      formatCountLabel(data.featureCount, 'feature'),
-      formatCountLabel(data.aoiCount, 'AOI'),
-      data.processingMode,
-    ].filter(Boolean).join(' • ');
-    var scopeNote = [
-      data.maxSpreadKm != null ? 'Spread ' + formatDistance(data.maxSpreadKm) : null,
-      data.totalAreaHa != null ? 'Area ' + formatHectares(data.totalAreaHa) : null,
-      providerLabel(data.providerName),
-    ].filter(Boolean).join(' • ');
-    var failureSummary = summarizeFailureCounts(data.partialFailures);
-    var artifactCount = data.artifactCount || 0;
-
-    submittedEl.textContent = formatHistoryTimestamp(data.submittedAt || data.createdTime);
-    submittedNoteEl.textContent = timing.sinceUpdate
-      ? 'Last backend update ' + timing.sinceUpdate + ' ago.'
-      : 'Your run history preserves this state across reloads.';
-    scopeEl.textContent = scopeSummary || 'Scope loading';
-    scopeNoteEl.textContent = scopeNote || 'Preflight detail appears when the run metadata is available.';
-
-    if (runtimeStatus === 'Completed') {
-      deliveryEl.textContent = artifactCount ? artifactCount + ' tracked outputs' : 'Exports ready';
-      deliveryNoteEl.textContent = failureSummary || 'GeoJSON, CSV, and PDF exports are ready for this completed run.';
-    } else if (runtimeStatus === 'Failed' || runtimeStatus === 'Canceled' || runtimeStatus === 'Terminated') {
-      deliveryEl.textContent = 'Run interrupted';
-      deliveryNoteEl.textContent = failureSummary || 'This run stopped before producing a complete result set.';
-    } else {
-      deliveryEl.textContent = 'Tracking live pipeline';
-      deliveryNoteEl.textContent = failureSummary || 'Results will unlock here when the run completes.';
-    }
-
-    linkLabelEl.textContent = 'Run details';
-    linkEl.href = selectedRunPermalink(data.instanceId || data.instance_id);
-    linkEl.textContent = 'Copy link to this run';
-
-    document.querySelectorAll('[data-export-format]').forEach(function(button) {
-      button.disabled = runtimeStatus !== 'Completed';
-    });
-    var evidenceExportNote = document.getElementById('app-evidence-export-note');
-    if (evidenceExportNote) {
-      evidenceExportNote.textContent = runtimeStatus === 'Completed'
-        ? 'Download GeoJSON, CSV, or PDF for this completed run.'
-        : 'Exports unlock when the selected run completes.';
-    }
+    if (typeof runLifecycleModule.updateRunDetail === 'function') return runLifecycleModule.updateRunDetail(data);
   }
-
   async function downloadRunExport(format) {
-    var run = latestAnalysisRun;
-    if (!run || !(run.instanceId || run.instance_id)) {
-      setAnalysisStatus('Select a run first.', 'error');
-      return;
-    }
-
-    var instanceId = run.instanceId || run.instance_id;
-    if ((run.runtimeStatus || '') !== 'Completed') {
-      setAnalysisStatus('Exports become available once the selected run completes.', 'info');
-      return;
-    }
-
-    var button = document.querySelector('[data-export-format="' + format + '"]');
-    var originalText = button ? button.textContent : format.toUpperCase();
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Preparing…';
-    }
-
-    try {
-      await apiDiscoveryReady;
-      var res = await apiFetch('/api/export/' + encodeURIComponent(instanceId) + '/' + format);
-      var blob = await res.blob();
-      var blobUrl = URL.createObjectURL(blob);
-      var link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = parseDownloadFilename(res, 'canopex_' + instanceId + '.' + format);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(blobUrl);
-      setAnalysisStatus(format.toUpperCase() + ' export downloaded for the selected run.', 'success');
-    } catch (err) {
-      setAnalysisStatus((err && err.message) || 'Could not download the selected export.', 'error');
-    } finally {
-      if (button) {
-        button.disabled = (latestAnalysisRun && latestAnalysisRun.runtimeStatus !== 'Completed');
-        button.textContent = originalText;
-      }
-    }
+    if (typeof runLifecycleModule.downloadRunExport === 'function') return runLifecycleModule.downloadRunExport(format);
   }
-
   function updateAnalysisRun(data) {
-    var panel = document.getElementById('app-analysis-run');
-    latestAnalysisRun = data || null;
-    if (!panel) return;
-    if (!data) {
-      panel.hidden = true;
-      setHeroRunSummary('Ready to queue', currentRoleConfig().readyNote);
-      updateHistorySummary(null);
-      updateRunDetail(null);
-      updateContentSummary(null);
-      return;
-    }
-    panel.hidden = false;
-    var instanceId = data.instanceId || data.instance_id || '—';
-    var runtimeStatus = data.runtimeStatus || 'queued';
-    var phase = displayAnalysisPhase(data.customStatus, runtimeStatus);
-    var timing = summarizeRunTiming(data);
-    document.getElementById('app-analysis-instance').textContent = instanceId;
-    document.getElementById('app-analysis-runtime').textContent = runtimeStatus;
-    document.getElementById('app-analysis-phase').textContent = phase;
-    setHeroRunSummary(
-      runtimeStatus,
-      runtimeStatus === 'Completed'
-        ? 'Pipeline finished successfully — results are ready.'
-        : 'Current phase: ' + phase + '.' + (timing.elapsed ? ' Elapsed ' + timing.elapsed + '.' : '')
-    );
-    updateHistorySummary(data);
-    updateRunDetail(data);
-    updateContentSummary(data);
+    if (typeof runLifecycleModule.updateAnalysisRun === 'function') return runLifecycleModule.updateAnalysisRun(data);
   }
-
-  /* ---- Analysis progress UI — delegated to app-analysis-progress.js ---- */
-
-  function resetAnalysisProgress() {
-    if (typeof progressModule.reset === 'function') return progressModule.reset();
-  }
-
-  function setAnalysisProgressVisible(visible) {
-    if (typeof progressModule.setVisible === 'function') return progressModule.setVisible(visible);
-  }
-
-  function setAnalysisStep(phase, state) {
-    if (typeof progressModule.setStep === 'function') return progressModule.setStep(phase, state);
-  }
-
-  function mapAnalysisPhase(customStatus, runtimeStatus) {
-    if (typeof progressModule.mapPhase === 'function') return progressModule.mapPhase(customStatus, runtimeStatus);
-    if (typeof appRuns.mapPhase === 'function') return appRuns.mapPhase(customStatus, runtimeStatus, ANALYSIS_PHASES);
-    if (runtimeStatus === 'Completed') return 'complete';
-    if (customStatus && customStatus.phase && ANALYSIS_PHASES.indexOf(customStatus.phase) > -1) return customStatus.phase;
-    return 'submit';
-  }
-
-  function updateAnalysisStory(phase, runtimeStatus, data) {
-    if (typeof progressModule.updateStory === 'function') return progressModule.updateStory(phase, runtimeStatus, data);
-  }
-
-  /* ---- Analysis preflight + file input — delegated to app-analysis-preflight.js ---- */
-
-  function buildPreflightWarnings(preflight) {
-    if (typeof preflightModule.buildAnalysisPreflight === 'function') {
-      // Warnings are generated inside updateAnalysisPreflight; expose for queueAnalysis use.
-    }
-    // Fallback: basic check only — real logic is in the module.
-    return [{ tone: 'info', text: 'No warnings. This will queue as one tracked analysis run.' }];
-  }
-
-  function updateAnalysisPreflight(text) {
-    if (typeof preflightModule.updateAnalysisPreflight === 'function') return preflightModule.updateAnalysisPreflight(text);
-    return null;
-  }
-
-  function loadAnalysisFile(file) {
-    if (typeof preflightModule.loadAnalysisFile === 'function') return preflightModule.loadAnalysisFile(file);
-  }
-
-  function switchInputTab(tabName) {
-    if (typeof preflightModule.switchInputTab === 'function') return preflightModule.switchInputTab(tabName);
-  }
-
-  async function convertCSVToKml() {
-    if (typeof preflightModule.convertCSVToKml === 'function') return preflightModule.convertCSVToKml();
-  }
-
   function stopAnalysisPolling() {
-    if (activeAnalysisPoll) {
-      clearInterval(activeAnalysisPoll);
-      activeAnalysisPoll = null;
-    }
+    if (typeof runLifecycleModule.stopAnalysisPolling === 'function') return runLifecycleModule.stopAnalysisPolling();
   }
-
   async function pollAnalysisRun(instanceId) {
-    stopAnalysisPolling();
-    const thisGeneration = ++analysisPollGeneration;
-    let consecutiveFailures = 0;
-    const MAX_CONSECUTIVE_FAILURES = 5;
-
-    async function refreshRun() {
-      // Bail out if a newer poll has started while we were awaiting.
-      if (analysisPollGeneration !== thisGeneration) return null;
-      try {
-        var res = await apiFetch('/api/orchestrator/' + instanceId);
-        var data = await res.json();
-        consecutiveFailures = 0;
-        // Re-check after await — another selectAnalysisRun may have fired.
-        if (analysisPollGeneration !== thisGeneration) return null;
-        upsertAnalysisHistoryRun(data);
-        updateAnalysisRun(data);
-
-        var runtime = data.runtimeStatus || '';
-        var phase = mapAnalysisPhase(data.customStatus, runtime);
-        setAnalysisProgressVisible(true);
-        if (runtime === 'Completed') {
-          stopAnalysisPolling();
-          setAnalysisStep('complete', 'done');
-          updateAnalysisStory('complete', runtime, data);
-          clearCacheKey('billing');
-          clearCacheKey('history');
-          loadBillingStatus();
-          loadAnalysisHistory({ preferInstanceId: instanceId });
-          loadRunEvidence(instanceId);
-          var evidenceHero = document.getElementById('app-evidence-hero');
-          if (evidenceHero) {
-            setTimeout(function() {
-              var scrollBehavior = 'smooth';
-              if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                scrollBehavior = 'auto';
-              }
-              evidenceHero.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
-            }, 400);
-          }
-        } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
-          stopAnalysisPolling();
-          setAnalysisStep(phase, 'failed');
-          updateAnalysisStory(phase, runtime, data);
-          loadAnalysisHistory({ preferInstanceId: instanceId });
-        } else {
-          setAnalysisStep(phase, 'active');
-          updateAnalysisStory(phase, runtime || 'Pending', data);
-        }
-        return data;
-      } catch {
-        consecutiveFailures++;
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          stopAnalysisPolling();
-          setAnalysisStatus('Connection lost — pipeline updates have stopped. Reload the page to resume.', 'error');
-        }
-        return null;
-      }
-    }
-
-    var initialData = await refreshRun();
-    if (analysisPollGeneration !== thisGeneration) return; // superseded during initial fetch
-    if (initialData) {
-      var initialRuntime = initialData.runtimeStatus || '';
-      if (initialRuntime === 'Completed' || initialRuntime === 'Failed' || initialRuntime === 'Canceled' || initialRuntime === 'Terminated') {
-        return;
-      }
-    }
-
-    activeAnalysisPoll = setInterval(function() {
-      refreshRun();
-    }, 3000);
+    if (typeof runLifecycleModule.pollAnalysisRun === 'function') return runLifecycleModule.pollAnalysisRun(instanceId);
   }
-
   async function queueAnalysis() {
-    if (!currentAccount) {
-      login();
-      return;
-    }
-
-    // EUDR entitlement gate: show subscribe modal when trial is exhausted.
-    // If billing hasn't loaded yet, fetch it before deciding.
-    if (activeProfile.requiresEudrBillingGate && typeof window.eudrBillingData === 'function') {
-      var billing = window.eudrBillingData();
-      if (!billing) {
-        try {
-          await apiDiscoveryReady;
-          var billingRes = await apiFetch('/api/eudr/billing');
-          billing = await billingRes.json();
-        } catch (_) { /* proceed — server will enforce */ }
-      }
-      if (billing && !billing.subscribed && billing.trial_remaining != null && billing.trial_remaining <= 0) {
-        if (typeof window.showEudrSubscribeModal === 'function') {
-          window.showEudrSubscribeModal();
-        }
-        return;
-      }
-    }
-
-    var button = document.getElementById('app-analysis-submit-btn');
-    var textarea = document.getElementById('app-analysis-kml');
-    if (!button || !textarea) return;
-
-    var kmlContent = parseKmlText(textarea.value);
-    if (!kmlContent) {
-      setAnalysisStatus('Paste KML content or load a KML/KMZ file first.', 'error');
-      updateAnalysisRun(null);
-      resetAnalysisProgress();
-      return;
-    }
-
-    var preflight = analysisDraftSummary || updateAnalysisPreflight(kmlContent);
-    if (preflight && preflight.error) {
-      setAnalysisStatus(preflight.error, 'error');
-      resetAnalysisProgress();
-      return;
-    }
-
-    button.disabled = true;
-    button.textContent = 'Queueing…';
-    resetAnalysisProgress();
-    setAnalysisProgressVisible(true);
-    setAnalysisStep('submit', 'active');
-    updateAnalysisStory('submit', 'Pending', null);
-    updateAnalysisRun(null);
-
-    try {
-      await apiDiscoveryReady;
-      var submissionContext = null;
-      if (preflight) {
-        submissionContext = {
-          feature_count: preflight.featureCount,
-          aoi_count: preflight.aoiCount,
-          max_spread_km: preflight.maxSpreadKm,
-          total_area_ha: preflight.totalAreaHa,
-          largest_area_ha: preflight.largestAreaHa,
-          processing_mode: preflight.processingMode,
-          provider_name: 'planetary_computer',
-          workspace_role: workspaceRole,
-          workspace_preference: workspacePreference
-        };
-      }
-
-      // Step 1: Get SAS token from Container Apps FA.
-      // apiFetch handles cross-origin routing and auth forwarding.
-      var tokenBody = {};
-      if (submissionContext) {
-        tokenBody.provider_name = submissionContext.provider_name;
-        tokenBody.submission_context = submissionContext;
-      }
-
-      // EUDR compliance mode (#600)
-      var eudrCheckbox = document.getElementById('app-eudr-mode');
-      if (eudrCheckbox && eudrCheckbox.checked) {
-        tokenBody.eudr_mode = true;
-      }
-
-      var tokenRes;
-      try {
-        tokenRes = await apiFetch('/api/upload/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(tokenBody)
-        });
-      } catch (tokenFetchErr) {
-        // 401 is handled centrally by apiFetch (clears session, shows re-login prompt).
-        if (tokenFetchErr.status === 401) {
-          resetAnalysisProgress();
-          return;
-        }
-        setAnalysisStatus(tokenFetchErr.body && tokenFetchErr.body.error || 'Could not prepare upload. Please try again.', 'error');
-        updateContentSummary(null);
-        resetAnalysisProgress();
-        return;
-      }
-
-      var tokenData = await tokenRes.json();
-      var submissionId = tokenData.submissionId || tokenData.submission_id;
-      var sasUrl = tokenData.sasUrl || tokenData.sas_url;
-
-      // Step 2: Upload KML directly to blob storage via SAS URL
-      button.textContent = 'Uploading…';
-      setAnalysisStep('submit', 'active');
-
-      var kmlBytes = new TextEncoder().encode(kmlContent);
-      var uploadRes = await fetch(sasUrl, {
-        method: 'PUT',
-        headers: {
-          'x-ms-blob-type': 'BlockBlob',
-          'Content-Type': 'application/vnd.google-earth.kml+xml'
-        },
-        body: kmlBytes
-      });
-      if (!uploadRes || !uploadRes.ok) {
-        setAnalysisStatus('Upload failed. Please try again.', 'error');
-        resetAnalysisProgress();
-        return;
-      }
-
-      // Step 3: Track the submission
-      clearCacheKey('history');
-      clearCacheKey('billing');
-      var data = { instance_id: submissionId };
-      analysisHistoryLoaded = true;
-      applyFirstRunLayout();
-      var queuedAt = new Date().toISOString();
-      upsertAnalysisHistoryRun({
-        instanceId: data.instance_id,
-        submittedAt: queuedAt,
-        createdTime: queuedAt,
-        lastUpdatedTime: queuedAt,
-        runtimeStatus: 'Pending',
-        customStatus: { phase: 'queued' },
-        providerName: 'planetary_computer',
-        featureCount: preflight && preflight.featureCount,
-        aoiCount: preflight && preflight.aoiCount,
-        processingMode: preflight && preflight.processingMode,
-        maxSpreadKm: preflight && preflight.maxSpreadKm,
-        totalAreaHa: preflight && preflight.totalAreaHa,
-        largestAreaHa: preflight && preflight.largestAreaHa,
-        workspaceRole: workspaceRole,
-        workspacePreference: workspacePreference
-      });
-      selectAnalysisRun(data.instance_id, { resume: true });
-      setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
-      loadBillingStatus();
-    } catch (err) {
-      console.error('queueAnalysis failed:', err);
-      setAnalysisStatus('Could not queue analysis request.', 'error');
-      resetAnalysisProgress();
-    } finally {
-      button.disabled = false;
-      button.textContent = analysisDraftSummary && !analysisDraftSummary.error ? 'Confirm & Queue' : 'Queue Analysis';
-    }
+    if (typeof runLifecycleModule.queueAnalysis === 'function') return runLifecycleModule.queueAnalysis();
   }
-
   async function manageBilling() {
     if (typeof billingModule.manage === 'function') return billingModule.manage();
     // fallback: redirect to interest mailto
@@ -1727,6 +1209,42 @@
       getAnalysisPhases: function () { return ANALYSIS_PHASES; },
       getAnalysisPhaseDetails: function () { return ANALYSIS_PHASE_DETAILS; },
       summarizeRunTiming: summarizeRunTiming,
+    });
+  }
+
+  if (typeof runLifecycleModule.init === 'function') {
+    runLifecycleModule.init({
+      apiFetch: apiFetch,
+      getApiReady: function () { return apiDiscoveryReady; },
+      getAccount: function () { return currentAccount; },
+      login: login,
+      getActiveProfile: function () { return activeProfile; },
+      getWorkspaceRole: function () { return workspaceRole; },
+      getWorkspacePreference: function () { return workspacePreference; },
+      getAnalysisDraftSummary: function () { return analysisDraftSummary; },
+      setLatestAnalysisRun: function (d) { latestAnalysisRun = d; },
+      setAnalysisStatus: setAnalysisStatus,
+      setHeroRunSummary: setHeroRunSummary,
+      updateHistorySummary: updateHistorySummary,
+      getCurrentRoleConfig: currentRoleConfig,
+      selectedRunPermalink: selectedRunPermalink,
+      getAppBase: function () { return APP_BASE; },
+      clearCacheKey: clearCacheKey,
+      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
+      getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
+      setAnalysisHistoryLoaded: function (v) { analysisHistoryLoaded = v; },
+      upsertAnalysisHistoryRun: upsertAnalysisHistoryRun,
+      selectAnalysisRun: selectAnalysisRun,
+      loadBillingStatus: loadBillingStatus,
+      loadAnalysisHistory: loadAnalysisHistory,
+      loadRunEvidence: loadRunEvidence,
+      showEvidenceSurface: showEvidenceSurface,
+      resetAnalysisProgress: resetAnalysisProgress,
+      setAnalysisProgressVisible: setAnalysisProgressVisible,
+      setAnalysisStep: setAnalysisStep,
+      updateAnalysisStory: updateAnalysisStory,
+      mapAnalysisPhase: mapAnalysisPhase,
+      updateAnalysisPreflight: updateAnalysisPreflight,
     });
   }
 
