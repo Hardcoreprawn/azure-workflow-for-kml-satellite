@@ -18,8 +18,11 @@ from treesight.security.url import csp_token_matches_host as _csp_token_matches_
 
 WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
+APP_INDEX_HTML = WEBSITE / "app" / "index.html"
+EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
+API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
 
@@ -30,6 +33,16 @@ def index_html():
 
 
 @pytest.fixture()
+def app_index_html():
+    return APP_INDEX_HTML.read_text()
+
+
+@pytest.fixture()
+def eudr_index_html():
+    return EUDR_INDEX_HTML.read_text()
+
+
+@pytest.fixture()
 def landing_js():
     return LANDING_JS.read_text()
 
@@ -37,6 +50,11 @@ def landing_js():
 @pytest.fixture()
 def app_shell_js():
     return APP_SHELL_JS.read_text()
+
+
+@pytest.fixture()
+def api_client_js():
+    return API_CLIENT_JS.read_text()
 
 
 @pytest.fixture()
@@ -148,40 +166,77 @@ class TestAuthConfig:
             "landing.js still creates MSAL instance — must use SWA built-in auth"
         )
 
-    def test_landing_uses_api_config_json(self, landing_js):
-        """landing.js must discover the Container Apps FA via /api-config.json."""
-        assert "api-config.json" in landing_js, (
-            "landing.js must read /api-config.json for BYOF hostname discovery"
+    def test_api_client_uses_api_config_json(self, api_client_js):
+        """Shared API client must discover the Container Apps FA via /api-config.json."""
+        assert "api-config.json" in api_client_js, (
+            "canopex-api-client.js must read /api-config.json for BYOF hostname discovery"
         )
 
-    def test_landing_forwards_client_principal(self, landing_js):
-        """landing.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
-        assert "X-MS-CLIENT-PRINCIPAL" in landing_js, (
-            "landing.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+    def test_api_client_forwards_client_principal(self, api_client_js):
+        """Shared API client must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
+        assert "X-MS-CLIENT-PRINCIPAL" in api_client_js, (
+            "canopex-api-client.js must send X-MS-CLIENT-PRINCIPAL header"
         )
 
-    def test_landing_uses_utf8_safe_base64(self, landing_js):
-        """landing.js must use TextEncoder for UTF-8 safe base64 encoding."""
-        assert "TextEncoder" in landing_js, (
-            "landing.js must use TextEncoder for UTF-8 safe base64 of client principal"
+    def test_api_client_supports_session_header(self, api_client_js):
+        """Shared API client must support forwarding backend session token."""
+        assert "X-Auth-Session" in api_client_js, (
+            "canopex-api-client.js must forward X-Auth-Session when available"
         )
 
-    def test_app_shell_forwards_client_principal(self, app_shell_js):
-        """app-shell.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
-        assert "X-MS-CLIENT-PRINCIPAL" in app_shell_js, (
-            "app-shell.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+    def test_api_client_exposes_auth_state_helpers(self, api_client_js):
+        """Shared API client should expose setter/clear helpers for auth state."""
+        for symbol in ["setClientPrincipal", "setSessionToken", "clearAuth"]:
+            assert symbol in api_client_js, f"canopex-api-client.js must export {symbol}"
+
+    def test_api_client_uses_utf8_safe_base64(self, api_client_js):
+        """Shared API client must use TextEncoder for UTF-8 safe base64 encoding."""
+        assert "TextEncoder" in api_client_js, (
+            "canopex-api-client.js must use TextEncoder for UTF-8 safe base64"
         )
 
-    def test_app_shell_uses_utf8_safe_base64(self, app_shell_js):
-        """app-shell.js must use TextEncoder for UTF-8 safe base64 encoding."""
-        assert "TextEncoder" in app_shell_js, (
-            "app-shell.js must use TextEncoder for UTF-8 safe base64 of client principal"
+    def test_landing_uses_shared_api_client(self, landing_js):
+        """Landing page should use the shared API client implementation."""
+        assert "CanopexApiClient.createClient" in landing_js, (
+            "landing.js must initialize the shared API client"
         )
 
-    def test_app_shell_uses_api_config_json(self, app_shell_js):
-        """app-shell.js must discover the Container Apps FA via /api-config.json."""
-        assert "api-config.json" in app_shell_js, (
-            "app-shell.js must read /api-config.json for BYOF hostname discovery"
+    def test_app_shell_uses_shared_api_client(self, app_shell_js):
+        """App shell should use the shared API client implementation."""
+        assert "CanopexApiClient.createClient" in app_shell_js, (
+            "app-shell.js must initialize the shared API client"
+        )
+
+    def test_landing_loads_shared_api_client_before_consumer(self, index_html):
+        """Landing entrypoint must load shared client before landing.js."""
+        api_script = '<script src="/js/canopex-api-client.js"></script>'
+        landing_script = '<script src="/js/landing.js"></script>'
+        assert api_script in index_html, "index.html must include shared API client script"
+        assert landing_script in index_html, "index.html must include landing.js script"
+        assert index_html.index(api_script) < index_html.index(landing_script), (
+            "index.html must load canopex-api-client.js before landing.js"
+        )
+
+    def test_app_entry_loads_shared_api_client_before_app_shell(self, app_index_html):
+        """/app entrypoint must load shared client before app-shell.js."""
+        api_script = '<script src="/js/canopex-api-client.js" defer></script>'
+        app_script = '<script src="/js/app-shell.js" defer></script>'
+        assert api_script in app_index_html, "/app/index.html must include shared API client script"
+        assert app_script in app_index_html, "/app/index.html must include app-shell.js script"
+        assert app_index_html.index(api_script) < app_index_html.index(app_script), (
+            "/app/index.html must load canopex-api-client.js before app-shell.js"
+        )
+
+    def test_eudr_entry_loads_shared_api_client_before_app_shell(self, eudr_index_html):
+        """/eudr entrypoint must load shared client before app-shell.js."""
+        api_script = '<script src="/js/canopex-api-client.js" defer></script>'
+        app_script = '<script src="/js/app-shell.js" defer></script>'
+        assert api_script in eudr_index_html, (
+            "/eudr/index.html must include shared API client script"
+        )
+        assert app_script in eudr_index_html, "/eudr/index.html must include app-shell.js script"
+        assert eudr_index_html.index(api_script) < eudr_index_html.index(app_script), (
+            "/eudr/index.html must load canopex-api-client.js before app-shell.js"
         )
 
     def test_app_shell_supports_org_scope_history(self, app_shell_js):

@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-23
+Last updated: 2026-04-26
 
 ---
 
@@ -65,11 +65,19 @@ NDVI, change detection, enrichment) is shared infrastructure. Each product
 vertical (EUDR, conservation, agriculture) gets its own URL namespace and
 entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 
-**Backend:** Single Container Apps Function App — all endpoints + pipeline
-in one image. 2 vCPU / 4 GiB, KEDA 1–10 replicas, ~£20/month.
-Near-term cost work pulls forward monitoring delta/fan-out (#688) and the
-orchestrator/compute split (#466). Container Apps Jobs (#467) stay deferred
-until scale evidence justifies the added complexity.
+**Backend:** Split Container Apps Function Apps — slim orchestrator ingress
+and heavy compute workers. Browser clients must target orchestrator hostname
+only (`/api-config.json`), while compute hosts activity-heavy execution.
+Container Apps Jobs (#467) stay deferred until scale evidence justifies the
+added complexity.
+
+**Build rules (keep dev easy):**
+
+- New browser/API features must integrate at orchestrator ingress only.
+- Compute host must not be referenced by frontend config, links, or product-facing docs.
+- Event Grid subscription endpoint ownership is orchestrator-only.
+- Shared registration/auth modules are preferred over duplicating route wiring.
+- Any deploy change touching app settings or hostnames needs a drift-guard test.
 
 **Execution order:** 2C → 2D → 2E → 2F → 2G → 3A → 3B → 3B.5 → 3C → 3 → 4 → 5.
 Stages 2D and 2E can proceed in parallel. Stage 3B.5 is next priority after 3B.
@@ -141,6 +149,37 @@ Build once, promote dev → prod.
 | 2E.4 | #403 | Smoke gates, promotion/demotion | Open |
 
 **Exit:** Immutable artifact promotion. Security-gated. Smoke before traffic.
+
+### Stage 2E.5 — Architecture Simplification Program (now)
+
+Goal: keep runtime simple and deterministic after #466 by removing ownership
+ambiguity and deploy drift.
+
+Primary persona: ESG/EUDR compliance operator.
+JTBD: submit once to one stable API surface and get reliable async completion.
+
+| Order | Issue | Title | Status |
+|-------|-------|-------|--------|
+| 2E.5.1 | — (new) | single owner for Event Grid webhook target (orchestrator) | Planned |
+| 2E.5.2 | — (new) | drift guard tests: fail on compute-host Event Grid endpoint references | Planned |
+| 2E.5.3 | — (new) | symmetric rollback and readiness for compute + orchestrator apps | Planned |
+| 2E.5.4 | — (new) | shared function registration module for dual entrypoints | Planned |
+| 2E.5.5 | — (new) | orchestrator-only public API surface; compute host internalized | Planned |
+| 2E.5.6 | — (new) | post-readiness async functional smoke gate as promotion blocker | Planned |
+
+Validation gates for every slice:
+
+- `make lint`
+- narrow tests first, then `make test`
+- deploy-workflow slices require `workflow_dispatch` proof in dev before merge
+
+Program done means:
+
+1. Event Grid target ownership is singular and test-enforced.
+2. Rollback logic is symmetric and verified for both apps.
+3. Route registration drift between entrypoints is structurally removed.
+4. Client API ingress is orchestrator-only in config, docs, and tests.
+5. Promotion requires a real async transaction smoke check, not health only.
 
 ---
 
@@ -370,14 +409,13 @@ Execution order note: Stage 3C should also be complete before Stage 4 begins.
 
 | Order | Issue | Title |
 |-------|-------|-------|
-| 5.1 | #466 | T2/T3 Container Apps split |
-| 5.2 | #467 | Container Apps Jobs for burst compute (keep deferred until post-#466 and #437 evidence) |
-| 5.3 | #82 | Tree detection model + inference pipeline |
-| 5.4 | #83 | Tree health classification + temporal tracking |
-| 5.5 | #84 | Annotation-driven model fine-tuning |
-| 5.6 | #87 | Annotation tools and storage |
-| 5.7 | #86 | Web frontend (React / Next.js) |
-| 5.8 | #177 | H3-derived imagery/stat products |
+| 5.1 | #467 | Container Apps Jobs for burst compute (defer until post-#437 scale evidence and 2E.5 simplification completion) |
+| 5.2 | #82 | Tree detection model + inference pipeline |
+| 5.3 | #83 | Tree health classification + temporal tracking |
+| 5.4 | #84 | Annotation-driven model fine-tuning |
+| 5.5 | #87 | Annotation tools and storage |
+| 5.6 | #86 | Web frontend (React / Next.js) |
+| 5.7 | #177 | H3-derived imagery/stat products |
 
 ---
 

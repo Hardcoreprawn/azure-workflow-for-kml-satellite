@@ -6,6 +6,16 @@ Issue: #18
 
 The production pipeline is deployed as Azure Functions on Container Apps with event-driven orchestration.
 
+### Architecture Contract (Developer TL;DR)
+
+Use this as the default mental model when building features:
+
+1. Browser clients talk to one API ingress only: orchestrator hostname from `/api-config.json`.
+2. Orchestrator app owns HTTP routes and Durable orchestrator entrypoints.
+3. Compute app owns heavy activity execution (GDAL/raster processing) and is not a browser target.
+4. Event Grid webhook target must resolve to orchestrator `blob_trigger`.
+5. Route registration and auth behavior must stay symmetric across entrypoints via shared modules.
+
 ### Naming Convention
 
 All resources are named using `{prefix}-{project_code}-{environment}` where:
@@ -17,7 +27,8 @@ All resources are named using `{prefix}-{project_code}-{environment}` where:
 | Resource | Naming Pattern | Dev Value |
 | --- | --- | --- |
 | Resource Group | `rg-{code}-{env}` | `rg-kmlsat-dev` |
-| Function App | `func-{code}-{env}` | `func-kmlsat-dev` |
+| Function App (compute) | `func-{code}-{env}` | `func-kmlsat-dev` |
+| Function App (orchestrator) | `func-{code}-{env}-orch` | `func-kmlsat-dev-orch` |
 | Static Web App | `stapp-{code}-{env}-site` | `stapp-kmlsat-dev-site` |
 | Event Grid Topic | `evgt-{code}-{env}` | `evgt-kmlsat-dev` |
 | Event Grid Sub | `evgs-kml-upload` | `evgs-kml-upload` |
@@ -40,41 +51,43 @@ Additional fixed names:
 | Endpoint | URL |
 | --- | --- |
 | **Site (SWA)** | `https://green-moss-0e849ac03.2.azurestaticapps.net` |
-| **Function App** | `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io` |
+| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<azure-host>.azurecontainerapps.io` |
+| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<azure-host>.azurecontainerapps.io` |
 | **Cosmos DB** | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
 
 The SWA hostname is Azure-assigned (no custom domain currently configured).
-The Function App runs on Azure Container Apps in `uksouth`; the SWA is in `westeurope`.
+Both Function Apps run on Azure Container Apps in `uksouth`; SWA is in `westeurope`.
 
 ### API Routing — BYOF (Bring Your Own Function App)
 
 > **Architecture:** All `/api/*` calls go cross-origin from SWA to the
-> Container Apps Function App. SWA serves only static files and auth.
+> orchestrator Function App. SWA serves only static files and auth.
 
-The Container Apps Function App is the **sole API surface**. All browser API
-calls go cross-origin to the FA hostname discovered from `/api-config.json`
-(injected at deploy time). SWA no longer hosts any managed functions.
+The orchestrator Function App is the **sole public API surface**. Browser API
+calls go cross-origin to the orchestrator hostname discovered from
+`/api-config.json` (injected at deploy time). SWA no longer hosts managed
+functions, and compute is not a browser ingress.
 
 ```text
 Browser ─── /.auth/* ──→ SWA (built-in Azure AD auth)
         │
-        └── /api/* ──→ Container Apps FA (all endpoints)
-                          │
-                          ├── reads: Cosmos DB (analysis/history, billing/status)
-                          ├── writes: Blob Storage SAS minting (upload/token)
-                          ├── sync: billing, catalogue, contact, health, export
-                          └── async: Queue/Event Grid → Orchestrator + Activities
+  └── /api/* ──→ Orchestrator FA (public ingress)
+        │
+        ├── sync: auth/session, billing, catalogue, contact, health, export
+        ├── async start/status: upload + durable orchestration API
+        ├── reads/writes: Blob + Cosmos via managed identity
+        └── activity fan-out ──→ Compute FA (internal worker)
 ```
 
 This means:
 
-- `/api/*` routes are served by the Container Apps Function App
+- `/api/*` routes are served by orchestrator host only
 - SWA handles only static hosting and Azure AD auth (login/logout/me)
 - Auth forwarding: frontend reads `clientPrincipal` from `/.auth/me`, base64-encodes it, and sends it as `X-MS-CLIENT-PRINCIPAL` header on cross-origin calls
 - Backend auth currently supports a transition path: CIAM bearer JWT (Authorization header) when enabled, otherwise SWA `X-MS-CLIENT-PRINCIPAL` (+ optional `X-Auth-Session` HMAC)
-- The FA `require_auth` decorator verifies bearer JWT first when enabled, else falls back to `X-MS-CLIENT-PRINCIPAL`
-- CORS is configured on the FA to allow requests from the SWA hostname
-- Container Apps FA uses managed identity for Blob, Cosmos, Key Vault access
+- The `require_auth` decorator verifies bearer JWT first when enabled, else falls back to `X-MS-CLIENT-PRINCIPAL`
+- CORS is configured on orchestrator host to allow requests from the SWA hostname
+- Both Function Apps use managed identity for Blob, Cosmos, Key Vault access
 
 No unauthenticated endpoints are exposed to browsers except health and
 contact-form (rate-limited). The Stripe billing webhook uses its own
@@ -82,14 +95,14 @@ signature verification.
 
 #### Auth Forwarding (BYOF)
 
-With BYOF, the browser makes cross-origin API calls to the Container Apps FA.
+With BYOF, the browser makes cross-origin API calls to the orchestrator host.
 Auth works as follows:
 
 1. User logs in via `/.auth/login/aad` (SWA built-in auth)
 2. Frontend calls `/.auth/me` to get `clientPrincipal` (validated by SWA)
 3. Frontend base64-encodes the raw `clientPrincipal` JSON
 4. Frontend sends it as `X-MS-CLIENT-PRINCIPAL` header on each cross-origin API call
-5. Container Apps FA `require_auth` decorator decodes and reads `userId`/`userRoles`
+5. Orchestrator `require_auth` decorator decodes and reads `userId`/`userRoles`
 
 #### CIAM Bearer Transition (#709 Phase 1)
 
@@ -150,11 +163,11 @@ Authentication uses SWA's built-in pre-configured Azure AD provider. SWA handles
 - **Login:** `/.auth/login/aad` (SWA handles redirect + callback)
 - **Logout:** `/.auth/logout`
 - **User info:** `/.auth/me` → JSON with `clientPrincipal`
-- **API auth:** Frontend reads `clientPrincipal` from `/.auth/me` and forwards it as `X-MS-CLIENT-PRINCIPAL` header to the Container Apps FA
+- **API auth:** Frontend reads `clientPrincipal` from `/.auth/me` and forwards it as `X-MS-CLIENT-PRINCIPAL` header to the orchestrator Function App
 - **Session:** managed by SWA via `StaticWebAppsAuthCookie` — no client-side token management
 - **Route protection:** `staticwebapp.config.json` routes enforce SWA auth for protected pages; API auth is enforced by the FA `require_auth` decorator
 
-The FA reads `X-MS-CLIENT-PRINCIPAL` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. The FA uses managed identity (DefaultAzureCredential) for all data-plane operations (Blob, Cosmos, Key Vault).
+The orchestrator reads `X-MS-CLIENT-PRINCIPAL` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. Both apps use managed identity (DefaultAzureCredential) for data-plane operations.
 
 ### Deploy Pipeline
 
@@ -162,9 +175,9 @@ The FA reads `X-MS-CLIENT-PRINCIPAL` (Base64-encoded JSON) to get `userId`, `use
 Push to main → CI workflow → (on success) → Deploy workflow
                                               ├─ 1. Build & push container to GHCR
                                               ├─ 2. OpenTofu plan + apply (infra/tofu/)
-                                              ├─ 3. Deploy Function App (az functionapp)
+                                              ├─ 3. Configure compute + orchestrator Function Apps
                                               ├─ 4. Deploy Static Web App (SWA token)
-                                              ├─ 5. Reconcile Event Grid subscription
+                                              ├─ 5. Reconcile Event Grid subscription to orchestrator webhook
                                               └─ 6. Post-deploy smoke checks
 ```
 
@@ -175,17 +188,17 @@ Config: `.github/workflows/deploy.yml`
 ## Data Flow
 
 1. User authenticates via `/.auth/login/aad` (SWA handles the OAuth redirect).
-2. Frontend calls `POST /api/upload/token` on the Container Apps FA — `require_auth` validates `X-MS-CLIENT-PRINCIPAL`, mints a write-only SAS URL.
+2. Frontend calls `POST /api/upload/token` on orchestrator host — `require_auth` validates `X-MS-CLIENT-PRINCIPAL`, mints a write-only SAS URL.
 3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
 4. Event Grid emits a BlobCreated event.
-5. `blob_trigger` (Container Apps) validates event payload and starts `treesight_orchestrator`.
+5. `blob_trigger` on orchestrator validates event payload and starts `treesight_orchestrator`.
 6. Orchestrator runs four-phase pipeline:
    - Ingestion: parse_kml, load_offloaded_features, prepare_aoi, store_aoi_claims
    - Acquisition: load_aoi_claim, acquire_imagery/acquire_composite, poll_order, download_imagery
    - Fulfilment: post_process_imagery, submit_batch_fulfilment, poll_batch_fulfilment
    - Enrichment: run_enrichment, write_metadata, release_quota
 7. Metadata and imagery artifacts are written to output blob paths.
-8. Frontend polls `GET /api/upload/status/{id}` on the Container Apps FA for progress.
+8. Frontend polls `GET /api/upload/status/{id}` on orchestrator host for progress.
 
 ## Imagery Output Framing Policy (2026-03-12)
 

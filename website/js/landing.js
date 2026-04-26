@@ -2,12 +2,17 @@
   'use strict';
 
   let currentAccount = null;
-  let _apiBase = '';
-  let _clientPrincipal = null;
-  const SERVICE_STATUS_CACHE_KEY = 'canopex:service-status:v1';
-  const SERVICE_STATUS_TTL_MS = 2 * 60 * 1000;
-  const API_CONFIG_TIMEOUT_MS = 900;
-  const API_HEALTH_TIMEOUT_MS = 1200;
+
+  function createApiClient() {
+    if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
+      throw new Error('[canopex] canopex-api-client.js must be loaded before landing.js');
+    }
+    return window.CanopexApiClient.createClient({
+      statusBadgeId: 'status-badge',
+    });
+  }
+
+  const apiClient = createApiClient();
 
   function authEnabled() { return true; }
 
@@ -18,7 +23,7 @@
       const data = await res.json();
       const principal = data && data.clientPrincipal;
       if (principal && principal.userId) {
-        _clientPrincipal = principal;
+        apiClient.setClientPrincipal(principal);
         currentAccount = {
           userId: principal.userId,
           name: principal.userDetails || principal.userId,
@@ -71,108 +76,11 @@
   }
 
   async function apiFetch(path, opts) {
-    opts = opts || {};
-    opts.headers = opts.headers || {};
-    if (_clientPrincipal) {
-      const jsonStr = JSON.stringify(_clientPrincipal);
-      const bytes = new TextEncoder().encode(jsonStr);
-      const binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
-      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
-    }
-    const url = _apiBase ? _apiBase + path : path;
-    const resp = await fetch(url, opts);
-    if (!resp.ok) {
-      const body = await resp.json().catch(function () { return {}; });
-      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      const err = new Error(msg);
-      err.status = resp.status;
-      err.body = body;
-      throw err;
-    }
-    return resp;
+    return apiClient.fetch(path, opts);
   }
 
   async function discoverApiBase() {
-    const badge = document.getElementById('status-badge');
-    const cachedStatus = readCachedServiceStatus();
-
-    if (badge && cachedStatus) {
-      applyServiceStatus(badge, cachedStatus);
-    }
-
-    try {
-      const cfgRes = await fetchWithTimeout('/api-config.json', API_CONFIG_TIMEOUT_MS);
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        if (cfg.apiBase) {
-          _apiBase = cfg.apiBase.replace(/\/+$/, '');
-        }
-      }
-    } catch (e) { /* local dev — no api-config.json, use same-origin */ }
-
-    if (!badge) return;
-
-    try {
-      const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      const res = await fetchWithTimeout(healthUrl, API_HEALTH_TIMEOUT_MS);
-      if (res.ok) {
-        applyServiceStatus(badge, 'online');
-        writeCachedServiceStatus('online');
-        return;
-      }
-    } catch (err) {
-      console.warn('[canopex] Health check failed:', err);
-    }
-
-    if (!cachedStatus) {
-      applyServiceStatus(badge, 'offline');
-    }
-    writeCachedServiceStatus('offline');
-  }
-
-  function applyServiceStatus(badge, status) {
-    if (!badge) return;
-    if (status === 'online') {
-      badge.textContent = 'Online';
-      badge.className = 'online';
-      return;
-    }
-    badge.textContent = 'Unavailable';
-    badge.className = 'offline';
-  }
-
-  function readCachedServiceStatus() {
-    try {
-      const raw = localStorage.getItem(SERVICE_STATUS_CACHE_KEY);
-      if (!raw) return '';
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return '';
-      if (parsed.status !== 'online' && parsed.status !== 'offline') return '';
-      if (!parsed.ts || Date.now() - parsed.ts > SERVICE_STATUS_TTL_MS) return '';
-      return parsed.status;
-    } catch {
-      return '';
-    }
-  }
-
-  function writeCachedServiceStatus(status) {
-    try {
-      localStorage.setItem(SERVICE_STATUS_CACHE_KEY, JSON.stringify({ status: status, ts: Date.now() }));
-    } catch {
-      /* localStorage unavailable */
-    }
-  }
-
-  async function fetchWithTimeout(url, timeoutMs) {
-    const controller = new AbortController();
-    const timer = setTimeout(function() {
-      controller.abort();
-    }, timeoutMs);
-    try {
-      return await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
+    return apiClient.discoverApiBase();
   }
 
   /* --- Sample Report Map (Planetary Computer S2 visual) --- */
