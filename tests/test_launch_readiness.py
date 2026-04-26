@@ -753,6 +753,23 @@ class TestPublicApiIngressDocsContract:
             "OpenAPI production server must not point to the static web app hostname"
         )
 
+    def test_event_grid_webhook_targets_orchestrator_hostname(self):
+        tf = MAIN_TF.read_text()
+        assert "function_app_orch.output.properties.defaultHostName" in tf, (
+            "Event Grid subscription must target function_app_orch (orchestrator) hostname, "
+            "not function_app (compute) hostname. "
+            "Orchestrator is the canonical ingestion pipeline entry point."
+        )
+        # Defensive check: ensure we're NOT pointing to the compute app
+        assert (
+            "azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid"
+            not in tf
+        ), (
+            "Event Grid webhook must NOT target the compute function_app. "
+            "blob_trigger is orchestrator-only and Event Grid must deliver to "
+            "the orchestrator hostname."
+        )
+
 
 # ---------------------------------------------------------------------------
 # 11. Trivy signal quality and exception discipline
