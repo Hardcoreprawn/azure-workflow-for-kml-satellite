@@ -596,8 +596,40 @@ class TestEventGridWebhookWiring:
     def test_event_grid_webhook_includes_code_query_param(self):
         tf = MAIN_TF.read_text()
         assert "&code=${local.eventgrid_key}" in tf, (
-            "Event Grid webhook endpointUrl must include the system key query param"
+            "Event Grid webhook endpointUrl must include the system key query param "
+            "and reference local.eventgrid_key for the authentication token"
         )
+        # Additional verification: ensure endpointUrl in the event_grid_subscription
+        # resource actually contains the code parameter (not just elsewhere in the file)
+        import re
+
+        endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
+        assert endpoint_match, "Event Grid subscription missing endpointUrl assignment"
+        endpoint_url = endpoint_match.group(1)
+        assert "code=" in endpoint_url, "Event Grid endpointUrl must contain code query parameter"
+        assert "local.eventgrid_key" in endpoint_url, (
+            "Event Grid endpointUrl must reference local.eventgrid_key for secure auth"
+        )
+
+    def test_event_grid_webhook_targets_orchestrator_hostname(self):
+        """Event Grid webhook MUST target orchestrator, never compute app."""
+        tf = MAIN_TF.read_text()
+        # Assertion 1: Verify orchestrator hostname is in Event Grid endpoint
+        assert "function_app_orch" in tf, (
+            "Event Grid webhook must reference function_app_orch orchestrator app"
+        )
+        assert "defaultHostName" in tf, (
+            "Event Grid webhook must use defaultHostName output from orchestrator"
+        )
+        # Assertion 2: Defensive check - compute app should NOT be in Event Grid webhook
+        import re
+
+        endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
+        if endpoint_match:
+            endpoint_url = endpoint_match.group(1)
+            assert "function_app" not in endpoint_url or "function_app_orch" in endpoint_url, (
+                "Event Grid webhook must target orchestrator, not compute app"
+            )
 
 
 # ---------------------------------------------------------------------------

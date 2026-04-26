@@ -1212,7 +1212,7 @@ resource "azapi_resource" "event_grid_subscription" {
       destination = {
         endpointType = "WebHook"
         properties = {
-          endpointUrl                   = "https://${azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid?functionName=blob_trigger&code=${local.eventgrid_key}"
+          endpointUrl                   = "https://${azapi_resource.function_app_orch.output.properties.defaultHostName}/runtime/webhooks/eventgrid?functionName=blob_trigger&code=${local.eventgrid_key}"
           maxEventsPerBatch             = 1
           preferredBatchSizeInKilobytes = 64
         }
