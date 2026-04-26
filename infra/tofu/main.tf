@@ -1156,7 +1156,7 @@ resource "azapi_resource" "event_grid_system_topic" {
 
 resource "azapi_resource_action" "function_host_keys" {
   type        = "Microsoft.Web/sites@2024-04-01"
-  resource_id = azapi_resource.function_app.id
+  resource_id = azapi_resource.function_app_orch.id
   action      = "host/default/listKeys"
   method      = "POST"
 
