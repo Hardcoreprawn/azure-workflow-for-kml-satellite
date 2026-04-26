@@ -46,7 +46,7 @@ RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
 # Copy application code only (no scripts/, typings/, tests/, docs/)
 # function_app_orch.py is the orchestrator entry point, installed as
 # function_app.py so the Functions runtime finds it automatically.
-COPY host.json function_app_orch.py ./
+COPY host.json function_app_orch.py function_registration.py ./
 RUN mv function_app_orch.py function_app.py
 COPY treesight/ treesight/
 COPY blueprints/ blueprints/
