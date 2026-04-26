@@ -7,7 +7,6 @@ cancellation (Consumer Contracts Regulations 2013 — 14-day cooling-off).
 import json
 import logging
 import os
-from urllib.parse import urlparse
 
 import azure.functions as func
 
@@ -32,14 +31,6 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-_LOCAL_EMULATION_ORIGINS = {
-    "http://localhost:4280",
-    "http://127.0.0.1:4280",
-    "http://localhost:1111",
-    "http://127.0.0.1:1111",
-}
-
-
 def _stripe_configured() -> bool:
     return bool(
         STRIPE_API_KEY
@@ -57,22 +48,13 @@ def _get_stripe():
 
 
 def _tier_emulation_allowed(req: func.HttpRequest, user_id: str = "") -> bool:
-    """Allow plan emulation from local dev origins or for allowed operators."""
-    origin = req.headers.get("Origin", "")
-    if origin in _LOCAL_EMULATION_ORIGINS:
-        return True
-    try:
-        hostname = urlparse(req.url).hostname or ""
-    except Exception:
-        hostname = ""
-    if hostname in {"localhost", "127.0.0.1"}:
-        return True
-    # Allow billing-allowed users (operators) to emulate from any origin.
-    if user_id and user_id != "anonymous":
-        from treesight.security.feature_gate import billing_allowed
+    """Allow plan emulation only for explicitly allowlisted operator accounts."""
+    if not user_id or user_id == "anonymous":
+        return False
 
-        return billing_allowed(user_id)
-    return False
+    from treesight.security.feature_gate import billing_allowed
+
+    return billing_allowed(user_id)
 
 
 def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
@@ -533,7 +515,9 @@ def billing_emulation(
         if user_id == "anonymous":
             return error_response(401, "Authentication required for billing", req=req)
         return error_response(
-            403, "Tier emulation is only available from local development origins", req=req
+            403,
+            "Tier emulation is locked to explicitly allowlisted operator accounts",
+            req=req,
         )
 
     try:

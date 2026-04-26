@@ -17,7 +17,7 @@ from unittest.mock import patch
 
 import azure.functions as func
 
-from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
+from tests.conftest import TEST_ORIGIN, make_test_request
 
 _ALLOWED_ORIGIN = TEST_ORIGIN
 _REQUIRE_AUTH = patch.dict("os.environ", {"REQUIRE_AUTH": "1"})
@@ -244,7 +244,8 @@ class TestBillingStatus:
 
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
-    def test_local_origin_can_enable_tier_emulation(self, mock_read, mock_upsert):
+    @_BILLING_UNGATED
+    def test_allowlisted_operator_can_enable_tier_emulation(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation, billing_status
 
         store: dict[str, dict] = {}
@@ -261,7 +262,6 @@ class TestBillingStatus:
 
         emulate_req = _make_req(
             body=json.dumps({"tier": "team"}).encode("utf-8"),
-            headers={"Origin": TEST_LOCAL_ORIGIN},
             url="/api/billing/emulation",
         )
         emulate_resp = billing_emulation(emulate_req)
@@ -271,9 +271,7 @@ class TestBillingStatus:
         assert emulate_data["tier_source"] == "emulated"
         assert emulate_data["emulation"]["active"] is True
 
-        status_req = _make_req(
-            method="GET", headers={"Origin": TEST_LOCAL_ORIGIN}, url="/api/billing/status"
-        )
+        status_req = _make_req(method="GET", url="/api/billing/status")
         status_resp = billing_status(status_req)
         assert status_resp.status_code == 200
         status_data = json.loads(status_resp.get_body())
@@ -281,7 +279,7 @@ class TestBillingStatus:
         assert status_data["capabilities"]["api_access"] is True
 
     @patch("treesight.storage.cosmos.read_item", return_value=None)
-    def test_non_local_origin_rejects_tier_emulation(self, _mock_read):
+    def test_non_allowlisted_account_rejects_tier_emulation(self, _mock_read):
         from blueprints.billing import billing_emulation
 
         req = _make_req(
@@ -324,7 +322,7 @@ class TestBillingStatus:
 
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
-    def test_local_origin_allows_anonymous_tier_emulation(self, mock_read, mock_upsert):
+    def test_anonymous_cannot_use_tier_emulation_even_on_local_origin(self, mock_read, mock_upsert):
         from blueprints.billing import billing_emulation
 
         store: dict[str, dict] = {}
@@ -343,15 +341,12 @@ class TestBillingStatus:
             url="/api/billing/emulation",
             method="POST",
             body=json.dumps({"tier": "starter"}).encode("utf-8"),
-            origin=TEST_LOCAL_ORIGIN,
+            origin="http://localhost:4280",
             principal_user_id=None,
             auth_header=None,
         )
         resp = billing_emulation(req)
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["tier"] == "starter"
-        assert data["tier_source"] == "emulated"
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
