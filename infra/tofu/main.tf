@@ -1156,11 +1156,15 @@ resource "azapi_resource" "event_grid_system_topic" {
 
 resource "azapi_resource_action" "function_host_keys" {
   type        = "Microsoft.Web/sites@2024-04-01"
-  resource_id = azapi_resource.function_app.id
+  resource_id = azapi_resource.function_app_orch.id
   action      = "host/default/listKeys"
   method      = "POST"
 
-  response_export_values = ["masterKey", "systemKeys.eventgrid_extension", "systemKeys.eventgridextensionconfig_extension"]
+  response_export_values = [
+    "masterKey",
+    "systemKeys.eventgrid_extension",
+    "systemKeys.eventgridextensionconfig_extension",
+  ]
 }
 
 locals {
@@ -1212,7 +1216,11 @@ resource "azapi_resource" "event_grid_subscription" {
       destination = {
         endpointType = "WebHook"
         properties = {
-          endpointUrl                   = "https://${azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid?functionName=blob_trigger&code=${local.eventgrid_key}"
+          endpointUrl = format(
+            "https://%s/runtime/webhooks/eventgrid?functionName=blob_trigger&code=%s",
+            azapi_resource.function_app_orch.output.properties.defaultHostName,
+            local.eventgrid_key,
+          )
           maxEventsPerBatch             = 1
           preferredBatchSizeInKilobytes = 64
         }

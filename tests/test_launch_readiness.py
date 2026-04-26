@@ -595,8 +595,17 @@ class TestEventGridWebhookWiring:
 
     def test_event_grid_webhook_includes_code_query_param(self):
         tf = MAIN_TF.read_text()
-        assert "&code=${local.eventgrid_key}" in tf, (
-            "Event Grid webhook endpointUrl must include the system key query param"
+        assert "&code=${local.eventgrid_key}" in tf or (
+            "code=%s" in tf and "local.eventgrid_key" in tf
+        ), "Event Grid webhook endpointUrl must include the system key query param"
+
+    def test_event_grid_webhook_targets_orchestrator_host(self):
+        tf = MAIN_TF.read_text()
+        assert "azapi_resource.function_app_orch.output.properties.defaultHostName" in tf, (
+            "Event Grid webhook endpointUrl must target the orchestrator app hostname"
+        )
+        assert "azapi_resource.function_app.output.properties.defaultHostName" not in tf, (
+            "Event Grid webhook endpointUrl must not target the compute app hostname"
         )
 
 
