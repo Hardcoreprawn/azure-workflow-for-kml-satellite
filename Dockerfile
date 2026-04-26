@@ -31,6 +31,6 @@ RUN uv export --no-dev --no-hashes > /tmp/requirements.txt && \
     rm -f /tmp/requirements.txt /usr/local/bin/uv
 
 # Copy application code only (no scripts/, typings/, tests/, docs/)
-COPY host.json function_app.py ./
+COPY host.json function_app.py function_registration.py ./
 COPY treesight/ treesight/
 COPY blueprints/ blueprints/
