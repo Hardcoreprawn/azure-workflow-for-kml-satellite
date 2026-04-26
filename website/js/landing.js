@@ -4,85 +4,12 @@
   let currentAccount = null;
 
   function createApiClient() {
-    if (window.CanopexApiClient && typeof window.CanopexApiClient.createClient === 'function') {
-      return window.CanopexApiClient.createClient({
-        statusBadgeId: 'status-badge',
-      });
+    if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
+      throw new Error('[canopex] canopex-api-client.js must be loaded before landing.js');
     }
-
-    console.error('[canopex] Shared API client unavailable; falling back to same-origin API mode.');
-    let fallbackApiBase = '';
-    let fallbackPrincipal = null;
-    let fallbackSessionToken = '';
-
-    function runningOnLocalDevOrigin() {
-      return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    }
-
-    function isLoopbackHost(hostname) {
-      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-    }
-
-    function encodePrincipal(principal) {
-      var jsonStr = JSON.stringify(principal);
-      var bytes = new TextEncoder().encode(jsonStr);
-      var binStr = Array.from(bytes, function(b) { return String.fromCharCode(b); }).join('');
-      return btoa(binStr);
-    }
-
-    return {
-      setClientPrincipal: function(principal) {
-        fallbackPrincipal = principal || null;
-      },
-      setSessionToken: function(token) {
-        fallbackSessionToken = token || '';
-      },
-      clearAuth: function() {
-        fallbackPrincipal = null;
-        fallbackSessionToken = '';
-      },
-      discoverApiBase: async function() {
-        try {
-          const cfgRes = await fetch('/api-config.json');
-          if (cfgRes.ok) {
-            const cfg = await cfgRes.json();
-            if (cfg && cfg.apiBase) {
-              const parsed = new URL(cfg.apiBase);
-              if (!(isLoopbackHost(parsed.hostname) && !runningOnLocalDevOrigin())) {
-                fallbackApiBase = cfg.apiBase.replace(/\/+$/, '');
-              }
-            }
-          }
-        } catch {
-          /* local dev or config unavailable */
-        }
-        return fallbackApiBase;
-      },
-      fetch: async function(path, opts) {
-        opts = opts || {};
-        opts.headers = opts.headers || {};
-        if (fallbackPrincipal) {
-          opts.headers['X-MS-CLIENT-PRINCIPAL'] = encodePrincipal(fallbackPrincipal);
-        }
-        if (fallbackSessionToken) {
-          opts.headers['X-Auth-Session'] = fallbackSessionToken;
-        }
-        if (!fallbackApiBase) {
-          await this.discoverApiBase();
-        }
-        const url = fallbackApiBase ? fallbackApiBase + path : path;
-        const response = await fetch(url, opts);
-        if (!response.ok) {
-          const body = await response.json().catch(function() { return {}; });
-          const msg = body.error || ('API request failed: ' + response.status + ' ' + response.statusText);
-          const err = new Error(msg);
-          err.status = response.status;
-          err.body = body;
-          throw err;
-        }
-        return response;
-      },
-    };
+    return window.CanopexApiClient.createClient({
+      statusBadgeId: 'status-badge',
+    });
   }
 
   const apiClient = createApiClient();
