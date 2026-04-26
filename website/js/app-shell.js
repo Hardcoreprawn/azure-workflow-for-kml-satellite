@@ -50,6 +50,7 @@
   var eudrModule = window.CanopexEudr || {};
   var billingModule = window.CanopexBilling || {};
   var evidencePanelsModule = window.CanopexEvidencePanels || {};
+  var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -237,6 +238,9 @@
   let apiDiscoveryReady = null;
   const apiClient = createApiClient();
 
+  // Container Apps FA: API calls go cross-origin to the Function App
+  // hostname discovered from /api-config.json (injected at deploy time).
+  // Auth state managed by CanopexApiClient (canopex-api-client.js).
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
@@ -1340,7 +1344,6 @@
   }
 
   function clearEvidencePanels() {
-
     var ids = [
       'app-evidence-ndvi-grid',
       'app-evidence-weather-grid',
