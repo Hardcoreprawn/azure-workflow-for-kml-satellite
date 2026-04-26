@@ -16,11 +16,56 @@
   var _apiFetch = null;
   var _getApiReady = null;
   var _getAccount = null;
+  var _billingSnapshot = null;
 
   function init(deps) {
     _apiFetch    = deps.apiFetch    || _apiFetch;
     _getApiReady = deps.getApiReady || _getApiReady;
     _getAccount  = deps.getAccount  || _getAccount;
+    // Keep backward compatibility for existing consumers (e.g. cost estimate).
+    window.eudrBillingData = function () { return _billingSnapshot; };
+  }
+
+  function setHeroParcels(periodUsed, included, overage) {
+    var parcelsEl = document.getElementById('eudr-parcels-used');
+    var parcelsNoteEl = document.getElementById('eudr-parcels-note');
+    if (!parcelsEl || !parcelsNoteEl) return;
+
+    parcelsEl.textContent = periodUsed + ' / ' + included;
+    parcelsNoteEl.textContent = overage > 0
+      ? overage + ' overage parcels this billing period'
+      : 'Included parcels used this billing period';
+  }
+
+  function setUsageUnavailable() {
+    var includedEl = document.getElementById('app-eudr-usage-included');
+    var overageEl = document.getElementById('app-eudr-usage-overage');
+    var spendEl = document.getElementById('app-eudr-usage-spend');
+    var nextTierEl = document.getElementById('app-eudr-usage-next-tier');
+    var historyListEl = document.getElementById('app-eudr-usage-history-list');
+    var parcelsEl = document.getElementById('eudr-parcels-used');
+    var parcelsNoteEl = document.getElementById('eudr-parcels-note');
+
+    if (includedEl) includedEl.textContent = '—';
+    if (overageEl) overageEl.textContent = '—';
+    if (spendEl) spendEl.textContent = '—';
+    if (nextTierEl) nextTierEl.textContent = 'Usage unavailable';
+    if (historyListEl) historyListEl.textContent = 'Usage unavailable right now.';
+    if (parcelsEl) parcelsEl.textContent = '—';
+    if (parcelsNoteEl) parcelsNoteEl.textContent = 'Usage unavailable right now.';
+  }
+
+  async function refreshBillingSnapshot() {
+    try {
+      var billingRes = await _apiFetch('/api/eudr/billing');
+      if (!billingRes.ok) return;
+      _billingSnapshot = await billingRes.json();
+      if (typeof window.setEudrBillingData === 'function') {
+        window.setEudrBillingData(_billingSnapshot);
+      }
+    } catch (_err) {
+      // Billing snapshot is best-effort and should not block usage rendering.
+    }
   }
 
   async function loadUsage() {
@@ -36,27 +81,33 @@
 
     try {
       var res = await _apiFetch('/api/eudr/usage');
-      if (!res.ok) return;
+      if (!res.ok) {
+        setUsageUnavailable();
+        return;
+      }
       var data = await res.json();
       var cur = data.current || {};
 
       var periodUsed = cur.periodParcelsUsed || 0;
       var included   = cur.includedParcels   || 0;
+      var overage = cur.overageParcels || 0;
       if (includedEl) includedEl.textContent = periodUsed + ' / ' + included;
-      if (overageEl)  overageEl.textContent  = (cur.overageParcels || 0) + ' parcels';
+      if (overageEl)  overageEl.textContent  = overage + ' parcels';
       if (spendEl) {
         var spend = cur.estimatedSpendGbp;
         spendEl.textContent = (spend != null) ? ('£' + spend.toFixed(2)) : '—';
       }
       if (nextTierEl) {
         if (cur.nextTierThreshold) {
-          var msg = cur.parcelsToNextTier + ' until next tier (£' + cur.nextTierRateGbp + '/parcel)';
+          var msg = cur.parcelsToNextTier + ' until next tier this billing period (£' + cur.nextTierRateGbp + '/parcel)';
           nextTierEl.textContent = msg;
           if (cur.within20PercentOfNextTier) nextTierEl.style.fontWeight = '600';
         } else {
           nextTierEl.textContent = 'Maximum tier reached';
         }
       }
+
+      setHeroParcels(periodUsed, included, overage);
 
       if (historyListEl && data.history && data.history.length) {
         var html = '<div class="app-usage-history-list">';
@@ -73,8 +124,11 @@
       } else if (historyListEl) {
         historyListEl.textContent = 'No usage history yet.';
       }
+
+      await refreshBillingSnapshot();
     } catch (e) {
       console.warn('EUDR usage load error:', e);
+      setUsageUnavailable();
     }
   }
 

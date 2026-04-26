@@ -23,6 +23,8 @@ EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
+APP_BILLING_JS = WEBSITE / "js" / "app-billing.js"
+APP_EUDR_JS = WEBSITE / "js" / "app-eudr.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
 APP_AUTH_JS = WEBSITE / "js" / "app-auth.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
@@ -57,6 +59,16 @@ def app_shell_js():
 @pytest.fixture()
 def app_runs_js():
     return APP_RUNS_JS.read_text()
+
+
+@pytest.fixture()
+def app_billing_js():
+    return APP_BILLING_JS.read_text()
+
+
+@pytest.fixture()
+def app_eudr_js():
+    return APP_EUDR_JS.read_text()
 
 
 @pytest.fixture()
@@ -253,6 +265,47 @@ class TestAuthConfig:
         )
         assert "history-org" in app_runs_js, (
             "app-runs.js must keep org history cache separate from user-scoped history cache"
+        )
+
+
+class TestBillingEmulationUi:
+    def test_billing_module_defines_fallback_emulation_tiers(self, app_billing_js):
+        """Plan emulation selector should remain usable if API omits emulation.tiers."""
+        expected = "['demo', 'free', 'starter', 'pro', 'team', 'enterprise', 'eudr_pro']"
+        assert expected in app_billing_js, (
+            "app-billing.js must define a fallback tier list for plan emulation"
+        )
+
+    def test_billing_module_formats_eudr_pro_label(self, app_billing_js):
+        """Emulation selector should render eudr_pro with a readable label."""
+        assert "if (tier === 'eudr_pro') return 'EUDR Pro';" in app_billing_js, (
+            "app-billing.js must render eudr_pro as EUDR Pro in plan emulation options"
+        )
+
+
+class TestEudrUsageConsistency:
+    def test_eudr_usage_labels_include_scope(self, eudr_index_html):
+        """EUDR usage card labels should explicitly communicate metric scope."""
+        assert "Included parcels (current billing period)" in eudr_index_html, (
+            "eudr/index.html must label included parcels as current billing period"
+        )
+        assert "Last 6 months (org run history)" in eudr_index_html, (
+            "eudr/index.html must label history as org run history"
+        )
+
+    def test_eudr_inline_script_no_longer_depends_on_global_apifetch(self, eudr_index_html):
+        """Legacy inline billing script must not wait for window.apiFetch anymore."""
+        assert "window.apiFetch" not in eudr_index_html, (
+            "eudr/index.html should use CanopexApiClient directly, not window.apiFetch"
+        )
+
+    def test_app_eudr_updates_hero_parcels_and_unavailable_state(self, app_eudr_js):
+        """EUDR module should set hero parcel pill and clear loading state on errors."""
+        assert "eudr-parcels-used" in app_eudr_js, (
+            "app-eudr.js must update the hero parcels stat pill"
+        )
+        assert "Usage unavailable right now." in app_eudr_js, (
+            "app-eudr.js must clear loading text when usage fetch fails"
         )
 
 
