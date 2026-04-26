@@ -286,63 +286,27 @@
   }
 
   function readCache(key) {
-    if (typeof coreState.readScopedCache === 'function') {
-      return coreState.readScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key);
-    }
-    try {
-      const full = cacheKey(key);
-      if (!full) return null;
-      const raw = localStorage.getItem(full);
-      if (!raw) return null;
-      const entry = JSON.parse(raw);
-      if (!entry || typeof entry.expires !== 'number' || Date.now() > entry.expires) {
-        localStorage.removeItem(full);
-        return null;
-      }
-      return entry.data;
-    } catch { return null; }
+    return coreState.readScopedCache
+      ? coreState.readScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key)
+      : null;
   }
 
   function writeCache(key, data, ttlMs) {
-    if (typeof coreState.writeScopedCache === 'function') {
+    if (coreState.writeScopedCache) {
       coreState.writeScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key, data, ttlMs);
-      return;
     }
-    if (!Number.isFinite(ttlMs)) return;
-    try {
-      const full = cacheKey(key);
-      if (!full) return;
-      localStorage.setItem(full, JSON.stringify({
-        data: data,
-        expires: Date.now() + ttlMs
-      }));
-    } catch { /* quota exceeded or private browsing — degrade gracefully */ }
   }
 
   function clearCacheKey(key) {
-    if (typeof coreState.clearScopedCacheKey === 'function') {
+    if (coreState.clearScopedCacheKey) {
       coreState.clearScopedCacheKey(CACHE_PREFIX, currentAccount && currentAccount.userId, key);
-      return;
     }
-    try {
-      const full = cacheKey(key);
-      if (full) localStorage.removeItem(full);
-    } catch { /* ignore */ }
   }
 
   function clearAllCache() {
-    if (typeof coreState.clearAllScopedCache === 'function') {
+    if (coreState.clearAllScopedCache) {
       coreState.clearAllScopedCache(CACHE_PREFIX);
-      return;
     }
-    try {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(CACHE_PREFIX)) keys.push(k);
-      }
-      keys.forEach(function(k) { localStorage.removeItem(k); });
-    } catch { /* ignore */ }
   }
 
   function authEnabled() { return true; /* SWA built-in auth — always available */ }
@@ -519,49 +483,11 @@
   /* ---- History UI — delegated to app-history-ui.js ---- */
 
   function normalizeAnalysisRun(run) {
-    if (typeof appRuns.normalizeRun === 'function') {
-      return appRuns.normalizeRun(run);
-    }
-    if (!run) return null;
-    var normalized = Object.assign({}, run);
-    normalized.instanceId = normalized.instanceId || normalized.instance_id || '';
-    normalized.submissionId = normalized.submissionId || normalized.submission_id || normalized.instanceId;
-    normalized.submittedAt = normalized.submittedAt || normalized.submitted_at || normalized.createdTime || '';
-    normalized.submissionPrefix = normalized.submissionPrefix || normalized.submission_prefix || 'analysis';
-    normalized.providerName = normalized.providerName || normalized.provider_name || 'planetary_computer';
-    normalized.featureCount = normalized.featureCount != null ? normalized.featureCount : normalized.feature_count;
-    normalized.aoiCount = normalized.aoiCount != null ? normalized.aoiCount : normalized.aoi_count;
-    normalized.processingMode = normalized.processingMode || normalized.processing_mode;
-    normalized.maxSpreadKm = normalized.maxSpreadKm != null ? normalized.maxSpreadKm : normalized.max_spread_km;
-    normalized.totalAreaHa = normalized.totalAreaHa != null ? normalized.totalAreaHa : normalized.total_area_ha;
-    normalized.largestAreaHa = normalized.largestAreaHa != null ? normalized.largestAreaHa : normalized.largest_area_ha;
-    normalized.workspaceRole = normalized.workspaceRole || normalized.workspace_role;
-    normalized.workspacePreference = normalized.workspacePreference || normalized.workspace_preference;
-    if (normalized.output) {
-      if (normalized.featureCount == null && normalized.output.featureCount != null) normalized.featureCount = normalized.output.featureCount;
-      if (normalized.aoiCount == null && normalized.output.aoiCount != null) normalized.aoiCount = normalized.output.aoiCount;
-      if (normalized.artifactCount == null && normalized.output.artifacts) normalized.artifactCount = Object.keys(normalized.output.artifacts).length;
-      if (!normalized.partialFailures) {
-        normalized.partialFailures = {
-          imagery: normalized.output.imageryFailed || 0,
-          downloads: normalized.output.downloadsFailed || 0,
-          postProcess: normalized.output.postProcessFailed || 0,
-        };
-      }
-    }
-    return normalized.instanceId ? normalized : null;
+    return appRuns.normalizeRun ? appRuns.normalizeRun(run) : null;
   }
 
   function sortAnalysisHistoryRuns(runs) {
-    if (typeof appRuns.sortRuns === 'function') {
-      return appRuns.sortRuns(runs, parseStatusTimestamp);
-    }
-    return (runs || [])
-      .map(normalizeAnalysisRun)
-      .filter(Boolean)
-      .sort(function(a, b) {
-        return parseStatusTimestamp((b && (b.submittedAt || b.createdTime || b.lastUpdatedTime)) || '') - parseStatusTimestamp((a && (a.submittedAt || a.createdTime || a.lastUpdatedTime)) || '');
-      });
+    return appRuns.sortRuns ? appRuns.sortRuns(runs, parseStatusTimestamp) : [];
   }
 
   function renderAnalysisHistoryList() {
@@ -569,17 +495,8 @@
   }
 
   function upsertAnalysisHistoryRun(run) {
-    var normalized = normalizeAnalysisRun(run);
-    if (!normalized) return;
-    var replaced = false;
-    analysisHistoryRuns = analysisHistoryRuns.map(function(existing) {
-      var existingId = existing.instanceId || existing.instance_id;
-      if (existingId !== normalized.instanceId) return existing;
-      replaced = true;
-      return Object.assign({}, existing, normalized);
-    });
-    if (!replaced) analysisHistoryRuns.unshift(normalized);
-    analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
+    if (!appRuns.upsertRun) return;
+    analysisHistoryRuns = appRuns.upsertRun(analysisHistoryRuns, run, parseStatusTimestamp);
     renderAnalysisHistoryList();
     applyFirstRunLayout();
   }
