@@ -121,6 +121,39 @@
     };
   }
 
+  function readRunSelectionFromLocation() {
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      return { instanceId: params.get('run') || '' };
+    } catch (_) {
+      return { instanceId: '' };
+    }
+  }
+
+  function selectedRunPermalink(instanceId, appBase) {
+    try {
+      var url = new URL(window.location.href);
+      if (instanceId) {
+        url.searchParams.set('run', instanceId);
+      } else {
+        url.searchParams.delete('run');
+      }
+      url.searchParams.delete('focus');
+      var nextPath = url.pathname;
+      var nextSearch = url.searchParams.toString();
+      return nextSearch ? nextPath + '?' + nextSearch : nextPath;
+    } catch (_) {
+      return appBase || '/app/';
+    }
+  }
+
+  function updateRunSelectionLocation(instanceId, appBase) {
+    if (!window.history || typeof window.history.replaceState !== 'function') return;
+    try {
+      window.history.replaceState({}, '', selectedRunPermalink(instanceId, appBase));
+    } catch (_) { /* ignore */ }
+  }
+
   window.CanopexAppRuns = {
     normalizeRun: normalizeRun,
     sortRuns: sortRuns,
@@ -128,5 +161,8 @@
     mapPhase: mapPhase,
     upsertRun: upsertRun,
     applyHistoryPayload: applyHistoryPayload,
+    readRunSelectionFromLocation: readRunSelectionFromLocation,
+    selectedRunPermalink: selectedRunPermalink,
+    updateRunSelectionLocation: updateRunSelectionLocation,
   };
 })();

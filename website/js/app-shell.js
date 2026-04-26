@@ -280,11 +280,6 @@
   const CACHE_TTL_HISTORY = 5 * 60 * 1000;   // 5 min
   const CACHE_TTL_BILLING = 30 * 60 * 1000;  // 30 min
 
-  function cacheKey(key) {
-    const uid = currentAccount && currentAccount.userId;
-    return uid ? CACHE_PREFIX + uid + ':' + key : null;
-  }
-
   function readCache(key) {
     return coreState.readScopedCache
       ? coreState.readScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key)
@@ -369,53 +364,29 @@
   }
 
   function readRunSelectionFromLocation() {
-    try {
-      const params = new URLSearchParams(window.location.search || '');
-      return {
-        instanceId: params.get('run') || ''
-      };
-    } catch {
-      return { instanceId: '' };
-    }
+    return appRuns.readRunSelectionFromLocation
+      ? appRuns.readRunSelectionFromLocation()
+      : { instanceId: '' };
   }
 
   function selectedRunPermalink(instanceId) {
-    try {
-      const url = new URL(window.location.href);
-      if (instanceId) {
-        url.searchParams.set('run', instanceId);
-      } else {
-        url.searchParams.delete('run');
-      }
-      url.searchParams.delete('focus');
-      const nextPath = url.pathname;
-      const nextSearch = url.searchParams.toString();
-      return nextSearch ? nextPath + '?' + nextSearch : nextPath;
-    } catch {
-      return APP_BASE;
-    }
+    return appRuns.selectedRunPermalink
+      ? appRuns.selectedRunPermalink(instanceId, APP_BASE)
+      : APP_BASE;
   }
 
   function updateRunSelectionLocation(instanceId) {
-    if (!window.history || typeof window.history.replaceState !== 'function') return;
-    try {
-      window.history.replaceState({}, '', selectedRunPermalink(instanceId));
-    } catch { /* ignore */ }
+    if (appRuns.updateRunSelectionLocation) {
+      appRuns.updateRunSelectionLocation(instanceId, APP_BASE);
+    }
   }
 
   function readStoredUiValue(key) {
-    if (typeof coreState.readStoredValue === 'function') {
-      return coreState.readStoredValue(key);
-    }
-    try { return localStorage.getItem(key); } catch { return null; }
+    return coreState.readStoredValue ? coreState.readStoredValue(key) : null;
   }
 
   function storeUiValue(key, value) {
-    if (typeof coreState.storeValue === 'function') {
-      coreState.storeValue(key, value);
-      return;
-    }
-    try { localStorage.setItem(key, value); } catch { /* ignore */ }
+    if (coreState.storeValue) coreState.storeValue(key, value);
   }
 
   function currentRoleConfig() {
