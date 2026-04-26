@@ -56,6 +56,7 @@
   var authModule = window.CanopexAuth || {};
   var bindingsModule = window.CanopexBindings || {};
   var runLifecycleModule = window.CanopexRunLifecycle || {};
+  var historyUiModule = window.CanopexHistoryUi || {};
   var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
@@ -650,6 +651,8 @@
     if (exportRow) exportRow.hidden = false;
   }
 
+  /* ---- History UI — delegated to app-history-ui.js ---- */
+
   function normalizeAnalysisRun(run) {
     if (typeof appRuns.normalizeRun === 'function') {
       return appRuns.normalizeRun(run);
@@ -684,10 +687,6 @@
     return normalized.instanceId ? normalized : null;
   }
 
-  function historyRunSortValue(run) {
-    return parseStatusTimestamp((run && (run.submittedAt || run.createdTime || run.lastUpdatedTime)) || '') || 0;
-  }
-
   function sortAnalysisHistoryRuns(runs) {
     if (typeof appRuns.sortRuns === 'function') {
       return appRuns.sortRuns(runs, parseStatusTimestamp);
@@ -696,107 +695,17 @@
       .map(normalizeAnalysisRun)
       .filter(Boolean)
       .sort(function(a, b) {
-        return historyRunSortValue(b) - historyRunSortValue(a);
+        return parseStatusTimestamp((b && (b.submittedAt || b.createdTime || b.lastUpdatedTime)) || '') - parseStatusTimestamp((a && (a.submittedAt || a.createdTime || a.lastUpdatedTime)) || '');
       });
-  }
-
-  function historyRunIsActive(run) {
-    if (typeof appRuns.isRunActive === 'function') {
-      return appRuns.isRunActive(run);
-    }
-    var runtimeStatus = String(run && run.runtimeStatus || '').trim().toLowerCase();
-    return ['completed', 'failed', 'terminated', 'canceled'].indexOf(runtimeStatus) === -1;
   }
 
   function renderAnalysisHistoryList() {
-    var container = document.getElementById('app-history-list');
-    if (!container) return;
-
-    container.replaceChildren();
-    if (!analysisHistoryLoaded && currentAccount) {
-      var loading = document.createElement('div');
-      loading.className = 'app-history-empty';
-      loading.textContent = 'Loading your history…';
-      container.appendChild(loading);
-      return;
-    }
-    if (!analysisHistoryRuns.length) {
-      var empty = document.createElement('div');
-      empty.className = 'app-history-empty';
-      empty.textContent = currentRoleConfig().emptyHistoryNote;
-      container.appendChild(empty);
-      return;
-    }
-
-    analysisHistoryRuns.forEach(function(run) {
-      var instanceId = run.instanceId || run.instance_id;
-      var runtimeStatus = run.runtimeStatus || 'Pending';
-      var phase = displayAnalysisPhase(run.customStatus, runtimeStatus);
-      var button = document.createElement('button');
-      var header = document.createElement('div');
-      var title = document.createElement('strong');
-      var status = document.createElement('span');
-      var meta = document.createElement('div');
-      var submitted = document.createElement('span');
-      var phaseMeta = document.createElement('span');
-      var scopeMeta = document.createElement('span');
-      var note = document.createElement('div');
-
-      button.type = 'button';
-      button.className = 'app-history-item';
-      button.setAttribute('data-selected', instanceId === selectedAnalysisRunId ? 'true' : 'false');
-      button.addEventListener('click', function(event) {
-        event.stopPropagation();
-        selectAnalysisRun(instanceId, { resume: historyRunIsActive(run) });
-      });
-
-      header.className = 'app-history-item-header';
-      title.className = 'app-history-item-title';
-      var titleParts = [];
-      if (run.aoiCount) titleParts.push(formatCountLabel(run.aoiCount, 'AOI'));
-      if (run.totalAreaHa) titleParts.push(Number(run.totalAreaHa).toFixed(1) + ' ha');
-      var titleLabel = titleParts.length ? titleParts.join(' · ') : shortInstanceId(instanceId);
-      title.textContent = (historyRunIsActive(run) ? 'Resume: ' : '') + titleLabel;
-      status.className = 'app-history-item-status';
-      status.textContent = runtimeStatus;
-      header.appendChild(title);
-      header.appendChild(status);
-
-      meta.className = 'app-history-item-meta';
-      submitted.textContent = formatHistoryTimestamp(run.submittedAt || run.createdTime);
-      phaseMeta.textContent = 'Phase ' + phase;
-      scopeMeta.textContent = [formatCountLabel(run.aoiCount, 'AOI'), providerLabel(run.providerName)].filter(Boolean).join(' • ') || 'Tracked run';
-      meta.appendChild(submitted);
-      meta.appendChild(phaseMeta);
-      meta.appendChild(scopeMeta);
-
-      note.className = 'app-history-item-note';
-      if (historyRunIsActive(run)) {
-        note.textContent = 'Resume this run from ' + phase + '.';
-      } else if (runtimeStatus === 'Completed') {
-        note.textContent = 'View completed results and download exports.';
-      } else {
-        note.textContent = 'Review this run state.';
-      }
-
-      button.appendChild(header);
-      button.appendChild(meta);
-      button.appendChild(note);
-      container.appendChild(button);
-    });
+    if (typeof historyUiModule.renderAnalysisHistoryList === 'function') return historyUiModule.renderAnalysisHistoryList();
   }
 
   function upsertAnalysisHistoryRun(run) {
-    if (typeof appRuns.upsertRun === 'function') {
-      analysisHistoryRuns = appRuns.upsertRun(analysisHistoryRuns, run, parseStatusTimestamp);
-      renderAnalysisHistoryList();
-      applyFirstRunLayout();
-      return;
-    }
-
     var normalized = normalizeAnalysisRun(run);
     if (!normalized) return;
-
     var replaced = false;
     analysisHistoryRuns = analysisHistoryRuns.map(function(existing) {
       var existingId = existing.instanceId || existing.instance_id;
@@ -811,123 +720,11 @@
   }
 
   function selectAnalysisRun(instanceId, options) {
-    options = options || {};
-    var run = analysisHistoryRuns.find(function(entry) {
-      return (entry.instanceId || entry.instance_id) === instanceId;
-    });
-    if (!run) return;
-
-    selectedAnalysisRunId = instanceId;
-    renderAnalysisHistoryList();
-    updateRunSelectionLocation(instanceId);
-
-    stopAnalysisPolling();
-    // Stop any running timelapse animation from a previous run.
-    if (typeof evidenceDisplayModule.stopPlay === 'function') evidenceDisplayModule.stopPlay();
-    updateAnalysisRun(run);
-    resetAnalysisProgress();
-    setAnalysisProgressVisible(true);
-
-    var runtimeStatus = run.runtimeStatus || 'Pending';
-    var phase = mapAnalysisPhase(run.customStatus, runtimeStatus);
-    if (runtimeStatus === 'Completed') {
-      setAnalysisStep('complete', 'done');
-      updateAnalysisStory('complete', runtimeStatus, run);
-      loadRunEvidence(instanceId);
-      return;
-    }
-    if (runtimeStatus === 'Failed' || runtimeStatus === 'Canceled' || runtimeStatus === 'Terminated') {
-      setAnalysisStep(phase, 'failed');
-      updateAnalysisStory(phase, runtimeStatus, run);
-      return;
-    }
-
-    setAnalysisStep(phase, 'active');
-    updateAnalysisStory(phase, runtimeStatus || 'Pending', run);
-    if (options.resume !== false) pollAnalysisRun(instanceId);
+    if (typeof historyUiModule.selectAnalysisRun === 'function') return historyUiModule.selectAnalysisRun(instanceId, options);
   }
 
   function applyAnalysisHistory(payload, options) {
-    options = options || {};
-    var locationSelection = readRunSelectionFromLocation();
-
-    if (typeof appRuns.applyHistoryPayload === 'function') {
-      var applied = appRuns.applyHistoryPayload(
-        payload,
-        options,
-        selectedAnalysisRunId,
-        latestAnalysisRun,
-        locationSelection.instanceId,
-        parseStatusTimestamp
-      );
-
-      latestPortfolioSummary = applied.portfolioSummary;
-      analysisHistoryRuns = applied.runs;
-
-      if (!applied.selectedId) {
-        selectedAnalysisRunId = null;
-        updateRunSelectionLocation('');
-        stopAnalysisPolling();
-        resetAnalysisProgress();
-        renderAnalysisHistoryList();
-        updateAnalysisRun(null);
-        updateHistorySummary(null);
-        return;
-      }
-
-      var selectedRun = analysisHistoryRuns.find(function(run) { return run.instanceId === applied.selectedId; });
-      selectAnalysisRun(applied.selectedId, { resume: historyRunIsActive(selectedRun) });
-      return;
-    }
-
-    latestPortfolioSummary = {
-      scope: payload && payload.scope,
-      orgId: payload && payload.orgId,
-      memberCount: payload && payload.memberCount,
-      stats: payload && payload.stats
-    };
-
-    var normalizedActiveRun = normalizeAnalysisRun(payload && payload.activeRun);
-    analysisHistoryRuns = sortAnalysisHistoryRuns(payload && payload.runs);
-    if (normalizedActiveRun && !analysisHistoryRuns.some(function(run) {
-      return run.instanceId === normalizedActiveRun.instanceId;
-    })) {
-      analysisHistoryRuns.unshift(normalizedActiveRun);
-      analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
-    }
-
-    // If the history API hasn't propagated a just-completed run yet,
-    // preserve it from latestAnalysisRun so the UI doesn't flash to empty.
-    if (options.preferInstanceId && latestAnalysisRun &&
-        (latestAnalysisRun.instanceId || latestAnalysisRun.instance_id) === options.preferInstanceId &&
-        !analysisHistoryRuns.some(function(run) { return run.instanceId === options.preferInstanceId; })) {
-      var preserved = normalizeAnalysisRun(latestAnalysisRun);
-      if (preserved) {
-        analysisHistoryRuns.unshift(preserved);
-        analysisHistoryRuns = sortAnalysisHistoryRuns(analysisHistoryRuns);
-      }
-    }
-
-    var nextSelectedId = options.preferInstanceId || selectedAnalysisRunId || locationSelection.instanceId;
-    if (nextSelectedId && !analysisHistoryRuns.some(function(run) { return run.instanceId === nextSelectedId; })) {
-      nextSelectedId = null;
-    }
-    if (!nextSelectedId && normalizedActiveRun) nextSelectedId = normalizedActiveRun.instanceId;
-    if (!nextSelectedId && analysisHistoryRuns[0]) nextSelectedId = analysisHistoryRuns[0].instanceId;
-
-    if (!nextSelectedId) {
-      selectedAnalysisRunId = null;
-      updateRunSelectionLocation('');
-      stopAnalysisPolling();
-      resetAnalysisProgress();
-      renderAnalysisHistoryList();
-      updateAnalysisRun(null);
-      updateHistorySummary(null);
-      return;
-    }
-
-    var selectedRun = analysisHistoryRuns.find(function(run) { return run.instanceId === nextSelectedId; });
-    selectAnalysisRun(nextSelectedId, { resume: historyRunIsActive(selectedRun) });
+    if (typeof historyUiModule.applyAnalysisHistory === 'function') return historyUiModule.applyAnalysisHistory(payload, options);
   }
 
   /* ------------------------------------------------------------------ */
@@ -1245,6 +1042,40 @@
       updateAnalysisStory: updateAnalysisStory,
       mapAnalysisPhase: mapAnalysisPhase,
       updateAnalysisPreflight: updateAnalysisPreflight,
+    });
+  }
+
+  if (typeof historyUiModule.init === 'function') {
+    historyUiModule.init({
+      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
+      getAccount: function () { return currentAccount; },
+      getSelectedAnalysisRunId: function () { return selectedAnalysisRunId; },
+      setSelectedAnalysisRunId: function (id) { selectedAnalysisRunId = id; },
+      getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
+      setAnalysisHistoryRuns: function (runs) { analysisHistoryRuns = runs; },
+      getLatestAnalysisRun: function () { return latestAnalysisRun; },
+      setLatestPortfolioSummary: function (summary) { latestPortfolioSummary = summary; },
+      currentRoleConfig: currentRoleConfig,
+      displayAnalysisPhase: displayAnalysisPhase,
+      formatCountLabel: formatCountLabel,
+      formatHistoryTimestamp: formatHistoryTimestamp,
+      providerLabel: providerLabel,
+      readRunSelectionFromLocation: readRunSelectionFromLocation,
+      updateRunSelectionLocation: updateRunSelectionLocation,
+      stopAnalysisPolling: stopAnalysisPolling,
+      stopPlay: function () { if (typeof evidenceDisplayModule.stopPlay === 'function') evidenceDisplayModule.stopPlay(); },
+      updateAnalysisRun: updateAnalysisRun,
+      resetAnalysisProgress: resetAnalysisProgress,
+      setAnalysisProgressVisible: setAnalysisProgressVisible,
+      setAnalysisStep: setAnalysisStep,
+      updateAnalysisStory: updateAnalysisStory,
+      mapAnalysisPhase: mapAnalysisPhase,
+      loadRunEvidence: loadRunEvidence,
+      updateHistorySummary: updateHistorySummary,
+      pollAnalysisRun: pollAnalysisRun,
+      normalizeAnalysisRun: normalizeAnalysisRun,
+      sortAnalysisHistoryRuns: sortAnalysisHistoryRuns,
+      parseStatusTimestamp: parseStatusTimestamp,
     });
   }
 
