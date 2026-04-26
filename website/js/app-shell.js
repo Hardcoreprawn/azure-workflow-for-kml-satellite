@@ -184,13 +184,8 @@
     try {
       return await _apiClient.fetch(path, opts);
     } catch (err) {
-      if (err.status === 401 && authEnabled()) {
-        // Session expired — clear local auth state and prompt re-login.
-        currentAccount = null;
-        _apiClient.clearAuth();
-        updateAuthUI();
-        setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
-        stopAnalysisPolling();
+      if (typeof authModule.handleApiError === 'function') {
+        authModule.handleApiError(err);
       }
       throw err;
     }
@@ -349,83 +344,9 @@
     if (typeof evidenceDisplayModule.collapse === 'function') return evidenceDisplayModule.collapse();
   }
 
-  function showEvidenceFrame(idx) {
-    if (typeof evidenceDisplayModule.showFrame === 'function') return evidenceDisplayModule.showFrame(idx);
-  }
-
-  function setEvidenceLayerMode(mode) {
-    if (typeof evidenceDisplayModule.setLayerMode === 'function') return evidenceDisplayModule.setLayerMode(mode);
-  }
-
-  function toggleCompareView() {
-    if (typeof evidenceDisplayModule.toggleCompare === 'function') return evidenceDisplayModule.toggleCompare();
-  }
-
-  function toggleEvidencePlay() {
-    if (typeof evidenceDisplayModule.togglePlay === 'function') return evidenceDisplayModule.togglePlay();
-  }
-
-  function requestAiAnalysis() {
-    if (typeof evidenceDisplayModule.requestAi === 'function') return evidenceDisplayModule.requestAi();
-  }
-
-  function requestEudrAssessment() {
-    if (typeof evidenceDisplayModule.requestEudr === 'function') return evidenceDisplayModule.requestEudr();
-  }
-
   /* ---- Parcel notes (#669) — delegated to app-evidence-panels.js ---- */
 
-  var currentNoteParcelKey = null;
-
-  function parcelKeyForIndex(idx) {
-    if (typeof evidencePanelsModule.parcelKeyForIndex === 'function') return evidencePanelsModule.parcelKeyForIndex(idx);
-    return String(idx);
-  }
-
-  function renderParcelNotes(parcelKey) {
-    if (typeof evidencePanelsModule.renderParcelNotes === 'function') return evidencePanelsModule.renderParcelNotes(parcelKey);
-  }
-
-  function showNoteEditor() {
-    if (typeof evidencePanelsModule.showNoteEditor === 'function') return evidencePanelsModule.showNoteEditor();
-  }
-
-  function hideNoteEditor() {
-    if (typeof evidencePanelsModule.hideNoteEditor === 'function') return evidencePanelsModule.hideNoteEditor();
-  }
-
-  async function saveParcelNote() {
-    if (typeof evidencePanelsModule.saveParcelNote === 'function') return evidencePanelsModule.saveParcelNote();
-  }
-
   /* ---- Human override (#672) — delegated to app-evidence-panels.js ---- */
-
-  var currentOverrideParcelKey = null;
-  var currentOverrideAoiData = null;
-
-  function renderParcelOverride(parcelKey, aoiData) {
-    if (typeof evidencePanelsModule.renderParcelOverride === 'function') return evidencePanelsModule.renderParcelOverride(parcelKey, aoiData);
-  }
-
-  function openOverrideModal(parcelKey, aoiData) {
-    if (typeof evidencePanelsModule.openOverrideModal === 'function') return evidencePanelsModule.openOverrideModal(parcelKey, aoiData);
-  }
-
-  function closeOverrideModal() {
-    if (typeof evidencePanelsModule.closeOverrideModal === 'function') return evidencePanelsModule.closeOverrideModal();
-  }
-
-  function onOverrideReasonInput() {
-    if (typeof evidencePanelsModule.onOverrideReasonInput === 'function') return evidencePanelsModule.onOverrideReasonInput();
-  }
-
-  async function confirmOverride() {
-    if (typeof evidencePanelsModule.confirmOverride === 'function') return evidencePanelsModule.confirmOverride();
-  }
-
-  async function revertOverride() {
-    if (typeof evidencePanelsModule.revertOverride === 'function') return evidencePanelsModule.revertOverride();
-  }
 
   /* ------------------------------------------------------------------ */
   /*  END Evidence surface                                               */
@@ -454,35 +375,6 @@
   }
   async function queueAnalysis() {
     if (typeof runLifecycleModule.queueAnalysis === 'function') return runLifecycleModule.queueAnalysis();
-  }
-  async function manageBilling() {
-    if (typeof billingModule.manage === 'function') return billingModule.manage();
-    // fallback: redirect to interest mailto
-    window.location.href = 'mailto:hello@canopex.io';
-  }
-
-  // updateCapabilityFields and renderTierEmulation are internal to app-billing.js
-
-  function applyBillingStatus(data) {
-    if (typeof billingModule.apply === 'function') return billingModule.apply(data);
-    // fallback: update shell state only
-    latestBillingStatus = data;
-    updateHeroSummary(data);
-  }
-
-  async function saveTierEmulation() {
-    if (typeof billingModule.saveEmulation === 'function') return billingModule.saveEmulation();
-  }
-
-  async function loadBillingStatus() {
-    if (typeof billingModule.load === 'function') return billingModule.load();
-  }
-
-  /* ---- EUDR usage dashboard (#670) ---- */
-
-  async function loadEudrUsage() {
-    if (typeof eudrModule.loadUsage === 'function') return eudrModule.loadUsage();
-    // fallback: silently skip when module not loaded
   }
 
   async function loadAnalysisHistory(options) {
@@ -617,7 +509,7 @@
       setAnalysisHistoryLoaded: function (v) { analysisHistoryLoaded = v; },
       upsertAnalysisHistoryRun: upsertAnalysisHistoryRun,
       selectAnalysisRun: selectAnalysisRun,
-      loadBillingStatus: loadBillingStatus,
+      loadBillingStatus: billingModule.load,
       loadAnalysisHistory: loadAnalysisHistory,
       loadRunEvidence: loadRunEvidence,
       showEvidenceSurface: showEvidenceSurface,
@@ -695,8 +587,8 @@
       apiFetch: apiFetch,
       getAppBase: function () { return APP_BASE; },
       loadAnalysisHistory: loadAnalysisHistory,
-      loadBillingStatus: loadBillingStatus,
-      loadEudrUsage: loadEudrUsage,
+      loadBillingStatus: billingModule.load,
+      loadEudrUsage: eudrModule.loadUsage,
       setHeroRunSummary: setHeroRunSummary,
       updateHistorySummary: updateHistorySummary,
       renderAnalysisHistoryList: renderAnalysisHistoryList,
@@ -706,7 +598,9 @@
       getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
       getLatestAnalysisRun: function () { return latestAnalysisRun; },
       clearAllCache: clearAllCache,
+      clearClientAuth: function () { if (_apiClient) _apiClient.clearAuth(); },
       postLoginDestinationKey: POST_LOGIN_DESTINATION_KEY,
+      setAnalysisStatus: setAnalysisStatus,
       clearAnalysisState: function () {
         analysisHistoryRuns = [];
         analysisHistoryLoaded = false;
@@ -727,8 +621,8 @@
       // auth
       login: login,
       logout: logout,
-      manageBilling: manageBilling,
-      saveTierEmulation: saveTierEmulation,
+      manageBilling: billingModule.manage,
+      saveTierEmulation: billingModule.saveEmulation,
       // workspace guidance
       setWorkspaceRole: setWorkspaceRole,
       setWorkspacePreference: setWorkspacePreference,
@@ -742,26 +636,26 @@
       switchInputTab: switchInputTab,
       convertCSVToKml: convertCSVToKml,
       // evidence surface
-      toggleEvidencePlay: toggleEvidencePlay,
-      showEvidenceFrame: showEvidenceFrame,
-      setEvidenceLayerMode: setEvidenceLayerMode,
-      requestAiAnalysis: requestAiAnalysis,
-      requestEudrAssessment: requestEudrAssessment,
+      toggleEvidencePlay: evidenceDisplayModule.togglePlay,
+      showEvidenceFrame: evidenceDisplayModule.showFrame,
+      setEvidenceLayerMode: evidenceDisplayModule.setLayerMode,
+      requestAiAnalysis: evidenceDisplayModule.requestAi,
+      requestEudrAssessment: evidenceDisplayModule.requestEudr,
       expandEvidenceMap: expandEvidenceMap,
       collapseEvidenceMap: collapseEvidenceMap,
-      toggleCompareView: toggleCompareView,
+      toggleCompareView: evidenceDisplayModule.toggleCompare,
       getOverrideContext: function () {
         return evidenceDisplayModule.getOverrideContext ? evidenceDisplayModule.getOverrideContext() : {};
       },
       // parcel notes / override
-      showNoteEditor: showNoteEditor,
-      hideNoteEditor: hideNoteEditor,
-      saveParcelNote: saveParcelNote,
-      openOverrideModal: openOverrideModal,
-      closeOverrideModal: closeOverrideModal,
-      confirmOverride: confirmOverride,
-      revertOverride: revertOverride,
-      onOverrideReasonInput: onOverrideReasonInput,
+      showNoteEditor: evidencePanelsModule.showNoteEditor,
+      hideNoteEditor: evidencePanelsModule.hideNoteEditor,
+      saveParcelNote: evidencePanelsModule.saveParcelNote,
+      openOverrideModal: evidencePanelsModule.openOverrideModal,
+      closeOverrideModal: evidencePanelsModule.closeOverrideModal,
+      confirmOverride: evidencePanelsModule.confirmOverride,
+      revertOverride: evidencePanelsModule.revertOverride,
+      onOverrideReasonInput: evidencePanelsModule.onOverrideReasonInput,
       // API access for export
       apiFetch: apiFetch,
     });

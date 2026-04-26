@@ -32,6 +32,8 @@
   var _clearAnalysisState = null;
   var _clearAllCache = null;
   var _postLoginDestinationKey = null;
+  var _clearClientAuth = null;
+  var _setAnalysisStatus = null;
 
   function init(deps) {
     _authEnabled = deps.authEnabled;
@@ -56,6 +58,8 @@
     _clearAnalysisState = deps.clearAnalysisState;
     _clearAllCache = deps.clearAllCache;
     _postLoginDestinationKey = deps.postLoginDestinationKey || 'canopex-post-login';
+    _clearClientAuth = deps.clearClientAuth;
+    _setAnalysisStatus = deps.setAnalysisStatus;
   }
 
   function authEnabled() {
@@ -79,6 +83,17 @@
       sessionStorage.removeItem(_postLoginDestinationKey);
     } catch (_) { /* ignore */ }
     window.location.href = '/.auth/logout';
+  }
+
+  function handleApiError(err) {
+    if (!err || err.status !== 401 || !authEnabled()) return;
+    if (_setAccount) _setAccount(null);
+    if (_clearClientAuth) _clearClientAuth();
+    if (_updateAuthUI) _updateAuthUI();
+    if (_setAnalysisStatus) {
+      _setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
+    }
+    if (_stopAnalysisPolling) _stopAnalysisPolling();
   }
 
   // ── updateAuthUI ─────────────────────────────────────────────
@@ -225,6 +240,7 @@
 
   window.CanopexAuth = {
     authEnabled: authEnabled,
+    handleApiError: handleApiError,
     init: init,
     login: login,
     logout: logout,
