@@ -289,6 +289,24 @@ class TestBillingStatus:
         resp = billing_emulation(req)
         assert resp.status_code == 403
 
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
+    def test_localhost_origin_does_not_bypass_account_lock_for_non_allowlisted(self, _mock_read):
+        """Non-allowlisted users are rejected even on localhost origin."""
+        from blueprints.billing import billing_emulation
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "team"}).encode("utf-8"),
+            origin="http://localhost:4280",
+            principal_user_id="not-allowlisted-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 403
+        # Verify the account-lock policy applies (not origin-based)
+        body = resp.get_body().decode("utf-8")
+        assert "not yet available" in body
+
     @_BILLING_UNGATED
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")

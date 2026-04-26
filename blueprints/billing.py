@@ -516,7 +516,8 @@ def billing_emulation(
             return error_response(401, "Authentication required for billing", req=req)
         return error_response(
             403,
-            "Tier emulation is locked to explicitly allowlisted operator accounts",
+            "Billing features are not yet available for your account. "
+            "Use the contact form to request access.",
             req=req,
         )
 
