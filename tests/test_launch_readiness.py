@@ -751,14 +751,14 @@ class TestFrontendProgressReset:
     leaving a spinning animation on a failed submission.
     """
 
-    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+    APP_RUN_LIFECYCLE = WEBSITE / "js" / "app-run-lifecycle.js"
 
     def test_queue_error_branch_resets_progress(self):
         """Error branches in queueAnalysis must call resetAnalysisProgress()."""
-        content = self.APP_SHELL.read_text()
+        content = self.APP_RUN_LIFECYCLE.read_text()
         # Find the queueAnalysis function
         fn_start = content.find("async function queueAnalysis()")
-        assert fn_start != -1, "queueAnalysis function not found in app-shell.js"
+        assert fn_start != -1, "queueAnalysis function not found in app-run-lifecycle.js"
 
         # Extract until next top-level function (heuristic: next 'async function' or '  function')
         fn_end = content.find("\n  async function ", fn_start + 1)
@@ -911,6 +911,9 @@ class TestEudrModeToggle:
     """EUDR mode checkbox must exist in HTML, be wired in JS, and be tier-gated."""
 
     APP_SHELL = WEBSITE / "js" / "app-shell.js"
+    APP_BILLING = WEBSITE / "js" / "app-billing.js"
+    APP_EVIDENCE_DISPLAY = WEBSITE / "js" / "app-evidence-display.js"
+    APP_RUN_LIFECYCLE = WEBSITE / "js" / "app-run-lifecycle.js"
     APP_HTML = WEBSITE / "app" / "index.html"
 
     def test_eudr_checkbox_exists_in_html(self):
@@ -926,7 +929,7 @@ class TestEudrModeToggle:
         )
 
     def test_js_reads_eudr_checkbox_in_queue(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_RUN_LIFECYCLE.read_text()
         fn_start = content.find("async function queueAnalysis()")
         assert fn_start != -1
         fn_end = content.find("\n  async function ", fn_start + 1)
@@ -937,7 +940,7 @@ class TestEudrModeToggle:
         assert "eudr_mode" in fn_body, "queueAnalysis must set eudr_mode on the token body (#600)"
 
     def test_js_gates_toggle_visibility_by_tier(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_BILLING.read_text()
         assert "app-eudr-toggle" in content, "applyBillingStatus must manage EUDR toggle visibility"
         # Must check for paid tiers
         assert "paidTiers" in content or "starter" in content, (
@@ -945,9 +948,9 @@ class TestEudrModeToggle:
         )
 
     def test_eudr_request_uses_selected_aoi_context(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         fn_start = content.find("async function requestEudrAssessment()")
-        assert fn_start != -1, "requestEudrAssessment function not found in app-shell.js"
+        assert fn_start != -1, "requestEudrAssessment function not found in app-evidence-display.js"
         fn_end = content.find(
             "\n  /* ------------------------------------------------------------------ */",
             fn_start,
@@ -956,16 +959,16 @@ class TestEudrModeToggle:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
         assert "activeEvidenceContext" in content, (
-            "app-shell.js must define a helper that resolves the active parcel context"
+            "app-evidence-display.js must define a helper that resolves the active parcel context"
         )
         assert "activeEvidenceContext()" in fn_body or (
             "evidenceSelectedAoi" in fn_body and "per_aoi_enrichment" in fn_body
         ), "requestEudrAssessment must pivot to the selected parcel when a per-AOI chip is active"
 
     def test_eudr_request_uses_real_ndvi_dates(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         fn_start = content.find("async function requestEudrAssessment()")
-        assert fn_start != -1, "requestEudrAssessment function not found in app-shell.js"
+        assert fn_start != -1, "requestEudrAssessment function not found in app-evidence-display.js"
         fn_end = content.find(
             "\n  /* ------------------------------------------------------------------ */",
             fn_start,
@@ -974,7 +977,7 @@ class TestEudrModeToggle:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
         assert "buildEvidenceNdviTimeseries" in content, (
-            "app-shell.js must define a helper that builds"
+            "app-evidence-display.js must define a helper that builds"
             " dated NDVI timeseries for evidence requests"
         )
         assert (
@@ -987,29 +990,30 @@ class TestEudrModeToggle:
 class TestEvidenceMapQualityGate:
     """Ensure the evidence map respects frame-plan display quality metadata."""
 
-    APP_SHELL = WEBSITE / "js" / "app-shell.js"
+    APP_EVIDENCE_DISPLAY = WEBSITE / "js" / "app-evidence-display.js"
 
     def test_evidence_map_reads_frame_quality_metadata(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "rgb_display_suitable" in content, (
-            "app-shell.js must read frame_plan.rgb_display_suitable "
+            "app-evidence-display.js must read frame_plan.rgb_display_suitable "
             "so coarse RGB frames can be demoted"
         )
         assert "preferred_layer" in content, (
-            "app-shell.js must read frame_plan.preferred_layer to choose RGB vs NDVI intelligently"
+            "app-evidence-display.js must read frame_plan.preferred_layer "
+            "to choose RGB vs NDVI intelligently"
         )
 
     def test_evidence_map_chooses_default_layer_from_frame_plan(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "pickEvidenceDefaultLayer" in content, (
-            "app-shell.js must define a helper that chooses the default evidence layer "
+            "app-evidence-display.js must define a helper that chooses the default evidence layer "
             "from frame metadata"
         )
 
     def test_evidence_map_chooses_initial_frame_from_best_display_candidate(self):
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "pickInitialEvidenceFrameIndex" in content, (
-            "app-shell.js must define a helper that picks the initial evidence frame "
+            "app-evidence-display.js must define a helper that picks the initial evidence frame "
             "from the best available display candidate, not always frame 0"
         )
         assert "showEvidenceFrame(evidenceFrameIndex)" in content, (
@@ -1019,15 +1023,15 @@ class TestEvidenceMapQualityGate:
 
     def test_layer_button_labels_update_per_frame(self):
         """#646 — layer picker shows per-frame collection + resolution as button labels."""
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "updateLayerButtonLabels" in content, (
-            "app-shell.js must define updateLayerButtonLabels(frame) so each frame's "
+            "app-evidence-display.js must define updateLayerButtonLabels(frame) so each frame's "
             "collection and resolution are surfaced in the layer picker buttons"
         )
 
     def test_layer_mode_falls_back_to_rgb_when_ndvi_unavailable(self):
         """#646 — navigating to a frame without NDVI must not leave the viewer broken."""
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "evidenceLayerMode === 'ndvi' && !activeFrame.ndvi" in content, (
             "showEvidenceFrame must fall back from ndvi to rgb when the active frame "
             "has no ndvi layer, so the viewer never shows a blank tile"
@@ -1035,7 +1039,7 @@ class TestEvidenceMapQualityGate:
 
     def test_layer_picker_stores_collection_label_per_frame(self):
         """#646 — buildEvidenceFrames must record collectionLabel per entry."""
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "collectionLabel" in content, (
             "buildEvidenceFrames must store a collectionLabel per map-layer entry "
             "so updateLayerButtonLabels has per-frame context without re-reading the DOM"
@@ -1043,9 +1047,9 @@ class TestEvidenceMapQualityGate:
 
     def test_layer_mode_buttons_synced_on_init(self):
         """#690 review — buildEvidenceFrames must sync button active state after setting mode."""
-        content = self.APP_SHELL.read_text()
+        content = self.APP_EVIDENCE_DISPLAY.read_text()
         assert "syncLayerModeButtons" in content, (
-            "app-shell.js must define syncLayerModeButtons() and call it whenever "
+            "app-evidence-display.js must define syncLayerModeButtons() and call it whenever "
             "evidenceLayerMode is changed programmatically so buttons match the map"
         )
 

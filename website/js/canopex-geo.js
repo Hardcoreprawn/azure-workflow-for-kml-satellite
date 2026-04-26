@@ -134,6 +134,49 @@
     return 'Single run';
   }
 
+  /**
+   * Parse name/lat/lon rows from CSV text.
+   * Accepts an optional header row detected by the presence of "name" and "lat"/"lon".
+   *
+   * @param {string} text - raw CSV text from user input
+   * @returns {{ plots: Array<{ name: string, lat: number, lon: number }>, errors: string[] }}
+   */
+  function parseCSVCoordinates(text) {
+    var lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length === 0) return { plots: [], errors: ['No data entered'] };
+
+    var plots = [];
+    var errors = [];
+    var startIdx = 0;
+
+    // Detect header row
+    var firstLine = lines[0].toLowerCase().replace(/\s/g, '');
+    if (firstLine.indexOf('name') >= 0 && (firstLine.indexOf('lat') >= 0 || firstLine.indexOf('lon') >= 0)) {
+      startIdx = 1;
+    }
+
+    for (var i = startIdx; i < lines.length; i++) {
+      var parts = lines[i].split(',').map(function(s) { return s.trim(); });
+      if (parts.length < 3) {
+        errors.push('Row ' + (i + 1) + ': expected name, lat, lon — got ' + parts.length + ' columns');
+        continue;
+      }
+      var name = parts[0] || 'Parcel ' + (plots.length + 1);
+      var lat = parseFloat(parts[1]);
+      var lon = parseFloat(parts[2]);
+      if (isNaN(lat) || isNaN(lon)) {
+        errors.push('Row ' + (i + 1) + ': invalid coordinates (' + parts[1] + ', ' + parts[2] + ')');
+        continue;
+      }
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        errors.push('Row ' + (i + 1) + ': coordinates out of range (lat: ' + lat + ', lon: ' + lon + ')');
+        continue;
+      }
+      plots.push({ name: name, lat: lat, lon: lon });
+    }
+    return { plots: plots, errors: errors };
+  }
+
   window.CanopexGeo = {
     escHtml: escHtml,
     parseKmlText: parseKmlText,
@@ -145,5 +188,6 @@
     formatDistance: formatDistance,
     formatHectares: formatHectares,
     determineProcessingMode: determineProcessingMode,
+    parseCSVCoordinates: parseCSVCoordinates,
   };
 })();
