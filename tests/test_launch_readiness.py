@@ -601,8 +601,6 @@ class TestEventGridWebhookWiring:
         )
         # Additional verification: ensure endpointUrl in the event_grid_subscription
         # resource actually contains the code parameter (not just elsewhere in the file)
-        import re
-
         endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
         assert endpoint_match, "Event Grid subscription missing endpointUrl assignment"
         endpoint_url = endpoint_match.group(1)
@@ -622,8 +620,6 @@ class TestEventGridWebhookWiring:
             "Event Grid webhook must use defaultHostName output from orchestrator"
         )
         # Assertion 2: Defensive check - compute app should NOT be in Event Grid webhook
-        import re
-
         endpoint_match = re.search(r'endpointUrl\s*=\s*"([^"]+)"', tf, re.DOTALL)
         if endpoint_match:
             endpoint_url = endpoint_match.group(1)

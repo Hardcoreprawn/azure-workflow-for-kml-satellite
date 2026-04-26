@@ -47,17 +47,17 @@ def _get_stripe():
     return stripe
 
 
-def _tier_emulation_allowed(req: func.HttpRequest, user_id: str = "") -> bool:
+def _tier_emulation_allowed(user_id: str = "") -> bool:
     """Allow plan emulation only for explicitly allowlisted operator accounts."""
     if not user_id or user_id == "anonymous":
         return False
 
-    from treesight.security.feature_gate import billing_allowed
+    from treesight.security.feature_gate import tier_emulation_allowed
 
-    return billing_allowed(user_id)
+    return tier_emulation_allowed(user_id)
 
 
-def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
+def _billing_status_payload(user_id: str) -> dict:
     from treesight.security.billing import (
         get_effective_subscription,
         get_subscription,
@@ -98,7 +98,7 @@ def _billing_status_payload(user_id: str, req: func.HttpRequest) -> dict:
             "status": subscription.get("status", "none"),
         },
         "emulation": {
-            "available": _tier_emulation_allowed(req, user_id),
+            "available": _tier_emulation_allowed(user_id),
             "active": bool(emulation),
             "tier": emulation.get("tier") if emulation else None,
             "tiers": list(supported_tiers()),
@@ -497,7 +497,7 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     _record_user_profile(user_id, auth_claims)
 
     return func.HttpResponse(
-        json.dumps(_billing_status_payload(user_id, req)),
+        json.dumps(_billing_status_payload(user_id)),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
@@ -511,7 +511,7 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
 def billing_emulation(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
-    if not _tier_emulation_allowed(req, user_id):
+    if not _tier_emulation_allowed(user_id):
         if user_id == "anonymous":
             return error_response(401, "Authentication required for billing", req=req)
         return error_response(
@@ -539,7 +539,7 @@ def billing_emulation(
         return error_response(400, str(exc), req=req)
 
     return func.HttpResponse(
-        json.dumps(_billing_status_payload(user_id, req)),
+        json.dumps(_billing_status_payload(user_id)),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
