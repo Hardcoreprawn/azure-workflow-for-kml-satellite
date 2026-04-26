@@ -225,3 +225,19 @@ variable "ciam_api_audience" {
   default     = ""
   sensitive   = true
 }
+
+# Cross-variable validation: all three CIAM variables must be set when auth_mode
+# enables CIAM token flows. Cannot be expressed in a variable validation block
+# (which may only reference the validated variable itself), so enforced here as a
+# plan-time precondition that fails fast with a descriptive error.
+resource "terraform_data" "validate_ciam_auth_vars" {
+  lifecycle {
+    precondition {
+      condition = (
+        !contains(["dual", "bearer_only"], var.auth_mode) ||
+        (var.ciam_authority != "" && var.ciam_tenant_id != "" && var.ciam_api_audience != "")
+      )
+      error_message = "ciam_authority, ciam_tenant_id, and ciam_api_audience must all be non-empty when auth_mode is 'dual' or 'bearer_only'."
+    }
+  }
+}
