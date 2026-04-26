@@ -83,6 +83,20 @@
 
   function getLatestRun() { return latestAnalysisRun; }
 
+  function upsertHistoryRun(run) {
+    if (!_d.getAnalysisHistoryRuns || !_d.setAnalysisHistoryRuns || !_d.renderAnalysisHistoryList) return;
+    var appRuns = window.CanopexAppRuns || {};
+    if (typeof appRuns.upsertRun !== 'function') return;
+    var helpers = window.CanopexHelpers || {};
+    var parseTimestamp = typeof helpers.parseStatusTimestamp === 'function'
+      ? helpers.parseStatusTimestamp
+      : function (value) { return value; };
+    var nextRuns = appRuns.upsertRun(_d.getAnalysisHistoryRuns(), run, parseTimestamp);
+    _d.setAnalysisHistoryRuns(nextRuns);
+    _d.renderAnalysisHistoryList();
+    if (_d.applyFirstRunLayout) _d.applyFirstRunLayout();
+  }
+
   // ── updateContentSummary ──────────────────────────────────────
 
   function updateContentSummary(data) {
@@ -309,7 +323,6 @@
   function updateAnalysisRun(data) {
     var panel = document.getElementById('app-analysis-run');
     latestAnalysisRun = data || null;
-    if (_d.setLatestAnalysisRun) _d.setLatestAnalysisRun(latestAnalysisRun); // keep shell copy in sync
     if (!panel) return;
     if (!data) {
       panel.hidden = true;
@@ -393,7 +406,7 @@
         consecutiveFailures = 0;
         // Re-check after await — another selectAnalysisRun may have fired.
         if (analysisPollGeneration !== thisGeneration) return null;
-        if (_d.upsertAnalysisHistoryRun) _d.upsertAnalysisHistoryRun(data);
+        upsertHistoryRun(data);
         updateAnalysisRun(data);
 
         var runtime = data.runtimeStatus || '';
@@ -591,25 +604,23 @@
       if (_d.setAnalysisHistoryLoaded) _d.setAnalysisHistoryLoaded(true);
       applyFirstRunLayout();
       var queuedAt = new Date().toISOString();
-      if (_d.upsertAnalysisHistoryRun) {
-        _d.upsertAnalysisHistoryRun({
-          instanceId: data.instance_id,
-          submittedAt: queuedAt,
-          createdTime: queuedAt,
-          lastUpdatedTime: queuedAt,
-          runtimeStatus: 'Pending',
-          customStatus: { phase: 'queued' },
-          providerName: 'planetary_computer',
-          featureCount: preflight && preflight.featureCount,
-          aoiCount: preflight && preflight.aoiCount,
-          processingMode: preflight && preflight.processingMode,
-          maxSpreadKm: preflight && preflight.maxSpreadKm,
-          totalAreaHa: preflight && preflight.totalAreaHa,
-          largestAreaHa: preflight && preflight.largestAreaHa,
-          workspaceRole: workspaceRole,
-          workspacePreference: workspacePreference
-        });
-      }
+      upsertHistoryRun({
+        instanceId: data.instance_id,
+        submittedAt: queuedAt,
+        createdTime: queuedAt,
+        lastUpdatedTime: queuedAt,
+        runtimeStatus: 'Pending',
+        customStatus: { phase: 'queued' },
+        providerName: 'planetary_computer',
+        featureCount: preflight && preflight.featureCount,
+        aoiCount: preflight && preflight.aoiCount,
+        processingMode: preflight && preflight.processingMode,
+        maxSpreadKm: preflight && preflight.maxSpreadKm,
+        totalAreaHa: preflight && preflight.totalAreaHa,
+        largestAreaHa: preflight && preflight.largestAreaHa,
+        workspaceRole: workspaceRole,
+        workspacePreference: workspacePreference
+      });
       if (_d.selectAnalysisRun) _d.selectAnalysisRun(data.instance_id, { resume: true });
       if (_d.setAnalysisStatus) _d.setAnalysisStatus('Analysis queued. The app will walk through each stage as the pipeline advances.', 'info');
       if (_d.loadBillingStatus) _d.loadBillingStatus();

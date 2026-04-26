@@ -297,6 +297,6 @@ Use this checklist in the issue/PR description.
 - [x] Extract `app-billing.js`
 - [x] Extract `app-eudr.js`
 - [x] Extract `app-bindings.js`
-- [ ] Reduce `app-shell.js` to composition only
+- [x] Reduce `app-shell.js` to composition only
 - [x] Run focused tests + full `make test`
 - [ ] Manual smoke checklist complete

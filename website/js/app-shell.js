@@ -45,6 +45,7 @@
   var coreDom = window.CanopexCoreDom || {};
   var coreState = window.CanopexCoreState || {};
   var appProfiles = window.CanopexAppProfiles || {};
+  var runtimeModule = window.CanopexRuntime || {};
   var appRuns = window.CanopexAppRuns || {};
   var evidenceMapModule = window.CanopexEvidenceMap || {};
   var eudrModule = window.CanopexEudr || {};
@@ -111,16 +112,6 @@
   // Container Apps FA: API calls go cross-origin to the Function App
   // hostname discovered from /api-config.json (injected at deploy time).
   // Auth state managed by CanopexApiClient (canopex-api-client.js).
-  let currentAccount = null;   // populated by /.auth/me
-  let latestBillingStatus = null;
-  let latestAnalysisRun = null;
-  let latestPortfolioSummary = null;
-  let analysisHistoryRuns = [];
-  let analysisHistoryLoaded = false;
-  let selectedAnalysisRunId = null;
-  let analysisDraftSummary = null;
-  let activeAnalysisPoll = null;
-  let analysisPollGeneration = 0; // incremented on each pollAnalysisRun call to detect stale callbacks
   const ANALYSIS_PHASES = ['submit', 'ingestion', 'acquisition', 'fulfilment', 'enrichment', 'complete'];
   const ANALYSIS_PHASE_DETAILS = {
     submit: 'Uploading your KML and reserving a pipeline worker for this run.',
@@ -139,30 +130,6 @@
   const CACHE_PREFIX = 'canopex:';
   const CACHE_TTL_HISTORY = 5 * 60 * 1000;   // 5 min
   const CACHE_TTL_BILLING = 30 * 60 * 1000;  // 30 min
-
-  function readCache(key) {
-    return coreState.readScopedCache
-      ? coreState.readScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key)
-      : null;
-  }
-
-  function writeCache(key, data, ttlMs) {
-    if (coreState.writeScopedCache) {
-      coreState.writeScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key, data, ttlMs);
-    }
-  }
-
-  function clearCacheKey(key) {
-    if (coreState.clearScopedCacheKey) {
-      coreState.clearScopedCacheKey(CACHE_PREFIX, currentAccount && currentAccount.userId, key);
-    }
-  }
-
-  function clearAllCache() {
-    if (coreState.clearAllScopedCache) {
-      coreState.clearAllScopedCache(CACHE_PREFIX);
-    }
-  }
 
   function authEnabled() {
     return typeof authModule.authEnabled === 'function' ? authModule.authEnabled() : true;
@@ -229,60 +196,6 @@
     if (coreState.storeValue) coreState.storeValue(key, value);
   }
 
-  function currentRoleConfig() {
-    return workspaceModule.currentRoleConfig ? workspaceModule.currentRoleConfig() : {};
-  }
-
-  function currentPreferenceConfig() {
-    return workspaceModule.currentPreferenceConfig ? workspaceModule.currentPreferenceConfig() : {};
-  }
-
-  function actionLabelForTarget(target) {
-    if (typeof summaryUiModule.actionLabelForTarget === 'function') {
-      return summaryUiModule.actionLabelForTarget(target);
-    }
-    var role = currentRoleConfig();
-    return target === 'history' ? role.reviewLabel : target === 'content' ? role.deliverableLabel : role.runLabel;
-  }
-
-  function revealWorkflowTarget(target) {
-    if (typeof summaryUiModule.revealWorkflowTarget === 'function') {
-      return summaryUiModule.revealWorkflowTarget(target);
-    }
-  }
-
-  function renderWorkspaceGuidance() {
-    if (typeof summaryUiModule.renderWorkspaceGuidance === 'function') {
-      return summaryUiModule.renderWorkspaceGuidance();
-    }
-  }
-
-  function setWorkspaceRole(roleKey, options) {
-    if (workspaceModule.setRole) workspaceModule.setRole(roleKey, options);
-  }
-
-  function setWorkspacePreference(preferenceKey, options) {
-    if (workspaceModule.setPreference) workspaceModule.setPreference(preferenceKey, options);
-  }
-
-  function updateHeroSummary(data) {
-    if (typeof summaryUiModule.updateHeroSummary === 'function') {
-      return summaryUiModule.updateHeroSummary(data);
-    }
-  }
-
-  function updateHistorySummary(data) {
-    if (typeof summaryUiModule.updateHistorySummary === 'function') {
-      return summaryUiModule.updateHistorySummary(data);
-    }
-  }
-
-  function renderPortfolioSummary() {
-    if (typeof summaryUiModule.renderPortfolioSummary === 'function') {
-      return summaryUiModule.renderPortfolioSummary();
-    }
-  }
-
   /* ---- History UI — delegated to app-history-ui.js ---- */
 
   function normalizeAnalysisRun(run) {
@@ -293,56 +206,13 @@
     return appRuns.sortRuns ? appRuns.sortRuns(runs, parseStatusTimestamp) : [];
   }
 
-  function renderAnalysisHistoryList() {
-    if (typeof historyUiModule.renderAnalysisHistoryList === 'function') return historyUiModule.renderAnalysisHistoryList();
-  }
-
-  function upsertAnalysisHistoryRun(run) {
-    if (!appRuns.upsertRun) return;
-    analysisHistoryRuns = appRuns.upsertRun(analysisHistoryRuns, run, parseStatusTimestamp);
-    renderAnalysisHistoryList();
-    applyFirstRunLayout();
-  }
-
-  function selectAnalysisRun(instanceId, options) {
-    if (typeof historyUiModule.selectAnalysisRun === 'function') return historyUiModule.selectAnalysisRun(instanceId, options);
-  }
-
-  function applyAnalysisHistory(payload, options) {
-    if (typeof historyUiModule.applyAnalysisHistory === 'function') return historyUiModule.applyAnalysisHistory(payload, options);
-  }
-
   /* ------------------------------------------------------------------ */
   /*  First-run layout — toggle onboarding vs standard dashboard        */
   /* ------------------------------------------------------------------ */
 
-  function applyFirstRunLayout() {
-    if (typeof runLifecycleModule.applyFirstRunLayout === 'function') return runLifecycleModule.applyFirstRunLayout();
-  }
-
   /* ------------------------------------------------------------------ */
   /*  Evidence surface — delegated to app-evidence-display.js           */
   /* ------------------------------------------------------------------ */
-
-  function loadRunEvidence(instanceId) {
-    if (typeof evidenceDisplayModule.load === 'function') return evidenceDisplayModule.load(instanceId);
-  }
-
-  function clearEvidencePanels() {
-    if (typeof evidenceDisplayModule.clear === 'function') return evidenceDisplayModule.clear();
-  }
-
-  function showEvidenceSurface(visible) {
-    if (typeof evidenceDisplayModule.showSurface === 'function') return evidenceDisplayModule.showSurface(visible);
-  }
-
-  function expandEvidenceMap() {
-    if (typeof evidenceDisplayModule.expand === 'function') return evidenceDisplayModule.expand();
-  }
-
-  function collapseEvidenceMap() {
-    if (typeof evidenceDisplayModule.collapse === 'function') return evidenceDisplayModule.collapse();
-  }
 
   /* ---- Parcel notes (#669) — delegated to app-evidence-panels.js ---- */
 
@@ -355,41 +225,7 @@
 
   /* ---- Run lifecycle — delegated to app-run-lifecycle.js ---- */
 
-  function updateContentSummary(data) {
-    if (typeof runLifecycleModule.updateContentSummary === 'function') return runLifecycleModule.updateContentSummary(data);
-  }
-  function updateRunDetail(data) {
-    if (typeof runLifecycleModule.updateRunDetail === 'function') return runLifecycleModule.updateRunDetail(data);
-  }
-  async function downloadRunExport(format) {
-    if (typeof runLifecycleModule.downloadRunExport === 'function') return runLifecycleModule.downloadRunExport(format);
-  }
-  function updateAnalysisRun(data) {
-    if (typeof runLifecycleModule.updateAnalysisRun === 'function') return runLifecycleModule.updateAnalysisRun(data);
-  }
-  function stopAnalysisPolling() {
-    if (typeof runLifecycleModule.stopAnalysisPolling === 'function') return runLifecycleModule.stopAnalysisPolling();
-  }
-  async function pollAnalysisRun(instanceId) {
-    if (typeof runLifecycleModule.pollAnalysisRun === 'function') return runLifecycleModule.pollAnalysisRun(instanceId);
-  }
-  async function queueAnalysis() {
-    if (typeof runLifecycleModule.queueAnalysis === 'function') return runLifecycleModule.queueAnalysis();
-  }
-
-  async function loadAnalysisHistory(options) {
-    if (typeof appRuns.loadHistory === 'function') return appRuns.loadHistory(options);
-  }
-
   /* ---- Auth UI + bootstrap — delegated to app-auth.js ---- */
-
-  function updateAuthUI() {
-    if (typeof authModule.updateAuthUI === 'function') return authModule.updateAuthUI();
-  }
-
-  function initAuth() {
-    if (typeof authModule.initAuth === 'function') return authModule.initAuth();
-  }
 
   function initModule(moduleRef, deps) {
     if (moduleRef && typeof moduleRef.init === 'function') {
@@ -399,19 +235,24 @@
 
   apiDiscoveryReady = discoverApiBase();
 
+  initModule(runtimeModule, {
+    cachePrefix: CACHE_PREFIX,
+    readScopedCache: coreState.readScopedCache,
+    writeScopedCache: coreState.writeScopedCache,
+    clearScopedCacheKey: coreState.clearScopedCacheKey,
+    clearAllScopedCache: coreState.clearAllScopedCache,
+  });
+
   // Initialise billing module before auth so loadBillingStatus works on first sign-in.
   initModule(billingModule, {
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
-    getAccount: function () { return currentAccount; },
+    getAccount: runtimeModule.getAccount,
     login: login,
-    readCache: readCache,
-    writeCache: writeCache,
-    clearCacheKey: clearCacheKey,
-    onStatusChange: function (data) {
-      latestBillingStatus = data;
-      updateHeroSummary(data);
-    },
+    readCache: runtimeModule.readCache,
+    writeCache: runtimeModule.writeCache,
+    clearCacheKey: runtimeModule.clearCacheKey,
+    onStatusChange: summaryUiModule.updateHeroSummary,
     onLoadError: function () {
       setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
     }
@@ -420,7 +261,7 @@
   initModule(eudrModule, {
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
-    getAccount: function () { return currentAccount; },
+    getAccount: runtimeModule.getAccount,
   });
 
   initModule(evidencePanelsModule, {
@@ -434,7 +275,7 @@
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
     getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },
-    getLatestBillingStatus: function () { return latestBillingStatus; },
+    getLatestBillingStatus: billingModule.getStatus,
   });
 
   initModule(preflightModule, {
@@ -442,9 +283,9 @@
     getApiReady: function () { return apiDiscoveryReady; },
     getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },
     getActiveProfile: function () { return activeProfile; },
-    getLatestBillingStatus: function () { return latestBillingStatus; },
-    getWorkspaceRoleConfig: function () { return currentRoleConfig(); },
-    onPreflightUpdate: function (preflight) { analysisDraftSummary = preflight; },
+    getLatestBillingStatus: billingModule.getStatus,
+    getWorkspaceRoleConfig: workspaceModule.currentRoleConfig,
+    onPreflightUpdate: runtimeModule.setAnalysisDraftSummary,
   });
 
   initModule(workspaceModule, {
@@ -455,28 +296,28 @@
     },
     roleStorageKey: WORKSPACE_ROLE_STORAGE_KEY,
     preferenceStorageKey: WORKSPACE_PREFERENCE_STORAGE_KEY,
-    onChange: renderWorkspaceGuidance,
+    onChange: summaryUiModule.renderWorkspaceGuidance,
   });
 
   initModule(appRuns, {
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
-    getAccount: function () { return currentAccount; },
+    getAccount: runtimeModule.getAccount,
     authEnabled: authEnabled,
     getActiveProfile: function () { return activeProfile; },
-    readCache: readCache,
-    writeCache: writeCache,
+    readCache: runtimeModule.readCache,
+    writeCache: runtimeModule.writeCache,
     historyCacheTtlMs: CACHE_TTL_HISTORY,
-    getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
-    setAnalysisHistoryLoaded: function (value) { analysisHistoryLoaded = value; },
-    getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
-    setAnalysisHistoryRuns: function (runs) { analysisHistoryRuns = runs; },
-    getLatestAnalysisRun: function () { return latestAnalysisRun; },
-    setSelectedAnalysisRunId: function (id) { selectedAnalysisRunId = id; },
-    applyAnalysisHistory: applyAnalysisHistory,
-    applyFirstRunLayout: applyFirstRunLayout,
-    renderAnalysisHistoryList: renderAnalysisHistoryList,
-    updateHistorySummary: updateHistorySummary,
+    getAnalysisHistoryLoaded: runtimeModule.getAnalysisHistoryLoaded,
+    setAnalysisHistoryLoaded: runtimeModule.setAnalysisHistoryLoaded,
+    getAnalysisHistoryRuns: runtimeModule.getAnalysisHistoryRuns,
+    setAnalysisHistoryRuns: runtimeModule.setAnalysisHistoryRuns,
+    getLatestAnalysisRun: runLifecycleModule.getLatestRun,
+    setSelectedAnalysisRunId: runtimeModule.setSelectedAnalysisRunId,
+    applyAnalysisHistory: historyUiModule.applyAnalysisHistory,
+    applyFirstRunLayout: runLifecycleModule.applyFirstRunLayout,
+    renderAnalysisHistoryList: historyUiModule.renderAnalysisHistoryList,
+    updateHistorySummary: summaryUiModule.updateHistorySummary,
   });
 
   initModule(progressModule, {
@@ -490,86 +331,87 @@
   initModule(runLifecycleModule, {
       apiFetch: apiFetch,
       getApiReady: function () { return apiDiscoveryReady; },
-      getAccount: function () { return currentAccount; },
+      getAccount: runtimeModule.getAccount,
       login: login,
       getActiveProfile: function () { return activeProfile; },
       getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },
       getWorkspacePreference: function () { return workspaceModule.getPreference ? workspaceModule.getPreference() : 'investigate'; },
-      getAnalysisDraftSummary: function () { return analysisDraftSummary; },
-      setLatestAnalysisRun: function (d) { latestAnalysisRun = d; },
+      getAnalysisDraftSummary: runtimeModule.getAnalysisDraftSummary,
       setAnalysisStatus: setAnalysisStatus,
       setHeroRunSummary: setHeroRunSummary,
-      updateHistorySummary: updateHistorySummary,
-      getCurrentRoleConfig: currentRoleConfig,
+      updateHistorySummary: summaryUiModule.updateHistorySummary,
+      getCurrentRoleConfig: workspaceModule.currentRoleConfig,
       selectedRunPermalink: selectedRunPermalink,
       getAppBase: function () { return APP_BASE; },
-      clearCacheKey: clearCacheKey,
-      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
-      getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
-      setAnalysisHistoryLoaded: function (v) { analysisHistoryLoaded = v; },
-      upsertAnalysisHistoryRun: upsertAnalysisHistoryRun,
-      selectAnalysisRun: selectAnalysisRun,
+      clearCacheKey: runtimeModule.clearCacheKey,
+      getAnalysisHistoryLoaded: runtimeModule.getAnalysisHistoryLoaded,
+      getAnalysisHistoryRuns: runtimeModule.getAnalysisHistoryRuns,
+      setAnalysisHistoryRuns: runtimeModule.setAnalysisHistoryRuns,
+      setAnalysisHistoryLoaded: runtimeModule.setAnalysisHistoryLoaded,
+      selectAnalysisRun: historyUiModule.selectAnalysisRun,
       loadBillingStatus: billingModule.load,
-      loadAnalysisHistory: loadAnalysisHistory,
-      loadRunEvidence: loadRunEvidence,
-      showEvidenceSurface: showEvidenceSurface,
-      resetAnalysisProgress: resetAnalysisProgress,
-      setAnalysisProgressVisible: setAnalysisProgressVisible,
-      setAnalysisStep: setAnalysisStep,
-      updateAnalysisStory: updateAnalysisStory,
-      mapAnalysisPhase: mapAnalysisPhase,
-      updateAnalysisPreflight: updateAnalysisPreflight,
+      loadAnalysisHistory: appRuns.loadHistory,
+      loadRunEvidence: evidenceDisplayModule.load,
+      showEvidenceSurface: evidenceDisplayModule.showSurface,
+      renderAnalysisHistoryList: historyUiModule.renderAnalysisHistoryList,
+      applyFirstRunLayout: runLifecycleModule.applyFirstRunLayout,
+      resetAnalysisProgress: progressModule.reset,
+      setAnalysisProgressVisible: progressModule.setVisible,
+      setAnalysisStep: progressModule.setStep,
+      updateAnalysisStory: progressModule.updateStory,
+      mapAnalysisPhase: progressModule.mapPhase,
+      updateAnalysisPreflight: preflightModule.updateAnalysisPreflight,
     });
 
   initModule(historyUiModule, {
-      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
-      getAccount: function () { return currentAccount; },
-      getSelectedAnalysisRunId: function () { return selectedAnalysisRunId; },
-      setSelectedAnalysisRunId: function (id) { selectedAnalysisRunId = id; },
-      getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
-      setAnalysisHistoryRuns: function (runs) { analysisHistoryRuns = runs; },
-      getLatestAnalysisRun: function () { return latestAnalysisRun; },
-      setLatestPortfolioSummary: function (summary) { latestPortfolioSummary = summary; },
-      currentRoleConfig: currentRoleConfig,
+      getAnalysisHistoryLoaded: runtimeModule.getAnalysisHistoryLoaded,
+      getAccount: runtimeModule.getAccount,
+      getSelectedAnalysisRunId: runtimeModule.getSelectedAnalysisRunId,
+      setSelectedAnalysisRunId: runtimeModule.setSelectedAnalysisRunId,
+      getAnalysisHistoryRuns: runtimeModule.getAnalysisHistoryRuns,
+      setAnalysisHistoryRuns: runtimeModule.setAnalysisHistoryRuns,
+      getLatestAnalysisRun: runLifecycleModule.getLatestRun,
+      setLatestPortfolioSummary: runtimeModule.setLatestPortfolioSummary,
+      currentRoleConfig: workspaceModule.currentRoleConfig,
       displayAnalysisPhase: displayAnalysisPhase,
       formatCountLabel: formatCountLabel,
       formatHistoryTimestamp: formatHistoryTimestamp,
       providerLabel: providerLabel,
       readRunSelectionFromLocation: readRunSelectionFromLocation,
       updateRunSelectionLocation: updateRunSelectionLocation,
-      stopAnalysisPolling: stopAnalysisPolling,
-      stopPlay: function () { if (typeof evidenceDisplayModule.stopPlay === 'function') evidenceDisplayModule.stopPlay(); },
-      updateAnalysisRun: updateAnalysisRun,
-      resetAnalysisProgress: resetAnalysisProgress,
-      setAnalysisProgressVisible: setAnalysisProgressVisible,
-      setAnalysisStep: setAnalysisStep,
-      updateAnalysisStory: updateAnalysisStory,
-      mapAnalysisPhase: mapAnalysisPhase,
-      loadRunEvidence: loadRunEvidence,
-      updateHistorySummary: updateHistorySummary,
-      pollAnalysisRun: pollAnalysisRun,
+      stopAnalysisPolling: runLifecycleModule.stopAnalysisPolling,
+      stopPlay: evidenceDisplayModule.stopPlay,
+      updateAnalysisRun: runLifecycleModule.updateAnalysisRun,
+      resetAnalysisProgress: progressModule.reset,
+      setAnalysisProgressVisible: progressModule.setVisible,
+      setAnalysisStep: progressModule.setStep,
+      updateAnalysisStory: progressModule.updateStory,
+      mapAnalysisPhase: progressModule.mapPhase,
+      loadRunEvidence: evidenceDisplayModule.load,
+      updateHistorySummary: summaryUiModule.updateHistorySummary,
+      pollAnalysisRun: runLifecycleModule.pollAnalysisRun,
       normalizeAnalysisRun: normalizeAnalysisRun,
       sortAnalysisHistoryRuns: sortAnalysisHistoryRuns,
       parseStatusTimestamp: parseStatusTimestamp,
     });
 
   initModule(summaryUiModule, {
-      currentRoleConfig: currentRoleConfig,
-      currentPreferenceConfig: currentPreferenceConfig,
+      currentRoleConfig: workspaceModule.currentRoleConfig,
+      currentPreferenceConfig: workspaceModule.currentPreferenceConfig,
       setText: setText,
       getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },
       getWorkspacePreference: function () { return workspaceModule.getPreference ? workspaceModule.getPreference() : 'investigate'; },
-      getLatestAnalysisRun: function () { return latestAnalysisRun; },
-      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
-      getAccount: function () { return currentAccount; },
-      getLatestBillingStatus: function () { return latestBillingStatus; },
-      getAnalysisHistoryRuns: function () { return analysisHistoryRuns; },
-      getSelectedAnalysisRunId: function () { return selectedAnalysisRunId; },
-      getLatestPortfolioSummary: function () { return latestPortfolioSummary; },
+      getLatestAnalysisRun: runLifecycleModule.getLatestRun,
+      getAnalysisHistoryLoaded: runtimeModule.getAnalysisHistoryLoaded,
+      getAccount: runtimeModule.getAccount,
+      getLatestBillingStatus: billingModule.getStatus,
+      getAnalysisHistoryRuns: runtimeModule.getAnalysisHistoryRuns,
+      getSelectedAnalysisRunId: runtimeModule.getSelectedAnalysisRunId,
+      getLatestPortfolioSummary: runtimeModule.getLatestPortfolioSummary,
       setHeroRunSummary: setHeroRunSummary,
-      renderAnalysisHistoryList: renderAnalysisHistoryList,
-      updateContentSummary: updateContentSummary,
-      updateAnalysisPreflight: updateAnalysisPreflight,
+      renderAnalysisHistoryList: historyUiModule.renderAnalysisHistoryList,
+      updateContentSummary: runLifecycleModule.updateContentSummary,
+      updateAnalysisPreflight: preflightModule.updateAnalysisPreflight,
       capabilityHeadline: capabilityHeadline,
       formatRetention: formatRetention,
       displayAnalysisPhase: displayAnalysisPhase,
@@ -580,40 +422,36 @@
     authModule.init({
       authEnabled: authEnabled,
       getApiReady: function () { return apiDiscoveryReady; },
-      getAccount: function () { return currentAccount; },
-      setAccount: function (account) { currentAccount = account; },
+      getAccount: runtimeModule.getAccount,
+      setAccount: runtimeModule.setAccount,
       setClientPrincipal: function (p) { if (_apiClient) _apiClient.setClientPrincipal(p); },
       setSessionToken: function (t) { if (_apiClient) _apiClient.setSessionToken(t); },
       apiFetch: apiFetch,
       getAppBase: function () { return APP_BASE; },
-      loadAnalysisHistory: loadAnalysisHistory,
+      loadAnalysisHistory: appRuns.loadHistory,
       loadBillingStatus: billingModule.load,
       loadEudrUsage: eudrModule.loadUsage,
       setHeroRunSummary: setHeroRunSummary,
-      updateHistorySummary: updateHistorySummary,
-      renderAnalysisHistoryList: renderAnalysisHistoryList,
-      stopAnalysisPolling: stopAnalysisPolling,
-      resetAnalysisProgress: resetAnalysisProgress,
-      updateAnalysisRun: updateAnalysisRun,
-      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
-      getLatestAnalysisRun: function () { return latestAnalysisRun; },
-      clearAllCache: clearAllCache,
+      updateHistorySummary: summaryUiModule.updateHistorySummary,
+      renderAnalysisHistoryList: historyUiModule.renderAnalysisHistoryList,
+      stopAnalysisPolling: runLifecycleModule.stopAnalysisPolling,
+      resetAnalysisProgress: progressModule.reset,
+      updateAnalysisRun: runLifecycleModule.updateAnalysisRun,
+      getAnalysisHistoryLoaded: runtimeModule.getAnalysisHistoryLoaded,
+      getLatestAnalysisRun: runLifecycleModule.getLatestRun,
+      clearAllCache: runtimeModule.clearAllCache,
       clearClientAuth: function () { if (_apiClient) _apiClient.clearAuth(); },
       postLoginDestinationKey: POST_LOGIN_DESTINATION_KEY,
       setAnalysisStatus: setAnalysisStatus,
-      clearAnalysisState: function () {
-        analysisHistoryRuns = [];
-        analysisHistoryLoaded = false;
-        selectedAnalysisRunId = null;
-      },
+      clearAnalysisState: runtimeModule.clearAnalysisState,
     });
   }
 
-  initAuth();
+  if (typeof authModule.initAuth === 'function') authModule.initAuth();
   if (workspaceModule.bootstrap) {
     workspaceModule.bootstrap(activeProfile, EUDR_LOCKED);
   }
-  renderWorkspaceGuidance();
+  if (typeof summaryUiModule.renderWorkspaceGuidance === 'function') summaryUiModule.renderWorkspaceGuidance();
 
   // All DOM event bindings — delegated to app-bindings.js
   if (typeof bindingsModule.init === 'function') {
@@ -624,25 +462,25 @@
       manageBilling: billingModule.manage,
       saveTierEmulation: billingModule.saveEmulation,
       // workspace guidance
-      setWorkspaceRole: setWorkspaceRole,
-      setWorkspacePreference: setWorkspacePreference,
-      revealWorkflowTarget: revealWorkflowTarget,
-      currentPreferenceConfig: currentPreferenceConfig,
+      setWorkspaceRole: workspaceModule.setRole,
+      setWorkspacePreference: workspaceModule.setPreference,
+      revealWorkflowTarget: summaryUiModule.revealWorkflowTarget,
+      currentPreferenceConfig: workspaceModule.currentPreferenceConfig,
       // analysis
-      queueAnalysis: queueAnalysis,
-      downloadRunExport: downloadRunExport,
-      updateAnalysisPreflight: updateAnalysisPreflight,
-      loadAnalysisFile: loadAnalysisFile,
-      switchInputTab: switchInputTab,
-      convertCSVToKml: convertCSVToKml,
+      queueAnalysis: runLifecycleModule.queueAnalysis,
+      downloadRunExport: runLifecycleModule.downloadRunExport,
+      updateAnalysisPreflight: preflightModule.updateAnalysisPreflight,
+      loadAnalysisFile: preflightModule.loadAnalysisFile,
+      switchInputTab: preflightModule.switchInputTab,
+      convertCSVToKml: preflightModule.convertCSVToKml,
       // evidence surface
       toggleEvidencePlay: evidenceDisplayModule.togglePlay,
       showEvidenceFrame: evidenceDisplayModule.showFrame,
       setEvidenceLayerMode: evidenceDisplayModule.setLayerMode,
       requestAiAnalysis: evidenceDisplayModule.requestAi,
       requestEudrAssessment: evidenceDisplayModule.requestEudr,
-      expandEvidenceMap: expandEvidenceMap,
-      collapseEvidenceMap: collapseEvidenceMap,
+      expandEvidenceMap: evidenceDisplayModule.expand,
+      collapseEvidenceMap: evidenceDisplayModule.collapse,
       toggleCompareView: evidenceDisplayModule.toggleCompare,
       getOverrideContext: function () {
         return evidenceDisplayModule.getOverrideContext ? evidenceDisplayModule.getOverrideContext() : {};

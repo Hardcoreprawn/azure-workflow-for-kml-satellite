@@ -386,6 +386,22 @@ class TestEudrEntryPoint:
         content = (WEBSITE / "eudr" / "index.html").read_text()
         assert "app-shell.js" in content, "eudr/index.html must load the shared app-shell.js module"
 
+    def test_app_entrypoints_load_runtime_before_shell(self):
+        app_content = (WEBSITE / "app" / "index.html").read_text()
+        eudr_content = (WEBSITE / "eudr" / "index.html").read_text()
+
+        assert "app-runtime.js" in app_content, "app/index.html must load app-runtime.js"
+        assert "app-shell.js" in app_content, "app/index.html must load app-shell.js"
+        assert app_content.index("app-runtime.js") < app_content.index("app-shell.js"), (
+            "app/index.html must load app-runtime.js before app-shell.js"
+        )
+
+        assert "app-runtime.js" in eudr_content, "eudr/index.html must load app-runtime.js"
+        assert "app-shell.js" in eudr_content, "eudr/index.html must load app-shell.js"
+        assert eudr_content.index("app-runtime.js") < eudr_content.index("app-shell.js"), (
+            "eudr/index.html must load app-runtime.js before app-shell.js"
+        )
+
     def test_eudr_index_has_portfolio_summary_slots(self):
         content = (WEBSITE / "eudr" / "index.html").read_text()
         assert 'id="app-portfolio-summary"' in content
