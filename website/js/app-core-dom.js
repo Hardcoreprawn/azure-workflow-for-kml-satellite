@@ -30,10 +30,34 @@
     return true;
   }
 
+  function setAnalysisStatus(message, tone) {
+    var status = getById('app-analysis-status');
+    if (!status) return;
+    if (!message) {
+      status.hidden = true;
+      status.textContent = '';
+      status.removeAttribute('data-tone');
+      return;
+    }
+    status.hidden = false;
+    status.textContent = message;
+    status.setAttribute('data-tone', tone || 'info');
+  }
+
+  function setHeroRunSummary(title, note) {
+    var titleEl = getById('app-hero-active-run');
+    var noteEl = getById('app-hero-active-run-note');
+    if (!titleEl || !noteEl) return;
+    titleEl.textContent = title || 'Ready to queue';
+    noteEl.textContent = note || 'Ready to run an analysis.';
+  }
+
   window.CanopexCoreDom = {
     getById: getById,
     setText: setText,
     bindClick: bindClick,
     bindInput: bindInput,
+    setAnalysisStatus: setAnalysisStatus,
+    setHeroRunSummary: setHeroRunSummary,
   };
 })();

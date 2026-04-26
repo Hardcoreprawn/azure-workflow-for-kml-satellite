@@ -337,25 +337,15 @@
   }
 
   function setAnalysisStatus(message, tone) {
-    var status = document.getElementById('app-analysis-status');
-    if (!status) return;
-    if (!message) {
-      status.hidden = true;
-      status.textContent = '';
-      status.removeAttribute('data-tone');
-      return;
+    if (typeof coreDom.setAnalysisStatus === 'function') {
+      return coreDom.setAnalysisStatus(message, tone);
     }
-    status.hidden = false;
-    status.textContent = message;
-    status.setAttribute('data-tone', tone || 'info');
   }
 
   function setHeroRunSummary(title, note) {
-    var titleEl = document.getElementById('app-hero-active-run');
-    var noteEl = document.getElementById('app-hero-active-run-note');
-    if (!titleEl || !noteEl) return;
-    titleEl.textContent = title || 'Ready to queue';
-    noteEl.textContent = note || 'Ready to run an analysis.';
+    if (typeof coreDom.setHeroRunSummary === 'function') {
+      return coreDom.setHeroRunSummary(title, note);
+    }
   }
 
   function readRunSelectionFromLocation() {
