@@ -749,33 +749,30 @@ class TestPublicApiIngressDocsContract:
     """Public API docs must present orchestrator as the only ingress."""
 
     @staticmethod
+    def _is_in_scope_api_host(host: str) -> bool:
+        if host in {"{productionHost}", "{developmentHost}"}:
+            return True
+        return host.endswith(".azurecontainerapps.io") or host.endswith(".azurewebsites.net")
+
+    @staticmethod
     def _documented_api_hosts(text: str) -> list[str]:
         urls = re.findall(r"https://[A-Za-z0-9{}.-]+", text)
+        hosts = [url.replace("https://", "", 1) for url in urls]
         return [
-            url
-            for url in urls
-            if any(
-                token in url
-                for token in (
-                    "azurecontainerapps.io",
-                    "azurewebsites.net",
-                    "{productionHost}",
-                    "{developmentHost}",
-                )
-            )
+            host for host in hosts if TestPublicApiIngressDocsContract._is_in_scope_api_host(host)
         ]
 
     @classmethod
     def _assert_uses_orchestrator_ingress_only(cls, text: str, *, source: str) -> None:
         hosts = cls._documented_api_hosts(text)
         assert hosts, f"{source} must document at least one API host"
-        assert not any("azurestaticapps.net" in host for host in hosts), (
-            f"{source} must not use Static Web App hostnames as API ingress"
-        )
-        assert not any("func-kmlsat-dev.jollysea" in host for host in hosts), (
+        assert not any(
+            host == "azurestaticapps.net" or host.endswith(".azurestaticapps.net") for host in hosts
+        ), f"{source} must not use Static Web App hostnames as API ingress"
+        assert not any(re.fullmatch(r"func-kmlsat-dev\.[A-Za-z0-9.-]+", host) for host in hosts), (
             f"{source} must not document the compute ingress hostname"
         )
-        assert any("-orch" in host or "{productionHost}" in host for host in hosts), (
+        assert any(host == "{productionHost}" or "-orch" in host for host in hosts), (
             f"{source} must use orchestrator ingress (or production host variable)"
         )
 
