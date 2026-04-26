@@ -520,13 +520,13 @@
             <article class="app-card app-support-card" id="app-eudr-usage-card">
               <h3>Usage Dashboard</h3>
               <dl class="app-stats compact" id="app-eudr-usage-stats">
-                <div><dt>Included parcels</dt><dd id="app-eudr-usage-included">Loading…</dd></div>
+                <div><dt>Included parcels (current billing period)</dt><dd id="app-eudr-usage-included">Loading…</dd></div>
                 <div><dt>Overage parcels</dt><dd id="app-eudr-usage-overage">Loading…</dd></div>
                 <div><dt>Estimated spend</dt><dd id="app-eudr-usage-spend">Loading…</dd></div>
                 <div><dt>Next tier</dt><dd id="app-eudr-usage-next-tier">Loading…</dd></div>
               </dl>
               <div class="app-content-block" id="app-eudr-usage-history-block">
-                <span class="app-content-label">Last 6 months</span>
+                <span class="app-content-label">Last 6 months (org run history)</span>
                 <div id="app-eudr-usage-history-list">Loading usage history…</div>
               </div>
             </article>
@@ -643,59 +643,6 @@
   function isEudrPage() { return window.location.pathname.indexOf('/eudr/') === 0; }
   if (!isEudrPage()) return;
 
-  function waitForShell() {
-    return new Promise(function (resolve, reject) {
-      if (typeof window.apiFetch === 'function') { resolve(); return; }
-      var attempts = 0;
-      var maxAttempts = 100; /* 10 seconds at 100ms intervals */
-      var t = setInterval(function () {
-        attempts++;
-        if (typeof window.apiFetch === 'function') { clearInterval(t); resolve(); }
-        else if (attempts >= maxAttempts) { clearInterval(t); reject(new Error('App shell did not load')); }
-      }, 100);
-    });
-  }
-
-  async function loadEudrBilling() {
-    await waitForShell();
-    try {
-      var res = await window.apiFetch('/api/eudr/billing');
-      var data = await res.json();
-      eudrBillingData = data;
-      applyEudrBilling(data);
-    } catch (e) {
-      console.warn('EUDR billing load failed', e);
-    }
-  }
-
-  function applyEudrBilling(data) {
-    var planEl = document.getElementById('app-hero-plan');
-    var planNoteEl = document.getElementById('app-hero-plan-note');
-    var parcelsEl = document.getElementById('eudr-parcels-used');
-    var parcelsNoteEl = document.getElementById('eudr-parcels-note');
-
-    if (planEl && data.plan) {
-      planEl.textContent = data.subscribed ? 'EUDR Pro' : 'Free Trial';
-      planNoteEl.textContent = data.subscribed
-        ? 'Active subscription'
-        : data.trial_remaining + ' of 2 free assessments remaining';
-    }
-
-    if (parcelsEl) {
-      if (data.subscribed) {
-        parcelsEl.textContent = data.period_parcels_used + ' / ' + data.included_parcels;
-        parcelsNoteEl.textContent = data.overage_parcels > 0
-          ? data.overage_parcels + ' overage parcels this period'
-          : 'Included parcels used this period';
-      } else {
-        parcelsEl.textContent = data.assessments_used + ' / 2';
-        parcelsNoteEl.textContent = data.trial_remaining > 0
-          ? data.trial_remaining + ' free assessment' + (data.trial_remaining > 1 ? 's' : '') + ' remaining'
-          : 'Free trial exhausted — subscribe to continue';
-      }
-    }
-  }
-
   function showSubscribeModal() {
     var backdrop = document.getElementById('eudr-subscribe-backdrop');
     if (backdrop) {
@@ -714,8 +661,12 @@
     var btn = document.getElementById('eudr-subscribe-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
     try {
-      await waitForShell();
-      var res = await window.apiFetch('/api/eudr/subscribe', {
+      if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
+        throw new Error('API client unavailable');
+      }
+      var client = window.CanopexApiClient.createClient();
+      await client.discoverApiBase();
+      var res = await client.fetch('/api/eudr/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
@@ -740,6 +691,7 @@
 
   /* Expose for the app shell to call when entitlement check fails */
   window.showEudrSubscribeModal = showSubscribeModal;
+  window.setEudrBillingData = function (data) { eudrBillingData = data; };
   window.eudrBillingData = function () { return eudrBillingData; };
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -762,17 +714,9 @@
 
     /* Check for ?subscribed=true after Stripe redirect */
     if (window.location.search.indexOf('subscribed=true') !== -1) {
-      /* Clean URL and reload billing */
+      /* Clean URL after Stripe redirect */
       history.replaceState(null, '', window.location.pathname);
-      loadEudrBilling();
     }
-  });
-
-  /* Load EUDR billing when the shell signals auth is ready */
-  document.addEventListener('canopex:auth-ready', loadEudrBilling);
-  /* Also try loading on DOMContentLoaded in case auth-ready already fired */
-  document.addEventListener('DOMContentLoaded', function () {
-    setTimeout(loadEudrBilling, 500);
   });
 })();
 </script>

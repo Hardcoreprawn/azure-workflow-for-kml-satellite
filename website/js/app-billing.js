@@ -32,6 +32,7 @@
   var _latestBillingStatus = null;
 
   var CACHE_TTL_BILLING = 5 * 60 * 1000; // 5 minutes
+  var DEFAULT_EMULATION_TIERS = ['demo', 'free', 'starter', 'pro', 'team', 'enterprise', 'eudr_pro'];
 
   function init(deps) {
     _apiFetch = deps.apiFetch;
@@ -63,6 +64,27 @@
     if (retEl) retEl.textContent = formatRetention(caps.retention_days);
   }
 
+  function resolveEmulationTiers(emulation) {
+    var rawTiers = Array.isArray(emulation && emulation.tiers)
+      ? emulation.tiers
+      : DEFAULT_EMULATION_TIERS;
+    var seen = {};
+    var normalized = [];
+    rawTiers.forEach(function (tier) {
+      if (typeof tier !== 'string') return;
+      var value = tier.trim().toLowerCase();
+      if (!value || value === 'actual' || seen[value]) return;
+      seen[value] = true;
+      normalized.push(value);
+    });
+    return normalized.length ? normalized : DEFAULT_EMULATION_TIERS.slice();
+  }
+
+  function tierLabel(tier) {
+    if (tier === 'eudr_pro') return 'EUDR Pro';
+    return tier.charAt(0).toUpperCase() + tier.slice(1);
+  }
+
   function renderTierEmulation(data) {
     var card = document.getElementById('app-tier-emulation-card');
     var select = document.getElementById('app-tier-emulation-select');
@@ -83,14 +105,18 @@
     actualOption.textContent = 'Actual billing state';
     select.appendChild(actualOption);
 
-    (data.emulation.tiers || []).forEach(function (tier) {
+    resolveEmulationTiers(data.emulation).forEach(function (tier) {
       var option = document.createElement('option');
       option.value = tier;
-      option.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
+      option.textContent = tierLabel(tier);
       select.appendChild(option);
     });
 
-    select.value = data.emulation.active ? data.emulation.tier : 'actual';
+    var selected = data.emulation.active ? data.emulation.tier : 'actual';
+    if (typeof selected !== 'string' || !select.querySelector("option[value='" + selected + "']")) {
+      selected = 'actual';
+    }
+    select.value = selected;
     if (data.emulation.active) {
       note.textContent = 'Currently emulating ' + (data.capabilities.label || data.tier) + ' for your account. Billing remains ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
     } else {
