@@ -7,9 +7,9 @@ Issue: #18
 | Resource | Value |
 | --- | --- |
 | Site URL | `https://green-moss-0e849ac03.2.azurestaticapps.net` |
-| Function App URL | `https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io` |
-| Health check | `curl -sS https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/health` |
-| Readiness check | `curl -sS https://func-kmlsat-dev.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/readiness` |
+| Function App URL (public ingress) | `https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io` |
+| Health check | `curl -sS https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/health` |
+| Readiness check | `curl -sS https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/readiness` |
 | API config | `curl -sS https://green-moss-0e849ac03.2.azurestaticapps.net/api-config.json` |
 | Resource Group | `rg-kmlsat-dev` |
 | Cosmos DB | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
@@ -26,8 +26,14 @@ Issue: #18
 4. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
 5. Verify Function host readiness using /api/health.
 6. Verify Event Grid subscription reconciliation succeeds.
-7. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
-8. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+7. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion).
+8. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
+9. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+
+workflow_dispatch reproducibility controls for the async smoke gate:
+
+- `smoke_poll_interval_seconds`
+- `smoke_max_attempts`
 
 CMK deploy note (dev and prod):
 
