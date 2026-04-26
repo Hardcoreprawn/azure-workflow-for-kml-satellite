@@ -292,11 +292,11 @@ Use this checklist in the issue/PR description.
 - [x] `parseCSVCoordinates` moved to `canopex-geo.js`
 - [x] Extract `app-eudr.js` (computeCostEstimate; more EUDR functions to follow)
 - [x] Extract `app-billing.js` (applyBillingStatus, loadBillingStatus, manageBilling, saveTierEmulation, renderTierEmulation, updateCapabilityFields; init(deps) pattern)
-- [ ] Extract `app-evidence-panels.js`
-- [ ] Extract `app-auth.js`
-- [ ] Extract `app-billing.js`
-- [ ] Extract `app-eudr.js`
-- [ ] Extract `app-bindings.js`
+- [x] Extract `app-evidence-panels.js`
+- [x] Extract `app-auth.js`
+- [x] Extract `app-billing.js`
+- [x] Extract `app-eudr.js`
+- [x] Extract `app-bindings.js`
 - [ ] Reduce `app-shell.js` to composition only
-- [ ] Run focused tests + full `make test`
+- [x] Run focused tests + full `make test`
 - [ ] Manual smoke checklist complete

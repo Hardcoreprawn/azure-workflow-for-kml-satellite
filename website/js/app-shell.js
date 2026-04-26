@@ -286,6 +286,9 @@
   }
 
   function readCache(key) {
+    if (typeof coreState.readScopedCache === 'function') {
+      return coreState.readScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key);
+    }
     try {
       const full = cacheKey(key);
       if (!full) return null;
@@ -301,6 +304,10 @@
   }
 
   function writeCache(key, data, ttlMs) {
+    if (typeof coreState.writeScopedCache === 'function') {
+      coreState.writeScopedCache(CACHE_PREFIX, currentAccount && currentAccount.userId, key, data, ttlMs);
+      return;
+    }
     if (!Number.isFinite(ttlMs)) return;
     try {
       const full = cacheKey(key);
@@ -313,6 +320,10 @@
   }
 
   function clearCacheKey(key) {
+    if (typeof coreState.clearScopedCacheKey === 'function') {
+      coreState.clearScopedCacheKey(CACHE_PREFIX, currentAccount && currentAccount.userId, key);
+      return;
+    }
     try {
       const full = cacheKey(key);
       if (full) localStorage.removeItem(full);
@@ -320,6 +331,10 @@
   }
 
   function clearAllCache() {
+    if (typeof coreState.clearAllScopedCache === 'function') {
+      coreState.clearAllScopedCache(CACHE_PREFIX);
+      return;
+    }
     try {
       const keys = [];
       for (let i = 0; i < localStorage.length; i++) {
