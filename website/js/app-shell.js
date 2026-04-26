@@ -12,6 +12,7 @@
   var formatDistance = CanopexGeo.formatDistance;
   var formatHectares = CanopexGeo.formatHectares;
   var determineProcessingMode = CanopexGeo.determineProcessingMode;
+  var parseCSVCoordinates = CanopexGeo.parseCSVCoordinates;
 
   // Formatting/display helpers extracted to canopex-helpers.js
   var displayAnalysisPhase = CanopexHelpers.displayAnalysisPhase;
@@ -40,6 +41,14 @@
   var renderAoiDetail = CanopexEvidenceRender.renderAoiDetail;
   var clearAoiDetail = CanopexEvidenceRender.clearAoiDetail;
   var renderResourceUsage = CanopexEvidenceRender.renderResourceUsage;
+
+  var coreDom = window.CanopexCoreDom || {};
+  var coreState = window.CanopexCoreState || {};
+  var appProfiles = window.CanopexAppProfiles || {};
+  var appRuns = window.CanopexAppRuns || {};
+  var evidenceMapModule = window.CanopexEvidenceMap || {};
+  var eudrModule = window.CanopexEudr || {};
+  var billingModule = window.CanopexBilling || {};
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -184,16 +193,33 @@
     }
   };
 
-  // Detect EUDR-locked page: <body data-eudr-app> forces EUDR mode
-  // and hides the workspace role/preference switcher.
-  const EUDR_LOCKED = document.body.hasAttribute('data-eudr-app');
+  const activeProfile = (typeof appProfiles.resolveActiveProfile === 'function')
+    ? appProfiles.resolveActiveProfile()
+    : {
+      id: document.body.hasAttribute('data-eudr-app') ? 'eudr' : 'default',
+      basePath: document.body.hasAttribute('data-eudr-app') ? '/eudr/' : '/app/',
+      historyScope: document.body.hasAttribute('data-eudr-app') ? 'org' : 'user',
+      lockedWorkspace: document.body.hasAttribute('data-eudr-app'),
+      defaultRole: document.body.hasAttribute('data-eudr-app') ? 'eudr' : 'conservation',
+      defaultPreference: document.body.hasAttribute('data-eudr-app') ? 'report' : 'investigate',
+      enableParcelCostEstimate: document.body.hasAttribute('data-eudr-app'),
+      requiresEudrBillingGate: document.body.hasAttribute('data-eudr-app'),
+      phaseDetails: null,
+    };
+
+  // Resolved app lock state from profile contract.
+  const EUDR_LOCKED = !!activeProfile.lockedWorkspace;
 
   // Base path for the current app entry (/eudr/ or /app/).
-  const APP_BASE = EUDR_LOCKED ? '/eudr/' : '/app/';
+  const APP_BASE = activeProfile.basePath || (EUDR_LOCKED ? '/eudr/' : '/app/');
 
   // Null-safe DOM text setter — used when elements may not exist
   // on all pages (e.g. settings panel absent on EUDR app).
   function setText(id, value) {
+    if (typeof coreDom.setText === 'function') {
+      coreDom.setText(id, value);
+      return;
+    }
     var el = document.getElementById(id);
     if (el) el.textContent = value;
   }
@@ -230,14 +256,6 @@
     fulfilment: 'Downloading scenes, clipping to your AOIs, and reprojecting them into the output stack.',
     enrichment: 'Adding NDVI, weather context, and cached artifacts so the workspace has richer outputs ready.',
     complete: 'Analysis complete — scroll down to review satellite imagery, vegetation health, and export options.'
-  };
-  const EUDR_ANALYSIS_PHASE_DETAILS = {
-    submit: 'Uploading KML and reserving pipeline capacity for this compliance run.',
-    ingestion: 'Parsing parcels, validating geometry, and preparing the evidence request.',
-    acquisition: 'Searching post-2020 Sentinel-2 imagery and polling scene availability for each parcel.',
-    fulfilment: 'Downloading scenes, clipping to parcel boundaries, and reprojecting into the evidence stack.',
-    enrichment: 'Building NDVI time series, deforestation risk, weather, fire, and land-cover evidence layers.',
-    complete: 'Evidence pack complete — scroll down to review per-parcel determination and export compliance records.'
   };
 
   // ---------------------------------------------------------------------------
@@ -394,10 +412,17 @@
   }
 
   function readStoredUiValue(key) {
+    if (typeof coreState.readStoredValue === 'function') {
+      return coreState.readStoredValue(key);
+    }
     try { return localStorage.getItem(key); } catch { return null; }
   }
 
   function storeUiValue(key, value) {
+    if (typeof coreState.storeValue === 'function') {
+      coreState.storeValue(key, value);
+      return;
+    }
     try { localStorage.setItem(key, value); } catch { /* ignore */ }
   }
 
@@ -492,6 +517,7 @@
   function setWorkspaceRole(roleKey, options) {
     if (!WORKSPACE_ROLES[roleKey]) return;
     workspaceRole = roleKey;
+    if (typeof coreState.set === 'function') coreState.set('workspaceRole', roleKey);
     if (!options || options.persist !== false) storeUiValue(WORKSPACE_ROLE_STORAGE_KEY, roleKey);
     renderWorkspaceGuidance();
   }
@@ -499,6 +525,7 @@
   function setWorkspacePreference(preferenceKey, options) {
     if (!WORKSPACE_PREFERENCES[preferenceKey]) return;
     workspacePreference = preferenceKey;
+    if (typeof coreState.set === 'function') coreState.set('workspacePreference', preferenceKey);
     if (!options || options.persist !== false) storeUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY, preferenceKey);
     renderWorkspaceGuidance();
   }
@@ -613,6 +640,9 @@
   }
 
   function normalizeAnalysisRun(run) {
+    if (typeof appRuns.normalizeRun === 'function') {
+      return appRuns.normalizeRun(run);
+    }
     if (!run) return null;
     var normalized = Object.assign({}, run);
     normalized.instanceId = normalized.instanceId || normalized.instance_id || '';
@@ -648,6 +678,9 @@
   }
 
   function sortAnalysisHistoryRuns(runs) {
+    if (typeof appRuns.sortRuns === 'function') {
+      return appRuns.sortRuns(runs, parseStatusTimestamp);
+    }
     return (runs || [])
       .map(normalizeAnalysisRun)
       .filter(Boolean)
@@ -657,6 +690,9 @@
   }
 
   function historyRunIsActive(run) {
+    if (typeof appRuns.isRunActive === 'function') {
+      return appRuns.isRunActive(run);
+    }
     var runtimeStatus = String(run && run.runtimeStatus || '').trim().toLowerCase();
     return ['completed', 'failed', 'terminated', 'canceled'].indexOf(runtimeStatus) === -1;
   }
@@ -740,6 +776,13 @@
   }
 
   function upsertAnalysisHistoryRun(run) {
+    if (typeof appRuns.upsertRun === 'function') {
+      analysisHistoryRuns = appRuns.upsertRun(analysisHistoryRuns, run, parseStatusTimestamp);
+      renderAnalysisHistoryList();
+      applyFirstRunLayout();
+      return;
+    }
+
     var normalized = normalizeAnalysisRun(run);
     if (!normalized) return;
 
@@ -796,6 +839,35 @@
   function applyAnalysisHistory(payload, options) {
     options = options || {};
     var locationSelection = readRunSelectionFromLocation();
+
+    if (typeof appRuns.applyHistoryPayload === 'function') {
+      var applied = appRuns.applyHistoryPayload(
+        payload,
+        options,
+        selectedAnalysisRunId,
+        latestAnalysisRun,
+        locationSelection.instanceId,
+        parseStatusTimestamp
+      );
+
+      latestPortfolioSummary = applied.portfolioSummary;
+      analysisHistoryRuns = applied.runs;
+
+      if (!applied.selectedId) {
+        selectedAnalysisRunId = null;
+        updateRunSelectionLocation('');
+        stopAnalysisPolling();
+        resetAnalysisProgress();
+        renderAnalysisHistoryList();
+        updateAnalysisRun(null);
+        updateHistorySummary(null);
+        return;
+      }
+
+      var selectedRun = analysisHistoryRuns.find(function(run) { return run.instanceId === applied.selectedId; });
+      selectAnalysisRun(applied.selectedId, { resume: historyRunIsActive(selectedRun) });
+      return;
+    }
 
     latestPortfolioSummary = {
       scope: payload && payload.scope,
@@ -945,55 +1017,20 @@
   }
 
   function pickEvidenceDefaultLayer(frame) {
+    if (typeof evidenceMapModule.pickDefaultLayer === 'function') {
+      return evidenceMapModule.pickDefaultLayer(frame);
+    }
     if (!frame) return 'rgb';
     if (frame.preferredLayer === 'ndvi' || frame.preferred_layer === 'ndvi') return 'ndvi';
     return 'rgb';
   }
 
   function pickInitialEvidenceFrameIndex(frames) {
+    if (typeof evidenceMapModule.pickInitialFrameIndex === 'function') {
+      return evidenceMapModule.pickInitialFrameIndex(frames);
+    }
     if (!Array.isArray(frames) || !frames.length) return 0;
-
-    var bestIndex = 0;
-    var bestScore = null;
-
-    frames.forEach(function(frame, idx) {
-      if (!frame) return;
-
-      var rgbSuitable = frame.rgbDisplaySuitable !== false;
-      var resolution = Number(frame.displayResolutionM || 9999);
-      var score = {
-        rgbSuitable: rgbSuitable ? 1 : 0,
-        resolution: Number.isFinite(resolution) ? -resolution : -9999,
-        recency: idx
-      };
-
-      if (!bestScore) {
-        bestScore = score;
-        bestIndex = idx;
-        return;
-      }
-
-      if (score.rgbSuitable > bestScore.rgbSuitable) {
-        bestScore = score;
-        bestIndex = idx;
-        return;
-      }
-
-      if (score.rgbSuitable < bestScore.rgbSuitable) return;
-
-      if (score.resolution > bestScore.resolution) {
-        bestScore = score;
-        bestIndex = idx;
-        return;
-      }
-
-      if (score.resolution === bestScore.resolution && score.recency > bestScore.recency) {
-        bestScore = score;
-        bestIndex = idx;
-      }
-    });
-
-    return bestIndex;
+    return 0;
   }
 
   function syncEvidenceLayerButtons(frame) {
@@ -1059,29 +1096,11 @@
     });
   }
 
-  // #646 — update layer button aria-labels and titles with per-frame
-  // collection and resolution so the picker is self-documenting.
-  function updateLayerButtonLabels(frame) {
-    var btnRgb = document.getElementById('app-map-btn-rgb');
-    var btnNdvi = document.getElementById('app-map-btn-ndvi');
-    var expRgb = document.getElementById('app-map-expanded-btn-rgb');
-    var expNdvi = document.getElementById('app-map-expanded-btn-ndvi');
-    if (!frame) return;
-    var info = frame.collectionLabel
-      ? (frame.collectionLabel + (frame.resLabel || ''))
-      : '';
-    [btnRgb, expRgb].forEach(function(btn) {
-      if (!btn) return;
-      var base = info ? 'True-colour RGB \u2014 ' + info : 'True-colour RGB';
-      // Preserve any quality warning appended by syncEvidenceLayerButtons.
-      if (!btn.disabled) btn.title = base;
-      btn.setAttribute('aria-label', info ? 'RGB (' + info + ')' : 'RGB');
-    });
-    [btnNdvi, expNdvi].forEach(function(btn) {
-      if (!btn) return;
-      btn.title = info ? 'Vegetation index (NDVI) \u2014 ' + info : 'Vegetation index (NDVI)';
-      btn.setAttribute('aria-label', info ? 'NDVI (' + info + ')' : 'NDVI');
-    });
+  function setEvidenceLayerMode(mode) {
+    if (mode !== 'rgb' && mode !== 'ndvi') return;
+    evidenceLayerMode = mode;
+    syncLayerModeButtons();
+    showEvidenceFrame(evidenceFrameIndex);
   }
 
   function showEvidenceSurface(visible) {
@@ -2048,6 +2067,9 @@
   }
 
   function buildEvidenceNdviTimeseries(source) {
+    if (typeof evidenceMapModule.buildNdviTimeseries === 'function') {
+      return evidenceMapModule.buildNdviTimeseries(source);
+    }
     if (!source) return [];
     return (source.ndvi_stats || []).map(function(f, i) {
       if (!f) return null;
@@ -2064,6 +2086,9 @@
   }
 
   function evidenceLatLon(source) {
+    if (typeof evidenceMapModule.latLon === 'function') {
+      return evidenceMapModule.latLon(source);
+    }
     if (!source) return { lat: 0, lon: 0 };
     var center = source.center || source.coords;
     if (Array.isArray(center)) {
@@ -2159,6 +2184,7 @@
 
     var runtimeStatus = data.runtimeStatus || 'Pending';
     var phase = (data.customStatus && data.customStatus.phase) || 'queued';
+    var phaseCopy = (activeProfile.contentPhaseCopy && activeProfile.contentPhaseCopy[phase]) || {};
 
     if (runtimeStatus === 'Completed') {
       // Evidence surface is loaded by loadRunEvidence(), triggered from selectAnalysisRun
@@ -2190,46 +2216,30 @@
 
     if (phase === 'acquisition') {
       imageryEl.textContent = 'Scene search underway';
-      imageryNoteEl.textContent = EUDR_LOCKED
-        ? 'Sentinel-2 post-2020 imagery discovery is in progress for each parcel.'
-        : 'NAIP and Sentinel-2 discovery is in progress so the run can pick the right source imagery.';
+      imageryNoteEl.textContent = phaseCopy.imageryNote || 'NAIP and Sentinel-2 discovery is in progress so the run can pick the right source imagery.';
       enrichmentEl.textContent = 'Queued behind acquisition';
       enrichmentNoteEl.textContent = 'Context layers are staged after the imagery stack is selected.';
       exportsEl.textContent = 'Awaiting artefacts';
-      exportsNoteEl.textContent = EUDR_LOCKED
-        ? 'Evidence pack exports are unavailable until imagery is acquired.'
-        : 'There is nothing to export until imagery is actually acquired.';
+      exportsNoteEl.textContent = phaseCopy.exportsNote || 'There is nothing to export until imagery is actually acquired.';
       return;
     }
 
     if (phase === 'fulfilment') {
       imageryEl.textContent = 'Clipping and reprojection';
-      imageryNoteEl.textContent = EUDR_LOCKED
-        ? 'The pipeline is clipping scenes to parcel boundaries for the evidence stack.'
-        : 'The pipeline is producing imagery assets for your analysis.';
+      imageryNoteEl.textContent = phaseCopy.imageryNote || 'The pipeline is producing imagery assets for your analysis.';
       enrichmentEl.textContent = 'Preparing next';
-      enrichmentNoteEl.textContent = EUDR_LOCKED
-        ? 'Deforestation risk, NDVI time series, and land-cover evidence will follow immediately.'
-        : 'NDVI and weather context will follow immediately after fulfilment finishes.';
+      enrichmentNoteEl.textContent = phaseCopy.enrichmentNote || 'NDVI and weather context will follow immediately after fulfilment finishes.';
       exportsEl.textContent = 'Outputs staging next';
-      exportsNoteEl.textContent = EUDR_LOCKED
-        ? 'Compliance exports are close — the evidence pack is being assembled.'
-        : 'The run is close enough that saved outputs should feel tangible, not hypothetical.';
+      exportsNoteEl.textContent = phaseCopy.exportsNote || 'The run is close enough that saved outputs should feel tangible, not hypothetical.';
       return;
     }
 
     imageryEl.textContent = 'Imagery stack stabilizing';
-    imageryNoteEl.textContent = EUDR_LOCKED
-      ? 'Sentinel-2 and land-cover layers are in place; final evidence layers being added.'
-      : 'Core imagery is in place and the workspace is adding the last supporting layers.';
+    imageryNoteEl.textContent = phaseCopy.imageryNote || 'Core imagery is in place and the workspace is adding the last supporting layers.';
     enrichmentEl.textContent = 'Context packaging';
-    enrichmentNoteEl.textContent = EUDR_LOCKED
-      ? 'Per-parcel deforestation determination, NDVI, weather, fire, and land-cover evidence are being assembled.'
-      : 'NDVI, weather, and derived context are being assembled for the run detail experience.';
+    enrichmentNoteEl.textContent = phaseCopy.enrichmentNote || 'NDVI, weather, and derived context are being assembled for the run detail experience.';
     exportsEl.textContent = 'Preparing results view';
-    exportsNoteEl.textContent = EUDR_LOCKED
-      ? 'Audit-grade PDF, GeoJSON, and CSV exports for compliance records will be available shortly.'
-      : 'Saved outputs, exports, and revisit paths will be available shortly.';
+    exportsNoteEl.textContent = phaseCopy.exportsNote || 'Saved outputs, exports, and revisit paths will be available shortly.';
   }
 
   function updateRunDetail(data) {
@@ -2437,6 +2447,9 @@
   }
 
   function mapAnalysisPhase(customStatus, runtimeStatus) {
+    if (typeof appRuns.mapPhase === 'function') {
+      return appRuns.mapPhase(customStatus, runtimeStatus, ANALYSIS_PHASES);
+    }
     if (runtimeStatus === 'Completed') return 'complete';
     if (customStatus && customStatus.phase && ANALYSIS_PHASES.indexOf(customStatus.phase) > -1) {
       return customStatus.phase;
@@ -2515,7 +2528,7 @@
 
   function updateAnalysisStory(phase, runtimeStatus, data) {
     var runtime = runtimeStatus || 'Pending';
-    var phaseDetails = EUDR_LOCKED ? EUDR_ANALYSIS_PHASE_DETAILS : ANALYSIS_PHASE_DETAILS;
+    var phaseDetails = activeProfile.phaseDetails || ANALYSIS_PHASE_DETAILS;
     var detail = phaseDetails[phase] || 'Working through the analysis pipeline.';
     var timing = summarizeRunTiming(data);
 
@@ -2580,8 +2593,8 @@
     } else if (preflight.maxSpreadKm > 25) {
       warnings.push({ tone: 'info', text: 'AOI spread is ' + formatDistance(preflight.maxSpreadKm) + '. All areas will be processed in one run.' });
     }
-    if (workspaceRole === 'eudr') {
-      warnings.push({ tone: 'info', text: 'This due diligence lens frames evidence for review and audit support. It is not a legal compliance certificate.' });
+    if (activeProfile.preflightDisclaimer) {
+      warnings.push({ tone: 'info', text: activeProfile.preflightDisclaimer });
     }
     if (workspaceRole === 'portfolio' && preflight.aoiCount > 10) {
       warnings.push({ tone: 'info', text: 'Large parcel sets work well with batch analysis. This run still enters your tracked workflow.' });
@@ -2695,27 +2708,24 @@
 
   // ── Cost estimator for EUDR preflight ────────────────────────
   function computeEudrCostEstimate(parcelCount) {
-    if (!EUDR_LOCKED || !parcelCount) return '—';
+    if (typeof eudrModule.computeCostEstimate === 'function') {
+      return eudrModule.computeCostEstimate(parcelCount, activeProfile);
+    }
+    if (!activeProfile.enableParcelCostEstimate || !parcelCount) return '—';
     var billing = typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null;
     if (!billing) return '—';
-
     if (!billing.subscribed) {
       var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
       if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' free assessment' + (remaining !== 1 ? 's' : '') + ' left';
       return 'Subscribe to continue';
     }
-
-    // Pro subscriber — estimate only the incremental overage caused by this submission
     var used = billing.period_parcels_used || 0;
     var included = billing.included_parcels || 10;
     var remainingIncluded = Math.max(included - used, 0);
     var overageParcels = Math.max(parcelCount - remainingIncluded, 0);
-    if (overageParcels === 0) {
-      return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
-    }
+    if (overageParcels === 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
     var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
-    var cost = (overageParcels * rate).toFixed(2);
-    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + cost;
+    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + (overageParcels * rate).toFixed(2);
   }
 
   // ── Input tab switching (KML / CSV) ──────────────────────────
@@ -2733,41 +2743,7 @@
   }
 
   // ── CSV coordinate parsing and conversion ───────────────────
-  function parseCSVCoordinates(text) {
-    var lines = text.trim().split(/\r?\n/).filter(Boolean);
-    if (lines.length === 0) return { plots: [], errors: ['No data entered'] };
-
-    var plots = [];
-    var errors = [];
-    var startIdx = 0;
-
-    // Detect header row
-    var firstLine = lines[0].toLowerCase().replace(/\s/g, '');
-    if (firstLine.indexOf('name') >= 0 && (firstLine.indexOf('lat') >= 0 || firstLine.indexOf('lon') >= 0)) {
-      startIdx = 1;
-    }
-
-    for (var i = startIdx; i < lines.length; i++) {
-      var parts = lines[i].split(',').map(function(s) { return s.trim(); });
-      if (parts.length < 3) {
-        errors.push('Row ' + (i + 1) + ': expected name, lat, lon — got ' + parts.length + ' columns');
-        continue;
-      }
-      var name = parts[0] || 'Parcel ' + (plots.length + 1);
-      var lat = parseFloat(parts[1]);
-      var lon = parseFloat(parts[2]);
-      if (isNaN(lat) || isNaN(lon)) {
-        errors.push('Row ' + (i + 1) + ': invalid coordinates (' + parts[1] + ', ' + parts[2] + ')');
-        continue;
-      }
-      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        errors.push('Row ' + (i + 1) + ': coordinates out of range (lat: ' + lat + ', lon: ' + lon + ')');
-        continue;
-      }
-      plots.push({ name: name, lat: lat, lon: lon });
-    }
-    return { plots: plots, errors: errors };
-  }
+  // parseCSVCoordinates is extracted to canopex-geo.js — accessed via the alias at the top.
 
   async function convertCSVToKml() {
     var textarea = document.getElementById('app-csv-input');
@@ -3038,7 +3014,7 @@
 
     // EUDR entitlement gate: show subscribe modal when trial is exhausted.
     // If billing hasn't loaded yet, fetch it before deciding.
-    if (EUDR_LOCKED && typeof window.eudrBillingData === 'function') {
+    if (activeProfile.requiresEudrBillingGate && typeof window.eudrBillingData === 'function') {
       var billing = window.eudrBillingData();
       if (!billing) {
         try {
@@ -3193,171 +3169,26 @@
   }
 
   async function manageBilling() {
-    // If billing is gated for this user, redirect to express interest
-    if (latestBillingStatus && latestBillingStatus.billing_gated) {
-      window.location.href = 'mailto:hello@canopex.io';
-      return;
-    }
-
-    if (!currentAccount) {
-      login();
-      return;
-    }
-
-    await apiDiscoveryReady;
-    try {
-      var res = await apiFetch('/api/billing/portal', { method: 'POST' });
-      var data = await res.json();
-      if (data.portal_url) window.location.href = data.portal_url;
-    } catch (err) {
-      alert((err && err.message) || 'Could not open billing portal. Please try again.');
-    }
+    if (typeof billingModule.manage === 'function') return billingModule.manage();
+    // fallback: redirect to interest mailto
+    window.location.href = 'mailto:hello@canopex.io';
   }
 
-  function updateCapabilityFields(caps) {
-    document.getElementById('app-concurrency').textContent = caps.concurrency == null ? '—' : String(caps.concurrency);
-    document.getElementById('app-ai-access').textContent = caps.ai_insights ? 'Included' : 'Not included';
-    document.getElementById('app-api-access').textContent = caps.api_access ? 'Enabled' : 'Not included';
-    document.getElementById('app-retention').textContent = formatRetention(caps.retention_days);
-  }
-
-  function renderTierEmulation(data) {
-    var card = document.getElementById('app-tier-emulation-card');
-    var select = document.getElementById('app-tier-emulation-select');
-    var note = document.getElementById('app-tier-emulation-note');
-
-    if (!card || !select || !note) return;
-
-    if (!data.emulation || !data.emulation.available) {
-      card.hidden = true;
-      return;
-    }
-
-    card.hidden = false;
-    select.replaceChildren();
-
-    var actualOption = document.createElement('option');
-    actualOption.value = 'actual';
-    actualOption.textContent = 'Actual billing state';
-    select.appendChild(actualOption);
-
-    (data.emulation.tiers || []).forEach(function(tier) {
-      var option = document.createElement('option');
-      option.value = tier;
-      option.textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
-      select.appendChild(option);
-    });
-
-    select.value = data.emulation.active ? data.emulation.tier : 'actual';
-    if (data.emulation.active) {
-      note.textContent = 'Currently emulating ' + (data.capabilities.label || data.tier) + ' for your account. Billing remains ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
-    } else {
-      note.textContent = 'Using the actual billing state for this account.';
-    }
-  }
+  // updateCapabilityFields and renderTierEmulation are internal to app-billing.js
 
   function applyBillingStatus(data) {
-    var tierEl = document.getElementById('app-tier');
-    var statusEl = document.getElementById('app-subscription-status');
-    var remainingEl = document.getElementById('app-runs-remaining');
-    var billingNoteEl = document.getElementById('app-billing-note');
-    var billingBtn = document.getElementById('app-manage-billing-btn');
-    var accountNote = document.getElementById('app-account-note');
-    var caps = data.capabilities || {};
-
+    if (typeof billingModule.apply === 'function') return billingModule.apply(data);
+    // fallback: update shell state only
     latestBillingStatus = data;
-    tierEl.textContent = (caps.label || data.tier || 'Free') + (data.tier_source === 'emulated' ? ' (emulated)' : '');
-    statusEl.textContent = data.status || 'none';
-    remainingEl.textContent = data.runs_remaining == null ? '—' : String(data.runs_remaining);
-    var usedEl = document.getElementById('app-runs-used');
-    if (usedEl) usedEl.textContent = data.runs_used == null ? '—' : String(data.runs_used);
-    updateCapabilityFields(caps);
-
-    if (data.tier_source === 'emulated') {
-      billingNoteEl.textContent = 'Local tier override active. Real billing is ' + ((data.subscription && data.subscription.tier) || 'free') + '.';
-      billingBtn.style.display = data.billing_configured ? 'inline-block' : 'none';
-      accountNote.textContent = 'Use the role view and work preference controls to tune this workspace for the job at hand.';
-    } else if (data.billing_gated) {
-      billingNoteEl.textContent = 'Billing is not yet available for your account. Contact us to express interest.';
-      billingBtn.textContent = 'Express Interest';
-      billingBtn.style.display = 'inline-block';
-      accountNote.textContent = 'You are on the free plan. Express interest to unlock paid tiers when billing becomes available.';
-    } else if (data.billing_configured) {
-      billingNoteEl.textContent = 'Stripe customer portal available';
-      billingBtn.textContent = 'Billing';
-      billingBtn.style.display = 'inline-block';
-      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting.';
-    } else {
-      billingNoteEl.textContent = 'Billing is not configured in this environment';
-      billingBtn.style.display = 'none';
-      accountNote.textContent = 'Use the role view and work preference controls to bias the workspace toward investigation, monitoring, or reporting.';
-    }
-
     updateHeroSummary(data);
-    renderTierEmulation(data);
-
-    // Show EUDR toggle only for paid tiers
-    var eudrToggle = document.getElementById('app-eudr-toggle');
-    if (eudrToggle) {
-      var paidTiers = ['starter', 'pro', 'team', 'enterprise'];
-      eudrToggle.hidden = !paidTiers.includes(data.tier);
-    }
   }
 
   async function saveTierEmulation() {
-    if (!currentAccount) {
-      login();
-      return;
-    }
-
-    var button = document.getElementById('app-apply-tier-emulation-btn');
-    var select = document.getElementById('app-tier-emulation-select');
-    if (!button || !select) return;
-
-    button.disabled = true;
-    button.textContent = 'Applying…';
-    try {
-      await apiDiscoveryReady;
-      var res = await apiFetch('/api/billing/emulation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: select.value })
-      });
-      clearCacheKey('billing');
-      applyBillingStatus(await res.json());
-    } catch (err) {
-      alert((err && err.message) || 'Could not update plan emulation. Please try again.');
-    } finally {
-      button.disabled = false;
-      button.textContent = 'Apply';
-    }
+    if (typeof billingModule.saveEmulation === 'function') return billingModule.saveEmulation();
   }
 
   async function loadBillingStatus() {
-    await apiDiscoveryReady;
-    if (!currentAccount) return;
-
-    // Render cached billing data instantly while fetching fresh data
-    const cached = readCache('billing');
-    if (cached) applyBillingStatus(cached);
-
-    try {
-      const res = await apiFetch('/api/billing/status');
-      const data = await res.json();
-      writeCache('billing', data, CACHE_TTL_BILLING);
-      applyBillingStatus(data);
-    } catch {
-      // Only show error state if we had no cached data to show
-      if (!cached) {
-        document.getElementById('app-tier').textContent = 'Unknown';
-        document.getElementById('app-subscription-status').textContent = 'Unavailable';
-        document.getElementById('app-runs-remaining').textContent = '—';
-        document.getElementById('app-billing-note').textContent = 'Could not load billing state';
-        document.getElementById('app-manage-billing-btn').style.display = 'none';
-        updateCapabilityFields({});
-        setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
-      }
-    }
+    if (typeof billingModule.load === 'function') return billingModule.load();
   }
 
   /* ---- EUDR usage dashboard (#670) ---- */
@@ -3421,7 +3252,7 @@
     await apiDiscoveryReady;
     if (!currentAccount && authEnabled()) return;
 
-    var historyScope = EUDR_LOCKED ? 'org' : 'user';
+    var historyScope = activeProfile.historyScope || 'user';
     var historyCacheKey = historyScope === 'org' ? 'history-org' : 'history';
 
     // Render cached history instantly while fetching fresh data
@@ -3584,13 +3415,38 @@
   }
 
   apiDiscoveryReady = discoverApiBase();
+
+  // Initialise billing module before auth so loadBillingStatus works on first sign-in.
+  if (typeof billingModule.init === 'function') {
+    billingModule.init({
+      apiFetch: apiFetch,
+      getApiReady: function () { return apiDiscoveryReady; },
+      getAccount: function () { return currentAccount; },
+      login: login,
+      readCache: readCache,
+      writeCache: writeCache,
+      clearCacheKey: clearCacheKey,
+      onStatusChange: function (data) {
+        latestBillingStatus = data;
+        updateHeroSummary(data);
+      },
+      onLoadError: function () {
+        setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
+      }
+    });
+  }
+
   initAuth();
   if (EUDR_LOCKED) {
-    workspaceRole = 'eudr';
-    workspacePreference = 'report';
+    workspaceRole = activeProfile.defaultRole || 'eudr';
+    workspacePreference = activeProfile.defaultPreference || 'report';
   } else {
     workspaceRole = readStoredUiValue(WORKSPACE_ROLE_STORAGE_KEY) || workspaceRole;
     workspacePreference = readStoredUiValue(WORKSPACE_PREFERENCE_STORAGE_KEY) || workspacePreference;
+  }
+  if (typeof coreState.set === 'function') {
+    coreState.set('workspaceRole', workspaceRole);
+    coreState.set('workspacePreference', workspacePreference);
   }
   renderWorkspaceGuidance();
 
@@ -3608,6 +3464,10 @@
 
   // Bind click handlers — guarded for elements that only exist on some pages.
   function bindClick(id, handler) {
+    if (typeof coreDom.bindClick === 'function') {
+      coreDom.bindClick(id, handler);
+      return;
+    }
     var el = document.getElementById(id);
     if (el) el.addEventListener('click', handler);
   }
@@ -3672,18 +3532,8 @@
   bindClick('app-map-play-btn', toggleEvidencePlay);
   var frameSlider = document.getElementById('app-map-frame-slider');
   if (frameSlider) frameSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
-  bindClick('app-map-btn-rgb', function() {
-    evidenceLayerMode = 'rgb';
-    document.getElementById('app-map-btn-rgb').classList.add('active');
-    document.getElementById('app-map-btn-ndvi').classList.remove('active');
-    showEvidenceFrame(evidenceFrameIndex);
-  });
-  bindClick('app-map-btn-ndvi', function() {
-    evidenceLayerMode = 'ndvi';
-    document.getElementById('app-map-btn-ndvi').classList.add('active');
-    document.getElementById('app-map-btn-rgb').classList.remove('active');
-    showEvidenceFrame(evidenceFrameIndex);
-  });
+  bindClick('app-map-btn-rgb', function() { setEvidenceLayerMode('rgb'); });
+  bindClick('app-map-btn-ndvi', function() { setEvidenceLayerMode('ndvi'); });
   bindClick('app-evidence-ai-btn', requestAiAnalysis);
   bindClick('app-evidence-eudr-btn', requestEudrAssessment);
   // Expanded map viewer controls
@@ -3740,20 +3590,6 @@
   bindClick('app-map-expanded-play-btn', toggleEvidencePlay);
   var expandedSlider = document.getElementById('app-map-expanded-slider');
   if (expandedSlider) expandedSlider.addEventListener('input', function() { showEvidenceFrame(parseInt(this.value, 10)); });
-  bindClick('app-map-expanded-btn-rgb', function() {
-    evidenceLayerMode = 'rgb';
-    document.getElementById('app-map-expanded-btn-rgb').classList.add('active');
-    document.getElementById('app-map-expanded-btn-ndvi').classList.remove('active');
-    document.getElementById('app-map-btn-rgb').classList.add('active');
-    document.getElementById('app-map-btn-ndvi').classList.remove('active');
-    showEvidenceFrame(evidenceFrameIndex);
-  });
-  bindClick('app-map-expanded-btn-ndvi', function() {
-    evidenceLayerMode = 'ndvi';
-    document.getElementById('app-map-expanded-btn-ndvi').classList.add('active');
-    document.getElementById('app-map-expanded-btn-rgb').classList.remove('active');
-    document.getElementById('app-map-btn-ndvi').classList.add('active');
-    document.getElementById('app-map-btn-rgb').classList.remove('active');
-    showEvidenceFrame(evidenceFrameIndex);
-  });
+  bindClick('app-map-expanded-btn-rgb', function() { setEvidenceLayerMode('rgb'); });
+  bindClick('app-map-expanded-btn-ndvi', function() { setEvidenceLayerMode('ndvi'); });
 })();
