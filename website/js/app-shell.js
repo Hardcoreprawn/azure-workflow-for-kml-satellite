@@ -789,78 +789,71 @@
     if (typeof authModule.initAuth === 'function') return authModule.initAuth();
   }
 
+  function initModule(moduleRef, deps) {
+    if (moduleRef && typeof moduleRef.init === 'function') {
+      moduleRef.init(deps || {});
+    }
+  }
+
   apiDiscoveryReady = discoverApiBase();
 
   // Initialise billing module before auth so loadBillingStatus works on first sign-in.
-  if (typeof billingModule.init === 'function') {
-    billingModule.init({
-      apiFetch: apiFetch,
-      getApiReady: function () { return apiDiscoveryReady; },
-      getAccount: function () { return currentAccount; },
-      login: login,
-      readCache: readCache,
-      writeCache: writeCache,
-      clearCacheKey: clearCacheKey,
-      onStatusChange: function (data) {
-        latestBillingStatus = data;
-        updateHeroSummary(data);
-      },
-      onLoadError: function () {
-        setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
-      }
-    });
-  }
+  initModule(billingModule, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getAccount: function () { return currentAccount; },
+    login: login,
+    readCache: readCache,
+    writeCache: writeCache,
+    clearCacheKey: clearCacheKey,
+    onStatusChange: function (data) {
+      latestBillingStatus = data;
+      updateHeroSummary(data);
+    },
+    onLoadError: function () {
+      setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
+    }
+  });
 
-  if (typeof eudrModule.init === 'function') {
-    eudrModule.init({
-      apiFetch: apiFetch,
-      getApiReady: function () { return apiDiscoveryReady; },
-      getAccount: function () { return currentAccount; },
-    });
-  }
+  initModule(eudrModule, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getAccount: function () { return currentAccount; },
+  });
 
-  if (typeof evidencePanelsModule.init === 'function') {
-    evidencePanelsModule.init({
-      apiFetch: apiFetch,
-      getApiReady: function () { return apiDiscoveryReady; },
-      getManifest: function () { return evidenceDisplayModule.getManifest ? evidenceDisplayModule.getManifest() : null; },
-      getInstanceId: function () { return evidenceDisplayModule.getInstanceId ? evidenceDisplayModule.getInstanceId() : null; },
-    });
-  }
+  initModule(evidencePanelsModule, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getManifest: function () { return evidenceDisplayModule.getManifest ? evidenceDisplayModule.getManifest() : null; },
+    getInstanceId: function () { return evidenceDisplayModule.getInstanceId ? evidenceDisplayModule.getInstanceId() : null; },
+  });
 
-  if (typeof evidenceDisplayModule.init === 'function') {
-    evidenceDisplayModule.init({
-      apiFetch: apiFetch,
-      getApiReady: function () { return apiDiscoveryReady; },
-      getWorkspaceRole: function () { return workspaceRole; },
-      getLatestBillingStatus: function () { return latestBillingStatus; },
-    });
-  }
+  initModule(evidenceDisplayModule, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getWorkspaceRole: function () { return workspaceRole; },
+    getLatestBillingStatus: function () { return latestBillingStatus; },
+  });
 
-  if (typeof preflightModule.init === 'function') {
-    preflightModule.init({
-      apiFetch: apiFetch,
-      getApiReady: function () { return apiDiscoveryReady; },
-      getWorkspaceRole: function () { return workspaceRole; },
-      getActiveProfile: function () { return activeProfile; },
-      getLatestBillingStatus: function () { return latestBillingStatus; },
-      getWorkspaceRoleConfig: function () { return currentRoleConfig(); },
-      onPreflightUpdate: function (preflight) { analysisDraftSummary = preflight; },
-    });
-  }
+  initModule(preflightModule, {
+    apiFetch: apiFetch,
+    getApiReady: function () { return apiDiscoveryReady; },
+    getWorkspaceRole: function () { return workspaceRole; },
+    getActiveProfile: function () { return activeProfile; },
+    getLatestBillingStatus: function () { return latestBillingStatus; },
+    getWorkspaceRoleConfig: function () { return currentRoleConfig(); },
+    onPreflightUpdate: function (preflight) { analysisDraftSummary = preflight; },
+  });
 
-  if (typeof progressModule.init === 'function') {
-    progressModule.init({
-      setAnalysisStatus: setAnalysisStatus,
-      getActiveProfile: function () { return activeProfile; },
-      getAnalysisPhases: function () { return ANALYSIS_PHASES; },
-      getAnalysisPhaseDetails: function () { return ANALYSIS_PHASE_DETAILS; },
-      summarizeRunTiming: summarizeRunTiming,
-    });
-  }
+  initModule(progressModule, {
+    setAnalysisStatus: setAnalysisStatus,
+    getActiveProfile: function () { return activeProfile; },
+    getAnalysisPhases: function () { return ANALYSIS_PHASES; },
+    getAnalysisPhaseDetails: function () { return ANALYSIS_PHASE_DETAILS; },
+    summarizeRunTiming: summarizeRunTiming,
+  });
 
-  if (typeof runLifecycleModule.init === 'function') {
-    runLifecycleModule.init({
+  initModule(runLifecycleModule, {
       apiFetch: apiFetch,
       getApiReady: function () { return apiDiscoveryReady; },
       getAccount: function () { return currentAccount; },
@@ -893,10 +886,8 @@
       mapAnalysisPhase: mapAnalysisPhase,
       updateAnalysisPreflight: updateAnalysisPreflight,
     });
-  }
 
-  if (typeof historyUiModule.init === 'function') {
-    historyUiModule.init({
+  initModule(historyUiModule, {
       getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
       getAccount: function () { return currentAccount; },
       getSelectedAnalysisRunId: function () { return selectedAnalysisRunId; },
@@ -927,10 +918,8 @@
       sortAnalysisHistoryRuns: sortAnalysisHistoryRuns,
       parseStatusTimestamp: parseStatusTimestamp,
     });
-  }
 
-  if (typeof summaryUiModule.init === 'function') {
-    summaryUiModule.init({
+  initModule(summaryUiModule, {
       currentRoleConfig: currentRoleConfig,
       currentPreferenceConfig: currentPreferenceConfig,
       setText: setText,
@@ -952,7 +941,6 @@
       displayAnalysisPhase: displayAnalysisPhase,
       summarizeRunTiming: summarizeRunTiming,
     });
-  }
 
   if (typeof authModule.init === 'function') {
     authModule.init({
