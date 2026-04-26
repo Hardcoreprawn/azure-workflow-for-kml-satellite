@@ -508,6 +508,14 @@ class TestDeployWorkflowSettings:
             "deploy.yml manual dispatch must allow rebuilding dev after a manual teardown"
         )
 
+    def test_workflow_dispatch_supports_async_smoke_tuning(self, deploy_yml):
+        assert "smoke_poll_interval_seconds" in deploy_yml, (
+            "deploy.yml workflow_dispatch must expose smoke poll interval control"
+        )
+        assert "smoke_max_attempts" in deploy_yml, (
+            "deploy.yml workflow_dispatch must expose smoke max-attempts control"
+        )
+
     def test_deploy_does_not_run_reset_helper(self, deploy_yml):
         assert "reset_dev_resource_group.py" not in deploy_yml, (
             "deploy.yml should no longer call the clean-reset helper once "
@@ -563,6 +571,25 @@ class TestDeployWorkflowSettings:
         assert "validate_dev_infra_gate.py" in deploy_yml, (
             "deploy.yml must validate the infra gate after reconciliation "
             "so clean-slate redeploy failures stop the job"
+        )
+
+    def test_deploy_runs_async_functional_smoke_gate(self, deploy_yml):
+        assert "Run async functional smoke gate" in deploy_yml, (
+            "deploy.yml must run an async functional smoke gate after readiness checks"
+        )
+        assert "python ../../scripts/e2e_smoke_gate.py" in deploy_yml, (
+            "deploy.yml async smoke gate must execute scripts/e2e_smoke_gate.py"
+        )
+
+    def test_async_smoke_gate_is_bounded(self, deploy_yml):
+        assert "SMOKE_POLL_INTERVAL" in deploy_yml, (
+            "deploy.yml async smoke gate must define bounded poll interval"
+        )
+        assert "SMOKE_MAX_ATTEMPTS" in deploy_yml, (
+            "deploy.yml async smoke gate must define bounded max attempts"
+        )
+        assert "--poll-interval" in deploy_yml and "--max-attempts" in deploy_yml, (
+            "deploy.yml async smoke gate must pass bounded polling arguments"
         )
 
     def test_infra_gate_step_uses_orchestrator_outputs(self, deploy_yml):

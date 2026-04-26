@@ -43,6 +43,16 @@ on:
         required: false
         type: boolean
         default: false
+      smoke_poll_interval_seconds:
+        description: Poll interval (seconds) for post-readiness async smoke gate.
+        required: false
+        type: string
+        default: "5"
+      smoke_max_attempts:
+        description: Max orchestrator poll attempts for post-readiness async smoke gate.
+        required: false
+        type: string
+        default: "60"
 
 permissions:
   contents: read
@@ -874,6 +884,36 @@ jobs:
             --hostname "$HOSTNAME" \
             --system-topic-name "$TOPIC_NAME" \
             --expected-daily-cap-gb "$EXPECTED_CAP"
+
+      - name: Run async functional smoke gate
+        id: async-smoke-gate
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+          DEPLOY_SMOKE_BEARER_TOKEN: ${{ secrets.DEPLOY_SMOKE_BEARER_TOKEN }}
+          SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
+          SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
+        run: |
+          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          API_BASE="https://${HOSTNAME}"
+          echo "Running async smoke gate against ${API_BASE}"
+          echo "Smoke poll interval=${SMOKE_POLL_INTERVAL}s max_attempts=${SMOKE_MAX_ATTEMPTS}"
+
+          SMOKE_ARGS=(
+            --api-base "$API_BASE"
+            --kml-path ../../tests/fixtures/sample.kml
+            --poll-interval "$SMOKE_POLL_INTERVAL"
+            --max-attempts "$SMOKE_MAX_ATTEMPTS"
+          )
+
+          if [ -n "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
+            SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
+          fi
+
+          python ../../scripts/e2e_smoke_gate.py "${SMOKE_ARGS[@]}"
 
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image
