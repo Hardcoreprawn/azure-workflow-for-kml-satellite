@@ -49,6 +49,7 @@
   var evidenceMapModule = window.CanopexEvidenceMap || {};
   var eudrModule = window.CanopexEudr || {};
   var billingModule = window.CanopexBilling || {};
+  var evidencePanelsModule = window.CanopexEvidencePanels || {};
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
   const WORKSPACE_ROLE_STORAGE_KEY = 'canopex-workspace-role';
@@ -1508,276 +1509,62 @@
     }
   }
 
-  /* ---- Parcel notes (#669) ---- */
+  /* ---- Parcel notes (#669) — delegated to app-evidence-panels.js ---- */
 
-  var currentNoteParcelKey = null; // key of AOI whose notes are currently shown
+  // module-level state kept as fallback when module is absent
+  var currentNoteParcelKey = null;
 
   function parcelKeyForIndex(idx) {
-    // Use the AOI index as a stable string key matching the backend convention.
+    if (typeof evidencePanelsModule.parcelKeyForIndex === 'function') return evidencePanelsModule.parcelKeyForIndex(idx);
     return String(idx);
   }
 
   function renderParcelNotes(parcelKey) {
-    currentNoteParcelKey = parcelKey;
-    var notesEl = document.getElementById('app-evidence-notes');
-    var savedEl = document.getElementById('app-evidence-notes-saved');
-    var textEl = document.getElementById('app-evidence-notes-text');
-    var metaEl = document.getElementById('app-evidence-notes-meta');
-    var editEl = document.getElementById('app-evidence-notes-edit');
-    var addBtn = document.getElementById('app-evidence-notes-add-btn');
-    if (!notesEl) return;
-
-    // Reset edit state
-    if (editEl) editEl.hidden = true;
-    if (addBtn) addBtn.hidden = false;
-    var input = document.getElementById('app-evidence-notes-input');
-    if (input) input.value = '';
-
-    var note = null;
-    if (evidenceManifest && evidenceManifest.parcel_notes) {
-      note = evidenceManifest.parcel_notes[parcelKey] || null;
-    }
-
-    if (note && note.text) {
-      if (savedEl) savedEl.hidden = false;
-      if (textEl) textEl.textContent = note.text;
-      if (metaEl) {
-        var when = note.updated_at ? new Date(note.updated_at).toLocaleDateString() : '';
-        metaEl.textContent = when ? 'Note — ' + when : 'Note saved';
-      }
-      if (addBtn) addBtn.textContent = 'Edit note';
-    } else {
-      if (savedEl) savedEl.hidden = true;
-      if (textEl) textEl.textContent = '';
-      if (metaEl) metaEl.textContent = '';
-      if (addBtn) addBtn.textContent = '+ Add note';
-    }
+    if (typeof evidencePanelsModule.renderParcelNotes === 'function') return evidencePanelsModule.renderParcelNotes(parcelKey);
   }
 
   function showNoteEditor() {
-    var editEl = document.getElementById('app-evidence-notes-edit');
-    var addBtn = document.getElementById('app-evidence-notes-add-btn');
-    var input = document.getElementById('app-evidence-notes-input');
-    if (!editEl) return;
-
-    // Pre-populate with existing note text
-    if (input && evidenceManifest && evidenceManifest.parcel_notes && currentNoteParcelKey) {
-      var existing = evidenceManifest.parcel_notes[currentNoteParcelKey];
-      input.value = existing ? (existing.text || '') : '';
-    }
-    if (editEl) editEl.hidden = false;
-    if (addBtn) addBtn.hidden = true;
-    if (input) input.focus();
+    if (typeof evidencePanelsModule.showNoteEditor === 'function') return evidencePanelsModule.showNoteEditor();
   }
 
   function hideNoteEditor() {
-    var editEl = document.getElementById('app-evidence-notes-edit');
-    var addBtn = document.getElementById('app-evidence-notes-add-btn');
-    if (editEl) editEl.hidden = true;
-    if (addBtn) addBtn.hidden = false;
+    if (typeof evidencePanelsModule.hideNoteEditor === 'function') return evidencePanelsModule.hideNoteEditor();
   }
 
   async function saveParcelNote() {
-    var input = document.getElementById('app-evidence-notes-input');
-    if (!input || !evidenceInstanceId || currentNoteParcelKey === null) return;
-
-    var noteText = input.value.trim();
-    var saveBtn = document.getElementById('app-evidence-notes-save-btn');
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
-
-    try {
-      await apiDiscoveryReady;
-      var res = await apiFetch('/api/analysis/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: evidenceInstanceId,
-          parcel_key: currentNoteParcelKey,
-          note: noteText,
-        }),
-      });
-      if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        console.warn('Note save failed:', err);
-        return;
-      }
-      // Update local manifest state so the note appears immediately
-      if (!evidenceManifest.parcel_notes) evidenceManifest.parcel_notes = {};
-      if (noteText) {
-        evidenceManifest.parcel_notes[currentNoteParcelKey] = {
-          text: noteText,
-          updated_at: new Date().toISOString(),
-        };
-      } else {
-        delete evidenceManifest.parcel_notes[currentNoteParcelKey];
-      }
-      hideNoteEditor();
-      renderParcelNotes(currentNoteParcelKey);
-    } catch (e) {
-      console.warn('Note save error:', e);
-    } finally {
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save note'; }
-    }
+    if (typeof evidencePanelsModule.saveParcelNote === 'function') return evidencePanelsModule.saveParcelNote();
   }
 
+  /* ---- Human override determination (#672) — delegated to app-evidence-panels.js ---- */
 
-  /* ---- Human override determination (#672) ---- */
-
+  // module-level state kept as fallback when module is absent
   var currentOverrideParcelKey = null;
   var currentOverrideAoiData = null;
 
   function renderParcelOverride(parcelKey, aoiData) {
-    currentOverrideParcelKey = parcelKey;
-    currentOverrideAoiData = aoiData;
-
-    var overrideEl = document.getElementById('app-evidence-override');
-    var badgeEl = document.getElementById('app-evidence-override-badge');
-    var overrideBtn = document.getElementById('app-evidence-override-btn');
-    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
-    if (!overrideEl) return;
-
-    var override = null;
-    if (evidenceManifest && evidenceManifest.parcel_overrides) {
-      override = evidenceManifest.parcel_overrides[parcelKey] || null;
-    }
-
-    var det = aoiData && aoiData.determination;
-    var isNonCompliant = det && !det.deforestation_free;
-
-    overrideEl.hidden = !(isNonCompliant || override);
-
-    if (override) {
-      if (badgeEl) {
-        badgeEl.hidden = false;
-        badgeEl.className = 'app-evidence-override-badge';
-        badgeEl.textContent = '\u2705 Compliant (overridden)';
-      }
-      if (overrideBtn) overrideBtn.hidden = true;
-      if (revertBtn) revertBtn.hidden = false;
-    } else {
-      if (badgeEl) badgeEl.hidden = true;
-      if (overrideBtn) overrideBtn.hidden = !isNonCompliant;
-      if (revertBtn) revertBtn.hidden = true;
-    }
+    if (typeof evidencePanelsModule.renderParcelOverride === 'function') return evidencePanelsModule.renderParcelOverride(parcelKey, aoiData);
   }
 
   function openOverrideModal(parcelKey, aoiData) {
-    var backdrop = document.getElementById('app-override-backdrop');
-    var reasonInput = document.getElementById('app-override-reason-input');
-    var confirmBtn = document.getElementById('app-override-confirm-btn');
-    var charCount = document.getElementById('app-override-charcount');
-    var errorEl = document.getElementById('app-override-error');
-    var originalEl = document.getElementById('app-override-original');
-    if (!backdrop) return;
-
-    if (reasonInput) reasonInput.value = '';
-    if (confirmBtn) confirmBtn.disabled = true;
-    if (charCount) charCount.textContent = '0 / 500';
-    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
-    if (originalEl) {
-      var det = aoiData && aoiData.determination;
-      var reason = det && det.reason ? det.reason : 'Risk detected';
-      originalEl.textContent = 'Algorithmic determination: ' + reason;
-    }
-
-    backdrop.hidden = false;
-    if (reasonInput) reasonInput.focus();
+    if (typeof evidencePanelsModule.openOverrideModal === 'function') return evidencePanelsModule.openOverrideModal(parcelKey, aoiData);
   }
 
   function closeOverrideModal() {
-    var backdrop = document.getElementById('app-override-backdrop');
-    if (backdrop) backdrop.hidden = true;
+    if (typeof evidencePanelsModule.closeOverrideModal === 'function') return evidencePanelsModule.closeOverrideModal();
   }
 
   function onOverrideReasonInput() {
-    var reasonInput = document.getElementById('app-override-reason-input');
-    var confirmBtn = document.getElementById('app-override-confirm-btn');
-    var charCount = document.getElementById('app-override-charcount');
-    if (!reasonInput) return;
-    var len = reasonInput.value.trim().length;
-    if (charCount) charCount.textContent = len + ' / 500';
-    if (confirmBtn) confirmBtn.disabled = len < 20;
+    if (typeof evidencePanelsModule.onOverrideReasonInput === 'function') return evidencePanelsModule.onOverrideReasonInput();
   }
 
   async function confirmOverride() {
-    var reasonInput = document.getElementById('app-override-reason-input');
-    var confirmBtn = document.getElementById('app-override-confirm-btn');
-    var errorEl = document.getElementById('app-override-error');
-    if (!reasonInput || !evidenceInstanceId || currentOverrideParcelKey === null) return;
-
-    var reason = reasonInput.value.trim();
-    if (reason.length < 20) return;
-
-    var originalText = confirmBtn ? confirmBtn.textContent : 'Confirm override';
-    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
-    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
-
-    try {
-      await apiDiscoveryReady;
-      var res = await apiFetch('/api/analysis/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: evidenceInstanceId,
-          parcel_key: currentOverrideParcelKey,
-          reason: reason,
-          revert: false,
-        }),
-      });
-      if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        if (errorEl) {
-          errorEl.textContent = (err && err.message) || 'Failed to save override. Try again.';
-          errorEl.hidden = false;
-        }
-        return;
-      }
-      // Update local manifest state
-      if (!evidenceManifest.parcel_overrides) evidenceManifest.parcel_overrides = {};
-      evidenceManifest.parcel_overrides[currentOverrideParcelKey] = {
-        reason: reason,
-        overridden_at: new Date().toISOString(),
-        override_determination: 'compliant',
-      };
-      closeOverrideModal();
-      renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
-    } catch (e) {
-      if (errorEl) { errorEl.textContent = 'Failed to save override. Try again.'; errorEl.hidden = false; }
-      console.warn('Override save error:', e);
-    } finally {
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
-    }
+    if (typeof evidencePanelsModule.confirmOverride === 'function') return evidencePanelsModule.confirmOverride();
   }
 
   async function revertOverride() {
-    if (!evidenceInstanceId || currentOverrideParcelKey === null) return;
-    var revertBtn = document.getElementById('app-evidence-override-revert-btn');
-    if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
-
-    try {
-      await apiDiscoveryReady;
-      var res = await apiFetch('/api/analysis/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: evidenceInstanceId,
-          parcel_key: currentOverrideParcelKey,
-          reason: '',
-          revert: true,
-        }),
-      });
-      if (res.ok) {
-        if (evidenceManifest.parcel_overrides) {
-          delete evidenceManifest.parcel_overrides[currentOverrideParcelKey];
-        }
-        renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
-      }
-    } catch (e) {
-      console.warn('Override revert error:', e);
-    } finally {
-      if (revertBtn) { revertBtn.disabled = false; revertBtn.textContent = 'Revert to algorithmic'; }
-    }
+    if (typeof evidencePanelsModule.revertOverride === 'function') return evidencePanelsModule.revertOverride();
   }
+
   function selectAoi(idx) {
     if (!evidenceManifest || !evidenceManifest.per_aoi_enrichment) return;
     var perAoi = evidenceManifest.per_aoi_enrichment;
@@ -3194,58 +2981,8 @@
   /* ---- EUDR usage dashboard (#670) ---- */
 
   async function loadEudrUsage() {
-    await apiDiscoveryReady;
-    if (!currentAccount) return;
-
-    var includedEl = document.getElementById('app-eudr-usage-included');
-    var overageEl = document.getElementById('app-eudr-usage-overage');
-    var spendEl = document.getElementById('app-eudr-usage-spend');
-    var nextTierEl = document.getElementById('app-eudr-usage-next-tier');
-    var historyListEl = document.getElementById('app-eudr-usage-history-list');
-    if (!includedEl) return;  // card not present in this build
-
-    try {
-      var res = await apiFetch('/api/eudr/usage');
-      if (!res.ok) return;
-      var data = await res.json();
-      var cur = data.current || {};
-
-      var periodUsed = cur.periodParcelsUsed || 0;
-      var included = cur.includedParcels || 0;
-      if (includedEl) includedEl.textContent = periodUsed + ' / ' + included;
-      if (overageEl) overageEl.textContent = (cur.overageParcels || 0) + ' parcels';
-      if (spendEl) {
-        var spend = cur.estimatedSpendGbp;
-        spendEl.textContent = (spend != null) ? ('£' + spend.toFixed(2)) : '—';
-      }
-      if (nextTierEl) {
-        if (cur.nextTierThreshold) {
-          var msg = cur.parcelsToNextTier + ' until next tier (£' + cur.nextTierRateGbp + '/parcel)';
-          nextTierEl.textContent = msg;
-          if (cur.within20PercentOfNextTier) nextTierEl.style.fontWeight = '600';
-        } else {
-          nextTierEl.textContent = 'Maximum tier reached';
-        }
-      }
-
-      if (historyListEl && data.history && data.history.length) {
-        var html = '<div class="app-usage-history-list">';
-        data.history.forEach(function(m) {
-          html += '<div class="app-usage-row">' +
-            '<strong>' + (m.month || '') + '</strong>' +
-            '<span>' + (m.runs || 0) + ' runs</span>' +
-            '<span>' + (m.parcels || 0) + ' parcels</span>' +
-            (m.overageRuns ? '<span class="app-warning-text">' + m.overageRuns + ' overage</span>' : '') +
-            '</div>';
-        });
-        html += '</div>';
-        historyListEl.innerHTML = html;
-      } else if (historyListEl) {
-        historyListEl.textContent = 'No usage history yet.';
-      }
-    } catch (e) {
-      console.warn('EUDR usage load error:', e);
-    }
+    if (typeof eudrModule.loadUsage === 'function') return eudrModule.loadUsage();
+    // fallback: silently skip when module not loaded
   }
 
   async function loadAnalysisHistory(options) {
@@ -3433,6 +3170,23 @@
       onLoadError: function () {
         setHeroRunSummary('Ready to queue', 'Billing is unavailable, but analysis can still be launched locally.');
       }
+    });
+  }
+
+  if (typeof eudrModule.init === 'function') {
+    eudrModule.init({
+      apiFetch: apiFetch,
+      getApiReady: function () { return apiDiscoveryReady; },
+      getAccount: function () { return currentAccount; },
+    });
+  }
+
+  if (typeof evidencePanelsModule.init === 'function') {
+    evidencePanelsModule.init({
+      apiFetch: apiFetch,
+      getApiReady: function () { return apiDiscoveryReady; },
+      getManifest: function () { return evidenceManifest; },
+      getInstanceId: function () { return evidenceInstanceId; },
     });
   }
 
