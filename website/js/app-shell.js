@@ -53,6 +53,7 @@
   var preflightModule = window.CanopexAnalysisPreflight || {};
   var progressModule = window.CanopexAnalysisProgress || {};
   var evidenceDisplayModule = window.CanopexEvidenceDisplay || {};
+  var authModule = window.CanopexAuth || {};
   var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
@@ -1648,136 +1649,14 @@
     }
   }
 
+  /* ---- Auth UI + bootstrap — delegated to app-auth.js ---- */
+
   function updateAuthUI() {
-    var loginBtn = document.getElementById('auth-login-btn');
-    var logoutBtn = document.getElementById('auth-logout-btn');
-    var userSpan = document.getElementById('auth-user');
-    var gate = document.getElementById('app-unauthenticated');
-    var dashboard = document.getElementById('app-dashboard');
-    var userName = document.getElementById('app-user-name');
-    var accountIdentifier = document.getElementById('app-account-identifier');
-    var accountNote = document.getElementById('app-account-note');
-    var billingBtn = document.getElementById('app-manage-billing-btn');
-
-    if (!authEnabled()) {
-      loginBtn.style.display = 'none';
-      logoutBtn.style.display = 'none';
-      userSpan.textContent = 'Local dev';
-      userSpan.style.display = 'inline';
-      gate.hidden = true;
-      dashboard.hidden = false;
-      var localAuthGate = document.getElementById('app-analysis-auth-gate');
-      var localFormFields = document.getElementById('app-analysis-form-fields');
-      if (localAuthGate) localAuthGate.hidden = true;
-      if (localFormFields) localFormFields.hidden = false;
-      userName.textContent = 'Local developer';
-      accountIdentifier.textContent = 'Authentication disabled';
-      accountNote.textContent = 'Auth is disabled in this environment, so this workspace is running in local development mode.';
-      billingBtn.style.display = 'none';
-      document.getElementById('app-tier').textContent = 'Local';
-      document.getElementById('app-subscription-status').textContent = 'disabled';
-      document.getElementById('app-runs-remaining').textContent = 'n/a';
-      document.getElementById('app-concurrency').textContent = 'n/a';
-      document.getElementById('app-ai-access').textContent = 'n/a';
-      document.getElementById('app-api-access').textContent = 'n/a';
-      document.getElementById('app-retention').textContent = 'n/a';
-      document.getElementById('app-billing-note').textContent = 'Billing is unavailable when auth is disabled';
-      document.getElementById('app-tier-emulation-card').hidden = true;
-      apiDiscoveryReady.then(function() {
-        loadAnalysisHistory();
-      });
-      return;
-    }
-
-    if (currentAccount) {
-      var displayName = currentAccount.name || currentAccount.userId || 'User';
-      var identifier = currentAccount.userId || currentAccount.name || 'Signed in';
-      userSpan.textContent = displayName;
-      userSpan.style.display = 'inline';
-      loginBtn.style.display = 'none';
-      logoutBtn.style.display = 'inline';
-      gate.hidden = true;
-      dashboard.hidden = false;
-      userName.textContent = displayName;
-      accountIdentifier.textContent = identifier;
-      accountNote.textContent = 'This is your Canopex dashboard. Choose the analysis type and work preference that match the job at hand.';
-      var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
-      var analysisFormFields = document.getElementById('app-analysis-form-fields');
-      var historyCard = document.getElementById('app-history-card');
-      if (analysisAuthGate) analysisAuthGate.hidden = true;
-      if (analysisFormFields) analysisFormFields.hidden = false;
-      if (historyCard) historyCard.hidden = false;
-      if (!analysisHistoryLoaded && !latestAnalysisRun) {
-        setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');
-        updateHistorySummary(null);
-        renderAnalysisHistoryList();
-      }
-      apiDiscoveryReady.then(loadBillingStatus);
-      apiDiscoveryReady.then(loadEudrUsage);
-      apiDiscoveryReady.then(function() {
-        loadAnalysisHistory();
-      });
-    } else {
-      userSpan.style.display = 'none';
-      loginBtn.style.display = 'inline';
-      logoutBtn.style.display = 'none';
-      gate.hidden = false;
-      dashboard.hidden = true;
-      billingBtn.style.display = 'none';
-      var unauthGate = document.getElementById('app-analysis-auth-gate');
-      var unauthFormFields = document.getElementById('app-analysis-form-fields');
-      if (unauthGate) unauthGate.hidden = false;
-      if (unauthFormFields) unauthFormFields.hidden = true;
-      analysisHistoryRuns = [];
-      analysisHistoryLoaded = false;
-      selectedAnalysisRunId = null;
-      stopAnalysisPolling();
-      resetAnalysisProgress();
-      renderAnalysisHistoryList();
-      updateAnalysisRun(null);
-    }
+    if (typeof authModule.updateAuthUI === 'function') return authModule.updateAuthUI();
   }
 
   function initAuth() {
-    // Strip legacy ?mode=demo from URL if present
-    try {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('mode') === 'demo') {
-        url.searchParams.delete('mode');
-        const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-        window.history.replaceState({}, '', nextUrl || APP_BASE);
-      }
-    } catch { /* ignore */ }
-
-    // SWA built-in auth: fetch /.auth/me to check if the user is signed in.
-    fetch('/.auth/me').then(function(resp) {
-      if (!resp.ok) throw new Error('auth/me failed');
-      return resp.json();
-    }).then(function(payload) {
-      var principal = payload && payload.clientPrincipal;
-      if (principal && principal.userId) {
-        _apiClient.setClientPrincipal(principal); // store raw for X-MS-CLIENT-PRINCIPAL forwarding
-        currentAccount = {
-          userId: principal.userId,
-          name: principal.userDetails || '',
-          identityProvider: principal.identityProvider || 'aad',
-          userRoles: principal.userRoles || [],
-        };
-        // Acquire HMAC session token for principal verification (#534).
-        // Waits for API base discovery so the request goes to the right host.
-        (apiDiscoveryReady || Promise.resolve()).then(function() {
-          return apiFetch('/api/auth/session', { method: 'POST' });
-        }).then(function(resp) { return resp.json(); }).then(function(data) {
-          if (data && data.token) _apiClient.setSessionToken(data.token);
-        }).catch(function() { /* session token unavailable — backend may not enforce HMAC */ });
-      }
-      updateAuthUI();
-    }).catch(function(err) {
-      console.warn('SWA auth check failed:', err);
-      // When running locally without SWA CLI, auth/me won't exist.
-      // Fall back to unauthenticated state — updateAuthUI handles it.
-      updateAuthUI();
-    });
+    if (typeof authModule.initAuth === 'function') return authModule.initAuth();
   }
 
   apiDiscoveryReady = discoverApiBase();
@@ -1847,6 +1726,35 @@
       getAnalysisPhases: function () { return ANALYSIS_PHASES; },
       getAnalysisPhaseDetails: function () { return ANALYSIS_PHASE_DETAILS; },
       summarizeRunTiming: summarizeRunTiming,
+    });
+  }
+
+  if (typeof authModule.init === 'function') {
+    authModule.init({
+      authEnabled: authEnabled,
+      getApiReady: function () { return apiDiscoveryReady; },
+      getAccount: function () { return currentAccount; },
+      setAccount: function (account) { currentAccount = account; },
+      setClientPrincipal: function (p) { if (_apiClient) _apiClient.setClientPrincipal(p); },
+      setSessionToken: function (t) { if (_apiClient) _apiClient.setSessionToken(t); },
+      apiFetch: apiFetch,
+      getAppBase: function () { return APP_BASE; },
+      loadAnalysisHistory: loadAnalysisHistory,
+      loadBillingStatus: loadBillingStatus,
+      loadEudrUsage: loadEudrUsage,
+      setHeroRunSummary: setHeroRunSummary,
+      updateHistorySummary: updateHistorySummary,
+      renderAnalysisHistoryList: renderAnalysisHistoryList,
+      stopAnalysisPolling: stopAnalysisPolling,
+      resetAnalysisProgress: resetAnalysisProgress,
+      updateAnalysisRun: updateAnalysisRun,
+      getAnalysisHistoryLoaded: function () { return analysisHistoryLoaded; },
+      getLatestAnalysisRun: function () { return latestAnalysisRun; },
+      clearAnalysisState: function () {
+        analysisHistoryRuns = [];
+        analysisHistoryLoaded = false;
+        selectedAnalysisRunId = null;
+      },
     });
   }
 

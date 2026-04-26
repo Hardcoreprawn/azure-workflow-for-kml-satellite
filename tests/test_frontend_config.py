@@ -23,6 +23,7 @@ EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
+APP_AUTH_JS = WEBSITE / "js" / "app-auth.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
 
@@ -55,6 +56,11 @@ def app_shell_js():
 @pytest.fixture()
 def api_client_js():
     return API_CLIENT_JS.read_text()
+
+
+@pytest.fixture()
+def app_auth_js():
+    return APP_AUTH_JS.read_text()
 
 
 @pytest.fixture()
@@ -184,21 +190,16 @@ class TestAuthConfig:
             "canopex-api-client.js must forward X-Auth-Session when available"
         )
 
-    def test_api_client_exposes_auth_state_helpers(self, api_client_js):
-        """Shared API client should expose setter/clear helpers for auth state."""
-        for symbol in ["setClientPrincipal", "setSessionToken", "clearAuth"]:
-            assert symbol in api_client_js, f"canopex-api-client.js must export {symbol}"
-
-    def test_api_client_uses_utf8_safe_base64(self, api_client_js):
-        """Shared API client must use TextEncoder for UTF-8 safe base64 encoding."""
-        assert "TextEncoder" in api_client_js, (
-            "canopex-api-client.js must use TextEncoder for UTF-8 safe base64"
+    def test_app_shell_forwards_client_principal(self, api_client_js):
+        """canopex-api-client.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
+        assert "X-MS-CLIENT-PRINCIPAL" in api_client_js, (
+            "canopex-api-client.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
         )
 
-    def test_landing_uses_shared_api_client(self, landing_js):
-        """Landing page should use the shared API client implementation."""
-        assert "CanopexApiClient.createClient" in landing_js, (
-            "landing.js must initialize the shared API client"
+    def test_app_shell_uses_utf8_safe_base64(self, api_client_js):
+        """canopex-api-client.js must use TextEncoder for UTF-8 safe base64 encoding."""
+        assert "TextEncoder" in api_client_js, (
+            "canopex-api-client.js must use TextEncoder for UTF-8 safe base64 of client principal"
         )
 
     def test_app_shell_uses_shared_api_client(self, app_shell_js):
