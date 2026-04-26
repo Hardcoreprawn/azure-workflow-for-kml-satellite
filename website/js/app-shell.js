@@ -329,7 +329,7 @@
   }
 
   async function discoverApiBase() {
-    return apiClient.discoverApiBase();
+    if (_apiClient) return _apiClient.discoverApiBase();
   }
 
   function login() {
@@ -345,12 +345,12 @@
 
   async function apiFetch(path, opts) {
     try {
-      return await apiClient.fetch(path, opts);
+      return await _apiClient.fetch(path, opts);
     } catch (err) {
-      if (err && err.status === 401 && authEnabled()) {
+      if (err.status === 401 && authEnabled()) {
         // Session expired — clear local auth state and prompt re-login.
         currentAccount = null;
-        apiClient.clearAuth();
+        _apiClient.clearAuth();
         updateAuthUI();
         setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
         stopAnalysisPolling();
@@ -3130,7 +3130,7 @@
     }).then(function(payload) {
       var principal = payload && payload.clientPrincipal;
       if (principal && principal.userId) {
-        apiClient.setClientPrincipal(principal);
+        _apiClient.setClientPrincipal(principal); // store raw for X-MS-CLIENT-PRINCIPAL forwarding
         currentAccount = {
           userId: principal.userId,
           name: principal.userDetails || '',
@@ -3142,7 +3142,7 @@
         (apiDiscoveryReady || Promise.resolve()).then(function() {
           return apiFetch('/api/auth/session', { method: 'POST' });
         }).then(function(resp) { return resp.json(); }).then(function(data) {
-          if (data && data.token) apiClient.setSessionToken(data.token);
+          if (data && data.token) _apiClient.setSessionToken(data.token);
         }).catch(function() { /* session token unavailable — backend may not enforce HMAC */ });
       }
       updateAuthUI();
