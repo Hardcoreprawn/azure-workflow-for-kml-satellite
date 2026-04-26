@@ -350,6 +350,92 @@ class TestBillingStatus:
 
 
 # ---------------------------------------------------------------------------
+# Cosmos-backed billing_allowed path
+# ---------------------------------------------------------------------------
+
+
+class TestCosmosBillingAllowed:
+    """Test billing_allowed when user is allowlisted in Cosmos user record."""
+
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.is_billing_allowed")
+    def test_tier_emulation_allowed_via_cosmos_user_record(
+        self, mock_is_allowed, mock_read, mock_upsert
+    ):
+        """User allowlisted in Cosmos user record can use tier emulation."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos is_billing_allowed to return True
+        mock_is_allowed.return_value = True
+
+        store: dict[str, dict] = {}
+
+        def _read_item(container, item_id, partition_key):
+            return store.get(f"{container}/{item_id}")
+
+        def _upsert_item(container, item):
+            store[f"{container}/{item['id']}"] = item
+            return item
+
+        mock_read.side_effect = _read_item
+        mock_upsert.side_effect = _upsert_item
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="test-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["billing_gated"] is False
+        assert data["emulation"]["available"] is True
+
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.is_billing_allowed")
+    def test_tier_emulation_rejected_when_not_in_cosmos(self, mock_is_allowed, mock_read):
+        """User not allowlisted in Cosmos is rejected."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos is_billing_allowed to return False
+        mock_is_allowed.return_value = False
+        mock_read.return_value = None
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="not-allowlisted-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 403
+        body = resp.get_body().decode("utf-8")
+        assert "not yet available" in body
+
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.is_billing_allowed")
+    def test_tier_emulation_rejected_on_cosmos_error(self, mock_is_allowed, mock_read):
+        """Cosmos error defaults to reject (safe failure)."""
+        from blueprints.billing import billing_emulation
+
+        # Mock Cosmos error
+        mock_is_allowed.side_effect = Exception("Cosmos unavailable")
+        mock_read.return_value = None
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="test-user",
+        )
+        resp = billing_emulation(req)
+        # Should reject when Cosmos is down (safe default)
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # _user_id_from_customer reverse-lookup
 # ---------------------------------------------------------------------------
 
