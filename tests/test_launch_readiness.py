@@ -46,6 +46,8 @@ INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
+API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
+OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
 
 HTML_PAGES = [
     WEBSITE / "index.html",
@@ -695,6 +697,33 @@ class TestEventGridWebhookWiring:
         )
         assert "resource_id = azapi_resource.function_app.id" not in body, (
             "Event Grid host key lookup must not target the compute app"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 12. Public API ingress docs contract
+# ---------------------------------------------------------------------------
+
+
+class TestPublicApiIngressDocsContract:
+    """Public API docs must present orchestrator as the only ingress."""
+
+    def test_api_interface_reference_uses_orchestrator_base_url(self):
+        text = API_INTERFACE_REFERENCE.read_text()
+        assert "func-kmlsat-dev-orch." in text, (
+            "API interface reference must use the orchestrator hostname as base URL"
+        )
+        assert "func-kmlsat-dev.jollysea" not in text, (
+            "API interface reference must not show the compute hostname as public base URL"
+        )
+
+    def test_openapi_production_server_uses_orchestrator_ingress(self):
+        text = OPENAPI_YAML.read_text()
+        assert "func-kmlsat-dev-orch." in text, (
+            "OpenAPI production server must point to orchestrator ingress"
+        )
+        assert "azurestaticapps.net/api" not in text, (
+            "OpenAPI production server must not point to the static web app hostname"
         )
 
 

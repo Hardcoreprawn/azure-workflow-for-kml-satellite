@@ -40,8 +40,8 @@ info:
     identifier: MIT
 
 servers:
-  - url: https://polite-glacier-0d6885003.4.azurestaticapps.net/api
-    description: Production (Azure Static Web Apps → Function App)
+  - url: https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api
+    description: Production (Orchestrator Function App ingress)
   - url: http://localhost:7071/api
     description: Local development
 
