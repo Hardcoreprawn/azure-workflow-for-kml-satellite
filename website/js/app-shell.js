@@ -198,14 +198,91 @@
     if (el) el.textContent = value;
   }
 
-  let apiDiscoveryReady = null;
+  function createApiClient() {
+    if (window.CanopexApiClient && typeof window.CanopexApiClient.createClient === 'function') {
+      return window.CanopexApiClient.createClient({
+        statusBadgeId: 'status-badge',
+      });
+    }
 
-  // Container Apps FA: API calls go cross-origin to the Function App
-  // hostname discovered from /api-config.json (injected at deploy time).
-  // Auth principal is forwarded via X-MS-CLIENT-PRINCIPAL header.
-  let _apiBase = '';          // Container Apps FA hostname, e.g. 'https://func-kmlsat-dev.azurecontainerapps.io'
-  let _clientPrincipal = null; // raw clientPrincipal from /.auth/me — base64-encoded for X-MS-CLIENT-PRINCIPAL
-  let _sessionToken = '';      // HMAC session token from /api/auth/session (#534)
+    console.error('[canopex] Shared API client unavailable; falling back to same-origin API mode.');
+    let fallbackApiBase = '';
+    let fallbackPrincipal = null;
+    let fallbackSessionToken = '';
+
+    function runningOnLocalDevOrigin() {
+      return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    }
+
+    function isLoopbackHost(hostname) {
+      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+    }
+
+    function encodePrincipal(principal) {
+      var jsonStr = JSON.stringify(principal);
+      var bytes = new TextEncoder().encode(jsonStr);
+      var binStr = Array.from(bytes, function(b) { return String.fromCharCode(b); }).join('');
+      return btoa(binStr);
+    }
+
+    return {
+      setClientPrincipal: function(principal) {
+        fallbackPrincipal = principal || null;
+      },
+      setSessionToken: function(token) {
+        fallbackSessionToken = token || '';
+      },
+      clearAuth: function() {
+        fallbackPrincipal = null;
+        fallbackSessionToken = '';
+      },
+      discoverApiBase: async function() {
+        try {
+          const cfgRes = await fetch('/api-config.json');
+          if (cfgRes.ok) {
+            const cfg = await cfgRes.json();
+            if (cfg && cfg.apiBase) {
+              const parsed = new URL(cfg.apiBase);
+              if (!(isLoopbackHost(parsed.hostname) && !runningOnLocalDevOrigin())) {
+                fallbackApiBase = cfg.apiBase.replace(/\/+$/, '');
+              }
+            }
+          }
+        } catch {
+          /* local dev or config unavailable */
+        }
+        return fallbackApiBase;
+      },
+      fetch: async function(path, opts) {
+        opts = opts || {};
+        opts.headers = opts.headers || {};
+        if (fallbackPrincipal) {
+          opts.headers['X-MS-CLIENT-PRINCIPAL'] = encodePrincipal(fallbackPrincipal);
+        }
+        if (fallbackSessionToken) {
+          opts.headers['X-Auth-Session'] = fallbackSessionToken;
+        }
+        if (!fallbackApiBase) {
+          await this.discoverApiBase();
+        }
+        const url = fallbackApiBase ? fallbackApiBase + path : path;
+        const response = await fetch(url, opts);
+        if (!response.ok) {
+          const body = await response.json().catch(function() { return {}; });
+          const msg = body.error || ('API request failed: ' + response.status + ' ' + response.statusText);
+          const err = new Error(msg);
+          err.status = response.status;
+          err.body = body;
+          throw err;
+        }
+        return response;
+      },
+    };
+  }
+
+  let apiDiscoveryReady = null;
+  const apiClient = createApiClient();
+
   let currentAccount = null;   // populated by /.auth/me
   let latestBillingStatus = null;
   let latestAnalysisRun = null;
@@ -301,93 +378,8 @@
     try { sessionStorage.setItem(POST_LOGIN_DESTINATION_KEY, 'app'); } catch { /* ignore */ }
   }
 
-  function setServiceStatus(text, className) {
-    var badge = document.getElementById('status-badge');
-    if (!badge) return;
-    badge.textContent = text;
-    badge.className = className || '';
-  }
-
-  function runningOnLocalDevOrigin() {
-    return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  }
-
-  const SERVICE_STATUS_CACHE_KEY = 'canopex:service-status:v1';
-  const SERVICE_STATUS_TTL_MS = 2 * 60 * 1000;
-  const API_CONFIG_TIMEOUT_MS = 900;
-  const API_HEALTH_TIMEOUT_MS = 1200;
-
-  function readCachedServiceStatus() {
-    try {
-      const raw = localStorage.getItem(SERVICE_STATUS_CACHE_KEY);
-      if (!raw) return '';
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') return '';
-      if (parsed.status !== 'online' && parsed.status !== 'offline') return '';
-      if (!parsed.ts || Date.now() - parsed.ts > SERVICE_STATUS_TTL_MS) return '';
-      return parsed.status;
-    } catch {
-      return '';
-    }
-  }
-
-  function writeCachedServiceStatus(status) {
-    try {
-      localStorage.setItem(SERVICE_STATUS_CACHE_KEY, JSON.stringify({ status: status, ts: Date.now() }));
-    } catch {
-      /* localStorage unavailable */
-    }
-  }
-
-  async function fetchWithTimeout(url, timeoutMs) {
-    const controller = new AbortController();
-    const timer = setTimeout(function() {
-      controller.abort();
-    }, timeoutMs);
-    try {
-      return await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-
-
   async function discoverApiBase() {
-    const cachedStatus = readCachedServiceStatus();
-    if (cachedStatus === 'online') {
-      setServiceStatus('Online', 'online');
-    } else if (cachedStatus === 'offline') {
-      setServiceStatus('Unavailable', 'offline');
-    }
-
-    // Read the Container Apps FA hostname from /api-config.json (injected at deploy time).
-    // Falls back to same-origin for local dev (func start serves /api/* locally).
-    try {
-      const cfgRes = await fetchWithTimeout('/api-config.json', API_CONFIG_TIMEOUT_MS);
-      if (cfgRes.ok) {
-        const cfg = await cfgRes.json();
-        if (cfg.apiBase) {
-          _apiBase = cfg.apiBase.replace(/\/+$/, ''); // strip trailing slashes
-        }
-      }
-    } catch { /* local dev — no api-config.json, use same-origin */ }
-
-    // Probe health to confirm the API is reachable.
-    try {
-      const healthUrl = _apiBase ? _apiBase + '/api/health' : '/api/health';
-      const res = await fetchWithTimeout(healthUrl, API_HEALTH_TIMEOUT_MS);
-      if (res.ok) {
-        setServiceStatus('Online', 'online');
-        writeCachedServiceStatus('online');
-        return;
-      }
-    } catch { /* ignore */ }
-
-    if (!cachedStatus) {
-      setServiceStatus('Unavailable', 'offline');
-    }
-    writeCachedServiceStatus('offline');
+    return apiClient.discoverApiBase();
   }
 
   function login() {
@@ -402,40 +394,19 @@
   }
 
   async function apiFetch(path, opts) {
-    opts = opts || {};
-    opts.headers = opts.headers || {};
-    // Forward the SWA client principal to Container Apps FA so the
-    // require_auth decorator can identify the user on cross-origin calls.
-    if (_clientPrincipal) {
-      // UTF-8 safe base64: encode to bytes first, then btoa on Latin-1 string.
-      var jsonStr = JSON.stringify(_clientPrincipal);
-      var bytes = new TextEncoder().encode(jsonStr);
-      var binStr = Array.from(bytes, function (b) { return String.fromCharCode(b); }).join('');
-      opts.headers['X-MS-CLIENT-PRINCIPAL'] = btoa(binStr);
-    }
-    if (_sessionToken) {
-      opts.headers['X-Auth-Session'] = _sessionToken;
-    }
-    const url = _apiBase ? _apiBase + path : path;
-    const resp = await fetch(url, opts);
-    if (!resp.ok) {
-      const body = await resp.json().catch(function () { return {}; });
-      if (resp.status === 401 && authEnabled()) {
+    try {
+      return await apiClient.fetch(path, opts);
+    } catch (err) {
+      if (err && err.status === 401 && authEnabled()) {
         // Session expired — clear local auth state and prompt re-login.
         currentAccount = null;
-        _clientPrincipal = null;
-        _sessionToken = '';
+        apiClient.clearAuth();
         updateAuthUI();
         setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
         stopAnalysisPolling();
       }
-      const msg = body.error || ('API request failed: ' + resp.status + ' ' + resp.statusText);
-      const err = new Error(msg);
-      err.status = resp.status;
-      err.body = body;
       throw err;
     }
-    return resp;
   }
 
   function setAnalysisStatus(message, tone) {
@@ -1421,6 +1392,7 @@
     }
   }
 
+  function clearEvidencePanels() {
 
     var ids = [
       'app-evidence-ndvi-grid',
@@ -3660,7 +3632,7 @@
     }).then(function(payload) {
       var principal = payload && payload.clientPrincipal;
       if (principal && principal.userId) {
-        _clientPrincipal = principal; // store raw for X-MS-CLIENT-PRINCIPAL forwarding
+        apiClient.setClientPrincipal(principal);
         currentAccount = {
           userId: principal.userId,
           name: principal.userDetails || '',
@@ -3672,7 +3644,7 @@
         (apiDiscoveryReady || Promise.resolve()).then(function() {
           return apiFetch('/api/auth/session', { method: 'POST' });
         }).then(function(resp) { return resp.json(); }).then(function(data) {
-          if (data && data.token) _sessionToken = data.token;
+          if (data && data.token) apiClient.setSessionToken(data.token);
         }).catch(function() { /* session token unavailable — backend may not enforce HMAC */ });
       }
       updateAuthUI();

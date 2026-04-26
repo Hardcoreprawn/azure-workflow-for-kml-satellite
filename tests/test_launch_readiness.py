@@ -454,9 +454,17 @@ class TestDeployWorkflowSettings:
         assert "Smoke-check Container Apps Function App" in deploy_yml, (
             "deploy.yml must have a named smoke check step targeting Container Apps FA"
         )
-        assert "function_app_hostname" in deploy_yml, (
-            "deploy.yml smoke check must use function_app_hostname output"
+        assert "function_app_orch_hostname" in deploy_yml, (
+            "deploy.yml smoke check must use explicit orchestrator hostname output"
         )
+        assert (
+            '"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"'
+            in deploy_yml
+        ), "deploy.yml api-config injection must source orchestrator hostname output"
+        assert (
+            'FA_HOSTNAME="${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"'
+            in deploy_yml
+        ), "deploy.yml smoke-check step must target orchestrator hostname output"
         assert "/api/health" in deploy_yml, (
             "deploy.yml smoke check must test /api/health on the Container Apps FA"
         )
