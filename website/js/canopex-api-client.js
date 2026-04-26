@@ -10,15 +10,24 @@
     apiHealthTimeoutMs: 1200
   };
 
+  function normalizeHostname(value) {
+    if (!value || typeof value !== 'string') return '';
+    if (value[0] === '[' && value[value.length - 1] === ']') {
+      return value.slice(1, -1);
+    }
+    return value;
+  }
+
   function runningOnLocalDevOrigin() {
-    return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const hostname = normalizeHostname(window.location.hostname);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
   }
 
   function isLoopbackApiBase(value) {
     if (!value || typeof value !== 'string') return false;
     try {
       const parsed = new URL(value);
-      const host = parsed.hostname;
+      const host = normalizeHostname(parsed.hostname);
       return host === 'localhost' || host === '127.0.0.1' || host === '::1';
     } catch {
       return false;
