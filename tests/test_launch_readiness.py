@@ -505,10 +505,52 @@ class TestDeployWorkflowSettings:
             "readiness so ingestion wiring is restored"
         )
 
+    def test_event_grid_reconcile_step_uses_orchestrator_outputs(self, deploy_yml):
+        match = re.search(
+            r"- name: Reconcile Event Grid subscription(?P<body>.*?)(?:\n\s*- name:|\Z)",
+            deploy_yml,
+            re.DOTALL,
+        )
+        assert match, "deploy.yml must include the Event Grid reconcile step"
+        body = match.group("body")
+        assert "tofu output -raw function_app_orch_name" in body, (
+            "Event Grid reconcile step must read the orchestrator function app name"
+        )
+        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+            "Event Grid reconcile step must read the orchestrator hostname"
+        )
+        assert "tofu output -raw function_app_name" not in body, (
+            "Event Grid reconcile step must not read the compute app name"
+        )
+        assert "tofu output -raw function_app_default_hostname" not in body, (
+            "Event Grid reconcile step must not read the compute hostname"
+        )
+
     def test_deploy_validates_infra_gate(self, deploy_yml):
         assert "validate_dev_infra_gate.py" in deploy_yml, (
             "deploy.yml must validate the infra gate after reconciliation "
             "so clean-slate redeploy failures stop the job"
+        )
+
+    def test_infra_gate_step_uses_orchestrator_outputs(self, deploy_yml):
+        match = re.search(
+            r"- name: Validate infra gate(?P<body>.*?)(?:\n\s*- name:|\Z)",
+            deploy_yml,
+            re.DOTALL,
+        )
+        assert match, "deploy.yml must include the infra gate validation step"
+        body = match.group("body")
+        assert "tofu output -raw function_app_orch_name" in body, (
+            "infra gate validation step must read the orchestrator function app name"
+        )
+        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+            "infra gate validation step must read the orchestrator hostname"
+        )
+        assert "tofu output -raw function_app_name" not in body, (
+            "infra gate validation step must not read the compute app name"
+        )
+        assert "tofu output -raw function_app_default_hostname" not in body, (
+            "infra gate validation step must not read the compute hostname"
         )
 
 
@@ -606,6 +648,22 @@ class TestEventGridWebhookWiring:
         )
         assert "azapi_resource.function_app.output.properties.defaultHostName" not in tf, (
             "Event Grid webhook endpointUrl must not target the compute app hostname"
+        )
+
+    def test_event_grid_host_key_lookup_targets_orchestrator_app(self):
+        tf = MAIN_TF.read_text()
+        match = re.search(
+            r'resource\s+"azapi_resource_action"\s+"function_host_keys"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "main.tf must define azapi_resource_action.function_host_keys"
+        body = match.group("body")
+        assert "resource_id = azapi_resource.function_app_orch.id" in body, (
+            "Event Grid host key lookup must target the orchestrator app"
+        )
+        assert "resource_id = azapi_resource.function_app.id" not in body, (
+            "Event Grid host key lookup must not target the compute app"
         )
 
 
