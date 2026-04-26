@@ -917,6 +917,8 @@ jobs:
           SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
           SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
         run: |
+          python -m pip install --disable-pip-version-check --quiet httpx
+
           HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           API_BASE="https://${HOSTNAME}"
           echo "Running async smoke gate against ${API_BASE}"
@@ -990,6 +992,18 @@ jobs:
 
           COMPUTE_HOSTNAME="${{ steps.compute-hostname.outputs.hostname }}"
           ORCH_HOSTNAME="${{ steps.hostname.outputs.hostname }}"
+
+          if [ -z "$COMPUTE_HOSTNAME" ]; then
+            COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          fi
+          if [ -z "$ORCH_HOSTNAME" ]; then
+            ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          fi
+
+          if [ -z "$COMPUTE_HOSTNAME" ] || [ -z "$ORCH_HOSTNAME" ]; then
+            echo "❌ Rollback health verification could not resolve function app hostnames."
+            exit 1
+          fi
 
           echo "Waiting for rolled-back containers to become healthy..."
           if ! check_health "compute" "$COMPUTE_HOSTNAME"; then

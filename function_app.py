@@ -10,13 +10,19 @@ from treesight.config import (
     STORAGE_CONNECTION_STRING,
     validate_config,
 )
-from treesight.function_registration import register_function_blueprints
 from treesight.log import configure_logging
 
 if APPINSIGHTS_CONNECTION_STRING:
     configure_logging()
 
 logger = logging.getLogger(__name__)
+
+
+def _register_blueprints(app: func.FunctionApp) -> None:
+    from function_registration import register_function_blueprints
+
+    register_function_blueprints(app, include_monitoring_scheduler=True)
+
 
 # Fail-fast config validation (§8.6)
 validate_config()
@@ -49,4 +55,4 @@ elif STORAGE_ACCOUNT_NAME:
         )
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-register_function_blueprints(app, include_monitoring_scheduler=True)
+_register_blueprints(app)

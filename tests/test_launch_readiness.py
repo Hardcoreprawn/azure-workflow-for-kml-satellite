@@ -697,9 +697,22 @@ class TestEventGridWebhookWiring:
 
     def test_event_grid_webhook_includes_code_query_param(self):
         tf = MAIN_TF.read_text()
-        assert "&code=${local.eventgrid_key}" in tf or (
-            "code=%s" in tf and "local.eventgrid_key" in tf
-        ), "Event Grid webhook endpointUrl must include the system key query param"
+        match = re.search(
+            r'resource\s+"azapi_resource"\s+"event_grid_subscription"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "main.tf must define azapi_resource.event_grid_subscription"
+        body = match.group("body")
+        endpoint_match = re.search(r'endpointUrl\s*=\s*"(?P<url>[^"]+)"', body)
+        assert endpoint_match, "event_grid_subscription must define destination endpointUrl"
+        endpoint_url = endpoint_match.group("url")
+        assert "functionName=blob_trigger" in endpoint_url, (
+            "Event Grid webhook endpointUrl must target the blob_trigger function"
+        )
+        assert "code=${urlencode(local.eventgrid_key)}" in endpoint_url, (
+            "Event Grid webhook endpointUrl must include URL-encoded local.eventgrid_key"
+        )
 
     def test_event_grid_webhook_targets_orchestrator_host(self):
         tf = MAIN_TF.read_text()
@@ -735,20 +748,44 @@ class TestEventGridWebhookWiring:
 class TestPublicApiIngressDocsContract:
     """Public API docs must present orchestrator as the only ingress."""
 
+    @staticmethod
+    def _documented_api_hosts(text: str) -> list[str]:
+        urls = re.findall(r"https://[A-Za-z0-9{}.-]+", text)
+        return [
+            url
+            for url in urls
+            if any(
+                token in url
+                for token in (
+                    "azurecontainerapps.io",
+                    "azurewebsites.net",
+                    "{productionHost}",
+                    "{developmentHost}",
+                )
+            )
+        ]
+
+    @classmethod
+    def _assert_uses_orchestrator_ingress_only(cls, text: str, *, source: str) -> None:
+        hosts = cls._documented_api_hosts(text)
+        assert hosts, f"{source} must document at least one API host"
+        assert not any("azurestaticapps.net" in host for host in hosts), (
+            f"{source} must not use Static Web App hostnames as API ingress"
+        )
+        assert not any("func-kmlsat-dev.jollysea" in host for host in hosts), (
+            f"{source} must not document the compute ingress hostname"
+        )
+        assert any("-orch" in host or "{productionHost}" in host for host in hosts), (
+            f"{source} must use orchestrator ingress (or production host variable)"
+        )
+
     def test_api_interface_reference_uses_orchestrator_base_url(self):
         text = API_INTERFACE_REFERENCE.read_text()
-        assert "func-kmlsat-dev-orch." in text, (
-            "API interface reference must use the orchestrator hostname as base URL"
-        )
-        assert "func-kmlsat-dev.jollysea" not in text, (
-            "API interface reference must not show the compute hostname as public base URL"
-        )
+        self._assert_uses_orchestrator_ingress_only(text, source="API interface reference")
 
     def test_openapi_production_server_uses_orchestrator_ingress(self):
         text = OPENAPI_YAML.read_text()
-        assert "func-kmlsat-dev-orch." in text, (
-            "OpenAPI production server must point to orchestrator ingress"
-        )
+        self._assert_uses_orchestrator_ingress_only(text, source="OpenAPI servers")
         assert "azurestaticapps.net/api" not in text, (
             "OpenAPI production server must not point to the static web app hostname"
         )

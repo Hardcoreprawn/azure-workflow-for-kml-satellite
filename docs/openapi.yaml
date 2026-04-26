@@ -40,8 +40,18 @@ info:
     identifier: MIT
 
 servers:
-  - url: https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api
+  - url: https://{productionHost}/api
     description: Production (Orchestrator Function App ingress)
+    variables:
+      productionHost:
+        default: api.canopex.com
+        description: Production API ingress hostname
+  - url: https://{developmentHost}/api
+    description: Development (Orchestrator Function App ingress)
+    variables:
+      developmentHost:
+        default: func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io
+        description: Development API ingress hostname
   - url: http://localhost:7071/api
     description: Local development
 

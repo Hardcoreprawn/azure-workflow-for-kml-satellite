@@ -91,7 +91,7 @@ def test_function_app_orch_exists():
 def test_function_app_orch_uses_shared_registration():
     """function_app_orch.py must use shared registration helper."""
     source = (REPO_ROOT / "function_app_orch.py").read_text()
-    assert "from treesight.function_registration import register_function_blueprints" in source
+    assert "from function_registration import register_function_blueprints" in source
 
 
 def test_entrypoints_use_shared_registration_module():
@@ -99,10 +99,8 @@ def test_entrypoints_use_shared_registration_module():
     compute_source = (REPO_ROOT / "function_app.py").read_text()
     orch_source = (REPO_ROOT / "function_app_orch.py").read_text()
 
-    assert (
-        "from treesight.function_registration import register_function_blueprints" in compute_source
-    )
-    assert "from treesight.function_registration import register_function_blueprints" in orch_source
+    assert "from function_registration import register_function_blueprints" in compute_source
+    assert "from function_registration import register_function_blueprints" in orch_source
     assert "register_function_blueprints(app, include_monitoring_scheduler=True)" in compute_source
     assert "register_function_blueprints(app, include_monitoring_scheduler=False)" in orch_source
 
