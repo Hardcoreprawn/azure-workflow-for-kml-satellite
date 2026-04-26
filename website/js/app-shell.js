@@ -51,6 +51,7 @@
   var billingModule = window.CanopexBilling || {};
   var evidencePanelsModule = window.CanopexEvidencePanels || {};
   var preflightModule = window.CanopexAnalysisPreflight || {};
+  var progressModule = window.CanopexAnalysisProgress || {};
   var _apiClient = window.CanopexApiClient ? window.CanopexApiClient.createClient() : null;
 
   const POST_LOGIN_DESTINATION_KEY = 'canopex-post-login';
@@ -2182,191 +2183,30 @@
     updateContentSummary(data);
   }
 
+  /* ---- Analysis progress UI — delegated to app-analysis-progress.js ---- */
+
   function resetAnalysisProgress() {
-    var progress = document.getElementById('app-analysis-progress');
-    if (!progress) return;
-    progress.hidden = true;
-    progress.querySelectorAll('.pipeline-step').forEach(function(el) {
-      el.className = 'pipeline-step';
-      var icon = el.querySelector('.step-icon');
-      if (icon) icon.textContent = '○';
-    });
-    resetEnrichmentSubSteps();
+    if (typeof progressModule.reset === 'function') return progressModule.reset();
   }
 
   function setAnalysisProgressVisible(visible) {
-    var progress = document.getElementById('app-analysis-progress');
-    if (!progress) return;
-    progress.hidden = !visible;
+    if (typeof progressModule.setVisible === 'function') return progressModule.setVisible(visible);
   }
 
   function setAnalysisStep(phase, state) {
-    var steps = document.querySelectorAll('#app-analysis-progress .pipeline-step');
-    steps.forEach(function(el) {
-      var stepPhase = el.getAttribute('data-phase');
-      var icon = el.querySelector('.step-icon');
-      el.className = 'pipeline-step';
-
-      if (stepPhase === phase) {
-        if (state === 'failed') el.classList.add('failed');
-        else if (state === 'done') el.classList.add('done');
-        else el.classList.add('active');
-        if (!icon) return;
-        if (state === 'done') {
-          icon.textContent = '✓';
-        } else if (state === 'failed') {
-          icon.textContent = '✗';
-        } else {
-          icon.replaceChildren();
-          var spinner = document.createElement('span');
-          spinner.className = 'spinner';
-          icon.appendChild(spinner);
-        }
-        return;
-      }
-
-      if (!icon) return;
-      var stepIndex = ANALYSIS_PHASES.indexOf(stepPhase);
-      var currentIndex = ANALYSIS_PHASES.indexOf(phase);
-      if (stepIndex > -1 && currentIndex > -1 && stepIndex < currentIndex) {
-        el.classList.add('done');
-        icon.textContent = '✓';
-      } else {
-        icon.textContent = '○';
-      }
-    });
+    if (typeof progressModule.setStep === 'function') return progressModule.setStep(phase, state);
   }
 
   function mapAnalysisPhase(customStatus, runtimeStatus) {
-    if (typeof appRuns.mapPhase === 'function') {
-      return appRuns.mapPhase(customStatus, runtimeStatus, ANALYSIS_PHASES);
-    }
+    if (typeof progressModule.mapPhase === 'function') return progressModule.mapPhase(customStatus, runtimeStatus);
+    if (typeof appRuns.mapPhase === 'function') return appRuns.mapPhase(customStatus, runtimeStatus, ANALYSIS_PHASES);
     if (runtimeStatus === 'Completed') return 'complete';
-    if (customStatus && customStatus.phase && ANALYSIS_PHASES.indexOf(customStatus.phase) > -1) {
-      return customStatus.phase;
-    }
+    if (customStatus && customStatus.phase && ANALYSIS_PHASES.indexOf(customStatus.phase) > -1) return customStatus.phase;
     return 'submit';
   }
 
-  const ENRICHMENT_STEP_LABELS = {
-    data_sources_and_imagery: 'Fetching weather, flood/fire context, and registering satellite mosaics in parallel.',
-    per_aoi: 'Running per-parcel enrichment across AOIs in parallel.',
-    finalizing: 'Merging results and storing the analysis manifest.'
-  };
-
-  // Sub-step order for the enrichment phase progress UI.
-  // 'data_sources_and_imagery' maps to both data_sources_and_imagery + imagery
-  // sub-bullets since the orchestrator runs them in parallel under one status.
-  const ENRICHMENT_SUB_ORDER = ['data_sources_and_imagery', 'imagery', 'per_aoi', 'finalizing'];
-
-  function updateEnrichmentSubSteps(enrichmentStep) {
-    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
-    if (!container) return;
-    container.hidden = false;
-    const currentIdx = ENRICHMENT_SUB_ORDER.indexOf(enrichmentStep);
-    const subs = container.querySelectorAll('.pipeline-sub-step');
-    subs.forEach(function(el) {
-      const sub = el.getAttribute('data-sub');
-      const icon = el.querySelector('.sub-icon');
-      el.className = 'pipeline-sub-step';
-      if (!icon) return;
-      const subIdx = ENRICHMENT_SUB_ORDER.indexOf(sub);
-      if (subIdx < 0) return;
-
-      // data_sources_and_imagery and imagery run in parallel — treat
-      // them as the same phase for status purposes.
-      const isParallelPair = (sub === 'imagery' && enrichmentStep === 'data_sources_and_imagery')
-        || (sub === 'data_sources_and_imagery' && enrichmentStep === 'imagery');
-
-      if (sub === enrichmentStep || isParallelPair) {
-        el.classList.add('active');
-        icon.replaceChildren();
-        const spinner = document.createElement('span');
-        spinner.className = 'spinner';
-        icon.appendChild(spinner);
-      } else if (subIdx < currentIdx) {
-        el.classList.add('done');
-        icon.textContent = '✓';
-      } else {
-        icon.textContent = '○';
-      }
-    });
-  }
-
-  function resetEnrichmentSubSteps() {
-    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
-    if (!container) return;
-    container.hidden = true;
-    const subs = container.querySelectorAll('.pipeline-sub-step');
-    subs.forEach(function(el) {
-      el.className = 'pipeline-sub-step';
-      const icon = el.querySelector('.sub-icon');
-      if (icon) icon.textContent = '○';
-    });
-  }
-
-  function completeEnrichmentSubSteps() {
-    const container = document.querySelector('#app-analysis-progress .pipeline-step[data-phase="enrichment"] .pipeline-sub-steps');
-    if (!container) return;
-    container.hidden = false;
-    const subs = container.querySelectorAll('.pipeline-sub-step');
-    subs.forEach(function(el) {
-      el.className = 'pipeline-sub-step done';
-      const icon = el.querySelector('.sub-icon');
-      if (icon) icon.textContent = '✓';
-    });
-  }
-
   function updateAnalysisStory(phase, runtimeStatus, data) {
-    var runtime = runtimeStatus || 'Pending';
-    var phaseDetails = activeProfile.phaseDetails || ANALYSIS_PHASE_DETAILS;
-    var detail = phaseDetails[phase] || 'Working through the analysis pipeline.';
-    var timing = summarizeRunTiming(data);
-
-    if (runtime !== 'Completed' && phase === 'enrichment') {
-      var cs = data && data.customStatus;
-      var step = cs && cs.step;
-      const stepLabel = step && ENRICHMENT_STEP_LABELS[step];
-      if (stepLabel) {
-        detail = stepLabel;
-        if (step === 'per_aoi' && cs.aois) {
-          detail += ' (' + cs.aois + ' AOIs)';
-        }
-      } else {
-        detail += ' Enrichment batches weather, flood/fire checks, mosaic registration, NDVI, and change detection in parallel.';
-      }
-      if (timing.sinceUpdate) {
-        detail += ' Last backend update ' + timing.sinceUpdate + ' ago.';
-      }
-      // Drive the nested sub-step progress indicators.
-      if (step) updateEnrichmentSubSteps(step);
-    } else if (phase !== 'enrichment') {
-      // Past enrichment (complete) — mark all sub-steps done.
-      // Before enrichment — keep sub-steps hidden.
-      const enrichIdx = ANALYSIS_PHASES.indexOf('enrichment');
-      const phaseIdx = ANALYSIS_PHASES.indexOf(phase);
-      if (phaseIdx > enrichIdx) {
-        completeEnrichmentSubSteps();
-      } else {
-        resetEnrichmentSubSteps();
-      }
-      if (runtime !== 'Completed' && timing.elapsed) {
-        detail += ' Elapsed ' + timing.elapsed + '.';
-      }
-    } else {
-      // Completed while on enrichment phase — mark all sub-steps done.
-      completeEnrichmentSubSteps();
-    }
-
-    if (runtime === 'Completed') {
-      setAnalysisStatus(detail, 'success');
-      return;
-    }
-    if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
-      setAnalysisStatus('Analysis stopped during ' + phase + '. ' + detail, 'error');
-      return;
-    }
-    setAnalysisStatus(detail, 'info');
+    if (typeof progressModule.updateStory === 'function') return progressModule.updateStory(phase, runtimeStatus, data);
   }
 
   /* ---- Analysis preflight + file input — delegated to app-analysis-preflight.js ---- */
@@ -2883,6 +2723,16 @@
       getLatestBillingStatus: function () { return latestBillingStatus; },
       getWorkspaceRoleConfig: function () { return currentRoleConfig(); },
       onPreflightUpdate: function (preflight) { analysisDraftSummary = preflight; },
+    });
+  }
+
+  if (typeof progressModule.init === 'function') {
+    progressModule.init({
+      setAnalysisStatus: setAnalysisStatus,
+      getActiveProfile: function () { return activeProfile; },
+      getAnalysisPhases: function () { return ANALYSIS_PHASES; },
+      getAnalysisPhaseDetails: function () { return ANALYSIS_PHASE_DETAILS; },
+      summarizeRunTiming: summarizeRunTiming,
     });
   }
 
