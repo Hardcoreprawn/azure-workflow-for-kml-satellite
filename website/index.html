@@ -18,6 +18,8 @@
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/style.css">
 <meta name="ai-connection-string" content="">
+<!-- CIAM config: replaced by CI deploy step (see .github/workflows/deploy.yml) -->
+<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":""}</script>
 <script src="/js/analytics.js" defer></script>
 </head>
 <body>
@@ -284,6 +286,7 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
+<script src="https://unpkg.com/@azure/msal-browser@3/dist/msal-browser.min.js" defer></script>
 <script src="/js/canopex-api-client.js"></script>
 <script src="/js/landing.js"></script>
 </body>

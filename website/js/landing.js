@@ -16,34 +16,87 @@
 
   function authEnabled() { return true; }
 
+  // Returns the MSAL app instance, or null if CIAM is not configured.
+  function getMsalApp() {
+    if (!window.msal) return null;
+    const el = document.getElementById('canopex-ciam-config');
+    if (!el) return null;
+    let cfg;
+    try { cfg = JSON.parse(el.textContent || '{}'); } catch (_) { return null; }
+    if (!cfg.clientId || !cfg.authority) return null;
+    if (!getMsalApp._instance) {
+      try {
+        getMsalApp._instance = new window.msal.PublicClientApplication({
+          auth: {
+            clientId: cfg.clientId,
+            authority: cfg.authority,
+            redirectUri: window.location.origin + '/app/',
+            postLogoutRedirectUri: window.location.origin + '/',
+            knownAuthorities: [cfg.authority.replace(/https?:\/\//, '').split('/')[0]],
+          },
+          cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false },
+        });
+      } catch (err) {
+        console.warn('[canopex] MSAL init failed:', err);
+        return null;
+      }
+    }
+    return getMsalApp._instance;
+  }
+
   async function initAuth() {
+    const app = getMsalApp();
+    if (!app) {
+      // CIAM not configured (local dev) — show unauthenticated UI.
+      updateAuthUI();
+      updateSampleReportGate();
+      return;
+    }
     try {
-      const res = await fetch('/.auth/me');
-      if (!res.ok) { updateAuthUI(); updateSampleReportGate(); return; }
-      const data = await res.json();
-      const principal = data && data.clientPrincipal;
-      if (principal && principal.userId) {
-        apiClient.setClientPrincipal(principal);
+      await app.initialize();
+      await app.handleRedirectPromise();
+      const accounts = app.getAllAccounts();
+      if (accounts && accounts.length > 0) {
+        const account = accounts[0];
         currentAccount = {
-          userId: principal.userId,
-          name: principal.userDetails || principal.userId,
-          identityProvider: principal.identityProvider,
-          userRoles: principal.userRoles || []
+          userId: account.localAccountId || account.homeAccountId || '',
+          name: account.name || account.username || '',
+          identityProvider: 'ciam',
+          userRoles: [],
         };
+        apiClient.setGetToken(async function () {
+          const req = { scopes: ['openid', 'profile'], account: account };
+          try {
+            const result = await app.acquireTokenSilent(req);
+            return result.idToken || result.accessToken || '';
+          } catch (_) { return ''; }
+        });
       }
     } catch (err) {
-      console.warn('[canopex] SWA auth check failed:', err);
+      console.warn('[canopex] MSAL auth check failed:', err);
     }
     updateAuthUI();
     updateSampleReportGate();
   }
 
   function login() {
-    window.location.href = '/.auth/login/aad';
+    const app = getMsalApp();
+    if (!app) return;
+    app.loginRedirect({ scopes: ['openid', 'profile'] }).catch(function (err) {
+      console.error('[canopex] loginRedirect failed:', err);
+    });
   }
 
   function logout() {
-    window.location.href = '/.auth/logout';
+    const app = getMsalApp();
+    if (!app) return;
+    const accounts = app.getAllAccounts();
+    app.logoutRedirect({
+      account: accounts && accounts[0] || null,
+      postLogoutRedirectUri: window.location.origin + '/',
+    }).catch(function (err) {
+      console.error('[canopex] logoutRedirect failed:', err);
+    });
   }
 
   function updateAuthUI() {

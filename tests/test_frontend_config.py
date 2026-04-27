@@ -26,7 +26,7 @@ APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
 APP_BILLING_JS = WEBSITE / "js" / "app-billing.js"
 APP_EUDR_JS = WEBSITE / "js" / "app-eudr.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
-APP_AUTH_JS = WEBSITE / "js" / "app-auth.js"
+APP_MSAL_JS = WEBSITE / "js" / "app-msal.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
 
@@ -78,7 +78,7 @@ def api_client_js():
 
 @pytest.fixture()
 def app_auth_js():
-    return APP_AUTH_JS.read_text()
+    return APP_MSAL_JS.read_text()
 
 
 @pytest.fixture()
@@ -118,16 +118,28 @@ class TestSwaAuth:
             "api-config.json must allow anonymous access"
         )
 
-    def test_no_msal_script_in_html(self, index_html):
-        """MSAL.js must not be loaded — SWA built-in auth replaces it."""
-        assert "msal-browser" not in index_html, (
-            "index.html still loads msal-browser.min.js — remove it"
+    def test_landing_loads_msal_browser(self, index_html):
+        """Landing page must load the MSAL browser SDK for CIAM auth (#710)."""
+        assert "msal-browser.min.js" in index_html, (
+            "index.html (landing) must load msal-browser.min.js for CIAM auth"
         )
 
-    def test_no_msal_cdn_references(self, index_html):
-        """No external MSAL CDN references should remain."""
-        for cdn in ["alcdn.msauth.net", "cdn.jsdelivr.net/@azure/msal-browser"]:
-            assert cdn not in index_html, f"Dead MSAL CDN reference found: {cdn}"
+    def test_app_html_loads_msal_browser(self, app_index_html):
+        """App entrypoint must load the MSAL browser SDK before app-msal.js."""
+        assert "msal-browser.min.js" in app_index_html, (
+            "/app/index.html must load msal-browser.min.js for CIAM auth"
+        )
+        msal_pos = app_index_html.index("msal-browser.min.js")
+        msal_module_pos = app_index_html.index("app-msal.js")
+        assert msal_pos < msal_module_pos, (
+            "msal-browser CDN script must appear before app-msal.js in /app/index.html"
+        )
+
+    def test_no_dead_msal_cdn_references(self, index_html):
+        """No deprecated MSAL CDN references on the landing page."""
+        assert "alcdn.msauth.net" not in index_html, (
+            "Dead MSAL CDN reference found: alcdn.msauth.net"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -145,14 +157,14 @@ class TestCsp:
             "frame-src should be 'none' — MSAL iframes no longer needed"
         )
 
-    def test_connect_src_no_msal_domains(self, swa_config):
-        """CSP connect-src must not include MSAL-specific domains."""
+    def test_connect_src_allows_ciam_domain(self, swa_config):
+        """CSP connect-src must include the CIAM token endpoint domain for MSAL."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
         tokens = connect_match.group(1).split()
-        assert not any(_csp_token_matches_host(src, "ciamlogin.com") for src in tokens), (
-            "connect-src still references ciamlogin.com — remove (SWA handles auth)"
+        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in tokens), (
+            "connect-src must include treesightauth.ciamlogin.com for MSAL token calls"
         )
 
     def test_script_src_no_dead_cdn(self, swa_config):
@@ -172,23 +184,23 @@ class TestCsp:
 
 
 class TestAuthConfig:
-    def test_login_uses_swa_route(self, landing_js):
-        """login() must redirect to /.auth/login/aad."""
-        assert "/.auth/login/aad" in landing_js, (
-            "login() must use SWA built-in auth route /.auth/login/aad"
+    def test_landing_no_swa_auth_routes(self, landing_js):
+        """landing.js must not reference SWA auth routes — auth is MSAL/CIAM now."""
+        assert "/.auth/login/aad" not in landing_js, (
+            "landing.js must not use SWA /.auth/login/aad — auth is CIAM/MSAL"
         )
 
-    def test_logout_uses_swa_route(self, landing_js):
-        """logout() must redirect to /.auth/logout."""
-        assert "/.auth/logout" in landing_js, (
-            "logout() must use SWA built-in auth route /.auth/logout"
+    def test_msal_module_uses_public_client_app(self):
+        """app-msal.js must use MSAL PublicClientApplication for CIAM auth."""
+        js = APP_MSAL_JS.read_text()
+        assert "PublicClientApplication" in js, (
+            "app-msal.js must create msal.PublicClientApplication for CIAM auth"
         )
 
-    def test_no_msal_instance(self, landing_js):
-        """landing.js must not create an MSAL PublicClientApplication."""
-        assert "PublicClientApplication" not in landing_js, (
-            "landing.js still creates MSAL instance — must use SWA built-in auth"
-        )
+    def test_msal_module_uses_login_redirect(self):
+        """app-msal.js must use loginRedirect (not loginPopup) for consistent UX."""
+        js = APP_MSAL_JS.read_text()
+        assert "loginRedirect" in js, "app-msal.js must call loginRedirect for the MSAL login flow"
 
     def test_api_client_uses_api_config_json(self, api_client_js):
         """Shared API client must discover the Container Apps FA via /api-config.json."""
@@ -196,28 +208,31 @@ class TestAuthConfig:
             "canopex-api-client.js must read /api-config.json for BYOF hostname discovery"
         )
 
-    def test_api_client_forwards_client_principal(self, api_client_js):
-        """Shared API client must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
-        assert "X-MS-CLIENT-PRINCIPAL" in api_client_js, (
-            "canopex-api-client.js must send X-MS-CLIENT-PRINCIPAL header"
+    def test_api_client_sends_bearer_token(self, api_client_js):
+        """Shared API client must send Authorization: Bearer token (CIAM bearer flow)."""
+        assert "Authorization" in api_client_js, (
+            "canopex-api-client.js must set Authorization header for CIAM bearer flow"
+        )
+        assert "Bearer" in api_client_js, (
+            "canopex-api-client.js must use Bearer scheme in Authorization header"
         )
 
-    def test_api_client_supports_session_header(self, api_client_js):
-        """Shared API client must support forwarding backend session token."""
-        assert "X-Auth-Session" in api_client_js, (
-            "canopex-api-client.js must forward X-Auth-Session when available"
+    def test_api_client_no_legacy_principal_header(self, api_client_js):
+        """Shared API client must not send X-MS-CLIENT-PRINCIPAL — removed in #710."""
+        assert "X-MS-CLIENT-PRINCIPAL" not in api_client_js, (
+            "canopex-api-client.js must not send X-MS-CLIENT-PRINCIPAL (removed in #710)"
         )
 
-    def test_app_shell_forwards_client_principal(self, api_client_js):
-        """canopex-api-client.js must forward X-MS-CLIENT-PRINCIPAL for BYOF auth."""
-        assert "X-MS-CLIENT-PRINCIPAL" in api_client_js, (
-            "canopex-api-client.js apiFetch must send X-MS-CLIENT-PRINCIPAL header"
+    def test_api_client_no_legacy_session_header(self, api_client_js):
+        """Shared API client must not send X-Auth-Session — removed in #710."""
+        assert "X-Auth-Session" not in api_client_js, (
+            "canopex-api-client.js must not send X-Auth-Session (removed in #710)"
         )
 
-    def test_app_shell_uses_utf8_safe_base64(self, api_client_js):
-        """canopex-api-client.js must use TextEncoder for UTF-8 safe base64 encoding."""
-        assert "TextEncoder" in api_client_js, (
-            "canopex-api-client.js must use TextEncoder for UTF-8 safe base64 of client principal"
+    def test_api_client_accepts_get_token_injection(self, api_client_js):
+        """Shared API client must expose setGetToken for dependency injection."""
+        assert "setGetToken" in api_client_js, (
+            "canopex-api-client.js must expose setGetToken for MSAL token injection"
         )
 
     def test_app_shell_uses_shared_api_client(self, app_shell_js):

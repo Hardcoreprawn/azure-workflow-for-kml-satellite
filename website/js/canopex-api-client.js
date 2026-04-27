@@ -91,31 +91,19 @@
     }
   }
 
-  function encodePrincipal(principal) {
-    if (!principal) return '';
-    const jsonStr = JSON.stringify(principal);
-    const bytes = new TextEncoder().encode(jsonStr);
-    const binStr = Array.from(bytes, function(b) { return String.fromCharCode(b); }).join('');
-    return btoa(binStr);
-  }
-
   function createClient(options) {
     const config = Object.assign({}, DEFAULTS, options || {});
     let apiBase = '';
-    let clientPrincipal = null;
-    let sessionToken = '';
-
-    function setClientPrincipal(principal) {
-      clientPrincipal = principal || null;
-    }
-
-    function setSessionToken(token) {
-      sessionToken = token || '';
-    }
+    // getToken is injected by app-shell.js after the MSAL module wires in.
+    // It returns a Promise<string> (the CIAM id/access token).
+    let _getToken = null;
 
     function clearAuth() {
-      clientPrincipal = null;
-      sessionToken = '';
+      _getToken = null;
+    }
+
+    function setGetToken(fn) {
+      _getToken = (typeof fn === 'function') ? fn : null;
     }
 
     function getApiBase() {
@@ -160,12 +148,17 @@
       const requestOpts = Object.assign({}, opts || {});
       requestOpts.headers = Object.assign({}, requestOpts.headers || {});
 
-      const principalHeader = encodePrincipal(clientPrincipal);
-      if (principalHeader) {
-        requestOpts.headers['X-MS-CLIENT-PRINCIPAL'] = principalHeader;
-      }
-      if (sessionToken) {
-        requestOpts.headers['X-Auth-Session'] = sessionToken;
+      if (_getToken) {
+        try {
+          const token = await _getToken();
+          if (token) {
+            requestOpts.headers['Authorization'] = 'Bearer ' + token;
+          }
+        } catch (tokenErr) {
+          // Log but proceed — the backend will reject with 401 and the auth
+          // error handler will redirect to login.
+          console.warn('[CanopexApiClient] Failed to acquire token:', tokenErr);
+        }
       }
 
       const url = apiBase ? apiBase + path : path;
@@ -184,8 +177,7 @@
     return {
       discoverApiBase: discoverApiBase,
       fetch: apiFetch,
-      setClientPrincipal: setClientPrincipal,
-      setSessionToken: setSessionToken,
+      setGetToken: setGetToken,
       clearAuth: clearAuth,
       getApiBase: getApiBase,
     };
