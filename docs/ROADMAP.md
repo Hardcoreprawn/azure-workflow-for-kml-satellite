@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 
 ---
 
@@ -96,6 +96,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #741 | hardening: enforce function app identity contract in deploy pipeline — fail-fast identity drift check, azapi lifecycle comment overhaul, runbook invariants |
 | #711 | chore: defer full #402 gating scope for single-env operation and make deploy image Trivy scan blocking (refs #402) |
 | #707 | fix: Stage 2E.2 reduce OpenTofu/CLI drift — deploy-time contract verification for Function App settings/images + ownership boundary docs (closes #405) |
 | #706 | chore: CI/security release-safety hardening — action pin upgrades (Trivy, CodeQL v4, Node24-compatible actions) + deploy readiness gate diagnostics/timeout hardening (closes #697, #698, #550, #551) |
