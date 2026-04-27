@@ -654,6 +654,33 @@ jobs:
             echo "✅ Container image contract verified for $app_name"
           }
 
+          verify_identity_contract() {
+            local app_name="$1"
+            local identity_json
+            local identity_type
+            local principal_id
+
+            identity_json=$(az functionapp show \
+              --name "$app_name" \
+              --resource-group "$FUNC_RG" \
+              --query 'identity' -o json)
+
+            identity_type=$(echo "$identity_json" | jq -r '.type // ""')
+            principal_id=$(echo "$identity_json" | jq -r '.principalId // ""')
+
+            if [ "$identity_type" != "SystemAssigned" ]; then
+              echo "❌ Managed identity type drift for $app_name: expected=SystemAssigned actual=${identity_type:-<missing>}"
+              exit 1
+            fi
+
+            if [ -z "$principal_id" ] || [ "$principal_id" = "null" ]; then
+              echo "❌ Managed identity principalId missing for $app_name"
+              exit 1
+            fi
+
+            echo "✅ Managed identity contract verified for $app_name"
+          }
+
           ORCH_SETTINGS=$(jq -n \
             --argjson base "$DESIRED_SETTINGS" \
             '$base + {"PIPELINE_ROLE":"orchestrator"}')
@@ -663,6 +690,11 @@ jobs:
 
           verify_container_image "$FUNC_NAME" "${{ needs.build-image.outputs.image_uri }}"
           verify_container_image "$ORCH_NAME" "${{ needs.build-image.outputs.orch_image_uri }}"
+
+          # Fail fast on identity drift: this wiring is load-bearing for Key Vault refs,
+          # storage RBAC, and durable pipeline access.
+          verify_identity_contract "$FUNC_NAME"
+          verify_identity_contract "$ORCH_NAME"
 
       - name: Verify browser CORS contract
         id: verify-browser-cors

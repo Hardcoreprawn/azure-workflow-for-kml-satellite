@@ -742,10 +742,14 @@ resource "azapi_resource" "function_app" {
     type = "SystemAssigned"
   }
 
-  # Workaround: azapi v2 "Missing Resource Identity After Update" bug.
-  # The ARM API omits identity from update responses, crashing the provider.
-  # Body changes (image, app settings, platform CORS) are handled by az CLI
-  # in the deploy pipeline to avoid triggering updates that hit this bug.
+  # ARM API omits identity from update responses (upstream behaviour, not an azapi bug).
+  # azapi crash on identity absence was fixed in v2.9.0 (azapi#1023), but the underlying
+  # ARM API behaviour is unchanged.  We also use azapi instead of azurerm_linux_function_app
+  # because azurerm clears the managed identity on every PUT update.
+  #
+  # ignore_changes = [body] is intentional architecture: container image, app settings,
+  # CORS, and scaling config are all managed by az CLI steps in the deploy pipeline.
+  # Letting tofu own the body would override those CLI-applied values on every apply.
   lifecycle {
     ignore_changes = [identity, body]
   }
@@ -888,6 +892,9 @@ resource "azapi_resource" "function_app_orch" {
     type = "SystemAssigned"
   }
 
+  # Keep lifecycle policy aligned with the compute Function App above.
+  # This app is configured via deploy-pipeline CLI calls for image/app settings/CORS/scale,
+  # so tofu must not own body updates here.
   lifecycle {
     ignore_changes = [identity, body]
   }

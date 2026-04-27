@@ -29,6 +29,8 @@ Issue: #18
 7. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion).
 8. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
 9. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+10. Treat Function App managed identity as a deploy contract (both apps must remain `SystemAssigned` with non-empty `principalId`); deploy fails fast if identity drifts.
+11. Treat CLI-owned Function App body wiring as intentional (`image`, app settings, platform CORS, scale): `tofu` does not reconcile these fields because they are set and then contract-verified in deploy CI.
 
 workflow_dispatch reproducibility controls for the async smoke gate:
 
