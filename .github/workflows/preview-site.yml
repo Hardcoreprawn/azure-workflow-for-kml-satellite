@@ -7,6 +7,9 @@
 #
 # Required GitHub Secrets (from the 'dev' environment):
 #   SWA_DEPLOYMENT_TOKEN — Static Web App deployment token
+#   CIAM_CLIENT_ID       — CIAM app registration client ID
+#   CIAM_AUTHORITY       — CIAM authority URL (e.g. https://<tenant>.ciamlogin.com/)
+#   CIAM_TENANT_ID       — CIAM tenant ID
 # ─────────────────────────────────────────────────────────────
 name: Preview Site
 
@@ -28,6 +31,20 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Inject CIAM config
+        env:
+          CIAM_CLIENT_ID: ${{ secrets.CIAM_CLIENT_ID }}
+          CIAM_AUTHORITY: ${{ secrets.CIAM_AUTHORITY }}
+          CIAM_TENANT_ID: ${{ secrets.CIAM_TENANT_ID }}
+        run: |
+          if [ -n "$CIAM_CLIENT_ID" ] && [ -n "$CIAM_AUTHORITY" ]; then
+            CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\"}"
+            find website -name '*.html' -exec sed -i \
+              's|{"clientId":"","authority":"","tenantId":""}|'"${CIAM_JSON}"'|' {} +
+          else
+            echo "::warning::CIAM secrets are not fully set; preview sign-in will remain disabled."
+          fi
 
       - name: Deploy to SWA staging environment
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
