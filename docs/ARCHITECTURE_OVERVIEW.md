@@ -61,7 +61,7 @@ Both Function Apps run on Azure Container Apps in `uksouth`; SWA is in `westeuro
 ### API Routing — BYOF (Bring Your Own Function App)
 
 > **Architecture:** All `/api/*` calls go cross-origin from SWA to the
-> orchestrator Function App. SWA serves only static files and auth.
+> orchestrator Function App. SWA serves only static files. Auth is CIAM-owned.
 
 The orchestrator Function App is the **sole public API surface**. Browser API
 calls go cross-origin to the orchestrator hostname discovered from
@@ -69,23 +69,25 @@ calls go cross-origin to the orchestrator hostname discovered from
 functions, and compute is not a browser ingress.
 
 ```text
-Browser ─── /.auth/* ──→ SWA (built-in Azure AD auth)
+Browser ─── MSAL.js ──→ CIAM (Entra External ID, treesightauth.ciamlogin.com)
+        │                └── issues CIAM JWT
         │
-  └── /api/* ──→ Orchestrator FA (public ingress)
-        │
-        ├── sync: auth/session, billing, catalogue, contact, health, export
-        ├── async start/status: upload + durable orchestration API
-        ├── reads/writes: Blob + Cosmos via managed identity
-        └── activity fan-out ──→ Compute FA (internal worker)
+        └── /api/* (Authorization: Bearer <token>) ──→ Orchestrator FA (public ingress)
+              │
+              ├── sync: auth/session, billing, catalogue, contact, health, export
+              ├── async start/status: upload + durable orchestration API
+              ├── reads/writes: Blob + Cosmos via managed identity
+              └── activity fan-out ──→ Compute FA (internal worker)
+
+SWA: static files only (no auth role in request trust chain)
 ```
 
 This means:
 
 - `/api/*` routes are served by orchestrator host only
-- SWA handles only static hosting and Azure AD auth (login/logout/me)
-- Auth forwarding: frontend reads `clientPrincipal` from `/.auth/me`, base64-encodes it, and sends it as `X-MS-CLIENT-PRINCIPAL` header on cross-origin calls
-- Backend auth currently supports a transition path: CIAM bearer JWT (Authorization header) when enabled, otherwise SWA `X-MS-CLIENT-PRINCIPAL` (+ optional `X-Auth-Session` HMAC)
-- The `require_auth` decorator verifies bearer JWT first when enabled, else falls back to `X-MS-CLIENT-PRINCIPAL`
+- SWA is a static host only — no auth forwarding, no `/.auth/*` in the trust chain
+- Auth: frontend acquires a CIAM JWT via MSAL.js and sends `Authorization: Bearer <token>` on every API call
+- Backend `require_auth` verifies the CIAM JWT (OIDC/JWKS) and derives stable user identity from `tid:oid` claims
 - CORS is configured on orchestrator host to allow requests from the SWA hostname
 - Both Function Apps use managed identity for Blob, Cosmos, Key Vault access
 
@@ -93,44 +95,38 @@ No unauthenticated endpoints are exposed to browsers except health and
 contact-form (rate-limited). The Stripe billing webhook uses its own
 signature verification.
 
-#### Auth Forwarding (BYOF)
+#### Auth Migration State
 
-With BYOF, the browser makes cross-origin API calls to the orchestrator host.
-Auth works as follows:
+**Target (Option B — CIAM bearer flow):**
 
-1. User logs in via `/.auth/login/aad` (SWA built-in auth)
-2. Frontend calls `/.auth/me` to get `clientPrincipal` (validated by SWA)
-3. Frontend base64-encodes the raw `clientPrincipal` JSON
-4. Frontend sends it as `X-MS-CLIENT-PRINCIPAL` header on each cross-origin API call
-5. Orchestrator `require_auth` decorator decodes and reads `userId`/`userRoles`
+1. Frontend acquires CIAM JWT via MSAL.js (no SWA auth involved)
+2. Frontend sends `Authorization: Bearer <token>` on every cross-origin API call
+3. Orchestrator `require_auth` verifies the JWT server-side (OIDC metadata + JWKS)
+4. Stable user identity derived from `tid:oid` claims (never email/upn)
 
-#### CIAM Bearer Transition (#709 Phase 1)
+**Migration status:**
+- Backend bearer validation: ✅ complete (#709 closed). `AUTH_MODE=bearer_only` is ready.
+- Frontend MSAL migration: 🔄 pending (#710 open). Frontend still uses `/.auth/me` transitionally.
+- Deployed `AUTH_MODE`: `legacy_principal` until #710 ships and cutover is confirmed.
 
-Backend bearer validation is implemented but disabled by default while frontend
-cutover is still tracked in #710.
+> **Do not add new code that depends on `X-MS-CLIENT-PRINCIPAL` forwarding or
+> `/.auth/*` being in the auth trust chain.** Those are transitional and will
+> be removed when #710 ships.
 
-- `AUTH_MODE=legacy_principal` (default): legacy SWA principal path remains authoritative.
-- `AUTH_MODE=dual`: bearer JWT verification is active, but legacy principal fallback is retained.
-- `AUTH_MODE=bearer_only`: bearer JWT verification is required for authenticated requests.
+#### CIAM Bearer Auth (#709 — complete)
 
-Bearer-capable modes (`dual` and `bearer_only`) require:
+Backend bearer JWT validation is complete. `AUTH_MODE` controls the active path:
+
+- `AUTH_MODE=legacy_principal` (currently deployed): SWA `X-MS-CLIENT-PRINCIPAL` forwarding, transitional only.
+- `AUTH_MODE=dual`: bearer JWT verification active with legacy fallback.
+- `AUTH_MODE=bearer_only`: CIAM bearer JWT required; no legacy path. **Target for post-#710 cutover.**
+
+Bearer-capable modes (`dual` and `bearer_only`) require these env vars:
 
 - `CIAM_AUTHORITY`
 - `CIAM_TENANT_ID`
 - `CIAM_API_AUDIENCE`
-  - optional `CIAM_JWT_LEEWAY_SECONDS` (default 60)
-
-If bearer verification is disabled or not configured, requests continue through
-the existing SWA principal + optional HMAC flow.
-
-**Mitigation (PR #620):** When ``AUTH_HMAC_KEY`` is set, the FA requires a
-backend-signed HMAC session token (``X-Auth-Session`` header) alongside
-the client principal.  The frontend obtains the token from
-``POST /api/auth/session`` after SWA authentication.  This prevents
-simple header forgery — an attacker cannot construct a valid HMAC token
-without the secret.  Full protection requires restricting Container Apps
-ingress to SWA-only traffic (VNet / private endpoint), tracked
-separately.
+- `CIAM_JWT_LEEWAY_SECONDS` (optional, default 60)
 
 #### Entry Point
 
@@ -142,8 +138,8 @@ will be retired separately.
 
 | Concept | Auth | Processing | Purpose |
 |---------|------|-----------|---------|
-| **Free tier** | SWA auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. |
-| **Starter / Pro / Team / Enterprise** | SWA auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
+| **Free tier** | CIAM auth (authenticated) | Real — own KML/KMZ, 5 runs/month, 30-day retention | Product entry point. |
+| **Starter / Pro / Team / Enterprise** | CIAM auth (authenticated) | Real — full pipeline, higher limits, richer features | Paid plans: £19 / £49 / £149 / custom. |
 | **Showcase** (deferred) | None (anonymous) | None — pre-computed static blobs | Future. Marketing for anonymous visitors. Not until pipeline is proven e2e. |
 
 The frontend `?mode=demo` entry point has been removed (#532). It showed the
@@ -155,19 +151,23 @@ Showcase (pre-computed static blobs for anonymous browsing) is a valid future
 concept but is deferred until after the pipeline is verified end-to-end in
 Azure (#531) and the free-tier entry point is polished (#532).
 
-### Auth — SWA Built-in Custom Auth + BYOF Forwarding
+### Auth — CIAM (Entra External ID) + MSAL Bearer Flow
 
-Authentication uses SWA's built-in pre-configured Azure AD provider. SWA handles the full OAuth flow server-side with zero app registration or client secrets.
+Authentication uses Entra External ID (CIAM) as the identity provider. The frontend
+acquires tokens via MSAL.js; the API validates them server-side. SWA is a static
+host only and plays no role in the auth trust chain.
 
-- **Provider:** SWA pre-configured Azure AD (built-in — no app registration needed)
-- **Login:** `/.auth/login/aad` (SWA handles redirect + callback)
-- **Logout:** `/.auth/logout`
-- **User info:** `/.auth/me` → JSON with `clientPrincipal`
-- **API auth:** Frontend reads `clientPrincipal` from `/.auth/me` and forwards it as `X-MS-CLIENT-PRINCIPAL` header to the orchestrator Function App
-- **Session:** managed by SWA via `StaticWebAppsAuthCookie` — no client-side token management
-- **Route protection:** `staticwebapp.config.json` routes enforce SWA auth for protected pages; API auth is enforced by the FA `require_auth` decorator
+- **Provider:** Entra External ID (CIAM) — tenant `treesightauth.ciamlogin.com`
+- **Frontend:** MSAL.js acquires CIAM JWT; sends `Authorization: Bearer <token>` on API calls
+- **Backend:** `require_auth` decorator verifies JWT via OIDC/JWKS; identity = `tid:oid` from claims
+- **SWA role:** static file host only — `/.auth/*` routes are transitional and will be removed
+- **Route protection:** enforced by the FA `require_auth` / `require_auth_durable` decorators
 
-The orchestrator reads `X-MS-CLIENT-PRINCIPAL` (Base64-encoded JSON) to get `userId`, `userDetails`, and `userRoles`. Both apps use managed identity (DefaultAzureCredential) for data-plane operations.
+Both Function Apps use managed identity (DefaultAzureCredential) for data-plane operations.
+
+> **Transitional note:** Until #710 (frontend MSAL migration) ships, the deployed
+> `AUTH_MODE` remains `legacy_principal` (SWA `X-MS-CLIENT-PRINCIPAL` forwarding).
+> The backend is ready for `bearer_only` — the switch happens when the frontend cutover ships.
 
 ### Deploy Pipeline
 
@@ -187,8 +187,8 @@ Config: `.github/workflows/deploy.yml`
 
 ## Data Flow
 
-1. User authenticates via `/.auth/login/aad` (SWA handles the OAuth redirect).
-2. Frontend calls `POST /api/upload/token` on orchestrator host — `require_auth` validates `X-MS-CLIENT-PRINCIPAL`, mints a write-only SAS URL.
+1. User authenticates via MSAL.js → CIAM issues JWT. (Transitionally: `/.auth/login/aad` via SWA until #710 ships.)
+2. Frontend calls `POST /api/upload/token` on orchestrator host — `require_auth` validates the bearer JWT (or `X-MS-CLIENT-PRINCIPAL` transitionally), mints a write-only SAS URL.
 3. Frontend uploads KML/KMZ directly to blob storage via the SAS URL.
 4. Event Grid emits a BlobCreated event.
 5. `blob_trigger` on orchestrator validates event payload and starts `treesight_orchestrator`.
