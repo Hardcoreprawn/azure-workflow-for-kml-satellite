@@ -814,6 +814,7 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
+          set -euo pipefail
           MAX_WAIT=300          # container startup + route registration can exceed 90s under cold start
           INTERVAL=5
           COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
@@ -892,8 +893,24 @@ jobs:
             return 1
           }
 
-          verify_host_readiness "compute" "$COMPUTE_HOSTNAME"
-          verify_host_readiness "orchestrator" "$ORCH_HOSTNAME"
+          verify_host_readiness "compute" "$COMPUTE_HOSTNAME" &
+          COMPUTE_PID=$!
+          verify_host_readiness "orchestrator" "$ORCH_HOSTNAME" &
+          ORCH_PID=$!
+
+          set +e
+          wait "$COMPUTE_PID"
+          COMPUTE_STATUS=$?
+          wait "$ORCH_PID"
+          ORCH_STATUS=$?
+          set -e
+
+          if [ "$COMPUTE_STATUS" -ne 0 ] || [ "$ORCH_STATUS" -ne 0 ]; then
+            echo "❌ Runtime readiness failed (compute=${COMPUTE_STATUS}, orchestrator=${ORCH_STATUS})"
+            exit 1
+          fi
+
+          echo "✅ Runtime readiness verified for compute and orchestrator in parallel."
 
       - name: Reconcile Event Grid subscription
         id: reconcile-eventgrid
