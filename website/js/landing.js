@@ -16,6 +16,14 @@
 
   function authEnabled() { return true; }
 
+  function buildRedirectError(message, cause) {
+    const err = new Error(message);
+    err.name = 'CanopexAuthRedirectError';
+    err.authRedirectTriggered = true;
+    if (cause) err.cause = cause;
+    return err;
+  }
+
   // Returns the MSAL app instance, or null if CIAM is not configured.
   function getMsalApp() {
     if (!window.msal) return null;
@@ -69,7 +77,15 @@
           try {
             const result = await app.acquireTokenSilent(req);
             return result.idToken || result.accessToken || '';
-          } catch (_) { return ''; }
+          } catch (tokenErr) {
+            const errorCode = String((tokenErr && tokenErr.errorCode) || '');
+            if (errorCode !== 'interaction_in_progress') {
+              app.acquireTokenRedirect(req).catch(function (redirectErr) {
+                console.error('[canopex] acquireTokenRedirect failed:', redirectErr);
+              });
+            }
+            throw buildRedirectError('[canopex] Redirecting to refresh session', tokenErr);
+          }
         });
       }
     } catch (err) {
@@ -325,6 +341,9 @@
         const data = await res.json();
         if (data.checkout_url) { window.location.href = data.checkout_url; }
       } catch (e) {
+        if (e && e.authRedirectTriggered) {
+          return;
+        }
         console.error('Checkout error:', e);
         if (e && e.status === 403) {
           alert('Your account is not yet enabled for billing. Please contact us at hello@canopex.io.');

@@ -149,6 +149,16 @@
 
   // ── getToken ──────────────────────────────────────────────────
 
+  function buildRedirectError(message, cause) {
+    var err = new Error(message);
+    err.name = 'CanopexAuthRedirectError';
+    err.authRedirectTriggered = true;
+    if (cause) {
+      err.cause = cause;
+    }
+    return err;
+  }
+
   /**
    * Return a valid CIAM token string, acquiring silently if possible.
    * Falls back to a redirect login if no cached token is available.
@@ -164,8 +174,8 @@
     if (!accounts || accounts.length === 0) {
       // No cached account — trigger login.
       login();
-      // Return empty; the redirect will restart the page.
-      return '';
+      // Stop API callers from sending unauthenticated requests while redirecting.
+      throw buildRedirectError('[CanopexAuth] Redirecting to login (no cached account)');
     }
 
     var account = accounts[0];
@@ -183,11 +193,15 @@
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
       // Trigger a redirect so the user can re-authenticate.
-      console.warn('[CanopexAuth] Silent token acquisition failed, redirecting:', silentErr);
-      app.acquireTokenRedirect(request).catch(function (redirectErr) {
-        console.error('[CanopexAuth] Redirect login failed:', redirectErr);
-      });
-      return '';
+      var errorCode = String((silentErr && silentErr.errorCode) || '');
+      if (errorCode !== 'interaction_in_progress') {
+        console.warn('[CanopexAuth] Silent token acquisition failed, redirecting:', silentErr);
+        app.acquireTokenRedirect(request).catch(function (redirectErr) {
+          console.error('[CanopexAuth] Redirect login failed:', redirectErr);
+        });
+      }
+      // Stop API callers from sending unauthenticated requests while redirecting.
+      throw buildRedirectError('[CanopexAuth] Redirecting to refresh session', silentErr);
     }
   }
 

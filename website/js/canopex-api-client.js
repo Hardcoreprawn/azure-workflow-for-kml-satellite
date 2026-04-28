@@ -155,6 +155,9 @@
             requestOpts.headers['Authorization'] = 'Bearer ' + token;
           }
         } catch (tokenErr) {
+          if (tokenErr && tokenErr.authRedirectTriggered) {
+            throw tokenErr;
+          }
           // Log but proceed — the backend will reject with 401 and the auth
           // error handler will redirect to login.
           console.warn('[CanopexApiClient] Failed to acquire token:', tokenErr);

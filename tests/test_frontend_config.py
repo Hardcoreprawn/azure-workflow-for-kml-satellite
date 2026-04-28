@@ -190,6 +190,15 @@ class TestAuthConfig:
             "landing.js must not use SWA /.auth/login/aad — auth is CIAM/MSAL"
         )
 
+    def test_landing_marks_redirect_triggered_token_errors(self, landing_js):
+        """Landing token flow must mark redirect-in-progress failures for API client."""
+        assert "authRedirectTriggered" in landing_js, (
+            "landing.js token refresh path must set authRedirectTriggered on redirect"
+        )
+        assert "acquireTokenRedirect" in landing_js, (
+            "landing.js must trigger acquireTokenRedirect when silent token refresh fails"
+        )
+
     def test_msal_module_uses_public_client_app(self):
         """app-msal.js must use MSAL PublicClientApplication for CIAM auth."""
         js = APP_MSAL_JS.read_text()
@@ -201,6 +210,19 @@ class TestAuthConfig:
         """app-msal.js must use loginRedirect (not loginPopup) for consistent UX."""
         js = APP_MSAL_JS.read_text()
         assert "loginRedirect" in js, "app-msal.js must call loginRedirect for the MSAL login flow"
+
+    def test_msal_module_marks_redirect_triggered_token_errors(self):
+        """getToken must signal redirect-in-progress.
+
+        Callers use this marker to avoid unauthenticated fallback calls.
+        """
+        js = APP_MSAL_JS.read_text()
+        assert "authRedirectTriggered" in js, (
+            "app-msal.js must mark redirect-in-progress token errors with authRedirectTriggered"
+        )
+        assert "throw buildRedirectError" in js, (
+            "app-msal.js getToken must throw a redirect marker error when re-auth redirect starts"
+        )
 
     def test_api_client_uses_api_config_json(self, api_client_js):
         """Shared API client must discover the Container Apps FA via /api-config.json."""
@@ -233,6 +255,15 @@ class TestAuthConfig:
         """Shared API client must expose setGetToken for dependency injection."""
         assert "setGetToken" in api_client_js, (
             "canopex-api-client.js must expose setGetToken for MSAL token injection"
+        )
+
+    def test_api_client_aborts_request_when_redirect_auth_is_in_progress(self, api_client_js):
+        """API client must avoid unauthenticated fallback during redirect auth."""
+        assert "authRedirectTriggered" in api_client_js, (
+            "canopex-api-client.js must check for authRedirectTriggered token errors"
+        )
+        assert "throw tokenErr" in api_client_js, (
+            "canopex-api-client.js must rethrow redirect token errors to avoid fallback 401 loops"
         )
 
     def test_app_shell_uses_shared_api_client(self, app_shell_js):
