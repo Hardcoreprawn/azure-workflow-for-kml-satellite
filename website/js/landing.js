@@ -14,7 +14,25 @@
 
   const apiClient = createApiClient();
 
-  function authEnabled() { return true; }
+  function getCiamConfig() {
+    const el = document.getElementById('canopex-ciam-config');
+    if (!el) return { clientId: '', authority: '', tenantId: '' };
+    try {
+      const cfg = JSON.parse(el.textContent || '{}');
+      return {
+        clientId: cfg.clientId || '',
+        authority: cfg.authority || '',
+        tenantId: cfg.tenantId || '',
+      };
+    } catch (_) {
+      return { clientId: '', authority: '', tenantId: '' };
+    }
+  }
+
+  function authEnabled() {
+    const cfg = getCiamConfig();
+    return !!(window.msal && cfg.clientId && cfg.authority);
+  }
 
   function buildRedirectError(message, cause) {
     const err = new Error(message);
@@ -27,10 +45,7 @@
   // Returns the MSAL app instance, or null if CIAM is not configured.
   function getMsalApp() {
     if (!window.msal) return null;
-    const el = document.getElementById('canopex-ciam-config');
-    if (!el) return null;
-    let cfg;
-    try { cfg = JSON.parse(el.textContent || '{}'); } catch (_) { return null; }
+    const cfg = getCiamConfig();
     if (!cfg.clientId || !cfg.authority) return null;
     if (!getMsalApp._instance) {
       try {
@@ -308,7 +323,7 @@
     const note = document.getElementById('sample-gated-note');
     if (!btn) return;
 
-    if (currentAccount) {
+    if (!authEnabled() || currentAccount) {
       btn.textContent = 'Download Full PDF Report';
       if (note) note.style.display = 'none';
       btn.onclick = function() {
@@ -331,6 +346,10 @@
     if (!btn) return;
 
     btn.addEventListener('click', async function() {
+      if (!authEnabled()) {
+        alert('Billing checkout is unavailable while auth is disabled in this environment.');
+        return;
+      }
       if (!currentAccount && authEnabled()) { login(); return; }
       try {
         const res = await apiFetch('/api/billing/checkout', {

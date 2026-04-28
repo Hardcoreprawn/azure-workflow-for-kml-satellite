@@ -148,13 +148,14 @@ class TestSwaAuth:
 
 
 class TestCsp:
-    def test_frame_src_none(self, swa_config):
-        """CSP frame-src should be 'none' — SWA auth uses redirects, not iframes."""
+    def test_frame_src_allows_ciam_domain(self, swa_config):
+        """CSP frame-src must allow the CIAM host for MSAL silent refresh."""
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         frame_match = re.search(r"frame-src\s+([^;]+)", csp)
         assert frame_match, "CSP missing frame-src directive"
-        assert "'none'" in frame_match.group(1), (
-            "frame-src should be 'none' — MSAL iframes no longer needed"
+        tokens = frame_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in tokens), (
+            "frame-src must include treesightauth.ciamlogin.com for MSAL silent refresh"
         )
 
     def test_connect_src_allows_ciam_domain(self, swa_config):
@@ -199,6 +200,12 @@ class TestAuthConfig:
             "landing.js must trigger acquireTokenRedirect when silent token refresh fails"
         )
 
+    def test_landing_auth_enabled_depends_on_ciam_config(self, landing_js):
+        """Landing auth gating must reflect real CIAM/MSAL config availability."""
+        assert "return !!(window.msal && cfg.clientId && cfg.authority);" in landing_js, (
+            "landing.js authEnabled must depend on MSAL + CIAM config presence"
+        )
+
     def test_msal_module_uses_public_client_app(self):
         """app-msal.js must use MSAL PublicClientApplication for CIAM auth."""
         js = APP_MSAL_JS.read_text()
@@ -222,6 +229,39 @@ class TestAuthConfig:
         )
         assert "throw buildRedirectError" in js, (
             "app-msal.js getToken must throw a redirect marker error when re-auth redirect starts"
+        )
+
+    def test_msal_module_get_token_waits_for_init(self):
+        """getToken must wait for MSAL initialization and redirect handling."""
+        js = APP_MSAL_JS.read_text()
+        assert "ensureMsalReady" in js, "app-msal.js must define a shared ensureMsalReady helper"
+        assert "var app = await ensureMsalReady();" in js, (
+            "app-msal.js getToken must await ensureMsalReady before MSAL API calls"
+        )
+
+    def test_msal_module_splits_update_auth_ui_render_paths(self):
+        """Auth UI rendering should be split into smaller helpers."""
+        js = APP_MSAL_JS.read_text()
+        assert "renderLocalDevUI" in js, "app-msal.js must factor local-dev UI rendering"
+        assert "renderSignedInUI" in js, "app-msal.js must factor signed-in UI rendering"
+        assert "renderSignedOutUI" in js, "app-msal.js must factor signed-out UI rendering"
+
+    def test_landing_msal_script_is_pinned_and_has_sri(self, index_html):
+        """Landing MSAL script must use an exact version and SRI."""
+        assert "@azure/msal-browser@3.30.0/lib/msal-browser.min.js" in index_html, (
+            "index.html must pin MSAL to an exact version"
+        )
+        assert 'integrity="sha384-' in index_html, (
+            "index.html must include SRI for the pinned MSAL script"
+        )
+
+    def test_app_msal_script_is_pinned_and_has_sri(self, app_index_html):
+        """App MSAL script must use an exact version and SRI."""
+        assert "@azure/msal-browser@3.30.0/lib/msal-browser.min.js" in app_index_html, (
+            "/app/index.html must pin MSAL to an exact version"
+        )
+        assert 'integrity="sha384-' in app_index_html, (
+            "/app/index.html must include SRI for the pinned MSAL script"
         )
 
     def test_api_client_uses_api_config_json(self, api_client_js):

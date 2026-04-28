@@ -50,6 +50,7 @@
 
   // ── MSAL state ───────────────────────────────────────────────
   var _msalApp = null;
+  var _msalInitPromise = null;
 
   // CIAM config — injected at deploy time into a JSON script element
   // (id="canopex-ciam-config", type="application/json") by the CI pipeline.
@@ -116,6 +117,51 @@
     }
   }
 
+  function applyCachedAccount(app) {
+    var accounts = app.getAllAccounts();
+    if (accounts && accounts.length > 0) {
+      var account = accounts[0];
+      if (_setAccount) {
+        _setAccount({
+          userId: account.localAccountId || account.homeAccountId || '',
+          name: account.name || account.username || '',
+          identityProvider: 'ciam',
+          userRoles: [],
+        });
+      }
+      return account;
+    }
+    return null;
+  }
+
+  function ensureMsalReady() {
+    if (!authEnabled()) {
+      return Promise.resolve(null);
+    }
+
+    var app = getMsalApp();
+    if (!app) {
+      return Promise.resolve(null);
+    }
+
+    if (!_msalInitPromise) {
+      _msalInitPromise = app.initialize().then(function () {
+        return app.handleRedirectPromise().catch(function (redirectErr) {
+          console.warn('[CanopexAuth] handleRedirectPromise error:', redirectErr);
+          return null;
+        });
+      }).then(function () {
+        applyCachedAccount(app);
+        return app;
+      }).catch(function (initErr) {
+        _msalInitPromise = null;
+        throw initErr;
+      });
+    }
+
+    return _msalInitPromise;
+  }
+
   // ── Dep injection ─────────────────────────────────────────────
 
   function init(deps) {
@@ -165,7 +211,7 @@
    * Throws if MSAL is not configured (authEnabled() === false).
    */
   async function getToken() {
-    var app = getMsalApp();
+    var app = await ensureMsalReady();
     if (!app) {
       throw new Error('[CanopexAuth] MSAL not configured — cannot get token');
     }
@@ -214,13 +260,13 @@
   }
 
   function login() {
-    var app = getMsalApp();
-    if (!app) {
-      // No CIAM config — nothing to do in dev mode.
-      return;
-    }
-    rememberPostLoginDestination();
-    app.loginRedirect({ scopes: ['openid', 'profile'] }).catch(function (err) {
+    ensureMsalReady().then(function (app) {
+      if (!app) {
+        return;
+      }
+      rememberPostLoginDestination();
+      return app.loginRedirect({ scopes: ['openid', 'profile'] });
+    }).catch(function (err) {
       console.error('[CanopexAuth] loginRedirect failed:', err);
     });
   }
@@ -233,17 +279,19 @@
       sessionStorage.removeItem(_postLoginDestinationKey || 'canopex-post-login');
     } catch (_) { /* ignore */ }
 
-    var app = getMsalApp();
-    if (!app) {
-      return;
-    }
-    var accounts = app.getAllAccounts();
-    var account = accounts && accounts[0];
-    app.logoutRedirect({
-      account: account || null,
-      postLogoutRedirectUri: window.location.origin + '/',
+    ensureMsalReady().then(function (app) {
+      if (!app) {
+        return;
+      }
+      var accounts = app.getAllAccounts();
+      var account = accounts && accounts[0];
+      return app.logoutRedirect({
+        account: account || null,
+        postLogoutRedirectUri: window.location.origin + '/',
+      });
     }).catch(function (err) {
       console.error('[CanopexAuth] logoutRedirect failed:', err);
+    }).catch(function (err) {
     });
   }
 
@@ -270,6 +318,87 @@
 
   // ── updateAuthUI ──────────────────────────────────────────────
 
+  function renderLocalDevUI(elements) {
+    var apiReady = _getApiReady ? _getApiReady() : Promise.resolve();
+    if (elements.loginBtn) elements.loginBtn.style.display = 'none';
+    if (elements.logoutBtn) elements.logoutBtn.style.display = 'none';
+    if (elements.userSpan) {
+      elements.userSpan.textContent = 'Local dev';
+      elements.userSpan.style.display = 'inline';
+    }
+    if (elements.gate) elements.gate.hidden = true;
+    if (elements.dashboard) elements.dashboard.hidden = false;
+    if (elements.localAuthGate) elements.localAuthGate.hidden = true;
+    if (elements.localFormFields) elements.localFormFields.hidden = false;
+    if (elements.userName) elements.userName.textContent = 'Local developer';
+    if (elements.accountIdentifier) elements.accountIdentifier.textContent = 'Authentication disabled';
+    if (elements.accountNote) elements.accountNote.textContent = 'Auth is disabled in this environment.';
+    if (elements.billingBtn) elements.billingBtn.style.display = 'none';
+    if (elements.tierEl) elements.tierEl.textContent = 'Local';
+    if (elements.statusEl) elements.statusEl.textContent = 'disabled';
+    if (elements.remainingEl) elements.remainingEl.textContent = 'n/a';
+    if (elements.concEl) elements.concEl.textContent = 'n/a';
+    if (elements.aiEl) elements.aiEl.textContent = 'n/a';
+    if (elements.apiEl) elements.apiEl.textContent = 'n/a';
+    if (elements.retEl) elements.retEl.textContent = 'n/a';
+    if (elements.billingNoteEl) {
+      elements.billingNoteEl.textContent = 'Billing is unavailable when auth is disabled';
+    }
+    if (elements.emulationCard) elements.emulationCard.hidden = true;
+    apiReady.then(function () { if (_loadAnalysisHistory) _loadAnalysisHistory(); });
+  }
+
+  function renderSignedInUI(elements, currentAccount) {
+    var apiReady = _getApiReady ? _getApiReady() : Promise.resolve();
+    var displayName = currentAccount.name || currentAccount.userId || 'User';
+    var identifier = currentAccount.userId || currentAccount.name || 'Signed in';
+    var historyLoaded = _getAnalysisHistoryLoaded ? _getAnalysisHistoryLoaded() : false;
+    var latestRun = _getLatestAnalysisRun ? _getLatestAnalysisRun() : null;
+
+    if (elements.userSpan) {
+      elements.userSpan.textContent = displayName;
+      elements.userSpan.style.display = 'inline';
+    }
+    if (elements.loginBtn) elements.loginBtn.style.display = 'none';
+    if (elements.logoutBtn) elements.logoutBtn.style.display = 'inline';
+    if (elements.gate) elements.gate.hidden = true;
+    if (elements.dashboard) elements.dashboard.hidden = false;
+    if (elements.userName) elements.userName.textContent = displayName;
+    if (elements.accountIdentifier) elements.accountIdentifier.textContent = identifier;
+    if (elements.accountNote) {
+      elements.accountNote.textContent = 'This is your Canopex dashboard. Choose the analysis type and work preference that match the job at hand.';
+    }
+    if (elements.analysisAuthGate) elements.analysisAuthGate.hidden = true;
+    if (elements.analysisFormFields) elements.analysisFormFields.hidden = false;
+    if (elements.historyCard) elements.historyCard.hidden = false;
+
+    if (!historyLoaded && !latestRun) {
+      if (_setHeroRunSummary) _setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');
+      if (_updateHistorySummary) _updateHistorySummary(null);
+      if (_renderAnalysisHistoryList) _renderAnalysisHistoryList();
+    }
+
+    apiReady.then(function () { if (_loadBillingStatus) _loadBillingStatus(); });
+    apiReady.then(function () { if (_loadEudrUsage) _loadEudrUsage(); });
+    apiReady.then(function () { if (_loadAnalysisHistory) _loadAnalysisHistory(); });
+  }
+
+  function renderSignedOutUI(elements) {
+    if (elements.userSpan) elements.userSpan.style.display = 'none';
+    if (elements.loginBtn) elements.loginBtn.style.display = 'inline';
+    if (elements.logoutBtn) elements.logoutBtn.style.display = 'none';
+    if (elements.gate) elements.gate.hidden = false;
+    if (elements.dashboard) elements.dashboard.hidden = true;
+    if (elements.billingBtn) elements.billingBtn.style.display = 'none';
+    if (elements.unauthGate) elements.unauthGate.hidden = false;
+    if (elements.unauthFormFields) elements.unauthFormFields.hidden = true;
+    if (_clearAnalysisState) _clearAnalysisState();
+    if (_stopAnalysisPolling) _stopAnalysisPolling();
+    if (_resetAnalysisProgress) _resetAnalysisProgress();
+    if (_renderAnalysisHistoryList) _renderAnalysisHistoryList();
+    if (_updateAnalysisRun) _updateAnalysisRun(null);
+  }
+
   function updateAuthUI() {
     var loginBtn = document.getElementById('auth-login-btn');
     var logoutBtn = document.getElementById('auth-logout-btn');
@@ -280,91 +409,45 @@
     var accountIdentifier = document.getElementById('app-account-identifier');
     var accountNote = document.getElementById('app-account-note');
     var billingBtn = document.getElementById('app-manage-billing-btn');
+    var elements = {
+      loginBtn: loginBtn,
+      logoutBtn: logoutBtn,
+      userSpan: userSpan,
+      gate: gate,
+      dashboard: dashboard,
+      userName: userName,
+      accountIdentifier: accountIdentifier,
+      accountNote: accountNote,
+      billingBtn: billingBtn,
+      localAuthGate: document.getElementById('app-analysis-auth-gate'),
+      localFormFields: document.getElementById('app-analysis-form-fields'),
+      tierEl: document.getElementById('app-tier'),
+      statusEl: document.getElementById('app-subscription-status'),
+      remainingEl: document.getElementById('app-runs-remaining'),
+      concEl: document.getElementById('app-concurrency'),
+      aiEl: document.getElementById('app-ai-access'),
+      apiEl: document.getElementById('app-api-access'),
+      retEl: document.getElementById('app-retention'),
+      billingNoteEl: document.getElementById('app-billing-note'),
+      emulationCard: document.getElementById('app-tier-emulation-card'),
+      analysisAuthGate: document.getElementById('app-analysis-auth-gate'),
+      analysisFormFields: document.getElementById('app-analysis-form-fields'),
+      historyCard: document.getElementById('app-history-card'),
+      unauthGate: document.getElementById('app-analysis-auth-gate'),
+      unauthFormFields: document.getElementById('app-analysis-form-fields'),
+    };
 
     if (!authEnabled()) {
-      // Local dev — show dev UI, bypass auth gate.
-      if (loginBtn) loginBtn.style.display = 'none';
-      if (logoutBtn) logoutBtn.style.display = 'none';
-      if (userSpan) { userSpan.textContent = 'Local dev'; userSpan.style.display = 'inline'; }
-      if (gate) gate.hidden = true;
-      if (dashboard) dashboard.hidden = false;
-      var localAuthGate = document.getElementById('app-analysis-auth-gate');
-      var localFormFields = document.getElementById('app-analysis-form-fields');
-      if (localAuthGate) localAuthGate.hidden = true;
-      if (localFormFields) localFormFields.hidden = false;
-      if (userName) userName.textContent = 'Local developer';
-      if (accountIdentifier) accountIdentifier.textContent = 'Authentication disabled';
-      if (accountNote) accountNote.textContent = 'Auth is disabled in this environment.';
-      if (billingBtn) billingBtn.style.display = 'none';
-      var tierEl = document.getElementById('app-tier');
-      var statusEl = document.getElementById('app-subscription-status');
-      var remainingEl = document.getElementById('app-runs-remaining');
-      var concEl = document.getElementById('app-concurrency');
-      var aiEl = document.getElementById('app-ai-access');
-      var apiEl = document.getElementById('app-api-access');
-      var retEl = document.getElementById('app-retention');
-      var billingNoteEl = document.getElementById('app-billing-note');
-      var emulationCard = document.getElementById('app-tier-emulation-card');
-      if (tierEl) tierEl.textContent = 'Local';
-      if (statusEl) statusEl.textContent = 'disabled';
-      if (remainingEl) remainingEl.textContent = 'n/a';
-      if (concEl) concEl.textContent = 'n/a';
-      if (aiEl) aiEl.textContent = 'n/a';
-      if (apiEl) apiEl.textContent = 'n/a';
-      if (retEl) retEl.textContent = 'n/a';
-      if (billingNoteEl) billingNoteEl.textContent = 'Billing is unavailable when auth is disabled';
-      if (emulationCard) emulationCard.hidden = true;
-      var apiReady = _getApiReady ? _getApiReady() : Promise.resolve();
-      apiReady.then(function () { if (_loadAnalysisHistory) _loadAnalysisHistory(); });
+      renderLocalDevUI(elements);
       return;
     }
 
     var currentAccount = _getAccount ? _getAccount() : null;
-    var apiReady = _getApiReady ? _getApiReady() : Promise.resolve();
 
     if (currentAccount) {
-      var displayName = currentAccount.name || currentAccount.userId || 'User';
-      var identifier = currentAccount.userId || currentAccount.name || 'Signed in';
-      if (userSpan) { userSpan.textContent = displayName; userSpan.style.display = 'inline'; }
-      if (loginBtn) loginBtn.style.display = 'none';
-      if (logoutBtn) logoutBtn.style.display = 'inline';
-      if (gate) gate.hidden = true;
-      if (dashboard) dashboard.hidden = false;
-      if (userName) userName.textContent = displayName;
-      if (accountIdentifier) accountIdentifier.textContent = identifier;
-      if (accountNote) accountNote.textContent = 'This is your Canopex dashboard. Choose the analysis type and work preference that match the job at hand.';
-      var analysisAuthGate = document.getElementById('app-analysis-auth-gate');
-      var analysisFormFields = document.getElementById('app-analysis-form-fields');
-      var historyCard = document.getElementById('app-history-card');
-      if (analysisAuthGate) analysisAuthGate.hidden = true;
-      if (analysisFormFields) analysisFormFields.hidden = false;
-      if (historyCard) historyCard.hidden = false;
-      var historyLoaded = _getAnalysisHistoryLoaded ? _getAnalysisHistoryLoaded() : false;
-      var latestRun = _getLatestAnalysisRun ? _getLatestAnalysisRun() : null;
-      if (!historyLoaded && !latestRun) {
-        if (_setHeroRunSummary) _setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');
-        if (_updateHistorySummary) _updateHistorySummary(null);
-        if (_renderAnalysisHistoryList) _renderAnalysisHistoryList();
-      }
-      apiReady.then(function () { if (_loadBillingStatus) _loadBillingStatus(); });
-      apiReady.then(function () { if (_loadEudrUsage) _loadEudrUsage(); });
-      apiReady.then(function () { if (_loadAnalysisHistory) _loadAnalysisHistory(); });
+      renderSignedInUI(elements, currentAccount);
     } else {
-      if (userSpan) userSpan.style.display = 'none';
-      if (loginBtn) loginBtn.style.display = 'inline';
-      if (logoutBtn) logoutBtn.style.display = 'none';
-      if (gate) gate.hidden = false;
-      if (dashboard) dashboard.hidden = true;
-      if (billingBtn) billingBtn.style.display = 'none';
-      var unauthGate = document.getElementById('app-analysis-auth-gate');
-      var unauthFormFields = document.getElementById('app-analysis-form-fields');
-      if (unauthGate) unauthGate.hidden = false;
-      if (unauthFormFields) unauthFormFields.hidden = true;
-      if (_clearAnalysisState) _clearAnalysisState();
-      if (_stopAnalysisPolling) _stopAnalysisPolling();
-      if (_resetAnalysisProgress) _resetAnalysisProgress();
-      if (_renderAnalysisHistoryList) _renderAnalysisHistoryList();
-      if (_updateAnalysisRun) _updateAnalysisRun(null);
+      renderSignedOutUI(elements);
     }
   }
 
@@ -393,43 +476,12 @@
       return;
     }
 
-    var app = getMsalApp();
-    if (!app) {
-      updateAuthUI();
-      return;
-    }
-
-    // Initialize MSAL — this must be called before any other MSAL API.
-    // It also handles the redirect response if we just returned from login.
     try {
-      await app.initialize();
+      await ensureMsalReady();
     } catch (initErr) {
       console.warn('[CanopexAuth] MSAL initialize failed:', initErr);
       updateAuthUI();
       return;
-    }
-
-    // Handle the redirect response (sets account in MSAL cache).
-    try {
-      await app.handleRedirectPromise();
-    } catch (redirectErr) {
-      // User cancelled or redirect errored — not fatal, just log.
-      console.warn('[CanopexAuth] handleRedirectPromise error:', redirectErr);
-    }
-
-    // Check for a cached account after redirect handling.
-    var accounts = app.getAllAccounts();
-    if (accounts && accounts.length > 0) {
-      var account = accounts[0];
-      if (_setAccount) {
-        _setAccount({
-          // Use MSAL's stable local account id as userId for consistency.
-          userId: account.localAccountId || account.homeAccountId || '',
-          name: account.name || account.username || '',
-          identityProvider: 'ciam',
-          userRoles: [],
-        });
-      }
     }
 
     updateAuthUI();
