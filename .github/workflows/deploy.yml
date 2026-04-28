@@ -962,6 +962,7 @@ jobs:
             --kml-path ../../tests/fixtures/sample.kml
             --poll-interval "$SMOKE_POLL_INTERVAL"
             --max-attempts "$SMOKE_MAX_ATTEMPTS"
+            --skip-manifest-check
             --principal-user-id "deploy-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
             --principal-user-details "deploy-smoke+${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
           )

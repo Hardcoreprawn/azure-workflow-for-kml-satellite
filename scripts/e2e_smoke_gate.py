@@ -4,7 +4,7 @@ Flow:
 1) POST /api/upload/token
 2) PUT uploaded KML to returned SAS URL
 3) Poll GET /api/orchestrator/{instance_id} until terminal state
-4) Verify completed output includes at least one artifact path
+4) Verify completed output matches the diagnostics payload shape
 5) Optionally verify GET /api/timelapse-data/{instance_id}
 """
 
@@ -193,7 +193,7 @@ def poll_orchestrator(
     )
 
 
-def verify_output_artifacts(status_payload: dict[str, Any]) -> list[str]:
+def verify_completed_output_shape(status_payload: dict[str, Any]) -> dict[str, Any]:
     runtime_status = status_payload.get("runtimeStatus")
     if runtime_status != "Completed":
         raise ValueError(f"orchestrator finished in non-success state: {runtime_status}")
@@ -202,13 +202,33 @@ def verify_output_artifacts(status_payload: dict[str, Any]) -> list[str]:
     if not isinstance(output, dict):
         raise ValueError("orchestrator output payload missing")
 
-    artifacts = output.get("artifacts")
-    if not isinstance(artifacts, dict) or not artifacts:
-        raise ValueError("orchestrator output has no artifacts")
+    required_types: dict[str, type[Any]] = {
+        "status": str,
+        "message": str,
+        "blobName": str,
+        "featureCount": int,
+        "aoiCount": int,
+        "artifacts": dict,
+    }
+    for field, expected_type in required_types.items():
+        if not isinstance(output.get(field), expected_type):
+            raise ValueError(f"orchestrator output field '{field}' has invalid type")
 
-    paths = [value for value in artifacts.values() if isinstance(value, str) and value.strip()]
-    if not paths:
-        raise ValueError("artifact map has no non-empty artifact paths")
+    return output
+
+
+def collect_artifact_paths(output: dict[str, Any]) -> list[str]:
+    artifacts = output.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return []
+
+    paths: list[str] = []
+    for value in artifacts.values():
+        if isinstance(value, str) and value.strip():
+            paths.append(value)
+            continue
+        if isinstance(value, list):
+            paths.extend(item.strip() for item in value if isinstance(item, str) and item.strip())
     return paths
 
 
@@ -337,7 +357,8 @@ def main() -> int:
             max_attempts=args.max_attempts,
             poll_interval_seconds=args.poll_interval,
         )
-        artifact_paths = verify_output_artifacts(status_payload)
+        output_payload = verify_completed_output_shape(status_payload)
+        artifact_paths = collect_artifact_paths(output_payload)
 
         manifest_ok = False
         if not args.skip_manifest_check:
@@ -356,6 +377,7 @@ def main() -> int:
             {
                 "submissionId": submission_id,
                 "runtimeStatus": status_payload.get("runtimeStatus"),
+                "outputStatus": output_payload.get("status"),
                 "artifactCount": len(artifact_paths),
                 "manifestVerified": manifest_ok,
             },

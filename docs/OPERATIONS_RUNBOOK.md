@@ -26,7 +26,7 @@ Issue: #18
 4. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
 5. Verify Function host readiness using /api/health.
 6. Verify Event Grid subscription reconciliation succeeds.
-7. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion).
+7. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion with a valid diagnostics payload shape).
 8. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
 9. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
 10. Treat Function App managed identity as a deploy contract (both apps must remain `SystemAssigned` with non-empty `principalId`); deploy fails fast if identity drifts.
