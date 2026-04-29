@@ -33,6 +33,10 @@ jobs:
     env:
       AzureWebJobsStorage: "UseDevelopmentStorage=true"
       DEMO_VALET_TOKEN_SECRET: "ci-test-secret"  # pragma: allowlist secret
+      AUTH_MODE: "bearer_only"
+      CIAM_AUTHORITY: "https://treesightauth.ciamlogin.com"
+      CIAM_TENANT_ID: "ci-test-tenant"
+      CIAM_API_AUDIENCE: "api://ci-test-audience"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7

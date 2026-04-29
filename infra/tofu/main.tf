@@ -1191,11 +1191,11 @@ locals {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
     } : {},
-    var.auth_mode != "legacy_principal" ? {
+    {
       CIAM_AUTHORITY     = var.ciam_authority
       CIAM_TENANT_ID     = var.ciam_tenant_id
       CIAM_API_AUDIENCE  = var.ciam_api_audience
-    } : {}
+    }
   )
 
   stripe_secret_uris = {

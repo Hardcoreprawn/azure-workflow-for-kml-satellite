@@ -195,49 +195,49 @@ variable "notification_email" {
 # --- CIAM / Bearer Token Auth (Issue #709) ---
 
 variable "auth_mode" {
-  description = "Auth transition mode: legacy_principal (SWA headers only), dual (both paths), or bearer_only (JWT only)."
+  description = "Auth mode. Must be bearer_only (JWT only)."
   type        = string
-  default     = "legacy_principal"
+  default     = "bearer_only"
 
   validation {
-    condition     = contains(["legacy_principal", "dual", "bearer_only"], var.auth_mode)
-    error_message = "auth_mode must be one of: legacy_principal, dual, bearer_only."
+    condition     = var.auth_mode == "bearer_only"
+    error_message = "auth_mode must be bearer_only."
   }
 }
 
 variable "ciam_authority" {
-  description = "Azure Entra CIAM authority endpoint (https://login.microsoftonline.com/<tenant>). Required when auth_mode is 'dual' or 'bearer_only'."
+  description = "Azure Entra CIAM authority endpoint (https://login.microsoftonline.com/<tenant>). Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "ciam_tenant_id" {
-  description = "Azure Entra tenant ID for CIAM app registration. Required when auth_mode is 'dual' or 'bearer_only'."
+  description = "Azure Entra tenant ID for CIAM app registration. Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
   sensitive   = true
 }
 
 variable "ciam_api_audience" {
-  description = "API audience (app ID URI) from CIAM app registration. Required when auth_mode is 'dual' or 'bearer_only'."
+  description = "API audience (app ID URI) from CIAM app registration. Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
   sensitive   = true
 }
 
-# Cross-variable validation: all three CIAM variables must be set when auth_mode
-# enables CIAM token flows. Cannot be expressed in a variable validation block
+# Cross-variable validation: all three CIAM variables must be set for
+# bearer_only auth. Cannot be expressed in a variable validation block
 # (which may only reference the validated variable itself), so enforced here as a
 # plan-time precondition that fails fast with a descriptive error.
 resource "terraform_data" "validate_ciam_auth_vars" {
   lifecycle {
     precondition {
       condition = (
-        !contains(["dual", "bearer_only"], var.auth_mode) ||
+        var.auth_mode != "bearer_only" ||
         (var.ciam_authority != "" && var.ciam_tenant_id != "" && var.ciam_api_audience != "")
       )
-      error_message = "ciam_authority, ciam_tenant_id, and ciam_api_audience must all be non-empty when auth_mode is 'dual' or 'bearer_only'."
+      error_message = "ciam_authority, ciam_tenant_id, and ciam_api_audience must all be non-empty when auth_mode is 'bearer_only'."
     }
   }
 }

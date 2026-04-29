@@ -268,7 +268,7 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'dev' }}
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-      TF_VAR_auth_mode: ${{ secrets.TF_VAR_AUTH_MODE || 'legacy_principal' }}
+      TF_VAR_auth_mode: bearer_only
       TF_VAR_ciam_authority: ${{ secrets.TF_VAR_CIAM_AUTHORITY || '' }}
       TF_VAR_ciam_tenant_id: ${{ secrets.TF_VAR_CIAM_TENANT_ID || '' }}
       TF_VAR_ciam_api_audience: ${{ secrets.TF_VAR_CIAM_API_AUDIENCE || '' }}
@@ -302,23 +302,18 @@ jobs:
             printf '%s' "$value"
           }
           set -euo pipefail
-          mode="${TF_VAR_auth_mode:-legacy_principal}"
-          case "$mode" in
-            legacy_principal) ;;
-            dual|bearer_only)
-              ciam_authority="$(trim_space "${TF_VAR_ciam_authority:-}")"
-              ciam_tenant_id="$(trim_space "${TF_VAR_ciam_tenant_id:-}")"
-              ciam_api_audience="$(trim_space "${TF_VAR_ciam_api_audience:-}")"
-              if [[ -z "$ciam_authority" || -z "$ciam_tenant_id" || -z "$ciam_api_audience" ]]; then
-                echo "CIAM auth misconfigured: TF_VAR_auth_mode=${mode} requires TF_VAR_ciam_authority, TF_VAR_ciam_tenant_id, and TF_VAR_ciam_api_audience."
-                exit 1
-              fi
-              ;;
-            *)
-              echo "Invalid TF_VAR_auth_mode='${mode}'. Expected legacy_principal, dual, or bearer_only."
-              exit 1
-              ;;
-          esac
+          mode="${TF_VAR_auth_mode:-bearer_only}"
+          if [[ "$mode" != "bearer_only" ]]; then
+            echo "Invalid TF_VAR_auth_mode='${mode}'. Expected bearer_only."
+            exit 1
+          fi
+          ciam_authority="$(trim_space "${TF_VAR_ciam_authority:-}")"
+          ciam_tenant_id="$(trim_space "${TF_VAR_ciam_tenant_id:-}")"
+          ciam_api_audience="$(trim_space "${TF_VAR_ciam_api_audience:-}")"
+          if [[ -z "$ciam_authority" || -z "$ciam_tenant_id" || -z "$ciam_api_audience" ]]; then
+            echo "CIAM auth misconfigured: TF_VAR_auth_mode=${mode} requires TF_VAR_ciam_authority, TF_VAR_ciam_tenant_id, and TF_VAR_ciam_api_audience."
+            exit 1
+          fi
 
       - name: Cache OpenTofu providers
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -980,13 +975,14 @@ jobs:
             --poll-interval "$SMOKE_POLL_INTERVAL"
             --max-attempts "$SMOKE_MAX_ATTEMPTS"
             --skip-manifest-check
-            --principal-user-id "deploy-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            --principal-user-details "deploy-smoke+${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
           )
 
-          if [ -n "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
-            SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
+          if [ -z "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
+            echo "DEPLOY_SMOKE_BEARER_TOKEN is required for bearer-only smoke gate"
+            exit 1
           fi
+
+          SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
 
           python ../../scripts/e2e_smoke_gate.py "${SMOKE_ARGS[@]}"
 

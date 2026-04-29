@@ -48,16 +48,11 @@ Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 ## Access Model
 
-### Auth Transition Notes (#709 phase 1)
+### Auth Model
 
-- `AUTH_MODE=legacy_principal` (default): endpoints authenticate via
- `X-MS-CLIENT-PRINCIPAL` (SWA) and, when configured, `X-Auth-Session` HMAC.
-- `AUTH_MODE=dual`: Authorization bearer JWT validation is enabled while
- preserving the legacy SWA-principal fallback path.
-- `AUTH_MODE=bearer_only`: Authorization bearer JWT is required for
- authenticated calls; legacy-principal-only calls are rejected.
-- Bearer-capable modes (`dual` and `bearer_only`) require
- `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, and `CIAM_API_AUDIENCE` app settings.
+- `AUTH_MODE=bearer_only` is the only supported mode.
+- Authenticated endpoints require `Authorization: Bearer <token>`.
+- Required app settings: `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, `CIAM_API_AUDIENCE`.
 
 Anonymous operator endpoints:
 

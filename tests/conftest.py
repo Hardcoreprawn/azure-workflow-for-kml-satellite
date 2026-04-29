@@ -11,9 +11,14 @@ from unittest.mock import MagicMock, patch
 import azure.functions as func
 import pytest
 
-# Ensure Azure storage env var is set for config module import
+# Ensure required config env vars are set for config module import
 os.environ.setdefault("AzureWebJobsStorage", "UseDevelopmentStorage=true")
 os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
+os.environ.setdefault("AUTH_MODE", "bearer_only")
+os.environ.setdefault("CIAM_AUTHORITY", "https://ciam.example.com")
+os.environ.setdefault("CIAM_TENANT_ID", "test-tenant")
+os.environ.setdefault("CIAM_API_AUDIENCE", "api://test-audience")
+os.environ.setdefault("CANOPEX_TEST_MODE", "1")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -219,6 +224,7 @@ def make_test_request(
         h["Authorization"] = auth_header
     if principal_user_id:
         h["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(user_id=principal_user_id)
+
     if headers:
         h.update(headers)
 

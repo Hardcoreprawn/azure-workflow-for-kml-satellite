@@ -124,6 +124,23 @@ class TestSwaAuth:
             "index.html (landing) must load msal-browser.min.js for CIAM auth"
         )
 
+    def test_landing_loads_msal_with_defer(self, index_html):
+        """Landing page must load MSAL, API client, and landing.js all with defer to avoid race."""
+        # Check that all three critical scripts are loaded with defer
+        api_tag = '<script src="/js/canopex-api-client.js" defer></script>'
+        landing_tag = '<script src="/js/landing.js" defer></script>'
+        assert api_tag in index_html, (
+            "index.html must load canopex-api-client.js with defer attribute"
+        )
+        assert landing_tag in index_html, "index.html must load landing.js with defer attribute"
+        # Verify the MSAL script tag itself includes defer without depending on
+        # exact formatting, attribute order, or fixed byte offsets.
+        msal_script_with_defer = re.search(
+            r'<script\b[^>]*\bsrc="[^"]*msal-browser\.min\.js"[^>]*\bdefer\b[^>]*>',
+            index_html,
+        )
+        assert msal_script_with_defer, "index.html MSAL script must have defer attribute"
+
     def test_app_html_loads_msal_browser(self, app_index_html):
         """App entrypoint must load the MSAL browser SDK before app-msal.js."""
         assert "msal-browser.min.js" in app_index_html, (
@@ -314,10 +331,12 @@ class TestAuthConfig:
 
     def test_landing_loads_shared_api_client_before_consumer(self, index_html):
         """Landing entrypoint must load shared client before landing.js."""
-        api_script = '<script src="/js/canopex-api-client.js"></script>'
-        landing_script = '<script src="/js/landing.js"></script>'
-        assert api_script in index_html, "index.html must include shared API client script"
-        assert landing_script in index_html, "index.html must include landing.js script"
+        api_script = '<script src="/js/canopex-api-client.js" defer></script>'
+        landing_script = '<script src="/js/landing.js" defer></script>'
+        assert api_script in index_html, (
+            "index.html must include shared API client script with defer"
+        )
+        assert landing_script in index_html, "index.html must include landing.js script with defer"
         assert index_html.index(api_script) < index_html.index(landing_script), (
             "index.html must load canopex-api-client.js before landing.js"
         )
@@ -343,6 +362,29 @@ class TestAuthConfig:
         assert eudr_index_html.index(api_script) < eudr_index_html.index(app_script), (
             "/eudr/index.html must load canopex-api-client.js before app-shell.js"
         )
+
+    def test_eudr_entry_uses_msal_not_legacy_auth(self, eudr_index_html):
+        """EUDR app must use MSAL bearer flow, not legacy SWA auth module."""
+        assert "app-msal.js" in eudr_index_html, (
+            "/eudr/index.html must load app-msal.js for CIAM bearer auth"
+        )
+        assert "app-auth.js" not in eudr_index_html, (
+            "/eudr/index.html must not load app-auth.js (legacy SWA auth removed in #710)"
+        )
+        msal_pos = eudr_index_html.index("app-msal.js")
+        app_shell_pos = eudr_index_html.index("app-shell.js")
+        assert msal_pos < app_shell_pos, (
+            "/eudr/index.html must load app-msal.js before app-shell.js"
+        )
+
+    def test_eudr_entry_injects_ciam_config_script(self, eudr_index_html):
+        """EUDR entrypoint must include CIAM config script element for MSAL initialization."""
+        assert 'id="canopex-ciam-config"' in eudr_index_html, (
+            "/eudr/index.html must include canopex-ciam-config script element for MSAL"
+        )
+        ciam_idx = eudr_index_html.index("canopex-ciam-config")
+        ciam_context = eudr_index_html[max(0, ciam_idx - 100) : ciam_idx + 100]
+        assert 'type="application/json"' in ciam_context, "canopex-ciam-config must be JSON type"
 
     def test_app_shell_supports_org_scope_history(self, app_runs_js):
         """EUDR dashboard should request org-scoped analysis history for portfolio triage."""

@@ -74,7 +74,7 @@ Browser ─── MSAL.js ──→ CIAM (Entra External ID, treesightauth.ciaml
         │
         └── /api/* (Authorization: Bearer <token>) ──→ Orchestrator FA (public ingress)
               │
-              ├── sync: auth/session, billing, catalogue, contact, health, export
+           ├── sync: billing, catalogue, contact, health, export
               ├── async start/status: upload + durable orchestration API
               ├── reads/writes: Blob + Cosmos via managed identity
               └── activity fan-out ──→ Compute FA (internal worker)
@@ -105,9 +105,10 @@ signature verification.
 4. Stable user identity derived from `tid:oid` claims (never email/upn)
 
 **Migration status:**
-- Backend bearer validation: ✅ complete (#709 closed). `AUTH_MODE=bearer_only` is ready.
-- Frontend MSAL migration: 🔄 pending (#710 open). Frontend still uses `/.auth/me` transitionally.
-- Deployed `AUTH_MODE`: `legacy_principal` until #710 ships and cutover is confirmed.
+
+- Backend bearer validation: ✅ complete (#709 closed).
+- Frontend MSAL migration: ✅ complete (#710 delivered).
+- Deployed `AUTH_MODE`: `bearer_only`.
 
 > **Do not add new code that depends on `X-MS-CLIENT-PRINCIPAL` forwarding or
 > `/.auth/*` being in the auth trust chain.** Those are transitional and will
@@ -115,13 +116,8 @@ signature verification.
 
 #### CIAM Bearer Auth (#709 — complete)
 
-Backend bearer JWT validation is complete. `AUTH_MODE` controls the active path:
-
-- `AUTH_MODE=legacy_principal` (currently deployed): SWA `X-MS-CLIENT-PRINCIPAL` forwarding, transitional only.
-- `AUTH_MODE=dual`: bearer JWT verification active with legacy fallback.
-- `AUTH_MODE=bearer_only`: CIAM bearer JWT required; no legacy path. **Target for post-#710 cutover.**
-
-Bearer-capable modes (`dual` and `bearer_only`) require these env vars:
+Backend bearer JWT validation is complete. `AUTH_MODE=bearer_only` is the only
+supported mode, and it requires these env vars:
 
 - `CIAM_AUTHORITY`
 - `CIAM_TENANT_ID`
@@ -160,14 +156,12 @@ host only and plays no role in the auth trust chain.
 - **Provider:** Entra External ID (CIAM) — tenant `treesightauth.ciamlogin.com`
 - **Frontend:** MSAL.js acquires CIAM JWT; sends `Authorization: Bearer <token>` on API calls
 - **Backend:** `require_auth` decorator verifies JWT via OIDC/JWKS; identity = `tid:oid` from claims
-- **SWA role:** static file host only — `/.auth/*` routes are transitional and will be removed
+- **SWA role:** static file host only
 - **Route protection:** enforced by the FA `require_auth` / `require_auth_durable` decorators
 
 Both Function Apps use managed identity (DefaultAzureCredential) for data-plane operations.
 
-> **Transitional note:** Until #710 (frontend MSAL migration) ships, the deployed
-> `AUTH_MODE` remains `legacy_principal` (SWA `X-MS-CLIENT-PRINCIPAL` forwarding).
-> The backend is ready for `bearer_only` — the switch happens when the frontend cutover ships.
+Legacy SWA principal forwarding is not part of the runtime auth trust chain.
 
 ### Deploy Pipeline
 

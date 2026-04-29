@@ -184,7 +184,6 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET | `/api/readiness` | Dependency readiness probe | 200 | 503 |
 | GET | `/api/contract` | OpenAPI/contract metadata | 200 | — |
 | GET | `/api/orchestrator/{instance_id}` | Durable instance status + artifact diagnostics | 200 | 400 / 404 |
-| POST | `/api/auth/session` | Session bootstrap | 200 | 401 |
 | GET | `/api/billing/status` | Subscription status | 200 | 401 |
 | POST | `/api/billing/checkout` | Create Stripe Checkout session | 200 | 400 / 401 |
 | POST | `/api/billing/portal` | Create Stripe customer portal session | 200 | 400 |
