@@ -96,6 +96,10 @@ jobs:
       - name: Run container smoke tests
         run: |
           docker run --rm \
+            -e AUTH_MODE="bearer_only" \
+            -e CIAM_AUTHORITY="https://treesightauth.ciamlogin.com" \
+            -e CIAM_TENANT_ID="ci-test-tenant" \
+            -e CIAM_API_AUDIENCE="api://ci-test-audience" \
             -v "${{ github.workspace }}/scripts:/scripts:ro" \
             treesight:ci-check \
             python3 /scripts/container_smoke_test.py
