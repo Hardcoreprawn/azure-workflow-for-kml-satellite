@@ -975,13 +975,14 @@ jobs:
             --poll-interval "$SMOKE_POLL_INTERVAL"
             --max-attempts "$SMOKE_MAX_ATTEMPTS"
             --skip-manifest-check
-            --principal-user-id "deploy-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-            --principal-user-details "deploy-smoke+${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}@example.com"
           )
 
-          if [ -n "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
-            SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
+          if [ -z "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
+            echo "DEPLOY_SMOKE_BEARER_TOKEN is required for bearer-only smoke gate"
+            exit 1
           fi
+
+          SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
 
           python ../../scripts/e2e_smoke_gate.py "${SMOKE_ARGS[@]}"
 

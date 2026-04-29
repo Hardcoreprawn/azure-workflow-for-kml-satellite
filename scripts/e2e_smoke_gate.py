@@ -11,7 +11,6 @@ Flow:
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import time
 from pathlib import Path
@@ -29,84 +28,11 @@ def bearer_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token_value}"}
 
 
-def principal_headers(principal_header: str, session_token: str | None = None) -> dict[str, str]:
-    header_value = principal_header.strip()
-    if not header_value:
-        raise ValueError("X-MS-CLIENT-PRINCIPAL header is required")
-    headers = {"X-MS-CLIENT-PRINCIPAL": header_value}
-    if session_token and session_token.strip():
-        headers["X-Auth-Session"] = session_token.strip()
-    return headers
-
-
-def auth_headers(
-    *,
-    token: str | None,
-    principal_header: str | None,
-    session_token: str | None,
-) -> dict[str, str]:
-    if token and token.strip():
-        return bearer_headers(token)
-    if principal_header and principal_header.strip():
-        return principal_headers(principal_header, session_token=session_token)
-    raise ValueError("Either bearer token or client principal header must be provided")
-
-
-def build_client_principal_header(
-    *,
-    user_id: str,
-    user_details: str,
-    roles_csv: str,
-) -> str:
-    roles = [role.strip() for role in roles_csv.split(",") if role.strip()]
-    if not roles:
-        raise ValueError("At least one principal role is required")
-
-    payload = {
-        "auth_typ": "aad",
-        "name_typ": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
-        "role_typ": "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
-        "claims": [],
-        "identityProvider": "aad",
-        "userId": user_id,
-        "userDetails": user_details,
-        "userRoles": roles,
-    }
-    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    return base64.b64encode(raw).decode("ascii")
-
-
-def mint_session_token(
-    client: httpx.Client,
-    *,
-    api_base: str,
-    principal_header: str,
-) -> str | None:
-    response = client.post(
-        f"{api_base}/api/auth/session",
-        headers={
-            "X-MS-CLIENT-PRINCIPAL": principal_header,
-            "Content-Type": "application/json",
-        },
-        timeout=20.0,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if not payload.get("hmac_enabled", False):
-        return None
-    token = payload.get("token")
-    if not isinstance(token, str) or not token:
-        raise ValueError("auth/session response missing token while hmac_enabled=true")
-    return token
-
-
 def mint_upload_token(
     client: httpx.Client,
     *,
     api_base: str,
-    token: str | None = None,
-    principal_header: str | None = None,
-    session_token: str | None = None,
+    token: str,
     eudr_mode: bool,
     submission_context: dict[str, Any],
 ) -> dict[str, str]:
@@ -118,11 +44,7 @@ def mint_upload_token(
         f"{api_base}/api/upload/token",
         json=payload,
         headers={
-            **auth_headers(
-                token=token,
-                principal_header=principal_header,
-                session_token=session_token,
-            ),
+            **bearer_headers(token),
             "Content-Type": "application/json",
         },
         timeout=30.0,
@@ -155,9 +77,7 @@ def poll_orchestrator(
     client: httpx.Client,
     *,
     api_base: str,
-    token: str | None = None,
-    principal_header: str | None = None,
-    session_token: str | None = None,
+    token: str,
     instance_id: str,
     max_attempts: int,
     poll_interval_seconds: int,
@@ -169,11 +89,7 @@ def poll_orchestrator(
     for _ in range(max_attempts):
         response = client.get(
             f"{api_base}/api/orchestrator/{instance_id}",
-            headers=auth_headers(
-                token=token,
-                principal_header=principal_header,
-                session_token=session_token,
-            ),
+            headers=bearer_headers(token),
             timeout=20.0,
         )
         if response.status_code == 404:
@@ -236,18 +152,12 @@ def verify_manifest(
     client: httpx.Client,
     *,
     api_base: str,
-    token: str | None = None,
-    principal_header: str | None = None,
-    session_token: str | None = None,
+    token: str,
     instance_id: str,
 ) -> dict[str, Any]:
     response = client.get(
         f"{api_base}/api/timelapse-data/{instance_id}",
-        headers=auth_headers(
-            token=token,
-            principal_header=principal_header,
-            session_token=session_token,
-        ),
+        headers=bearer_headers(token),
         timeout=30.0,
     )
     response.raise_for_status()
@@ -262,27 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--api-base", required=True, help="Base API URL, e.g. https://api.example.com"
     )
-    parser.add_argument("--bearer-token", help="Optional CIAM bearer token")
-    parser.add_argument(
-        "--principal-user-id",
-        default="deploy-smoke-user",
-        help="Synthetic SWA principal userId when bearer token is not provided",
-    )
-    parser.add_argument(
-        "--principal-user-details",
-        default="deploy-smoke@example.com",
-        help="Synthetic SWA principal userDetails when bearer token is not provided",
-    )
-    parser.add_argument(
-        "--principal-roles",
-        default="authenticated",
-        help="Comma-separated principal roles for smoke auth header",
-    )
-    parser.add_argument(
-        "--skip-session-token",
-        action="store_true",
-        help="Skip auth/session token bootstrap in principal auth mode",
-    )
+    parser.add_argument("--bearer-token", required=True, help="CIAM bearer token")
     parser.add_argument(
         "--kml-path", default="tests/fixtures/sample.kml", help="Path to KML fixture"
     )
@@ -317,28 +207,12 @@ def main() -> int:
     }
 
     with httpx.Client() as client:
-        bearer_token = (args.bearer_token or "").strip() or None
-        principal_header = None
-        session_token = None
-        if not bearer_token:
-            principal_header = build_client_principal_header(
-                user_id=args.principal_user_id,
-                user_details=args.principal_user_details,
-                roles_csv=args.principal_roles,
-            )
-            if not args.skip_session_token:
-                session_token = mint_session_token(
-                    client,
-                    api_base=args.api_base.rstrip("/"),
-                    principal_header=principal_header,
-                )
+        bearer_token = args.bearer_token.strip()
 
         token_result = mint_upload_token(
             client,
             api_base=args.api_base.rstrip("/"),
             token=bearer_token,
-            principal_header=principal_header,
-            session_token=session_token,
             eudr_mode=args.eudr_mode,
             submission_context=submission_context,
         )
@@ -351,8 +225,6 @@ def main() -> int:
             client,
             api_base=args.api_base.rstrip("/"),
             token=bearer_token,
-            principal_header=principal_header,
-            session_token=session_token,
             instance_id=submission_id,
             max_attempts=args.max_attempts,
             poll_interval_seconds=args.poll_interval,
@@ -366,8 +238,6 @@ def main() -> int:
                 client,
                 api_base=args.api_base.rstrip("/"),
                 token=bearer_token,
-                principal_header=principal_header,
-                session_token=session_token,
                 instance_id=submission_id,
             )
             manifest_ok = True

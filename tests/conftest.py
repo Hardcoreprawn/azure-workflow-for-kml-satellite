@@ -18,6 +18,7 @@ os.environ.setdefault("AUTH_MODE", "bearer_only")
 os.environ.setdefault("CIAM_AUTHORITY", "https://ciam.example.com")
 os.environ.setdefault("CIAM_TENANT_ID", "test-tenant")
 os.environ.setdefault("CIAM_API_AUDIENCE", "api://test-audience")
+os.environ.setdefault("CANOPEX_TEST_MODE", "1")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

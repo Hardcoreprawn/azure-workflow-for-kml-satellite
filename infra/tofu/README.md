@@ -51,7 +51,7 @@ Configure for each environment (`dev`, `prd`):
 - `TF_STATE_CONTAINER`
 - `TF_STATE_KEY`
 
-## Optional GitHub Environment Secrets (CIAM/Bearer Token Auth)
+## Required GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
 Bearer-token authentication is mandatory. Configure:
 
@@ -75,13 +75,6 @@ tofu init \
 tofu plan \
   -var "subscription_id=<SUBSCRIPTION_ID>" \
   -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \
-  -var-file="environments/dev.tfvars"
-
-# With CIAM bearer-token auth (dual mode)
-tofu plan \
-  -var "subscription_id=<SUBSCRIPTION_ID>" \
-  -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \
-  -var "auth_mode=dual" \
   -var "ciam_authority=https://login.microsoftonline.com/<TENANT_ID>" \
   -var "ciam_tenant_id=<TENANT_ID>" \
   -var "ciam_api_audience=<API_APP_ID_URI>" \

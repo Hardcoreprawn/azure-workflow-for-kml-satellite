@@ -25,10 +25,9 @@ logger = logging.getLogger(__name__)
 
 
 def auth_enabled() -> bool:
-    """Return True — SWA built-in auth is always available.
+    """Return True to indicate auth helpers are active in this module.
 
-    When ``REQUIRE_AUTH`` is set the function still returns True, but callers
-    treat missing headers as a 401 rather than falling through to anonymous.
+    Runtime request enforcement is handled by API decorators and `REQUIRE_AUTH`.
     """
     return True
 

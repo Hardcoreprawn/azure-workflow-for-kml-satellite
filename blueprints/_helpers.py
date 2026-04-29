@@ -119,11 +119,11 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     """Return verified bearer claims when auth headers are present.
 
     Production path uses Authorization bearer tokens only.
-    For pytest compatibility, X-MS-CLIENT-PRINCIPAL is accepted only when
-    PYTEST_CURRENT_TEST is set by the test runner.
+    For tests, X-MS-CLIENT-PRINCIPAL is accepted only when
+    CANOPEX_TEST_MODE is explicitly enabled.
     """
 
-    if os.environ.get("PYTEST_CURRENT_TEST"):
+    if os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes"):
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if principal_header:
             principal = parse_client_principal(principal_header)

@@ -9,9 +9,8 @@ info:
 
     ## Authentication
 
-    Most endpoints require authentication via SWA built-in Azure AD.
-    SWA handles the OAuth flow and injects the `X-MS-CLIENT-PRINCIPAL` header
-    into API requests automatically — no client-side token management needed.
+    Most endpoints require CIAM bearer-token authentication.
+    Clients obtain a JWT and send `Authorization: Bearer <token>` on API requests.
 
     Demo artifact downloads use short-lived **valet tokens** instead of auth sessions.
 
@@ -69,7 +68,7 @@ tags:
   - name: contact
     description: Contact form
   - name: auth
-    description: Session and identity
+    description: Bearer token authentication and identity
   - name: billing
     description: Stripe billing and subscriptions
   - name: org
@@ -171,7 +170,7 @@ paths:
         accounts are routed through the cheaper seasonal two-year pipeline.
       tags: [analysis]
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -923,7 +922,7 @@ paths:
       tags: [billing]
       summary: Current subscription status for the authenticated user
       security:
-        - swaAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Billing status
@@ -940,7 +939,7 @@ paths:
       tags: [billing]
       summary: Create a Stripe Checkout session
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -966,7 +965,7 @@ paths:
       tags: [billing]
       summary: Create a Stripe customer portal session
       security:
-        - swaAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Portal session URL
@@ -992,7 +991,7 @@ paths:
       tags: [pipeline]
       summary: Generate a write-only SAS token for blob upload
       security:
-        - swaAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: SAS token and upload URL
@@ -1035,7 +1034,7 @@ paths:
         Notes are stored in Cosmos and included in EUDR PDF exports.
       tags: [analysis]
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1081,7 +1080,7 @@ paths:
         The caller must be the run owner or an org member.
       tags: [analysis]
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1128,7 +1127,7 @@ paths:
       tags: [analysis]
       summary: User or org-scoped analysis run history
       security:
-        - swaAuth: []
+        - bearerAuth: []
       parameters:
         - name: scope
           in: query
@@ -1201,7 +1200,7 @@ paths:
       tags: [analysis]
       summary: EUDR compliance assessment (NDVI + WorldCover + WDPA)
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1226,7 +1225,7 @@ paths:
       tags: [analysis]
       summary: Convert lat/lon coordinates to KML
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1251,7 +1250,7 @@ paths:
       tags: [org]
       summary: Get organisation details
       security:
-        - swaAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Organisation info
@@ -1266,7 +1265,7 @@ paths:
       tags: [org]
       summary: Create an organisation
       security:
-        - swaAuth: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -1289,7 +1288,7 @@ paths:
       tags: [ops]
       summary: Ops dashboard (admin only)
       security:
-        - swaAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Dashboard data
@@ -1302,14 +1301,13 @@ paths:
 
 components:
   securitySchemes:
-    swaAuth:
-      type: apiKey
-      in: cookie
-      name: StaticWebAppsAuthCookie
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
       description: |
-        SWA built-in auth session cookie.  Users authenticate via
-        /.auth/login/{provider} and the SWA reverse proxy injects
-        X-MS-CLIENT-PRINCIPAL on every /api/* request.
+        CIAM-issued bearer JWT sent in `Authorization: Bearer <token>`.
+        The API verifies token signature and claims via OIDC/JWKS.
     functionKey:
       type: apiKey
       in: header
@@ -1588,4 +1586,4 @@ components:
             error: "Rate limit exceeded. Try again later."
 
 security:
-  - swaAuth: []
+  - bearerAuth: []
