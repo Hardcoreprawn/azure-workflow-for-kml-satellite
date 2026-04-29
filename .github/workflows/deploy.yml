@@ -972,7 +972,7 @@ jobs:
           echo "Smoke poll interval=${SMOKE_POLL_INTERVAL}s max_attempts=${SMOKE_MAX_ATTEMPTS}"
 
           for attempt in $(seq 1 "$SMOKE_MAX_ATTEMPTS"); do
-            http_code=$(curl -sS -o /tmp/internal-smoke.json -w "%{http_code}" "$SMOKE_URL")
+            http_code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/internal-smoke.json -w "%{http_code}" "$SMOKE_URL" || echo "000")
             if [ "$http_code" = "200" ]; then
               echo "Internal smoke gate passed on attempt ${attempt}"
               cat /tmp/internal-smoke.json

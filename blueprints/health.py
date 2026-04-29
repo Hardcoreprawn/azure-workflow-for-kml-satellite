@@ -5,6 +5,7 @@ See blueprints/pipeline.py module docstring for details.
 """
 
 import json
+import re
 from urllib.parse import urlparse
 
 import azure.functions as func
@@ -16,13 +17,13 @@ from ._helpers import cors_headers, cors_preflight
 
 bp = func.Blueprint()
 
+_INTERNAL_SMOKE_HOST_RE = re.compile(r"^func-kmlsat-(dev|prd)-orch\..+\.azurecontainerapps\.io$")
+
 
 def _internal_smoke_allowed(req: func.HttpRequest) -> bool:
-    """Allow internal smoke checks only on the dev orchestrator ingress host."""
+    """Allow internal smoke checks only on dev/prd orchestrator ingress hosts."""
     hostname = (urlparse(req.url).hostname or "").lower()
-    return hostname.startswith("func-kmlsat-dev-orch.") and hostname.endswith(
-        ".azurecontainerapps.io"
-    )
+    return bool(_INTERNAL_SMOKE_HOST_RE.fullmatch(hostname))
 
 
 @bp.route(route="health", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)

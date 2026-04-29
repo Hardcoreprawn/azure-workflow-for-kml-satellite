@@ -580,8 +580,16 @@ class TestDeployWorkflowSettings:
         assert "/api/internal-smoke" in deploy_yml, (
             "deploy.yml async smoke gate must target the internal deploy smoke endpoint"
         )
-        assert 'curl -sS -o /tmp/internal-smoke.json -w "%{http_code}"' in deploy_yml, (
+        expected_curl_probe = (
+            "curl -sS --connect-timeout 5 --max-time 15 "
+            '-o /tmp/internal-smoke.json -w "%{http_code}"'
+        )
+        assert expected_curl_probe in deploy_yml, (
             "deploy.yml async smoke gate must probe the internal smoke endpoint via curl"
+        )
+        assert '|| echo "000"' in deploy_yml, (
+            "deploy.yml async smoke gate must tolerate transient curl failures "
+            "and continue bounded retries"
         )
 
     def test_async_smoke_gate_is_bounded(self, deploy_yml):

@@ -138,6 +138,14 @@ class TestInternalSmoke:
         assert body["status"] == "ok"
         assert body["scope"] == "internal-deploy-smoke"
 
+    def test_returns_200_for_prd_orchestrator_host(self):
+        resp = internal_smoke(
+            _make_req(
+                url="https://func-kmlsat-prd-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke"
+            )
+        )
+        assert resp.status_code == 200
+
     def test_returns_404_for_non_dev_hosts(self):
         resp = internal_smoke(_make_req(url="https://api.canopex.com/api/internal-smoke"))
         assert resp.status_code == 404
