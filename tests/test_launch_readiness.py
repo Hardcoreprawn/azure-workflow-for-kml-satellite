@@ -577,8 +577,11 @@ class TestDeployWorkflowSettings:
         assert "Run async functional smoke gate" in deploy_yml, (
             "deploy.yml must run an async functional smoke gate after readiness checks"
         )
-        assert "python ../../scripts/e2e_smoke_gate.py" in deploy_yml, (
-            "deploy.yml async smoke gate must execute scripts/e2e_smoke_gate.py"
+        assert "/api/internal-smoke" in deploy_yml, (
+            "deploy.yml async smoke gate must target the internal deploy smoke endpoint"
+        )
+        assert 'curl -sS -o /tmp/internal-smoke.json -w "%{http_code}"' in deploy_yml, (
+            "deploy.yml async smoke gate must probe the internal smoke endpoint via curl"
         )
 
     def test_async_smoke_gate_is_bounded(self, deploy_yml):
@@ -588,8 +591,11 @@ class TestDeployWorkflowSettings:
         assert "SMOKE_MAX_ATTEMPTS" in deploy_yml, (
             "deploy.yml async smoke gate must define bounded max attempts"
         )
-        assert "--poll-interval" in deploy_yml and "--max-attempts" in deploy_yml, (
-            "deploy.yml async smoke gate must pass bounded polling arguments"
+        assert 'for attempt in $(seq 1 "$SMOKE_MAX_ATTEMPTS")' in deploy_yml, (
+            "deploy.yml async smoke gate must use bounded retry attempts"
+        )
+        assert 'sleep "$SMOKE_POLL_INTERVAL"' in deploy_yml, (
+            "deploy.yml async smoke gate must wait using bounded poll interval"
         )
 
     def test_infra_gate_step_uses_orchestrator_outputs(self, deploy_yml):
@@ -1286,6 +1292,8 @@ class TestEndpointAuthAudit:
         "health",
         "readiness",
         "contract",
+        # Internal deploy-only smoke probe (dev orchestrator host restricted)
+        "internal-smoke",
         "billing/webhook",
         "contact-form",
         "demo-artifacts",
