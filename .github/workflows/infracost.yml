@@ -41,7 +41,7 @@ jobs:
     environment: dev
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-      TF_VAR_auth_mode: ${{ secrets.TF_VAR_AUTH_MODE || 'bearer_only' }}
+      TF_VAR_auth_mode: bearer_only
       TF_VAR_ciam_authority: ${{ secrets.TF_VAR_CIAM_AUTHORITY || '' }}
       TF_VAR_ciam_tenant_id: ${{ secrets.TF_VAR_CIAM_TENANT_ID || '' }}
       TF_VAR_ciam_api_audience: ${{ secrets.TF_VAR_CIAM_API_AUDIENCE || '' }}

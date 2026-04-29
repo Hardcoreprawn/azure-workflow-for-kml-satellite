@@ -133,13 +133,13 @@ class TestSwaAuth:
             "index.html must load canopex-api-client.js with defer attribute"
         )
         assert landing_tag in index_html, "index.html must load landing.js with defer attribute"
-        # Verify MSAL script has defer (check by looking for the exact script tag with defer)
-        msal_idx = index_html.index("msal-browser.min.js")
-        msal_end = msal_idx + 200
-        assert (
-            'msal-browser.min.js" integrity=' in index_html
-            and "defer></script>" in index_html[max(0, msal_idx) : msal_end]
-        ), "index.html MSAL script must have defer attribute"
+        # Verify the MSAL script tag itself includes defer without depending on
+        # exact formatting, attribute order, or fixed byte offsets.
+        msal_script_with_defer = re.search(
+            r'<script\b[^>]*\bsrc="[^"]*msal-browser\.min\.js"[^>]*\bdefer\b[^>]*>',
+            index_html,
+        )
+        assert msal_script_with_defer, "index.html MSAL script must have defer attribute"
 
     def test_app_html_loads_msal_browser(self, app_index_html):
         """App entrypoint must load the MSAL browser SDK before app-msal.js."""
