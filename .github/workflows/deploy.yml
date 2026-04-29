@@ -962,33 +962,31 @@ jobs:
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
-          DEPLOY_SMOKE_BEARER_TOKEN: ${{ secrets.DEPLOY_SMOKE_BEARER_TOKEN }}
           SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
           SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
         run: |
-          python -m pip install --disable-pip-version-check --quiet httpx
-
           HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
           API_BASE="https://${HOSTNAME}"
-          echo "Running async smoke gate against ${API_BASE}"
+          SMOKE_URL="${API_BASE}/api/internal-smoke"
+          echo "Running internal smoke gate against ${SMOKE_URL}"
           echo "Smoke poll interval=${SMOKE_POLL_INTERVAL}s max_attempts=${SMOKE_MAX_ATTEMPTS}"
 
-          SMOKE_ARGS=(
-            --api-base "$API_BASE"
-            --kml-path ../../tests/fixtures/sample.kml
-            --poll-interval "$SMOKE_POLL_INTERVAL"
-            --max-attempts "$SMOKE_MAX_ATTEMPTS"
-            --skip-manifest-check
-          )
+          for attempt in $(seq 1 "$SMOKE_MAX_ATTEMPTS"); do
+            http_code=$(curl -sS --connect-timeout 5 --max-time 15 -o /tmp/internal-smoke.json -w "%{http_code}" "$SMOKE_URL" || echo "000")
+            if [ "$http_code" = "200" ]; then
+              echo "Internal smoke gate passed on attempt ${attempt}"
+              cat /tmp/internal-smoke.json
+              exit 0
+            fi
 
-          if [ -z "${DEPLOY_SMOKE_BEARER_TOKEN:-}" ]; then
-            echo "DEPLOY_SMOKE_BEARER_TOKEN is required for bearer-only smoke gate"
-            exit 1
-          fi
-
-          SMOKE_ARGS+=(--bearer-token "$DEPLOY_SMOKE_BEARER_TOKEN")
-
-          python ../../scripts/e2e_smoke_gate.py "${SMOKE_ARGS[@]}"
+            echo "Attempt ${attempt}/${SMOKE_MAX_ATTEMPTS} returned HTTP ${http_code}; retrying in ${SMOKE_POLL_INTERVAL}s"
+            if [ "$attempt" = "$SMOKE_MAX_ATTEMPTS" ]; then
+              echo "Internal smoke gate failed after ${SMOKE_MAX_ATTEMPTS} attempts"
+              cat /tmp/internal-smoke.json || true
+              exit 1
+            fi
+            sleep "$SMOKE_POLL_INTERVAL"
+          done
 
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image

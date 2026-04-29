@@ -9,7 +9,7 @@ Covers:
 
 import json
 
-from blueprints.health import contract, health, readiness
+from blueprints.health import contract, health, internal_smoke, readiness
 from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
@@ -19,9 +19,9 @@ _CUSTOM_DOMAIN_ORIGIN = TEST_ORIGIN
 _UNKNOWN_ORIGIN = "https://evil.example.com"
 
 
-def _make_req(method="GET", origin=_ALLOWED_ORIGIN):
+def _make_req(method="GET", origin=_ALLOWED_ORIGIN, url="/api/health"):
     return make_test_request(
-        url="/api/health",
+        url=url,
         method=method,
         origin=origin,
         auth_header=None,
@@ -118,4 +118,43 @@ class TestContract:
 
     def test_options_returns_204(self):
         resp = contract(_make_req(method="OPTIONS"))
+        assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# /api/internal-smoke
+# ---------------------------------------------------------------------------
+
+
+class TestInternalSmoke:
+    def test_returns_200_for_dev_orchestrator_host(self):
+        resp = internal_smoke(
+            _make_req(
+                url="https://func-kmlsat-dev-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke"
+            )
+        )
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["status"] == "ok"
+        assert body["scope"] == "internal-deploy-smoke"
+
+    def test_returns_200_for_prd_orchestrator_host(self):
+        resp = internal_smoke(
+            _make_req(
+                url="https://func-kmlsat-prd-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke"
+            )
+        )
+        assert resp.status_code == 200
+
+    def test_returns_404_for_non_dev_hosts(self):
+        resp = internal_smoke(_make_req(url="https://api.canopex.com/api/internal-smoke"))
+        assert resp.status_code == 404
+
+    def test_options_returns_204_for_dev_orchestrator_host(self):
+        resp = internal_smoke(
+            _make_req(
+                method="OPTIONS",
+                url="https://func-kmlsat-dev-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke",
+            )
+        )
         assert resp.status_code == 204
