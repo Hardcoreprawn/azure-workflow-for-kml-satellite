@@ -9,14 +9,11 @@ from typing import Any
 
 import azure.functions as func
 
-from treesight.config import AUTH_HMAC_KEY, AUTH_MODE
+from treesight.config import AUTH_MODE
 from treesight.security.auth import (
-    get_user_id,
     get_user_id_from_bearer_claims,
     parse_bearer_token,
-    parse_client_principal,
     verify_bearer_token,
-    verify_session_token,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,37 +115,8 @@ def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(status_code=204, headers=cors_headers(req))
 
 
-def _verify_hmac(req: func.HttpRequest, uid: str) -> str | None:
-    """Check the HMAC session token when ``AUTH_HMAC_KEY`` is configured.
-
-    Returns an error message string on failure, or ``None`` on success /
-    when HMAC verification is not enabled.
-    """
-    if not AUTH_HMAC_KEY:
-        return None
-    token = req.headers.get("X-Auth-Session", "")
-    if not token:
-        return "Missing X-Auth-Session header"
-    try:
-        verify_session_token(token, uid, key=AUTH_HMAC_KEY)
-    except ValueError as exc:
-        return str(exc)
-    return None
-
-
 def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
-    """Return verified bearer claims, or None when bearer mode is not active.
-
-    This keeps legacy SWA-principal auth working during the CIAM transition
-    when callers still send placeholder Authorization headers.
-    """
-    mode = (
-        AUTH_MODE
-        if AUTH_MODE in {"legacy_principal", "dual", "bearer_only"}
-        else "legacy_principal"
-    )
-    if mode == "legacy_principal":
-        return None
+    """Return verified bearer claims when an Authorization bearer token exists."""
 
     auth_header = req.headers.get("Authorization", "")
     bearer = parse_bearer_token(auth_header)
@@ -159,18 +127,14 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
 
 
 def require_auth(fn):
-    """Decorator that validates SWA X-MS-CLIENT-PRINCIPAL on the request.
+    """Decorator that validates bearer JWT auth on the request.
 
-    When no principal header is present and REQUIRE_AUTH is not set,
-    the request passes through unauthenticated (local dev graceful
-    degradation).
-
-    When ``AUTH_HMAC_KEY`` is configured, a valid ``X-Auth-Session`` HMAC
-    token must also be present (issued by ``/api/auth/session``).
+    When no bearer token is present and REQUIRE_AUTH is not set, requests
+    pass through as anonymous for local development only.
 
     On success, the original function receives two extra keyword arguments:
-        auth_claims  — decoded client principal dict
-        user_id      — SWA userId string
+        auth_claims  — verified bearer JWT claims
+        user_id      — stable user identifier (<tid>:<oid>)
     """
 
     @wraps(fn)
@@ -193,32 +157,11 @@ def require_auth(fn):
             _track_req(req, resp, uid, _t0)
             return resp
 
-        if AUTH_MODE == "bearer_only":
-            return error_response(401, "Authentication required", req=req)
-
-        principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
-        if not principal_header:
-            if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
-                resp = fn(req, auth_claims={}, user_id="anonymous")
-                _track_req(req, resp, "anonymous", _t0)
-                return resp
-            return error_response(401, "Authentication required", req=req)
-
-        try:
-            principal = parse_client_principal(principal_header)
-        except ValueError as exc:
-            return error_response(401, str(exc), req=req)
-
-        uid = get_user_id(principal)
-
-        hmac_err = _verify_hmac(req, uid)
-        if hmac_err:
-            return error_response(401, hmac_err, req=req)
-
-        logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
-        resp = fn(req, auth_claims=principal, user_id=uid)
-        _track_req(req, resp, uid, _t0)
-        return resp
+        if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+            resp = fn(req, auth_claims={}, user_id="anonymous")
+            _track_req(req, resp, "anonymous", _t0)
+            return resp
+        return error_response(401, "Authentication required", req=req)
 
     # @wraps copies __wrapped__, which makes inspect.signature() expose
     # the inner function's extra parameters (auth_claims, user_id).
@@ -255,64 +198,31 @@ def require_auth_hmac_exempt(fn):
             _track_req(req, resp, uid, _t0)
             return resp
 
-        if AUTH_MODE == "bearer_only":
-            return error_response(401, "Authentication required", req=req)
-
-        principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
-        if not principal_header:
-            if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
-                resp = fn(req, auth_claims={}, user_id="anonymous")
-                _track_req(req, resp, "anonymous", _t0)
-                return resp
-            return error_response(401, "Authentication required", req=req)
-
-        try:
-            principal = parse_client_principal(principal_header)
-        except ValueError as exc:
-            return error_response(401, str(exc), req=req)
-
-        uid = get_user_id(principal)
-        logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
-        resp = fn(req, auth_claims=principal, user_id=uid)
-        _track_req(req, resp, uid, _t0)
-        return resp
+        if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+            resp = fn(req, auth_claims={}, user_id="anonymous")
+            _track_req(req, resp, "anonymous", _t0)
+            return resp
+        return error_response(401, "Authentication required", req=req)
 
     del wrapper.__wrapped__
     return wrapper
 
 
 def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
-    """Parse SWA X-MS-CLIENT-PRINCIPAL, verify HMAC, return (principal, user_id).
+    """Parse bearer JWT, return (claims, user_id).
 
     Returns ({}, "anonymous") when no principal header is present and
     REQUIRE_AUTH is not set.
     Raises ValueError with a user-safe message on auth failure.
-
-    When ``AUTH_HMAC_KEY`` is configured, also verifies the ``X-Auth-Session``
-    HMAC token (same check that ``@require_auth`` performs).
     """
     claims = _resolve_bearer_claims(req)
     if claims:
         logger.info("auth_path=bearer mode=%s", AUTH_MODE)
         return claims, get_user_id_from_bearer_claims(claims)
 
-    if AUTH_MODE == "bearer_only":
-        raise ValueError("Authentication required")
-
-    principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
-    if not principal_header:
-        if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
-            return {}, "anonymous"
-        raise ValueError("Authentication required")
-    principal = parse_client_principal(principal_header)
-    uid = get_user_id(principal)
-
-    hmac_err = _verify_hmac(req, uid)
-    if hmac_err:
-        raise ValueError(hmac_err)
-
-    logger.info("auth_path=legacy_principal mode=%s", AUTH_MODE)
-    return principal, uid
+    if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+        return {}, "anonymous"
+    raise ValueError("Authentication required")
 
 
 def submit_contact(

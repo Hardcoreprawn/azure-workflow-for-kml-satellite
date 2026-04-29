@@ -51,17 +51,16 @@ Configure for each environment (`dev`, `prd`):
 - `TF_STATE_CONTAINER`
 - `TF_STATE_KEY`
 
-## Optional GitHub Environment Secrets (CIAM/Bearer Token Auth — Issue #709)
+## Optional GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
-To enable CIAM bearer-token authentication, configure:
+Bearer-token authentication is mandatory. Configure:
 
-- `TF_VAR_AUTH_MODE` — Auth transition mode: `legacy_principal` (default, SWA headers only), `dual` (both paths), or `bearer_only` (JWT only)
-- `TF_VAR_CIAM_AUTHORITY` — Azure Entra CIAM authority endpoint (required if `auth_mode` is `dual` or `bearer_only`)
-- `TF_VAR_CIAM_TENANT_ID` — Azure Entra tenant ID for CIAM app registration (required if `auth_mode` is `dual` or `bearer_only`)
-- `TF_VAR_CIAM_API_AUDIENCE` — API audience (app ID URI) from CIAM app registration (required if `auth_mode` is `dual` or `bearer_only`)
+- `TF_VAR_AUTH_MODE` — Must be `bearer_only`
+- `TF_VAR_CIAM_AUTHORITY` — Azure Entra CIAM authority endpoint (required)
+- `TF_VAR_CIAM_TENANT_ID` — Azure Entra tenant ID for CIAM app registration (required)
+- `TF_VAR_CIAM_API_AUDIENCE` — API audience (app ID URI) from CIAM app registration (required)
 
-The Function App will validate that CIAM settings are consistent: if `auth_mode=dual` or `auth_mode=bearer_only`, all three CIAM variables must be set.
-`auth_mode=bearer_only` should be enabled only after frontend bearer-token support is deployed (tracked separately in issue #710); until then use `legacy_principal` or `dual`.
+The Function App validates these settings at startup and fails fast if they are missing.
 
 ## Local Usage
 
@@ -72,7 +71,7 @@ tofu init \
   -backend-config="container_name=<TF_STATE_CONTAINER>" \
   -backend-config="key=kml-satellite-dev.tfstate"
 
-# Default (legacy SWA auth)
+# Bearer-only auth
 tofu plan \
   -var "subscription_id=<SUBSCRIPTION_ID>" \
   -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \

@@ -1,13 +1,10 @@
-"""SWA built-in auth: parse X-MS-CLIENT-PRINCIPAL header.
+"""Authentication helpers for CIAM bearer tokens and session HMAC tokens.
 
-Azure Static Web Apps validates the OAuth session server-side and injects
-a Base64-encoded JSON header into every /api/* request.  This module
-decodes that header and extracts user identity — no JWT validation, JWKS
-fetching, or client secrets needed.
+The API auth path is bearer JWT verification (Authorization header) backed
+by CIAM OIDC metadata + JWKS signature validation.
 
-When ``AUTH_HMAC_KEY`` is configured the module also provides HMAC-SHA256
-signing and verification so callers can reject forged principal headers
-(see #534).
+This module also provides HMAC-SHA256 signing and verification for
+session-token endpoints.
 """
 
 from __future__ import annotations
@@ -24,7 +21,6 @@ from typing import Any
 import requests
 
 from treesight.config import (
-    AUTH_MODE,
     CIAM_API_AUDIENCE,
     CIAM_AUTHORITY,
     CIAM_JWT_LEEWAY_SECONDS,
@@ -45,31 +41,6 @@ def auth_enabled() -> bool:
     treat missing headers as a 401 rather than falling through to anonymous.
     """
     return True
-
-
-def parse_client_principal(header_value: str) -> dict[str, Any]:
-    """Decode the ``X-MS-CLIENT-PRINCIPAL`` header and return the principal dict.
-
-    Raises ``ValueError`` with a user-safe message on any decoding failure.
-    """
-    if not header_value:
-        raise ValueError("Missing X-MS-CLIENT-PRINCIPAL header")
-
-    try:
-        decoded = base64.b64decode(header_value, validate=True)
-        principal = json.loads(decoded)
-    except Exception:
-        raise ValueError("Malformed X-MS-CLIENT-PRINCIPAL header") from None
-
-    if not isinstance(principal, dict) or not principal.get("userId"):
-        raise ValueError("X-MS-CLIENT-PRINCIPAL missing userId")
-
-    return principal
-
-
-def get_user_id(principal: dict[str, Any]) -> str:
-    """Extract the user identifier from a decoded client principal."""
-    return principal.get("userId", "")
 
 
 def parse_bearer_token(authorization_header: str) -> str | None:
@@ -101,12 +72,7 @@ def get_user_id_from_bearer_claims(claims: dict[str, Any]) -> str:
 
 
 def verify_bearer_token(token: str) -> dict[str, Any]:
-    """Verify CIAM bearer JWT and return decoded claims.
-
-    Verification is enabled only in ``AUTH_MODE`` dual or bearer_only.
-    """
-    if AUTH_MODE not in {"dual", "bearer_only"}:
-        raise ValueError("Bearer token auth is not enabled")
+    """Verify CIAM bearer JWT and return decoded claims."""
     if not CIAM_AUTHORITY or not CIAM_TENANT_ID or not CIAM_API_AUDIENCE:
         raise ValueError("Bearer token auth is not configured")
 

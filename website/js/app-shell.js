@@ -225,7 +225,7 @@
 
   /* ---- Run lifecycle — delegated to app-run-lifecycle.js ---- */
 
-  /* ---- Auth UI + bootstrap — delegated to app-auth.js ---- */
+  /* ---- Auth UI + bootstrap — delegated to app-msal.js ---- */
 
   function initModule(moduleRef, deps) {
     if (moduleRef && typeof moduleRef.init === 'function') {

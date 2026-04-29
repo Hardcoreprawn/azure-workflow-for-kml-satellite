@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from treesight.config import config_get_int, validate_config
+from treesight.config import config_get_int
 from treesight.errors import ConfigValidationError
 
 
@@ -42,9 +42,22 @@ class TestConfigGetInt:
 
 
 class TestValidateConfig:
-    def test_valid_defaults_pass(self):
-        """Default env should pass validation (no errors)."""
-        validate_config()  # Should not raise
+    def test_valid_bearer_defaults_pass(self):
+        """Bearer-only mode should pass when required CIAM settings are present."""
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_MODE": "bearer_only",
+                "CIAM_AUTHORITY": "https://issuer.example",
+                "CIAM_TENANT_ID": "tenant-id",
+                "CIAM_API_AUDIENCE": "client-id",
+            },
+            clear=False,
+        ):
+            cfg = importlib.import_module("treesight.config")
+            importlib.reload(cfg)
+            cfg.validate_config()
+            importlib.reload(cfg)
 
     def test_invalid_resolution_raises(self):
         with patch.dict(os.environ, {"IMAGERY_RESOLUTION_TARGET_M": "0"}):
@@ -64,11 +77,11 @@ class TestValidateConfig:
                 cfg.validate_config()
             importlib.reload(cfg)
 
-    def test_dual_mode_requires_ciam_settings(self):
+    def test_bearer_only_requires_ciam_settings(self):
         with patch.dict(
             os.environ,
             {
-                "AUTH_MODE": "dual",
+                "AUTH_MODE": "bearer_only",
                 "CIAM_AUTHORITY": "",
                 "CIAM_TENANT_ID": "",
                 "CIAM_API_AUDIENCE": "",
@@ -81,11 +94,11 @@ class TestValidateConfig:
                 cfg.validate_config()
             importlib.reload(cfg)
 
-    def test_dual_mode_with_valid_settings_passes(self):
+    def test_bearer_only_with_valid_settings_passes(self):
         with patch.dict(
             os.environ,
             {
-                "AUTH_MODE": "dual",
+                "AUTH_MODE": "bearer_only",
                 "CIAM_AUTHORITY": "https://issuer.example",
                 "CIAM_TENANT_ID": "tenant-id",
                 "CIAM_API_AUDIENCE": "client-id",
