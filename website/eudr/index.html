@@ -17,8 +17,8 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous"> <!-- pragma: allowlist secret -->
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/app.css">
-<meta name="ai-connection-string" content="">
-<script src="/js/analytics.js" defer></script>
+<meta name="ai-connection-string" content=""> <!-- CIAM config: replaced by CI deploy step (see .github/workflows/deploy.yml) -->
+ <script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":""}</script><script src="/js/analytics.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
 <script src="/js/canopex-geo.js" defer></script>
 <script src="/js/canopex-helpers.js" defer></script>
@@ -37,7 +37,8 @@
     <script src="/js/app-analysis-preflight.js" defer></script>
     <script src="/js/app-analysis-progress.js" defer></script>
     <script src="/js/app-evidence-display.js" defer></script>
-    <script src="/js/app-auth.js" defer></script>
+    <script src="https://unpkg.com/@azure/msal-browser@3.30.0/lib/msal-browser.min.js" integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi" crossorigin="anonymous" defer></script>
+    <script src="/js/app-msal.js" defer></script>
     <script src="/js/app-bindings.js" defer></script>
     <script src="/js/app-run-lifecycle.js" defer></script>
 <script src="/js/app-billing.js" defer></script>
