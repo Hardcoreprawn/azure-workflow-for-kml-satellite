@@ -15,7 +15,7 @@ accidentally removed or misconfigured.  They cover:
 10. Event Grid wiring (trigger name and webhook key)
 11. Trivy signal quality and exception discipline
 12. (removed — CIAM replaced with SWA pre-configured providers in #495)
-13. Endpoint auth audit (#572) — HMAC enforcement and anonymous endpoint documentation
+13. Bearer-only CIAM auth (single path, no legacy fallbacks)
 """
 
 from __future__ import annotations
@@ -1275,7 +1275,7 @@ class TestEndpointAuthAudit:
 
     # Auth mechanisms that count as "protected"
     _AUTH_PATTERNS: typing.ClassVar[list[str]] = [
-        "require_auth",  # @require_auth or @require_auth_hmac_exempt
+        "require_auth",  # @require_auth decorator
         "check_auth",  # check_auth(req) call inside handler body
         "_check_ops_key",  # ops-key header verification
     ]
@@ -1289,7 +1289,6 @@ class TestEndpointAuthAudit:
         "billing/webhook",
         "contact-form",
         "demo-artifacts",
-        "auth/session",
         # UUID-gated bearer pattern
         "orchestrator/{instance_id}",
         "timelapse-data/{instance_id}",
@@ -1305,26 +1304,11 @@ class TestEndpointAuthAudit:
         "proxy",
     }
 
-    def test_check_auth_verifies_hmac(self):
-        """check_auth() must verify HMAC to prevent header forgery (#572)."""
-        src = (ROOT / "blueprints" / "_helpers.py").read_text()
-        func_match = re.search(
-            r"def check_auth\(.*?\n(.*?)(?=\ndef |\Z)",
-            src,
-            re.DOTALL,
-        )
-        assert func_match, "check_auth function not found in _helpers.py"
-        body = func_match.group(1)
-        assert "_verify_hmac" in body, (
-            "check_auth must call _verify_hmac to prevent X-MS-CLIENT-PRINCIPAL "
-            "header forgery when AUTH_HMAC_KEY is configured (#572)"
-        )
-
     def test_every_endpoint_is_auth_protected_or_explicitly_exempt(self):
         """Scan all blueprint @bp.route decorators and verify auth coverage.
 
         Every endpoint must either:
-        1. Use @require_auth / @require_auth_hmac_exempt decorator, OR
+        1. Use @require_auth decorator, OR
         2. Call check_auth() / _check_ops_key() in its body or in a helper
            function within the same file that the handler delegates to, OR
         3. Be listed in _EXEMPT_ROUTES with documented rationale.

@@ -917,23 +917,6 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /auth/session:
-    post:
-      operationId: authSession
-      tags: [auth]
-      summary: Bootstrap or validate a user session
-      security:
-        - swaAuth: []
-      responses:
-        "200":
-          description: Session info (user ID, roles, quota)
-          content:
-            application/json:
-              schema:
-                type: object
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-
   /billing/status:
     get:
       operationId: billingStatus

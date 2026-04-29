@@ -201,18 +201,6 @@ class TestCheckAuth:
             with pytest.raises(ValueError, match="Invalid bearer token"):
                 check_auth(mock_req)
 
-    def test_rejects_legacy_principal_only_request_when_auth_required(self):
-        from blueprints._helpers import check_auth
-
-        mock_req = MagicMock()
-        mock_req.headers = {
-            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-99"),
-        }
-
-        with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
-            with pytest.raises(ValueError, match="Authentication required"):
-                check_auth(mock_req)
-
 
 # ---------------------------------------------------------------------------
 # require_auth decorator
@@ -257,23 +245,6 @@ class TestRequireAuth:
         with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
             resp = my_endpoint(mock_req)
             assert resp.status_code == 401
-
-    def test_returns_401_on_legacy_principal_only_request_when_auth_required(self):
-        from blueprints._helpers import require_auth
-
-        @require_auth
-        def my_endpoint(req, auth_claims=None, user_id=None):
-            import azure.functions as func
-
-            return func.HttpResponse("OK")
-
-        mock_req = MagicMock()
-        mock_req.method = "POST"
-        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": "bad-data"}
-
-        with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
-            resp = my_endpoint(mock_req)
-        assert resp.status_code == 401
 
     def test_handles_options_preflight(self):
         from blueprints._helpers import require_auth
@@ -333,24 +304,6 @@ class TestRequireAuth:
 
         with patch("blueprints._helpers.verify_bearer_token") as verify:
             verify.side_effect = ValueError("Invalid bearer token")
-            resp = my_endpoint(mock_req)
-
-        assert resp.status_code == 401
-
-    def test_rejects_legacy_principal_when_auth_required(self):
-        from blueprints._helpers import require_auth
-
-        @require_auth
-        def my_endpoint(req, auth_claims=None, user_id=None):
-            import azure.functions as func
-
-            return func.HttpResponse("OK")
-
-        mock_req = MagicMock()
-        mock_req.method = "POST"
-        mock_req.headers = {"X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="u-1")}
-
-        with patch.dict("os.environ", {"REQUIRE_AUTH": "1"}):
             resp = my_endpoint(mock_req)
 
         assert resp.status_code == 401

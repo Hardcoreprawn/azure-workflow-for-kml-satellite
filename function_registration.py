@@ -8,7 +8,6 @@ from typing import Any
 def _shared_blueprints() -> tuple[Any, ...]:
     """Load shared blueprints lazily to avoid eager API-layer imports."""
     from blueprints.analysis import bp as analysis_bp
-    from blueprints.auth import bp as auth_bp
     from blueprints.billing import bp as billing_bp
     from blueprints.catalogue import bp as catalogue_bp
     from blueprints.contact import bp as contact_bp
@@ -24,7 +23,6 @@ def _shared_blueprints() -> tuple[Any, ...]:
 
     return (
         health_bp,
-        auth_bp,
         billing_bp,
         contact_bp,
         demo_bp,

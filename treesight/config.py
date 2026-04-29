@@ -104,9 +104,6 @@ CIAM_TENANT_ID = _env("CIAM_TENANT_ID")
 CIAM_API_AUDIENCE = _env("CIAM_API_AUDIENCE")
 CIAM_JWT_LEEWAY_SECONDS = _env_int("CIAM_JWT_LEEWAY_SECONDS", 60)
 
-# HMAC auth verification for session-token endpoints.
-AUTH_HMAC_KEY = _env("AUTH_HMAC_KEY")
-
 # Stripe billing (M4)
 # In production, these resolve via @Microsoft.KeyVault() app setting references.
 # Locally, leave empty to disable Stripe or set in local.settings.json for testing.
