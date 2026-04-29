@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 
 ---
 
@@ -15,8 +15,8 @@ not at the bottom.
 
 | # | Issue(s) | PR | Description | Status |
 | --- | ---------- | ---- | ------------- | -------- |
-| 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | Open |
-| 2 | #710 | — | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | Open (post #709) |
+| 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | ✅ Closed |
+| 2 | #710 | #744 | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | 🔄 In review |
 | 3 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocking revenue |
 | 4 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
 | 5 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |

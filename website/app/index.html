@@ -18,6 +18,8 @@
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/app.css">
 <meta name="ai-connection-string" content="">
+<!-- CIAM config: replaced by CI deploy step (see .github/workflows/deploy.yml) -->
+<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":""}</script>
 <script src="/js/analytics.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
 <script src="/js/canopex-geo.js" defer></script>
@@ -37,7 +39,8 @@
     <script src="/js/app-analysis-preflight.js" defer></script>
     <script src="/js/app-analysis-progress.js" defer></script>
     <script src="/js/app-evidence-display.js" defer></script>
-    <script src="/js/app-auth.js" defer></script>
+    <script src="https://unpkg.com/@azure/msal-browser@3.30.0/lib/msal-browser.min.js" integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi" crossorigin="anonymous" defer></script>
+    <script src="/js/app-msal.js" defer></script>
     <script src="/js/app-bindings.js" defer></script>
     <script src="/js/app-run-lifecycle.js" defer></script>
 <script src="/js/app-billing.js" defer></script>
@@ -63,7 +66,7 @@
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
       <span class="auth-user" id="auth-user" style="display:none"></span>
-      <a class="auth-btn primary" id="auth-login-btn" href="/.auth/login/aad">Sign In</a>
+      <button class="auth-btn primary" id="auth-login-btn" type="button">Sign In</button>
       <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
     </div>
   </div>

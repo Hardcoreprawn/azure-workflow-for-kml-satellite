@@ -57,40 +57,86 @@ def test_auth_headers_uses_principal_when_bearer_missing() -> None:
     assert headers["X-Auth-Session"] == "session-token"
 
 
-def test_verify_output_artifacts_requires_completed_status() -> None:
+def test_verify_completed_output_shape_requires_completed_status() -> None:
     with pytest.raises(ValueError, match="non-success state"):
-        smoke.verify_output_artifacts(
+        smoke.verify_completed_output_shape(
             {
                 "runtimeStatus": "Failed",
-                "output": {"artifacts": {"report": "analysis/demo/report.json"}},
+                "output": {
+                    "status": "completed",
+                    "message": "done",
+                    "blobName": "analysis/demo.kml",
+                    "featureCount": 1,
+                    "aoiCount": 1,
+                    "artifacts": {"report": "analysis/demo/report.json"},
+                },
             }
         )
 
 
-def test_verify_output_artifacts_requires_non_empty_paths() -> None:
-    with pytest.raises(ValueError, match="no non-empty artifact paths"):
-        smoke.verify_output_artifacts(
+def test_verify_completed_output_shape_requires_expected_fields() -> None:
+    with pytest.raises(ValueError, match="field 'blobName' has invalid type"):
+        smoke.verify_completed_output_shape(
             {
                 "runtimeStatus": "Completed",
-                "output": {"artifacts": {"report": "", "preview": "   "}},
+                "output": {
+                    "status": "completed",
+                    "message": "done",
+                    "blobName": None,
+                    "featureCount": 1,
+                    "aoiCount": 1,
+                    "artifacts": {},
+                },
             }
         )
 
 
-def test_verify_output_artifacts_returns_paths() -> None:
-    paths = smoke.verify_output_artifacts(
+def test_verify_completed_output_shape_returns_output() -> None:
+    output = smoke.verify_completed_output_shape(
         {
             "runtimeStatus": "Completed",
             "output": {
+                "status": "completed",
+                "message": "done",
+                "blobName": "analysis/run-1.kml",
+                "featureCount": 1,
+                "aoiCount": 1,
                 "artifacts": {
                     "report": "analysis/run-1/report.json",
                     "manifest": "enrichment/run-1/payload.json",
-                }
+                },
+            },
+        }
+    )
+
+    assert output["blobName"] == "analysis/run-1.kml"
+
+
+def test_collect_artifact_paths_returns_flat_strings() -> None:
+    paths = smoke.collect_artifact_paths(
+        {
+            "artifacts": {
+                "report": "analysis/run-1/report.json",
+                "manifest": "enrichment/run-1/payload.json",
             },
         }
     )
 
     assert paths == ["analysis/run-1/report.json", "enrichment/run-1/payload.json"]
+
+
+def test_collect_artifact_paths_flattens_list_values() -> None:
+    paths = smoke.collect_artifact_paths(
+        {
+            "artifacts": {
+                "metadataPaths": ["analysis/run-1/report.json", ""],
+                "rawImageryPaths": ["imagery/run-1/raw-1.tif", "  "],
+                "clippedImageryPaths": [],
+            }
+        }
+    )
+
+    assert paths == ["analysis/run-1/report.json", "imagery/run-1/raw-1.tif"]
 
 
 def test_poll_orchestrator_returns_terminal_payload(monkeypatch: pytest.MonkeyPatch) -> None:
