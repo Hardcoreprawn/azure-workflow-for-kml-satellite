@@ -47,6 +47,9 @@ def test_build_subscription_command_includes_create_only_delivery_flags() -> Non
     assert "--event-ttl" in command
     assert "--max-events-per-batch" in command
     assert "--preferred-batch-size-in-kilobytes" in command
+    assert "--subject-begins-with" in command
+    assert reconcile.DEFAULT_SUBJECT_PREFIX in command
+    assert "--subject-ends-with" not in command
 
 
 def test_build_subscription_command_omits_create_only_delivery_flags_for_update() -> None:
@@ -62,3 +65,6 @@ def test_build_subscription_command_omits_create_only_delivery_flags_for_update(
     assert "--event-ttl" not in command
     assert "--max-events-per-batch" not in command
     assert "--preferred-batch-size-in-kilobytes" not in command
+    assert "--subject-begins-with" in command
+    assert reconcile.DEFAULT_SUBJECT_PREFIX in command
+    assert "--subject-ends-with" not in command

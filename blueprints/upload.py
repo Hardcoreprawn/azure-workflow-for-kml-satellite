@@ -111,10 +111,29 @@ def _safe_release_quota(user_id: str, instance_id: str = "") -> None:
         logger.exception("Failed to release quota for user=%s", user_id)
 
 
+_KMZ_EXTENSION = ".kmz"
+_KML_EXTENSION = ".kml"
+_KMZ_CONTENT_TYPE = "application/vnd.google-earth.kmz"
+_KML_CONTENT_TYPE = "application/vnd.google-earth.kml+xml"
+
+
+def _detect_file_extension(filename: str) -> tuple[str, str]:
+    """Return (extension, content_type) from a client-supplied filename.
+
+    Only .kml and .kmz are accepted.  Any other value (including empty string)
+    falls back to .kml so the pipeline is never silently broken by a bad client.
+    Detection is case-insensitive.
+    """
+    if isinstance(filename, str) and filename.lower().endswith(_KMZ_EXTENSION):
+        return _KMZ_EXTENSION, _KMZ_CONTENT_TYPE
+    return _KML_EXTENSION, _KML_CONTENT_TYPE
+
+
 def _mint_sas_url(
     blob_service,
     blob_name: str,
     submission_id: str,
+    content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, str | None]:
     """Generate a write-only SAS URL. Returns (sas_url, error_msg)."""
     now = datetime.datetime.now(datetime.UTC)
@@ -132,7 +151,7 @@ def _mint_sas_url(
         user_delegation_key=delegation_key,
         permission=BlobSasPermissions(create=True, write=True),
         expiry=expiry,
-        content_type="application/vnd.google-earth.kml+xml",
+        content_type=content_type,
     )
 
     sas_url = (
@@ -274,6 +293,7 @@ def _write_ticket_and_mint_sas(
     submission_context: dict,
     quota_consumed: bool,
     req: func.HttpRequest,
+    content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, func.HttpResponse | None]:
     """Write ticket blob and mint SAS URL.
 
@@ -297,7 +317,7 @@ def _write_ticket_and_mint_sas(
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
-        sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id)
+        sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id, content_type)
     except Exception:
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
         if quota_consumed:
@@ -384,7 +404,8 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         return quota_err
 
     submission_id = str(uuid.uuid4())
-    blob_name = f"analysis/{submission_id}.kml"
+    ext, content_type = _detect_file_extension(body.get("filename", ""))
+    blob_name = f"analysis/{submission_id}{ext}"
 
     submission_context = _sanitise_submission_context(body.get("submission_context") or {})
     effective_provider = _resolve_provider(body, submission_context)
@@ -398,6 +419,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         submission_context,
         quota_consumed,
         req,
+        content_type,
     )
     if storage_err:
         return storage_err

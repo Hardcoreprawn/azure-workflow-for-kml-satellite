@@ -11,7 +11,7 @@ from urllib.parse import quote
 DEFAULT_FUNCTION_NAME = "blob_trigger"
 DEFAULT_SUBSCRIPTION_NAME = "evgs-kml-upload"
 DEFAULT_EVENT_TYPE = "Microsoft.Storage.BlobCreated"
-DEFAULT_SUBJECT_SUFFIX = ".kml"
+DEFAULT_SUBJECT_PREFIX = "/blobServices/default/containers/kml-input/blobs/analysis/"
 
 
 def select_eventgrid_key(payload: dict[str, Any]) -> str:
@@ -104,8 +104,8 @@ def build_subscription_command(
         "webhook",
         "--included-event-types",
         DEFAULT_EVENT_TYPE,
-        "--subject-ends-with",
-        DEFAULT_SUBJECT_SUFFIX,
+        "--subject-begins-with",
+        DEFAULT_SUBJECT_PREFIX,
     ]
     if action == "create":
         command.extend(
