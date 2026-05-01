@@ -16,17 +16,24 @@
 
   function getCiamConfig() {
     const el = document.getElementById('canopex-ciam-config');
-    if (!el) return { clientId: '', authority: '', tenantId: '' };
+    if (!el) return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
     try {
       const cfg = JSON.parse(el.textContent || '{}');
       return {
         clientId: cfg.clientId || '',
         authority: cfg.authority || '',
         tenantId: cfg.tenantId || '',
+        apiAudience: cfg.apiAudience || '',
       };
     } catch (_) {
-      return { clientId: '', authority: '', tenantId: '' };
+      return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
     }
+  }
+
+  function buildApiScopes(cfg) {
+    const audience = String((cfg && cfg.apiAudience) || '').trim();
+    if (!audience) return ['openid', 'profile'];
+    return ['openid', 'profile', audience + '/.default'];
   }
 
   function authEnabled() {
@@ -88,9 +95,13 @@
           userRoles: [],
         };
         apiClient.setGetToken(async function () {
-          const req = { scopes: ['openid', 'profile'], account: account };
+          const cfg = getCiamConfig();
+          const req = { scopes: buildApiScopes(cfg), account: account };
           try {
             const result = await app.acquireTokenSilent(req);
+            if (cfg.apiAudience) {
+              return result.accessToken || result.idToken || '';
+            }
             return result.idToken || result.accessToken || '';
           } catch (tokenErr) {
             const errorCode = String((tokenErr && tokenErr.errorCode) || '');

@@ -26,15 +26,31 @@
     window.eudrBillingData = function () { return _billingSnapshot; };
   }
 
-  function setHeroParcels(periodUsed, included, overage) {
+  function setHeroParcels(periodUsed, included, overage, billing) {
+    var labelEl = document.getElementById('eudr-parcels-label');
     var parcelsEl = document.getElementById('eudr-parcels-used');
     var parcelsNoteEl = document.getElementById('eudr-parcels-note');
     if (!parcelsEl || !parcelsNoteEl) return;
 
+    // Free / unsubscribed: show lifetime free assessments, not the monthly billing counter.
+    // The monthly counter is always 0 for non-subscribers and the "10 included" quota
+    // only applies to Pro — showing "0 / 10" to a free user implies they have no parcels.
+    if (billing && !billing.subscribed) {
+      var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
+      if (labelEl) labelEl.textContent = 'Free reports';
+      parcelsEl.textContent = remaining + ' left';
+      parcelsNoteEl.textContent = remaining > 0
+        ? 'Try ' + remaining + ' more EUDR report' + (remaining !== 1 ? 's' : '') + ' free — no card needed'
+        : 'Free reports used — subscribe to run more';
+      return;
+    }
+
+    // Subscribed: show monthly parcel billing usage.
+    if (labelEl) labelEl.textContent = 'Parcels this month';
     parcelsEl.textContent = periodUsed + ' / ' + included;
     parcelsNoteEl.textContent = overage > 0
-      ? overage + ' overage parcels this billing period'
-      : 'Included parcels used this billing period';
+      ? overage + ' overage parcel' + (overage !== 1 ? 's' : '') + ' this billing period'
+      : 'EUDR parcels assessed this billing period';
   }
 
   function setUsageUnavailable() {
@@ -80,6 +96,18 @@
     if (!includedEl) return; // card not present in this build
 
     try {
+      // Billing snapshot must come first — it determines free vs subscribed display.
+      await refreshBillingSnapshot();
+
+      // Overlay the generic Plan note with EUDR-specific trial context.
+      var planNoteEl = document.getElementById('app-hero-plan-note');
+      if (planNoteEl && _billingSnapshot && !_billingSnapshot.subscribed) {
+        var trialLeft = _billingSnapshot.trial_remaining != null ? _billingSnapshot.trial_remaining : 0;
+        planNoteEl.textContent = trialLeft > 0
+          ? trialLeft + ' free report' + (trialLeft !== 1 ? 's' : '') + ' left — no card needed'
+          : 'Free reports used — subscribe to run more.';
+      }
+
       var res = await _apiFetch('/api/eudr/usage');
       if (!res.ok) {
         setUsageUnavailable();
@@ -107,7 +135,7 @@
         }
       }
 
-      setHeroParcels(periodUsed, included, overage);
+      setHeroParcels(periodUsed, included, overage, _billingSnapshot);
 
       if (historyListEl && data.history && data.history.length) {
         var html = '<div class="app-usage-history-list">';
@@ -124,8 +152,6 @@
       } else if (historyListEl) {
         historyListEl.textContent = 'No usage history yet.';
       }
-
-      await refreshBillingSnapshot();
     } catch (e) {
       console.warn('EUDR usage load error:', e);
       setUsageUnavailable();

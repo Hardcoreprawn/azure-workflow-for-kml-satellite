@@ -256,6 +256,24 @@ class TestAuthConfig:
             "app-msal.js getToken must await ensureMsalReady before MSAL API calls"
         )
 
+    def test_msal_module_supports_api_audience_config(self):
+        """MSAL module must read optional API audience from injected CIAM config."""
+        js = APP_MSAL_JS.read_text()
+        assert "apiAudience" in js, "app-msal.js must parse apiAudience from canopex-ciam-config"
+        assert "audience + '/.default'" in js, (
+            "app-msal.js must derive an API scope from apiAudience"
+        )
+
+    def test_msal_module_prefers_access_token_when_api_audience_present(self):
+        """Backend bearer validation requires API-audience access token when configured."""
+        js = APP_MSAL_JS.read_text()
+        assert "if (ciam.apiAudience)" in js, (
+            "app-msal.js getToken must branch when apiAudience is configured"
+        )
+        assert "return result.accessToken || result.idToken || '';" in js, (
+            "app-msal.js getToken must prefer accessToken when apiAudience is configured"
+        )
+
     def test_msal_module_splits_update_auth_ui_render_paths(self):
         """Auth UI rendering should be split into smaller helpers."""
         js = APP_MSAL_JS.read_text()
@@ -385,6 +403,20 @@ class TestAuthConfig:
         ciam_idx = eudr_index_html.index("canopex-ciam-config")
         ciam_context = eudr_index_html[max(0, ciam_idx - 100) : ciam_idx + 100]
         assert 'type="application/json"' in ciam_context, "canopex-ciam-config must be JSON type"
+
+    def test_entrypoints_include_api_audience_placeholder(
+        self, index_html, app_index_html, eudr_index_html
+    ):
+        """CIAM config placeholders must reserve apiAudience for deploy-time injection."""
+        assert '"apiAudience":""' in index_html, (
+            "/index.html must include apiAudience in canopex-ciam-config JSON"
+        )
+        assert '"apiAudience":""' in app_index_html, (
+            "/app/index.html must include apiAudience in canopex-ciam-config JSON"
+        )
+        assert '"apiAudience":""' in eudr_index_html, (
+            "/eudr/index.html must include apiAudience in canopex-ciam-config JSON"
+        )
 
     def test_app_shell_supports_org_scope_history(self, app_runs_js):
         """EUDR dashboard should request org-scoped analysis history for portfolio triage."""

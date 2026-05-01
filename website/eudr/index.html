@@ -18,7 +18,7 @@
 <link rel="stylesheet" href="/css/shared.css">
 <link rel="stylesheet" href="/css/app.css">
 <meta name="ai-connection-string" content=""> <!-- Analytics/App Insights config: replaced by CI deploy step (see .github/workflows/deploy.yml) -->
-<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":""}</script>
+<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":"","apiAudience":""}</script>
 <script src="/js/analytics.js" defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script> <!-- pragma: allowlist secret -->
 <script src="/js/canopex-geo.js" defer></script>
@@ -107,9 +107,9 @@
         </div>
         <div class="app-welcome-stats">
           <div class="app-stat-pill"><span class="app-utility-label">Plan</span><strong id="app-hero-plan">Loading…</strong><span class="app-utility-note" id="app-hero-plan-note">Checking entitlement…</span></div>
-          <div class="app-stat-pill" id="eudr-parcels-pill"><span class="app-utility-label">Parcels</span><strong id="eudr-parcels-used">—</strong><span class="app-utility-note" id="eudr-parcels-note">Loading usage…</span></div>
-          <div class="app-stat-pill"><span class="app-utility-label">Runs Left</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">Quota refreshes with your plan.</span></div>
-          <div class="app-stat-pill"><span class="app-utility-label">Mode</span><strong id="app-hero-mode">EUDR due diligence</strong><span class="app-utility-note" id="app-hero-mode-note">Imagery restricted to post-Dec 2020 for EUDR compliance.</span></div>
+          <div class="app-stat-pill" id="eudr-parcels-pill"><span class="app-utility-label" id="eudr-parcels-label">Parcels</span><strong id="eudr-parcels-used">—</strong><span class="app-utility-note" id="eudr-parcels-note">Loading usage…</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Reports you can run</span><strong id="app-hero-runs">—</strong><span class="app-utility-note" id="app-hero-runs-note">How many assessments you can start right now.</span></div>
+          <div class="app-stat-pill"><span class="app-utility-label">Coverage</span><strong id="app-hero-mode">EUDR due diligence</strong><span class="app-utility-note" id="app-hero-mode-note">Post-Dec 2020 satellite imagery for EUDR compliance.</span></div>
           <div class="app-stat-pill"><span class="app-utility-label">Active Run</span><strong id="app-hero-active-run">Checking recent runs</strong><span class="app-utility-note" id="app-hero-active-run-note">Loading your recent runs.</span></div>
         </div>
         <div class="app-welcome-actions">

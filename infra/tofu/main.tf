@@ -1187,6 +1187,8 @@ locals {
       AUTH_MODE                           = var.auth_mode
       OPS_DASHBOARD_KEY                   = var.ops_dashboard_key
     },
+    var.billing_allowed_users != "" ? { BILLING_ALLOWED_USERS = var.billing_allowed_users } : {},
+    var.tier_emulation_allowed_users != "" ? { TIER_EMULATION_ALLOWED_USERS = var.tier_emulation_allowed_users } : {},
     var.enable_cosmos_db ? {
       COSMOS_ENDPOINT      = azurerm_cosmosdb_account.main[0].endpoint
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
