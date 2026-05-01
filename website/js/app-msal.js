@@ -77,7 +77,7 @@
     if (!audience) {
       return ['openid', 'profile'];
     }
-    return ['openid', 'profile', audience + '/.default'];
+    return ['openid', 'profile', audience + '/User.Read'];
   }
 
   function authEnabled() {
@@ -242,11 +242,12 @@
 
     try {
       var result = await app.acquireTokenSilent(request);
-      // When API audience is configured, backend expects a bearer access token
-      // with that audience. Otherwise local/dev can fall back to id token.
       if (ciam.apiAudience) {
-        return result.accessToken || result.idToken || '';
+        // API audience is registered — backend requires a CIAM access token.
+        // Never use the ID token as a bearer credential.
+        return result.accessToken || '';
       }
+      // Local dev without a registered API scope: fall back to id token.
       return result.idToken || result.accessToken || '';
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
@@ -277,7 +278,7 @@
         return;
       }
       rememberPostLoginDestination();
-      return app.loginRedirect({ scopes: ['openid', 'profile'] });
+      return app.loginRedirect({ scopes: buildApiScopes(getCiamConfig()) });
     }).catch(function (err) {
       console.error('[CanopexAuth] loginRedirect failed:', err);
     });

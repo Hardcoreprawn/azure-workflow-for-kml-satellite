@@ -139,6 +139,34 @@ class TestVerifyBearerToken:
                                 with pytest.raises(ValueError, match="missing subject"):
                                     verify_bearer_token("abc.def.ghi")
 
+    def test_rejects_token_with_wrong_audience(self):
+        """Token with wrong audience (e.g. Graph token) is rejected with 401 (#756)."""
+        import jwt as pyjwt
+
+        from treesight.security.auth import verify_bearer_token
+
+        fake_key_client = MagicMock()
+        fake_key_client.get_signing_key_from_jwt.return_value = MagicMock(key="public-key")
+
+        metadata = {"issuer": "https://issuer.example", "jwks_uri": "https://issuer.example/keys"}
+
+        with patch("treesight.security.auth.CIAM_AUTHORITY", "https://issuer.example"):
+            with patch("treesight.security.auth.CIAM_TENANT_ID", "tenant-id"):
+                with patch("treesight.security.auth.CIAM_API_AUDIENCE", "api://canopex"):
+                    with patch("treesight.security.auth._oidc_metadata", return_value=metadata):
+                        with patch(
+                            "treesight.security.auth._jwks_client",
+                            return_value=fake_key_client,
+                        ):
+                            with patch(
+                                "jwt.decode",
+                                side_effect=pyjwt.exceptions.InvalidAudienceError(
+                                    "Invalid audience"
+                                ),
+                            ):
+                                with pytest.raises(ValueError, match="Invalid bearer token"):
+                                    verify_bearer_token("graph.token.here")
+
 
 # ---------------------------------------------------------------------------
 # check_auth helper (from _helpers.py)
