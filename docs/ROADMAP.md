@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-04-29
+Last updated: 2026-05-01
 
 ---
 
@@ -17,24 +17,29 @@ not at the bottom.
 | --- | ---------- | ---- | ------------- | -------- |
 | 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | ✅ Closed |
 | 2 | #710 | #744 | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | ✅ Closed |
-| 3 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocking revenue |
-| 4 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
-| 5 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
-| 6 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 7 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 8 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 9 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 10 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 11 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 12 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 13 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 14 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 15 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 16 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 17 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 18 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 19 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 20 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+| 3 | #756 | — | fix(auth): register CIAM custom API scope — eliminate token audience ambiguity — **Stage 2E.6** | Open |
+| 4 | #757 | — | fix(auth): harden MSAL token lifecycle — always-fresh tokens, 401-to-reauth — **Stage 2E.6** | Open |
+| 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | Open |
+| 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | Open |
+| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | Open |
+| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocked by 2E.6 |
+| 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
+| 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 11 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 12 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 13 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 14 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 15 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 16 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 17 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 18 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 19 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 20 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 21 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 22 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 23 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 24 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 25 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
 
 **Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
@@ -96,12 +101,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #755 | fix: unify KML/KMZ upload paths — extension-based content-type detection, Event Grid filter by prefix not suffix (closes #753) |
 | #752 | chore(infra): dev cost profile — orchestrator scale-to-zero, burst cap 1, log retention/cap tightened |
 | #751 | fix: pipeline auth + UI regressions — API-audience token scopes, SAS-upload fallback, EUDR trial UX, tier emulation gate |
 | #744 | feat(auth): migrate frontend from SWA `/.auth` to MSAL CIAM bearer flow (closes #710) |
 | #741 | hardening: enforce function app identity contract in deploy pipeline — fail-fast identity drift check, azapi lifecycle comment overhaul, runbook invariants |
 | #711 | chore: defer full #402 gating scope for single-env operation and make deploy image Trivy scan blocking (refs #402) |
-| #707 | fix: Stage 2E.2 reduce OpenTofu/CLI drift — deploy-time contract verification for Function App settings/images + ownership boundary docs (closes #405) |
 
 ---
 
@@ -180,6 +185,35 @@ Program done means:
 3. Route registration drift between entrypoints is structurally removed.
 4. Client API ingress is orchestrator-only in config, docs, and tests.
 5. Promotion requires a real async transaction smoke check, not health only.
+
+---
+
+### Stage 2E.6 — Stability Freeze: Auth & Cost Simplification (May 2026)
+
+**No Stage 3 features until all 5 items are complete.**
+
+Goal: run a reliable EUDR demo without auth failures or cost surprises. Remove
+the last structural auth ambiguity, cap monthly spend at £30, and provide a
+pre-demo smoke signal that actually catches infra failures before users see them.
+
+Primary persona: EUDR compliance operator.
+JTBD: upload a parcel KMZ, get a determination result, and show it to a client
+— without a 401 mid-demo and without a surprise Azure bill the next morning.
+
+| Order | Issue | Title | Type | Status |
+|-------|-------|-------|------|--------|
+| 2E.6.1 | #756 | Register CIAM custom API scope — eliminate token audience ambiguity | Auth root fix | Open |
+| 2E.6.2 | #757 | Harden MSAL token lifecycle — always-fresh, 401-to-reauth | Auth surface fix | Open |
+| 2E.6.3 | #759 | Hard concurrency cap + SAFE_MODE flag — bound monthly spend | Cost guardrail | Open |
+| 2E.6.4 | #760 | Deep health endpoint — pre-demo smoke validation | Ops reliability | Open |
+| 2E.6.5 | #758 | Container Apps Jobs for GDAL compute — near-zero idle cost | Cost + simplicity | Open |
+
+**Delivery order:** 2E.6.1 first (unblocks #757). 2E.6.3 and 2E.6.4 are
+independent — can ship in parallel. 2E.6.5 is the largest (infra change); run
+concurrently after 2E.6.3.
+
+**Exit signal:** `make smoke` passes, zero 401s in a 30-minute demo session,
+monthly idle cost < £5.
 
 ---
 
