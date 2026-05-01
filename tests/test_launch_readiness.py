@@ -1005,6 +1005,12 @@ class TestFrontendQueueFallback:
             "queue fallback must call /api/analysis/submit when direct blob upload fails"
         )
 
+    def test_queue_fallback_preserves_401_auth_ux(self):
+        content = self.APP_RUN_LIFECYCLE.read_text()
+        assert "submitFetchErr.status === 401" in content, (
+            "direct-submit fallback must preserve session-expired auth handling for 401 errors"
+        )
+
 
 class TestSignedOutStatusBadge:
     """Navbar service status badge should be hidden when no account is signed in."""

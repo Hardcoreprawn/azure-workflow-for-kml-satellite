@@ -465,19 +465,19 @@
   }
 
   async function queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody) {
-    var submitBody = { kml_content: kmlContent };
+    const submitBody = { kml_content: kmlContent };
     if (submissionContext) {
       submitBody.submission_context = submissionContext;
     }
     if (tokenBody && tokenBody.eudr_mode === true) {
       submitBody.eudr_mode = true;
     }
-    var submitRes = await _d.apiFetch('/api/analysis/submit', {
+    const submitRes = await _d.apiFetch('/api/analysis/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(submitBody)
     });
-    var submitData = await submitRes.json();
+    const submitData = await submitRes.json();
     return submitData.instance_id || submitData.instanceId || '';
   }
 
@@ -599,10 +599,10 @@
         return;
       }
 
-      var tokenData = await tokenRes.json();
-      var submissionId = tokenData.submissionId || tokenData.submission_id;
-      var sasUrl = tokenData.sasUrl || tokenData.sas_url;
-      var uploadQueued = false;
+      const tokenData = await tokenRes.json();
+      let submissionId = tokenData.submissionId || tokenData.submission_id;
+      const sasUrl = tokenData.sasUrl || tokenData.sas_url;
+      let uploadQueued = false;
 
       // Step 2: Upload KML directly to blob storage via SAS URL
       if (submissionId && sasUrl) {
@@ -610,8 +610,8 @@
         if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
 
         try {
-          var kmlBytes = new TextEncoder().encode(kmlContent);
-          var uploadRes = await fetch(sasUrl, {
+          const kmlBytes = new TextEncoder().encode(kmlContent);
+          const uploadRes = await fetch(sasUrl, {
             method: 'PUT',
             headers: {
               'x-ms-blob-type': 'BlockBlob',
@@ -634,7 +634,20 @@
             'info'
           );
         }
-        submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody);
+        try {
+          submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody);
+        } catch (submitFetchErr) {
+          // Keep 401 behavior consistent with the upload-token request above.
+          if (submitFetchErr && submitFetchErr.status === 401) {
+            if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+            return;
+          }
+          if (_d.setAnalysisStatus) {
+            _d.setAnalysisStatus((submitFetchErr.body && submitFetchErr.body.error) || 'Could not queue analysis request.', 'error');
+          }
+          if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+          return;
+        }
         if (!submissionId) {
           if (_d.setAnalysisStatus) {
             _d.setAnalysisStatus('Could not queue analysis request.', 'error');
