@@ -4,9 +4,10 @@ Operator status is checked in two places (either granting access is sufficient):
 1. ``BILLING_ALLOWED_USERS`` environment variable — static allow-list (fast, no I/O)
 2. Cosmos ``users`` container — ``billing_allowed`` flag per user (fallback)
 
-Tier emulation is gated separately via:
-1. ``TIER_EMULATION_ALLOWED_USERS`` environment variable
-2. Cosmos ``users`` container — ``tier_emulation_allowed`` flag per user
+Tier emulation is available to:
+1. Any ``billing_allowed`` user (operators / owners get it implicitly)
+2. ``TIER_EMULATION_ALLOWED_USERS`` environment variable
+3. Cosmos ``users`` container — ``tier_emulation_allowed`` flag per user
 """
 
 from __future__ import annotations
@@ -49,12 +50,18 @@ def billing_allowed(user_id: str | None) -> bool:
 def tier_emulation_allowed(user_id: str | None) -> bool:
     """Return True if *user_id* may use billing tier emulation controls.
 
-    This is a dedicated operator gate and MUST remain separate from
-    ``billing_allowed`` to avoid coupling real billing access with emulation
-    controls that can bypass plan-gated behavior.
+    Billing-allowed users (operators / owners) implicitly get emulation
+    access — they are already elevated accounts and emulation is a
+    natural part of their testing workflow.  Additional explicit grants
+    via ``TIER_EMULATION_ALLOWED_USERS`` or the Cosmos flag remain
+    available for non-billing accounts that need emulation only.
     """
     if not user_id or user_id == "anonymous":
         return False
+
+    # Billing-allowed users get emulation implicitly.
+    if billing_allowed(user_id):
+        return True
 
     if TIER_EMULATION_ALLOWED_USERS and user_id in TIER_EMULATION_ALLOWED_USERS:
         return True

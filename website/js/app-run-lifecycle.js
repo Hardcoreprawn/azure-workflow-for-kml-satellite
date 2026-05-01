@@ -464,6 +464,23 @@
     }, 3000);
   }
 
+  async function queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody) {
+    const submitBody = { kml_content: kmlContent };
+    if (submissionContext) {
+      submitBody.submission_context = submissionContext;
+    }
+    if (tokenBody && tokenBody.eudr_mode === true) {
+      submitBody.eudr_mode = true;
+    }
+    const submitRes = await _d.apiFetch('/api/analysis/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(submitBody)
+    });
+    const submitData = await submitRes.json();
+    return submitData.instance_id || submitData.instanceId || '';
+  }
+
   // ── queueAnalysis ─────────────────────────────────────────────
 
   async function queueAnalysis() {
@@ -487,6 +504,13 @@
         } catch (_) { /* proceed — server will enforce */ }
       }
       if (billing && !billing.subscribed && billing.trial_remaining != null && billing.trial_remaining <= 0) {
+        if (_d.setAnalysisStatus) {
+          _d.setAnalysisStatus(
+            'Your free EUDR reports have been used. Subscribe to run more assessments.',
+            'error'
+          );
+        }
+        if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
         if (typeof window.showEudrSubscribeModal === 'function') {
           window.showEudrSubscribeModal();
         }
@@ -575,27 +599,62 @@
         return;
       }
 
-      var tokenData = await tokenRes.json();
-      var submissionId = tokenData.submissionId || tokenData.submission_id;
-      var sasUrl = tokenData.sasUrl || tokenData.sas_url;
+      const tokenData = await tokenRes.json();
+      let submissionId = tokenData.submissionId || tokenData.submission_id;
+      const sasUrl = tokenData.sasUrl || tokenData.sas_url;
+      let uploadQueued = false;
 
       // Step 2: Upload KML directly to blob storage via SAS URL
-      button.textContent = 'Uploading\u2026';
-      if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
+      if (submissionId && sasUrl) {
+        button.textContent = 'Uploading\u2026';
+        if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
 
-      var kmlBytes = new TextEncoder().encode(kmlContent);
-      var uploadRes = await fetch(sasUrl, {
-        method: 'PUT',
-        headers: {
-          'x-ms-blob-type': 'BlockBlob',
-          'Content-Type': 'application/vnd.google-earth.kml+xml'
-        },
-        body: kmlBytes
-      });
-      if (!uploadRes || !uploadRes.ok) {
-        if (_d.setAnalysisStatus) _d.setAnalysisStatus('Upload failed. Please try again.', 'error');
-        if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
-        return;
+        try {
+          const kmlBytes = new TextEncoder().encode(kmlContent);
+          const uploadRes = await fetch(sasUrl, {
+            method: 'PUT',
+            headers: {
+              'x-ms-blob-type': 'BlockBlob',
+              'Content-Type': 'application/vnd.google-earth.kml+xml'
+            },
+            body: kmlBytes
+          });
+          uploadQueued = !!(uploadRes && uploadRes.ok);
+        } catch (_) {
+          uploadQueued = false;
+        }
+      }
+
+      // Fallback for browser upload/CORS failures: submit directly to API.
+      if (!uploadQueued) {
+        button.textContent = 'Queueing\u2026';
+        if (_d.setAnalysisStatus) {
+          _d.setAnalysisStatus(
+            'Direct upload is unavailable in this browser session. Falling back to secure API submission\u2026',
+            'info'
+          );
+        }
+        try {
+          submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody);
+        } catch (submitFetchErr) {
+          // Keep 401 behavior consistent with the upload-token request above.
+          if (submitFetchErr && submitFetchErr.status === 401) {
+            if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+            return;
+          }
+          if (_d.setAnalysisStatus) {
+            _d.setAnalysisStatus((submitFetchErr.body && submitFetchErr.body.error) || 'Could not queue analysis request.', 'error');
+          }
+          if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+          return;
+        }
+        if (!submissionId) {
+          if (_d.setAnalysisStatus) {
+            _d.setAnalysisStatus('Could not queue analysis request.', 'error');
+          }
+          if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+          return;
+        }
       }
 
       // Step 3: Track the submission

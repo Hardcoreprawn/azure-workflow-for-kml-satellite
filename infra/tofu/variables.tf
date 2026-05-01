@@ -172,7 +172,14 @@ variable "enable_stripe" {
 }
 
 variable "billing_allowed_users" {
-  description = "Comma-separated user IDs allowed to use real Stripe billing (feature gate)."
+  description = "Comma-separated user IDs allowed to use real Stripe billing (feature gate). These users also get tier emulation access."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "tier_emulation_allowed_users" {
+  description = "Comma-separated user IDs allowed to use tier emulation without billing access (optional; billing_allowed_users get emulation implicitly)."
   type        = string
   default     = ""
   sensitive   = true

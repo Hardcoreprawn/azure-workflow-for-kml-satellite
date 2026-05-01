@@ -138,10 +138,13 @@
       : 'Based on your account.';
     runsEl.textContent = data.runs_remaining == null ? '-' : String(data.runs_remaining);
     runsNoteEl.textContent = data.runs_remaining == null
-      ? 'Quota unavailable in this environment.'
-      : 'Remaining analyses before the current limit is reached.';
+      ? 'Usage data unavailable right now.'
+      : 'How many assessments you can start right now.';
     modeEl.textContent = capabilityHeadline(caps);
-    modeNoteEl.textContent = role.label + ' | ' + preference.label + ' | Retention ' + formatRetention(caps.retention_days) + ' | ' + (caps.api_access ? 'API enabled' : 'API not included');
+    // On EUDR pages keep the mode note user-facing; elsewhere show capability detail.
+    modeNoteEl.textContent = document.body && document.body.dataset.eudrApp != null
+      ? 'Post-Dec 2020 satellite imagery for EUDR compliance.'
+      : role.label + ' | ' + preference.label + ' | Retention ' + formatRetention(caps.retention_days) + ' | ' + (caps.api_access ? 'API enabled' : 'API not included');
   }
 
   function updateHistorySummary(data) {

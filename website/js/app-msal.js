@@ -59,16 +59,25 @@
   function getCiamConfig() {
     try {
       var el = document.getElementById('canopex-ciam-config');
-      if (!el) return { clientId: '', authority: '', tenantId: '' };
+      if (!el) return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
       var parsed = JSON.parse(el.textContent || '{}');
       return {
         clientId: parsed.clientId || '',
         authority: parsed.authority || '',
         tenantId: parsed.tenantId || '',
+        apiAudience: parsed.apiAudience || '',
       };
     } catch (_) {
-      return { clientId: '', authority: '', tenantId: '' };
+      return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
     }
+  }
+
+  function buildApiScopes(ciam) {
+    var audience = String((ciam && ciam.apiAudience) || '').trim();
+    if (!audience) {
+      return ['openid', 'profile'];
+    }
+    return ['openid', 'profile', audience + '/.default'];
   }
 
   function authEnabled() {
@@ -225,16 +234,19 @@
     }
 
     var account = accounts[0];
+    var ciam = getCiamConfig();
     var request = {
-      scopes: ['openid', 'profile'],
+      scopes: buildApiScopes(ciam),
       account: account,
     };
 
     try {
       var result = await app.acquireTokenSilent(request);
-      // Prefer the id token for CIAM — the backend validates it against the
-      // CIAM JWKS. The access token may have a Graph audience which the
-      // backend rejects.
+      // When API audience is configured, backend expects a bearer access token
+      // with that audience. Otherwise local/dev can fall back to id token.
+      if (ciam.apiAudience) {
+        return result.accessToken || result.idToken || '';
+      }
       return result.idToken || result.accessToken || '';
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
@@ -320,6 +332,7 @@
 
   function renderLocalDevUI(elements) {
     var apiReady = _getApiReady ? _getApiReady() : Promise.resolve();
+    if (elements.statusBadge) elements.statusBadge.style.display = 'inline';
     if (elements.loginBtn) elements.loginBtn.style.display = 'none';
     if (elements.logoutBtn) elements.logoutBtn.style.display = 'none';
     if (elements.userSpan) {
@@ -355,6 +368,7 @@
     var historyLoaded = _getAnalysisHistoryLoaded ? _getAnalysisHistoryLoaded() : false;
     var latestRun = _getLatestAnalysisRun ? _getLatestAnalysisRun() : null;
 
+    if (elements.statusBadge) elements.statusBadge.style.display = 'inline';
     if (elements.userSpan) {
       elements.userSpan.textContent = displayName;
       elements.userSpan.style.display = 'inline';
@@ -384,6 +398,7 @@
   }
 
   function renderSignedOutUI(elements) {
+    if (elements.statusBadge) elements.statusBadge.style.display = 'none';
     if (elements.userSpan) elements.userSpan.style.display = 'none';
     if (elements.loginBtn) elements.loginBtn.style.display = 'inline';
     if (elements.logoutBtn) elements.logoutBtn.style.display = 'none';
@@ -410,6 +425,7 @@
     var accountNote = document.getElementById('app-account-note');
     var billingBtn = document.getElementById('app-manage-billing-btn');
     var elements = {
+      statusBadge: document.getElementById('status-badge'),
       loginBtn: loginBtn,
       logoutBtn: logoutBtn,
       userSpan: userSpan,

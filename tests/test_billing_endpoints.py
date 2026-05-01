@@ -419,11 +419,11 @@ class TestCosmosBillingAllowed:
     @patch("treesight.storage.cosmos.read_item")
     @patch("treesight.security.users.get_user")
     def test_tier_emulation_rejected_when_not_in_cosmos(self, mock_get_user, mock_read):
-        """User not allowlisted in Cosmos is rejected."""
+        """User with no billing_allowed and no tier_emulation_allowed grant is rejected."""
         from blueprints.billing import billing_emulation
 
-        # Mock Cosmos user missing tier_emulation_allowed grant
-        mock_get_user.return_value = {"id": "not-allowlisted-user", "billing_allowed": True}
+        # User has neither billing_allowed nor tier_emulation_allowed
+        mock_get_user.return_value = {"id": "not-allowlisted-user", "billing_allowed": False}
         mock_read.return_value = None
 
         req = make_test_request(
@@ -436,6 +436,29 @@ class TestCosmosBillingAllowed:
         assert resp.status_code == 403
         body = resp.get_body().decode("utf-8")
         assert "not yet available" in body
+
+    @patch("treesight.storage.cosmos.upsert_item")
+    @patch("treesight.storage.cosmos.read_item")
+    @patch("treesight.security.users.get_user")
+    def test_billing_allowed_user_gets_emulation(self, mock_get_user, mock_read, mock_upsert):
+        """billing_allowed users get tier emulation implicitly (owner / operator perk)."""
+        from blueprints.billing import billing_emulation
+
+        mock_get_user.return_value = {"id": "owner-user", "billing_allowed": True}
+        store: dict = {}
+        mock_read.side_effect = lambda c, i, p: store.get(f"{c}/{i}")
+        mock_upsert.side_effect = lambda c, item: store.update({f"{c}/{item['id']}": item}) or item
+
+        req = make_test_request(
+            url="/api/billing/emulation",
+            method="POST",
+            body=json.dumps({"tier": "pro"}).encode("utf-8"),
+            principal_user_id="owner-user",
+        )
+        resp = billing_emulation(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["emulation"]["available"] is True
 
     @patch("treesight.storage.cosmos.read_item")
     @patch("treesight.security.users.get_user")

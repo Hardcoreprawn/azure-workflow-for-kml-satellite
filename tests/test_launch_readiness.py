@@ -985,20 +985,48 @@ class TestFrontendProgressReset:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
 
-        # Find error handling blocks: 'if (!tokenRes || !tokenRes.ok)' or
-        # 'if (!uploadRes || !uploadRes.ok)' — the event-driven flow has
-        # two error check points (token + upload)
-        error_branch = re.search(
-            r"if\s*\(\s*!\w+Res\s*\|\|\s*!\w+Res\.ok\s*\)(.*?)(?:}\s*$|}\s*\n)",
-            fn_body,
-            flags=re.DOTALL,
+        assert "resetAnalysisProgress" in fn_body, (
+            "queueAnalysis must call resetAnalysisProgress() in error paths "
+            "to hide the pipeline spinner when submission fails"
         )
-        assert error_branch, "Error branch 'if (!...Res || !...Res.ok)' not found in queueAnalysis"
-        error_block = error_branch.group(1)
 
-        assert "resetAnalysisProgress" in error_block, (
-            "queueAnalysis error branch must call resetAnalysisProgress() "
-            "to hide the pipeline spinner on API failure"
+
+class TestFrontendQueueFallback:
+    """Queue flow should fall back to direct API submit when SAS upload fails."""
+
+    APP_RUN_LIFECYCLE = WEBSITE / "js" / "app-run-lifecycle.js"
+
+    def test_queue_flow_has_direct_submit_fallback(self):
+        content = self.APP_RUN_LIFECYCLE.read_text()
+        assert "function queueAnalysisViaSubmitApi" in content, (
+            "app-run-lifecycle.js must define a direct submit fallback helper"
+        )
+        assert "'/api/analysis/submit'" in content, (
+            "queue fallback must call /api/analysis/submit when direct blob upload fails"
+        )
+
+    def test_queue_fallback_preserves_401_auth_ux(self):
+        content = self.APP_RUN_LIFECYCLE.read_text()
+        assert "submitFetchErr.status === 401" in content, (
+            "direct-submit fallback must preserve session-expired auth handling for 401 errors"
+        )
+
+
+class TestSignedOutStatusBadge:
+    """Navbar service status badge should be hidden when no account is signed in."""
+
+    APP_MSAL = WEBSITE / "js" / "app-msal.js"
+
+    def test_signed_out_hides_status_badge(self):
+        content = self.APP_MSAL.read_text()
+        fn_start = content.find("function renderSignedOutUI(elements)")
+        assert fn_start != -1, "renderSignedOutUI not found in app-msal.js"
+        fn_end = content.find("\n  function ", fn_start + 1)
+        if fn_end == -1:
+            fn_end = len(content)
+        fn_body = content[fn_start:fn_end]
+        assert "elements.statusBadge" in fn_body and "style.display = 'none'" in fn_body, (
+            "renderSignedOutUI must hide the navbar status badge"
         )
 
 

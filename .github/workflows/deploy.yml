@@ -1135,11 +1135,12 @@ jobs:
           CIAM_CLIENT_ID: ${{ secrets.CIAM_CLIENT_ID }}
           CIAM_AUTHORITY: ${{ secrets.CIAM_AUTHORITY }}
           CIAM_TENANT_ID: ${{ secrets.CIAM_TENANT_ID }}
+          CIAM_API_AUDIENCE: ${{ secrets.CIAM_API_AUDIENCE }}
         run: |
           if [ -n "$CIAM_CLIENT_ID" ] && [ -n "$CIAM_AUTHORITY" ]; then
-            CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\"}"
+            CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\",\"apiAudience\":\"${CIAM_API_AUDIENCE}\"}"
             find website -name '*.html' -exec sed -i \
-              's|{"clientId":"","authority":"","tenantId":""}|'"${CIAM_JSON}"'|' {} +
+              's|{"clientId":"","authority":"","tenantId":"","apiAudience":""}|'"${CIAM_JSON}"'|' {} +
           fi
 
       - name: Deploy to Azure Static Web Apps
