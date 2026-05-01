@@ -753,6 +753,25 @@ class TestEventGridWebhookWiring:
             "Event Grid host key lookup must not target the compute app"
         )
 
+    def test_event_grid_filter_uses_analysis_prefix_not_extension_suffix(self):
+        tf = MAIN_TF.read_text()
+        match = re.search(
+            r'resource\s+"azapi_resource"\s+"event_grid_subscription"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "main.tf must define azapi_resource.event_grid_subscription"
+        body = match.group("body")
+        assert "subjectBeginsWith" in body, (
+            "Event Grid subscription must use subjectBeginsWith for analysis blob routing"
+        )
+        assert "/blobServices/default/containers/kml-input/blobs/analysis/" in body, (
+            "Event Grid subject prefix must target analysis blobs in the kml-input container"
+        )
+        assert "subjectEndsWith" not in body, (
+            "Event Grid subscription should not use extension-only suffix filters"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 12. Public API ingress docs contract

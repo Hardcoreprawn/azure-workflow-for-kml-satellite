@@ -1227,8 +1227,12 @@ resource "azapi_resource" "event_grid_subscription" {
         }
       }
       filter = {
-        includedEventTypes     = ["Microsoft.Storage.BlobCreated"]
-        subjectEndsWith        = ".kml"
+        includedEventTypes = ["Microsoft.Storage.BlobCreated"]
+        # Match any blob under analysis/ in the kml-input container, regardless of extension.
+        # Azure Event Grid blob subjects are relative to the storage account resource:
+        #   /blobServices/default/containers/{container}/blobs/{path}
+        # Using a prefix filter covers both .kml and .kmz uploads.
+        subjectBeginsWith      = "/blobServices/default/containers/kml-input/blobs/analysis/"
         isSubjectCaseSensitive = false
       }
       eventDeliverySchema = "EventGridSchema"

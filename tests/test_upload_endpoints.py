@@ -355,6 +355,99 @@ class TestUploadToken:
         record = self.mock_persist.call_args[0][1]
         assert record["eudr_mode"] is True
 
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_kml_filename_produces_kml_blob_and_content_type(self, mock_bsc, mock_gen_sas):
+        """A .kml filename produces a .kml blob name and passes KML content-type to SAS token."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"filename": "parcels.kml"})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["blobName"].endswith(".kml")
+        assert data["contentType"] == "application/vnd.google-earth.kml+xml"
+        call_kwargs = mock_gen_sas.call_args[1]
+        assert call_kwargs["content_type"] == "application/vnd.google-earth.kml+xml"
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_kmz_filename_produces_kmz_blob_and_content_type(self, mock_bsc, mock_gen_sas):
+        """A .kmz filename produces a .kmz blob name and passes KMZ content-type to SAS token."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"filename": "parcels.kmz"})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["blobName"].endswith(".kmz")
+        assert data["contentType"] == "application/vnd.google-earth.kmz"
+        call_kwargs = mock_gen_sas.call_args[1]
+        assert call_kwargs["content_type"] == "application/vnd.google-earth.kmz"
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_no_filename_defaults_to_kml(self, mock_bsc, mock_gen_sas):
+        """When no filename is provided, defaults to .kml extension."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST")
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["blobName"].endswith(".kml")
+        call_kwargs = mock_gen_sas.call_args[1]
+        assert call_kwargs["content_type"] == "application/vnd.google-earth.kml+xml"
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_unknown_extension_defaults_to_kml(self, mock_bsc, mock_gen_sas):
+        """An unrecognised extension falls back to .kml for safety."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"filename": "parcels.shp"})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["blobName"].endswith(".kml")
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_case_insensitive_kmz_extension(self, mock_bsc, mock_gen_sas):
+        """Extension detection is case-insensitive (.KMZ treated as KMZ)."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST", body={"filename": "parcels.KMZ"})
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["blobName"].endswith(".kmz")
+
 
 # ===================================================================
 # EUDR entitlement enforcement on upload/token
