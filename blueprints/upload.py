@@ -135,7 +135,16 @@ def _mint_sas_url(
     submission_id: str,
     content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, str | None]:
-    """Generate a write-only SAS URL. Returns (sas_url, error_msg)."""
+    """Generate a write-only SAS URL. Returns (sas_url, error_msg).
+
+    The ``content_type`` value is embedded in the SAS token as a response-header
+    override (``rsct``).  It controls the ``Content-Type`` header returned when
+    the blob is *downloaded* via the SAS URL, but does **not** automatically set
+    the blob's stored Content-Type.  Callers that need the blob stored with the
+    correct Content-Type must include ``Content-Type`` (or the Azure-specific
+    ``x-ms-blob-content-type``) header on the client-side PUT request.  The
+    upload-token response includes ``contentType`` so the client can do this.
+    """
     now = datetime.datetime.now(datetime.UTC)
     expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
 
@@ -317,7 +326,9 @@ def _write_ticket_and_mint_sas(
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
-        sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id, content_type)
+        sas_url, _ = _mint_sas_url(
+            blob_service, blob_name, submission_id, content_type=content_type
+        )
     except Exception:
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
         if quota_consumed:
@@ -467,6 +478,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
                 "sasUrl": sas_url,
                 "blobName": blob_name,
                 "container": DEFAULT_INPUT_CONTAINER,
+                "contentType": content_type,
                 "expiresMinutes": _SAS_TOKEN_EXPIRY_MINUTES,
                 "maxBytes": MAX_KML_FILE_SIZE_BYTES,
             }

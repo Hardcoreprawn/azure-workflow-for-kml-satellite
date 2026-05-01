@@ -358,7 +358,7 @@ class TestUploadToken:
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_kml_filename_produces_kml_blob_and_content_type(self, mock_bsc, mock_gen_sas):
-        """A request with a .kml filename stores a .kml blob with KML content-type."""
+        """A .kml filename produces a .kml blob name and passes KML content-type to the SAS token."""
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -371,13 +371,14 @@ class TestUploadToken:
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["blobName"].endswith(".kml")
+        assert data["contentType"] == "application/vnd.google-earth.kml+xml"
         call_kwargs = mock_gen_sas.call_args[1]
         assert call_kwargs["content_type"] == "application/vnd.google-earth.kml+xml"
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_kmz_filename_produces_kmz_blob_and_content_type(self, mock_bsc, mock_gen_sas):
-        """A request with a .kmz filename stores a .kmz blob with KMZ content-type."""
+        """A .kmz filename produces a .kmz blob name and passes KMZ content-type to the SAS token."""
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -390,6 +391,7 @@ class TestUploadToken:
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["blobName"].endswith(".kmz")
+        assert data["contentType"] == "application/vnd.google-earth.kmz"
         call_kwargs = mock_gen_sas.call_args[1]
         assert call_kwargs["content_type"] == "application/vnd.google-earth.kmz"
 
