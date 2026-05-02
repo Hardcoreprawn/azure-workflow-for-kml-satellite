@@ -260,7 +260,7 @@ class TestAuthConfig:
         """MSAL module must read optional API audience from injected CIAM config."""
         js = APP_MSAL_JS.read_text()
         assert "apiAudience" in js, "app-msal.js must parse apiAudience from canopex-ciam-config"
-        assert "audience + '/.default'" in js, (
+        assert "audience + '/User.Read'" in js, (
             "app-msal.js must derive an API scope from apiAudience"
         )
 
@@ -270,7 +270,7 @@ class TestAuthConfig:
         assert "if (ciam.apiAudience)" in js, (
             "app-msal.js getToken must branch when apiAudience is configured"
         )
-        assert "return result.accessToken || result.idToken || '';" in js, (
+        assert "return result.accessToken || '';" in js, (
             "app-msal.js getToken must prefer accessToken when apiAudience is configured"
         )
 
