@@ -85,7 +85,7 @@ def query_items(
     query: str,
     parameters: list[dict[str, Any]] | None = None,
     partition_key: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[Any]:
     """Query documents. Returns a list of matching items."""
     container = get_container(container_name)
     kwargs: dict[str, Any] = {

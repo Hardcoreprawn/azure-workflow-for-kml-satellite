@@ -51,7 +51,7 @@ def count_active_runs(container_name: str = "run-records") -> int:
 
     try:
         rows = _cosmos.query_items(container_name, query, parameters=params)
-        return int(rows[0]) if rows else 0  # type: ignore[arg-type]  # SELECT VALUE returns scalar
+        return int(rows[0]) if rows else 0
     except Exception:
         logger.exception("count_active_runs query failed — treating as 0")
         return 0

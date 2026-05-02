@@ -155,7 +155,7 @@ def _check_recent_pipeline(lookback_hours: int = 24) -> dict:
             ),
             parameters=[{"name": "@cutoff", "value": cutoff}],
         )
-        count = int(rows[0]) if rows else 0  # type: ignore[arg-type]  # SELECT VALUE returns scalar
+        count = int(rows[0]) if rows else 0
         if count > 0:
             return {"status": "ok", "recent_completed": count}
         return {"status": "no_recent_run"}
