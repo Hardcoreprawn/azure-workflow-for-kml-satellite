@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
 
 ---
 
@@ -21,8 +21,8 @@ not at the bottom.
 | 4 | #757 | — | fix(auth): harden MSAL token lifecycle — always-fresh tokens, 401-to-reauth — **Stage 2E.6** | ✅ #762 |
 | 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | ✅ #762 |
 | 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | ✅ #762 |
-| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | Open (infra PR) |
-| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocked by 2E.6 |
+| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | ❌ Closed — compute FA already £0 at idle (Consumption plan, alwaysReady=0); CAJ adds complexity without cost benefit |
+| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Next |
 | 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
 | 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
 | 11 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
@@ -73,8 +73,10 @@ entry page. `/eudr/` ships first; others follow when EUDR reaches revenue.
 **Backend:** Split Container Apps Function Apps — slim orchestrator ingress
 and heavy compute workers. Browser clients must target orchestrator hostname
 only (`/api-config.json`), while compute hosts activity-heavy execution.
-Container Apps Jobs (#467) stay deferred until scale evidence justifies the
-added complexity.
+Container Apps Jobs (#467) stay deferred — confirmed by cost analysis (2026-05):
+both FAs are on the Consumption plan with alwaysReady=0, so idle cost is already
+£0. CAJ would add complexity without reducing cost. Revisit when sustained user
+load makes the per-invocation billing model a disadvantage vs a dedicated worker.
 
 **Build rules (keep dev easy):**
 
@@ -102,6 +104,7 @@ portfolio-level risk visibility.
 | PR | Summary |
 |----|---------|  
 | #762 | feat(2e6): CIAM API scope, MSAL token lifecycle (#757), concurrency cap + SAFE_MODE (#759), /api/health/deep (#760) (closes #756, #757, #759, #760) |
+| #758 | ❌ Closed (not_planned) — cost analysis confirms compute FA costs £0 at idle (Consumption plan, alwaysReady=0); CAJ migration would add complexity without reducing costs |
 | #755 | fix: unify KML/KMZ upload paths — extension-based content-type detection, Event Grid filter by prefix not suffix (closes #753) |
 | #752 | chore(infra): dev cost profile — orchestrator scale-to-zero, burst cap 1, log retention/cap tightened |
 | #751 | fix: pipeline auth + UI regressions — API-audience token scopes, SAS-upload fallback, EUDR trial UX, tier emulation gate |
