@@ -22,8 +22,8 @@ not at the bottom.
 | 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | ✅ #762 |
 | 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | ✅ #762 |
 | 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | ❌ Closed — compute FA already £0 at idle (Consumption plan, alwaysReady=0); CAJ adds complexity without cost benefit |
-| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Next |
-| 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
+| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | ✅ Closed |
+| 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | 🔄 Next |
 | 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
 | 11 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
 | 12 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
