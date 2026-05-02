@@ -253,8 +253,11 @@
         // Never use the ID token as a bearer credential.
         return result.accessToken || '';
       }
-      // Local dev without a registered API scope: fall back to id token.
-      return result.idToken || result.accessToken || '';
+      // apiAudience is not configured — this is a misconfiguration even in local dev.
+      // Returning an ID token as a bearer credential is a security anti-pattern.
+      // Log a clear error and return empty so callers fail visibly rather than silently.
+      console.error('[CanopexAuth] apiAudience not configured — cannot acquire API token. Check CIAM_API_AUDIENCE.');
+      return '';
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
       // Trigger a redirect so the user can re-authenticate.

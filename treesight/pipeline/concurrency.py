@@ -37,8 +37,7 @@ def count_active_runs(container_name: str = "run-records") -> int:
     # Build an IN filter for ACTIVE_RUN_STATUSES.
     status_placeholders = ", ".join(f"@s{i}" for i in range(len(ACTIVE_RUN_STATUSES)))
     params: list[dict] = [
-        {"name": f"@s{i}", "value": s}
-        for i, s in enumerate(sorted(ACTIVE_RUN_STATUSES))
+        {"name": f"@s{i}", "value": s} for i, s in enumerate(sorted(ACTIVE_RUN_STATUSES))
     ]
     params.append({"name": "@cutoff", "value": cutoff})
 

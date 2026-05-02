@@ -1347,6 +1347,8 @@ class TestEndpointAuthAudit:
         "health",
         "readiness",
         "contract",
+        # Deep health check — pre-demo smoke probe, no user data, no side effects (#760)
+        "health/deep",
         # Internal deploy-only smoke probe (dev orchestrator host restricted)
         "internal-smoke",
         "billing/webhook",

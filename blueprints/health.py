@@ -7,7 +7,6 @@ See blueprints/pipeline.py module docstring for details.
 import json
 import logging
 import re
-import urllib.request
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -100,16 +99,24 @@ def internal_smoke(req: func.HttpRequest) -> func.HttpResponse:
 # Deep health (#760) — pre-demo smoke validation
 # ---------------------------------------------------------------------------
 
+
 def _check_ciam(authority: str) -> dict:
     """Check CIAM OIDC discovery endpoint reachability."""
     if not authority:
         return {"status": "unconfigured"}
     url = authority.rstrip("/") + "/v2.0/.well-known/openid-configuration"
+    # Only allow HTTPS to prevent config-driven SSRF to non-HTTPS targets.
+    if not url.startswith("https://"):
+        return {"status": "unconfigured", "reason": "authority must be https"}
     try:
-        with urllib.request.urlopen(url, timeout=3) as r:  # noqa: S310 — well-known URL built from config
-            if r.status == 200:
-                return {"status": "ok"}
-            return {"status": "unreachable", "http": r.status}
+        import requests  # imported locally to keep startup cost low
+
+        r = requests.get(url, timeout=3)
+        return (
+            {"status": "ok"}
+            if r.status_code == 200
+            else {"status": "unreachable", "http": r.status_code}
+        )
     except Exception as exc:
         return {"status": "unreachable", "error": str(exc)}
 

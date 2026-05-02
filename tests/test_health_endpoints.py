@@ -258,4 +258,3 @@ class TestDeepHealth:
     def test_options_returns_204(self):
         resp = health_deep(_make_deep_req(method="OPTIONS"))
         assert resp.status_code == 204
-

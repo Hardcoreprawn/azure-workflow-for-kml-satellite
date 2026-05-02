@@ -174,4 +174,3 @@ class TestSafeMode:
 
         assert result == {"enriched": True}
         assert "safe_mode" not in result
-

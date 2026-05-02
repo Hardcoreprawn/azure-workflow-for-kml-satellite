@@ -165,15 +165,11 @@ async def _submit_analysis_request(
 
     # Reject new submissions when the concurrency cap is reached (#759).
     if at_concurrency_cap():
-        resp = error_response(429, "Concurrency cap reached — try again later", req=req)
         return func.HttpResponse(
-            resp.get_body(),
+            json.dumps({"error": "Concurrency cap reached — try again later"}),
             status_code=429,
             mimetype="application/json",
-            headers={
-                **dict(resp.headers),
-                "Retry-After": "30",
-            },
+            headers={**cors_headers(req), "Retry-After": "30"},
         )
 
     # Consume quota upfront (atomic reservation).  If storage is
