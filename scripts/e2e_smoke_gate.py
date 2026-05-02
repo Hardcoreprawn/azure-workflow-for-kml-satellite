@@ -1,11 +1,15 @@
 """Run an authenticated end-to-end smoke flow against a deployed API.
 
 Flow:
-1) POST /api/upload/token
-2) PUT uploaded KML to returned SAS URL
-3) Poll GET /api/orchestrator/{instance_id} until terminal state
-4) Verify completed output matches the diagnostics payload shape
-5) Optionally verify GET /api/timelapse-data/{instance_id}
+1) Acquire a bearer token — either provided directly via ``--bearer-token``
+   or obtained from a CIAM OIDC endpoint via OAuth2 client credentials flow
+   (``--client-id``, ``--client-secret``, ``--token-endpoint``, ``--api-scope``).
+2) POST /api/upload/token
+3) PUT uploaded KML to returned SAS URL
+4) Poll GET /api/orchestrator/{instance_id} until terminal state
+5) Verify completed output matches the diagnostics payload shape
+6) Optionally verify GET /api/timelapse-data/{instance_id}
+7) Write evidence JSON to ``--evidence-file`` (if specified).
 """
 
 from __future__ import annotations
@@ -17,8 +21,59 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import requests as _requests
 
 TERMINAL_STATUSES = {"Completed", "Failed", "Canceled", "Terminated"}
+
+
+def acquire_token_client_credentials(
+    *,
+    token_endpoint: str,
+    client_id: str,
+    client_secret: str,
+    scope: str,
+) -> str:
+    """Obtain an access token via OAuth2 client credentials flow.
+
+    Uses a direct POST to the OIDC token endpoint — no external libraries
+    required beyond ``requests`` which is already a project dependency.
+
+    Args:
+        token_endpoint: Full token endpoint URL, e.g.
+            ``https://{tenant}.ciamlogin.com/{tenant}.onmicrosoft.com/oauth2/v2.0/token``
+        client_id: OAuth2 client (application) ID.
+        client_secret: OAuth2 client secret.
+        scope: Space-separated OAuth2 scopes, e.g. ``api://{id}/.default``.
+
+    Returns:
+        The access_token string.
+
+    Raises:
+        ValueError: If the endpoint returns an error or no access_token.
+        requests.HTTPError: On non-2xx HTTP status.
+    """
+    if not token_endpoint.startswith("https://"):
+        raise ValueError("token_endpoint must use HTTPS")
+
+    resp = _requests.post(
+        token_endpoint,
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": scope,
+        },
+        timeout=15,
+        allow_redirects=False,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    token = payload.get("access_token")
+    if not isinstance(token, str) or not token:
+        error = payload.get("error", "unknown")
+        description = payload.get("error_description", "no description")
+        raise ValueError(f"Token endpoint did not return access_token: {error} — {description}")
+    return token
 
 
 def bearer_headers(token: str) -> dict[str, str]:
@@ -172,7 +227,40 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--api-base", required=True, help="Base API URL, e.g. https://api.example.com"
     )
-    parser.add_argument("--bearer-token", required=True, help="CIAM bearer token")
+    auth_group = parser.add_mutually_exclusive_group(required=False)
+    auth_group.add_argument(
+        "--bearer-token",
+        default="",
+        help="CIAM bearer token.",
+    )
+    auth_group.add_argument(
+        "--client-credentials-flow",
+        action="store_true",
+        help="Use OAuth2 client credentials flow instead of --bearer-token.",
+    )
+    parser.add_argument(
+        "--client-id",
+        default="",
+        help="OAuth2 client ID for client credentials token acquisition.",
+    )
+    parser.add_argument(
+        "--client-secret",
+        default="",
+        help="OAuth2 client secret for client credentials token acquisition.",
+    )
+    parser.add_argument(
+        "--token-endpoint",
+        default="",
+        help=(
+            "Full OIDC token endpoint URL for client credentials flow, e.g. "
+            "https://{tenant}.ciamlogin.com/{tenant}.onmicrosoft.com/oauth2/v2.0/token"
+        ),
+    )
+    parser.add_argument(
+        "--api-scope",
+        default="",
+        help="OAuth2 scope string for client credentials flow, e.g. api://{id}/.default",
+    )
     parser.add_argument(
         "--kml-path", default="tests/fixtures/sample.kml", help="Path to KML fixture"
     )
@@ -187,6 +275,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-manifest-check",
         action="store_true",
         help="Skip /api/timelapse-data verification",
+    )
+    parser.add_argument(
+        "--evidence-file",
+        default="",
+        help="Path to write the JSON evidence artifact. If omitted, evidence is only printed.",
+    )
+    parser.add_argument(
+        "--image-tag",
+        default="",
+        help="Docker image tag of the deployed version (included in evidence).",
+    )
+    parser.add_argument(
+        "--commit-sha",
+        default="",
+        help="Git commit SHA of the deployed version (included in evidence).",
     )
     return parser
 
@@ -208,6 +311,25 @@ def main() -> int:
 
     with httpx.Client() as client:
         bearer_token = args.bearer_token.strip()
+        if args.client_credentials_flow:
+            # Attempt client credentials flow
+            client_id = args.client_id.strip()
+            client_secret = args.client_secret.strip()
+            token_endpoint = args.token_endpoint.strip()
+            api_scope = args.api_scope.strip()
+            if not (client_id and client_secret and token_endpoint and api_scope):
+                raise ValueError(
+                    "All of --client-id, --client-secret, --token-endpoint, --api-scope"
+                    " must be provided when using --client-credentials-flow"
+                )
+            bearer_token = acquire_token_client_credentials(
+                token_endpoint=token_endpoint,
+                client_id=client_id,
+                client_secret=client_secret,
+                scope=api_scope,
+            )
+        elif not bearer_token:
+            raise ValueError("Either --bearer-token or --client-credentials-flow must be provided")
 
         token_result = mint_upload_token(
             client,
@@ -242,18 +364,26 @@ def main() -> int:
             )
             manifest_ok = True
 
-    print(
-        json.dumps(
-            {
-                "submissionId": submission_id,
-                "runtimeStatus": status_payload.get("runtimeStatus"),
-                "outputStatus": output_payload.get("status"),
-                "artifactCount": len(artifact_paths),
-                "manifestVerified": manifest_ok,
-            },
-            sort_keys=True,
-        )
-    )
+    evidence: dict[str, Any] = {
+        "submissionId": submission_id,
+        "runtimeStatus": status_payload.get("runtimeStatus"),
+        "outputStatus": output_payload.get("status"),
+        "artifactCount": len(artifact_paths),
+        "manifestVerified": manifest_ok,
+    }
+    if args.image_tag:
+        evidence["imageTag"] = args.image_tag
+    if args.commit_sha:
+        evidence["commitSha"] = args.commit_sha
+
+    evidence_json = json.dumps(evidence, sort_keys=True)
+    print(evidence_json)
+
+    if args.evidence_file:
+        evidence_path = Path(args.evidence_file)
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(evidence_json)
+
     return 0
 
 
