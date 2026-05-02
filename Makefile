@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
-	test-upload test test-int lint fmt check clean \
+	test-upload test test-int lint fmt check smoke clean \
 	_free-ports _free-func-port _free-web-ports
 
 SHELL  := /bin/bash
@@ -142,6 +142,16 @@ fmt: ## Format with ruff
 	uv run ruff format .
 
 check: lint test ## Lint + test
+
+smoke: ## POST to /api/health/deep and exit non-zero if not healthy
+	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \
+	echo "Smoke-checking $${FUNC_URL}/api/health/deep …"; \
+	RESPONSE=$$(curl -sf "$${FUNC_URL}/api/health/deep" 2>/dev/null); \
+	if [ -z "$$RESPONSE" ]; then echo "ERROR: /api/health/deep unreachable" >&2; exit 1; fi; \
+	STATUS=$$(echo "$$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))"); \
+	echo "Health status: $${STATUS}"; \
+	if [ "$$STATUS" = "failing" ]; then echo "FAILED: health/deep reports failing" >&2; exit 1; fi; \
+	echo "OK"
 
 # ───────────────────── Cleanup ─────────────────────
 

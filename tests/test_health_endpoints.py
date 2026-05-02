@@ -5,11 +5,13 @@ Covers:
 - CORS headers on GET responses (cross-origin API discovery)
 - OPTIONS preflight handling
 - Unknown origins are rejected
+- /api/health/deep (#760) component checks and status derivation
 """
 
 import json
+from unittest.mock import patch
 
-from blueprints.health import contract, health, internal_smoke, readiness
+from blueprints.health import contract, health, health_deep, internal_smoke, readiness
 from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
@@ -158,3 +160,102 @@ class TestInternalSmoke:
             )
         )
         assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# /api/health/deep (#760) — pre-demo infra smoke check
+# ---------------------------------------------------------------------------
+
+_CIAM_OK = {"status": "ok"}
+_BLOB_OK = {"status": "ok"}
+_PIPELINE_OK = {"status": "ok", "recent_completed": 1}
+_CIAM_DOWN = {"status": "unreachable", "error": "timeout"}
+_BLOB_DOWN = {"status": "unreachable", "error": "conn refused"}
+_PIPELINE_NO_RUN = {"status": "no_recent_run"}
+
+
+def _make_deep_req(method="GET", origin=_ALLOWED_ORIGIN):
+    return _make_req(method=method, origin=origin, url="/api/health/deep")
+
+
+class TestDeepHealth:
+    def _call(
+        self,
+        ciam=_CIAM_OK,
+        blob=_BLOB_OK,
+        pipeline=_PIPELINE_OK,
+        active=0,
+        safe_mode=False,
+        max_jobs=2,
+    ):
+        with (
+            patch("blueprints.health._check_ciam", return_value=ciam),
+            patch("blueprints.health._check_blob", return_value=blob),
+            patch("blueprints.health._check_recent_pipeline", return_value=pipeline),
+            patch("treesight.pipeline.concurrency.count_active_runs", return_value=active),
+            patch("treesight.config.SAFE_MODE", safe_mode),
+            patch("treesight.config.MAX_CONCURRENT_JOBS", max_jobs),
+        ):
+            return health_deep(_make_deep_req())
+
+    def test_returns_200_always(self):
+        resp = self._call(ciam=_CIAM_DOWN, blob=_BLOB_DOWN)
+        assert resp.status_code == 200
+
+    def test_body_healthy_when_all_ok(self):
+        resp = self._call()
+        body = json.loads(resp.get_body())
+        assert body["status"] == "healthy"
+
+    def test_body_failing_when_ciam_unreachable(self):
+        resp = self._call(ciam=_CIAM_DOWN)
+        body = json.loads(resp.get_body())
+        assert body["status"] == "failing"
+
+    def test_body_failing_when_blob_unreachable(self):
+        resp = self._call(blob=_BLOB_DOWN)
+        body = json.loads(resp.get_body())
+        assert body["status"] == "failing"
+
+    def test_body_degraded_when_no_recent_pipeline(self):
+        resp = self._call(pipeline=_PIPELINE_NO_RUN)
+        body = json.loads(resp.get_body())
+        assert body["status"] == "degraded"
+
+    def test_body_includes_config(self):
+        resp = self._call(active=1, max_jobs=2, safe_mode=False)
+        body = json.loads(resp.get_body())
+        assert body["config"]["max_concurrent_jobs"] == 2
+        assert body["config"]["active_runs"] == 1
+        assert body["config"]["safe_mode"] is False
+
+    def test_safe_mode_reflected_in_config(self):
+        resp = self._call(safe_mode=True)
+        body = json.loads(resp.get_body())
+        assert body["config"]["safe_mode"] is True
+
+    def test_components_returned_in_body(self):
+        resp = self._call()
+        body = json.loads(resp.get_body())
+        assert "ciam" in body["components"]
+        assert "blob" in body["components"]
+        assert "recent_pipeline" in body["components"]
+
+    def test_cors_header_for_allowed_origin(self):
+        resp = self._call()
+        assert resp.headers.get("Access-Control-Allow-Origin") == _ALLOWED_ORIGIN
+
+    def test_no_cors_header_for_unknown_origin(self):
+        with (
+            patch("blueprints.health._check_ciam", return_value=_CIAM_OK),
+            patch("blueprints.health._check_blob", return_value=_BLOB_OK),
+            patch("blueprints.health._check_recent_pipeline", return_value=_PIPELINE_OK),
+            patch("treesight.pipeline.concurrency.count_active_runs", return_value=0),
+        ):
+            resp = health_deep(_make_deep_req(origin=_UNKNOWN_ORIGIN))
+        assert "Access-Control-Allow-Origin" not in resp.headers
+
+    def test_options_returns_204(self):
+        resp = health_deep(_make_deep_req(method="OPTIONS"))
+        assert resp.status_code == 204
+

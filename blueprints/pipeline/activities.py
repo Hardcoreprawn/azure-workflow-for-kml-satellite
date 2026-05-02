@@ -315,7 +315,18 @@ def run_enrichment(payload: _Payload) -> dict[str, Any]:
 
 @bp.activity_trigger(input_name="payload")
 def enrich_data_sources(payload: _Payload) -> dict[str, Any]:
-    """Enrichment sub-step 1: weather, flood/fire, EUDR datasets."""
+    """Enrichment sub-step 1: weather, flood/fire, EUDR datasets.
+
+    When SAFE_MODE is enabled (#759), skip non-critical external data sources
+    (weather, flood/fire, EUDR datasets) and return an empty dict so the
+    determination pipeline still runs to completion.
+    """
+    from treesight import config
+
+    if config.SAFE_MODE:
+        logger.info("SAFE_MODE: skipping enrich_data_sources")
+        return {"safe_mode": True, "skipped": ["weather", "flood_fire", "eudr_datasets"]}
+
     from treesight.pipeline.enrichment import enrich_data_sources as _enrich_ds
 
     return _enrich_ds(

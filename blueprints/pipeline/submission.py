@@ -14,6 +14,7 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.pipeline.concurrency import at_concurrency_cap
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 from treesight.security.quota import consume_quota, release_quota
 from treesight.security.redact import redact_user_id as _redact
@@ -161,6 +162,19 @@ async def _submit_analysis_request(
         _claims, user_id = check_auth(req)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+
+    # Reject new submissions when the concurrency cap is reached (#759).
+    if at_concurrency_cap():
+        resp = error_response(429, "Concurrency cap reached — try again later", req=req)
+        return func.HttpResponse(
+            resp.get_body(),
+            status_code=429,
+            mimetype="application/json",
+            headers={
+                **dict(resp.headers),
+                "Retry-After": "30",
+            },
+        )
 
     # Consume quota upfront (atomic reservation).  If storage is
     # transiently unavailable we log the error but still allow the

@@ -204,6 +204,9 @@
 
   // ── getToken ──────────────────────────────────────────────────
 
+  // Token age telemetry (#757): timestamp of the last successful token acquisition.
+  var _lastTokenAcquiredAt = null;
+
   function buildRedirectError(message, cause) {
     var err = new Error(message);
     err.name = 'CanopexAuthRedirectError';
@@ -217,6 +220,7 @@
   /**
    * Return a valid CIAM token string, acquiring silently if possible.
    * Falls back to a redirect login if no cached token is available.
+   * Logs token age to console for debugging (#757).
    * Throws if MSAL is not configured (authEnabled() === false).
    */
   async function getToken() {
@@ -242,6 +246,8 @@
 
     try {
       var result = await app.acquireTokenSilent(request);
+      _lastTokenAcquiredAt = new Date().toISOString();
+      console.debug('[CanopexAuth] tokenAge: acquired at', _lastTokenAcquiredAt);
       if (ciam.apiAudience) {
         // API audience is registered — backend requires a CIAM access token.
         // Never use the ID token as a bearer credential.
@@ -310,23 +316,52 @@
 
   // ── handleApiError ────────────────────────────────────────────
 
+  /**
+   * Handle a 401 from the backend (#757).
+   *
+   * Instead of logging the user out (which interrupts a demo), show a
+   * non-blocking status toast and attempt a silent token re-acquisition.
+   * Falls back to acquireTokenPopup so the user can re-auth in place.
+   * Only logs out as a last resort when popup is blocked or fails.
+   */
   function handleApiError(err) {
     if (!err || err.status !== 401 || !authEnabled()) {
       return;
     }
-    if (_setAccount) {
-      _setAccount(null);
-    }
-    if (_clearClientAuth) {
-      _clearClientAuth();
-    }
-    updateAuthUI();
+
+    console.warn('[CanopexAuth] 401 received — attempting transparent re-auth');
     if (_setAnalysisStatus) {
-      _setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
+      _setAnalysisStatus('Session refreshing — signing you back in…', 'info');
     }
-    if (_stopAnalysisPolling) {
-      _stopAnalysisPolling();
-    }
+
+    ensureMsalReady().then(function (app) {
+      if (!app) {
+        return;
+      }
+      var accounts = app.getAllAccounts();
+      var account = accounts && accounts[0];
+      if (!account) {
+        login();
+        return;
+      }
+      var ciam = getCiamConfig();
+      var request = { scopes: buildApiScopes(ciam), account: account };
+      // Try popup first so the page doesn't navigate away mid-demo.
+      return app.acquireTokenPopup(request).then(function (result) {
+        _lastTokenAcquiredAt = new Date().toISOString();
+        console.debug('[CanopexAuth] Re-auth via popup succeeded at', _lastTokenAcquiredAt);
+        if (_setAnalysisStatus) {
+          _setAnalysisStatus('', '');
+        }
+      });
+    }).catch(function (popupErr) {
+      // Popup blocked or failed — fall back to full redirect.
+      console.warn('[CanopexAuth] Popup re-auth failed, falling back to redirect:', popupErr);
+      if (_stopAnalysisPolling) {
+        _stopAnalysisPolling();
+      }
+      login();
+    });
   }
 
   // ── updateAuthUI ──────────────────────────────────────────────
