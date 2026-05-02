@@ -17,11 +17,11 @@ not at the bottom.
 | --- | ---------- | ---- | ------------- | -------- |
 | 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | ✅ Closed |
 | 2 | #710 | #744 | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | ✅ Closed |
-| 3 | #756 | — | fix(auth): register CIAM custom API scope — eliminate token audience ambiguity — **Stage 2E.6** | Open |
-| 4 | #757 | — | fix(auth): harden MSAL token lifecycle — always-fresh tokens, 401-to-reauth — **Stage 2E.6** | Open |
-| 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | Open |
-| 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | Open |
-| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | Open |
+| 3 | #756 | — | fix(auth): register CIAM custom API scope — eliminate token audience ambiguity — **Stage 2E.6** | ✅ #762 |
+| 4 | #757 | — | fix(auth): harden MSAL token lifecycle — always-fresh tokens, 401-to-reauth — **Stage 2E.6** | ✅ #762 |
+| 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | ✅ #762 |
+| 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | ✅ #762 |
+| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | Open (infra PR) |
 | 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | 🔄 Blocked by 2E.6 |
 | 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | Open |
 | 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
@@ -101,12 +101,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #762 | feat(2e6): CIAM API scope, MSAL token lifecycle (#757), concurrency cap + SAFE_MODE (#759), /api/health/deep (#760) (closes #756, #757, #759, #760) |
 | #755 | fix: unify KML/KMZ upload paths — extension-based content-type detection, Event Grid filter by prefix not suffix (closes #753) |
 | #752 | chore(infra): dev cost profile — orchestrator scale-to-zero, burst cap 1, log retention/cap tightened |
 | #751 | fix: pipeline auth + UI regressions — API-audience token scopes, SAS-upload fallback, EUDR trial UX, tier emulation gate |
 | #744 | feat(auth): migrate frontend from SWA `/.auth` to MSAL CIAM bearer flow (closes #710) |
 | #741 | hardening: enforce function app identity contract in deploy pipeline — fail-fast identity drift check, azapi lifecycle comment overhaul, runbook invariants |
-| #711 | chore: defer full #402 gating scope for single-env operation and make deploy image Trivy scan blocking (refs #402) |
 
 ---
 
@@ -202,11 +202,11 @@ JTBD: upload a parcel KMZ, get a determination result, and show it to a client
 
 | Order | Issue | Title | Type | Status |
 |-------|-------|-------|------|--------|
-| 2E.6.1 | #756 | Register CIAM custom API scope — eliminate token audience ambiguity | Auth root fix | Open |
-| 2E.6.2 | #757 | Harden MSAL token lifecycle — always-fresh, 401-to-reauth | Auth surface fix | Open |
-| 2E.6.3 | #759 | Hard concurrency cap + SAFE_MODE flag — bound monthly spend | Cost guardrail | Open |
-| 2E.6.4 | #760 | Deep health endpoint — pre-demo smoke validation | Ops reliability | Open |
-| 2E.6.5 | #758 | Container Apps Jobs for GDAL compute — near-zero idle cost | Cost + simplicity | Open |
+| 2E.6.1 | #756 | Register CIAM custom API scope — eliminate token audience ambiguity | Auth root fix | ✅ #762 |
+| 2E.6.2 | #757 | Harden MSAL token lifecycle — always-fresh, 401-to-reauth | Auth surface fix | ✅ #762 |
+| 2E.6.3 | #759 | Hard concurrency cap + SAFE_MODE flag — bound monthly spend | Cost guardrail | ✅ #762 |
+| 2E.6.4 | #760 | Deep health endpoint — pre-demo smoke validation | Ops reliability | ✅ #762 |
+| 2E.6.5 | #758 | Container Apps Jobs for GDAL compute — near-zero idle cost | Cost + simplicity | Open (separate infra PR) |
 
 **Delivery order:** 2E.6.1 first (unblocks #757). 2E.6.3 and 2E.6.4 are
 independent — can ship in parallel. 2E.6.5 is the largest (infra change); run

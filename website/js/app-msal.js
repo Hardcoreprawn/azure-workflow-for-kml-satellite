@@ -77,7 +77,7 @@
     if (!audience) {
       return ['openid', 'profile'];
     }
-    return ['openid', 'profile', audience + '/.default'];
+    return ['openid', 'profile', audience + '/User.Read'];
   }
 
   function authEnabled() {
@@ -204,6 +204,9 @@
 
   // ── getToken ──────────────────────────────────────────────────
 
+  // Token age telemetry (#757): timestamp of the last successful token acquisition.
+  var _lastTokenAcquiredAt = null;
+
   function buildRedirectError(message, cause) {
     var err = new Error(message);
     err.name = 'CanopexAuthRedirectError';
@@ -217,6 +220,7 @@
   /**
    * Return a valid CIAM token string, acquiring silently if possible.
    * Falls back to a redirect login if no cached token is available.
+   * Logs token age to console for debugging (#757).
    * Throws if MSAL is not configured (authEnabled() === false).
    */
   async function getToken() {
@@ -242,12 +246,18 @@
 
     try {
       var result = await app.acquireTokenSilent(request);
-      // When API audience is configured, backend expects a bearer access token
-      // with that audience. Otherwise local/dev can fall back to id token.
+      _lastTokenAcquiredAt = new Date().toISOString();
+      console.debug('[CanopexAuth] tokenAge: acquired at', _lastTokenAcquiredAt);
       if (ciam.apiAudience) {
-        return result.accessToken || result.idToken || '';
+        // API audience is registered — backend requires a CIAM access token.
+        // Never use the ID token as a bearer credential.
+        return result.accessToken || '';
       }
-      return result.idToken || result.accessToken || '';
+      // apiAudience is not configured — this is a misconfiguration even in local dev.
+      // Returning an ID token as a bearer credential is a security anti-pattern.
+      // Log a clear error and return empty so callers fail visibly rather than silently.
+      console.error('[CanopexAuth] apiAudience not configured — cannot acquire API token. Check CIAM_API_AUDIENCE.');
+      return '';
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
       // Trigger a redirect so the user can re-authenticate.
@@ -277,7 +287,7 @@
         return;
       }
       rememberPostLoginDestination();
-      return app.loginRedirect({ scopes: ['openid', 'profile'] });
+      return app.loginRedirect({ scopes: buildApiScopes(getCiamConfig()) });
     }).catch(function (err) {
       console.error('[CanopexAuth] loginRedirect failed:', err);
     });
@@ -309,23 +319,52 @@
 
   // ── handleApiError ────────────────────────────────────────────
 
+  /**
+   * Handle a 401 from the backend (#757).
+   *
+   * Instead of logging the user out (which interrupts a demo), show a
+   * non-blocking status toast and attempt a silent token re-acquisition.
+   * Falls back to acquireTokenPopup so the user can re-auth in place.
+   * Only logs out as a last resort when popup is blocked or fails.
+   */
   function handleApiError(err) {
     if (!err || err.status !== 401 || !authEnabled()) {
       return;
     }
-    if (_setAccount) {
-      _setAccount(null);
-    }
-    if (_clearClientAuth) {
-      _clearClientAuth();
-    }
-    updateAuthUI();
+
+    console.warn('[CanopexAuth] 401 received — attempting transparent re-auth');
     if (_setAnalysisStatus) {
-      _setAnalysisStatus('Your session has expired. Please sign in again.', 'error');
+      _setAnalysisStatus('Session refreshing — signing you back in…', 'info');
     }
-    if (_stopAnalysisPolling) {
-      _stopAnalysisPolling();
-    }
+
+    ensureMsalReady().then(function (app) {
+      if (!app) {
+        return;
+      }
+      var accounts = app.getAllAccounts();
+      var account = accounts && accounts[0];
+      if (!account) {
+        login();
+        return;
+      }
+      var ciam = getCiamConfig();
+      var request = { scopes: buildApiScopes(ciam), account: account };
+      // Try popup first so the page doesn't navigate away mid-demo.
+      return app.acquireTokenPopup(request).then(function (result) {
+        _lastTokenAcquiredAt = new Date().toISOString();
+        console.debug('[CanopexAuth] Re-auth via popup succeeded at', _lastTokenAcquiredAt);
+        if (_setAnalysisStatus) {
+          _setAnalysisStatus('', '');
+        }
+      });
+    }).catch(function (popupErr) {
+      // Popup blocked or failed — fall back to full redirect.
+      console.warn('[CanopexAuth] Popup re-auth failed, falling back to redirect:', popupErr);
+      if (_stopAnalysisPolling) {
+        _stopAnalysisPolling();
+      }
+      login();
+    });
   }
 
   // ── updateAuthUI ──────────────────────────────────────────────

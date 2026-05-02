@@ -77,6 +77,14 @@ EARTH_RADIUS_M = 6_371_000.0
 AOI_METADATA_SCHEMA = "aoi-metadata-v2"
 AOI_METADATA_SCHEMA_VERSION = "2.0.0"
 
+# --- Concurrency & cost guards (#759) ---
+# MAX_CONCURRENT_JOBS: pipeline runs that may be active at once.
+# Default is conservative (2) so dev/demo stays within £30/month.
+# Override with MAX_CONCURRENT_JOBS env var.
+DEFAULT_MAX_CONCURRENT_JOBS = 2
+DEFAULT_MAX_JOB_DURATION_MINUTES = 15
+ACTIVE_RUN_STATUSES = frozenset({"submitted", "running", "queued"})
+
 # --- HTTP ---
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 

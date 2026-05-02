@@ -11,6 +11,8 @@ from treesight.constants import (
     DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT,
     DEFAULT_IMAGERY_RESOLUTION_TARGET_M,
     DEFAULT_INPUT_CONTAINER,
+    DEFAULT_MAX_CONCURRENT_JOBS,
+    DEFAULT_MAX_JOB_DURATION_MINUTES,
     DEFAULT_OUTPUT_CONTAINER,
 )
 from treesight.errors import ConfigValidationError
@@ -138,6 +140,15 @@ BILLING_ALLOWED_USERS: frozenset[str] = frozenset(
 TIER_EMULATION_ALLOWED_USERS: frozenset[str] = frozenset(
     uid.strip() for uid in _env("TIER_EMULATION_ALLOWED_USERS", "").split(",") if uid.strip()
 )
+
+# --- Concurrency & cost guards (#759) ---
+# MAX_CONCURRENT_JOBS: hard cap on simultaneous pipeline runs.
+MAX_CONCURRENT_JOBS = _env_int("MAX_CONCURRENT_JOBS", DEFAULT_MAX_CONCURRENT_JOBS)
+# MAX_JOB_DURATION_MINUTES: jobs older than this are stale and excluded from the cap.
+MAX_JOB_DURATION_MINUTES = _env_int("MAX_JOB_DURATION_MINUTES", DEFAULT_MAX_JOB_DURATION_MINUTES)
+# SAFE_MODE: when True, skip non-critical enrichment steps (weather, flood, mosaics, EUDR datasets).
+# Pipeline still produces parse → acquire → NDVI → determination output.
+SAFE_MODE = _env_bool("SAFE_MODE", False)
 
 
 def validate_config() -> None:

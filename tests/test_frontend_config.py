@@ -260,7 +260,7 @@ class TestAuthConfig:
         """MSAL module must read optional API audience from injected CIAM config."""
         js = APP_MSAL_JS.read_text()
         assert "apiAudience" in js, "app-msal.js must parse apiAudience from canopex-ciam-config"
-        assert "audience + '/.default'" in js, (
+        assert "audience + '/User.Read'" in js, (
             "app-msal.js must derive an API scope from apiAudience"
         )
 
@@ -270,7 +270,7 @@ class TestAuthConfig:
         assert "if (ciam.apiAudience)" in js, (
             "app-msal.js getToken must branch when apiAudience is configured"
         )
-        assert "return result.accessToken || result.idToken || '';" in js, (
+        assert "return result.accessToken || '';" in js, (
             "app-msal.js getToken must prefer accessToken when apiAudience is configured"
         )
 
@@ -367,6 +367,57 @@ class TestAuthConfig:
         assert app_script in app_index_html, "/app/index.html must include app-shell.js script"
         assert app_index_html.index(api_script) < app_index_html.index(app_script), (
             "/app/index.html must load canopex-api-client.js before app-shell.js"
+        )
+
+    # --- #757 MSAL token lifecycle tests ---
+
+    def test_msal_module_tracks_last_token_acquired_at(self):
+        """getToken must update _lastTokenAcquiredAt after a successful acquisition (#757)."""
+        js = APP_MSAL_JS.read_text()
+        assert "_lastTokenAcquiredAt" in js, (
+            "app-msal.js must declare _lastTokenAcquiredAt for token age telemetry (#757)"
+        )
+        assert "tokenAge" in js or "_lastTokenAcquiredAt = new Date" in js, (
+            "app-msal.js must update _lastTokenAcquiredAt when a token is acquired (#757)"
+        )
+
+    def test_msal_handle_api_error_uses_popup_not_logout(self):
+        """handleApiError must use acquireTokenPopup for transparent re-auth (#757).
+
+        Logging out on a 401 would interrupt a demo mid-session. The handler
+        must instead try a popup so the user can re-authenticate in place.
+        """
+        js = APP_MSAL_JS.read_text()
+        assert "acquireTokenPopup" in js, (
+            "app-msal.js handleApiError must call acquireTokenPopup "
+            "for transparent 401 re-auth (#757)"
+        )
+
+    def test_msal_handle_api_error_no_immediate_logout(self):
+        """handleApiError must not immediately call logoutRedirect on a 401 (#757)."""
+        js = APP_MSAL_JS.read_text()
+        # Find the handleApiError function body and confirm logoutRedirect is not in it.
+        ha_idx = js.find("function handleApiError")
+        assert ha_idx != -1, "app-msal.js must define handleApiError"
+        # Scan to the next top-level function definition (heuristic: next 'function ' at col 2)
+        next_fn_idx = js.find("\n  function ", ha_idx + 1)
+        ha_body = js[ha_idx:next_fn_idx] if next_fn_idx != -1 else js[ha_idx:]
+        assert "logoutRedirect" not in ha_body, (
+            "app-msal.js handleApiError must not call logoutRedirect on 401 "
+            "— use popup re-auth (#757)"
+        )
+
+    def test_msal_handle_api_error_shows_info_toast(self):
+        """handleApiError must surface a non-error toast while re-authing (#757)."""
+        js = APP_MSAL_JS.read_text()
+        ha_idx = js.find("function handleApiError")
+        next_fn_idx = js.find("\n  function ", ha_idx + 1)
+        ha_body = js[ha_idx:next_fn_idx] if next_fn_idx != -1 else js[ha_idx:]
+        assert "_setAnalysisStatus" in ha_body, (
+            "app-msal.js handleApiError must call _setAnalysisStatus to inform the user (#757)"
+        )
+        assert "'info'" in ha_body, (
+            "app-msal.js handleApiError must use 'info' severity for session-refresh toast (#757)"
         )
 
     def test_eudr_entry_loads_shared_api_client_before_app_shell(self, eudr_index_html):
