@@ -23,7 +23,7 @@ not at the bottom.
 | 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | ✅ #762 |
 | 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | ❌ Closed — compute FA already £0 at idle (Consumption plan, alwaysReady=0); CAJ adds complexity without cost benefit |
 | 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | ✅ Closed |
-| 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | 🔄 Next |
+| 9 | #708 | #763 | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) — Slice A | ✅ #763 |
 | 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
 | 11 | #764 | — | ux: client-side cold start masking (warm on load, retry, loading states) — Stage 3.1 | Open |
 | 12 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
@@ -104,6 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #763 | feat(smoke): client credentials auth + evidence file for CI — Slice A of #708; adds `acquire_token_client_credentials()`, `--evidence-file`, `--image-tag`/`--commit-sha` to e2e smoke gate |
 | #762 | feat(2e6): CIAM API scope, MSAL token lifecycle (#757), concurrency cap + SAFE_MODE (#759), /api/health/deep (#760) (closes #756, #757, #759, #760) |
 | #758 | ❌ Closed (not_planned) — cost analysis confirms compute FA costs £0 at idle (Consumption plan, alwaysReady=0); CAJ migration would add complexity without reducing costs |
 | #755 | fix: unify KML/KMZ upload paths — extension-based content-type detection, Event Grid filter by prefix not suffix (closes #753) |
