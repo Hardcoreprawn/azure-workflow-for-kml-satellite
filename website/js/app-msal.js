@@ -217,6 +217,16 @@
     return err;
   }
 
+  function buildAuthFatalError(message, cause) {
+    var err = new Error(message);
+    err.name = 'CanopexAuthFatalError';
+    err.authFatal = true;
+    if (cause) {
+      err.cause = cause;
+    }
+    return err;
+  }
+
   /**
    * Return a valid CIAM token string, acquiring silently if possible.
    * Falls back to a redirect login if no cached token is available.
@@ -255,9 +265,12 @@
       }
       // apiAudience is not configured — this is a misconfiguration even in local dev.
       // Returning an ID token as a bearer credential is a security anti-pattern.
-      // Log a clear error and return empty so callers fail visibly rather than silently.
-      console.error('[CanopexAuth] apiAudience not configured — cannot acquire API token. Check CIAM_API_AUDIENCE.');
-      return '';
+      // Raise a fatal auth error so callers do not send unauthenticated API requests,
+      // which would otherwise trigger repetitive 401/re-auth loops.
+      throw buildAuthFatalError(
+        '[CanopexAuth] apiAudience not configured — cannot acquire API token. '
+          + 'Check CIAM_API_AUDIENCE.'
+      );
     } catch (silentErr) {
       // Silent acquisition failed (token expired, consent required, etc.).
       // Trigger a redirect so the user can re-authenticate.

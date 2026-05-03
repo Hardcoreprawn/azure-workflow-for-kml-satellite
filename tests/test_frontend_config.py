@@ -274,6 +274,16 @@ class TestAuthConfig:
             "app-msal.js getToken must prefer accessToken when apiAudience is configured"
         )
 
+    def test_msal_module_marks_missing_api_audience_as_fatal(self):
+        """Missing apiAudience must fail fast to avoid 401/re-auth loops."""
+        js = APP_MSAL_JS.read_text()
+        assert "buildAuthFatalError" in js, (
+            "app-msal.js must expose a fatal auth error builder"
+        )
+        assert "authFatal = true" in js, (
+            "app-msal.js fatal auth errors must carry authFatal marker"
+        )
+
     def test_msal_module_splits_update_auth_ui_render_paths(self):
         """Auth UI rendering should be split into smaller helpers."""
         js = APP_MSAL_JS.read_text()
@@ -339,6 +349,15 @@ class TestAuthConfig:
         )
         assert "throw tokenErr" in api_client_js, (
             "canopex-api-client.js must rethrow redirect token errors to avoid fallback 401 loops"
+        )
+
+    def test_api_client_aborts_request_on_fatal_auth_error(self, api_client_js):
+        """API client must not send unauthenticated requests after fatal token errors."""
+        assert "authFatal" in api_client_js, (
+            "canopex-api-client.js must detect fatal auth token errors"
+        )
+        assert "if (tokenErr && tokenErr.authFatal)" in api_client_js, (
+            "canopex-api-client.js must short-circuit on authFatal"
         )
 
     def test_app_shell_uses_shared_api_client(self, app_shell_js):

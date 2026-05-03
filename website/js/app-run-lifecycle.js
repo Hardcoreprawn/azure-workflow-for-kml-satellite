@@ -593,6 +593,14 @@
           if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
           return;
         }
+        if (tokenFetchErr && tokenFetchErr.authFatal) {
+          if (_d.setAnalysisStatus) {
+            _d.setAnalysisStatus(tokenFetchErr.message || 'Authentication is misconfigured. Please contact support.', 'error');
+          }
+          updateContentSummary(null);
+          if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+          return;
+        }
         if (_d.setAnalysisStatus) _d.setAnalysisStatus((tokenFetchErr.body && tokenFetchErr.body.error) || 'Could not prepare upload. Please try again.', 'error');
         updateContentSummary(null);
         if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
@@ -639,6 +647,13 @@
         } catch (submitFetchErr) {
           // Keep 401 behavior consistent with the upload-token request above.
           if (submitFetchErr && submitFetchErr.status === 401) {
+            if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+            return;
+          }
+          if (submitFetchErr && submitFetchErr.authFatal) {
+            if (_d.setAnalysisStatus) {
+              _d.setAnalysisStatus(submitFetchErr.message || 'Authentication is misconfigured. Please contact support.', 'error');
+            }
             if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
             return;
           }
