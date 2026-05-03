@@ -199,7 +199,7 @@ def test_acquire_token_returns_access_token(monkeypatch: pytest.MonkeyPatch) -> 
     token = smoke.acquire_token_client_credentials(
         token_endpoint="https://tenant.ciamlogin.com/tenant.onmicrosoft.com/oauth2/v2.0/token",
         client_id="test-client-id",
-        client_secret="__FIXTURE_SECRET__",
+        client_secret="__FIXTURE_SECRET__",  # pragma: allowlist secret
         scope="api://test-client-id/.default",
     )
 
@@ -221,7 +221,7 @@ def test_acquire_token_raises_on_error_response(monkeypatch: pytest.MonkeyPatch)
                 "https://tenant.ciamlogin.com/tenant.onmicrosoft.com/oauth2/v2.0/token"
             ),
             client_id="test-client-id",
-            client_secret="__FIXTURE_SECRET__",
+            client_secret="__FIXTURE_SECRET__",  # pragma: allowlist secret
             scope="api://test-client-id/.default",
         )
 
@@ -231,7 +231,7 @@ def test_acquire_token_rejects_non_https_endpoint() -> None:
         smoke.acquire_token_client_credentials(
             token_endpoint="http://tenant.ciamlogin.com/oauth2/v2.0/token",
             client_id="test-client-id",
-            client_secret="__FIXTURE_SECRET__",
+            client_secret="__FIXTURE_SECRET__",  # pragma: allowlist secret
             scope="api://test-client-id/.default",
         )
 
