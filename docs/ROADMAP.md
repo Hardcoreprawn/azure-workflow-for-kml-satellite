@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ---
 
@@ -25,21 +25,22 @@ not at the bottom.
 | 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | ✅ Closed |
 | 9 | #708 | — | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) | 🔄 Next |
 | 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
-| 11 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 12 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 13 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 14 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 15 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 16 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 17 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 18 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 19 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 20 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 21 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 22 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 23 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 24 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 25 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+| 11 | #764 | — | ux: client-side cold start masking (warm on load, retry, loading states) — Stage 3.1 | Open |
+| 12 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
+| 13 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
+| 14 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
+| 15 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
+| 16 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
+| 17 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
+| 18 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
+| 19 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
+| 20 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
+| 21 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
+| 22 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
+| 23 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
+| 24 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
+| 25 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
+| 26 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
 
 **Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
