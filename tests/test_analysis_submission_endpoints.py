@@ -635,6 +635,31 @@ class TestBlobTriggerIngress:
         assert orch_input["cadence"] == "seasonal"
         assert orch_input["max_history_years"] == 2
 
+    def test_blob_trigger_accepts_kmz_blob(self):
+        """Blob trigger accepts .kmz blobs — pipeline decompresses via maybe_unzip (fixes #768)."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"
+        client = _FakeDurableClient()
+        event = MagicMock()
+        event.id = "evt-kmz"
+        event.event_time = datetime(2026, 4, 5, 15, 11, 35, tzinfo=UTC)
+        event.get_json.return_value = {
+            "url": f"https://devstoreaccount1.blob.core.windows.net/kml-input/analysis/{sub_id}.kmz",
+            "contentLength": 1024,
+            "contentType": "application/vnd.google-earth.kmz",
+        }
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {
+                "user_id": "user-kmz",
+                "created_at": "2026-04-05T15:11:00Z",
+            }
+            asyncio.run(_process_blob_trigger(event, client))
+
+        assert len(client.calls) == 1
+        assert client.calls[0]["client_input"]["blob_name"] == f"analysis/{sub_id}.kmz"
+
 
 class TestDeriveInstanceId:
     """Unit tests for _derive_instance_id (pure function)."""
