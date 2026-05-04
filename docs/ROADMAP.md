@@ -104,14 +104,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #769 | fix(pipeline): prevent double quota on SAS fallback + accept KMZ end-to-end (closes #767, #768) |
 | #763 | feat(smoke): client credentials auth + evidence file for CI — Slice A of #708; adds `acquire_token_client_credentials()`, `--evidence-file`, `--image-tag`/`--commit-sha` to e2e smoke gate |
 | #762 | feat(2e6): CIAM API scope, MSAL token lifecycle (#757), concurrency cap + SAFE_MODE (#759), /api/health/deep (#760) (closes #756, #757, #759, #760) |
 | #758 | ❌ Closed (not_planned) — cost analysis confirms compute FA costs £0 at idle (Consumption plan, alwaysReady=0); CAJ migration would add complexity without reducing costs |
 | #755 | fix: unify KML/KMZ upload paths — extension-based content-type detection, Event Grid filter by prefix not suffix (closes #753) |
 | #752 | chore(infra): dev cost profile — orchestrator scale-to-zero, burst cap 1, log retention/cap tightened |
-| #751 | fix: pipeline auth + UI regressions — API-audience token scopes, SAS-upload fallback, EUDR trial UX, tier emulation gate |
-| #744 | feat(auth): migrate frontend from SWA `/.auth` to MSAL CIAM bearer flow (closes #710) |
-| #741 | hardening: enforce function app identity contract in deploy pipeline — fail-fast identity drift check, azapi lifecycle comment overhaul, runbook invariants |
 
 ---
 
