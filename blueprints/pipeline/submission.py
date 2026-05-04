@@ -33,6 +33,34 @@ def _safe_release_quota(user_id: str) -> None:
         logger.exception("Failed to release quota for user=%s", user_id)
 
 
+_PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    __import__("re").IGNORECASE,
+)
+
+
+def _quota_already_consumed(user_id: str, prior_submission_id: str) -> bool:
+    """Return True when upload-token already consumed quota for *prior_submission_id*.
+
+    Reads the ticket blob written by the upload-token endpoint and checks that
+    it belongs to *user_id*.  Any lookup failure is treated as "not consumed"
+    so the fallback path still charges quota rather than leaking a free slot.
+    """
+    if not _PRIOR_SUBMISSION_ID_RE.match(prior_submission_id):
+        return False
+    try:
+        from treesight.storage.client import BlobStorageClient
+
+        storage = BlobStorageClient()
+        ticket = storage.download_json(
+            DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"
+        )
+        return isinstance(ticket, dict) and ticket.get("user_id") == user_id
+    except Exception:
+        logger.debug("Prior quota ticket not found for prior_submission_id=%s", prior_submission_id)
+        return False
+
+
 def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
     """Return orchestration input overrides for the signed-in user's tier."""
     try:
@@ -152,6 +180,44 @@ async def analysis_submit(
     return await _submit_analysis_request(req)
 
 
+def _resolve_quota(
+    user_id: str, body: Any, req: func.HttpRequest
+) -> tuple[bool, dict[str, Any], func.HttpResponse | None]:
+    """Consume quota unless the prior upload-token already reserved it.
+
+    Returns ``(quota_consumed, billing_fields, error_response_or_None)``.
+    When the caller already has a verified ticket the quota is considered
+    consumed without a second charge (fixes #767).
+    """
+    prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
+    if prior_submission_id and _quota_already_consumed(user_id, prior_submission_id):
+        logger.info(
+            "Skipping quota consume — reusing ticket from prior_submission_id=%s user=%s",
+            prior_submission_id,
+            _redact(user_id),
+        )
+        return True, {}, None
+
+    billing_fields: dict[str, Any] = {}
+    try:
+        consume_quota(user_id)
+        try:
+            from treesight.security.billing_ledger import billing_fields_for_submission
+
+            billing_fields = billing_fields_for_submission(user_id)
+        except Exception:
+            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
+        return True, billing_fields, None
+    except ValueError as exc:
+        return False, {}, error_response(403, str(exc), req=req)
+    except Exception:
+        logger.exception(
+            "Quota storage unavailable for user=%s — allowing submission",
+            _redact(user_id),
+        )
+        return False, {}, None
+
+
 async def _submit_analysis_request(
     req: func.HttpRequest,
     *,
@@ -172,36 +238,17 @@ async def _submit_analysis_request(
             headers={**cors_headers(req), "Retry-After": "30"},
         )
 
-    # Consume quota upfront (atomic reservation).  If storage is
-    # transiently unavailable we log the error but still allow the
-    # submission so a temporary outage doesn't block users.
-    quota_consumed = False
-    billing_fields: dict[str, Any] = {}
-    try:
-        consume_quota(user_id)
-        quota_consumed = True
-        # Classify the run for the billing ledger (#589).
-        try:
-            from treesight.security.billing_ledger import billing_fields_for_submission
-
-            billing_fields = billing_fields_for_submission(user_id)
-        except Exception:
-            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
-    except ValueError as exc:
-        # Quota genuinely exhausted — hard block.
-        return error_response(403, str(exc), req=req)
-    except Exception:
-        logger.exception(
-            "Quota storage unavailable for user=%s — allowing submission",
-            _redact(user_id),
-        )
-
+    # Parse body early so we can check for a prior_submission_id before
+    # deciding whether to consume quota (avoids double-billing on fallback,
+    # fixes #767).
     try:
         body = req.get_json()
     except ValueError:
-        if quota_consumed:
-            _safe_release_quota(user_id)
         return error_response(400, "Invalid JSON body", req=req)
+
+    quota_consumed, billing_fields, quota_err = _resolve_quota(user_id, body, req)
+    if quota_err:
+        return quota_err
 
     submission_context = _extract_submission_context(body)
 

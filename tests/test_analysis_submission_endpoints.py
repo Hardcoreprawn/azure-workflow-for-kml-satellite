@@ -448,6 +448,61 @@ class TestAnalysisSubmissionRoutes:
         assert data["orgId"] is None
         assert data["memberCount"] == 1
 
+    def test_prior_submission_id_skips_quota_consume_when_ticket_verified(self):
+        """Fallback submit must not double-charge quota when upload-token already consumed it."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": prior_id,
+            },
+        )
+
+        mock_consume = MagicMock()
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch(
+                "blueprints.pipeline.submission._quota_already_consumed",
+                return_value=True,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        mock_consume.assert_not_called()
+
+    def test_invalid_prior_submission_id_still_consumes_quota(self):
+        """A fake prior_submission_id must not bypass quota (ticket lookup returns False)."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "not-a-real-uuid",
+            },
+        )
+
+        mock_consume = MagicMock(return_value=None)
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch(
+                "blueprints.pipeline.submission._quota_already_consumed",
+                return_value=False,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        mock_consume.assert_called_once()
+
 
 class TestBlobTriggerIngress:
     def _make_blob_event(self, blob_name: str, event_id: str) -> MagicMock:

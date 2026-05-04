@@ -120,12 +120,13 @@ _KML_CONTENT_TYPE = "application/vnd.google-earth.kml+xml"
 def _detect_file_extension(filename: str) -> tuple[str, str]:
     """Return (extension, content_type) from a client-supplied filename.
 
-    Only .kml and .kmz are accepted.  Any other value (including empty string)
+    Only .kml is accepted.  Any other value (including empty string)
     falls back to .kml so the pipeline is never silently broken by a bad client.
     Detection is case-insensitive.
+
+    Note: .kmz is rejected at the upload_token layer before reaching this helper
+    (fixes #768) — callers should convert .kmz to .kml before requesting a SAS URL.
     """
-    if isinstance(filename, str) and filename.lower().endswith(_KMZ_EXTENSION):
-        return _KMZ_EXTENSION, _KMZ_CONTENT_TYPE
     return _KML_EXTENSION, _KML_CONTENT_TYPE
 
 
@@ -400,6 +401,17 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         body = {}
 
     is_eudr = body.get("eudr_mode") is True
+
+    # Reject .kmz at the gate: the pipeline only processes .kml blobs.
+    # Clients must extract the .kml from a .kmz archive before uploading (fixes #768).
+    filename = body.get("filename", "")
+    if isinstance(filename, str) and filename.lower().endswith(_KMZ_EXTENSION):
+        return error_response(
+            400,
+            "KMZ files are not supported for direct upload. "
+            "Please extract the .kml file from the archive first.",
+            req=req,
+        )
 
     # ── EUDR entitlement gate ──────────────────────────────────────
     eudr_org_id: str = ""
