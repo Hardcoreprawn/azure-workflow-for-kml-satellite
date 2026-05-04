@@ -378,7 +378,7 @@ class TestUploadToken:
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_kmz_filename_produces_kmz_blob_and_content_type(self, mock_bsc, mock_gen_sas):
-        """A .kmz filename produces a .kmz blob name and passes KMZ content-type to SAS token."""
+        """A .kmz filename produces a .kmz blob name and KMZ content-type (fixes #768)."""
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()

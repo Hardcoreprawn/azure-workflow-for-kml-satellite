@@ -464,13 +464,16 @@
     }, 3000);
   }
 
-  async function queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody) {
+  async function queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, priorSubmissionId) {
     const submitBody = { kml_content: kmlContent };
     if (submissionContext) {
       submitBody.submission_context = submissionContext;
     }
     if (tokenBody && tokenBody.eudr_mode === true) {
       submitBody.eudr_mode = true;
+    }
+    if (priorSubmissionId) {
+      submitBody.prior_submission_id = priorSubmissionId;
     }
     const submitRes = await _d.apiFetch('/api/analysis/submit', {
       method: 'POST',
@@ -635,7 +638,7 @@
           );
         }
         try {
-          submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody);
+          submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, submissionId);
         } catch (submitFetchErr) {
           // Keep 401 behavior consistent with the upload-token request above.
           if (submitFetchErr && submitFetchErr.status === 401) {

@@ -120,9 +120,12 @@ _KML_CONTENT_TYPE = "application/vnd.google-earth.kml+xml"
 def _detect_file_extension(filename: str) -> tuple[str, str]:
     """Return (extension, content_type) from a client-supplied filename.
 
-    Only .kml and .kmz are accepted.  Any other value (including empty string)
-    falls back to .kml so the pipeline is never silently broken by a bad client.
+    Accepts .kml and .kmz; any other value (including empty string) falls back
+    to .kml so the pipeline is never silently broken by a bad client.
     Detection is case-insensitive.
+
+    KMZ blobs are decompressed server-side by ``maybe_unzip`` in the ingestion
+    activity, which also enforces zip-bomb and compression-ratio limits.
     """
     if isinstance(filename, str) and filename.lower().endswith(_KMZ_EXTENSION):
         return _KMZ_EXTENSION, _KMZ_CONTENT_TYPE

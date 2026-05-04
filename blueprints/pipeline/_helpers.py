@@ -58,8 +58,8 @@ def _expected_blob_host() -> str:
 def _validate_blob_event(blob_name: str, container_name: str, data: dict[str, Any]) -> None:
     if not blob_name:
         raise ContractError("Blob name is empty", code="EMPTY_BLOB_NAME")
-    if not blob_name.lower().endswith(".kml"):
-        raise ContractError("Not a .kml file", code="INVALID_FILE_TYPE")
+    if not (blob_name.lower().endswith(".kml") or blob_name.lower().endswith(".kmz")):
+        raise ContractError("Not a .kml or .kmz file", code="INVALID_FILE_TYPE")
     if not container_name:
         raise ContractError("Container name is empty", code="EMPTY_CONTAINER_NAME")
     if not container_name.endswith("-input"):

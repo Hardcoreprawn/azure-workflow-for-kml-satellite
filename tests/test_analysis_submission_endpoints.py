@@ -448,6 +448,61 @@ class TestAnalysisSubmissionRoutes:
         assert data["orgId"] is None
         assert data["memberCount"] == 1
 
+    def test_prior_submission_id_skips_quota_consume_when_ticket_verified(self):
+        """Fallback submit must not double-charge quota when upload-token already consumed it."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": prior_id,
+            },
+        )
+
+        mock_consume = MagicMock()
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch(
+                "blueprints.pipeline.submission._quota_already_consumed",
+                return_value=True,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        mock_consume.assert_not_called()
+
+    def test_invalid_prior_submission_id_still_consumes_quota(self):
+        """A fake prior_submission_id must not bypass quota (ticket lookup returns False)."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "not-a-real-uuid",
+            },
+        )
+
+        mock_consume = MagicMock(return_value=None)
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch(
+                "blueprints.pipeline.submission._quota_already_consumed",
+                return_value=False,
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        mock_consume.assert_called_once()
+
 
 class TestBlobTriggerIngress:
     def _make_blob_event(self, blob_name: str, event_id: str) -> MagicMock:
@@ -579,6 +634,31 @@ class TestBlobTriggerIngress:
         assert orch_input["tier"] == "free"
         assert orch_input["cadence"] == "seasonal"
         assert orch_input["max_history_years"] == 2
+
+    def test_blob_trigger_accepts_kmz_blob(self):
+        """Blob trigger accepts .kmz blobs — pipeline decompresses via maybe_unzip (fixes #768)."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "cccccccc-dddd-eeee-ffff-aaaaaaaaaaaa"
+        client = _FakeDurableClient()
+        event = MagicMock()
+        event.id = "evt-kmz"
+        event.event_time = datetime(2026, 4, 5, 15, 11, 35, tzinfo=UTC)
+        event.get_json.return_value = {
+            "url": f"https://devstoreaccount1.blob.core.windows.net/kml-input/analysis/{sub_id}.kmz",
+            "contentLength": 1024,
+            "contentType": "application/vnd.google-earth.kmz",
+        }
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = {
+                "user_id": "user-kmz",
+                "created_at": "2026-04-05T15:11:00Z",
+            }
+            asyncio.run(_process_blob_trigger(event, client))
+
+        assert len(client.calls) == 1
+        assert client.calls[0]["client_input"]["blob_name"] == f"analysis/{sub_id}.kmz"
 
 
 class TestDeriveInstanceId:
