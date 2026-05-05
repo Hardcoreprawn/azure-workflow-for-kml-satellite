@@ -60,7 +60,8 @@
           auth: {
             clientId: cfg.clientId,
             authority: cfg.authority,
-            redirectUri: window.location.origin + '/app/',
+            // Redirect URI comes from the per-page CIAM config (injected by CI).
+            redirectUri: window.location.origin + (cfg.appPath || '/eudr/'),
             postLogoutRedirectUri: window.location.origin + '/',
             knownAuthorities: [cfg.authority.replace(/https?:\/\//, '').split('/')[0]],
           },

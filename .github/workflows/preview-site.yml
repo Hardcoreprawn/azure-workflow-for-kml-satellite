@@ -40,9 +40,12 @@ jobs:
           CIAM_API_AUDIENCE: ${{ secrets.CIAM_API_AUDIENCE }}
         run: |
           if [ -n "$CIAM_CLIENT_ID" ] && [ -n "$CIAM_AUTHORITY" ]; then
-            CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\",\"apiAudience\":\"${CIAM_API_AUDIENCE}\"}"
-            find website -name '*.html' -exec sed -i \
-              's|{"clientId":"","authority":"","tenantId":"","apiAudience":""}|'"${CIAM_JSON}"'|' {} +
+            CIAM_BASE="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\",\"apiAudience\":\"${CIAM_API_AUDIENCE}\""
+            CIAM_EUDR="${CIAM_BASE},\"appPath\":\"/eudr/\"}"
+            CIAM_APP="${CIAM_BASE},\"appPath\":\"/app/\"}"
+            find website -name '*.html' \
+              -exec sed -i 's|{"clientId":"","authority":"","tenantId":"","apiAudience":"","appPath":"/eudr/"}|'"${CIAM_EUDR}"'|g' {} + \
+              -exec sed -i 's|{"clientId":"","authority":"","tenantId":"","apiAudience":"","appPath":"/app/"}|'"${CIAM_APP}"'|g' {} +
           else
             echo "::warning::CIAM secrets are not fully set; preview sign-in will remain disabled."
           fi

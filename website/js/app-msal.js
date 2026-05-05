@@ -92,8 +92,9 @@
         clientId: ciam.clientId,
         // ciamlogin.com authority — correct for Entra External ID.
         authority: ciam.authority,
-        // Redirect back to the app page, not the root.
-        redirectUri: window.location.origin + '/app/',
+        // Redirect URI comes from the per-page CIAM config (injected by CI).
+        // Falls back to the current page path so dev / staging work without config.
+        redirectUri: window.location.origin + (ciam.appPath || window.location.pathname),
         postLogoutRedirectUri: window.location.origin + '/',
         // CIAM tenants require this to be set explicitly.
         knownAuthorities: [ciam.authority.replace(/https?:\/\//, '').split('/')[0]],
@@ -520,7 +521,7 @@
       if (url.searchParams.get('mode') === 'demo') {
         url.searchParams.delete('mode');
         const nextUrl = url.pathname + (url.search || '') + (url.hash || '');
-        const appBase = _getAppBase ? _getAppBase() : '/app/';
+        const appBase = _getAppBase ? _getAppBase() : '/eudr/';
         window.history.replaceState({}, '', nextUrl || appBase);
       }
     } catch (_) { /* ignore */ }
