@@ -272,7 +272,8 @@ class TestAuthConfig:
             "canopex-auth.js must mark redirect-in-progress token errors with authRedirectTriggered"
         )
         assert "throw buildRedirectError" in js, (
-            "canopex-auth.js getToken must throw a redirect marker error when re-auth redirect starts"
+            "canopex-auth.js getToken must throw a redirect marker error "
+            "when re-auth redirect starts"
         )
 
     def test_msal_module_get_token_waits_for_init(self):
