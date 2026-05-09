@@ -1,6 +1,14 @@
 (function() {
   'use strict';
 
+  // All MSAL/CIAM primitives are sourced from window.CanopexCiam (canopex-auth.js).
+  // landing.js owns *only* the marketing-page UI (header buttons, sample report,
+  // sample map, FAQ, subscribe). Auth state is mirrored locally for UI rendering.
+  if (!window.CanopexCiam) {
+    throw new Error('[canopex] canopex-auth.js must be loaded before landing.js');
+  }
+  const ciamAuth = window.CanopexCiam;
+
   let currentAccount = null;
 
   function createApiClient() {
@@ -14,105 +22,27 @@
 
   const apiClient = createApiClient();
 
-  function getCiamConfig() {
-    const el = document.getElementById('canopex-ciam-config');
-    if (!el) return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
-    try {
-      const cfg = JSON.parse(el.textContent || '{}');
-      return {
-        clientId: cfg.clientId || '',
-        authority: cfg.authority || '',
-        tenantId: cfg.tenantId || '',
-        apiAudience: cfg.apiAudience || '',
-      };
-    } catch (_) {
-      return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
-    }
-  }
-
-  function buildApiScopes(cfg) {
-    const audience = String((cfg && cfg.apiAudience) || '').trim();
-    if (!audience) return ['openid', 'profile'];
-    return ['openid', 'profile', audience + '/.default'];
-  }
-
   function authEnabled() {
-    const cfg = getCiamConfig();
+    const cfg = ciamAuth.getCiamConfig();
     return !!(window.msal && cfg.clientId && cfg.authority);
   }
 
-  function buildRedirectError(message, cause) {
-    const err = new Error(message);
-    err.name = 'CanopexAuthRedirectError';
-    err.authRedirectTriggered = true;
-    if (cause) err.cause = cause;
-    return err;
-  }
-
-  // Returns the MSAL app instance, or null if CIAM is not configured.
-  function getMsalApp() {
-    if (!window.msal) return null;
-    const cfg = getCiamConfig();
-    if (!cfg.clientId || !cfg.authority) return null;
-    if (!getMsalApp._instance) {
-      try {
-        getMsalApp._instance = new window.msal.PublicClientApplication({
-          auth: {
-            clientId: cfg.clientId,
-            authority: cfg.authority,
-            redirectUri: window.location.origin + '/app/',
-            postLogoutRedirectUri: window.location.origin + '/',
-            knownAuthorities: [cfg.authority.replace(/https?:\/\//, '').split('/')[0]],
-          },
-          cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false },
-        });
-      } catch (err) {
-        console.warn('[canopex] MSAL init failed:', err);
-        return null;
-      }
-    }
-    return getMsalApp._instance;
-  }
-
   async function initAuth() {
-    const app = getMsalApp();
-    if (!app) {
-      // CIAM not configured (local dev) — show unauthenticated UI.
+    if (!authEnabled()) {
       updateAuthUI();
       updateSampleReportGate();
       return;
     }
     try {
-      await app.initialize();
-      await app.handleRedirectPromise();
-      const accounts = app.getAllAccounts();
-      if (accounts && accounts.length > 0) {
-        const account = accounts[0];
-        currentAccount = {
-          userId: account.localAccountId || account.homeAccountId || '',
-          name: account.name || account.username || '',
-          identityProvider: 'ciam',
-          userRoles: [],
-        };
-        apiClient.setGetToken(async function () {
-          const cfg = getCiamConfig();
-          const req = { scopes: buildApiScopes(cfg), account: account };
-          try {
-            const result = await app.acquireTokenSilent(req);
-            if (cfg.apiAudience) {
-              return result.accessToken || result.idToken || '';
-            }
-            return result.idToken || result.accessToken || '';
-          } catch (tokenErr) {
-            const errorCode = String((tokenErr && tokenErr.errorCode) || '');
-            if (errorCode !== 'interaction_in_progress') {
-              app.acquireTokenRedirect(req).catch(function (redirectErr) {
-                console.error('[canopex] acquireTokenRedirect failed:', redirectErr);
-              });
-            }
-            throw buildRedirectError('[canopex] Redirecting to refresh session', tokenErr);
-          }
-        });
+      const app = await ciamAuth.ensureMsalReady();
+      if (app) {
+        const account = ciamAuth.getAccount();
+        if (account) {
+          currentAccount = ciamAuth.getCurrentUser();
+        }
+        // Wire the API client to use ciamAuth.getToken — surfaces
+        // authRedirectTriggered errors so the API client can stop fallback flow.
+        apiClient.setGetToken(ciamAuth.getToken);
       }
     } catch (err) {
       console.warn('[canopex] MSAL auth check failed:', err);
@@ -122,23 +52,11 @@
   }
 
   function login() {
-    const app = getMsalApp();
-    if (!app) return;
-    app.loginRedirect({ scopes: ['openid', 'profile'] }).catch(function (err) {
-      console.error('[canopex] loginRedirect failed:', err);
-    });
+    ciamAuth.login();
   }
 
   function logout() {
-    const app = getMsalApp();
-    if (!app) return;
-    const accounts = app.getAllAccounts();
-    app.logoutRedirect({
-      account: accounts && accounts[0] || null,
-      postLogoutRedirectUri: window.location.origin + '/',
-    }).catch(function (err) {
-      console.error('[canopex] logoutRedirect failed:', err);
-    });
+    ciamAuth.logout();
   }
 
   function updateAuthUI() {
