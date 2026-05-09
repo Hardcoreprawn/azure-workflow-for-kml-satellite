@@ -48,127 +48,39 @@
   var _setAnalysisStatus = null;
   var _setGetToken = null; // wire getToken into the API client
 
-  // ── MSAL state ───────────────────────────────────────────────
-  var _msalApp = null;
-  var _msalInitPromise = null;
+  // ── MSAL primitives delegated to window.CanopexCiam (canopex-auth.js) ──
+  if (!window.CanopexCiam) {
+    throw new Error('[CanopexAuth] canopex-auth.js must be loaded before app-msal.js');
+  }
+  var ciamAuth = window.CanopexCiam;
 
-  // CIAM config — injected at deploy time into a JSON script element
-  // (id="canopex-ciam-config", type="application/json") by the CI pipeline.
-  // Falls back to nothing; authEnabled() returns false and the UI stays
-  // in local-dev mode.
   function getCiamConfig() {
-    try {
-      var el = document.getElementById('canopex-ciam-config');
-      if (!el) return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
-      var parsed = JSON.parse(el.textContent || '{}');
-      return {
-        clientId: parsed.clientId || '',
-        authority: parsed.authority || '',
-        tenantId: parsed.tenantId || '',
-        apiAudience: parsed.apiAudience || '',
-      };
-    } catch (_) {
-      return { clientId: '', authority: '', tenantId: '', apiAudience: '' };
-    }
+    return ciamAuth.getCiamConfig();
   }
 
   function buildApiScopes(ciam) {
-    var audience = String((ciam && ciam.apiAudience) || '').trim();
-    if (!audience) {
-      return ['openid', 'profile'];
-    }
-    return ['openid', 'profile', audience + '/User.Read'];
+    return ciamAuth.buildApiScopes(ciam);
   }
 
   function authEnabled() {
-    var cfg = getCiamConfig();
-    return !!(cfg.clientId && cfg.authority);
-  }
-
-  // Build MSAL config from the injected CIAM config.
-  function buildMsalConfig(ciam) {
-    return {
-      auth: {
-        clientId: ciam.clientId,
-        // ciamlogin.com authority — correct for Entra External ID.
-        authority: ciam.authority,
-        // Redirect back to the app page, not the root.
-        redirectUri: window.location.origin + '/app/',
-        postLogoutRedirectUri: window.location.origin + '/',
-        // CIAM tenants require this to be set explicitly.
-        knownAuthorities: [ciam.authority.replace(/https?:\/\//, '').split('/')[0]],
-      },
-      cache: {
-        cacheLocation: 'localStorage',
-        storeAuthStateInCookie: false,
-      },
-    };
-  }
-
-  function getMsalApp() {
-    if (_msalApp) {
-      return _msalApp;
-    }
-    if (!window.msal) {
-      console.warn('[CanopexAuth] MSAL.js not loaded');
-      return null;
-    }
-    var ciam = getCiamConfig();
-    if (!ciam.clientId || !ciam.authority) {
-      return null;
-    }
-    try {
-      _msalApp = new window.msal.PublicClientApplication(buildMsalConfig(ciam));
-      return _msalApp;
-    } catch (err) {
-      console.warn('[CanopexAuth] MSAL init failed:', err);
-      return null;
-    }
-  }
-
-  function applyCachedAccount(app) {
-    var accounts = app.getAllAccounts();
-    if (accounts && accounts.length > 0) {
-      var account = accounts[0];
-      if (_setAccount) {
-        _setAccount({
-          userId: account.localAccountId || account.homeAccountId || '',
-          name: account.name || account.username || '',
-          identityProvider: 'ciam',
-          userRoles: [],
-        });
-      }
-      return account;
-    }
-    return null;
+    return ciamAuth.authEnabled();
   }
 
   function ensureMsalReady() {
-    if (!authEnabled()) {
-      return Promise.resolve(null);
-    }
+    var p = ciamAuth.ensureMsalReady();
+    return p.then(function (app) {
+      applyCachedAccount(app);
+      return app;
+    });
+  }
 
-    var app = getMsalApp();
-    if (!app) {
-      return Promise.resolve(null);
+  function applyCachedAccount(app) {
+    if (!app) return null;
+    var account = ciamAuth.getAccount();
+    if (account && _setAccount) {
+      _setAccount(ciamAuth.getCurrentUser());
     }
-
-    if (!_msalInitPromise) {
-      _msalInitPromise = app.initialize().then(function () {
-        return app.handleRedirectPromise().catch(function (redirectErr) {
-          console.warn('[CanopexAuth] handleRedirectPromise error:', redirectErr);
-          return null;
-        });
-      }).then(function () {
-        applyCachedAccount(app);
-        return app;
-      }).catch(function (initErr) {
-        _msalInitPromise = null;
-        throw initErr;
-      });
-    }
-
-    return _msalInitPromise;
+    return account;
   }
 
   // ── Dep injection ─────────────────────────────────────────────
@@ -202,75 +114,10 @@
     }
   }
 
-  // ── getToken ──────────────────────────────────────────────────
+  // ── getToken (delegated) ──────────────────────────────────────
 
-  // Token age telemetry (#757): timestamp of the last successful token acquisition.
-  var _lastTokenAcquiredAt = null;
-
-  function buildRedirectError(message, cause) {
-    var err = new Error(message);
-    err.name = 'CanopexAuthRedirectError';
-    err.authRedirectTriggered = true;
-    if (cause) {
-      err.cause = cause;
-    }
-    return err;
-  }
-
-  /**
-   * Return a valid CIAM token string, acquiring silently if possible.
-   * Falls back to a redirect login if no cached token is available.
-   * Logs token age to console for debugging (#757).
-   * Throws if MSAL is not configured (authEnabled() === false).
-   */
-  async function getToken() {
-    var app = await ensureMsalReady();
-    if (!app) {
-      throw new Error('[CanopexAuth] MSAL not configured — cannot get token');
-    }
-
-    var accounts = app.getAllAccounts();
-    if (!accounts || accounts.length === 0) {
-      // No cached account — trigger login.
-      login();
-      // Stop API callers from sending unauthenticated requests while redirecting.
-      throw buildRedirectError('[CanopexAuth] Redirecting to login (no cached account)');
-    }
-
-    var account = accounts[0];
-    var ciam = getCiamConfig();
-    var request = {
-      scopes: buildApiScopes(ciam),
-      account: account,
-    };
-
-    try {
-      var result = await app.acquireTokenSilent(request);
-      _lastTokenAcquiredAt = new Date().toISOString();
-      console.debug('[CanopexAuth] tokenAge: acquired at', _lastTokenAcquiredAt);
-      if (ciam.apiAudience) {
-        // API audience is registered — backend requires a CIAM access token.
-        // Never use the ID token as a bearer credential.
-        return result.accessToken || '';
-      }
-      // apiAudience is not configured — this is a misconfiguration even in local dev.
-      // Returning an ID token as a bearer credential is a security anti-pattern.
-      // Log a clear error and return empty so callers fail visibly rather than silently.
-      console.error('[CanopexAuth] apiAudience not configured — cannot acquire API token. Check CIAM_API_AUDIENCE.');
-      return '';
-    } catch (silentErr) {
-      // Silent acquisition failed (token expired, consent required, etc.).
-      // Trigger a redirect so the user can re-authenticate.
-      var errorCode = String((silentErr && silentErr.errorCode) || '');
-      if (errorCode !== 'interaction_in_progress') {
-        console.warn('[CanopexAuth] Silent token acquisition failed, redirecting:', silentErr);
-        app.acquireTokenRedirect(request).catch(function (redirectErr) {
-          console.error('[CanopexAuth] Redirect login failed:', redirectErr);
-        });
-      }
-      // Stop API callers from sending unauthenticated requests while redirecting.
-      throw buildRedirectError('[CanopexAuth] Redirecting to refresh session', silentErr);
-    }
+  function getToken() {
+    return ciamAuth.getToken();
   }
 
   // ── login / logout ────────────────────────────────────────────
@@ -282,15 +129,8 @@
   }
 
   function login() {
-    ensureMsalReady().then(function (app) {
-      if (!app) {
-        return;
-      }
-      rememberPostLoginDestination();
-      return app.loginRedirect({ scopes: buildApiScopes(getCiamConfig()) });
-    }).catch(function (err) {
-      console.error('[CanopexAuth] loginRedirect failed:', err);
-    });
+    rememberPostLoginDestination();
+    ciamAuth.login();
   }
 
   function logout() {
@@ -300,21 +140,7 @@
     try {
       sessionStorage.removeItem(_postLoginDestinationKey || 'canopex-post-login');
     } catch (_) { /* ignore */ }
-
-    ensureMsalReady().then(function (app) {
-      if (!app) {
-        return;
-      }
-      var accounts = app.getAllAccounts();
-      var account = accounts && accounts[0];
-      return app.logoutRedirect({
-        account: account || null,
-        postLogoutRedirectUri: window.location.origin + '/',
-      });
-    }).catch(function (err) {
-      console.error('[CanopexAuth] logoutRedirect failed:', err);
-    }).catch(function (err) {
-    });
+    ciamAuth.logout();
   }
 
   // ── handleApiError ────────────────────────────────────────────
@@ -337,28 +163,13 @@
       _setAnalysisStatus('Session refreshing — signing you back in…', 'info');
     }
 
-    ensureMsalReady().then(function (app) {
-      if (!app) {
-        return;
+    // Try popup re-auth first so the page doesn't navigate away mid-demo.
+    ciamAuth.reauthInPlace().then(function (result) {
+      if (result && _setAnalysisStatus) {
+        _setAnalysisStatus('', '');
       }
-      var accounts = app.getAllAccounts();
-      var account = accounts && accounts[0];
-      if (!account) {
-        login();
-        return;
-      }
-      var ciam = getCiamConfig();
-      var request = { scopes: buildApiScopes(ciam), account: account };
-      // Try popup first so the page doesn't navigate away mid-demo.
-      return app.acquireTokenPopup(request).then(function (result) {
-        _lastTokenAcquiredAt = new Date().toISOString();
-        console.debug('[CanopexAuth] Re-auth via popup succeeded at', _lastTokenAcquiredAt);
-        if (_setAnalysisStatus) {
-          _setAnalysisStatus('', '');
-        }
-      });
     }).catch(function (popupErr) {
-      // Popup blocked or failed — fall back to full redirect.
+      // Popup blocked or failed — fall back to full redirect login.
       console.warn('[CanopexAuth] Popup re-auth failed, falling back to redirect:', popupErr);
       if (_stopAnalysisPolling) {
         _stopAnalysisPolling();

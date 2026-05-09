@@ -26,6 +26,7 @@ APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
 APP_BILLING_JS = WEBSITE / "js" / "app-billing.js"
 APP_EUDR_JS = WEBSITE / "js" / "app-eudr.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
+APP_CIAM_JS = WEBSITE / "js" / "canopex-auth.js"
 APP_MSAL_JS = WEBSITE / "js" / "app-msal.js"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 HELPERS_PY = Path(__file__).resolve().parent.parent / "blueprints" / "_helpers.py"
@@ -208,13 +209,37 @@ class TestAuthConfig:
             "landing.js must not use SWA /.auth/login/aad — auth is CIAM/MSAL"
         )
 
-    def test_landing_marks_redirect_triggered_token_errors(self, landing_js):
-        """Landing token flow must mark redirect-in-progress failures for API client."""
-        assert "authRedirectTriggered" in landing_js, (
-            "landing.js token refresh path must set authRedirectTriggered on redirect"
+    def test_landing_delegates_msal_to_shared_module(self, landing_js):
+        """landing.js must delegate MSAL primitives to window.CanopexCiam.
+
+        The duplicated MSAL setup that used to live in landing.js was the
+        root cause of cross-page sign-in races and scope drift. landing.js
+        must now import everything via window.CanopexCiam.
+        """
+        assert "window.CanopexCiam" in landing_js, (
+            "landing.js must reference window.CanopexCiam (canopex-auth.js)"
         )
-        assert "acquireTokenRedirect" in landing_js, (
-            "landing.js must trigger acquireTokenRedirect when silent token refresh fails"
+        assert "new window.msal.PublicClientApplication" not in landing_js, (
+            "landing.js must not construct its own PublicClientApplication "
+            "— delegate to canopex-auth.js"
+        )
+        assert "loginRedirect(" not in landing_js, (
+            "landing.js must not call loginRedirect directly — use CanopexCiam.login()"
+        )
+
+    def test_landing_marks_redirect_triggered_token_errors(self):
+        """The shared CIAM auth module must signal redirect-in-progress errors.
+
+        landing.js delegates to window.CanopexCiam, so the redirect-in-progress
+        marker (authRedirectTriggered) is enforced in canopex-auth.js — the
+        single source of truth.
+        """
+        js = APP_CIAM_JS.read_text()
+        assert "authRedirectTriggered" in js, (
+            "canopex-auth.js token refresh path must set authRedirectTriggered"
+        )
+        assert "acquireTokenRedirect" in js, (
+            "canopex-auth.js must trigger acquireTokenRedirect when silent token refresh fails"
         )
 
     def test_landing_auth_enabled_depends_on_ciam_config(self, landing_js):
@@ -224,54 +249,88 @@ class TestAuthConfig:
         )
 
     def test_msal_module_uses_public_client_app(self):
-        """app-msal.js must use MSAL PublicClientApplication for CIAM auth."""
-        js = APP_MSAL_JS.read_text()
+        """The shared canopex-auth.js module must use MSAL PublicClientApplication."""
+        js = APP_CIAM_JS.read_text()
         assert "PublicClientApplication" in js, (
-            "app-msal.js must create msal.PublicClientApplication for CIAM auth"
+            "canopex-auth.js must create msal.PublicClientApplication for CIAM auth"
         )
 
     def test_msal_module_uses_login_redirect(self):
-        """app-msal.js must use loginRedirect (not loginPopup) for consistent UX."""
-        js = APP_MSAL_JS.read_text()
-        assert "loginRedirect" in js, "app-msal.js must call loginRedirect for the MSAL login flow"
+        """The shared canopex-auth.js module must use loginRedirect (not loginPopup)."""
+        js = APP_CIAM_JS.read_text()
+        assert "loginRedirect" in js, (
+            "canopex-auth.js must call loginRedirect for the MSAL login flow"
+        )
 
     def test_msal_module_marks_redirect_triggered_token_errors(self):
         """getToken must signal redirect-in-progress.
 
         Callers use this marker to avoid unauthenticated fallback calls.
         """
-        js = APP_MSAL_JS.read_text()
+        js = APP_CIAM_JS.read_text()
         assert "authRedirectTriggered" in js, (
-            "app-msal.js must mark redirect-in-progress token errors with authRedirectTriggered"
+            "canopex-auth.js must mark redirect-in-progress token errors with authRedirectTriggered"
         )
         assert "throw buildRedirectError" in js, (
-            "app-msal.js getToken must throw a redirect marker error when re-auth redirect starts"
+            "canopex-auth.js getToken must throw a redirect marker error when re-auth redirect starts"
         )
 
     def test_msal_module_get_token_waits_for_init(self):
         """getToken must wait for MSAL initialization and redirect handling."""
-        js = APP_MSAL_JS.read_text()
-        assert "ensureMsalReady" in js, "app-msal.js must define a shared ensureMsalReady helper"
+        js = APP_CIAM_JS.read_text()
+        assert "ensureMsalReady" in js, (
+            "canopex-auth.js must define a shared ensureMsalReady helper"
+        )
         assert "var app = await ensureMsalReady();" in js, (
-            "app-msal.js getToken must await ensureMsalReady before MSAL API calls"
+            "canopex-auth.js getToken must await ensureMsalReady before MSAL API calls"
         )
 
     def test_msal_module_supports_api_audience_config(self):
         """MSAL module must read optional API audience from injected CIAM config."""
-        js = APP_MSAL_JS.read_text()
-        assert "apiAudience" in js, "app-msal.js must parse apiAudience from canopex-ciam-config"
+        js = APP_CIAM_JS.read_text()
+        assert "apiAudience" in js, (
+            "canopex-auth.js must parse apiAudience from canopex-ciam-config"
+        )
         assert "audience + '/User.Read'" in js, (
-            "app-msal.js must derive an API scope from apiAudience"
+            "canopex-auth.js must derive an API scope from apiAudience"
         )
 
     def test_msal_module_prefers_access_token_when_api_audience_present(self):
         """Backend bearer validation requires API-audience access token when configured."""
-        js = APP_MSAL_JS.read_text()
+        js = APP_CIAM_JS.read_text()
         assert "if (ciam.apiAudience)" in js, (
-            "app-msal.js getToken must branch when apiAudience is configured"
+            "canopex-auth.js getToken must branch when apiAudience is configured"
         )
         assert "return result.accessToken || '';" in js, (
-            "app-msal.js getToken must prefer accessToken when apiAudience is configured"
+            "canopex-auth.js getToken must prefer accessToken when apiAudience is configured"
+        )
+
+    def test_msal_module_surfaces_missing_audience_as_error(self):
+        """When apiAudience is missing, getToken must raise — not return ''.
+
+        Returning '' silently caused intermittent 401 floods because callers
+        sent unauthenticated requests against a CIAM-protected backend.
+        """
+        js = APP_CIAM_JS.read_text()
+        assert "throw new Error" in js and "apiAudience is not configured" in js, (
+            "canopex-auth.js getToken must throw a visible error when apiAudience is missing"
+        )
+
+    def test_msal_module_uses_page_derived_redirect_uri(self):
+        """redirectUri must be derived from the current page path, not hard-coded.
+
+        Hard-coding redirectUri to '/app/' caused the long-running bug where
+        sign-in from /eudr/ landed on /app/ and the originating page lost
+        the redirect handshake. PR #774 patched this with a per-page appPath
+        config + doubled CI sed; deriving from window.location.pathname
+        eliminates the need for either.
+        """
+        js = APP_CIAM_JS.read_text()
+        assert "window.location.origin + window.location.pathname" in js, (
+            "canopex-auth.js must derive redirectUri from window.location.pathname"
+        )
+        assert "+ '/app/'" not in js, (
+            "canopex-auth.js must not hard-code '/app/' in the redirectUri"
         )
 
     def test_msal_module_splits_update_auth_ui_render_paths(self):
@@ -373,12 +432,12 @@ class TestAuthConfig:
 
     def test_msal_module_tracks_last_token_acquired_at(self):
         """getToken must update _lastTokenAcquiredAt after a successful acquisition (#757)."""
-        js = APP_MSAL_JS.read_text()
+        js = APP_CIAM_JS.read_text()
         assert "_lastTokenAcquiredAt" in js, (
-            "app-msal.js must declare _lastTokenAcquiredAt for token age telemetry (#757)"
+            "canopex-auth.js must declare _lastTokenAcquiredAt for token age telemetry (#757)"
         )
         assert "tokenAge" in js or "_lastTokenAcquiredAt = new Date" in js, (
-            "app-msal.js must update _lastTokenAcquiredAt when a token is acquired (#757)"
+            "canopex-auth.js must update _lastTokenAcquiredAt when a token is acquired (#757)"
         )
 
     def test_msal_handle_api_error_uses_popup_not_logout(self):
@@ -386,11 +445,17 @@ class TestAuthConfig:
 
         Logging out on a 401 would interrupt a demo mid-session. The handler
         must instead try a popup so the user can re-authenticate in place.
+        Popup logic now lives in canopex-auth.js (reauthInPlace) and
+        app-msal.js handleApiError invokes it.
         """
-        js = APP_MSAL_JS.read_text()
-        assert "acquireTokenPopup" in js, (
-            "app-msal.js handleApiError must call acquireTokenPopup "
+        ciam_js = APP_CIAM_JS.read_text()
+        msal_js = APP_MSAL_JS.read_text()
+        assert "acquireTokenPopup" in ciam_js, (
+            "canopex-auth.js reauthInPlace must call acquireTokenPopup "
             "for transparent 401 re-auth (#757)"
+        )
+        assert "reauthInPlace" in msal_js, (
+            "app-msal.js handleApiError must delegate to CanopexCiam.reauthInPlace (#757)"
         )
 
     def test_msal_handle_api_error_no_immediate_logout(self):
@@ -468,6 +533,56 @@ class TestAuthConfig:
         assert '"apiAudience":""' in eudr_index_html, (
             "/eudr/index.html must include apiAudience in canopex-ciam-config JSON"
         )
+
+    def test_entrypoints_load_canopex_auth_before_consumers(
+        self, index_html, app_index_html, eudr_index_html
+    ):
+        """canopex-auth.js (shared CIAM module) must load before MSAL consumers.
+
+        landing.js, app-msal.js and any future consumer rely on
+        window.CanopexCiam being defined at script execution. Defer scripts
+        execute in document order, so canopex-auth.js must appear earlier
+        in the HTML than its consumers.
+        """
+        ciam_script = '<script src="/js/canopex-auth.js" defer></script>'
+
+        # / (marketing landing)
+        assert ciam_script in index_html, "/index.html must load canopex-auth.js with defer"
+        landing_script = '<script src="/js/landing.js" defer></script>'
+        assert index_html.index(ciam_script) < index_html.index(landing_script), (
+            "/index.html must load canopex-auth.js before landing.js"
+        )
+
+        # /app/
+        assert ciam_script in app_index_html, "/app/index.html must load canopex-auth.js with defer"
+        app_msal_script = '<script src="/js/app-msal.js" defer></script>'
+        assert app_index_html.index(ciam_script) < app_index_html.index(app_msal_script), (
+            "/app/index.html must load canopex-auth.js before app-msal.js"
+        )
+
+        # /eudr/
+        assert ciam_script in eudr_index_html, (
+            "/eudr/index.html must load canopex-auth.js with defer"
+        )
+        assert eudr_index_html.index(ciam_script) < eudr_index_html.index(app_msal_script), (
+            "/eudr/index.html must load canopex-auth.js before app-msal.js"
+        )
+
+    def test_entrypoints_load_msal_cdn_before_canopex_auth(
+        self, index_html, app_index_html, eudr_index_html
+    ):
+        """MSAL.js CDN must load before canopex-auth.js (which references window.msal)."""
+        ciam_script = "/js/canopex-auth.js"
+        msal_marker = "@azure/msal-browser@3.30.0"
+        for name, html in (
+            ("/index.html", index_html),
+            ("/app/index.html", app_index_html),
+            ("/eudr/index.html", eudr_index_html),
+        ):
+            assert msal_marker in html, f"{name} must include MSAL CDN script"
+            assert html.index(msal_marker) < html.index(ciam_script), (
+                f"{name} must load MSAL CDN before canopex-auth.js"
+            )
 
     def test_app_shell_supports_org_scope_history(self, app_runs_js):
         """EUDR dashboard should request org-scoped analysis history for portfolio triage."""
