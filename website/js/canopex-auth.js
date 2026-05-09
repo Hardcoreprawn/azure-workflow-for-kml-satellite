@@ -88,8 +88,21 @@
   // Page-derived redirect URI. The page that started the login completes
   // the redirect handshake — this avoids cross-page MSAL state desync and
   // makes adding a new entrypoint zero-config.
+  //
+  // Normalisation: SWA's navigationFallback means both `/app` and `/app/`
+  // resolve to the same page, but MSAL string-matches the redirect URI
+  // exactly against what's registered in CIAM. Strip a trailing
+  // `index.html`, then ensure non-file directory paths end in `/` so
+  // operators only need to register the canonical (slash-terminated)
+  // form once per page.
   function pageRedirectUri() {
-    return window.location.origin + window.location.pathname;
+    var path = window.location.pathname || '/';
+    path = path.replace(/index\.html$/i, '');
+    var lastSegment = path.substring(path.lastIndexOf('/') + 1);
+    if (lastSegment.length > 0 && lastSegment.indexOf('.') === -1) {
+      path = path + '/';
+    }
+    return window.location.origin + path;
   }
 
   function buildMsalConfig(ciam) {
@@ -260,10 +273,7 @@
       var result = await app.acquireTokenSilent(request);
       _lastTokenAcquiredAt = new Date().toISOString();
       console.debug('[CanopexCiam] tokenAge: acquired at', _lastTokenAcquiredAt);
-      if (ciam.apiAudience) {
-        return result.accessToken || '';
-      }
-      return '';
+      return result.accessToken || '';
     } catch (silentErr) {
       var errorCode = String((silentErr && silentErr.errorCode) || '');
       if (errorCode !== 'interaction_in_progress') {

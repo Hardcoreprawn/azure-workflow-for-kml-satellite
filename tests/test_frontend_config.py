@@ -299,11 +299,8 @@ class TestAuthConfig:
     def test_msal_module_prefers_access_token_when_api_audience_present(self):
         """Backend bearer validation requires API-audience access token when configured."""
         js = APP_CIAM_JS.read_text()
-        assert "if (ciam.apiAudience)" in js, (
-            "canopex-auth.js getToken must branch when apiAudience is configured"
-        )
         assert "return result.accessToken || '';" in js, (
-            "canopex-auth.js getToken must prefer accessToken when apiAudience is configured"
+            "canopex-auth.js getToken must return the access token from silent acquisition"
         )
 
     def test_msal_module_surfaces_missing_audience_as_error(self):
@@ -327,8 +324,16 @@ class TestAuthConfig:
         eliminates the need for either.
         """
         js = APP_CIAM_JS.read_text()
-        assert "window.location.origin + window.location.pathname" in js, (
+        assert "window.location.pathname" in js, (
             "canopex-auth.js must derive redirectUri from window.location.pathname"
+        )
+        assert "window.location.origin" in js, (
+            "canopex-auth.js must build redirectUri from window.location.origin"
+        )
+        # Path normalisation so /app and /app/ both resolve to the same
+        # registered redirect URI in CIAM (SWA navigationFallback quirk).
+        assert "index.html" in js, (
+            "canopex-auth.js must strip a trailing index.html from the redirect URI"
         )
         assert "+ '/app/'" not in js, (
             "canopex-auth.js must not hard-code '/app/' in the redirectUri"
