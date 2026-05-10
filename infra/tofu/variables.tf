@@ -233,6 +233,19 @@ variable "ciam_api_audience" {
   sensitive   = true
 }
 
+variable "ciam_client_id" {
+  description = "Client ID (application ID) of the CIAM app registration. Set to enable Tofu management of SPA redirect URIs."
+  type        = string
+  default     = ""
+}
+
+variable "ciam_deploy_client_id" {
+  description = "Client ID of the service principal in the CIAM tenant used by CI/CD to manage the app registration via OIDC. Requires a federated credential in the CIAM tenant for this GitHub repo/environment."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # Cross-variable validation: all three CIAM variables must be set for
 # bearer_only auth. Cannot be expressed in a variable validation block
 # (which may only reference the validated variable itself), so enforced here as a

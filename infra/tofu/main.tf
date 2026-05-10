@@ -1058,6 +1058,33 @@ resource "azurerm_static_web_app_custom_domain" "main" {
   validation_type   = "cname-delegation"
 }
 
+# --- CIAM SPA redirect URIs ---
+# Keeps the app registration's allowed redirect URIs in sync with the deployed
+# site URL so that MSAL loginRedirect() (canopex-auth.js) is never rejected
+# with AADSTS50011. Only active when ciam_client_id and ciam_deploy_client_id
+# are both set (see variables.tf for the operator prerequisite).
+#
+# Operator prerequisite (one-time, manual):
+#   1. In the CIAM tenant, create a service principal (app registration).
+#   2. Grant it Application.ReadWrite.OwnedBy on the target app registration.
+#   3. Add a federated credential for:
+#        Issuer: https://token.actions.githubusercontent.com
+#        Subject: repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:<env>
+#        Audience: api://AzureADTokenExchange
+#   4. Set TF_VAR_CIAM_CLIENT_ID and TF_VAR_CIAM_DEPLOY_CLIENT_ID in the
+#      GitHub Environment secrets.
+data "azuread_application" "ciam" {
+  count     = var.ciam_client_id != "" && var.ciam_deploy_client_id != "" ? 1 : 0
+  client_id = var.ciam_client_id
+}
+
+resource "azuread_application_redirect_uris" "ciam_spa" {
+  count          = var.ciam_client_id != "" && var.ciam_deploy_client_id != "" ? 1 : 0
+  application_id = data.azuread_application.ciam[0].id
+  type           = "SPA"
+  redirect_uris  = local.ciam_spa_redirect_uris
+}
+
 resource "azurerm_role_assignment" "storage_blob_data_owner" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Owner"
