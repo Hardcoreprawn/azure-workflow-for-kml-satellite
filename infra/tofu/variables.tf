@@ -261,3 +261,15 @@ resource "terraform_data" "validate_ciam_auth_vars" {
     }
   }
 }
+
+# Cross-variable validation: ciam_client_id and ciam_deploy_client_id are an
+# all-or-nothing pair. Setting only one silently disables redirect URI management
+# and leaves the azuread provider partially configured.
+resource "terraform_data" "validate_ciam_redirect_vars" {
+  lifecycle {
+    precondition {
+      condition     = (var.ciam_client_id == "") == (var.ciam_deploy_client_id == "")
+      error_message = "ciam_client_id and ciam_deploy_client_id must both be set or both be empty. Setting only one disables CIAM redirect URI management."
+    }
+  }
+}

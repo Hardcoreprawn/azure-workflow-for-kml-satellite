@@ -1074,12 +1074,12 @@ resource "azurerm_static_web_app_custom_domain" "main" {
 #   4. Set TF_VAR_CIAM_CLIENT_ID and TF_VAR_CIAM_DEPLOY_CLIENT_ID in the
 #      GitHub Environment secrets.
 data "azuread_application" "ciam" {
-  count     = var.ciam_client_id != "" && var.ciam_deploy_client_id != "" ? 1 : 0
+  count     = local.ciam_redirect_enabled ? 1 : 0
   client_id = var.ciam_client_id
 }
 
 resource "azuread_application_redirect_uris" "ciam_spa" {
-  count          = var.ciam_client_id != "" && var.ciam_deploy_client_id != "" ? 1 : 0
+  count          = local.ciam_redirect_enabled ? 1 : 0
   application_id = data.azuread_application.ciam[0].id
   type           = "SPA"
   redirect_uris  = local.ciam_spa_redirect_uris

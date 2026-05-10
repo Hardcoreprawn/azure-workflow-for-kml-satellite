@@ -11,14 +11,18 @@ provider "azapi" {
 # registration's SPA redirect URIs. Requires a service principal in the CIAM
 # tenant with Application.ReadWrite.OwnedBy, federated via OIDC for this repo.
 #
-# When ciam_deploy_client_id is empty the azuread_application_redirect_uris
-# resource is count = 0, so this provider is never called. Setting use_oidc
-# conditionally prevents an OIDC token exchange attempt against the CIAM tenant
-# when the deployment service principal is not configured (e.g. cost-estimate CI).
+# Both ciam_client_id AND ciam_deploy_client_id must be set for any azuread
+# resources to be created (count = 0 otherwise). Gate the provider config on
+# the same all-or-nothing condition so no OIDC exchange is attempted when
+# either value is absent (e.g. cost-estimate CI, partial configuration).
+locals {
+  ciam_redirect_enabled = var.ciam_client_id != "" && var.ciam_deploy_client_id != ""
+}
+
 provider "azuread" {
-  tenant_id = var.ciam_deploy_client_id != "" ? var.ciam_tenant_id : null
-  client_id = var.ciam_deploy_client_id != "" ? var.ciam_deploy_client_id : null
-  use_oidc  = var.ciam_deploy_client_id != ""
+  tenant_id = local.ciam_redirect_enabled ? var.ciam_tenant_id : null
+  client_id = local.ciam_redirect_enabled ? var.ciam_deploy_client_id : null
+  use_oidc  = local.ciam_redirect_enabled
 }
 
 data "azurerm_client_config" "current" {}
