@@ -233,6 +233,19 @@ variable "ciam_api_audience" {
   sensitive   = true
 }
 
+variable "ciam_client_id" {
+  description = "Client ID (application ID) of the CIAM app registration. Set to enable Tofu management of SPA redirect URIs."
+  type        = string
+  default     = ""
+}
+
+variable "ciam_deploy_client_id" {
+  description = "Client ID of the service principal in the CIAM tenant used by CI/CD to manage the app registration via OIDC. Requires a federated credential in the CIAM tenant for this GitHub repo/environment."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # Cross-variable validation: all three CIAM variables must be set for
 # bearer_only auth. Cannot be expressed in a variable validation block
 # (which may only reference the validated variable itself), so enforced here as a
@@ -245,6 +258,18 @@ resource "terraform_data" "validate_ciam_auth_vars" {
         (var.ciam_authority != "" && var.ciam_tenant_id != "" && var.ciam_api_audience != "")
       )
       error_message = "ciam_authority, ciam_tenant_id, and ciam_api_audience must all be non-empty when auth_mode is 'bearer_only'."
+    }
+  }
+}
+
+# Cross-variable validation: ciam_client_id and ciam_deploy_client_id are an
+# all-or-nothing pair. Setting only one silently disables redirect URI management
+# and leaves the azuread provider partially configured.
+resource "terraform_data" "validate_ciam_redirect_vars" {
+  lifecycle {
+    precondition {
+      condition     = (var.ciam_client_id == "") == (var.ciam_deploy_client_id == "")
+      error_message = "ciam_client_id and ciam_deploy_client_id must both be set or both be empty. Setting only one disables CIAM redirect URI management."
     }
   }
 }

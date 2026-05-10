@@ -39,4 +39,29 @@ locals {
   ))
 
   primary_site_url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
+
+  # SPA redirect URIs to register in the CIAM app registration.
+  # Must include every origin+path that canopex-auth.js pageRedirectUri() may produce.
+  # Mirrors the browser_allowed_origins pattern: localhost ports for non-prd,
+  # SWA default hostname always, and the custom domain when configured.
+  ciam_spa_redirect_uris = distinct(concat(
+    var.environment == "prd" ? [] : [
+      "http://localhost:1111/",
+      "http://localhost:1111/app/",
+      "http://localhost:1111/eudr/",
+      "http://localhost:4280/",
+      "http://localhost:4280/app/",
+      "http://localhost:4280/eudr/",
+    ],
+    [
+      "https://${azurerm_static_web_app.main.default_host_name}/",
+      "https://${azurerm_static_web_app.main.default_host_name}/app/",
+      "https://${azurerm_static_web_app.main.default_host_name}/eudr/",
+    ],
+    var.custom_domain != "" ? [
+      "https://${var.custom_domain}/",
+      "https://${var.custom_domain}/app/",
+      "https://${var.custom_domain}/eudr/",
+    ] : []
+  ))
 }
