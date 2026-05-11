@@ -43,7 +43,7 @@
       <span id="status-badge">Checking…</span>
       <span class="auth-user" id="auth-user" style="display:none"></span>
       <a class="auth-btn primary" id="auth-dashboard-link" href="/eudr/" style="display:none">Dashboard</a>
-      <button class="auth-btn primary" id="auth-login-btn" type="button">Sign In</button>
+      <button class="auth-btn primary" id="auth-login-btn" type="button" data-track="nav_sign_in">Sign In</button>
       <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
     </div>
   </div>
@@ -55,8 +55,8 @@
     <h1>EUDR Deforestation-Free Evidence<br>in Minutes.</h1>
     <p>Upload parcel coordinates, get audit-grade satellite evidence — multi-source NDVI analysis, timestamped vegetation history, and exportable compliance reports.</p>
     <div class="hero-cta">
-      <a href="/eudr/" class="btn btn-primary">Try It Free</a>
-      <a href="#sample-report" class="btn btn-secondary">See a Sample Report</a>
+      <a href="/eudr/" class="btn btn-primary" data-track="hero_try_free">Try It Free</a>
+      <a href="#sample-report" class="btn btn-secondary" data-track="hero_sample_report">See a Sample Report</a>
     </div>
     <p class="hero-note">2 free parcel assessments. No credit card required.</p>
   </div>
@@ -145,7 +145,7 @@
       </div>
 
       <div class="sample-report-footer">
-        <button class="btn btn-primary" id="btn-download-sample">Download Full PDF Report</button>
+        <button class="btn btn-primary" id="btn-download-sample" data-track="sample_download_report">Download Full PDF Report</button>
         <p class="sample-gated-note" id="sample-gated-note" style="display:none">Sign in to download the full PDF evidence report.</p>
       </div>
     </div>
@@ -225,7 +225,7 @@
           <li>All data sources included</li>
           <li>No credit card required</li>
         </ul>
-        <a href="/eudr/" class="btn btn-primary">Try It Free</a>
+        <a href="/eudr/" class="btn btn-primary" data-track="mid_try_free">Try It Free</a>
       </div>
       <div class="pricing-card featured" data-tier="pro">
         <div class="tier-name">EUDR Pro</div>
@@ -239,7 +239,7 @@
           <li>Audit-grade PDF reports</li>
           <li>Priority support</li>
         </ul>
-        <button class="btn btn-primary" id="btn-subscribe">Subscribe</button>
+        <button class="btn btn-primary" id="btn-subscribe" data-track="pricing_subscribe">Subscribe</button>
       </div>
       <div class="pricing-card" data-tier="enterprise">
         <div class="tier-name">Enterprise</div>
@@ -253,7 +253,7 @@
           <li>Custom integrations &amp; API</li>
           <li>SLA &amp; audit logs</li>
         </ul>
-        <a href="mailto:hello@canopex.io?subject=Enterprise%20enquiry" class="btn btn-secondary">Contact Us</a>
+        <a href="mailto:hello@canopex.io?subject=Enterprise%20enquiry" class="btn btn-secondary" data-track="pricing_contact_us">Contact Us</a>
       </div>
     </div>
     <p class="pricing-note">All plans include Sentinel-2, WorldCover, FIRMS, and weather data via Microsoft Planetary Computer at no extra cost. VAT calculated at checkout. Volume discounts available for 100+ parcels. You can cancel any time. 14-day cancellation right applies under UK Consumer Contracts Regulations 2013.</p>
