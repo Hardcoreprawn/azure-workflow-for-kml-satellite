@@ -86,14 +86,15 @@ Frontend (Static Web App)
 │  └─ Shared dependencies: treesight.*, blueprints.*       │
 │                                                           │
 │  Durable Functions (orchestration)                       │
-│  ├─ Task hub (shared between both FA)                    │
+│  ├─ Task hub: TreeSightHub (shared between both FA)      │
 │  ├─ Control queue (Azure Queue Storage)                  │
-│  └─ Orchestration history (Cosmos or Blob)               │
+│  └─ Orchestration history: Azure Storage backend         │
+│     (storageProvider__type=AzureStorage in main.tf)      │
 │                                                           │
-│  Blob Storage                                            │
-│  ├─ analysis/ (input KML + ticket blobs)                 │
-│  ├─ output/ (rendered reports + TIFFs)                   │
-│  ├─ offload/ (claim-check staging area)                  │
+│  Blob Storage (containers)                               │
+│  ├─ kml-input        (uploaded KML/KMZ submissions)      │
+│  ├─ kml-output       (rendered reports, TIFFs, exports)  │
+│  ├─ pipeline-payloads (claim-check / offload staging)    │
 │  └─ other containers (config, backups)                   │
 │                                                           │
 │  Cosmos DB                                               │
@@ -127,28 +128,27 @@ External:
 | **Compute** | `function_app.py` | All 13 | ✅ Registered | Process KML, search imagery, render reports |
 | **Orchestrator** | `function_app_orch.py` | All 13 | ❌ Skipped | Coordinate phases, retry, fan-out/fan-in |
 
-**Key Issue** 🔴: Both function apps register **all blueprints**, including those unrelated to their role:
+**Current state**: Both function apps register **all blueprints** via `function_registration.py`. The role split is currently driven by `PIPELINE_ROLE` (`full` vs `orchestrator`), which only gates whether the durable `activities` submodule is imported — it does *not* gate HTTP blueprint registration. The orchestrator hostname is the browser-facing API base (`/api-config.json`), so HTTP routes deliberately live there today.
 
 ```python
-# function_registration.py
+# function_registration.py (current)
 def _shared_blueprints():
     return (
-        health_bp,      # ✅ needed
-        billing_bp,     # ✅ needed by both
-        analysis_bp,    # ❌ compute-only; orchestrator just proxies
-        export_bp,      # ❌ compute-only; orchestrator just proxies
-        eudr_bp,        # ❌ compute-only; orchestrator just proxies
+        health_bp,      # ✅ both — readiness/liveness
+        billing_bp,     # ✅ both — Stripe webhooks + invoice queries
+        analysis_bp,    # 🟡 browser-facing; only the orchestrator FA needs it
+        export_bp,      # 🟡 browser-facing; only the orchestrator FA needs it
+        eudr_bp,        # 🟡 browser-facing; only the orchestrator FA needs it
         ...
     )
 ```
 
 **Why this matters:**
-- Unused HTTP routes in orchestrator increase attack surface.
-- Each route pulls dependencies (e.g., `export.py` imports TIF rendering libs even if never called).
+- The compute image registers HTTP routes it should never serve, increasing attack surface and image size.
+- Each route pulls dependencies (e.g., `export.py` imports TIF rendering libs even if never called from compute).
 - Harder to reason about which FA is responsible for which logic.
-- Breaks separation of concerns.
 
-**Recommendation**: 🔴 Issue #779 — Orchestrator should register only `health_bp`, `pipeline_bp`, `monitoring_bp` (and their helpers). Move `analysis_bp`, `export_bp`, `eudr_bp`, `billing_bp`, `catalogue_bp`, `contact_bp`, `demo_bp`, `ops_bp`, `org_bp`, `upload_bp` to compute-only registration.
+**Proposed state** — Issue #779: stop the **compute** image from registering browser-facing HTTP blueprints. Keep `health_bp`, `pipeline_bp` activity triggers, and `monitoring_bp` on compute. Leave `analysis_bp`, `export_bp`, `eudr_bp`, `catalogue_bp`, `contact_bp`, `demo_bp`, `ops_bp`, `org_bp`, `upload_bp` on the orchestrator FA (which already fronts the browser). `billing_bp` and `health_bp` stay registered on both. Implementation can extend the existing `PIPELINE_ROLE` env var rather than introducing a new one.
 
 ---
 
@@ -156,21 +156,23 @@ def _shared_blueprints():
 
 ### Blueprint Structure
 
+Line counts captured from `main` at the time of writing — regenerate via `wc -l blueprints/*.py` if drift is suspected.
+
 | Blueprint | File | Lines | HTTP Routes | Purpose | Notes |
 |-----------|------|-------|-------------|---------|-------|
 | **pipeline** | `blueprints/pipeline/` | 700+ | `/api/submit`, `/api/status/{id}`, triggers | Durable orchestration | Core logic; well-separated phases |
-| **analysis** | `blueprints/analysis.py` | 400+ | `/api/analysis/*` | AI-based analysis (NDVI, phenology) | Helper functions like `_run_analysis_impl` have multiple concerns |
-| **export** | `blueprints/export.py` | 1529 | `/api/exports/{id}`, `/api/evidence/{id}` | GeoJSON, CSV, PDF rendering | **🔴 TOO LARGE** — mixes blob I/O, data munging, format rendering |
+| **analysis** | `blueprints/analysis.py` | 755 | `/api/analysis/*` | AI-based analysis (NDVI, phenology) | Helper functions like `_run_analysis_impl` have multiple concerns |
+| **export** | `blueprints/export.py` | 1529 | `GET /api/export/{instance_id}/{format}` (+ OPTIONS) | GeoJSON, CSV, PDF rendering | **🔴 TOO LARGE** — mixes blob I/O, data munging, format rendering |
 | **eudr** | `blueprints/eudr.py` | 701 | `/api/eudr/*` | EUDR compliance UI, billing, evidence | Heavy lifting for org lookup, billing, usage tracking |
-| **upload** | `blueprints/upload.py` | 550+ | `/api/upload/token`, `/api/upload/status` | SAS token minting, submission records | Orchestrates auth, quota, EUDR checks, storage writes |
-| **billing** | `blueprints/billing.py` | 450+ | `/api/billing/*` | Invoice history, subscription endpoints | Stripe webhook handling, ledger queries |
-| **catalogue** | `blueprints/catalogue.py` | 300+ | `/api/catalogue/*` | Historical records, AOI metadata | Simple CRUD; delegation to storage layer |
-| **org** | `blueprints/org.py` | 250+ | `/api/orgs/*` | Org management, owner checks | Multi-tenancy logic; some duplication with EUDR |
-| **health** | `blueprints/health.py` | 150+ | `/health`, `/health/deep` | Readiness, liveness, dependency checks | Clean separation of concerns |
-| **monitoring** | `blueprints/monitoring.py` | 200+ | Scheduler + `/metrics` | Timer-triggered tasks, quota resets | Scheduler registration conditional on compute image |
-| **contact** | `blueprints/contact.py` | 150+ | `/api/contact/` | Email forwarding to support | Simple relay; minor integration |
-| **demo** | `blueprints/demo.py` | 250+ | `/api/proxy` | Proxy for live data; sample report generation | 🟡 SSRF risk in `/api/proxy` — needs audit (#784) |
-| **ops** | `blueprints/ops.py` | 200+ | Admin routes (internal) | Quota override, manual interventions | Minimal documentation of who should call |
+| **upload** | `blueprints/upload.py` | 567 | `/api/upload/token`, `/api/upload/status` | SAS token minting, submission records | Orchestrates auth, quota, EUDR checks, storage writes |
+| **billing** | `blueprints/billing.py` | 576 | `/api/billing/*` | Invoice history, subscription endpoints | Stripe webhook handling, ledger queries |
+| **catalogue** | `blueprints/catalogue.py` | 201 | `/api/catalogue/*` | Historical records, AOI metadata | Simple CRUD; delegation to storage layer |
+| **org** | `blueprints/org.py` | 300 | `/api/org`, `/api/org/invite`, `/api/org/members` | Org management, owner checks | Multi-tenancy logic; some duplication with EUDR |
+| **health** | `blueprints/health.py` | 211 | `/health`, `/health/deep` | Readiness, liveness, dependency checks | Clean separation of concerns |
+| **monitoring** | `blueprints/monitoring.py` | 405 | Scheduler + `/metrics` | Timer-triggered tasks, quota resets | Scheduler registration conditional on compute image |
+| **contact** | `blueprints/contact.py` | 29 | `/api/contact/` | Email forwarding to support | Simple relay; minor integration |
+| **demo** | `blueprints/demo.py` | 200 | `/api/proxy` | Proxy for live data; sample report generation | 🟡 SSRF risk in `/api/proxy` — needs audit (#784) |
+| **ops** | `blueprints/ops.py` | 403 | Admin routes (internal) | Quota override, manual interventions | Minimal documentation of who should call |
 
 ### Core Library: `treesight/`
 
@@ -610,9 +612,9 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str):
 
 ### Priority 1: Clean Up Attack Surface & Sizing (1–2 weeks)
 
-1. **#779** — Move compute-only blueprints out of orchestrator registration.
-   - Update `function_registration.py` to conditionally register based on `DEPLOYMENT_ROLE` env var.
-   - Reduce orchestrator Docker image size and HTTP surface.
+1. **#779** — Stop the compute image from registering browser-facing HTTP blueprints.
+   - Extend the existing `PIPELINE_ROLE` env var (`full` vs `orchestrator`) so `function_registration.py` skips browser-facing blueprints when `PIPELINE_ROLE != "orchestrator"`. Avoid introducing a separate `DEPLOYMENT_ROLE` variable.
+   - Reduce compute image HTTP surface and dependency footprint.
 
 2. **#780** — Extract `treesight/exports/` domain layer.
    - Move GeoJSON, CSV, PDF logic to domain builders.
