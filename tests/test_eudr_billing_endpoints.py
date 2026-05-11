@@ -225,10 +225,11 @@ class TestEudrUsagePayload:
         return_value={"period_parcels_used": 47, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
-    def test_estimated_spend_uses_base_rate_before_tier_discount(self, _org, _billing, _records):
+    def test_estimated_spend_below_tier_threshold(self, _org, _billing, _records):
         from blueprints.eudr import _eudr_usage_payload
 
         payload = _eudr_usage_payload("test-user")
+        # 47 used with 10 included => 37 overage parcels at £3.00 each.
         assert payload["current"]["estimatedSpendGbp"] == 111.0
 
     @patch("blueprints.eudr._fetch_org_run_records", return_value=[])
@@ -237,10 +238,11 @@ class TestEudrUsagePayload:
         return_value={"period_parcels_used": 120, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
-    def test_estimated_spend_uses_discounted_rate_after_tier_threshold(self, _org, _billing, _records):
+    def test_estimated_spend_above_tier_threshold(self, _org, _billing, _records):
         from blueprints.eudr import _eudr_usage_payload
 
         payload = _eudr_usage_payload("test-user")
+        # 120 used with 10 included => 110 overage parcels at £2.50 each.
         assert payload["current"]["estimatedSpendGbp"] == 275.0
 
 
