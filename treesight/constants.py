@@ -123,6 +123,23 @@ EUDR_FREE_ASSESSMENTS = 2  # Lifetime free parcel assessments per org
 EUDR_INCLUDED_PARCELS = 10  # Parcels included in base subscription per period
 EUDR_BASE_PRICE_PENCE = 49_00  # £49/month base subscription
 
+# Graduated overage rates (GBP per parcel) by usage threshold.
+# At usage <= EUDR_INCLUDED_PARCELS no overage applies.
+# Above included quota, the BASE rate applies until the first tier threshold,
+# then each subsequent tier discount kicks in.
+# Thresholds are expressed in parcels already used in the current period
+# before billing the next parcel. With that convention, the BASE rate applies
+# to parcels 11–100 inclusive, the 100-threshold tier applies from parcel 101,
+# and the 500-threshold tier applies from parcel 501.
+EUDR_OVERAGE_BASE_RATE_GBP = 3.0  # £3/parcel for parcels 11–100
+# Tiers are (threshold_parcels_used, rate_gbp_per_parcel).
+# When period_parcels_used >= threshold, that tier's rate applies to the next
+# parcel being billed.
+EUDR_OVERAGE_TIERS: tuple[tuple[int, float], ...] = (
+    (100, 2.50),  # applies from parcel 101 through 500
+    (500, 1.80),  # applies from parcel 501+
+)
+
 # --- Rate limiting (demo) ---
 # RATE_LIMIT_DEMO_MAX caps API requests per window (HTTP rate-limiter);
 # DEMO_TIER_RUN_LIMIT caps total pipeline runs (billing quota).
