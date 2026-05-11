@@ -25,7 +25,7 @@
     enableAutoRouteTracking: true,   // SPA hash-change tracking
     disableAjaxTracking: false,      // track API calls
     maxBatchInterval: 15000,         // batch telemetry every 15s
-    disableExceptionTracking: false, // catch unhandled errors via SDK
+    disableExceptionTracking: true,  // handled by window.onerror + unhandledrejection below
   };
 
   // Load the SDK asynchronously from the CDN
