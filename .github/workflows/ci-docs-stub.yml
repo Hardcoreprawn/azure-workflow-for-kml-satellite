@@ -1,0 +1,52 @@
+# ─────────────────────────────────────────────────────────────
+# CI Docs Stub — satisfies required `Lint` and `Test` status
+# checks on docs-only PRs.
+#
+# Why this exists:
+#   `ci.yml` skips on docs-only changes via `paths-ignore`.
+#   Branch protection requires the `Lint` and `Test` contexts.
+#   GitHub treats a skipped required check as missing (not passed),
+#   so docs-only PRs would be permanently BLOCKED without this stub.
+#
+#   This workflow runs only when ci.yml is skipped (i.e. a PR that
+#   touches docs / Markdown only) and publishes successful
+#   `Lint` and `Test` check-runs so branch protection is satisfied.
+#
+# Notes:
+#   - Job `name:` values MUST stay exactly "Lint" and "Test" so the
+#     published check-run context names match the required contexts
+#     defined on `main` branch protection.
+#   - Keep the path filter in lockstep with the `paths-ignore` block
+#     in ci.yml. If you change one, change the other.
+# ─────────────────────────────────────────────────────────────
+name: CI (docs-only stub)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip — docs-only change
+        run: echo "Docs-only change; ci.yml lint skipped via paths-ignore. Stubbing required check."
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip — docs-only change
+        run: echo "Docs-only change; ci.yml tests skipped via paths-ignore. Stubbing required check."
