@@ -66,7 +66,7 @@
     <div class="auth-area" id="auth-area">
       <span id="status-badge">Checking…</span>
       <span class="auth-user" id="auth-user" style="display:none"></span>
-      <button class="auth-btn primary" id="auth-login-btn" type="button">Sign In</button>
+      <button class="auth-btn primary" id="auth-login-btn" type="button" data-track="nav_sign_in">Sign In</button>
       <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
     </div>
   </div>
@@ -89,7 +89,7 @@
         <h2>Sign in to start EUDR due diligence</h2>
         <p>Upload land parcel boundaries, get satellite evidence for EU Deforestation Regulation compliance. 2 free parcel assessments, no credit card required.</p>
         <div class="app-gate-actions">
-          <button class="btn btn-primary" id="app-sign-in-btn" type="button">Start Free</button>
+          <button class="btn btn-primary" id="app-sign-in-btn" type="button" data-track="eudr_start_free">Start Free</button>
           <a class="btn btn-secondary" href="/#pricing">View Plans</a>
           <a class="btn btn-secondary" href="/">Back to site</a>
         </div>
@@ -252,7 +252,7 @@
             </div>
           </div>
           <div class="app-analysis-actions">
-            <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button">Queue Due Diligence</button>
+            <button class="btn btn-primary app-analysis-queue-btn" id="app-analysis-submit-btn" type="button" data-track="eudr_queue_analysis">Queue Due Diligence</button>
           </div>
           </div><!-- /app-analysis-form-fields -->
           <div class="app-callout" id="app-analysis-status" hidden></div>
@@ -450,7 +450,7 @@
                     <span class="app-content-label">EUDR compliance</span>
                     <p class="app-evidence-action-hint">Run a deforestation-risk assessment against EU Deforestation Regulation thresholds.</p>
                   </div>
-                  <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button">Assess EUDR</button>
+                  <button class="btn btn-primary" id="app-evidence-eudr-btn" type="button" data-track="eudr_assess_eudr">Assess EUDR</button>
                 </div>
                 <div id="app-evidence-eudr-content"></div>
                 <div class="app-evidence-ai-loading" id="app-evidence-eudr-loading" hidden>Running EUDR assessment&hellip;</div>
@@ -474,9 +474,9 @@
             <div class="app-evidence-export-bar" id="app-evidence-export-bar">
               <span class="app-content-label">Exports</span>
               <div class="app-evidence-export-actions">
-                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="geojson" disabled>GeoJSON</button>
-                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="csv" disabled>CSV</button>
-                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="pdf" disabled>PDF</button>
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="geojson" data-track="export_geojson" disabled>GeoJSON</button>
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="csv" data-track="export_csv" disabled>CSV</button>
+                <button class="btn btn-secondary app-evidence-export-btn" type="button" data-export-format="pdf" data-track="export_pdf" disabled>PDF</button>
               </div>
               <span class="app-evidence-export-note" id="app-evidence-export-note">Select a completed run to enable exports.</span>
             </div>
