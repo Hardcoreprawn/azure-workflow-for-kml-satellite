@@ -218,6 +218,32 @@ class TestEudrUsage:
         assert resp.status_code == 401
 
 
+class TestEudrUsagePayload:
+    @patch("blueprints.eudr._fetch_org_run_records", return_value=[])
+    @patch(
+        "treesight.security.eudr_billing.get_eudr_billing_status",
+        return_value={"period_parcels_used": 47, "included_parcels": 10},
+    )
+    @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
+    def test_estimated_spend_uses_base_rate_before_first_tier(self, _org, _billing, _records):
+        from blueprints.eudr import _eudr_usage_payload
+
+        payload = _eudr_usage_payload("test-user")
+        assert payload["current"]["estimatedSpendGbp"] == 111.0
+
+    @patch("blueprints.eudr._fetch_org_run_records", return_value=[])
+    @patch(
+        "treesight.security.eudr_billing.get_eudr_billing_status",
+        return_value={"period_parcels_used": 120, "included_parcels": 10},
+    )
+    @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
+    def test_estimated_spend_uses_discounted_rate_after_first_tier(self, _org, _billing, _records):
+        from blueprints.eudr import _eudr_usage_payload
+
+        payload = _eudr_usage_payload("test-user")
+        assert payload["current"]["estimatedSpendGbp"] == 275.0
+
+
 # ---------------------------------------------------------------------------
 # §3 — POST /api/eudr/subscribe
 # ---------------------------------------------------------------------------

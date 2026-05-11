@@ -241,8 +241,12 @@ def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
 
 
 def _eudr_usage_payload(user_id: str) -> dict:
-    from treesight.constants import EUDR_INCLUDED_PARCELS, EUDR_OVERAGE_BASE_RATE_GBP
-    from treesight.security.eudr_billing import eudr_next_tier, get_eudr_billing_status
+    from treesight.constants import EUDR_INCLUDED_PARCELS
+    from treesight.security.eudr_billing import (
+        eudr_next_tier,
+        eudr_unit_price_gbp,
+        get_eudr_billing_status,
+    )
     from treesight.security.orgs import get_user_org
 
     org = get_user_org(user_id)
@@ -283,7 +287,8 @@ def _eudr_usage_payload(user_id: str) -> dict:
         for key in month_keys
     ]
 
-    estimated_spend_gbp = round((overage * EUDR_OVERAGE_BASE_RATE_GBP), 2)
+    unit_price_gbp = eudr_unit_price_gbp(period_used)
+    estimated_spend_gbp = round((overage * unit_price_gbp), 2)
 
     return {
         "current": {
