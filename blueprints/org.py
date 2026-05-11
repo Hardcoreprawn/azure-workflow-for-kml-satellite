@@ -13,7 +13,7 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from blueprints._helpers import cors_headers, error_response, require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +44,10 @@ def _require_org_owner(
     methods=["GET", "POST", "PATCH", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def org_endpoint(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def org_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Org CRUD: GET (my org), POST (create), PATCH (rename)."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
+    del auth_claims  # unused
     if req.method == "GET":
         return _get_org(req, user_id)
     if req.method == "POST":
@@ -148,16 +142,10 @@ def _update_org(req: func.HttpRequest, user_id: str) -> func.HttpResponse:
 
 
 @bp.route(route="org/invite", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-def org_invite(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def org_invite(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/org/invite — owner invites a member by email."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
+    del auth_claims  # unused
     from treesight.security.orgs import create_invite
     from treesight.security.users import get_user
 
@@ -194,16 +182,12 @@ def org_invite(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @bp.route(route="org/members", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
-def org_members_list(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def org_members_list(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
     """GET /api/org/members — list org members."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
+    del auth_claims  # unused
     from treesight.security.orgs import list_members
     from treesight.security.users import get_user
 
@@ -228,16 +212,12 @@ def org_members_list(req: func.HttpRequest) -> func.HttpResponse:
     methods=["DELETE", "PATCH", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def org_member_manage(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def org_member_manage(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
     """DELETE (remove) or PATCH (change role) a member."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
+    del auth_claims  # unused
     member_id = req.route_params.get("member_id", "")
     if not member_id:
         return error_response(400, "member_id is required", req=req)
