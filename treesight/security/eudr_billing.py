@@ -16,9 +16,47 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from treesight.constants import EUDR_FREE_ASSESSMENTS, EUDR_INCLUDED_PARCELS
+from treesight.constants import (
+    EUDR_FREE_ASSESSMENTS,
+    EUDR_INCLUDED_PARCELS,
+    EUDR_OVERAGE_BASE_RATE_GBP,
+    EUDR_OVERAGE_TIERS,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Tier helpers
+# ---------------------------------------------------------------------------
+
+
+def eudr_unit_price_gbp(period_parcels_used: int) -> float:
+    """Return the marginal £/parcel rate that applies at the given usage.
+
+    Returns the base rate for usage below the first tier threshold and the
+    discounted rate once the user has crossed each subsequent threshold.
+    Tiers are defined in :data:`treesight.constants.EUDR_OVERAGE_TIERS`.
+    """
+    rate = EUDR_OVERAGE_BASE_RATE_GBP
+    for threshold, tier_rate in EUDR_OVERAGE_TIERS:
+        if period_parcels_used >= threshold:
+            rate = tier_rate
+    return rate
+
+
+def eudr_next_tier(
+    period_parcels_used: int,
+) -> tuple[int, float] | tuple[None, None]:
+    """Return ``(threshold, rate)`` for the next discount tier, or ``(None, None)``.
+
+    The "next" tier is the lowest threshold the user has not yet crossed.
+    Used by the usage payload to surface upgrade-incentive guidance.
+    """
+    for threshold, rate in EUDR_OVERAGE_TIERS:
+        if period_parcels_used < threshold:
+            return threshold, rate
+    return None, None
 
 
 # ---------------------------------------------------------------------------

@@ -78,6 +78,55 @@ class TestEudrFreeTrial:
         assert get_eudr_trial_remaining("missing") == 0
 
 
+# ---------------------------------------------------------------------------
+# §1.5 — Graduated overage tier helpers (#793)
+# ---------------------------------------------------------------------------
+
+
+class TestEudrUnitPriceGbp:
+    """Marginal £/parcel rate selection across tier boundaries."""
+
+    @pytest.mark.parametrize(
+        "usage,expected_rate",
+        [
+            (0, 3.0),  # No usage → base rate applies
+            (50, 3.0),  # Below first tier
+            (99, 3.0),  # Just below first tier threshold
+            (100, 2.50),  # At first tier threshold
+            (250, 2.50),  # Mid first tier
+            (499, 2.50),  # Just below second tier
+            (500, 1.80),  # At second tier threshold
+            (5000, 1.80),  # Well above all tiers
+        ],
+    )
+    def test_returns_rate_for_usage_level(self, usage, expected_rate):
+        from treesight.security.eudr_billing import eudr_unit_price_gbp
+
+        assert eudr_unit_price_gbp(usage) == expected_rate
+
+
+class TestEudrNextTier:
+    """Next tier guidance returns the lowest unmet threshold."""
+
+    def test_below_first_tier_returns_first_tier(self):
+        from treesight.security.eudr_billing import eudr_next_tier
+
+        assert eudr_next_tier(0) == (100, 2.50)
+        assert eudr_next_tier(99) == (100, 2.50)
+
+    def test_at_first_tier_returns_second_tier(self):
+        from treesight.security.eudr_billing import eudr_next_tier
+
+        assert eudr_next_tier(100) == (500, 1.80)
+        assert eudr_next_tier(499) == (500, 1.80)
+
+    def test_at_or_above_top_tier_returns_none(self):
+        from treesight.security.eudr_billing import eudr_next_tier
+
+        assert eudr_next_tier(500) == (None, None)
+        assert eudr_next_tier(10_000) == (None, None)
+
+
 class TestConsumeEudrTrial:
     """Consuming a trial assessment increments the org counter."""
 

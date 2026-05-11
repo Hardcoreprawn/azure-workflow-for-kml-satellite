@@ -241,8 +241,8 @@ def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
 
 
 def _eudr_usage_payload(user_id: str) -> dict:
-    from treesight.constants import EUDR_INCLUDED_PARCELS
-    from treesight.security.eudr_billing import get_eudr_billing_status
+    from treesight.constants import EUDR_INCLUDED_PARCELS, EUDR_OVERAGE_BASE_RATE_GBP
+    from treesight.security.eudr_billing import eudr_next_tier, get_eudr_billing_status
     from treesight.security.orgs import get_user_org
 
     org = get_user_org(user_id)
@@ -254,13 +254,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
     overage = max(period_used - included, 0)
 
     # Tier break guidance for graduated EUDR rates.
-    next_threshold = None
-    next_rate = None
-    for threshold, rate in ((100, 2.50), (500, 1.80)):
-        if period_used < threshold:
-            next_threshold = threshold
-            next_rate = rate
-            break
+    next_threshold, next_rate = eudr_next_tier(period_used)
 
     records = _fetch_org_run_records(user_id, limit=400)
     month_keys = _last_n_month_keys(6)
@@ -289,7 +283,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
         for key in month_keys
     ]
 
-    estimated_spend_gbp = round((overage * 3.0), 2)
+    estimated_spend_gbp = round((overage * EUDR_OVERAGE_BASE_RATE_GBP), 2)
 
     return {
         "current": {
