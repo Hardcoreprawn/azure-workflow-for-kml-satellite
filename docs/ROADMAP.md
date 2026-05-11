@@ -104,6 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #787 | feat(analytics+docs): harden frontend telemetry (`window.onerror` + `unhandledrejection` + `data-track` CTAs) and add C4 architecture review (2026-05-11) — files arch findings as #779/#780/#782/#784/#785 |
 | #776 | fix(infra): CIAM SPA redirect URI management via Tofu — conditional azuread provider, lockfile, all-or-nothing validation (closes #777) |
 | #769 | fix(pipeline): prevent double quota on SAS fallback + accept KMZ end-to-end (closes #767, #768) |
 | #763 | feat(smoke): client credentials auth + evidence file for CI — Slice A of #708; adds `acquire_token_client_credentials()`, `--evidence-file`, `--image-tag`/`--commit-sha` to e2e smoke gate |
