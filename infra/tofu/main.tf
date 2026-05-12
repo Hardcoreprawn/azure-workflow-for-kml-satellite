@@ -1146,12 +1146,39 @@ resource "azurerm_role_assignment" "orch_key_vault_secrets_user" {
   principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
 }
 
-# Allow the deployer (tofu apply / setup scripts) to manage secrets
+# Allow the deployer (tofu apply / setup scripts) to manage secrets in Key Vault.
+# Required for both Stripe secret rotation (setup script) and CIAM secret
+# population (Tofu-managed azurerm_key_vault_secret resources below).
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
-  count                = var.enable_stripe ? 1 : 0
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# --- CIAM config in Key Vault ---
+# Single source of truth for CIAM tenant/app values. The Function App reads
+# these via @Microsoft.KeyVault references (managed-identity auth) and the SWA
+# deploy step reads them via `az keyvault secret show` to inject the page HTML
+# config blob. Values themselves are public (visible in deployed page HTML);
+# Key Vault is used so deploys have one place to fetch them from.
+locals {
+  ciam_kv_secrets = {
+    "ciam-tenant-id"    = var.ciam_tenant_id
+    "ciam-authority"    = var.ciam_authority
+    "ciam-client-id"    = var.ciam_client_id
+    "ciam-api-audience" = var.ciam_api_audience
+  }
+}
+
+resource "azurerm_key_vault_secret" "ciam" {
+  for_each     = { for k, v in local.ciam_kv_secrets : k => v if v != "" }
+  name         = each.key
+  value        = each.value
+  key_vault_id = azurerm_key_vault.main.id
+  content_type = "text/plain"
+  tags         = local.tags
+
+  depends_on = [azurerm_role_assignment.key_vault_secrets_officer]
 }
 
 # Cosmos DB data-plane RBAC: Built-in Data Contributor (read/write all items)
@@ -1221,9 +1248,9 @@ locals {
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
     } : {},
     {
-      CIAM_AUTHORITY     = var.ciam_authority
-      CIAM_TENANT_ID     = var.ciam_tenant_id
-      CIAM_API_AUDIENCE  = var.ciam_api_audience
+      CIAM_AUTHORITY    = local.ciam_kv_secrets["ciam-authority"] != "" ? "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ciam["ciam-authority"].versionless_id})" : ""
+      CIAM_TENANT_ID    = local.ciam_kv_secrets["ciam-tenant-id"] != "" ? "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ciam["ciam-tenant-id"].versionless_id})" : ""
+      CIAM_API_AUDIENCE = local.ciam_kv_secrets["ciam-api-audience"] != "" ? "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.ciam["ciam-api-audience"].versionless_id})" : ""
     }
   )
 

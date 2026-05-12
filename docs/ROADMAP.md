@@ -104,12 +104,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| TBD | chore(infra): manage CIAM tenant config in Tofu + Key Vault — bake public CIAM IDs into tfvars, write 4 KV secrets, Function App reads via `@Microsoft.KeyVault` refs, deploy workflow reads frontend HTML config from KV (replaces direct GH-secrets injection) |
 | #796 | refactor(blueprints): migrate `org.py` handlers to `@require_auth` decorator (pilot for #791) — removes 4 duplicated OPTIONS+check_auth blocks |
 | #790 | docs(architecture): comprehensive C4 review (Level 1–4 + code analysis) — confirms #779–#785 and surfaces new code-hygiene issues #791, #792, #793 |
 | #797 | ci: stub `Lint`/`Test` checks for docs-only PRs to satisfy branch protection (`paths-ignore` in ci.yml left required checks unreported, blocking docs-only auto-merge) |
 | #787 | feat(analytics+docs): harden frontend telemetry (`window.onerror` + `unhandledrejection` + `data-track` CTAs) and add C4 architecture review (2026-05-11) — files arch findings as #779/#780/#782/#784/#785 |
 | #776 | fix(infra): CIAM SPA redirect URI management via Tofu — conditional azuread provider, lockfile, all-or-nothing validation (closes #777) |
-| #769 | fix(pipeline): prevent double quota on SAS fallback + accept KMZ end-to-end (closes #767, #768) |
 
 ---
 

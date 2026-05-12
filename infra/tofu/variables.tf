@@ -213,28 +213,25 @@ variable "auth_mode" {
 }
 
 variable "ciam_authority" {
-  description = "Azure Entra CIAM authority endpoint (https://login.microsoftonline.com/<tenant>). Required when auth_mode is 'bearer_only'."
+  description = "Azure Entra CIAM authority endpoint (e.g. https://<tenant>.ciamlogin.com/ for External ID, or https://login.microsoftonline.com/<tenant> for workforce). Public; safe to commit. Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
-  sensitive   = true
 }
 
 variable "ciam_tenant_id" {
-  description = "Azure Entra tenant ID for CIAM app registration. Required when auth_mode is 'bearer_only'."
+  description = "Azure Entra tenant ID for CIAM app registration. Public; safe to commit. Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
-  sensitive   = true
 }
 
 variable "ciam_api_audience" {
-  description = "API audience (app ID URI) from CIAM app registration. Required when auth_mode is 'bearer_only'."
+  description = "API audience (app ID URI) from CIAM app registration. Public; safe to commit. Required when auth_mode is 'bearer_only'."
   type        = string
   default     = ""
-  sensitive   = true
 }
 
 variable "ciam_client_id" {
-  description = "Client ID (application ID) of the CIAM app registration. Set to enable Tofu management of SPA redirect URIs."
+  description = "Client ID (application ID) of the CIAM SPA app registration. Public; safe to commit. Set to enable Tofu management of SPA redirect URIs."
   type        = string
   default     = ""
 }

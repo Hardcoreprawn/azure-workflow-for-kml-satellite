@@ -53,14 +53,55 @@ Configure for each environment (`dev`, `prd`):
 
 ## Required GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
-Bearer-token authentication is mandatory. Configure:
+Bearer-token authentication is mandatory. The CIAM tenant_id, authority, and
+client_id are public values committed to `environments/<env>.tfvars`. Tofu
+populates them as Key Vault secrets (`ciam-tenant-id`, `ciam-authority`,
+`ciam-client-id`, `ciam-api-audience`) so both the Function App (via
+`@Microsoft.KeyVault` env refs) and the SWA deploy step (via `az keyvault
+secret show`) read from a single source of truth.
 
-- `TF_VAR_AUTH_MODE` — Must be `bearer_only`
-- `TF_VAR_CIAM_AUTHORITY` — Azure Entra CIAM authority endpoint (required)
-- `TF_VAR_CIAM_TENANT_ID` — Azure Entra tenant ID for CIAM app registration (required)
-- `TF_VAR_CIAM_API_AUDIENCE` — API audience (app ID URI) from CIAM app registration (required)
+The remaining secrets you must set in each GitHub Environment are:
 
-The Function App validates these settings at startup and fails fast if they are missing.
+- `TF_VAR_CIAM_API_AUDIENCE` — API audience (Application ID URI) from the CIAM
+  app registration's "Expose an API" blade. Required for JWT validation. Kept
+  as a secret only because we have not confirmed its value is OK to commit.
+- `TF_VAR_CIAM_DEPLOY_CLIENT_ID` — *Optional.* Client ID of a service
+  principal **in the CIAM tenant** that has `Application.ReadWrite.OwnedBy`
+  permission and is an Owner of the SPA app, with a federated GitHub OIDC
+  credential trusting `repo:<owner>/<repo>:environment:<env>`. When set, Tofu
+  manages the SPA app's redirect URIs (`azuread_application_redirect_uris`).
+  When unset, redirect URI registration is skipped silently — see
+  "CIAM deploy SP bootstrap" below.
+
+The Function App validates the CIAM settings at startup and fails fast if any
+are missing or unreadable from Key Vault.
+
+## CIAM deploy SP bootstrap (one-time, manual)
+
+To enable Tofu management of the CIAM SPA app's redirect URIs, a service
+principal in the CIAM tenant is required (the workforce-tenant deploy SP
+cannot manage CIAM-tenant resources). Until this is automated:
+
+1. `az login --tenant <CIAM_TENANT_ID> --allow-no-subscriptions` as a CIAM
+   tenant admin (typically the tenant owner identity).
+2. Create the deploy SP in the CIAM tenant: `az ad app create --display-name
+   "Canopex Tofu Deploy"`. Note its `appId` (this is `TF_VAR_CIAM_DEPLOY_CLIENT_ID`).
+3. Grant it `Application.ReadWrite.OwnedBy` on Microsoft Graph and admin-consent.
+4. Add it as an Owner of the SPA app (`6e2abd0a-…`):
+   `az ad app owner add --id <SPA_APP_ID> --owner-object-id <DEPLOY_SP_OBJECT_ID>`.
+5. Add a federated credential on the deploy SP for each GitHub Environment:
+   - Issuer: `https://token.actions.githubusercontent.com`
+   - Subject: `repo:<owner>/<repo>:environment:<env>`
+   - Audience: `api://AzureADTokenExchange`
+6. Set `TF_VAR_CIAM_DEPLOY_CLIENT_ID` in the matching GitHub Environment.
+
+Until step 6 is done, redirect URIs in the CIAM SPA app are not reconciled by
+Tofu. To unblock sign-in for a new origin manually, run (after step 1):
+
+```bash
+az ad app update --id 6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6 \
+  --set spa.redirectUris='["https://canopex.hrdcrprwn.com/","https://canopex.hrdcrprwn.com/app/","https://canopex.hrdcrprwn.com/eudr/"]'
+```
 
 ## Local Usage
 
@@ -71,16 +112,15 @@ tofu init \
   -backend-config="container_name=<TF_STATE_CONTAINER>" \
   -backend-config="key=kml-satellite-dev.tfstate"
 
-# Bearer-only auth
+# Bearer-only auth (CIAM tenant_id, authority, client_id come from <env>.tfvars).
+# Only api_audience is overridden via -var because it's not committed.
 tofu plan \
   -var "subscription_id=<SUBSCRIPTION_ID>" \
   -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \
-  -var "ciam_authority=https://login.microsoftonline.com/<TENANT_ID>" \
-  -var "ciam_tenant_id=<TENANT_ID>" \
   -var "ciam_api_audience=<API_APP_ID_URI>" \
   -var-file="environments/dev.tfvars"
 
-tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var-file="environments/dev.tfvars"
+tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var "ciam_api_audience=<API_APP_ID_URI>" -var-file="environments/dev.tfvars"
 ```
 
 ## Clean-Slate Migration Sequence (dev)
