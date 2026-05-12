@@ -41,10 +41,9 @@ jobs:
     environment: dev
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-      TF_VAR_auth_mode: bearer_only
-      # Public CIAM values (tenant_id, authority, client_id, api_audience) are
-      # sourced from infra/tofu/environments/*.tfvars. Only the deploy SP appId
-      # is still wired in via env-secret because it gates azuread provider use.
+      # Public CIAM values (tenant_subdomain, tenant_id, client_id, api_audience)
+      # are sourced from infra/tofu/environments/*.tfvars. Only the deploy SP
+      # appId is still wired in via env-secret because it gates azuread provider use.
       TF_VAR_ciam_deploy_client_id: ${{ secrets.TF_VAR_CIAM_DEPLOY_CLIENT_ID || '' }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6

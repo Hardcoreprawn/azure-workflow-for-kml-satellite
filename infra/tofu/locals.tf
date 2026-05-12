@@ -40,6 +40,22 @@ locals {
 
   primary_site_url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
 
+  # CIAM authority URL is computed from the tenant subdomain. Entra External ID
+  # tenants use the canonical https://<subdomain>.ciamlogin.com/ host; the
+  # trailing slash matters for MSAL's authority parsing.
+  ciam_authority = var.ciam_tenant_subdomain != "" ? "https://${var.ciam_tenant_subdomain}.ciamlogin.com/" : ""
+
+  # Page-level CIAM bootstrap config, injected into website HTML at deploy time
+  # via `tofu output -raw ciam_page_config`. The SWA workflow substitutes this
+  # JSON into the canopex-ciam-config <script> tag. Keep field names in sync
+  # with website/js/canopex-auth.js readPageConfig().
+  ciam_page_config_json = jsonencode({
+    clientId    = var.ciam_client_id
+    authority   = local.ciam_authority
+    tenantId    = var.ciam_tenant_id
+    apiAudience = var.ciam_api_audience
+  })
+
   # SPA redirect URIs to register in the CIAM app registration.
   # Must include every origin+path that canopex-auth.js pageRedirectUri() may produce.
   # Mirrors the browser_allowed_origins pattern: localhost ports for non-prd,

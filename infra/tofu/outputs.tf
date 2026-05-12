@@ -79,6 +79,11 @@ output "site_url" {
   description = "Primary site URL (custom domain if configured, otherwise default)."
 }
 
+output "ciam_page_config" {
+  value       = local.ciam_page_config_json
+  description = "JSON-encoded CIAM bootstrap config for the SPA. Injected into the page HTML by the SWA deploy step. Public values only — clientId, authority, tenantId, apiAudience."
+}
+
 output "appinsights_connection_string" {
   value       = azurerm_application_insights.main.connection_string
   description = "Application Insights connection string for browser SDK."

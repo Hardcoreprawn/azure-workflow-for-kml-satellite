@@ -50,8 +50,7 @@ Reference: .github/workflows/deploy.yml and infra/tofu/README.md.
 
 ### Auth Model
 
-- `AUTH_MODE=bearer_only` is the only supported mode.
-- Authenticated endpoints require `Authorization: Bearer <token>`.
+- Bearer-only is the only supported mode (JWT in `Authorization: Bearer …`).
 - Required app settings: `CIAM_AUTHORITY`, `CIAM_TENANT_ID`, `CIAM_API_AUDIENCE`.
 
 Anonymous operator endpoints:

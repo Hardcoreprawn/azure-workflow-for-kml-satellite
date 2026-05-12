@@ -199,39 +199,34 @@ variable "notification_email" {
   default     = ""
 }
 
-# --- CIAM / Bearer Token Auth (Issue #709) ---
+# --- CIAM (Entra External ID) bearer-token auth (Issue #709) ---
+#
+# Auth is bearer-only by design (see treesight.security.auth). The values below
+# are *public* — they ship in the deployed page HTML and in JWTs the SPA hands
+# to the API — so they live in committed tfvars rather than Key Vault.
+# Tofu surfaces them as plain Function App app settings and as a
+# `ciam_page_config` output the SWA workflow injects into HTML at deploy time.
 
-variable "auth_mode" {
-  description = "Auth mode. Must be bearer_only (JWT only)."
-  type        = string
-  default     = "bearer_only"
-
-  validation {
-    condition     = var.auth_mode == "bearer_only"
-    error_message = "auth_mode must be bearer_only."
-  }
-}
-
-variable "ciam_authority" {
-  description = "Azure Entra CIAM authority endpoint (e.g. https://<tenant>.ciamlogin.com/ for External ID, or https://login.microsoftonline.com/<tenant> for workforce). Public; safe to commit. Required when auth_mode is 'bearer_only'."
+variable "ciam_tenant_subdomain" {
+  description = "Entra External ID tenant subdomain (the bit before .ciamlogin.com). The CIAM authority URL is computed as https://<subdomain>.ciamlogin.com/. Public; safe to commit."
   type        = string
   default     = ""
 }
 
 variable "ciam_tenant_id" {
-  description = "Azure Entra tenant ID for CIAM app registration. Public; safe to commit. Required when auth_mode is 'bearer_only'."
+  description = "Azure Entra tenant ID (GUID) for CIAM app registration. Required by MSAL for tenant-scoped token validation. Public; safe to commit."
   type        = string
   default     = ""
 }
 
 variable "ciam_api_audience" {
-  description = "API audience (app ID URI) from CIAM app registration. Public; safe to commit. Required when auth_mode is 'bearer_only'."
+  description = "API audience (app ID URI) from CIAM app registration, e.g. api://canopex. Public; safe to commit."
   type        = string
   default     = ""
 }
 
 variable "ciam_client_id" {
-  description = "Client ID (application ID) of the CIAM SPA app registration. Public; safe to commit. Set to enable Tofu management of SPA redirect URIs."
+  description = "Client ID (application ID) of the CIAM SPA app registration. Public; safe to commit."
   type        = string
   default     = ""
 }
@@ -243,23 +238,24 @@ variable "ciam_deploy_client_id" {
   sensitive   = true
 }
 
-# Cross-variable validation: all three CIAM variables must be set for
-# bearer_only auth. Cannot be expressed in a variable validation block
-# (which may only reference the validated variable itself), so enforced here as a
-# plan-time precondition that fails fast with a descriptive error.
-resource "terraform_data" "validate_ciam_auth_vars" {
+# Cross-variable validation: all four required CIAM tfvars must be populated.
+# Cannot be expressed in a per-variable validation block (those may only
+# reference the validated variable itself), so enforced here as a plan-time
+# precondition that fails fast with a descriptive error.
+resource "terraform_data" "validate_ciam_vars" {
   lifecycle {
     precondition {
       condition = (
-        var.auth_mode != "bearer_only" ||
-        (var.ciam_authority != "" && var.ciam_tenant_id != "" && var.ciam_api_audience != "")
+        var.ciam_tenant_subdomain != "" &&
+        var.ciam_tenant_id != "" &&
+        var.ciam_api_audience != "" &&
+        var.ciam_client_id != ""
       )
-      error_message = "ciam_authority, ciam_tenant_id, and ciam_api_audience must all be non-empty when auth_mode is 'bearer_only'."
+      error_message = "ciam_tenant_subdomain, ciam_tenant_id, ciam_api_audience, and ciam_client_id must all be non-empty (set in environments/<env>.tfvars)."
     }
   }
 }
 
-# ciam_client_id is sourced from tfvars (always non-empty in real environments).
 # ciam_deploy_client_id is independently optional: when unset, Tofu skips
 # managing the CIAM SPA app's redirect URIs (azuread_application_redirect_uris
 # count = 0), and the azuread provider is not configured. This is the documented

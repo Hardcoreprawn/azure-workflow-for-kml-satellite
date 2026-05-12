@@ -53,18 +53,16 @@ Configure for each environment (`dev`, `prd`):
 
 ## Required GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
-Bearer-token authentication is mandatory. The CIAM tenant_id, authority, and
-client_id are public values committed to `environments/<env>.tfvars`. Tofu
-populates them as Key Vault secrets (`ciam-tenant-id`, `ciam-authority`,
-`ciam-client-id`, `ciam-api-audience`) so both the Function App (via
-`@Microsoft.KeyVault` env refs) and the SWA deploy step (via `az keyvault
-secret show`) read from a single source of truth.
+Bearer-token authentication is mandatory. All public CIAM values
+(`ciam_tenant_subdomain`, `ciam_tenant_id`, `ciam_client_id`,
+`ciam_api_audience`) live in `environments/<env>.tfvars` — they ship in the
+deployed page HTML and in JWTs the SPA hands to the API, so they are not
+secrets. Tofu surfaces them as plain Function App app settings and as a
+`ciam_page_config` output that the SWA deploy step injects into the page HTML
+at deploy time. Key Vault is no longer used for these values.
 
-The remaining secrets you must set in each GitHub Environment are:
+The only CIAM-related GitHub Environment secret you must set is:
 
-- `TF_VAR_CIAM_API_AUDIENCE` — API audience (Application ID URI) from the CIAM
-  app registration's "Expose an API" blade. Required for JWT validation. Kept
-  as a secret only because we have not confirmed its value is OK to commit.
 - `TF_VAR_CIAM_DEPLOY_CLIENT_ID` — *Optional.* Client ID of a service
   principal **in the CIAM tenant** that has `Application.ReadWrite.OwnedBy`
   permission and is an Owner of the SPA app, with a federated GitHub OIDC
@@ -74,7 +72,7 @@ The remaining secrets you must set in each GitHub Environment are:
   "CIAM deploy SP bootstrap" below.
 
 The Function App validates the CIAM settings at startup and fails fast if any
-are missing or unreadable from Key Vault.
+are missing.
 
 ## CIAM deploy SP bootstrap (one-time, done)
 

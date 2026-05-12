@@ -47,7 +47,6 @@ class TestValidateConfig:
         with patch.dict(
             os.environ,
             {
-                "AUTH_MODE": "bearer_only",
                 "CIAM_AUTHORITY": "https://issuer.example",
                 "CIAM_TENANT_ID": "tenant-id",
                 "CIAM_API_AUDIENCE": "client-id",
@@ -81,7 +80,6 @@ class TestValidateConfig:
         with patch.dict(
             os.environ,
             {
-                "AUTH_MODE": "bearer_only",
                 "CIAM_AUTHORITY": "",
                 "CIAM_TENANT_ID": "",
                 "CIAM_API_AUDIENCE": "",
@@ -98,7 +96,6 @@ class TestValidateConfig:
         with patch.dict(
             os.environ,
             {
-                "AUTH_MODE": "bearer_only",
                 "CIAM_AUTHORITY": "https://issuer.example",
                 "CIAM_TENANT_ID": "tenant-id",
                 "CIAM_API_AUDIENCE": "client-id",
@@ -109,12 +106,4 @@ class TestValidateConfig:
             cfg = importlib.import_module("treesight.config")
             importlib.reload(cfg)
             cfg.validate_config()
-            importlib.reload(cfg)
-
-    def test_rejects_invalid_auth_mode(self):
-        with patch.dict(os.environ, {"AUTH_MODE": "unsupported-mode"}, clear=False):
-            cfg = importlib.import_module("treesight.config")
-            importlib.reload(cfg)
-            with pytest.raises(ConfigValidationError, match="AUTH_MODE"):
-                cfg.validate_config()
             importlib.reload(cfg)

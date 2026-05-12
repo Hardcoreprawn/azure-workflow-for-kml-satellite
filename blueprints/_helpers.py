@@ -9,7 +9,6 @@ from typing import Any
 
 import azure.functions as func
 
-from treesight.config import AUTH_MODE
 from treesight.security.auth import (
     get_user_id,
     get_user_id_from_bearer_claims,
@@ -165,7 +164,7 @@ def require_auth(fn):
 
         if claims:
             uid = get_user_id_from_bearer_claims(claims)
-            logger.info("auth_path=bearer mode=%s", AUTH_MODE)
+            logger.info("auth_path=bearer")
             resp = fn(req, auth_claims=claims, user_id=uid)
             _track_req(req, resp, uid, _t0)
             return resp
@@ -194,7 +193,7 @@ def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     claims = _resolve_bearer_claims(req)
     if claims:
         uid = get_user_id_from_bearer_claims(claims)
-        logger.info("auth_path=bearer mode=%s", AUTH_MODE)
+        logger.info("auth_path=bearer")
         return claims, uid
 
     if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):

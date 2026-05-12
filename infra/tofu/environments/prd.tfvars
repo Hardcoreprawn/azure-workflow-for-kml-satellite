@@ -20,10 +20,9 @@ enable_cosmos_db      = true
 
 # --- CIAM (Entra External ID) ---
 # Public values: visible in the deployed page HTML (canopex-ciam-config script).
-# Tofu writes these into Key Vault secrets; the Function App reads them from KV
-# refs and the SWA deploy step injects them into the page HTML at deploy time.
-auth_mode         = "bearer_only"
-ciam_tenant_id    = "92001438-8b42-4bd7-950f-0ed1775f87b7"
-ciam_authority    = "https://treesightauth.ciamlogin.com/"
-ciam_client_id    = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
-ciam_api_audience = "api://canopex"
+# Tofu surfaces them as plain Function App app settings and a `ciam_page_config`
+# output the SWA workflow injects into the page HTML at deploy time.
+ciam_tenant_subdomain = "treesightauth"
+ciam_tenant_id        = "92001438-8b42-4bd7-950f-0ed1775f87b7"
+ciam_client_id        = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
+ciam_api_audience     = "api://canopex"
