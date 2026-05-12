@@ -104,7 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
-| #799 | chore(infra): manage CIAM tenant config in Tofu + Key Vault — bake public CIAM IDs into tfvars, write 4 KV secrets, Function App reads via `@Microsoft.KeyVault` refs, deploy workflow reads frontend HTML config from KV (replaces direct GH-secrets injection) |
+| #799 | chore(infra): refactor CIAM tenant config to HashiCorp/MS reference architecture — bake public CIAM IDs into tfvars (no Key Vault, no GH-secrets injection), derive `ciam_authority` from tenant subdomain, surface single `ciam_page_config` Tofu output for SWA HTML injection, drop dead `auth_mode` variable, simplify redirect-URI gate (closes #801, #802, #803, #805) |
 | #796 | refactor(blueprints): migrate `org.py` handlers to `@require_auth` decorator (pilot for #791) — removes 4 duplicated OPTIONS+check_auth blocks |
 | #790 | docs(architecture): comprehensive C4 review (Level 1–4 + code analysis) — confirms #779–#785 and surfaces new code-hygiene issues #791, #792, #793 |
 | #797 | ci: stub `Lint`/`Test` checks for docs-only PRs to satisfy branch protection (`paths-ignore` in ci.yml left required checks unreported, blocking docs-only auto-merge) |
