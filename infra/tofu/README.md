@@ -76,31 +76,40 @@ The remaining secrets you must set in each GitHub Environment are:
 The Function App validates the CIAM settings at startup and fails fast if any
 are missing or unreadable from Key Vault.
 
-## CIAM deploy SP bootstrap (one-time, manual)
+## CIAM deploy SP bootstrap (one-time, done)
 
-To enable Tofu management of the CIAM SPA app's redirect URIs, a service
-principal in the CIAM tenant is required (the workforce-tenant deploy SP
-cannot manage CIAM-tenant resources). Until this is automated:
+**Status (May 2026):** Bootstrap complete. Deploy SP `canopex-tofu-deploy`
+(appId `3753e9c8-8969-443a-9377-a7716f1f25a5`) exists in CIAM tenant
+`92001438-8b42-4bd7-950f-0ed1775f87b7` with `Application.ReadWrite.OwnedBy`
+(admin-consented), Owner of SPA app `6e2abd0a-…`, and federated GitHub OIDC
+credentials for `repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:{dev,prd}`.
+Both GitHub Environments have `TF_VAR_CIAM_DEPLOY_CLIENT_ID` set. Tofu now
+manages `azuread_application_redirect_uris.ciam_spa[0]` from
+`local.ciam_spa_redirect_uris` in `locals.tf`.
+
+If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 
 1. `az login --tenant <CIAM_TENANT_ID> --allow-no-subscriptions` as a CIAM
    tenant admin (typically the tenant owner identity).
 2. Create the deploy SP in the CIAM tenant: `az ad app create --display-name
    "Canopex Tofu Deploy"`. Note its `appId` (this is `TF_VAR_CIAM_DEPLOY_CLIENT_ID`).
 3. Grant it `Application.ReadWrite.OwnedBy` on Microsoft Graph and admin-consent.
-4. Add it as an Owner of the SPA app (`6e2abd0a-…`):
-   `az ad app owner add --id <SPA_APP_ID> --owner-object-id <DEPLOY_SP_OBJECT_ID>`.
+4. Add it as an Owner of the SPA app (`6e2abd0a-…`) via Microsoft Graph
+   (`POST /applications/<spa-objectId>/owners/$ref`).
 5. Add a federated credential on the deploy SP for each GitHub Environment:
    - Issuer: `https://token.actions.githubusercontent.com`
    - Subject: `repo:<owner>/<repo>:environment:<env>`
    - Audience: `api://AzureADTokenExchange`
 6. Set `TF_VAR_CIAM_DEPLOY_CLIENT_ID` in the matching GitHub Environment.
 
-Until step 6 is done, redirect URIs in the CIAM SPA app are not reconciled by
-Tofu. To unblock sign-in for a new origin manually, run (after step 1):
+For an emergency redirect-URI fix without running Tofu (e.g. to add a new
+origin immediately), after step 1 above:
 
 ```bash
-az ad app update --id 6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6 \
-  --set spa.redirectUris='["https://canopex.hrdcrprwn.com/","https://canopex.hrdcrprwn.com/app/","https://canopex.hrdcrprwn.com/eudr/"]'
+az rest --method PATCH \
+  --uri "https://graph.microsoft.com/v1.0/applications/<spa-objectId>" \
+  --headers "Content-Type=application/json" \
+  --body '{"spa":{"redirectUris":["https://canopex.hrdcrprwn.com/", ...]}}'
 ```
 
 ## Local Usage
@@ -112,15 +121,14 @@ tofu init \
   -backend-config="container_name=<TF_STATE_CONTAINER>" \
   -backend-config="key=kml-satellite-dev.tfstate"
 
-# Bearer-only auth (CIAM tenant_id, authority, client_id come from <env>.tfvars).
-# Only api_audience is overridden via -var because it's not committed.
+# Bearer-only auth: all CIAM values (tenant_id, authority, client_id,
+# api_audience) come from <env>.tfvars. Only deploy_client_id is a secret.
 tofu plan \
   -var "subscription_id=<SUBSCRIPTION_ID>" \
   -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \
-  -var "ciam_api_audience=<API_APP_ID_URI>" \
   -var-file="environments/dev.tfvars"
 
-tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var "ciam_api_audience=<API_APP_ID_URI>" -var-file="environments/dev.tfvars"
+tofu apply -var "subscription_id=<SUBSCRIPTION_ID>" -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" -var-file="environments/dev.tfvars"
 ```
 
 ## Clean-Slate Migration Sequence (dev)

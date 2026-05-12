@@ -30,9 +30,8 @@ orch_min_instances           = 0
 # --- CIAM (Entra External ID) ---
 # Shared with prd: dev and prd both consume the same CIAM tenant/app.
 # Public values; safe to commit. See prd.tfvars for context.
-auth_mode      = "bearer_only"
-ciam_tenant_id = "92001438-8b42-4bd7-950f-0ed1775f87b7"
-ciam_authority = "https://treesightauth.ciamlogin.com/"
-ciam_client_id = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
-# ciam_api_audience: still injected via TF_VAR_CIAM_API_AUDIENCE secret until
-# confirmed against the CIAM app's "Expose an API" Application ID URI.
+auth_mode         = "bearer_only"
+ciam_tenant_id    = "92001438-8b42-4bd7-950f-0ed1775f87b7"
+ciam_authority    = "https://treesightauth.ciamlogin.com/"
+ciam_client_id    = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
+ciam_api_audience = "api://canopex"
