@@ -1155,6 +1155,15 @@ resource "azurerm_role_assignment" "key_vault_secrets_officer" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
+# Wait for the role assignment above to propagate before any Tofu-managed
+# Key Vault secret writes. Azure RBAC on Key Vault is eventually consistent;
+# without this gap, the first apply that creates the role and the secrets
+# in the same plan can intermittently 403.
+resource "time_sleep" "key_vault_secrets_officer_propagation" {
+  create_duration = "60s"
+  depends_on      = [azurerm_role_assignment.key_vault_secrets_officer]
+}
+
 # --- CIAM config in Key Vault ---
 # Single source of truth for CIAM tenant/app values. The Function App reads
 # these via @Microsoft.KeyVault references (managed-identity auth) and the SWA
@@ -1178,7 +1187,7 @@ resource "azurerm_key_vault_secret" "ciam" {
   content_type = "text/plain"
   tags         = local.tags
 
-  depends_on = [azurerm_role_assignment.key_vault_secrets_officer]
+  depends_on = [time_sleep.key_vault_secrets_officer_propagation]
 }
 
 # Cosmos DB data-plane RBAC: Built-in Data Contributor (read/write all items)

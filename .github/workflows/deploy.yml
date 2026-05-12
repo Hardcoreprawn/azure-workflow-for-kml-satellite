@@ -1145,10 +1145,26 @@ jobs:
           # Read CIAM page-config values from Key Vault (single source of truth
           # populated by Tofu). Empty values disable the page config (sign-in
           # button hidden) rather than failing the deploy.
-          CIAM_CLIENT_ID="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name ciam-client-id --query value -o tsv 2>/dev/null || echo '')"
-          CIAM_AUTHORITY="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name ciam-authority --query value -o tsv 2>/dev/null || echo '')"
-          CIAM_TENANT_ID="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name ciam-tenant-id --query value -o tsv 2>/dev/null || echo '')"
-          CIAM_API_AUDIENCE="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name ciam-api-audience --query value -o tsv 2>/dev/null || echo '')"
+          # Retry with backoff to tolerate transient KV throttling / RBAC
+          # propagation right after a fresh Tofu apply.
+          read_kv_secret() {
+            local name="$1"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              local value
+              value="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "$name" --query value -o tsv 2>/dev/null || true)"
+              if [ -n "$value" ]; then
+                echo "$value"
+                return 0
+              fi
+              sleep $((attempt * 2))
+            done
+            echo ""
+          }
+          CIAM_CLIENT_ID="$(read_kv_secret ciam-client-id)"
+          CIAM_AUTHORITY="$(read_kv_secret ciam-authority)"
+          CIAM_TENANT_ID="$(read_kv_secret ciam-tenant-id)"
+          CIAM_API_AUDIENCE="$(read_kv_secret ciam-api-audience)"
           if [ -n "$CIAM_CLIENT_ID" ] && [ -n "$CIAM_AUTHORITY" ]; then
             CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\",\"apiAudience\":\"${CIAM_API_AUDIENCE}\"}"
             find website -name '*.html' -exec sed -i \

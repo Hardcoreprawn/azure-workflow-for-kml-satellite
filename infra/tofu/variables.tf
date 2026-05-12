@@ -259,14 +259,9 @@ resource "terraform_data" "validate_ciam_auth_vars" {
   }
 }
 
-# Cross-variable validation: ciam_client_id and ciam_deploy_client_id are an
-# all-or-nothing pair. Setting only one silently disables redirect URI management
-# and leaves the azuread provider partially configured.
-resource "terraform_data" "validate_ciam_redirect_vars" {
-  lifecycle {
-    precondition {
-      condition     = (var.ciam_client_id == "") == (var.ciam_deploy_client_id == "")
-      error_message = "ciam_client_id and ciam_deploy_client_id must both be set or both be empty. Setting only one disables CIAM redirect URI management."
-    }
-  }
-}
+# ciam_client_id is sourced from tfvars (always non-empty in real environments).
+# ciam_deploy_client_id is independently optional: when unset, Tofu skips
+# managing the CIAM SPA app's redirect URIs (azuread_application_redirect_uris
+# count = 0), and the azuread provider is not configured. This is the documented
+# fallback for cost-estimate runs or environments where the deploy SP has not
+# been bootstrapped yet.
