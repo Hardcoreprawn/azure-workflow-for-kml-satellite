@@ -180,8 +180,8 @@
           // Surface to console.error AND to AppInsights so the failure is
           // visible server-side. handleRedirectPromise rejection means the
           // user came back from CIAM but the response was rejected (e.g.
-          // issuer mismatch, state mismatch). Silent warns hid an outage
-          // in production — see fix/ciam-authority-tenant-path.
+          // issuer mismatch, state mismatch). Silent warns previously hid
+          // an outage in production (PR #808).
           console.error('[CanopexCiam] handleRedirectPromise error:', redirectErr);
           reportAuthFailure('handleRedirectPromise', redirectErr);
           return null;
@@ -206,6 +206,10 @@
       if (ai && typeof ai.trackException === 'function') {
         ai.trackException({
           exception: err instanceof Error ? err : new Error(String(err)),
+          // Match the severity used by the global onerror/unhandledrejection
+          // handlers in analytics.js so auth failures are filterable as
+          // errors in AppInsights.
+          severityLevel: 3,
           properties: {
             phase: phase,
             errorCode: (err && err.errorCode) || '',
