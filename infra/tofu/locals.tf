@@ -40,10 +40,18 @@ locals {
 
   primary_site_url = var.custom_domain != "" ? "https://${var.custom_domain}" : "https://${azurerm_static_web_app.main.default_host_name}"
 
-  # CIAM authority URL is computed from the tenant subdomain. Entra External ID
-  # tenants use the canonical https://<subdomain>.ciamlogin.com/ host; the
-  # trailing slash matters for MSAL's authority parsing.
-  ciam_authority = var.ciam_tenant_subdomain != "" ? "https://${var.ciam_tenant_subdomain}.ciamlogin.com/" : ""
+  # CIAM authority URL is computed from the tenant subdomain + tenant ID.
+  # Entra External ID tenants use https://<subdomain>.ciamlogin.com/<tenant-id>/.
+  # The tenant-id segment is REQUIRED: MSAL.js validates the id_token `iss`
+  # claim against the authority, and CIAM's issuer is tenant-scoped
+  # (https://<tenant-id>.ciamlogin.com/<tenant-id>/v2.0). Without the tenant
+  # path, handleRedirectPromise() rejects post-login and no session is
+  # established. The trailing slash matters for MSAL's authority parsing.
+  ciam_authority = (
+    var.ciam_tenant_subdomain != "" && var.ciam_tenant_id != ""
+    ? "https://${var.ciam_tenant_subdomain}.ciamlogin.com/${var.ciam_tenant_id}/"
+    : ""
+  )
 
   # Page-level CIAM bootstrap config, injected into website HTML at deploy time
   # via `tofu output -raw ciam_page_config`. The SWA workflow substitutes this
