@@ -1085,6 +1085,22 @@ resource "azuread_application_redirect_uris" "ciam_spa" {
   redirect_uris  = local.ciam_spa_redirect_uris
 }
 
+# One-time state adoption: the SPA redirect URI block was set in Azure manually
+# (via `az ad app update --set spa.redirectUris=...` during the original CIAM
+# bootstrap) BEFORE the matching resource existed in Tofu config, so the first
+# real apply after #799 merged failed with "resource already exists - to be
+# managed via Terraform this resource needs to be imported into the State".
+#
+# This import block (OpenTofu 1.6+ syntax) adopts the existing redirect URI
+# block into state on next plan/apply. After the first successful apply it
+# becomes a no-op (Tofu detects the resource is already in state). The block
+# can be removed in a follow-up PR once dev + prd have both reconciled.
+import {
+  for_each = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
+  to       = azuread_application_redirect_uris.ciam_spa[0]
+  id       = "${data.azuread_application.ciam[0].id}/redirectUris/SPA"
+}
+
 resource "azurerm_role_assignment" "storage_blob_data_owner" {
   scope                = azurerm_storage_account.main.id
   role_definition_name = "Storage Blob Data Owner"
