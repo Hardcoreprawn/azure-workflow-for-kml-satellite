@@ -186,7 +186,7 @@ def _call_azure_ai(prompt: str) -> str | None:
     }
 
     try:
-        with httpx.Client(timeout=AI_AZURE_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=AI_AZURE_TIMEOUT_SECONDS, trust_env=False) as client:
             resp = client.post(url, json=body, headers=headers)
             resp.raise_for_status()
             data = resp.json()
@@ -205,7 +205,7 @@ def _call_ollama(prompt: str) -> str | None:
         return None
 
     try:
-        with httpx.Client(timeout=AI_OLLAMA_TIMEOUT_SECONDS) as client:
+        with httpx.Client(timeout=AI_OLLAMA_TIMEOUT_SECONDS, trust_env=False) as client:
             resp = client.post(
                 f"{OLLAMA_URL}/api/generate",
                 json={

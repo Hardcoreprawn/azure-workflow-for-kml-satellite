@@ -87,7 +87,7 @@ def register_mosaic(
             logger.warning("Mosaic registration failed for %s: %s", collection, exc)
             return None
 
-    with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as http:
+    with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as http:
         try:
             r = http.post(f"{PC_API}/mosaic/register", json=body)
             r.raise_for_status()

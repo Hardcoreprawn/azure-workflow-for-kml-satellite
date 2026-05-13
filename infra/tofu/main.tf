@@ -1073,6 +1073,21 @@ resource "azurerm_static_web_app_custom_domain" "main" {
 #        Audience: api://AzureADTokenExchange
 #   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub Environment secrets
 #      (the SPA app's client_id lives in environments/<env>.tfvars).
+# --- CIAM SPA redirect URIs ---
+# Registers root redirect URIs so MSAL loginRedirect() is not rejected with
+# AADSTS50011. canopex-auth.js always uses window.location.origin+'/' as the
+# redirectUri; MSAL's navigateToLoginRequestUrl (default true) returns the
+# user to the originating page (/eudr/, /app/, etc.) after auth completes.
+# Only root URIs are needed — no per-page registration, no per-page CI wiring.
+#
+# Active when ciam_deploy_client_id is set. Requires a one-time operator step:
+#   1. In the CIAM tenant, create a service principal (app registration).
+#   2. Grant it Application.ReadWrite.OwnedBy on the SPA app registration.
+#   3. Add a federated credential on that SP:
+#        Issuer:   https://token.actions.githubusercontent.com
+#        Subject:  repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:prd
+#        Audience: api://AzureADTokenExchange
+#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub 'prd' environment secrets.
 data "azuread_application" "ciam" {
   count     = local.ciam_redirect_enabled ? 1 : 0
   client_id = var.ciam_client_id

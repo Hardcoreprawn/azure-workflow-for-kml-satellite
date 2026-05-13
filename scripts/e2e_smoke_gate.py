@@ -309,7 +309,7 @@ def main() -> int:
         "source": "deploy_smoke",
     }
 
-    with httpx.Client() as client:
+    with httpx.Client(trust_env=False) as client:
         bearer_token = args.bearer_token.strip()
         if args.client_credentials_flow:
             # Attempt client credentials flow
