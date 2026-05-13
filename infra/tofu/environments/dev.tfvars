@@ -26,3 +26,11 @@ cosmos_public_network_access = true # dev only — no VNet/private endpoint yet
 function_max_instances       = 1
 function_min_instances       = 0
 orch_min_instances           = 0
+
+# --- CIAM (Entra External ID) ---
+# Shared with prd: dev and prd both consume the same CIAM tenant/app.
+# Public values; safe to commit. See prd.tfvars for context.
+ciam_tenant_subdomain = "treesightauth"
+ciam_tenant_id        = "92001438-8b42-4bd7-950f-0ed1775f87b7"
+ciam_client_id        = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
+ciam_api_audience     = "api://canopex"

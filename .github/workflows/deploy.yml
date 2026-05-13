@@ -195,7 +195,6 @@ jobs:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
           docker run --rm \
-            -e AUTH_MODE="bearer_only" \
             -e CIAM_AUTHORITY="https://treesightauth.ciamlogin.com" \
             -e CIAM_TENANT_ID="ci-test-tenant" \
             -e CIAM_API_AUDIENCE="api://ci-test-audience" \
@@ -272,17 +271,15 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'dev' }}
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-      TF_VAR_auth_mode: bearer_only
-      TF_VAR_ciam_authority: ${{ secrets.TF_VAR_CIAM_AUTHORITY || '' }}
-      TF_VAR_ciam_tenant_id: ${{ secrets.TF_VAR_CIAM_TENANT_ID || '' }}
-      TF_VAR_ciam_api_audience: ${{ secrets.TF_VAR_CIAM_API_AUDIENCE || '' }}
-      TF_VAR_ciam_client_id: ${{ secrets.TF_VAR_CIAM_CLIENT_ID || '' }}
+      # CIAM tenant_id, subdomain, client_id, and api_audience are in tfvars
+      # (all public values). Only the deploy SP client_id remains a secret.
       TF_VAR_ciam_deploy_client_id: ${{ secrets.TF_VAR_CIAM_DEPLOY_CLIENT_ID || '' }}
     outputs:
       function_app_orch_hostname: ${{ steps.hostname.outputs.hostname }}
       appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
       swa_hostname: ${{ steps.swa-hostname.outputs.hostname }}
       custom_domain: ${{ steps.swa-hostname.outputs.custom_domain }}
+      ciam_page_config: ${{ steps.ciam-page-config.outputs.json }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -298,7 +295,7 @@ jobs:
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
 
-      - name: Validate CIAM auth env wiring
+      - name: Validate CIAM deploy SP wiring
         shell: bash
         run: |
           trim_space() {
@@ -308,22 +305,12 @@ jobs:
             printf '%s' "$value"
           }
           set -euo pipefail
-          mode="${TF_VAR_auth_mode:-bearer_only}"
-          if [[ "$mode" != "bearer_only" ]]; then
-            echo "Invalid TF_VAR_auth_mode='${mode}'. Expected bearer_only."
-            exit 1
-          fi
-          ciam_authority="$(trim_space "${TF_VAR_ciam_authority:-}")"
-          ciam_tenant_id="$(trim_space "${TF_VAR_ciam_tenant_id:-}")"
-          ciam_api_audience="$(trim_space "${TF_VAR_ciam_api_audience:-}")"
-          if [[ -z "$ciam_authority" || -z "$ciam_tenant_id" || -z "$ciam_api_audience" ]]; then
-            echo "CIAM auth misconfigured: TF_VAR_auth_mode=${mode} requires TF_VAR_ciam_authority, TF_VAR_ciam_tenant_id, and TF_VAR_ciam_api_audience."
-            exit 1
-          fi
-          ciam_client_id="$(trim_space "${TF_VAR_ciam_client_id:-}")"
+          # tenant_id, subdomain, client_id, api_audience are sourced from tfvars
+          # (public values). Only deploy_client_id remains a secret; without it,
+          # Tofu skips redirect URI management.
           ciam_deploy_client_id="$(trim_space "${TF_VAR_ciam_deploy_client_id:-}")"
-          if [[ -z "$ciam_client_id" || -z "$ciam_deploy_client_id" ]]; then
-            echo "⚠️  TF_VAR_ciam_client_id or TF_VAR_ciam_deploy_client_id not set — Tofu will skip managing CIAM SPA redirect URIs. Set both secrets to enable automatic redirect URI registration."
+          if [[ -z "$ciam_deploy_client_id" ]]; then
+            echo "⚠️  TF_VAR_CIAM_DEPLOY_CLIENT_ID not set — Tofu will skip managing CIAM SPA redirect URIs. Bootstrap the deploy SP and set this secret to enable automatic redirect URI registration."
           fi
 
       - name: Cache OpenTofu providers
@@ -811,6 +798,19 @@ jobs:
         run: |
           echo "connection_string=$(tofu output -raw appinsights_connection_string)" >> "$GITHUB_OUTPUT"
 
+      - name: Export CIAM page config
+        id: ciam-page-config
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          # Single JSON blob with public CIAM bootstrap values; injected into
+          # page HTML by the SWA deploy job. No Key Vault round-trip needed.
+          echo "json=$(tofu output -raw ciam_page_config)" >> "$GITHUB_OUTPUT"
+
       - name: Verify runtime readiness
         id: verify-readiness
         working-directory: infra/tofu
@@ -1122,6 +1122,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Inject API config
         run: |
           cat > website/api-config.json <<EOF
@@ -1139,16 +1146,21 @@ jobs:
 
       - name: Inject CIAM config
         env:
-          CIAM_CLIENT_ID: ${{ secrets.CIAM_CLIENT_ID }}
-          CIAM_AUTHORITY: ${{ secrets.CIAM_AUTHORITY }}
-          CIAM_TENANT_ID: ${{ secrets.CIAM_TENANT_ID }}
-          CIAM_API_AUDIENCE: ${{ secrets.CIAM_API_AUDIENCE }}
+          CIAM_JSON: ${{ needs.deploy-infra.outputs.ciam_page_config }}
         run: |
-          if [ -n "$CIAM_CLIENT_ID" ] && [ -n "$CIAM_AUTHORITY" ]; then
-            CIAM_JSON="{\"clientId\":\"${CIAM_CLIENT_ID}\",\"authority\":\"${CIAM_AUTHORITY}\",\"tenantId\":\"${CIAM_TENANT_ID}\",\"apiAudience\":\"${CIAM_API_AUDIENCE}\"}"
-            find website -name '*.html' -exec sed -i \
-              's|{"clientId":"","authority":"","tenantId":"","apiAudience":""}|'"${CIAM_JSON}"'|' {} +
+          set -euo pipefail
+          # CIAM page config is a JSON blob produced by `tofu output -raw
+          # ciam_page_config` (see locals.ciam_page_config_json). Values are
+          # public; no secret-store round-trip required. Empty JSON disables
+          # the page config rather than failing the deploy.
+          if [ -z "$CIAM_JSON" ] || [ "$CIAM_JSON" = "{}" ]; then
+            echo "⚠️  ciam_page_config Tofu output is empty — page config will not be injected."
+            exit 0
           fi
+          # Escape sed delimiter / metacharacters in the JSON payload.
+          ESCAPED=$(printf '%s' "$CIAM_JSON" | sed -e 's/[\&|]/\\&/g')
+          find website -name '*.html' -exec sed -i \
+            's|{"clientId":"","authority":"","tenantId":"","apiAudience":""}|'"${ESCAPED}"'|' {} +
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1

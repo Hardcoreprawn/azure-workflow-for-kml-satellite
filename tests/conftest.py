@@ -14,7 +14,6 @@ import pytest
 # Ensure required config env vars are set for config module import
 os.environ.setdefault("AzureWebJobsStorage", "UseDevelopmentStorage=true")
 os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")
-os.environ.setdefault("AUTH_MODE", "bearer_only")
 os.environ.setdefault("CIAM_AUTHORITY", "https://ciam.example.com")
 os.environ.setdefault("CIAM_TENANT_ID", "test-tenant")
 os.environ.setdefault("CIAM_API_AUDIENCE", "api://test-audience")

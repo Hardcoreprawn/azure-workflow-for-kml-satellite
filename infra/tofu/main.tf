@@ -1061,8 +1061,8 @@ resource "azurerm_static_web_app_custom_domain" "main" {
 # --- CIAM SPA redirect URIs ---
 # Keeps the app registration's allowed redirect URIs in sync with the deployed
 # site URL so that MSAL loginRedirect() (canopex-auth.js) is never rejected
-# with AADSTS50011. Only active when ciam_client_id and ciam_deploy_client_id
-# are both set (see variables.tf for the operator prerequisite).
+# with AADSTS50011. Active when ciam_deploy_client_id is set; the SPA app's
+# own client_id is always present in tfvars (validated in variables.tf).
 #
 # Operator prerequisite (one-time, manual):
 #   1. In the CIAM tenant, create a service principal (app registration).
@@ -1071,8 +1071,8 @@ resource "azurerm_static_web_app_custom_domain" "main" {
 #        Issuer: https://token.actions.githubusercontent.com
 #        Subject: repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:<env>
 #        Audience: api://AzureADTokenExchange
-#   4. Set TF_VAR_CIAM_CLIENT_ID and TF_VAR_CIAM_DEPLOY_CLIENT_ID in the
-#      GitHub Environment secrets.
+#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub Environment secrets
+#      (the SPA app's client_id lives in environments/<env>.tfvars).
 data "azuread_application" "ciam" {
   count     = local.ciam_redirect_enabled ? 1 : 0
   client_id = var.ciam_client_id
@@ -1146,9 +1146,11 @@ resource "azurerm_role_assignment" "orch_key_vault_secrets_user" {
   principal_id         = azapi_resource.function_app_orch.identity[0].principal_id
 }
 
-# Allow the deployer (tofu apply / setup scripts) to manage secrets
+# Allow the deployer (tofu apply / setup scripts) to manage secrets in Key Vault.
+# Required by the external Stripe rotation script (`make stripe-setup`); CIAM
+# config values are no longer stored in Key Vault since they are public and now
+# flow as plain Function App app settings + a `ciam_page_config` Tofu output.
 resource "azurerm_role_assignment" "key_vault_secrets_officer" {
-  count                = var.enable_stripe ? 1 : 0
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = data.azurerm_client_config.current.object_id
@@ -1211,7 +1213,6 @@ locals {
       CORS_ALLOWED_ORIGINS                = join(",", local.browser_allowed_origins)
       PRIMARY_SITE_URL                    = local.primary_site_url
       REQUIRE_AUTH                        = "true"
-      AUTH_MODE                           = var.auth_mode
       OPS_DASHBOARD_KEY                   = var.ops_dashboard_key
     },
     var.billing_allowed_users != "" ? { BILLING_ALLOWED_USERS = var.billing_allowed_users } : {},
@@ -1221,9 +1222,12 @@ locals {
       COSMOS_DATABASE_NAME = azurerm_cosmosdb_sql_database.main[0].name
     } : {},
     {
-      CIAM_AUTHORITY     = var.ciam_authority
-      CIAM_TENANT_ID     = var.ciam_tenant_id
-      CIAM_API_AUDIENCE  = var.ciam_api_audience
+      # CIAM bearer-token validation config. These values are *public* (they
+      # appear in JWTs and in the page HTML the SPA serves) so they are passed
+      # as plain app settings rather than @Microsoft.KeyVault references.
+      CIAM_AUTHORITY    = local.ciam_authority
+      CIAM_TENANT_ID    = var.ciam_tenant_id
+      CIAM_API_AUDIENCE = var.ciam_api_audience
     }
   )
 

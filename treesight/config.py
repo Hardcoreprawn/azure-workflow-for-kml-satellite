@@ -97,9 +97,6 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 # header with a valid bearer token.
 REQUIRE_AUTH = _env_bool("REQUIRE_AUTH", False)
 
-# Auth mode is now single-path only: bearer_only.
-AUTH_MODE = _env("AUTH_MODE", "bearer_only").strip().lower() or "bearer_only"
-
 # CIAM-native bearer JWT config (#709).
 CIAM_AUTHORITY = _env("CIAM_AUTHORITY")
 CIAM_TENANT_ID = _env("CIAM_TENANT_ID")
@@ -164,14 +161,12 @@ def validate_config() -> None:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:
         errors.append(f"AOI_MAX_AREA_HA must be > 0, got {AOI_MAX_AREA_HA}")
-    if AUTH_MODE != "bearer_only":
-        errors.append("AUTH_MODE must be bearer_only")
     if not CIAM_AUTHORITY:
-        errors.append("CIAM_AUTHORITY must be set when AUTH_MODE is bearer_only")
+        errors.append("CIAM_AUTHORITY must be set")
     if not CIAM_TENANT_ID:
-        errors.append("CIAM_TENANT_ID must be set when AUTH_MODE is bearer_only")
+        errors.append("CIAM_TENANT_ID must be set")
     if not CIAM_API_AUDIENCE:
-        errors.append("CIAM_API_AUDIENCE must be set when AUTH_MODE is bearer_only")
+        errors.append("CIAM_API_AUDIENCE must be set")
     if CIAM_JWT_LEEWAY_SECONDS < 0:
         errors.append("CIAM_JWT_LEEWAY_SECONDS must be >= 0")
     if errors:

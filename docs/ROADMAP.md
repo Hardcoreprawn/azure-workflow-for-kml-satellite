@@ -104,12 +104,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #799 | chore(infra): refactor CIAM tenant config to HashiCorp/MS reference architecture — bake public CIAM IDs into tfvars (no Key Vault, no GH-secrets injection), derive `ciam_authority` from tenant subdomain, surface single `ciam_page_config` Tofu output for SWA HTML injection, drop dead `auth_mode` variable, simplify redirect-URI gate (closes #801, #802, #803, #805) |
 | #796 | refactor(blueprints): migrate `org.py` handlers to `@require_auth` decorator (pilot for #791) — removes 4 duplicated OPTIONS+check_auth blocks |
 | #790 | docs(architecture): comprehensive C4 review (Level 1–4 + code analysis) — confirms #779–#785 and surfaces new code-hygiene issues #791, #792, #793 |
 | #797 | ci: stub `Lint`/`Test` checks for docs-only PRs to satisfy branch protection (`paths-ignore` in ci.yml left required checks unreported, blocking docs-only auto-merge) |
 | #787 | feat(analytics+docs): harden frontend telemetry (`window.onerror` + `unhandledrejection` + `data-track` CTAs) and add C4 architecture review (2026-05-11) — files arch findings as #779/#780/#782/#784/#785 |
 | #776 | fix(infra): CIAM SPA redirect URI management via Tofu — conditional azuread provider, lockfile, all-or-nothing validation (closes #777) |
-| #769 | fix(pipeline): prevent double quota on SAS fallback + accept KMZ end-to-end (closes #767, #768) |
 
 ---
 

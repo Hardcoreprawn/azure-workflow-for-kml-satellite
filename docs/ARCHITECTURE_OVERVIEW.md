@@ -108,7 +108,6 @@ signature verification.
 
 - Backend bearer validation: ✅ complete (#709 closed).
 - Frontend MSAL migration: ✅ complete (#710 delivered).
-- Deployed `AUTH_MODE`: `bearer_only`.
 
 > **Do not add new code that depends on `X-MS-CLIENT-PRINCIPAL` forwarding or
 > `/.auth/*` being in the auth trust chain.** Those are transitional and will
@@ -116,8 +115,8 @@ signature verification.
 
 #### CIAM Bearer Auth (#709 — complete)
 
-Backend bearer JWT validation is complete. `AUTH_MODE=bearer_only` is the only
-supported mode, and it requires these env vars:
+Backend bearer JWT validation is complete. Bearer-only is the only supported
+auth mode, and it requires these env vars:
 
 - `CIAM_AUTHORITY`
 - `CIAM_TENANT_ID`
