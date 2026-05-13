@@ -177,7 +177,13 @@
     if (!_msalInitPromise) {
       _msalInitPromise = app.initialize().then(function () {
         return app.handleRedirectPromise().catch(function (redirectErr) {
-          console.warn('[CanopexCiam] handleRedirectPromise error:', redirectErr);
+          // Surface to console.error AND to AppInsights so the failure is
+          // visible server-side. handleRedirectPromise rejection means the
+          // user came back from CIAM but the response was rejected (e.g.
+          // issuer mismatch, state mismatch). Silent warns hid an outage
+          // in production — see fix/ciam-authority-tenant-path.
+          console.error('[CanopexCiam] handleRedirectPromise error:', redirectErr);
+          reportAuthFailure('handleRedirectPromise', redirectErr);
           return null;
         });
       }).then(function () {
@@ -185,10 +191,32 @@
         return app;
       }).catch(function (initErr) {
         _msalInitPromise = null;
+        console.error('[CanopexCiam] MSAL init failed:', initErr);
+        reportAuthFailure('msalInitialize', initErr);
         throw initErr;
       });
     }
     return _msalInitPromise;
+  }
+
+  function reportAuthFailure(phase, err) {
+    try {
+      // analytics.js exposes the AppInsights SDK on window.__ai once loaded.
+      var ai = window.__ai;
+      if (ai && typeof ai.trackException === 'function') {
+        ai.trackException({
+          exception: err instanceof Error ? err : new Error(String(err)),
+          properties: {
+            phase: phase,
+            errorCode: (err && err.errorCode) || '',
+            errorMessage: (err && err.errorMessage) || (err && err.message) || '',
+            subError: (err && err.subError) || '',
+          },
+        });
+      }
+    } catch (_) {
+      /* never let telemetry break auth */
+    }
   }
 
   function getAccount() {
@@ -211,6 +239,7 @@
       return app.loginRedirect({ scopes: buildApiScopes(getCiamConfig()) });
     }).catch(function (err) {
       console.error('[CanopexCiam] loginRedirect failed:', err);
+      reportAuthFailure('loginRedirect', err);
       return null;
     });
   }
@@ -229,6 +258,7 @@
       });
     }).catch(function (err) {
       console.error('[CanopexCiam] logoutRedirect failed:', err);
+      reportAuthFailure('logoutRedirect', err);
       return null;
     });
   }

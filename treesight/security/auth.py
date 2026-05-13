@@ -133,9 +133,19 @@ def _jwks_client(jwks_url: str):
 
 @lru_cache(maxsize=2)
 def _oidc_metadata(authority: str, tenant_id: str) -> dict[str, str]:
-    """Fetch OIDC metadata and return issuer/JWKS values."""
-    authority = authority.rstrip("/")
-    url = f"{authority}/{tenant_id}/v2.0/.well-known/openid-configuration"
+    """Fetch OIDC metadata and return issuer/JWKS values.
+
+    Accepts authority either as the bare host
+    (``https://<sub>.ciamlogin.com/``) or with the tenant path already
+    appended (``https://<sub>.ciamlogin.com/<tenant-id>/``). The latter is
+    the recommended Entra External ID form because MSAL.js requires the
+    tenant in the authority to validate id_token issuers.
+    """
+    base = authority.rstrip("/")
+    suffix = f"/{tenant_id}"
+    if not base.endswith(suffix):
+        base = f"{base}{suffix}"
+    url = f"{base}/v2.0/.well-known/openid-configuration"
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     metadata = response.json()

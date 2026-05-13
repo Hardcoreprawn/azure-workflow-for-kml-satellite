@@ -104,6 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|  
+| #808 | fix(auth): include tenant ID in CIAM authority URL so MSAL can validate id_token issuer post-redirect — without the tenant path, `handleRedirectPromise()` rejected silently (swallowed by `.catch(warn)`) and users returning from CIAM landed back on the home page logged-out; also unswallowed the catch and wired auth failures to AppInsights via `trackException` so future regressions are visible server-side |
 | #807 | fix(infra): import existing CIAM SPA redirect URIs into Tofu state — `import` block adopts the resource that was created via the manual `az ad app update` bootstrap before #799 took ownership, unblocking the failed post-merge deploy (Tofu Apply was erroring with "resource already exists - to be managed via Terraform this resource needs to be imported into the State") |
 | #799 | chore(infra): refactor CIAM tenant config to HashiCorp/MS reference architecture — bake public CIAM IDs into tfvars (no Key Vault, no GH-secrets injection), derive `ciam_authority` from tenant subdomain, surface single `ciam_page_config` Tofu output for SWA HTML injection, drop dead `auth_mode` variable, simplify redirect-URI gate (closes #801, #802, #803, #805) |
 | #796 | refactor(blueprints): migrate `org.py` handlers to `@require_auth` decorator (pilot for #791) — removes 4 duplicated OPTIONS+check_auth blocks |
