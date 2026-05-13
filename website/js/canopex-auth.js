@@ -7,11 +7,10 @@
  * landing.js (marketing page) and app-msal.js (app shell). Both consumers
  * now go through `window.CanopexCiam` so:
  *   - There is exactly one PublicClientApplication per page.
- *   - `redirectUri` is derived from the current page path, so the page that
- *     initiates login is the page that completes the redirect handshake.
- *     This removes the "sign-in lands on /app/ instead of /eudr/" class of
- *     bug at its root and removes the need for per-page `appPath` config or
- *     the doubled CI sed substitution that PR #774 introduced.
+  *   - `redirectUri` is always the origin root ('/'). MSAL's
+  *     navigateToLoginRequestUrl (default: true) saves the originating page
+  *     and navigates back to it after auth completes. Only the root URI needs
+  *     to be registered in CIAM — no per-page URI registration required.
  *   - Scope construction, token preference, error semantics and the
  *     `authRedirectTriggered` marker are defined once.
  *
@@ -95,22 +94,17 @@
   // `index.html`, then ensure non-file directory paths end in `/` so
   // operators only need to register the canonical (slash-terminated)
   // form once per page.
-  function pageRedirectUri() {
-    var path = window.location.pathname || '/';
-    path = path.replace(/index\.html$/i, '');
-    var lastSegment = path.substring(path.lastIndexOf('/') + 1);
-    if (lastSegment.length > 0 && lastSegment.indexOf('.') === -1) {
-      path = path + '/';
-    }
-    return window.location.origin + path;
-  }
-
+  // Always redirect to the origin root. MSAL's navigateToLoginRequestUrl
+  // (true by default) saves the originating page URL before login and
+  // navigates back to it after the redirect completes at '/'. This means
+  // only 'https://<domain>/' needs to be registered in CIAM — no per-page
+  // URI registration, no TF_VAR_CIAM_DEPLOY_CLIENT_ID secret required.
   function buildMsalConfig(ciam) {
     return {
       auth: {
         clientId: ciam.clientId,
         authority: ciam.authority,
-        redirectUri: pageRedirectUri(),
+        redirectUri: window.location.origin + '/',
         postLogoutRedirectUri: window.location.origin + '/',
         knownAuthorities: [ciam.authority.replace(/https?:\/\//, '').split('/')[0]],
       },

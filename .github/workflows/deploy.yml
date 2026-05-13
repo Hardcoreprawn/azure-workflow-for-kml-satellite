@@ -1154,8 +1154,12 @@ jobs:
           # public; no secret-store round-trip required. Empty JSON disables
           # the page config rather than failing the deploy.
           if [ -z "$CIAM_JSON" ] || [ "$CIAM_JSON" = "{}" ]; then
-            echo "⚠️  ciam_page_config Tofu output is empty — page config will not be injected."
-            exit 0
+            echo "❌ ciam_page_config Tofu output is empty — CIAM config will NOT be injected."
+            echo "   This means the deployed site will have auth disabled for all users."
+            echo "   Verify that ciam_client_id, ciam_tenant_id, ciam_api_audience, and"
+            echo "   ciam_tenant_subdomain are all set in environments/<env>.tfvars and"
+            echo "   that 'tofu output -raw ciam_page_config' returns a non-empty value."
+            exit 1
           fi
           # Escape sed delimiter / metacharacters in the JSON payload.
           ESCAPED=$(printf '%s' "$CIAM_JSON" | sed -e 's/[\&|]/\\&/g')

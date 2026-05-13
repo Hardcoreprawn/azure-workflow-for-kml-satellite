@@ -540,7 +540,7 @@ def fetch_ndvi_stat(
         f"&rescale=-0.2,0.8&nodata=0&format=png"
     )
     _owns_client = client is None
-    http = client or httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS)
+    http = client or httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False)
     try:
         r = http.get(url)
         if r.status_code != 200:

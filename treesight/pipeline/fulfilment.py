@@ -354,7 +354,7 @@ def fetch_asset_bytes(url: str) -> bytes:
     log_phase("fulfilment", "fetch_start", url=url[:120])
 
     with (
-        httpx.Client(timeout=300.0, follow_redirects=True) as client,
+        httpx.Client(timeout=300.0, follow_redirects=True, trust_env=False) as client,
         client.stream("GET", url) as response,
     ):
         response.raise_for_status()

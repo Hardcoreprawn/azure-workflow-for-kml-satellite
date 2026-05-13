@@ -230,7 +230,7 @@ def _run_mosaic_ndvi_phase(
             if f["collection"] in cloud_collections
             else []
         )
-        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
+        with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
             sid = None
             display_collection = str(f.get("collection", ""))
             if f.get("rgb_display_suitable", True):
@@ -333,7 +333,7 @@ def _run_mosaic_ndvi_phase(
         # Fallback: tile-based sampling
         nsid = ndvi_search_ids[idx]
         if nsid:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS) as cl:
+            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
                 stat = fetch_ndvi_stat(nsid, coords, cl)
             return idx, stat, None
         return idx, None, None

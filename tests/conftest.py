@@ -11,6 +11,12 @@ from unittest.mock import MagicMock, patch
 import azure.functions as func
 import pytest
 
+# Clear proxy env vars to prevent httpx/stripe from detecting SOCKS proxy
+# that requires socksio (which is not installed). Tests should not use proxy anyway.
+for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
+    os.environ.pop(var, None)
+    os.environ.pop(var.lower(), None)
+
 # Ensure required config env vars are set for config module import
 os.environ.setdefault("AzureWebJobsStorage", "UseDevelopmentStorage=true")
 os.environ.setdefault("DEMO_VALET_TOKEN_SECRET", "test-secret-key-for-unit-tests-only")

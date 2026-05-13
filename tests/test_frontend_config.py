@@ -314,29 +314,27 @@ class TestAuthConfig:
             "canopex-auth.js getToken must throw a visible error when apiAudience is missing"
         )
 
-    def test_msal_module_uses_page_derived_redirect_uri(self):
-        """redirectUri must be derived from the current page path, not hard-coded.
+    def test_msal_module_uses_root_redirect_uri(self):
+        """redirectUri must use window.location.origin + '/' (root only).
 
-        Hard-coding redirectUri to '/app/' caused the long-running bug where
-        sign-in from /eudr/ landed on /app/ and the originating page lost
-        the redirect handshake. PR #774 patched this with a per-page appPath
-        config + doubled CI sed; deriving from window.location.pathname
-        eliminates the need for either.
+        Using a root redirect URI with MSAL's default navigateToLoginRequestUrl: true
+        is the standard MSAL SPA pattern. It avoids CIAM AADSTS50011 errors when
+        signing in from non-root pages (/eudr/, /app/, etc.). MSAL automatically
+        restores the original page URL after the auth redirect completes at root.
+
+        This replaces the old per-page redirect URI approach (PR #774) which required
+        complex per-page CIAM registration and CI-time HTML injection.
         """
         js = APP_CIAM_JS.read_text()
-        assert "window.location.pathname" in js, (
-            "canopex-auth.js must derive redirectUri from window.location.pathname"
+        assert "window.location.origin + '/'" in js or 'window.location.origin + "/"' in js, (
+            "canopex-auth.js must use window.location.origin + '/' as redirectUri"
         )
-        assert "window.location.origin" in js, (
-            "canopex-auth.js must build redirectUri from window.location.origin"
+        assert "navigateToLoginRequestUrl" in js, (
+            "canopex-auth.js must mention navigateToLoginRequestUrl for page restoration"
         )
-        # Path normalisation so /app and /app/ both resolve to the same
-        # registered redirect URI in CIAM (SWA navigationFallback quirk).
-        assert "index.html" in js, (
-            "canopex-auth.js must strip a trailing index.html from the redirect URI"
-        )
-        assert "+ '/app/'" not in js, (
-            "canopex-auth.js must not hard-code '/app/' in the redirectUri"
+        # Old per-page pattern must be removed
+        assert "pageRedirectUri" not in js, (
+            "canopex-auth.js must not use pageRedirectUri function (old per-page pattern)"
         )
 
     def test_msal_module_splits_update_auth_ui_render_paths(self):
