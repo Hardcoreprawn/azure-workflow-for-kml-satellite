@@ -172,8 +172,8 @@ class TestCsp:
         frame_match = re.search(r"frame-src\s+([^;]+)", csp)
         assert frame_match, "CSP missing frame-src directive"
         tokens = frame_match.group(1).split()
-        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in tokens), (
-            "frame-src must include treesightauth.ciamlogin.com for MSAL silent refresh"
+        assert any(_csp_token_matches_host(src, "canopex.ciamlogin.com") for src in tokens), (
+            "frame-src must include canopex.ciamlogin.com for MSAL silent refresh"
         )
 
     def test_connect_src_allows_ciam_domain(self, swa_config):
@@ -182,8 +182,8 @@ class TestCsp:
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
         tokens = connect_match.group(1).split()
-        assert any(_csp_token_matches_host(src, "treesightauth.ciamlogin.com") for src in tokens), (
-            "connect-src must include treesightauth.ciamlogin.com for MSAL token calls"
+        assert any(_csp_token_matches_host(src, "canopex.ciamlogin.com") for src in tokens), (
+            "connect-src must include canopex.ciamlogin.com for MSAL token calls"
         )
 
     def test_script_src_no_dead_cdn(self, swa_config):

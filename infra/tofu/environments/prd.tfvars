@@ -22,7 +22,7 @@ enable_cosmos_db      = true
 # Public values: visible in the deployed page HTML (canopex-ciam-config script).
 # Tofu surfaces them as plain Function App app settings and a `ciam_page_config`
 # output the SWA workflow injects into the page HTML at deploy time.
-ciam_tenant_subdomain = "treesightauth"
-ciam_tenant_id        = "92001438-8b42-4bd7-950f-0ed1775f87b7"
-ciam_client_id        = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
+ciam_tenant_subdomain = "canopex"
+ciam_tenant_id        = "98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7"
+ciam_client_id        = "1b51e2e8-15af-448b-8886-1345aeda73ba"
 ciam_api_audience     = "api://canopex"

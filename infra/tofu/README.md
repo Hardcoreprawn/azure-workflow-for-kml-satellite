@@ -76,14 +76,11 @@ are missing.
 
 ## CIAM deploy SP bootstrap (one-time, done)
 
-**Status (May 2026):** Bootstrap complete. Deploy SP `canopex-tofu-deploy`
-(appId `3753e9c8-8969-443a-9377-a7716f1f25a5`) exists in CIAM tenant
-`92001438-8b42-4bd7-950f-0ed1775f87b7` with `Application.ReadWrite.OwnedBy`
-(admin-consented), Owner of SPA app `6e2abd0a-…`, and federated GitHub OIDC
-credentials for `repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:{dev,prd}`.
-Both GitHub Environments have `TF_VAR_CIAM_DEPLOY_CLIENT_ID` set. Tofu now
-manages `azuread_application_redirect_uris.ciam_spa[0]` from
-`local.ciam_spa_redirect_uris` in `locals.tf`.
+**Status (May 2026, rebuilt):** Bootstrap pending — old tenant `treesightauth`
+was torn down and replaced with new tenant `canopex` (tenant ID
+`98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7`). The deploy SP must be re-created in
+the new tenant before tofu can manage `azuread_application_redirect_uris.ciam_spa[0]`.
+See "Re-create deploy SP" steps below.
 
 If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 
@@ -92,7 +89,7 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 2. Create the deploy SP in the CIAM tenant: `az ad app create --display-name
    "Canopex Tofu Deploy"`. Note its `appId` (this is `TF_VAR_CIAM_DEPLOY_CLIENT_ID`).
 3. Grant it `Application.ReadWrite.OwnedBy` on Microsoft Graph and admin-consent.
-4. Add it as an Owner of the SPA app (`6e2abd0a-…`) via Microsoft Graph
+4. Add it as an Owner of the SPA app (`1b51e2e8-…`) via Microsoft Graph
    (`POST /applications/<spa-objectId>/owners/$ref`).
 5. Add a federated credential on the deploy SP for each GitHub Environment:
    - Issuer: `https://token.actions.githubusercontent.com`
