@@ -66,18 +66,14 @@ locals {
 
   # SPA redirect URIs to register in the CIAM app registration.
   # Must include every origin+path that canopex-auth.js pageRedirectUri() may produce.
-  # Mirrors the browser_allowed_origins pattern: localhost ports for non-prd,
-  # SWA default hostname always, and the custom domain when configured.
   # MSAL always redirects to the origin root ('/') — canopex-auth.js uses
   # window.location.origin + '/' as redirectUri. MSAL's navigateToLoginRequestUrl
   # (default: true) returns the user to the originating page automatically.
   # Only root URIs need CIAM registration; no per-page entries required.
   ciam_spa_redirect_uris = distinct(concat(
-    var.environment == "prd" ? [] : [
+    [
       "http://localhost:1111/",
       "http://localhost:4280/",
-    ],
-    [
       "https://${azurerm_static_web_app.main.default_host_name}/",
     ],
     var.custom_domain != "" ? [

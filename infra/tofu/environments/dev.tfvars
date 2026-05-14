@@ -28,9 +28,8 @@ function_min_instances       = 0
 orch_min_instances           = 0
 
 # --- CIAM (Entra External ID) ---
-# Shared with prd: dev and prd both consume the same CIAM tenant/app.
-# Public values; safe to commit. See prd.tfvars for context.
-ciam_tenant_subdomain = "treesightauth"
-ciam_tenant_id        = "92001438-8b42-4bd7-950f-0ed1775f87b7"
-ciam_client_id        = "6e2abd0a-61a4-41a5-bdb5-7e1c91471fc6"
+# Public values; safe to commit.
+ciam_tenant_subdomain = "canopex"
+ciam_tenant_id        = "98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7"
+ciam_client_id        = "1b51e2e8-15af-448b-8886-1345aeda73ba"
 ciam_api_audience     = "api://canopex"

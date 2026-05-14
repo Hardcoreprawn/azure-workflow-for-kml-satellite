@@ -69,7 +69,7 @@ calls go cross-origin to the orchestrator hostname discovered from
 functions, and compute is not a browser ingress.
 
 ```text
-Browser ─── MSAL.js ──→ CIAM (Entra External ID, treesightauth.ciamlogin.com)
+Browser ─── MSAL.js ──→ CIAM (Entra External ID, canopex.ciamlogin.com)
         │                └── issues CIAM JWT
         │
         └── /api/* (Authorization: Bearer <token>) ──→ Orchestrator FA (public ingress)
@@ -152,7 +152,7 @@ Authentication uses Entra External ID (CIAM) as the identity provider. The front
 acquires tokens via MSAL.js; the API validates them server-side. SWA is a static
 host only and plays no role in the auth trust chain.
 
-- **Provider:** Entra External ID (CIAM) — tenant `treesightauth.ciamlogin.com`
+- **Provider:** Entra External ID (CIAM) — tenant `canopex.ciamlogin.com`
 - **Frontend:** MSAL.js acquires CIAM JWT; sends `Authorization: Bearer <token>` on API calls
 - **Backend:** `require_auth` decorator verifies JWT via OIDC/JWKS; identity = `tid:oid` from claims
 - **SWA role:** static file host only
