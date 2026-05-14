@@ -32,7 +32,6 @@ from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.eudr_billing import check_eudr_entitlement, consume_eudr_trial
 from treesight.security.orgs import get_user_org
-from treesight.security.quota import consume_quota, release_quota
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
@@ -107,14 +106,6 @@ def _sanitise_submission_context(ctx: dict) -> dict:
 # ---------------------------------------------------------------------------
 # POST /api/upload/token — mint a time-limited, write-only SAS URL
 # ---------------------------------------------------------------------------
-
-
-def _safe_release_quota(user_id: str, instance_id: str = "") -> None:
-    """Best-effort quota refund — never raises."""
-    try:
-        release_quota(user_id, instance_id=instance_id)
-    except Exception:
-        logger.exception("Failed to release quota for user=%s", user_id)
 
 
 _KMZ_EXTENSION = ".kmz"
@@ -276,35 +267,6 @@ def _check_eudr_entitlement(
     return org_id, entitlement, None
 
 
-def _consume_upload_quota(
-    user_id: str, req: func.HttpRequest
-) -> tuple[bool, dict, func.HttpResponse | None]:
-    """Consume quota and compute billing fields.
-
-    Returns (quota_consumed, billing_fields, error_response_or_None).
-    """
-    billing_fields: dict = {}
-    try:
-        consume_quota(user_id)
-    except ValueError as exc:
-        return False, {}, error_response(403, str(exc), req=req)
-    except Exception:
-        logger.exception(
-            "Quota storage unavailable for user=%s — allowing submission",
-            _redact(user_id),
-        )
-        return False, {}, None
-
-    try:
-        from treesight.security.billing_ledger import billing_fields_for_submission
-
-        billing_fields = billing_fields_for_submission(user_id)
-    except Exception:
-        logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
-
-    return True, billing_fields, None
-
-
 def _write_ticket_and_mint_sas(
     body: dict,
     user_id: str,
@@ -343,50 +305,6 @@ def _write_ticket_and_mint_sas(
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     return sas_url, None
-
-
-def _consume_eudr_trial_if_needed(
-    is_eudr: bool,
-    entitlement: dict,
-    eudr_org_id: str,
-    quota_consumed: bool,
-    user_id: str,
-    submission_id: str,
-    req: func.HttpRequest,
-) -> func.HttpResponse | None:
-    """Decrement EUDR free-trial counter if applicable.
-
-    Returns error_response or None on success.
-    """
-    if not (is_eudr and entitlement.get("reason") == "free_trial"):
-        return None
-    try:
-        consume_eudr_trial(eudr_org_id)
-    except ValueError:
-        logger.warning(
-            "EUDR trial race: entitlement passed but consume failed org=%s",
-            eudr_org_id,
-        )
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(
-            403,
-            "EUDR entitlement exhausted — subscription required",
-            req=req,
-        )
-    except Exception:
-        logger.exception(
-            "EUDR trial consumption failed unexpectedly org=%s",
-            eudr_org_id,
-        )
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(
-            503,
-            "EUDR entitlement service is temporarily unavailable. Please retry.",
-            req=req,
-        )
-    return None
 
 
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)

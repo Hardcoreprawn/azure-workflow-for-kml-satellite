@@ -63,13 +63,9 @@ class TestUploadToken:
     """SAS token minting endpoint."""
 
     def setup_method(self):
-        self._quota_patcher = patch("blueprints.upload.consume_quota")
-        self._release_patcher = patch("blueprints.upload.release_quota")
         self._persist_patcher = patch("blueprints.upload._persist_submission_record")
         self._org_patcher = patch("blueprints.upload.get_user_org")
         self._reserve_patcher = patch("blueprints.upload.reserve_run")
-        self.mock_consume_quota = self._quota_patcher.start()
-        self.mock_release_quota = self._release_patcher.start()
         self.mock_persist = self._persist_patcher.start()
         self.mock_get_user_org = self._org_patcher.start()
         self.mock_reserve_run = self._reserve_patcher.start()
@@ -80,8 +76,6 @@ class TestUploadToken:
 
     def teardown_method(self):
         self._persist_patcher.stop()
-        self._release_patcher.stop()
-        self._quota_patcher.stop()
         self._reserve_patcher.stop()
         self._org_patcher.stop()
 
