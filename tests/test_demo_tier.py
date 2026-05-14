@@ -245,7 +245,8 @@ class TestSignedInLowCostSubmission:
         return req
 
     @patch("blueprints.pipeline.submission.get_effective_subscription")
-    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
+    @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
@@ -253,7 +254,8 @@ class TestSignedInLowCostSubmission:
         self,
         mock_storage_cls,
         mock_auth,
-        mock_quota,
+        mock_reserve_run,
+        mock_get_user_org,
         mock_effective_subscription,
     ):
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -281,7 +283,8 @@ class TestSignedInLowCostSubmission:
         assert ticket_data["user_id"] == "user-123"
 
     @patch("blueprints.pipeline.submission.get_effective_subscription")
-    @patch("blueprints.pipeline.submission.consume_quota", return_value=5)
+    @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
+    @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
     @pytest.mark.asyncio
@@ -289,7 +292,8 @@ class TestSignedInLowCostSubmission:
         self,
         mock_storage_cls,
         mock_auth,
-        mock_quota,
+        mock_reserve_run,
+        mock_get_user_org,
         mock_effective_subscription,
     ):
         from blueprints.pipeline.submission import _submit_analysis_request
