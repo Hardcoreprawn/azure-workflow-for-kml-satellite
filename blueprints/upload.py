@@ -22,6 +22,12 @@ from azure.storage.blob import (
     generate_blob_sas,
 )
 
+from treesight.billing.accounting import (
+    MemberCapExceededError,
+    OrgNotFoundError,
+    QuotaExhaustedError,
+    reserve_run,
+)
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.eudr_billing import check_eudr_entitlement, consume_eudr_trial
@@ -303,7 +309,6 @@ def _write_ticket_and_mint_sas(
     submission_id: str,
     blob_name: str,
     submission_context: dict,
-    quota_consumed: bool,
     req: func.HttpRequest,
     content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, func.HttpResponse | None]:
@@ -324,8 +329,6 @@ def _write_ticket_and_mint_sas(
         )
     except Exception:
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
@@ -334,8 +337,6 @@ def _write_ticket_and_mint_sas(
         )
     except Exception:
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     return sas_url, None
@@ -412,12 +413,56 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         if err:
             return err
 
-    # Consume quota upfront so the runs counter decrements immediately.
-    quota_consumed, billing_fields, quota_err = _consume_upload_quota(user_id, req)
-    if quota_err:
-        return quota_err
-
+    # ── Org-pooled run accounting (reserve_run) ────────────────────
+    try:
+        user_org = get_user_org(user_id)
+    except Exception:
+        logger.exception("Failed to resolve org for run reservation", extra={"user_id": _redact(user_id)})
+        return error_response(503, "Unable to reserve runs right now. Please retry shortly.", req=req)
+    
+    if not user_org:
+        return error_response(
+            403,
+            "You must belong to an organisation to submit analyses. Create or join an org first.",
+            req=req,
+        )
+    
+    org_id = user_org["org_id"]
     submission_id = str(uuid.uuid4())
+    parcel_count = body.get("parcel_count", 1)  # Default to 1 if not provided
+
+    try:
+        reservation = reserve_run(
+            org_id,
+            user_id,
+            parcel_count,
+            is_eudr=is_eudr,
+            instance_id=submission_id,
+        )
+    except MemberCapExceededError as exc:
+        logger.info(
+            "Member cap exceeded during reservation org=%s user=%s",
+            org_id, 
+            _redact(user_id),
+        )
+        return error_response(403, f"Your parcel capacity is exceeded. {str(exc)}", req=req)
+    except QuotaExhaustedError as exc:
+        logger.info(
+            "Organization quota exhausted during reservation org=%s",
+            org_id,
+        )
+        return error_response(
+            403,
+            f"Organization parcel quota exhausted. {str(exc)}",
+            req=req,
+        )
+    except OrgNotFoundError as exc:
+        logger.warning("Org not found during reservation org=%s", org_id)
+        return error_response(503, "Organization not found. Please try again.", req=req)
+    except Exception as exc:
+        logger.exception("Run reservation failed unexpectedly org=%s", org_id)
+        return error_response(503, f"Unable to process reservation: {exc}", req=req)
+
     ext, content_type = _detect_file_extension(body.get("filename", ""))
     blob_name = f"analysis/{submission_id}{ext}"
 
@@ -431,25 +476,21 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         submission_id,
         blob_name,
         submission_context,
-        quota_consumed,
         req,
         content_type,
     )
     if storage_err:
+        # On error, we need to release the reservation
+        try:
+            from treesight.billing.accounting import finalize_run
+            finalize_run(org_id, submission_id, status="failed")
+        except Exception:
+            logger.exception(
+                "Failed to refund reservation after storage error org=%s instance=%s",
+                org_id,
+                submission_id,
+            )
         return storage_err
-
-    # ── EUDR trial consumption ─────────────────────────────────────
-    eudr_err = _consume_eudr_trial_if_needed(
-        is_eudr,
-        entitlement,
-        eudr_org_id,
-        quota_consumed,
-        user_id,
-        submission_id,
-        req,
-    )
-    if eudr_err:
-        return eudr_err
 
     # Persist submission record only after SAS minting succeeds
     submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
