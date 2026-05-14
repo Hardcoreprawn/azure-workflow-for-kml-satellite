@@ -16,7 +16,12 @@ provider "azapi" {
 # When ciam_deploy_client_id is empty (e.g. cost-estimate CI, bootstrap), the
 # azuread provider stays unconfigured and no OIDC exchange is attempted.
 locals {
-  ciam_redirect_enabled = var.ciam_deploy_client_id != ""
+  # nonsensitive() is safe here: the result is a boolean derived from a
+  # zero-length check, which leaks no secret material. Required so the
+  # boolean can be used as a `for_each` / `count` driver downstream
+  # (Tofu refuses to use values derived from sensitive vars in those
+  # contexts otherwise).
+  ciam_redirect_enabled = nonsensitive(var.ciam_deploy_client_id != "")
 }
 
 provider "azuread" {

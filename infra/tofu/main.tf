@@ -1094,7 +1094,7 @@ data "azuread_application" "ciam" {
 }
 
 resource "azuread_application_redirect_uris" "ciam_spa" {
-  count          = local.ciam_redirect_enabled ? 1 : 0
+  for_each       = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
   application_id = data.azuread_application.ciam[0].id
   type           = "SPA"
   redirect_uris  = local.ciam_spa_redirect_uris
@@ -1109,10 +1109,14 @@ resource "azuread_application_redirect_uris" "ciam_spa" {
 # This import block (OpenTofu 1.6+ syntax) adopts the existing redirect URI
 # block into state on next plan/apply. After the first successful apply it
 # becomes a no-op (Tofu detects the resource is already in state). The block
-# can be removed in a follow-up PR once dev + prd have both reconciled.
+# can be removed in a follow-up PR once dev has reconciled.
+#
+# NOTE: import blocks support `for_each` only (not `count`), and `to` must
+# reference `each.key`. The matching resource above therefore also uses
+# `for_each` so the addresses align (`...ciam_spa["spa"]`).
 import {
   for_each = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
-  to       = azuread_application_redirect_uris.ciam_spa[0]
+  to       = azuread_application_redirect_uris.ciam_spa[each.key]
   id       = "${data.azuread_application.ciam[0].id}/redirectUris/SPA"
 }
 
