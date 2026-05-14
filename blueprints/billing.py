@@ -574,3 +574,49 @@ def billing_interest(
     }
 
     return submit_contact(req, body, source="billing_interest", extra_fields=extra)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/billing/pool-status — org-pooled accounting status
+# ---------------------------------------------------------------------------
+@bp.route(
+    route="billing/pool-status",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@require_auth
+def billing_pool_status(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """GET /api/billing/pool-status — org-scoped run pool for dashboard."""
+    if req.method == "OPTIONS":
+        return func.HttpResponse(status_code=200, headers=cors_headers(req))
+
+    from treesight.billing.accounting import get_pool_status, OrgNotFoundError
+    from treesight.security.orgs import get_user_org
+
+    try:
+        org = get_user_org(user_id)
+        if not org:
+            # Anonymous/no-org user has no pool.
+            return func.HttpResponse(
+                json.dumps({"error": "no_org", "pool": None}),
+                status_code=200,
+                mimetype="application/json",
+                headers=cors_headers(req),
+            )
+
+        org_id = org.get("org_id")
+        pool = get_pool_status(org_id)
+
+        return func.HttpResponse(
+            json.dumps({"pool": pool}),
+            status_code=200,
+            mimetype="application/json",
+            headers=cors_headers(req),
+        )
+    except OrgNotFoundError:
+        return error_response(404, "Organization not found", req=req)
+    except Exception as exc:
+        logger.exception(f"pool-status error: {exc}")
+        return error_response(500, "Failed to fetch pool status", req=req)

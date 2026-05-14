@@ -562,3 +562,83 @@ class TestBillingStatusResilience:
         assert data["tier"] == "free"
         assert data["runs_remaining"] >= 0
         assert data["billing_gated"] is True
+
+
+# ---------------------------------------------------------------------------
+# billing/pool-status — org pool status for dashboard
+# ---------------------------------------------------------------------------
+
+
+class TestBillingPoolStatus:
+    def test_anonymous_user_returns_no_org(self):
+        """Anonymous user (no org) should return no_org error."""
+        from blueprints.billing import billing_pool_status
+
+        req = _make_req(method="GET", url="/api/billing/pool-status")
+
+        with patch("treesight.security.orgs.get_user_org", return_value=None):
+            resp = billing_pool_status(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["error"] == "no_org"
+        assert data["pool"] is None
+
+    def test_options_returns_204(self):
+        """OPTIONS request should return 204 with CORS headers."""
+        from blueprints.billing import billing_pool_status
+
+        req = _make_req(method="OPTIONS", url="/api/billing/pool-status")
+
+        resp = billing_pool_status(req)
+        assert resp.status_code == 204
+        assert "Access-Control-Allow-Origin" in resp.headers
+
+    def test_returns_pool_status_for_org_member(self):
+        """Org member should receive pool status snapshot."""
+        from blueprints.billing import billing_pool_status
+
+        req = _make_req(method="GET", url="/api/billing/pool-status")
+
+        with patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"}):
+            with patch("treesight.billing.accounting.get_pool_status") as mock_get:
+                mock_get.return_value = {
+                    "org_id": "org-1",
+                    "period_start": "2026-06-01",
+                    "period_end": "2026-06-30",
+                    "allowance": 100,
+                    "reserved": 5,
+                    "completed": 3,
+                    "refunded": 1,
+                    "available": 92,
+                    "per_member": {
+                        "test-user": {"allowance": 100, "used": 3, "cap": None}
+                    },
+                }
+                resp = billing_pool_status(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert "pool" in data
+        pool = data["pool"]
+        assert pool["org_id"] == "org-1"
+        assert pool["allowance"] == 100
+        assert pool["available"] == 92
+        assert "per_member" in pool
+
+    def test_org_not_found_returns_404(self):
+        """If org is deleted, should return 404."""
+        from blueprints.billing import billing_pool_status
+
+        req = _make_req(method="GET", url="/api/billing/pool-status")
+
+        from treesight.billing.accounting import OrgNotFoundError
+
+        with patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-deleted"}):
+            with patch(
+                "treesight.billing.accounting.get_pool_status",
+                side_effect=OrgNotFoundError("org not found"),
+            ):
+                resp = billing_pool_status(req)
+
+        assert resp.status_code == 404
