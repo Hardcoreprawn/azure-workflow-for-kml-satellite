@@ -611,9 +611,7 @@ class TestBillingPoolStatus:
                     "completed": 3,
                     "refunded": 1,
                     "available": 92,
-                    "per_member": {
-                        "test-user": {"allowance": 100, "used": 3, "cap": None}
-                    },
+                    "per_member": {"test-user": {"allowance": 100, "used": 3, "cap": None}},
                 }
                 resp = billing_pool_status(req)
 

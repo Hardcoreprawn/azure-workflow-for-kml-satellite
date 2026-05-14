@@ -592,7 +592,7 @@ def billing_pool_status(
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=200, headers=cors_headers(req))
 
-    from treesight.billing.accounting import get_pool_status, OrgNotFoundError
+    from treesight.billing.accounting import OrgNotFoundError, get_pool_status
     from treesight.security.orgs import get_user_org
 
     try:

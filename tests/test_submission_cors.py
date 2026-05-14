@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tests.conftest import TEST_ORIGIN
-from treesight.billing.accounting import QuotaExhaustedError, finalize_run
+from treesight.billing.accounting import QuotaExhaustedError
 
 
 def _make_request(

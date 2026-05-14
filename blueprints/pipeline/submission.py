@@ -14,11 +14,11 @@ import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.billing.accounting import (
-    finalize_run,
-    reserve_run,
     MemberCapExceededError,
     OrgNotFoundError,
     QuotaExhaustedError,
+    finalize_run,
+    reserve_run,
 )
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.pipeline.concurrency import at_concurrency_cap
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 def _finalize_run_on_failure(org_id: str, instance_id: str) -> None:
     """Best-effort run refund on submission failure — never raises."""
     try:
-        finalize_run(org_id, instance_id, status="failed")
+        finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
     except Exception:
         logger.exception("Failed to finalize run for org=%s instance=%s", org_id, instance_id)
 
@@ -214,19 +214,25 @@ def _resolve_quota(
         except Exception:
             logger.debug("Could not extract org_id from prior ticket")
             return True, "", None
-    
+
     try:
         user_org = get_user_org(user_id)
         org_id = user_org.get("org_id", "")
     except Exception:
         logger.exception("Org lookup failed for user=%s", _redact(user_id))
         return False, "", error_response(503, "Org lookup unavailable", req=req)
-    
+
     if not org_id:
         return False, "", error_response(403, "User not in any org", req=req)
-    
+
     try:
-        reserve_run(org_id, user_id, parcel_count=1, is_eudr=False, instance_id=str(uuid.uuid4()))
+        reserve_run(
+            org_id=org_id,
+            user_id=user_id,
+            parcel_count=1,
+            is_eudr=False,
+            instance_id=str(uuid.uuid4()),
+        )
         return True, org_id, None
     except MemberCapExceededError:
         return False, org_id, error_response(403, "Member parcel cap exceeded", req=req)

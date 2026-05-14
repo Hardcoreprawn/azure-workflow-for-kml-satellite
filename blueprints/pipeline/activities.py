@@ -470,7 +470,7 @@ def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
     instance_id: str = payload["instance_id"]
 
     try:
-        finalize_run(org_id, instance_id, status="completed")
+        finalize_run(org_id=org_id, instance_id=instance_id, status="completed")
         logger.info(
             "Run finalized (completed) org=%s instance=%s",
             org_id,
@@ -498,7 +498,7 @@ def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
     instance_id: str = payload["instance_id"]
 
     try:
-        finalize_run(org_id, instance_id, status="failed")
+        finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
         logger.info(
             "Run finalized (failed) org=%s instance=%s",
             org_id,

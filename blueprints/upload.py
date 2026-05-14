@@ -327,10 +327,8 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     is_eudr = body.get("eudr_mode") is True
 
     # ── EUDR entitlement gate ──────────────────────────────────────
-    eudr_org_id: str = ""
-    entitlement: dict = {}
     if is_eudr:
-        eudr_org_id, entitlement, err = _check_eudr_entitlement(user_id, req)
+        _, _, err = _check_eudr_entitlement(user_id, req)
         if err:
             return err
 
@@ -338,35 +336,40 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     try:
         user_org = get_user_org(user_id)
     except Exception:
-        logger.exception("Failed to resolve org for run reservation", extra={"user_id": _redact(user_id)})
-        return error_response(503, "Unable to reserve runs right now. Please retry shortly.", req=req)
-    
+        logger.exception(
+            "Failed to resolve org for run reservation",
+            extra={"user_id": _redact(user_id)},
+        )
+        return error_response(
+            503, "Unable to reserve runs right now. Please retry shortly.", req=req
+        )
+
     if not user_org:
         return error_response(
             403,
             "You must belong to an organisation to submit analyses. Create or join an org first.",
             req=req,
         )
-    
+
     org_id = user_org["org_id"]
     submission_id = str(uuid.uuid4())
     parcel_count = body.get("parcel_count", 1)  # Default to 1 if not provided
 
     try:
-        reservation = reserve_run(
-            org_id,
-            user_id,
-            parcel_count,
+        reserve_run(
+            org_id=org_id,
+            user_id=user_id,
+            parcel_count=parcel_count,
             is_eudr=is_eudr,
             instance_id=submission_id,
         )
     except MemberCapExceededError as exc:
         logger.info(
             "Member cap exceeded during reservation org=%s user=%s",
-            org_id, 
+            org_id,
             _redact(user_id),
         )
-        return error_response(403, f"Your parcel capacity is exceeded. {str(exc)}", req=req)
+        return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
     except QuotaExhaustedError as exc:
         logger.info(
             "Organization quota exhausted during reservation org=%s",
@@ -374,10 +377,10 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         )
         return error_response(
             403,
-            f"Organization parcel quota exhausted. {str(exc)}",
+            f"Organization parcel quota exhausted. {exc!s}",
             req=req,
         )
-    except OrgNotFoundError as exc:
+    except OrgNotFoundError:
         logger.warning("Org not found during reservation org=%s", org_id)
         return error_response(503, "Organization not found. Please try again.", req=req)
     except Exception as exc:
@@ -405,7 +408,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         # On error, we need to release the reservation
         try:
             from treesight.billing.accounting import finalize_run
-            finalize_run(org_id, submission_id, status="failed")
+            finalize_run(org_id=org_id, instance_id=submission_id, status="failed")
         except Exception:
             logger.exception(
                 "Failed to refund reservation after storage error org=%s instance=%s",
