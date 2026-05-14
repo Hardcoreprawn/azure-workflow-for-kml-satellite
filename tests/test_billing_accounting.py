@@ -339,6 +339,82 @@ class TestReserveRunRejections:
             )
         assert res.pool_remaining == 0
 
+    def test_member_cap_holds_across_finalize(self):
+        """Caps must bind across the period, not just in-flight runs.
+
+        Regression for the loophole where ``finalize_run`` deletes the
+        reservation, allowing a capped user to repeatedly reserve+finalize
+        beyond their cap as long as the org pool has room.
+        """
+        org = _org(
+            members=[
+                {"user_id": "u-pro", "role": "owner"},
+                {"user_id": "u-junior", "role": "member"},
+            ],
+            members_caps={"u-junior": 5},
+        )
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch(
+                _GET_SUB,
+                side_effect=_make_sub_lookup({"u-pro": _sub("pro"), "u-junior": _sub("free")}),
+            ),
+        ):
+            reserve_run(
+                org_id="org-1",
+                user_id="u-junior",
+                parcel_count=5,
+                is_eudr=False,
+                instance_id="inst-a",
+            )
+            finalize_run(org_id="org-1", instance_id="inst-a", status="completed")
+            with pytest.raises(MemberCapExceededError):
+                reserve_run(
+                    org_id="org-1",
+                    user_id="u-junior",
+                    parcel_count=1,
+                    is_eudr=False,
+                    instance_id="inst-b",
+                )
+
+    def test_failed_run_refunds_member_cap(self):
+        """Failed runs return budget to the per-user counter."""
+        org = _org(
+            members=[
+                {"user_id": "u-pro", "role": "owner"},
+                {"user_id": "u-junior", "role": "member"},
+            ],
+            members_caps={"u-junior": 5},
+        )
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch(
+                _GET_SUB,
+                side_effect=_make_sub_lookup({"u-pro": _sub("pro"), "u-junior": _sub("free")}),
+            ),
+        ):
+            reserve_run(
+                org_id="org-1",
+                user_id="u-junior",
+                parcel_count=5,
+                is_eudr=False,
+                instance_id="inst-a",
+            )
+            finalize_run(org_id="org-1", instance_id="inst-a", status="failed")
+            # Cap should have been refunded — second reservation succeeds.
+            res = reserve_run(
+                org_id="org-1",
+                user_id="u-junior",
+                parcel_count=5,
+                is_eudr=False,
+                instance_id="inst-b",
+            )
+        assert res.parcel_count == 5
+
     def test_invalid_parcel_count_raises_value_error(self):
         with pytest.raises(ValueError):
             reserve_run(
@@ -501,6 +577,7 @@ class TestFinalizeRun:
                     }
                 },
                 "finalized_instance_ids": [],
+                "member_used": {"u-pro": 7},
             },
         )
 
@@ -531,6 +608,22 @@ class TestFinalizeRun:
         assert u["runs_reserved"] == 0
         assert u["runs_completed"] == 0
         assert u["runs_refunded"] == 7
+        # Failed runs refund the per-member counter so they don't burn caps.
+        assert u["member_used"]["u-pro"] == 0
+
+    def test_completed_keeps_member_counter(self):
+        """Successful runs must NOT refund the per-user counter.
+
+        Otherwise per-member caps could be bypassed by submitting in batches.
+        """
+        org = self._seed()
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+        ):
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+        assert org["usage"]["member_used"]["u-pro"] == 7
 
     def test_idempotent_replay_is_noop(self):
         org = self._seed()
@@ -594,6 +687,7 @@ class TestGetPoolStatus:
                 "i-2": {"user_id": "u-free", "parcel_count": 1, "is_eudr": False, "ts": ps},
             },
             "finalized_instance_ids": [],
+            "member_used": {"u-pro": 5, "u-free": 1},  # u-pro has 3 in-flight + 2 completed
         }
         with (
             patch(_GET_ORG, return_value=org),
@@ -613,7 +707,8 @@ class TestGetPoolStatus:
         assert snap["reserved"] == 4
         assert snap["completed"] == 2
         assert snap["available"] == 49
-        assert snap["per_member"]["u-pro"] == {"allowance": 50, "used": 3, "cap": None}
+        # u-pro is 5 (3 in-flight + 2 completed); u-free is 1.
+        assert snap["per_member"]["u-pro"] == {"allowance": 50, "used": 5, "cap": None}
         assert snap["per_member"]["u-free"] == {"allowance": 5, "used": 1, "cap": 3}
 
     def test_org_not_found_raises(self):

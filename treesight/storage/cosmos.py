@@ -140,8 +140,9 @@ def replace_item_with_etag(
 ) -> dict[str, Any]:
     """Replace a document only if its server-side etag still matches *etag*.
 
-    Raises :class:`EtagPreconditionFailed` on conflict so callers can retry
-    the read-modify-write loop. Other Cosmos errors propagate unchanged.
+    Raises :class:`EtagPreconditionFailedError` on conflict so callers can
+    retry the read-modify-write loop. Other Cosmos errors propagate
+    unchanged.
     """
     container = get_container(container_name)
     try:

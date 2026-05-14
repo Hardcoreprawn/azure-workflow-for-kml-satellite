@@ -134,6 +134,10 @@ def _ensure_usage_block(org: dict[str, Any], now: datetime) -> None:
         "runs_refunded": 0,
         "reservations": {},
         "finalized_instance_ids": [],
+        # Persistent per-user counter that survives finalize() so per-member
+        # caps actually bind across the whole period, not just in-flight runs.
+        # Incremented at reserve, decremented only on failed-finalize (refund).
+        "member_used": {},
     }
 
 
@@ -171,18 +175,13 @@ def compute_pool_allowance(org: dict[str, Any]) -> int:
 
 
 def _member_period_usage(usage: dict[str, Any], user_id: str) -> int:
-    """Sum of *user_id*'s reserved + completed parcels in the current period."""
-    total = 0
-    for res in usage.get("reservations", {}).values():
-        if res.get("user_id") == user_id:
-            total += int(res.get("parcel_count", 0))
-    # ``runs_completed`` is the org-wide aggregate, not per-user, so we walk
-    # ``finalized_instance_ids`` against the original reservations only when
-    # they are still present in the dict; once finalised they are removed.
-    # The frontend tracks per-user historical usage separately. For cap
-    # enforcement, in-flight reservations are sufficient because completed
-    # runs from the same period are also bounded by the pool check above.
-    return total
+    """Return *user_id*'s reserved + completed parcels in the current period.
+
+    Reads the persistent ``member_used`` counter, which includes both
+    in-flight reservations and successfully completed runs. Failed runs
+    are refunded by :func:`finalize_run` so they don't count.
+    """
+    return int(usage.get("member_used", {}).get(user_id, 0))
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -277,6 +276,8 @@ def reserve_run(
             "is_eudr": is_eudr,
             "ts": now.isoformat(),
         }
+        member_used = usage.setdefault("member_used", {})
+        member_used[user_id] = int(member_used.get(user_id, 0)) + parcel_count
 
         try:
             replace_item_with_etag("orgs", org, etag=etag)
@@ -364,11 +365,16 @@ def finalize_run(
             return
 
         n = int(reservation["parcel_count"])
+        res_user_id = reservation.get("user_id")
         usage["runs_reserved"] = max(0, int(usage.get("runs_reserved", 0)) - n)
         if status == "completed":
             usage["runs_completed"] = int(usage.get("runs_completed", 0)) + n
         else:
             usage["runs_refunded"] = int(usage.get("runs_refunded", 0)) + n
+            # Refund the per-member counter so failures don't burn caps.
+            if res_user_id:
+                member_used = usage.setdefault("member_used", {})
+                member_used[res_user_id] = max(0, int(member_used.get(res_user_id, 0)) - n)
 
         del usage["reservations"][instance_id]
         usage.setdefault("finalized_instance_ids", []).append(instance_id)
@@ -421,11 +427,7 @@ def get_pool_status(org_id: str) -> dict[str, Any]:
         reserved = int(usage.get("runs_reserved", 0))
         completed = int(usage.get("runs_completed", 0))
         refunded = int(usage.get("runs_refunded", 0))
-        per_member_used = {}
-        for res in usage.get("reservations", {}).values():
-            uid = res.get("user_id")
-            if uid:
-                per_member_used[uid] = per_member_used.get(uid, 0) + int(res.get("parcel_count", 0))
+        per_member_used = {uid: int(n) for uid, n in (usage.get("member_used") or {}).items()}
 
     per_member: dict[str, dict[str, int | None]] = {}
     allowance = 0
