@@ -756,11 +756,22 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             fulfilment=ful_s,
         )
         _apply_enrichment_to_summary(summary, enrichment)
-        if user_id and tier != "demo":
-            yield from _safe_complete_billing(context, user_id, instance_id)
+        
+        # ── Org-pooled run accounting (Stage 2 of #814) ────────────────────────
+        if user_id and tier != "demo" and inp.get("org_id"):
+            org_id = inp["org_id"]
+            yield context.call_activity(
+                "finalize_run_completed",
+                {"org_id": org_id, "instance_id": instance_id},
+            )
+        
         return summary
     except Exception:
-        if user_id and tier != "demo":
-            yield from _safe_release_quota(context, user_id, instance_id)
-            yield from _safe_fail_billing(context, user_id, instance_id)
+        # ── Org-pooled run accounting on failure (Stage 2 of #814) ─────────────
+        if user_id and tier != "demo" and inp.get("org_id"):
+            org_id = inp["org_id"]
+            yield context.call_activity(
+                "finalize_run_failed",
+                {"org_id": org_id, "instance_id": instance_id},
+            )
         raise

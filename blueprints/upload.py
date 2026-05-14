@@ -187,12 +187,14 @@ def _resolve_provider(body: dict, submission_context: dict) -> str:
     return submission_context.get("provider_name", DEFAULT_PROVIDER)
 
 
-def _build_ticket(body: dict, user_id: str, submission_context: dict) -> dict:
+def _build_ticket(body: dict, user_id: str, submission_context: dict, org_id: str = "") -> dict:
     """Assemble the ticket blob payload from request body and user metadata."""
     ticket: dict = {
         "user_id": user_id,
         "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
     }
+    if org_id:
+        ticket["org_id"] = org_id
     provider = body.get("provider_name")
     if isinstance(provider, str) and provider.strip():
         ticket["provider_name"] = provider.strip()[:80]
@@ -310,13 +312,14 @@ def _write_ticket_and_mint_sas(
     blob_name: str,
     submission_context: dict,
     req: func.HttpRequest,
+    org_id: str = "",
     content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, func.HttpResponse | None]:
     """Write ticket blob and mint SAS URL.
 
     Returns (sas_url, error_response_or_None).
     """
-    ticket = _build_ticket(body, user_id, submission_context)
+    ticket = _build_ticket(body, user_id, submission_context, org_id=org_id)
     try:
         blob_service = get_blob_service_client()
         ticket_blob = blob_service.get_blob_client(
@@ -477,7 +480,8 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         blob_name,
         submission_context,
         req,
-        content_type,
+        org_id=org_id,
+        content_type=content_type,
     )
     if storage_err:
         # On error, we need to release the reservation
@@ -509,7 +513,6 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         status="submitted",
         eudr_mode=body.get("eudr_mode") is True,
         **ctx,
-        **billing_fields,
     )
     _persist_submission_record(submission_id, run.model_dump(exclude_none=True), user_id)
 
