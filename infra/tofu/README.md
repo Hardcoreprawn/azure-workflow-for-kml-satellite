@@ -83,7 +83,7 @@ Deploy` (appId `b49dea4a-81af-445c-acfe-29db8301c7f4`, SP id
 on Microsoft Graph), Owner of SPA app `1b51e2e8-…`, and federated GitHub OIDC
 credentials for `repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:{dev,prd}`.
 Both GitHub Environments have `TF_VAR_CIAM_DEPLOY_CLIENT_ID` set. Tofu manages
-`azuread_application_redirect_uris.ciam_spa[0]` from
+`azuread_application_redirect_uris.ciam_spa["spa"]` from
 `local.ciam_spa_redirect_uris` in `locals.tf`.
 
 If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
