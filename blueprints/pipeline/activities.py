@@ -461,14 +461,14 @@ def fail_billing(payload: _Payload) -> dict[str, Any]:
 @bp.activity_trigger(input_name="payload")
 def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
     """Finalize a completed run in org-pooled accounting (#814).
-    
+
     Moves runs from reserved → completed in org.usage, emits Stripe metered event.
     """
     from treesight.billing.accounting import finalize_run
 
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
-    
+
     try:
         finalize_run(org_id, instance_id, status="completed")
         logger.info(
@@ -477,22 +477,26 @@ def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
             instance_id,
         )
         return {"finalized": True, "status": "completed"}
-    except Exception as exc:
-        logger.exception("Failed to finalize run (completed) org=%s instance=%s", org_id, instance_id)
+    except Exception:
+        logger.exception(
+            "Failed to finalize run (completed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
         raise
 
 
 @bp.activity_trigger(input_name="payload")
 def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
     """Finalize a failed run in org-pooled accounting (#814).
-    
+
     Moves runs from reserved → refunded in org.usage, refunds member per-period cap.
     """
     from treesight.billing.accounting import finalize_run
 
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
-    
+
     try:
         finalize_run(org_id, instance_id, status="failed")
         logger.info(
@@ -501,6 +505,10 @@ def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
             instance_id,
         )
         return {"finalized": True, "status": "failed"}
-    except Exception as exc:
-        logger.exception("Failed to finalize run (failed) org=%s instance=%s", org_id, instance_id)
+    except Exception:
+        logger.exception(
+            "Failed to finalize run (failed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
         raise
