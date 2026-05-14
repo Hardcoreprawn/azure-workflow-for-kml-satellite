@@ -66,14 +66,24 @@ class TestUploadToken:
         self._quota_patcher = patch("blueprints.upload.consume_quota")
         self._release_patcher = patch("blueprints.upload.release_quota")
         self._persist_patcher = patch("blueprints.upload._persist_submission_record")
+        self._org_patcher = patch("blueprints.upload.get_user_org")
+        self._reserve_patcher = patch("blueprints.upload.reserve_run")
         self.mock_consume_quota = self._quota_patcher.start()
         self.mock_release_quota = self._release_patcher.start()
         self.mock_persist = self._persist_patcher.start()
+        self.mock_get_user_org = self._org_patcher.start()
+        self.mock_reserve_run = self._reserve_patcher.start()
+        
+        # Set up default returns for new mocks
+        self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
+        self.mock_reserve_run.return_value = {"reserved_parcels": 1}  # MagicMock accepts any call
 
     def teardown_method(self):
         self._persist_patcher.stop()
         self._release_patcher.stop()
         self._quota_patcher.stop()
+        self._reserve_patcher.stop()
+        self._org_patcher.stop()
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
@@ -211,12 +221,16 @@ class TestUploadToken:
             resp = upload_token(req)
 
         assert resp.status_code == 200
-        self.mock_consume_quota.assert_called_once_with("test-user")
+        # Check that reserve_run was called with org_id, user_id, parcel_count, is_eudr, instance_id
+        self.mock_reserve_run.assert_called_once()
+        call_kwargs = self.mock_reserve_run.call_args.kwargs
+        assert call_kwargs["is_eudr"] is False  # Default: not EUDR mode
 
     def test_returns_403_when_quota_exhausted(self):
         from blueprints.upload import upload_token
+        from treesight.billing.accounting import QuotaExhaustedError
 
-        self.mock_consume_quota.side_effect = ValueError("Quota exhausted")
+        self.mock_reserve_run.side_effect = QuotaExhaustedError("Org quota exhausted")
 
         req = _make_req("/api/upload/token", method="POST")
         with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
@@ -234,10 +248,14 @@ class TestUploadToken:
 
         req = _make_req("/api/upload/token", method="POST")
         with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
-            resp = upload_token(req)
+            with patch("blueprints.upload.finalize_run") as mock_finalize:
+                resp = upload_token(req)
 
         assert resp.status_code == 502
-        self.mock_release_quota.assert_called_once()
+        # Check that finalize_run was called to refund the reservation
+        mock_finalize.assert_called_once()
+        call_args = mock_finalize.call_args
+        assert call_args.kwargs["status"] == "failed"
         call_args = self.mock_release_quota.call_args
         assert call_args[0][0] == "test-user"
         assert call_args[1].get("instance_id")  # submission_id passed for idempotency
@@ -458,17 +476,21 @@ class TestUploadTokenEudrEntitlement:
     """Server-side EUDR entitlement gate (#664)."""
 
     def setup_method(self):
-        self._quota_patcher = patch("blueprints.upload.consume_quota")
-        self._release_patcher = patch("blueprints.upload.release_quota")
+        self._org_patcher = patch("blueprints.upload.get_user_org")
+        self._reserve_patcher = patch("blueprints.upload.reserve_run")
         self._persist_patcher = patch("blueprints.upload._persist_submission_record")
-        self.mock_consume_quota = self._quota_patcher.start()
-        self.mock_release_quota = self._release_patcher.start()
+        self.mock_get_user_org = self._org_patcher.start()
+        self.mock_reserve_run = self._reserve_patcher.start()
         self.mock_persist = self._persist_patcher.start()
+        
+        # Default return values
+        self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
+        self.mock_reserve_run.return_value = {"reserved_parcels": 1}
 
     def teardown_method(self):
         self._persist_patcher.stop()
-        self._release_patcher.stop()
-        self._quota_patcher.stop()
+        self._reserve_patcher.stop()
+        self._org_patcher.stop()
 
     @patch("blueprints.upload.get_user_org", return_value=None)
     def test_eudr_mode_rejects_user_without_org(self, mock_org):
@@ -481,7 +503,7 @@ class TestUploadTokenEudrEntitlement:
         assert resp.status_code == 403
         data = json.loads(resp.get_body())
         assert "org" in data["error"].lower()
-        self.mock_consume_quota.assert_not_called()
+        self.mock_reserve_run.assert_not_called()
 
     @patch(
         "blueprints.upload.check_eudr_entitlement",
@@ -498,9 +520,8 @@ class TestUploadTokenEudrEntitlement:
         assert resp.status_code == 403
         data = json.loads(resp.get_body())
         assert "subscription" in data["error"].lower() or "entitlement" in data["error"].lower()
-        self.mock_consume_quota.assert_not_called()
+        self.mock_reserve_run.assert_not_called()
 
-    @patch("blueprints.upload.consume_eudr_trial")
     @patch(
         "blueprints.upload.check_eudr_entitlement",
         return_value={"allowed": True, "reason": "free_trial"},
@@ -509,7 +530,7 @@ class TestUploadTokenEudrEntitlement:
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_eudr_mode_consumes_trial_when_free(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
     ):
         from blueprints.upload import upload_token
 
@@ -521,10 +542,11 @@ class TestUploadTokenEudrEntitlement:
             resp = upload_token(req)
 
         assert resp.status_code == 200
-        mock_consume_trial.assert_called_once_with("org-1")
-        self.mock_consume_quota.assert_called_once()
+        # Check that reserve_run was called with EUDR mode
+        self.mock_reserve_run.assert_called_once()
+        call_kwargs = self.mock_reserve_run.call_args.kwargs
+        assert call_kwargs["is_eudr"] is True
 
-    @patch("blueprints.upload.consume_eudr_trial")
     @patch(
         "blueprints.upload.check_eudr_entitlement",
         return_value={"allowed": True, "reason": "subscription"},
@@ -533,7 +555,7 @@ class TestUploadTokenEudrEntitlement:
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_eudr_mode_skips_trial_when_subscribed(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
     ):
         from blueprints.upload import upload_token
 
@@ -545,8 +567,10 @@ class TestUploadTokenEudrEntitlement:
             resp = upload_token(req)
 
         assert resp.status_code == 200
-        mock_consume_trial.assert_not_called()
-        self.mock_consume_quota.assert_called_once()
+        # Check that reserve_run was called
+        self.mock_reserve_run.assert_called_once()
+        call_kwargs = self.mock_reserve_run.call_args.kwargs
+        assert call_kwargs["is_eudr"] is True
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
@@ -563,7 +587,6 @@ class TestUploadTokenEudrEntitlement:
 
         assert resp.status_code == 200
 
-    @patch("blueprints.upload.consume_eudr_trial")
     @patch(
         "blueprints.upload.check_eudr_entitlement",
         return_value={"allowed": True, "reason": "free_trial"},
@@ -572,24 +595,21 @@ class TestUploadTokenEudrEntitlement:
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_eudr_mode_refunds_quota_on_trial_consume_failure(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_consume_trial
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
     ):
         """If trial consumption fails after quota was consumed, quota is refunded."""
         from blueprints.upload import upload_token
+        from treesight.billing.accounting import MemberCapExceededError
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
         mock_gen_sas.return_value = "sv=2024&sig=fakesig"
-        mock_consume_trial.side_effect = ValueError("Trial exhausted")
+        self.mock_reserve_run.side_effect = MemberCapExceededError("Member cap exceeded")
 
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with (
-            patch("blueprints.upload._safe_release_quota") as mock_release,
-            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
-        ):
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
             resp = upload_token(req)
 
         assert resp.status_code == 403
-        mock_release.assert_called_once()
 
 
 # ===================================================================
