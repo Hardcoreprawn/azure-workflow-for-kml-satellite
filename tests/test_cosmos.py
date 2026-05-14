@@ -187,3 +187,88 @@ class TestNoKeyAuth:
         assert not hasattr(cfg, "COSMOS_KEY"), (
             "COSMOS_KEY should be removed — use DefaultAzureCredential instead"
         )
+
+
+# --- ETag optimistic-concurrency helpers (issue #814) ---
+
+
+class TestReadItemWithEtag:
+    @patch("treesight.storage.cosmos.get_container")
+    def test_returns_item_and_etag(self, mock_get_container):
+        mock_container = MagicMock()
+        mock_container.read_item.return_value = {"id": "x", "_etag": "abc", "v": 1}
+        mock_get_container.return_value = mock_container
+
+        result = cosmos.read_item_with_etag("orgs", "x", "x")
+
+        assert result is not None
+        item, etag = result
+        assert item["id"] == "x"
+        assert etag == "abc"
+        mock_container.read_item.assert_called_once_with(item="x", partition_key="x")
+
+    @patch("treesight.storage.cosmos.get_container")
+    def test_returns_none_for_missing_item(self, mock_get_container):
+        from azure.cosmos.exceptions import CosmosResourceNotFoundError
+
+        mock_container = MagicMock()
+        mock_container.read_item.side_effect = CosmosResourceNotFoundError(message="not found")
+        mock_get_container.return_value = mock_container
+
+        assert cosmos.read_item_with_etag("orgs", "ghost", "ghost") is None
+
+    @patch("treesight.storage.cosmos.get_container")
+    def test_empty_etag_when_field_missing(self, mock_get_container):
+        mock_container = MagicMock()
+        mock_container.read_item.return_value = {"id": "x"}
+        mock_get_container.return_value = mock_container
+
+        result = cosmos.read_item_with_etag("orgs", "x", "x")
+        assert result is not None
+        _item, etag = result
+        assert etag == ""
+
+
+class TestReplaceItemWithEtag:
+    @patch("treesight.storage.cosmos.get_container")
+    def test_passes_etag_with_if_not_modified(self, mock_get_container):
+        from azure.core import MatchConditions
+
+        mock_container = MagicMock()
+        mock_container.replace_item.return_value = {"id": "x", "v": 2}
+        mock_get_container.return_value = mock_container
+
+        cosmos.replace_item_with_etag("orgs", {"id": "x", "v": 2}, etag="abc")
+
+        mock_container.replace_item.assert_called_once_with(
+            item="x",
+            body={"id": "x", "v": 2},
+            etag="abc",
+            match_condition=MatchConditions.IfNotModified,
+        )
+
+    @patch("treesight.storage.cosmos.get_container")
+    def test_translates_access_condition_to_etag_error(self, mock_get_container):
+        from azure.cosmos.exceptions import (
+            CosmosAccessConditionFailedError,
+        )
+
+        mock_container = MagicMock()
+        mock_container.replace_item.side_effect = CosmosAccessConditionFailedError(
+            message="precondition failed"
+        )
+        mock_get_container.return_value = mock_container
+
+        with pytest.raises(cosmos.EtagPreconditionFailedError):
+            cosmos.replace_item_with_etag("orgs", {"id": "x"}, etag="stale")
+
+    @patch("treesight.storage.cosmos.get_container")
+    def test_other_cosmos_errors_propagate(self, mock_get_container):
+        from azure.cosmos.exceptions import CosmosHttpResponseError
+
+        mock_container = MagicMock()
+        mock_container.replace_item.side_effect = CosmosHttpResponseError(message="server error")
+        mock_get_container.return_value = mock_container
+
+        with pytest.raises(CosmosHttpResponseError):
+            cosmos.replace_item_with_etag("orgs", {"id": "x"}, etag="abc")

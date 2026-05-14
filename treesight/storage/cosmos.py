@@ -152,7 +152,7 @@ def replace_item_with_etag(
             etag=etag,
             match_condition=MatchConditions.IfNotModified,
         )
-    except CosmosAccessConditionFailedError as exc:  # pragma: no cover - thin wrapper
+    except CosmosAccessConditionFailedError as exc:
         raise EtagPreconditionFailedError(str(exc)) from exc
 
 
