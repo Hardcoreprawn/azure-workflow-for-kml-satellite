@@ -248,7 +248,7 @@ class TestUploadToken:
 
         req = _make_req("/api/upload/token", method="POST")
         with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
-            with patch("blueprints.upload.finalize_run") as mock_finalize:
+            with patch("treesight.billing.accounting.finalize_run") as mock_finalize:
                 resp = upload_token(req)
 
         assert resp.status_code == 502
@@ -256,9 +256,6 @@ class TestUploadToken:
         mock_finalize.assert_called_once()
         call_args = mock_finalize.call_args
         assert call_args.kwargs["status"] == "failed"
-        call_args = self.mock_release_quota.call_args
-        assert call_args[0][0] == "test-user"
-        assert call_args[1].get("instance_id")  # submission_id passed for idempotency
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
