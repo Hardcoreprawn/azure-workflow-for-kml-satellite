@@ -238,12 +238,6 @@ variable "ciam_deploy_client_id" {
   sensitive   = true
 }
 
-variable "ciam_extra_redirect_uris" {
-  description = "Additional SPA redirect URIs to register on the CIAM app, beyond the current environment's auto-discovered SWA hostname and localhost ports. Required because dev and prd share one SPA app registration; each env's tfvars must list the OTHER env's SWA URIs so an apply does not overwrite them. Origin URIs only ('https://host/'), trailing slash required to match MSAL redirectUri."
-  type        = list(string)
-  default     = []
-}
-
 # Cross-variable validation: all four required CIAM tfvars must be populated.
 # Cannot be expressed in a per-variable validation block (those may only
 # reference the validated variable itself), so enforced here as a plan-time
