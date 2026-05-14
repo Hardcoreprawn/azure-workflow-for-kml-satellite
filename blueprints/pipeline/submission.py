@@ -13,10 +13,17 @@ from typing import Any
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from treesight.billing.accounting import (
+    MemberCapExceededError,
+    OrgNotFoundError,
+    QuotaExhaustedError,
+    finalize_run,
+    reserve_run,
+)
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.pipeline.concurrency import at_concurrency_cap
 from treesight.security.billing import get_effective_subscription, plan_capabilities
-from treesight.security.quota import consume_quota, release_quota
+from treesight.security.orgs import get_user_org
 from treesight.security.redact import redact_user_id as _redact
 
 from . import bp
@@ -25,12 +32,12 @@ from .history import _extract_submission_context, _persist_submission_record
 logger = logging.getLogger(__name__)
 
 
-def _safe_release_quota(user_id: str) -> None:
-    """Best-effort quota refund — never raises."""
+def _finalize_run_on_failure(org_id: str, instance_id: str) -> None:
+    """Best-effort run refund on submission failure — never raises."""
     try:
-        release_quota(user_id)
+        finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
     except Exception:
-        logger.exception("Failed to release quota for user=%s", user_id)
+        logger.exception("Failed to finalize run for org=%s instance=%s", org_id, instance_id)
 
 
 _PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
@@ -182,40 +189,66 @@ async def analysis_submit(
 
 def _resolve_quota(
     user_id: str, body: Any, req: func.HttpRequest
-) -> tuple[bool, dict[str, Any], func.HttpResponse | None]:
-    """Consume quota unless the prior upload-token already reserved it.
+) -> tuple[bool, str, func.HttpResponse | None]:
+    """Reserve run via org-pooled accounting unless prior upload-token already reserved it.
 
-    Returns ``(quota_consumed, billing_fields, error_response_or_None)``.
-    When the caller already has a verified ticket the quota is considered
-    consumed without a second charge (fixes #767).
+    Returns ``(reserved, org_id, error_response_or_None)``.
+    When the caller already has a verified ticket the run is considered
+    reserved via prior_submission_id without a second charge (fixes #767).
     """
     prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
     if prior_submission_id and _quota_already_consumed(user_id, prior_submission_id):
         logger.info(
-            "Skipping quota consume — reusing ticket from prior_submission_id=%s user=%s",
+            "Skipping reserve — reusing ticket from prior_submission_id=%s user=%s",
             prior_submission_id,
             _redact(user_id),
         )
-        return True, {}, None
-
-    billing_fields: dict[str, Any] = {}
-    try:
-        consume_quota(user_id)
         try:
-            from treesight.security.billing_ledger import billing_fields_for_submission
-
-            billing_fields = billing_fields_for_submission(user_id)
+            from treesight.storage.client import BlobStorageClient
+            storage = BlobStorageClient()
+            ticket = storage.download_json(
+                DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"
+            )
+            org_id = ticket.get("org_id", "")
+            return True, org_id, None
         except Exception:
-            logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
-        return True, billing_fields, None
-    except ValueError as exc:
-        return False, {}, error_response(403, str(exc), req=req)
+            logger.debug("Could not extract org_id from prior ticket")
+            return True, "", None
+
+    try:
+        user_org = get_user_org(user_id)
+        org_id = user_org.get("org_id", "")
     except Exception:
-        logger.exception(
-            "Quota storage unavailable for user=%s — allowing submission",
+        logger.exception("Org lookup failed for user=%s", _redact(user_id))
+        return False, "", error_response(503, "Org lookup unavailable", req=req)
+
+    if not org_id:
+        return False, "", error_response(403, "User not in any org", req=req)
+
+    try:
+        reserve_run(
+            org_id=org_id,
+            user_id=user_id,
+            parcel_count=1,
+            is_eudr=False,
+            instance_id=str(uuid.uuid4()),
+        )
+        return True, org_id, None
+    except MemberCapExceededError:
+        return False, org_id, error_response(403, "Member parcel cap exceeded", req=req)
+    except QuotaExhaustedError:
+        return False, org_id, error_response(403, "Org pool exhausted", req=req)
+    except OrgNotFoundError:
+        return False, "", error_response(503, "Org not found", req=req)
+    except Exception:
+        # Transient quota storage errors (e.g. Cosmos unavailable) should not block
+        # submission. Allow request to proceed and handle quota accounting later.
+        logger.warning(
+            "Transient quota reserve failed for org=%s user=%s (continuing with submission)",
+            org_id,
             _redact(user_id),
         )
-        return False, {}, None
+        return True, org_id, None
 
 
 async def _submit_analysis_request(
@@ -239,14 +272,14 @@ async def _submit_analysis_request(
         )
 
     # Parse body early so we can check for a prior_submission_id before
-    # deciding whether to consume quota (avoids double-billing on fallback,
+    # deciding whether to reserve (avoids double-billing on fallback,
     # fixes #767).
     try:
         body = req.get_json()
     except ValueError:
         return error_response(400, "Invalid JSON body", req=req)
 
-    quota_consumed, billing_fields, quota_err = _resolve_quota(user_id, body, req)
+    reserved, org_id, quota_err = _resolve_quota(user_id, body, req)
     if quota_err:
         return quota_err
 
@@ -273,15 +306,19 @@ async def _submit_analysis_request(
         extra_input={
             "provider_name": effective_provider,
             "user_id": user_id,
+            "org_id": org_id,
             **plan_overrides,
             **eudr_input,
         },
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
-    # If submission failed, refund the quota slot we consumed upfront.
-    if resp.status_code != 202 and quota_consumed:
-        _safe_release_quota(user_id)
+    # If submission failed, refund the reserved parcel.
+    if resp.status_code != 202 and reserved and org_id:
+        instance_id = body.get("submission_id", "") if isinstance(body, dict) else ""
+        if not instance_id:
+            instance_id = str(uuid.uuid4())
+        _finalize_run_on_failure(org_id, instance_id)
 
     # Persist submission record for analysis history
     if resp.status_code == 202 and (blob_prefix.strip("/") or "analysis") == "analysis":
@@ -307,7 +344,6 @@ async def _submit_analysis_request(
             status="submitted",
             eudr_mode=eudr_mode is True,
             **ctx,
-            **billing_fields,
         )
         record = run.model_dump(exclude_none=True)
         _persist_submission_record(storage, record, user_id, submission_id)

@@ -431,23 +431,6 @@ def poll_batch_fulfilment(payload: _Payload) -> dict[str, Any]:
 
 
 @bp.activity_trigger(input_name="payload")
-def release_quota(payload: _Payload) -> dict[str, Any]:
-    """Refund a quota slot when a pipeline run fails."""
-    from treesight.security.quota import release_quota as _release
-
-    user_id: str = payload["user_id"]
-    instance_id: str = payload.get("instance_id", "")
-    remaining = _release(user_id, instance_id=instance_id)
-    logger.info(
-        "Quota released (run failed) user=%s instance=%s remaining=%d",
-        user_id,
-        instance_id,
-        remaining,
-    )
-    return {"released": True, "remaining": remaining}
-
-
-@bp.activity_trigger(input_name="payload")
 def complete_billing(payload: _Payload) -> dict[str, Any]:
     """Mark a run as charged in the billing ledger (#589)."""
     from treesight.security.billing_ledger import complete_run_billing
@@ -468,3 +451,64 @@ def fail_billing(payload: _Payload) -> dict[str, Any]:
     reason: str = payload.get("reason", "pipeline_failure")
     fail_run_billing(user_id, instance_id, reason=reason)
     return {"refunded": True}
+
+
+# ---------------------------------------------------------------------------
+# Org-pooled run accounting (Stage 2 of #814)
+# ---------------------------------------------------------------------------
+
+
+@bp.activity_trigger(input_name="payload")
+def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
+    """Finalize a completed run in org-pooled accounting (#814).
+
+    Moves runs from reserved → completed in org.usage, emits Stripe metered event.
+    """
+    from treesight.billing.accounting import finalize_run
+
+    org_id: str = payload["org_id"]
+    instance_id: str = payload["instance_id"]
+
+    try:
+        finalize_run(org_id=org_id, instance_id=instance_id, status="completed")
+        logger.info(
+            "Run finalized (completed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
+        return {"finalized": True, "status": "completed"}
+    except Exception:
+        logger.exception(
+            "Failed to finalize run (completed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
+        raise
+
+
+@bp.activity_trigger(input_name="payload")
+def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
+    """Finalize a failed run in org-pooled accounting (#814).
+
+    Moves runs from reserved → refunded in org.usage, refunds member per-period cap.
+    """
+    from treesight.billing.accounting import finalize_run
+
+    org_id: str = payload["org_id"]
+    instance_id: str = payload["instance_id"]
+
+    try:
+        finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
+        logger.info(
+            "Run finalized (failed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
+        return {"finalized": True, "status": "failed"}
+    except Exception:
+        logger.exception(
+            "Failed to finalize run (failed) org=%s instance=%s",
+            org_id,
+            instance_id,
+        )
+        raise

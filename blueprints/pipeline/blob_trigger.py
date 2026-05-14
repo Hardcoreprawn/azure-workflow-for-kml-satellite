@@ -77,6 +77,11 @@ def _enrich_from_ticket(orchestrator_input: dict, ticket: dict) -> None:
     if isinstance(user_id, str) and user_id:
         orchestrator_input["user_id"] = user_id
 
+    # Add org_id for Stage 2 of #814 (org-pooled run accounting)
+    org_id = ticket.get("org_id", "")
+    if isinstance(org_id, str) and org_id:
+        orchestrator_input["org_id"] = org_id
+
     # Copy through typed fields already resolved by submission endpoint
     tier = ticket.get("tier")
     if isinstance(tier, str) and tier:

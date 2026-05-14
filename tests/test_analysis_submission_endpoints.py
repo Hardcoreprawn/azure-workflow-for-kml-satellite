@@ -103,7 +103,8 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -166,7 +167,8 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch(
                 "blueprints.pipeline.submission.get_effective_subscription",
                 return_value={"tier": "free", "status": "none"},
@@ -461,10 +463,10 @@ class TestAnalysisSubmissionRoutes:
             },
         )
 
-        mock_consume = MagicMock()
+        mock_reserve = MagicMock()
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
                 "blueprints.pipeline.submission._quota_already_consumed",
                 return_value=True,
@@ -474,7 +476,7 @@ class TestAnalysisSubmissionRoutes:
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
-        mock_consume.assert_not_called()
+        mock_reserve.assert_not_called()
 
     def test_invalid_prior_submission_id_still_consumes_quota(self):
         """A fake prior_submission_id must not bypass quota (ticket lookup returns False)."""
@@ -488,10 +490,11 @@ class TestAnalysisSubmissionRoutes:
             },
         )
 
-        mock_consume = MagicMock(return_value=None)
+        mock_reserve = MagicMock(return_value=None)
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", mock_consume),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
                 "blueprints.pipeline.submission._quota_already_consumed",
                 return_value=False,
@@ -501,7 +504,7 @@ class TestAnalysisSubmissionRoutes:
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
-        mock_consume.assert_called_once()
+        mock_reserve.assert_called_once()
 
 
 class TestBlobTriggerIngress:
@@ -795,7 +798,8 @@ class TestEudrModeSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -821,7 +825,8 @@ class TestEudrModeSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -846,7 +851,8 @@ class TestEudrModeSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -875,7 +881,8 @@ class TestEudrModeSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -1048,7 +1055,8 @@ class TestCoordinateSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -1071,7 +1079,8 @@ class TestCoordinateSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -1091,7 +1100,8 @@ class TestCoordinateSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
@@ -1107,7 +1117,8 @@ class TestCoordinateSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
@@ -1124,7 +1135,8 @@ class TestCoordinateSubmission:
 
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.submission.consume_quota", return_value=5),
+            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
+            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
             patch("treesight.storage.client.BlobStorageClient"),
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))

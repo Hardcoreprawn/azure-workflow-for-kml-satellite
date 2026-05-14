@@ -22,11 +22,16 @@ from azure.storage.blob import (
     generate_blob_sas,
 )
 
+from treesight.billing.accounting import (
+    MemberCapExceededError,
+    OrgNotFoundError,
+    QuotaExhaustedError,
+    reserve_run,
+)
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.eudr_billing import check_eudr_entitlement, consume_eudr_trial
 from treesight.security.orgs import get_user_org
-from treesight.security.quota import consume_quota, release_quota
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
@@ -103,14 +108,6 @@ def _sanitise_submission_context(ctx: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _safe_release_quota(user_id: str, instance_id: str = "") -> None:
-    """Best-effort quota refund — never raises."""
-    try:
-        release_quota(user_id, instance_id=instance_id)
-    except Exception:
-        logger.exception("Failed to release quota for user=%s", user_id)
-
-
 _KMZ_EXTENSION = ".kmz"
 _KML_EXTENSION = ".kml"
 _KMZ_CONTENT_TYPE = "application/vnd.google-earth.kmz"
@@ -181,12 +178,14 @@ def _resolve_provider(body: dict, submission_context: dict) -> str:
     return submission_context.get("provider_name", DEFAULT_PROVIDER)
 
 
-def _build_ticket(body: dict, user_id: str, submission_context: dict) -> dict:
+def _build_ticket(body: dict, user_id: str, submission_context: dict, org_id: str = "") -> dict:
     """Assemble the ticket blob payload from request body and user metadata."""
     ticket: dict = {
         "user_id": user_id,
         "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
     }
+    if org_id:
+        ticket["org_id"] = org_id
     provider = body.get("provider_name")
     if isinstance(provider, str) and provider.strip():
         ticket["provider_name"] = provider.strip()[:80]
@@ -268,50 +267,21 @@ def _check_eudr_entitlement(
     return org_id, entitlement, None
 
 
-def _consume_upload_quota(
-    user_id: str, req: func.HttpRequest
-) -> tuple[bool, dict, func.HttpResponse | None]:
-    """Consume quota and compute billing fields.
-
-    Returns (quota_consumed, billing_fields, error_response_or_None).
-    """
-    billing_fields: dict = {}
-    try:
-        consume_quota(user_id)
-    except ValueError as exc:
-        return False, {}, error_response(403, str(exc), req=req)
-    except Exception:
-        logger.exception(
-            "Quota storage unavailable for user=%s — allowing submission",
-            _redact(user_id),
-        )
-        return False, {}, None
-
-    try:
-        from treesight.security.billing_ledger import billing_fields_for_submission
-
-        billing_fields = billing_fields_for_submission(user_id)
-    except Exception:
-        logger.warning("Billing classification failed for user=%s", user_id, exc_info=True)
-
-    return True, billing_fields, None
-
-
 def _write_ticket_and_mint_sas(
     body: dict,
     user_id: str,
     submission_id: str,
     blob_name: str,
     submission_context: dict,
-    quota_consumed: bool,
     req: func.HttpRequest,
+    org_id: str = "",
     content_type: str = _KML_CONTENT_TYPE,
 ) -> tuple[str | None, func.HttpResponse | None]:
     """Write ticket blob and mint SAS URL.
 
     Returns (sas_url, error_response_or_None).
     """
-    ticket = _build_ticket(body, user_id, submission_context)
+    ticket = _build_ticket(body, user_id, submission_context, org_id=org_id)
     try:
         blob_service = get_blob_service_client()
         ticket_blob = blob_service.get_blob_client(
@@ -324,8 +294,6 @@ def _write_ticket_and_mint_sas(
         )
     except Exception:
         logger.exception("Failed to write ticket for submission_id=%s", submission_id)
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
@@ -334,55 +302,9 @@ def _write_ticket_and_mint_sas(
         )
     except Exception:
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     return sas_url, None
-
-
-def _consume_eudr_trial_if_needed(
-    is_eudr: bool,
-    entitlement: dict,
-    eudr_org_id: str,
-    quota_consumed: bool,
-    user_id: str,
-    submission_id: str,
-    req: func.HttpRequest,
-) -> func.HttpResponse | None:
-    """Decrement EUDR free-trial counter if applicable.
-
-    Returns error_response or None on success.
-    """
-    if not (is_eudr and entitlement.get("reason") == "free_trial"):
-        return None
-    try:
-        consume_eudr_trial(eudr_org_id)
-    except ValueError:
-        logger.warning(
-            "EUDR trial race: entitlement passed but consume failed org=%s",
-            eudr_org_id,
-        )
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(
-            403,
-            "EUDR entitlement exhausted — subscription required",
-            req=req,
-        )
-    except Exception:
-        logger.exception(
-            "EUDR trial consumption failed unexpectedly org=%s",
-            eudr_org_id,
-        )
-        if quota_consumed:
-            _safe_release_quota(user_id, instance_id=submission_id)
-        return error_response(
-            503,
-            "EUDR entitlement service is temporarily unavailable. Please retry.",
-            req=req,
-        )
-    return None
 
 
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -405,19 +327,66 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     is_eudr = body.get("eudr_mode") is True
 
     # ── EUDR entitlement gate ──────────────────────────────────────
-    eudr_org_id: str = ""
-    entitlement: dict = {}
     if is_eudr:
-        eudr_org_id, entitlement, err = _check_eudr_entitlement(user_id, req)
+        _, _, err = _check_eudr_entitlement(user_id, req)
         if err:
             return err
 
-    # Consume quota upfront so the runs counter decrements immediately.
-    quota_consumed, billing_fields, quota_err = _consume_upload_quota(user_id, req)
-    if quota_err:
-        return quota_err
+    # ── Org-pooled run accounting (reserve_run) ────────────────────
+    try:
+        user_org = get_user_org(user_id)
+    except Exception:
+        logger.exception(
+            "Failed to resolve org for run reservation",
+            extra={"user_id": _redact(user_id)},
+        )
+        return error_response(
+            503, "Unable to reserve runs right now. Please retry shortly.", req=req
+        )
 
+    if not user_org:
+        return error_response(
+            403,
+            "You must belong to an organisation to submit analyses. Create or join an org first.",
+            req=req,
+        )
+
+    org_id = user_org["org_id"]
     submission_id = str(uuid.uuid4())
+    parcel_count = body.get("parcel_count", 1)  # Default to 1 if not provided
+
+    try:
+        reserve_run(
+            org_id=org_id,
+            user_id=user_id,
+            parcel_count=parcel_count,
+            is_eudr=is_eudr,
+            instance_id=submission_id,
+        )
+    except MemberCapExceededError as exc:
+        logger.info(
+            "Member cap exceeded during reservation org=%s user=%s",
+            org_id,
+            _redact(user_id),
+        )
+        return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
+    except QuotaExhaustedError as exc:
+        logger.info(
+            "Organization quota exhausted during reservation org=%s",
+            org_id,
+        )
+        return error_response(
+            403,
+            f"Organization parcel quota exhausted. {exc!s}",
+            req=req,
+        )
+    except OrgNotFoundError:
+        logger.warning("Org not found during reservation org=%s", org_id)
+        return error_response(503, "Organization not found. Please try again.", req=req)
+    except Exception as exc:
+        logger.exception("Run reservation failed unexpectedly org=%s", org_id)
+        return error_response(503, f"Unable to process reservation: {exc}", req=req)
+
     ext, content_type = _detect_file_extension(body.get("filename", ""))
     blob_name = f"analysis/{submission_id}{ext}"
 
@@ -431,25 +400,22 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         submission_id,
         blob_name,
         submission_context,
-        quota_consumed,
         req,
-        content_type,
+        org_id=org_id,
+        content_type=content_type,
     )
     if storage_err:
+        # On error, we need to release the reservation
+        try:
+            from treesight.billing.accounting import finalize_run
+            finalize_run(org_id=org_id, instance_id=submission_id, status="failed")
+        except Exception:
+            logger.exception(
+                "Failed to refund reservation after storage error org=%s instance=%s",
+                org_id,
+                submission_id,
+            )
         return storage_err
-
-    # ── EUDR trial consumption ─────────────────────────────────────
-    eudr_err = _consume_eudr_trial_if_needed(
-        is_eudr,
-        entitlement,
-        eudr_org_id,
-        quota_consumed,
-        user_id,
-        submission_id,
-        req,
-    )
-    if eudr_err:
-        return eudr_err
 
     # Persist submission record only after SAS minting succeeds
     submitted_at = datetime.datetime.now(datetime.UTC).isoformat()
@@ -468,7 +434,6 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         status="submitted",
         eudr_mode=body.get("eudr_mode") is True,
         **ctx,
-        **billing_fields,
     )
     _persist_submission_record(submission_id, run.model_dump(exclude_none=True), user_id)
 

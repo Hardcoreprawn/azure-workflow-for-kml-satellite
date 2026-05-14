@@ -577,60 +577,21 @@ def _phase_enrichment(
     return enrichment
 
 
-def _safe_release_quota(
-    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
-) -> Generator[Any, Any, None]:
-    """Release quota on failure, swallowing errors to preserve the original exception."""
-    # release_quota must succeed — it refunds the user's pipeline run credit.
-    # Retry aggressively to avoid permanently lost quota.
-    quota_retry = df.RetryOptions(
+def _safe_finalize_run(context: df.DurableOrchestrationContext, org_id: str, instance_id: str, status: str) -> None:
+    """Finalize a run in org-pooled accounting (#814)."""
+    retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
     )
+    activity_name = "finalize_run_completed" if status == "completed" else "finalize_run_failed"
     try:
         yield context.call_activity_with_retry(
-            "release_quota", quota_retry, {"user_id": user_id, "instance_id": instance_id}
+            activity_name,
+            retry,
+            {"org_id": org_id, "instance_id": instance_id},
         )
     except Exception:
-        logger.exception(
-            "Failed to release quota during error handling for instance=%s", instance_id
-        )
-
-
-def _safe_complete_billing(
-    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
-) -> Generator[Any, Any, None]:
-    """Mark billing ledger as charged on success (#589)."""
-    billing_retry = df.RetryOptions(
-        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
-        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
-    )
-    try:
-        yield context.call_activity_with_retry(
-            "complete_billing",
-            billing_retry,
-            {"user_id": user_id, "instance_id": instance_id},
-        )
-    except Exception:
-        logger.exception("Failed to complete billing for instance=%s", instance_id)
-
-
-def _safe_fail_billing(
-    context: df.DurableOrchestrationContext, user_id: str, instance_id: str
-) -> Generator[Any, Any, None]:
-    """Mark billing ledger as refunded on failure (#589)."""
-    billing_retry = df.RetryOptions(
-        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
-        max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
-    )
-    try:
-        yield context.call_activity_with_retry(
-            "fail_billing",
-            billing_retry,
-            {"user_id": user_id, "instance_id": instance_id, "reason": "pipeline_failure"},
-        )
-    except Exception:
-        logger.exception("Failed to record billing failure for instance=%s", instance_id)
+        logger.exception("Failed to finalize run (%s) org=%s instance=%s", status, org_id, instance_id)
 
 
 # ---------------------------------------------------------------------------
@@ -756,11 +717,10 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             fulfilment=ful_s,
         )
         _apply_enrichment_to_summary(summary, enrichment)
-        if user_id and tier != "demo":
-            yield from _safe_complete_billing(context, user_id, instance_id)
+        if user_id and tier != "demo" and inp.get("org_id"):
+            yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
         return summary
     except Exception:
-        if user_id and tier != "demo":
-            yield from _safe_release_quota(context, user_id, instance_id)
-            yield from _safe_fail_billing(context, user_id, instance_id)
+        if user_id and tier != "demo" and inp.get("org_id"):
+            yield from _safe_finalize_run(context, inp["org_id"], instance_id, "failed")
         raise

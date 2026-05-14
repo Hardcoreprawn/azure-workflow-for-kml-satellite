@@ -867,48 +867,6 @@ class TestEnrichmentParallelFanOut:
         ctx.call_activity_with_retry.assert_not_called()
 
 
-class TestSafeReleaseQuotaRetry:
-    """Verify _safe_release_quota uses retry."""
-
-    def test_release_quota_uses_transient_retry(self):
-        """release_quota should use transient retry — it refunds credits."""
-        from unittest.mock import MagicMock
-
-        from blueprints.pipeline.orchestrator import _safe_release_quota
-        from treesight.constants import (
-            ACTIVITY_RETRY_FIRST_INTERVAL_MS,
-            ACTIVITY_RETRY_MAX_ATTEMPTS,
-        )
-
-        ctx = MagicMock()
-        ctx.call_activity_with_retry.return_value = None
-
-        gen = _safe_release_quota(ctx, user_id="u1", instance_id="i1")
-        with contextlib.suppress(StopIteration):
-            gen.send(None)
-
-        ctx.call_activity_with_retry.assert_called_once()
-        call_args = ctx.call_activity_with_retry.call_args
-        assert call_args[0][0] == "release_quota"
-        retry_opts = call_args[0][1]
-        assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
-        assert retry_opts.max_number_of_attempts == ACTIVITY_RETRY_MAX_ATTEMPTS
-
-    def test_release_quota_swallows_errors(self):
-        """release_quota failure must not propagate (preserves original exception)."""
-        from unittest.mock import MagicMock
-
-        from blueprints.pipeline.orchestrator import _safe_release_quota
-
-        ctx = MagicMock()
-        ctx.call_activity_with_retry.side_effect = RuntimeError("quota service down")
-
-        gen = _safe_release_quota(ctx, user_id="u1", instance_id="i1")
-        with contextlib.suppress(StopIteration):
-            gen.send(None)
-        # If RuntimeError propagated, the above would raise instead of being suppressed.
-
-
 class TestOrchestratorCoordinatorSize:
     """The main orchestrator should be a thin coordinator ≤40 lines."""
 
