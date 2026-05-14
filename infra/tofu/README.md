@@ -76,11 +76,15 @@ are missing.
 
 ## CIAM deploy SP bootstrap (one-time, done)
 
-**Status (May 2026, rebuilt):** Bootstrap pending — old tenant `treesightauth`
-was torn down and replaced with new tenant `canopex` (tenant ID
-`98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7`). The deploy SP must be re-created in
-the new tenant before tofu can manage `azuread_application_redirect_uris.ciam_spa[0]`.
-See "Re-create deploy SP" steps below.
+**Status (May 2026, rebuilt):** Bootstrap complete in new tenant `canopex`
+(tenant ID `98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7`). Deploy SP `Canopex Tofu
+Deploy` (appId `b49dea4a-81af-445c-acfe-29db8301c7f4`, SP id
+`f29b7f11-…`) was created with `Application.ReadWrite.OwnedBy` (admin-consented
+on Microsoft Graph), Owner of SPA app `1b51e2e8-…`, and federated GitHub OIDC
+credentials for `repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:{dev,prd}`.
+Both GitHub Environments have `TF_VAR_CIAM_DEPLOY_CLIENT_ID` set. Tofu manages
+`azuread_application_redirect_uris.ciam_spa[0]` from
+`local.ciam_spa_redirect_uris` in `locals.tf`.
 
 If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 

@@ -66,20 +66,31 @@ locals {
 
   # SPA redirect URIs to register in the CIAM app registration.
   # Must include every origin+path that canopex-auth.js pageRedirectUri() may produce.
-  # Mirrors the browser_allowed_origins pattern: localhost ports for non-prd,
-  # SWA default hostname always, and the custom domain when configured.
   # MSAL always redirects to the origin root ('/') — canopex-auth.js uses
   # window.location.origin + '/' as redirectUri. MSAL's navigateToLoginRequestUrl
   # (default: true) returns the user to the originating page automatically.
   # Only root URIs need CIAM registration; no per-page entries required.
+  #
+  # IMPORTANT — shared SPA app registration across environments: dev and prd
+  # both target the same CIAM `ciam_client_id`. Each env's Tofu state owns this
+  # `redirect_uris` block independently, so without the union below, applying
+  # one env would overwrite the other env's URIs. `ciam_extra_redirect_uris`
+  # (set in each env's tfvars) carries the OTHER env's expected URIs so the
+  # final list is the same regardless of which env applied last.
   ciam_spa_redirect_uris = distinct(concat(
-    var.environment == "prd" ? [] : [
+    # Local development origins — registered in every env so dev tooling
+    # against the shared SPA app works no matter which env applied last.
+    [
       "http://localhost:1111/",
       "http://localhost:4280/",
     ],
+    # Current environment's SWA default hostname.
     [
       "https://${azurerm_static_web_app.main.default_host_name}/",
     ],
+    # Other environments' SWA hostnames (from tfvars, see note above).
+    var.ciam_extra_redirect_uris,
+    # Custom domain when configured.
     var.custom_domain != "" ? [
       "https://${var.custom_domain}/",
     ] : []

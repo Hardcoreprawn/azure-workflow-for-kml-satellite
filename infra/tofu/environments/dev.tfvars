@@ -34,3 +34,7 @@ ciam_tenant_subdomain = "canopex"
 ciam_tenant_id        = "98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7"
 ciam_client_id        = "1b51e2e8-15af-448b-8886-1345aeda73ba"
 ciam_api_audience     = "api://canopex"
+# Other-env SPA URIs to preserve when this env applies (dev/prd share one SPA
+# app registration; without this, applying dev would strip prd's URIs).
+# Add prd's SWA default hostname here once prd is provisioned.
+ciam_extra_redirect_uris = []
