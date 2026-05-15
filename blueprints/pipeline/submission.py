@@ -205,6 +205,7 @@ def _resolve_quota(
         )
         try:
             from treesight.storage.client import BlobStorageClient
+
             storage = BlobStorageClient()
             ticket = storage.download_json(
                 DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"

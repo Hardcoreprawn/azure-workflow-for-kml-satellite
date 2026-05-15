@@ -108,20 +108,25 @@ def _enrich_from_ticket(orchestrator_input: dict, ticket: dict) -> None:
 
     # If tier was not pre-resolved, look it up from billing
     if "tier" not in orchestrator_input and orchestrator_input.get("user_id"):
-        try:
-            subscription = get_effective_subscription(user_id)
-            plan = plan_capabilities(subscription.get("tier"))
-        except Exception:
-            logger.exception("Billing lookup failed for user=%s — defaulting to free", user_id)
-            plan = plan_capabilities("free")
+        _enrich_tier_from_billing(orchestrator_input, user_id)
 
-        tier = plan.get("tier", "free")
-        orchestrator_input["tier"] = tier
-        if tier in {"free", "demo"}:
-            orchestrator_input.setdefault("cadence", plan.get("temporal_cadence", "seasonal"))
-            max_hist = plan.get("max_history_years")
-            if max_hist is not None:
-                orchestrator_input.setdefault("max_history_years", max_hist)
+
+def _enrich_tier_from_billing(orchestrator_input: dict, user_id: str) -> None:
+    """Resolve tier/cadence/max_history from billing when not pre-set by submission."""
+    try:
+        subscription = get_effective_subscription(user_id)
+        plan = plan_capabilities(subscription.get("tier"))
+    except Exception:
+        logger.exception("Billing lookup failed for user=%s — defaulting to free", user_id)
+        plan = plan_capabilities("free")
+
+    tier = plan.get("tier", "free")
+    orchestrator_input["tier"] = tier
+    if tier in {"free", "demo"}:
+        orchestrator_input.setdefault("cadence", plan.get("temporal_cadence", "seasonal"))
+        max_hist = plan.get("max_history_years")
+        if max_hist is not None:
+            orchestrator_input.setdefault("max_history_years", max_hist)
 
 
 @bp.event_grid_trigger(arg_name="event")

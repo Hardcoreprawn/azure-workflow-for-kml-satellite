@@ -577,7 +577,12 @@ def _phase_enrichment(
     return enrichment
 
 
-def _safe_finalize_run(context: df.DurableOrchestrationContext, org_id: str, instance_id: str, status: str) -> None:
+def _safe_finalize_run(
+    context: df.DurableOrchestrationContext,
+    org_id: str,
+    instance_id: str,
+    status: str,
+) -> None:
     """Finalize a run in org-pooled accounting (#814)."""
     retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
@@ -591,7 +596,9 @@ def _safe_finalize_run(context: df.DurableOrchestrationContext, org_id: str, ins
             {"org_id": org_id, "instance_id": instance_id},
         )
     except Exception:
-        logger.exception("Failed to finalize run (%s) org=%s instance=%s", status, org_id, instance_id)
+        logger.exception(
+            "Failed to finalize run (%s) org=%s instance=%s", status, org_id, instance_id
+        )
 
 
 # ---------------------------------------------------------------------------

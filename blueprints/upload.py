@@ -30,7 +30,7 @@ from treesight.billing.accounting import (
 )
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.security.eudr_billing import check_eudr_entitlement, consume_eudr_trial
+from treesight.security.eudr_billing import check_eudr_entitlement
 from treesight.security.orgs import get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
@@ -307,6 +307,40 @@ def _write_ticket_and_mint_sas(
     return sas_url, None
 
 
+def _reserve_run_or_error(
+    org_id: str,
+    user_id: str,
+    parcel_count: int,
+    is_eudr: bool,
+    submission_id: str,
+    req: func.HttpRequest,
+) -> func.HttpResponse | None:
+    """Attempt to reserve a run. Returns an error response on failure, None on success."""
+    try:
+        reserve_run(
+            org_id=org_id,
+            user_id=user_id,
+            parcel_count=parcel_count,
+            is_eudr=is_eudr,
+            instance_id=submission_id,
+        )
+    except MemberCapExceededError as exc:
+        logger.info(
+            "Member cap exceeded during reservation org=%s user=%s", org_id, _redact(user_id)
+        )
+        return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
+    except QuotaExhaustedError as exc:
+        logger.info("Organization quota exhausted during reservation org=%s", org_id)
+        return error_response(403, f"Organization parcel quota exhausted. {exc!s}", req=req)
+    except OrgNotFoundError:
+        logger.warning("Org not found during reservation org=%s", org_id)
+        return error_response(503, "Organization not found. Please try again.", req=req)
+    except Exception as exc:
+        logger.exception("Run reservation failed unexpectedly org=%s", org_id)
+        return error_response(503, f"Unable to process reservation: {exc}", req=req)
+    return None
+
+
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
@@ -355,37 +389,11 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     submission_id = str(uuid.uuid4())
     parcel_count = body.get("parcel_count", 1)  # Default to 1 if not provided
 
-    try:
-        reserve_run(
-            org_id=org_id,
-            user_id=user_id,
-            parcel_count=parcel_count,
-            is_eudr=is_eudr,
-            instance_id=submission_id,
-        )
-    except MemberCapExceededError as exc:
-        logger.info(
-            "Member cap exceeded during reservation org=%s user=%s",
-            org_id,
-            _redact(user_id),
-        )
-        return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
-    except QuotaExhaustedError as exc:
-        logger.info(
-            "Organization quota exhausted during reservation org=%s",
-            org_id,
-        )
-        return error_response(
-            403,
-            f"Organization parcel quota exhausted. {exc!s}",
-            req=req,
-        )
-    except OrgNotFoundError:
-        logger.warning("Org not found during reservation org=%s", org_id)
-        return error_response(503, "Organization not found. Please try again.", req=req)
-    except Exception as exc:
-        logger.exception("Run reservation failed unexpectedly org=%s", org_id)
-        return error_response(503, f"Unable to process reservation: {exc}", req=req)
+    reservation_err = _reserve_run_or_error(
+        org_id, user_id, parcel_count, is_eudr, submission_id, req
+    )
+    if reservation_err:
+        return reservation_err
 
     ext, content_type = _detect_file_extension(body.get("filename", ""))
     blob_name = f"analysis/{submission_id}{ext}"
@@ -408,6 +416,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         # On error, we need to release the reservation
         try:
             from treesight.billing.accounting import finalize_run
+
             finalize_run(org_id=org_id, instance_id=submission_id, status="failed")
         except Exception:
             logger.exception(

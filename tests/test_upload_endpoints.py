@@ -69,7 +69,7 @@ class TestUploadToken:
         self.mock_persist = self._persist_patcher.start()
         self.mock_get_user_org = self._org_patcher.start()
         self.mock_reserve_run = self._reserve_patcher.start()
-        
+
         # Set up default returns for new mocks
         self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}  # MagicMock accepts any call
@@ -276,7 +276,6 @@ class TestUploadToken:
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 
-    @patch("blueprints.upload.consume_eudr_trial")
     @patch(
         "blueprints.upload.check_eudr_entitlement",
         return_value={"allowed": True, "reason": "free_trial"},
@@ -284,7 +283,7 @@ class TestUploadToken:
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial):
+    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org, mock_ent):
         from blueprints.upload import upload_token
 
         mock_blob_client = MagicMock()
@@ -340,7 +339,6 @@ class TestUploadToken:
         ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
         assert "eudr_mode" not in ticket_data
 
-    @patch("blueprints.upload.consume_eudr_trial")
     @patch(
         "blueprints.upload.check_eudr_entitlement",
         return_value={"allowed": True, "reason": "free_trial"},
@@ -348,9 +346,7 @@ class TestUploadToken:
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_stored_in_run_record(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial
-    ):
+    def test_eudr_mode_stored_in_run_record(self, mock_bsc, mock_gen_sas, mock_org, mock_ent):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -473,7 +469,7 @@ class TestUploadTokenEudrEntitlement:
         self.mock_get_user_org = self._org_patcher.start()
         self.mock_reserve_run = self._reserve_patcher.start()
         self.mock_persist = self._persist_patcher.start()
-        
+
         # Default return values
         self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}
@@ -520,9 +516,7 @@ class TestUploadTokenEudrEntitlement:
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_consumes_trial_when_free(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
-    ):
+    def test_eudr_mode_consumes_trial_when_free(self, mock_bsc, mock_gen_sas, mock_org, mock_ent):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
