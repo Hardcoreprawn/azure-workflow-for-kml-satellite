@@ -607,6 +607,8 @@ def billing_pool_status(
             )
 
         org_id = org.get("org_id")
+        if not isinstance(org_id, str) or not org_id:
+            return error_response(503, "Organization not found", req=req)
         pool = get_pool_status(org_id)
 
         return func.HttpResponse(

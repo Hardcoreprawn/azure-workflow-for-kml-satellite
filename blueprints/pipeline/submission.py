@@ -218,12 +218,14 @@ def _resolve_quota(
 
     try:
         user_org = get_user_org(user_id)
+        if not user_org:
+            return False, "", error_response(403, "User not in any org", req=req)
         org_id = user_org.get("org_id", "")
     except Exception:
         logger.exception("Org lookup failed for user=%s", _redact(user_id))
         return False, "", error_response(503, "Org lookup unavailable", req=req)
 
-    if not org_id:
+    if not isinstance(org_id, str) or not org_id:
         return False, "", error_response(403, "User not in any org", req=req)
 
     try:

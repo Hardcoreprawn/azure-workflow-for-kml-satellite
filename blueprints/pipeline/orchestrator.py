@@ -582,7 +582,7 @@ def _safe_finalize_run(
     org_id: str,
     instance_id: str,
     status: str,
-) -> None:
+) -> Generator[Any, Any, None]:
     """Finalize a run in org-pooled accounting (#814)."""
     retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
