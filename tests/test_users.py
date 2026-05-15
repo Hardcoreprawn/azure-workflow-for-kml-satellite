@@ -667,7 +667,7 @@ class TestDeleteUser:
 
             from treesight.security.users import delete_user
 
-            with pytest.raises(ValueError, match="sole owner|transfer"):
+            with pytest.raises(ValueError, match=r"sole owner|transfer"):
                 delete_user("u1")
 
     def test_delete_user_transfer_to_non_member_rejects(self):
@@ -722,3 +722,225 @@ class TestDeleteUser:
 
             with pytest.raises(RuntimeError, match="not available"):
                 delete_user("u1")
+
+
+# ---------------------------------------------------------------------------
+# Account API endpoints (Slice 3)
+# ---------------------------------------------------------------------------
+
+
+def _make_account_req(
+    *,
+    method: str = "GET",
+    url: str = "/api/user/profile",
+    bearer: str | None = None,
+    body: bytes = b"",
+    params: dict | None = None,
+) -> func.HttpRequest:
+    """Helper to create mock HttpRequest for account endpoints."""
+    headers = {}
+    if bearer is not None:
+        headers["Authorization"] = f"Bearer {bearer}"
+    if params is None:
+        params = {}
+    return func.HttpRequest(
+        method=method,
+        url=url,
+        headers=headers,
+        params=params,
+        body=body,
+    )
+
+
+class TestAccountProfileEndpoint:
+    """Tests for PATCH /api/user/profile"""
+
+    def test_requires_auth(self, monkeypatch):
+        monkeypatch.setenv("REQUIRE_AUTH", "true")
+        from blueprints.account import update_profile_endpoint
+
+        resp = update_profile_endpoint(_make_account_req(method="PATCH"))
+        assert resp.status_code == 401
+
+    def test_rejects_empty_body(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                from blueprints.account import update_profile_endpoint
+
+                resp = update_profile_endpoint(
+                    _make_account_req(method="PATCH", bearer="token", body=b"{}")
+                )
+                assert resp.status_code == 400
+                assert "display_name" in json.loads(resp.get_body())["error"]
+
+    def test_rejects_invalid_json(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                from blueprints.account import update_profile_endpoint
+
+                resp = update_profile_endpoint(
+                    _make_account_req(method="PATCH", bearer="token", body=b"not json")
+                )
+                assert resp.status_code == 400
+
+    def test_updates_display_name_with_mocked_auth(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.update_user_profile",
+                    return_value={"id": "u1", "display_name": "New Name"},
+                ):
+                    from blueprints.account import update_profile_endpoint
+
+                    resp = update_profile_endpoint(
+                        _make_account_req(
+                            method="PATCH",
+                            bearer="token",
+                            body=json.dumps({"display_name": "New Name"}).encode(),
+                        )
+                    )
+                    assert resp.status_code == 200
+                    data = json.loads(resp.get_body())
+                    assert data["user"]["display_name"] == "New Name"
+
+    def test_rejects_blank_display_name(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                from blueprints.account import update_profile_endpoint
+
+                resp = update_profile_endpoint(
+                    _make_account_req(
+                        method="PATCH",
+                        bearer="token",
+                        body=json.dumps({"display_name": "   "}).encode(),
+                    )
+                )
+                assert resp.status_code == 400
+
+    def test_handles_user_not_found(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.update_user_profile",
+                    side_effect=ValueError("User not found"),
+                ):
+                    from blueprints.account import update_profile_endpoint
+
+                    resp = update_profile_endpoint(
+                        _make_account_req(
+                            method="PATCH",
+                            bearer="token",
+                            body=json.dumps({"display_name": "New"}).encode(),
+                        )
+                    )
+                    assert resp.status_code == 404
+
+    def test_handles_cosmos_unavailable(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.update_user_profile",
+                    side_effect=RuntimeError("Cosmos DB is not available"),
+                ):
+                    from blueprints.account import update_profile_endpoint
+
+                    resp = update_profile_endpoint(
+                        _make_account_req(
+                            method="PATCH",
+                            bearer="token",
+                            body=json.dumps({"display_name": "New"}).encode(),
+                        )
+                    )
+                    assert resp.status_code == 503
+
+
+class TestAccountDeleteEndpoint:
+    """Tests for DELETE /api/user"""
+
+    def test_requires_auth(self, monkeypatch):
+        monkeypatch.setenv("REQUIRE_AUTH", "true")
+        from blueprints.account import delete_account_endpoint
+
+        resp = delete_account_endpoint(_make_account_req(method="DELETE", url="/api/user"))
+        assert resp.status_code == 401
+
+    def test_deletes_user_without_orgs(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.delete_user",
+                    return_value=None,
+                ):
+                    from blueprints.account import delete_account_endpoint
+
+                    resp = delete_account_endpoint(
+                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
+                    )
+                    assert resp.status_code == 204
+
+    def test_accepts_transfer_parameter(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.delete_user",
+                    return_value=None,
+                ) as mock_delete:
+                    from blueprints.account import delete_account_endpoint
+
+                    resp = delete_account_endpoint(
+                        _make_account_req(
+                            method="DELETE",
+                            url="/api/user",
+                            bearer="token",
+                            params={"transfer_to": "u2"},
+                        )
+                    )
+                    assert resp.status_code == 204
+                    mock_delete.assert_called_once_with("u1", transfer_to_user_id="u2")
+
+    def test_rejects_invalid_transfer_target(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.delete_user",
+                    side_effect=ValueError("not a member"),
+                ):
+                    from blueprints.account import delete_account_endpoint
+
+                    resp = delete_account_endpoint(
+                        _make_account_req(
+                            method="DELETE",
+                            url="/api/user",
+                            bearer="token",
+                            params={"transfer_to": "u3"},
+                        )
+                    )
+                    assert resp.status_code == 400
+
+    def test_rejects_sole_owner_without_transfer(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.delete_user",
+                    side_effect=ValueError("sole owner"),
+                ):
+                    from blueprints.account import delete_account_endpoint
+
+                    resp = delete_account_endpoint(
+                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
+                    )
+                    assert resp.status_code == 400
+
+    def test_handles_cosmos_unavailable(self, monkeypatch):
+        with patch("blueprints._helpers._resolve_bearer_claims", return_value={"oid": "u1"}):
+            with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
+                with patch(
+                    "treesight.security.users.delete_user",
+                    side_effect=RuntimeError("Cosmos DB is not available"),
+                ):
+                    from blueprints.account import delete_account_endpoint
+
+                    resp = delete_account_endpoint(
+                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
+                    )
+                    assert resp.status_code == 503
