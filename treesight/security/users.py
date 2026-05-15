@@ -55,6 +55,7 @@ def record_user_sign_in(
         existing.setdefault("id", user_id)
         existing.setdefault("user_id", user_id)
         existing.setdefault("first_seen", now)
+        existing.setdefault("created_at", now)
         existing["last_seen"] = now
 
         if email:
