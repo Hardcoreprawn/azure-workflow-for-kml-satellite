@@ -238,6 +238,24 @@ class TestCheckEudrEntitlement:
         assert result["allowed"] is False
         assert result["reason"] == "subscription_required"
 
+    @patch(
+        "treesight.security.billing.get_effective_subscription",
+        return_value={"tier": "enterprise", "status": "active", "emulated": True},
+    )
+    @patch(_GET_ORG)
+    def test_active_enterprise_emulation_allows_assessment(self, mock_get_org, _effective_sub):
+        from treesight.security.eudr_billing import check_eudr_entitlement
+
+        mock_get_org.return_value = {
+            "id": "org-1",
+            "org_id": "org-1",
+            "eudr_assessments_used": EUDR_FREE_ASSESSMENTS,
+            "billing": {},
+        }
+        result = check_eudr_entitlement("org-1", user_id="user-1")
+        assert result["allowed"] is True
+        assert result["reason"] == "subscription"
+
 
 # ---------------------------------------------------------------------------
 # §3 — EUDR billing status
@@ -310,6 +328,25 @@ class TestGetEudrBillingStatus:
         status = get_eudr_billing_status("missing")
         assert status["plan"] == "none"
         assert status["subscribed"] is False
+
+    @patch(
+        "treesight.security.billing.get_effective_subscription",
+        return_value={"tier": "enterprise", "status": "active", "emulated": True},
+    )
+    @patch(_GET_ORG)
+    def test_active_enterprise_emulation_sets_subscribed(self, mock_get_org, _effective_sub):
+        from treesight.security.eudr_billing import get_eudr_billing_status
+
+        mock_get_org.return_value = {
+            "id": "org-1",
+            "org_id": "org-1",
+            "eudr_assessments_used": EUDR_FREE_ASSESSMENTS,
+            "billing": {},
+        }
+        status = get_eudr_billing_status("org-1", user_id="user-1")
+        assert status["plan"] == "eudr_pro"
+        assert status["subscribed"] is True
+        assert status["trial_remaining"] == 0
 
 
 # ---------------------------------------------------------------------------

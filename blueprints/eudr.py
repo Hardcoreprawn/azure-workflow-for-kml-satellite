@@ -251,7 +251,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
 
     org = get_user_org(user_id)
     org_id = org.get("org_id") if isinstance(org, dict) else ""
-    billing = get_eudr_billing_status(org_id or "")
+    billing = get_eudr_billing_status(org_id or "", user_id=user_id)
 
     period_used = int(billing.get("period_parcels_used", 0) or 0)
     included = int(billing.get("included_parcels", EUDR_INCLUDED_PARCELS) or EUDR_INCLUDED_PARCELS)
@@ -352,13 +352,13 @@ def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
     org = get_user_org(user_id)
     if not org:
         return func.HttpResponse(
-            json.dumps(get_eudr_billing_status("")),
+            json.dumps(get_eudr_billing_status("", user_id=user_id)),
             status_code=200,
             mimetype="application/json",
             headers=cors_headers(req),
         )
 
-    status = get_eudr_billing_status(org["org_id"])
+    status = get_eudr_billing_status(org["org_id"], user_id=user_id)
     return func.HttpResponse(
         json.dumps(status),
         status_code=200,
@@ -394,7 +394,7 @@ def eudr_entitlement_check(req: func.HttpRequest) -> func.HttpResponse:
             headers=cors_headers(req),
         )
 
-    result = check_eudr_entitlement(org["org_id"])
+    result = check_eudr_entitlement(org["org_id"], user_id=user_id)
     return func.HttpResponse(
         json.dumps(result),
         status_code=200,

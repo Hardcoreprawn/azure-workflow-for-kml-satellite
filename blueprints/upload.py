@@ -239,7 +239,7 @@ def _check_eudr_entitlement(
         )
     org_id = org["org_id"]
     try:
-        entitlement = check_eudr_entitlement(org_id)
+        entitlement = check_eudr_entitlement(org_id, user_id=user_id)
     except Exception:
         logger.exception(
             "EUDR entitlement check failed during upload flow",
