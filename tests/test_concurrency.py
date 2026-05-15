@@ -127,8 +127,12 @@ class TestSubmissionConcurrencyCap:
         with (
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.at_concurrency_cap", return_value=False),
-            patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}),
-            patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch(
+                "blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1}
+            ),
             patch("treesight.storage.client.BlobStorageClient"),
         ):
             resp = asyncio.run(_submit_analysis_request(req))
