@@ -30,7 +30,6 @@ from treesight.billing.accounting import (
 )
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.security.eudr_billing import check_eudr_entitlement
 from treesight.security.orgs import get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
@@ -204,69 +203,6 @@ def _build_ticket(body: dict, user_id: str, submission_context: dict, org_id: st
     return ticket
 
 
-def _check_eudr_entitlement(
-    user_id: str, req: func.HttpRequest
-) -> tuple[str, dict, func.HttpResponse | None]:
-    """Validate EUDR entitlement for the requesting user's org.
-
-    Returns (org_id, entitlement_dict, error_response_or_None).
-    """
-    try:
-        org = get_user_org(user_id)
-    except Exception:
-        logger.exception(
-            "Failed to resolve org for EUDR entitlement",
-            extra={"user_id": _redact(user_id)},
-        )
-        return (
-            "",
-            {},
-            error_response(
-                503,
-                "Unable to verify EUDR entitlement right now. Please retry shortly.",
-                req=req,
-            ),
-        )
-    if not org:
-        return (
-            "",
-            {},
-            error_response(
-                403,
-                "EUDR assessments require an org. Create or join an org first.",
-                req=req,
-            ),
-        )
-    org_id = org["org_id"]
-    try:
-        entitlement = check_eudr_entitlement(org_id, user_id=user_id)
-    except Exception:
-        logger.exception(
-            "EUDR entitlement check failed during upload flow",
-            extra={"org_id": org_id, "user_id": _redact(user_id)},
-        )
-        return (
-            org_id,
-            {},
-            error_response(
-                503,
-                "EUDR entitlement service is temporarily unavailable. Please retry.",
-                req=req,
-            ),
-        )
-    if not entitlement["allowed"]:
-        return (
-            org_id,
-            entitlement,
-            error_response(
-                403,
-                "EUDR entitlement exhausted — subscription required",
-                req=req,
-            ),
-        )
-    return org_id, entitlement, None
-
-
 def _write_ticket_and_mint_sas(
     body: dict,
     user_id: str,
@@ -359,12 +295,6 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         body = {}
 
     is_eudr = body.get("eudr_mode") is True
-
-    # ── EUDR entitlement gate ──────────────────────────────────────
-    if is_eudr:
-        _, _, err = _check_eudr_entitlement(user_id, req)
-        if err:
-            return err
 
     # ── Org-pooled run accounting (reserve_run) ────────────────────
     try:
