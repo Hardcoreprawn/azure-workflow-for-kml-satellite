@@ -13,7 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from treesight.constants import EUDR_FREE_ASSESSMENTS, EUDR_INCLUDED_PARCELS
+from treesight.billing.accounting import OrgNotFoundError
+from treesight.constants import EUDR_FREE_ASSESSMENTS
 
 _UPSERT_ITEM = "treesight.storage.cosmos.upsert_item"
 _GET_ORG = "treesight.security.orgs.get_org"
@@ -176,67 +177,34 @@ class TestConsumeEudrTrial:
 class TestCheckEudrEntitlement:
     """Check whether an org can submit an EUDR assessment."""
 
-    @patch(_GET_ORG)
-    def test_free_trial_allows_assessment(self, mock_get_org):
+    @patch("treesight.billing.accounting.get_pool_status")
+    def test_pool_availability_allows_assessment(self, mock_pool):
         from treesight.security.eudr_billing import check_eudr_entitlement
 
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": 0,
-        }
+        mock_pool.return_value = {"available": 4}
         result = check_eudr_entitlement("org-1")
         assert result["allowed"] is True
-        assert result["reason"] == "free_trial"
+        assert result["reason"] == "pool_available"
 
-    @patch(_GET_ORG)
-    def test_trial_exhausted_no_subscription_blocked(self, mock_get_org):
+    @patch("treesight.billing.accounting.get_pool_status")
+    def test_pool_exhausted_blocks_assessment(self, mock_pool):
         from treesight.security.eudr_billing import check_eudr_entitlement
 
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": EUDR_FREE_ASSESSMENTS,
-            "billing": {},
-        }
+        mock_pool.return_value = {"available": 0}
         result = check_eudr_entitlement("org-1")
         assert result["allowed"] is False
-        assert result["reason"] == "subscription_required"
+        assert result["reason"] == "pool_exhausted"
 
-    @patch(_GET_ORG)
-    def test_active_subscription_allows_assessment(self, mock_get_org):
+    @patch(
+        "treesight.billing.accounting.get_pool_status",
+        side_effect=OrgNotFoundError(),
+    )
+    def test_missing_org_is_blocked(self, mock_pool):
         from treesight.security.eudr_billing import check_eudr_entitlement
 
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": EUDR_FREE_ASSESSMENTS,
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "active",
-                "stripe_subscription_id": "sub_123",
-            },
-        }
-        result = check_eudr_entitlement("org-1")
-        assert result["allowed"] is True
-        assert result["reason"] == "subscription"
-
-    @patch(_GET_ORG)
-    def test_cancelled_subscription_blocked(self, mock_get_org):
-        from treesight.security.eudr_billing import check_eudr_entitlement
-
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": EUDR_FREE_ASSESSMENTS,
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "canceled",
-            },
-        }
         result = check_eudr_entitlement("org-1")
         assert result["allowed"] is False
-        assert result["reason"] == "subscription_required"
+        assert result["reason"] == "org_not_found"
 
 
 # ---------------------------------------------------------------------------
@@ -247,60 +215,53 @@ class TestCheckEudrEntitlement:
 class TestGetEudrBillingStatus:
     """Billing status payload for the EUDR frontend."""
 
+    @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
-    def test_free_trial_status(self, mock_get_org):
+    def test_status_uses_pool_counters(self, mock_get_org, mock_pool):
         from treesight.security.eudr_billing import get_eudr_billing_status
 
         mock_get_org.return_value = {
             "id": "org-1",
             "org_id": "org-1",
-            "eudr_assessments_used": 1,
+            "billing": {"stripe_customer_id": "cus_abc"},
+        }
+        mock_pool.return_value = {
+            "allowance": 12,
+            "available": 5,
+            "completed": 6,
+            "reserved": 1,
         }
         status = get_eudr_billing_status("org-1")
-        assert status["plan"] == "free_trial"
-        assert status["assessments_used"] == 1
-        assert status["trial_remaining"] == 1
+        assert status["plan"] == "parcel_pool"
+        assert status["assessments_used"] == 7
+        assert status["trial_remaining"] == 5
         assert status["subscribed"] is False
-
-    @patch(_GET_ORG)
-    def test_subscribed_status(self, mock_get_org):
-        from treesight.security.eudr_billing import get_eudr_billing_status
-
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": 5,
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "active",
-                "eudr_period_parcels": 7,
-                "stripe_customer_id": "cus_abc",
-            },
-        }
-        status = get_eudr_billing_status("org-1")
-        assert status["plan"] == "eudr_pro"
-        assert status["subscribed"] is True
+        assert status["included_parcels"] == 12
         assert status["period_parcels_used"] == 7
-        assert status["included_parcels"] == EUDR_INCLUDED_PARCELS
         assert status["overage_parcels"] == 0
+        assert status["stripe_customer_id"] == "cus_abc"
 
+    @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
-    def test_overage_calculation(self, mock_get_org):
+    def test_status_reports_overage_when_reserved_plus_completed_exceeds_allowance(
+        self, mock_get_org, mock_pool
+    ):
         from treesight.security.eudr_billing import get_eudr_billing_status
 
         mock_get_org.return_value = {
             "id": "org-1",
             "org_id": "org-1",
-            "eudr_assessments_used": 15,
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "active",
-                "eudr_period_parcels": 15,
-            },
+            "billing": {},
+        }
+        mock_pool.return_value = {
+            "allowance": 8,
+            "available": 0,
+            "completed": 7,
+            "reserved": 3,
         }
         status = get_eudr_billing_status("org-1")
-        assert status["period_parcels_used"] == 15
-        assert status["overage_parcels"] == 5
+        assert status["period_parcels_used"] == 10
+        assert status["overage_parcels"] == 2
 
     @patch(_GET_ORG)
     def test_nonexistent_org_returns_empty(self, mock_get_org):
