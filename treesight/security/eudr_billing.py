@@ -25,6 +25,8 @@ from treesight.constants import (
 
 logger = logging.getLogger(__name__)
 
+_EUDR_EMULATION_TIERS: frozenset[str] = frozenset({"eudr_pro", "pro", "team", "enterprise"})
+
 
 # ---------------------------------------------------------------------------
 # Tier helpers
@@ -101,7 +103,25 @@ def consume_eudr_trial(org_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_eudr_entitlement(org_id: str) -> dict[str, Any]:
+def _has_active_eudr_subscription(billing: dict[str, Any]) -> bool:
+    """Return True when org billing has an active EUDR Pro subscription."""
+    return billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro"
+
+
+def _has_emulated_eudr_access(user_id: str | None) -> bool:
+    """Return True when user has active paid-tier emulation for EUDR testing."""
+    if not user_id:
+        return False
+
+    from treesight.security.billing import get_effective_subscription
+
+    sub = get_effective_subscription(user_id)
+    tier = str(sub.get("tier", "")).strip().lower()
+    status = str(sub.get("status", "")).strip().lower()
+    return bool(sub.get("emulated")) and status == "active" and tier in _EUDR_EMULATION_TIERS
+
+
+def check_eudr_entitlement(org_id: str, *, user_id: str | None = None) -> dict[str, Any]:
     """Check whether an org can submit an EUDR assessment.
 
     Returns a dict with ``allowed`` (bool) and ``reason`` (str).
@@ -114,7 +134,11 @@ def check_eudr_entitlement(org_id: str) -> dict[str, Any]:
 
     # Check active subscription first
     billing = org.get("billing", {})
-    if billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro":
+    if _has_active_eudr_subscription(billing):
+        return {"allowed": True, "reason": "subscription"}
+
+    # Local paid-tier emulation should unlock EUDR for operator testing.
+    if _has_emulated_eudr_access(user_id):
         return {"allowed": True, "reason": "subscription"}
 
     # Fall back to free trial
@@ -130,7 +154,7 @@ def check_eudr_entitlement(org_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def get_eudr_billing_status(org_id: str) -> dict[str, Any]:
+def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[str, Any]:
     """Return EUDR billing status for the frontend."""
     from treesight.security.orgs import get_org
 
@@ -148,7 +172,9 @@ def get_eudr_billing_status(org_id: str) -> dict[str, Any]:
 
     billing = org.get("billing", {})
     used = org.get("eudr_assessments_used", 0)
-    subscribed = billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro"
+    subscribed = _has_active_eudr_subscription(billing)
+    if not subscribed and _has_emulated_eudr_access(user_id):
+        subscribed = True
     period_parcels = billing.get("eudr_period_parcels", 0) if subscribed else 0
     overage = max(period_parcels - EUDR_INCLUDED_PARCELS, 0) if subscribed else 0
 
