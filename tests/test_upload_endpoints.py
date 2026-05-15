@@ -516,7 +516,9 @@ class TestUploadTokenEudrEntitlement:
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_consumes_trial_when_free(self, mock_bsc, mock_gen_sas, mock_org, mock_ent):
+    def test_eudr_mode_marks_reservation_as_eudr_when_entitled(
+        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
+    ):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()

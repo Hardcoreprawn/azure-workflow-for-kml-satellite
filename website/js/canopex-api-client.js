@@ -10,7 +10,7 @@
     apiHealthTimeoutMs: 1200,
     // Cold-start warm-up probe: retry health check in the background so the
     // badge updates to "Online" after the container finishes starting.
-    warmUpMaxAttempts: 12,   // up to 1 minute of retries
+    warmUpMaxAttempts: 12,   // up to ~4 minutes worst-case retry budget
     warmUpIntervalMs: 5000,  // 5 s between retries
     warmUpTimeoutMs: 15000   // 15 s per retry (long enough for a live container)
   };
@@ -96,34 +96,43 @@
     }
   }
 
+  function delayMs(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
   // After a cold-start timeout, retry health probes in the background so the
   // status badge updates to "Online" once the container finishes starting.
-  // Bounded to config.warmUpMaxAttempts retries at config.warmUpIntervalMs each.
+  // Bounded by warmUpMaxAttempts and per-attempt timeout/interval values.
   function scheduleWarmUpProbe(config, base, onApiBaseResolved) {
-    let attempt = 0;
     const maxAttempts = config.warmUpMaxAttempts;
     const intervalMs = config.warmUpIntervalMs;
     const timeoutMs = config.warmUpTimeoutMs;
 
-    function tryOnce() {
-      attempt += 1;
-      if (attempt > maxAttempts) return;
-      setTimeout(function() {
-        fetchWithTimeout(base + '/api/health', timeoutMs)
-          .then(function(res) {
-            if (res.ok) {
-              onApiBaseResolved();
-              applyServiceStatus(config, 'online');
-              writeCachedServiceStatus(config, 'online');
-            } else {
-              tryOnce();
-            }
-          })
-          .catch(function() { tryOnce(); });
-      }, intervalMs);
+    async function runWarmUpProbe() {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        await delayMs(intervalMs);
+        try {
+          const res = await fetchWithTimeout(base + '/api/health', timeoutMs);
+          if (!res.ok) {
+            continue;
+          }
+          onApiBaseResolved();
+          applyServiceStatus(config, 'online');
+          writeCachedServiceStatus(config, 'online');
+          return;
+        } catch (err) {
+          if (attempt === maxAttempts) {
+            console.warn('[CanopexApiClient] Warm-up probe exhausted retry budget.', err);
+          }
+        }
+      }
     }
 
-    tryOnce();
+    runWarmUpProbe().catch(function(err) {
+      console.warn('[CanopexApiClient] Warm-up probe failed unexpectedly.', err);
+    });
   }
 
   function createClient(options) {

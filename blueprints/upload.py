@@ -335,9 +335,9 @@ def _reserve_run_or_error(
     except OrgNotFoundError:
         logger.warning("Org not found during reservation org=%s", org_id)
         return error_response(503, "Organization not found. Please try again.", req=req)
-    except Exception as exc:
+    except Exception:
         logger.exception("Run reservation failed unexpectedly org=%s", org_id)
-        return error_response(503, f"Unable to process reservation: {exc}", req=req)
+        return error_response(503, "Unable to process reservation. Please try again.", req=req)
     return None
 
 
