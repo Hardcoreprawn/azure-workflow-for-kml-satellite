@@ -11,10 +11,77 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
+
 logger = logging.getLogger(__name__)
 
 # Invite validity window
 INVITE_TTL_DAYS = 7
+
+
+# ── Invite Token Helpers ──────────────────────────────────────
+
+
+def _get_invite_secret() -> str:
+    """Get the signing secret for invite tokens.
+
+    Falls back to a stable default if not configured (for testing).
+    In production, this should be injected via env var.
+    """
+    import os
+
+    return os.environ.get("INVITE_TOKEN_SECRET", "default-insecure-test-secret")
+
+
+def create_invite_token(org_id: str, email: str) -> str:
+    """Create a signed JWT token for an invite link.
+
+    Token expires in INVITE_TTL_DAYS.
+    Payload: { org_id, email, iat, exp }
+    """
+    now = datetime.now(UTC)
+    exp = now + timedelta(days=INVITE_TTL_DAYS)
+
+    payload = {
+        "org_id": org_id,
+        "email": email,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+    }
+
+    try:
+        token = jwt.encode(
+            payload,
+            _get_invite_secret(),
+            algorithm="HS256",
+        )
+        return token
+    except Exception:
+        logger.error("Failed to create invite token", exc_info=True)
+        return ""
+
+
+def validate_invite_token(token: str) -> dict[str, Any] | None:
+    """Validate and decode a signed invite token.
+
+    Returns the payload dict on success, None on failure.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            _get_invite_secret(),
+            algorithms=["HS256"],
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        logger.warning("Invite token expired")
+        return None
+    except jwt.InvalidTokenError:
+        logger.warning("Invalid invite token")
+        return None
+    except Exception:
+        logger.error("Invite token validation failed", exc_info=True)
+        return None
 
 
 # ── Org CRUD ──────────────────────────────────────────────────
@@ -188,15 +255,22 @@ def create_invite(org_id: str, email: str, *, invited_by: str) -> dict[str, Any]
 
     now = datetime.now(UTC)
     invite_id = f"invite:{org_id}:{email.lower().strip()}"
+    token = create_invite_token(org_id, email.lower().strip())
 
     doc: dict[str, Any] = {
         "id": invite_id,
         "org_id": org_id,
         "doc_type": "invite",
         "email": email.lower().strip(),
+        "token": token,
+        "status": "pending",
         "invited_by": invited_by,
         "invited_at": now.isoformat(),
         "expires_at": (now + timedelta(days=INVITE_TTL_DAYS)).isoformat(),
+        "email_sent_at": None,
+        "email_resent_count": 0,
+        "accepted_at": None,
+        "accepted_by": None,
     }
 
     upsert_item("orgs", doc)
@@ -241,6 +315,114 @@ def accept_invite(invite: dict[str, Any], user_id: str) -> dict[str, Any]:
         invite["email"],
     )
     return org
+
+
+def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
+    """Accept an invite using a signed token.
+
+    Token must be valid (not expired, correct signature).
+    Returns the updated org document.
+    Raises ValueError if token is invalid or invite not found.
+    """
+    from treesight.storage.cosmos import query_items, upsert_item
+
+    payload = validate_invite_token(token)
+    if not payload:
+        raise ValueError("Invalid or expired invite token")
+
+    org_id = payload.get("org_id")
+    email = payload.get("email")
+
+    if not org_id or not email:
+        raise ValueError("Malformed invite token — missing org_id or email")
+
+    # Find the invite document
+    now = datetime.now(UTC).isoformat()
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND LOWER(c.email) = LOWER(@email)",
+        parameters=[
+            {"name": "@org_id", "value": org_id},
+            {"name": "@email", "value": email.lower().strip()},
+        ],
+    )
+
+    if not results:
+        raise ValueError(f"Invite not found for org={org_id}, email={email}")
+
+    invite = results[0]
+
+    # Check status
+    if invite.get("status") == "revoked":
+        raise ValueError("This invite has been revoked")
+    if invite.get("status") == "accepted":
+        raise ValueError("This invite has already been accepted")
+
+    # Add user to org
+    org = add_member(
+        org_id,
+        user_id,
+        email=email,
+        role="member",
+    )
+
+    # Mark invite as accepted and update it (instead of deleting, for audit trail)
+    invite["status"] = "accepted"
+    invite["accepted_at"] = now
+    invite["accepted_by"] = user_id
+    upsert_item("orgs", invite)
+
+    logger.info(
+        "Invite accepted by token org=%s user=%s email=%s",
+        org_id,
+        user_id,
+        email,
+    )
+    return org
+
+
+def revoke_invite(org_id: str, invite_email: str) -> dict[str, Any]:
+    """Revoke a pending invite by org and email."""
+    from treesight.storage.cosmos import query_items, upsert_item
+
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND LOWER(c.email) = LOWER(@email)",
+        parameters=[
+            {"name": "@org_id", "value": org_id},
+            {"name": "@email", "value": invite_email.lower().strip()},
+        ],
+    )
+
+    if not results:
+        raise ValueError(f"Invite not found for org={org_id}, email={invite_email}")
+
+    invite = results[0]
+    invite["status"] = "revoked"
+    invite["revoked_at"] = datetime.now(UTC).isoformat()
+    upsert_item("orgs", invite)
+
+    logger.info("Invite revoked org=%s email=%s", org_id, invite_email)
+    return invite
+
+
+def list_pending_invites(org_id: str) -> list[dict[str, Any]]:
+    """List all pending invites for an org."""
+    from treesight.storage.cosmos import query_items
+
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND c.status = 'pending'"
+        " ORDER BY c.invited_at DESC",
+        parameters=[{"name": "@org_id", "value": org_id}],
+    )
+    return results
 
 
 # ── Helpers ──────────────────────────────────────────────────
