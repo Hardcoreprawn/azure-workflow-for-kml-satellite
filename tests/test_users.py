@@ -486,3 +486,239 @@ class TestSetUserRoleCosmos:
 
             with pytest.raises(RuntimeError, match="not available"):
                 set_user_role("u1", billing_allowed=True)
+
+
+# ---------------------------------------------------------------------------
+# Slice 2: Profile update and account deletion
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateUserProfile:
+    def test_updates_display_name(self):
+        existing = {
+            "id": "u1",
+            "user_id": "u1",
+            "email": "a@b.com",
+            "display_name": "Alice",
+        }
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value=dict(existing)),
+            patch("treesight.storage.cosmos.upsert_item") as upsert,
+        ):
+            from treesight.security.users import update_user_profile
+
+            result = update_user_profile("u1", display_name="Alice Brown")
+            assert result["display_name"] == "Alice Brown"
+            upsert.assert_called_once()
+            doc = upsert.call_args[0][1]
+            assert doc["display_name"] == "Alice Brown"
+            assert doc["last_modified"] is not None
+
+    def test_rejects_empty_display_name(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value={"id": "u1", "user_id": "u1"}),
+        ):
+            from treesight.security.users import update_user_profile
+
+            with pytest.raises(ValueError, match="display_name"):
+                update_user_profile("u1", display_name="")
+
+    def test_rejects_whitespace_only_display_name(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value={"id": "u1", "user_id": "u1"}),
+        ):
+            from treesight.security.users import update_user_profile
+
+            with pytest.raises(ValueError, match="display_name"):
+                update_user_profile("u1", display_name="   ")
+
+    def test_rejects_too_long_display_name(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value={"id": "u1", "user_id": "u1"}),
+        ):
+            from treesight.security.users import update_user_profile
+
+            long_name = "x" * 201
+            with pytest.raises(ValueError, match="display_name"):
+                update_user_profile("u1", display_name=long_name)
+
+    def test_raises_when_user_not_found(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
+        ):
+            from treesight.security.users import update_user_profile
+
+            with pytest.raises(ValueError, match="not found"):
+                update_user_profile("u1", display_name="New Name")
+
+    def test_preserves_other_fields(self):
+        existing = {
+            "id": "u1",
+            "user_id": "u1",
+            "email": "a@b.com",
+            "billing_allowed": True,
+            "quota": {"used": 5},
+        }
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value=dict(existing)),
+            patch("treesight.storage.cosmos.upsert_item") as upsert,
+        ):
+            from treesight.security.users import update_user_profile
+
+            update_user_profile("u1", display_name="New Name")
+            doc = upsert.call_args[0][1]
+            assert doc["billing_allowed"] is True
+            assert doc["quota"] == {"used": 5}
+            assert doc["email"] == "a@b.com"
+
+    def test_raises_when_cosmos_unavailable(self):
+        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
+            from treesight.security.users import update_user_profile
+
+            with pytest.raises(RuntimeError, match="not available"):
+                update_user_profile("u1", display_name="New Name")
+
+
+class TestDeleteUser:
+    def test_delete_user_not_member_removes_from_all_orgs(self):
+        """User is not a member of any org; just delete the user doc."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.security.orgs.list_orgs_for_user", return_value=[]),
+            patch("treesight.storage.cosmos.delete_item") as delete,
+        ):
+            from treesight.security.users import delete_user
+
+            delete_user("u1")
+            delete.assert_called_once_with("users", "u1", "u1")
+
+    def test_delete_user_removes_from_member_orgs(self):
+        """User is a member (not owner) of orgs; remove from each org."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.security.orgs.list_orgs_for_user",
+                return_value=[
+                    {"org_id": "org1", "org_role": "member"},
+                    {"org_id": "org2", "org_role": "member"},
+                ],
+            ),
+            patch("treesight.security.orgs.remove_member") as remove_member,
+            patch("treesight.storage.cosmos.delete_item") as delete,
+        ):
+            from treesight.security.users import delete_user
+
+            delete_user("u1")
+            assert remove_member.call_count == 2
+            delete.assert_called_once_with("users", "u1", "u1")
+
+    def test_delete_user_sole_owner_transfer_ownership(self):
+        """User is sole owner of an org; transfer ownership to another member."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.security.orgs.list_orgs_for_user",
+                return_value=[{"org_id": "org1", "org_role": "owner"}],
+            ),
+            patch("treesight.security.orgs.get_org") as get_org,
+            patch("treesight.security.orgs.change_member_role") as change_role,
+            patch("treesight.security.orgs.remove_member") as remove_member,
+            patch("treesight.storage.cosmos.delete_item"),
+        ):
+            org_doc = {
+                "org_id": "org1",
+                "members": [
+                    {"user_id": "u1", "role": "owner"},
+                    {"user_id": "u2", "role": "member"},
+                ],
+            }
+            get_org.return_value = org_doc
+
+            from treesight.security.users import delete_user
+
+            delete_user("u1", transfer_to_user_id="u2")
+
+            # Should promote u2 to owner
+            change_role.assert_called_once_with("org1", "u2", "owner")
+            # Then remove u1
+            remove_member.assert_called_once_with("org1", "u1")
+
+    def test_delete_user_sole_owner_no_transfer_rejects(self):
+        """User is sole owner; no transfer_to_user_id provided → error."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.security.orgs.list_orgs_for_user",
+                return_value=[{"org_id": "org1", "org_role": "owner"}],
+            ),
+            patch("treesight.security.orgs.get_org") as get_org,
+        ):
+            org_doc = {
+                "org_id": "org1",
+                "members": [{"user_id": "u1", "role": "owner"}],
+            }
+            get_org.return_value = org_doc
+
+            from treesight.security.users import delete_user
+
+            with pytest.raises(ValueError, match="sole owner|transfer"):
+                delete_user("u1")
+
+    def test_delete_user_transfer_to_non_member_rejects(self):
+        """Transfer target is not a member of the org → error."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.security.orgs.list_orgs_for_user",
+                return_value=[{"org_id": "org1", "org_role": "owner"}],
+            ),
+            patch("treesight.security.orgs.get_org") as get_org,
+        ):
+            org_doc = {
+                "org_id": "org1",
+                "members": [
+                    {"user_id": "u1", "role": "owner"},
+                    {"user_id": "u2", "role": "member"},
+                ],
+            }
+            get_org.return_value = org_doc
+
+            from treesight.security.users import delete_user
+
+            with pytest.raises(ValueError, match="not a member"):
+                delete_user("u1", transfer_to_user_id="u3")
+
+    def test_delete_user_cascades_data_deletion(self):
+        """All user data (runs, analysis) should be marked for deletion."""
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.security.orgs.list_orgs_for_user", return_value=[]),
+            patch("treesight.storage.cosmos.delete_item") as delete,
+            patch("treesight.storage.cosmos.query_items") as query,
+        ):
+            # Simulate user has 2 runs
+            query.return_value = [
+                {"id": "run1", "user_id": "u1"},
+                {"id": "run2", "user_id": "u1"},
+            ]
+
+            from treesight.security.users import delete_user
+
+            delete_user("u1")
+
+            # Should delete user document
+            delete_calls = [c for c in delete.call_args_list if c[0][0] == "users"]
+            assert len(delete_calls) >= 1
+
+    def test_delete_user_raises_when_cosmos_unavailable(self):
+        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
+            from treesight.security.users import delete_user
+
+            with pytest.raises(RuntimeError, match="not available"):
+                delete_user("u1")

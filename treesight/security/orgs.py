@@ -425,6 +425,26 @@ def list_pending_invites(org_id: str) -> list[dict[str, Any]]:
     return results
 
 
+def list_orgs_for_user(user_id: str) -> list[dict[str, Any]]:
+    """List all orgs a user is a member of, with role information."""
+    from treesight.storage.cosmos import query_items
+
+    try:
+        results = query_items(
+            "orgs",
+            "SELECT c.org_id, c.name, c.created_at,"
+            " (SELECT VALUE m.role FROM m IN c.members"
+            " WHERE m.user_id = @user_id) AS org_role"
+            " FROM c WHERE c.doc_type = 'org'"
+            " AND ARRAY_CONTAINS(c.members, {user_id: @user_id}, true)",
+            parameters=[{"name": "@user_id", "value": user_id}],
+        )
+        return results
+    except Exception:
+        logger.warning("Failed to query orgs for user=%s", user_id, exc_info=True)
+        return []
+
+
 # ── Helpers ──────────────────────────────────────────────────
 
 
