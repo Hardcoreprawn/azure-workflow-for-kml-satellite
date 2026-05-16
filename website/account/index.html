@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account — Canopex</title>
+<meta name="description" content="Manage your Canopex account, profile, and organization settings.">
+<link rel="canonical" href="/account/">
+<meta property="og:title" content="Account — Canopex">
+<meta property="og:description" content="Manage your Canopex account, profile, and organization settings.">
+<meta property="og:url" content="/account/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Account — Canopex">
+<meta name="twitter:description" content="Manage your Canopex account, profile, and organization settings.">
+<link rel="stylesheet" href="/css/shared.css">
+<meta name="ai-connection-string" content="">
+<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":"","apiAudience":""}</script>
+<script src="/js/analytics.js" defer></script>
+<script src="/js/canopex-geo.js" defer></script>
+<script src="/js/canopex-helpers.js" defer></script>
+<script src="/js/canopex-api-client.js" defer></script>
+<script src="https://unpkg.com/@azure/msal-browser@3.30.0/lib/msal-browser.min.js" integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi" crossorigin="anonymous" defer></script>
+<script src="/js/canopex-auth.js" defer></script>
+<script src="/js/account-app.js" defer></script>
+<style>
+  /* Account-specific layout and sidebar */
+  body[data-account-app] {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  .account-container {
+    display: flex;
+    flex: 1;
+    gap: 0;
+  }
+
+  /* Sidebar navigation */
+  .account-sidebar {
+    width: 240px;
+    background: var(--c-surface);
+    border-right: 1px solid var(--c-border);
+    padding: 20px 0;
+    position: sticky;
+    top: 60px; /* Account for sticky nav height */
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+  }
+
+  .account-sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: static;
+    background: none;
+    border: none;
+    padding: 0;
+    z-index: auto;
+  }
+
+  .account-sidebar nav a {
+    display: block;
+    padding: 12px 16px;
+    color: var(--c-muted);
+    font-size: 0.9rem;
+    border-left: 3px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .account-sidebar nav a:hover {
+    color: var(--c-text);
+    background: rgba(94, 236, 196, 0.08);
+    border-left-color: var(--c-accent);
+    text-decoration: none;
+  }
+
+  .account-sidebar nav a[data-active="true"] {
+    color: var(--c-accent);
+    background: rgba(94, 236, 196, 0.12);
+    border-left-color: var(--c-accent);
+    font-weight: 600;
+  }
+
+  /* Main content area */
+  .account-main {
+    flex: 1;
+    padding: 40px 24px;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .account-section {
+    display: none;
+  }
+
+  .account-section[data-active="true"] {
+    display: block;
+  }
+
+  .account-section h1 {
+    font-size: 1.75rem;
+    margin-bottom: 8px;
+    font-weight: 700;
+  }
+
+  .account-section p.section-description {
+    color: var(--c-muted);
+    margin-bottom: 32px;
+    font-size: 0.95rem;
+  }
+
+  /* Form styles */
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--c-text);
+  }
+
+  .form-group input,
+  .form-group textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: inherit;
+    font-size: 0.9rem;
+  }
+
+  .form-group input:focus,
+  .form-group textarea:focus {
+    outline: none;
+    border-color: var(--c-accent);
+    box-shadow: 0 0 0 2px rgba(94, 236, 196, 0.2);
+  }
+
+  /* Buttons */
+  .btn {
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn.primary {
+    background: var(--c-accent);
+    color: #0b1411;
+  }
+
+  .btn.primary:hover {
+    background: #a8f5e0;
+    box-shadow: 0 0 14px rgba(94, 236, 196, 0.45);
+  }
+
+  .btn.danger {
+    background: transparent;
+    color: var(--c-red);
+    border: 1px solid var(--c-red);
+  }
+
+  .btn.danger:hover {
+    background: rgba(248, 81, 73, 0.1);
+  }
+
+  /* Auth guard overlay */
+  .auth-guard-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(11, 20, 17, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+
+  .auth-guard-message {
+    text-align: center;
+  }
+
+  .auth-guard-message h2 {
+    font-size: 1.5rem;
+    margin-bottom: 12px;
+  }
+
+  .auth-guard-message p {
+    color: var(--c-muted);
+    margin-bottom: 24px;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .account-container {
+      flex-direction: column;
+    }
+
+    .account-sidebar {
+      width: 100%;
+      max-height: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--c-border);
+      top: 60px;
+      position: relative;
+      padding: 12px 0;
+    }
+
+    .account-sidebar nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+
+    .account-sidebar nav a {
+      padding: 8px 12px;
+      border-left: none;
+      border-bottom: 2px solid transparent;
+    }
+
+    .account-sidebar nav a:hover,
+    .account-sidebar nav a[data-active="true"] {
+      border-left: none;
+      border-bottom-color: var(--c-accent);
+    }
+
+    .account-main {
+      padding: 24px 16px;
+    }
+
+    .account-section h1 {
+      font-size: 1.5rem;
+    }
+  }
+</style>
+</head>
+<body data-account-app>
+<noscript><div class="noscript-banner">Canopex requires JavaScript to function. Please enable JavaScript in your browser.</div></noscript>
+
+<!-- Navigation bar -->
+<nav>
+  <div class="container">
+    <a href="/" class="logo">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+      Canopex
+    </a>
+    <ul>
+      <li><a href="/">Home</a></li>
+      <li><a href="/eudr/">EUDR</a></li>
+      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/docs/">Docs</a></li>
+    </ul>
+    <div class="auth-area" id="auth-area">
+      <span id="status-badge">Checking…</span>
+      <span class="auth-user" id="auth-user" style="display:none"></span>
+      <button class="auth-btn primary" id="auth-login-btn" type="button">Sign In</button>
+      <button class="auth-btn logout" id="auth-logout-btn" style="display:none">Sign Out</button>
+    </div>
+  </div>
+</nav>
+
+<!-- Auth guard overlay (shown if not authenticated) -->
+<div class="auth-guard-overlay" id="auth-guard-overlay" style="display:none">
+  <div class="auth-guard-message">
+    <h2>Authentication Required</h2>
+    <p>You must be signed in to access your account.</p>
+    <button class="btn primary" id="auth-guard-login-btn">Sign In</button>
+  </div>
+</div>
+
+<!-- Main account layout -->
+<div class="account-container" id="account-container" style="display:none">
+  <!-- Sidebar -->
+  <aside class="account-sidebar">
+    <nav id="account-nav">
+      <a href="#profile" data-section="profile" class="sidebar-link" data-active="true">Profile</a>
+      <a href="#organization" data-section="organization" class="sidebar-link">Organization</a>
+      <a href="#danger" data-section="danger" class="sidebar-link">Account Settings</a>
+    </nav>
+  </aside>
+
+  <!-- Main content -->
+  <main class="account-main">
+    <!-- Profile section -->
+    <section class="account-section" id="section-profile" data-active="true">
+      <h1>Profile</h1>
+      <p class="section-description">Manage your display name and personal information.</p>
+      <form id="profile-form">
+        <div class="form-group">
+          <label for="display-name">Display Name</label>
+          <input type="text" id="display-name" name="display_name" placeholder="Your name" required>
+        </div>
+        <button type="submit" class="btn primary">Update Profile</button>
+      </form>
+      <div id="profile-message" style="margin-top: 16px; display: none;"></div>
+    </section>
+
+    <!-- Organization section -->
+    <section class="account-section" id="section-organization">
+      <h1>Organization</h1>
+      <p class="section-description">View and manage your organization membership and invitations.</p>
+      <div id="org-content">
+        <p style="color: var(--c-muted);">Loading organization information…</p>
+      </div>
+    </section>
+
+    <!-- Account settings / danger zone -->
+    <section class="account-section" id="section-danger">
+      <h1>Account Settings</h1>
+      <p class="section-description">Manage your account and data.</p>
+      <div style="border: 1px solid var(--c-border); border-radius: var(--radius); padding: 20px; background: rgba(248, 81, 73, 0.05);">
+        <h3 style="color: var(--c-red); margin-bottom: 8px;">Delete Account</h3>
+        <p style="color: var(--c-muted); margin-bottom: 16px; font-size: 0.9rem;">
+          Permanently delete your account and all associated data. This action cannot be undone.
+          If you are the sole owner of an organization, you must transfer ownership before deleting your account.
+        </p>
+        <button class="btn danger" id="delete-account-btn">Delete My Account</button>
+      </div>
+      <div id="delete-message" style="margin-top: 16px; display: none;"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var ciam = window.CanopexCiam || {};
+  var apiClient = null;
+
+  function showAuthGuard() {
+    document.getElementById('auth-guard-overlay').style.display = 'flex';
+    document.getElementById('account-container').style.display = 'none';
+  }
+
+  function hideAuthGuard() {
+    document.getElementById('auth-guard-overlay').style.display = 'none';
+    document.getElementById('account-container').style.display = 'flex';
+  }
+
+  function loginRedirect() {
+    if (typeof ciam.login === 'function') {
+      ciam.login();
+    }
+  }
+
+  function logoutRedirect() {
+    if (typeof ciam.logout === 'function') {
+      ciam.logout();
+    }
+  }
+
+  function setActiveSection(sectionId) {
+    // Hide all sections
+    var sections = document.querySelectorAll('.account-section');
+    sections.forEach(function(sec) {
+      sec.setAttribute('data-active', 'false');
+    });
+
+    // Remove active from all nav links
+    var links = document.querySelectorAll('.sidebar-link');
+    links.forEach(function(link) {
+      link.setAttribute('data-active', 'false');
+    });
+
+    // Show selected section
+    var selectedSection = document.getElementById('section-' + sectionId);
+    if (selectedSection) {
+      selectedSection.setAttribute('data-active', 'true');
+    }
+
+    // Mark nav link as active
+    var selectedLink = document.querySelector('[data-section="' + sectionId + '"]');
+    if (selectedLink) {
+      selectedLink.setAttribute('data-active', 'true');
+    }
+
+    // Update hash
+    window.location.hash = '#' + sectionId;
+  }
+
+  function initAuthArea() {
+    var statusBadge = document.getElementById('status-badge');
+    var authUser = document.getElementById('auth-user');
+    var loginBtn = document.getElementById('auth-login-btn');
+    var logoutBtn = document.getElementById('auth-logout-btn');
+    var guardLoginBtn = document.getElementById('auth-guard-login-btn');
+
+    function updateAuthUI() {
+      var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+      if (account) {
+        statusBadge.style.display = 'none';
+        authUser.style.display = 'inline';
+        authUser.textContent = account.name || account.username || 'User';
+        loginBtn.style.display = 'none';
+        logoutBtn.style.display = 'inline-block';
+        hideAuthGuard();
+      } else {
+        statusBadge.style.display = 'inline';
+        statusBadge.textContent = 'Not signed in';
+        authUser.style.display = 'none';
+        loginBtn.style.display = 'inline-block';
+        logoutBtn.style.display = 'none';
+        showAuthGuard();
+      }
+    }
+
+    loginBtn.addEventListener('click', loginRedirect);
+    logoutBtn.addEventListener('click', logoutRedirect);
+    guardLoginBtn.addEventListener('click', loginRedirect);
+
+    // Subscribe to account changes
+    if (typeof ciam.onAccountChange === 'function') {
+      ciam.onAccountChange(updateAuthUI);
+    }
+
+    // Initial check
+    updateAuthUI();
+  }
+
+  function initNavigation() {
+    var links = document.querySelectorAll('.sidebar-link');
+    links.forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        var sectionId = this.getAttribute('data-section');
+        setActiveSection(sectionId);
+      });
+    });
+
+    // Check hash on page load
+    var hash = window.location.hash.substring(1);
+    if (hash && document.getElementById('section-' + hash)) {
+      setActiveSection(hash);
+    }
+  }
+
+  function initProfileForm() {
+    var form = document.getElementById('profile-form');
+    var displayNameInput = document.getElementById('display-name');
+    var profileMessage = document.getElementById('profile-message');
+
+    function showMessage(text, isError) {
+      profileMessage.textContent = text;
+      profileMessage.style.color = isError ? 'var(--c-red)' : 'var(--c-green)';
+      profileMessage.style.display = 'block';
+    }
+
+    function clearMessage() {
+      profileMessage.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      clearMessage();
+
+      var displayName = displayNameInput.value.trim();
+      if (!displayName) {
+        showMessage('Display name is required', true);
+        return;
+      }
+
+      showMessage('Updating profile…', false);
+
+      try {
+        // This will be implemented in Slice 5 with real API calls
+        // For now, show placeholder message
+        showMessage('Profile update ready for Slice 5 (HTTP endpoint integration)', false);
+      } catch (err) {
+        showMessage('Error updating profile: ' + err.message, true);
+      }
+    });
+  }
+
+  function initDeleteButton() {
+    var deleteBtn = document.getElementById('delete-account-btn');
+    var deleteMessage = document.getElementById('delete-message');
+
+    deleteBtn.addEventListener('click', function() {
+      if (confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) {
+        // This will be implemented in Slice 5 with real API calls
+        deleteMessage.textContent = 'Account deletion ready for Slice 5 (HTTP endpoint integration)';
+        deleteMessage.style.color = 'var(--c-accent)';
+        deleteMessage.style.display = 'block';
+      }
+    });
+  }
+
+  function init() {
+    initAuthArea();
+    initNavigation();
+    initProfileForm();
+    initDeleteButton();
+  }
+
+  // Wait for MSAL to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
