@@ -176,6 +176,39 @@
     background: rgba(248, 81, 73, 0.1);
   }
 
+  /* Modal dialog */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(11, 20, 17, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1500;
+  }
+
+  .modal {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 32px;
+    max-width: 500px;
+    width: 90vw;
+    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.6);
+  }
+
+  .modal h2 {
+    font-size: 1.25rem;
+    margin-bottom: 16px;
+  }
+
+  .modal small {
+    font-size: 0.8rem;
+  }
+
   /* Auth guard overlay */
   .auth-guard-overlay {
     position: fixed;
@@ -334,12 +367,47 @@
   </main>
 </div>
 
+<!-- Delete account modal -->
+<div class="modal-overlay" id="delete-modal-overlay" style="display:none">
+  <div class="modal">
+    <h2>Delete Account</h2>
+    <p style="color: var(--c-muted); margin-bottom: 16px;">
+      This will permanently delete your account and all associated data. This action cannot be undone.
+    </p>
+    <div class="form-group">
+      <label for="transfer-user-id">Transfer organization ownership to (optional)</label>
+      <input type="text" id="transfer-user-id" placeholder="User ID (required if you are sole owner)">
+      <small style="color: var(--c-muted); display: block; margin-top: 4px;">If you own an organization, enter the User ID of another member to transfer ownership.</small>
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 20px;">
+      <button class="btn primary" id="modal-cancel-btn">Cancel</button>
+      <button class="btn danger" id="modal-confirm-delete-btn">Permanently Delete</button>
+    </div>
+    <div id="modal-message" style="margin-top: 16px; display: none;"></div>
+  </div>
+</div>
+
 <script>
 (function() {
   'use strict';
 
   var ciam = window.CanopexCiam || {};
   var apiClient = null;
+
+  // Initialize API client with token provider
+  function initApiClient() {
+    if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
+      console.error('[account-app] CanopexApiClient not found — canopex-api-client.js must be loaded');
+      return null;
+    }
+    var client = window.CanopexApiClient.createClient();
+    if (typeof ciam.getToken === 'function') {
+      client.setGetToken(function() {
+        return Promise.resolve(ciam.getToken());
+      });
+    }
+    return client;
+  }
 
   function showAuthGuard() {
     document.getElementById('auth-guard-overlay').style.display = 'flex';
@@ -473,40 +541,146 @@
         return;
       }
 
+      if (displayName.length > 200) {
+        showMessage('Display name must be 200 characters or less', true);
+        return;
+      }
+
       showMessage('Updating profile…', false);
 
       try {
-        // This will be implemented in Slice 5 with real API calls
-        // For now, show placeholder message
-        showMessage('Profile update ready for Slice 5 (HTTP endpoint integration)', false);
+        var resp = await apiClient.fetch('/api/user/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: displayName }),
+        });
+        var result = await resp.json();
+        showMessage('Profile updated successfully', false);
+        // Clear input after success
+        setTimeout(function() {
+          clearMessage();
+        }, 3000);
       } catch (err) {
-        showMessage('Error updating profile: ' + err.message, true);
+        var msg = err.message || 'Error updating profile';
+        if (err.status === 400) {
+          msg = err.body && err.body.error ? err.body.error : 'Invalid display name';
+        } else if (err.status === 404) {
+          msg = 'User not found';
+        } else if (err.status === 503) {
+          msg = 'Service temporarily unavailable';
+        }
+        showMessage(msg, true);
       }
     });
+
+    // Load current profile on section switch
+    var profileSection = document.getElementById('section-profile');
+    if (profileSection) {
+      var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+          if (mutation.attributeName === 'data-active') {
+            var isActive = profileSection.getAttribute('data-active') === 'true';
+            if (isActive) {
+              loadCurrentProfile();
+            }
+          }
+        });
+      });
+      observer.observe(profileSection, { attributes: true });
+    }
+
+    async function loadCurrentProfile() {
+      try {
+        var resp = await apiClient.fetch('/api/user', {
+          method: 'GET',
+        });
+        var user = await resp.json();
+        displayNameInput.value = user.display_name || '';
+      } catch (err) {
+        console.warn('Failed to load profile:', err);
+      }
+    }
   }
 
-  function initDeleteButton() {
+  function initDeleteModal() {
     var deleteBtn = document.getElementById('delete-account-btn');
-    var deleteMessage = document.getElementById('delete-message');
+    var modalOverlay = document.getElementById('delete-modal-overlay');
+    var cancelBtn = document.getElementById('modal-cancel-btn');
+    var confirmBtn = document.getElementById('modal-confirm-delete-btn');
+    var transferInput = document.getElementById('transfer-user-id');
+    var modalMessage = document.getElementById('modal-message');
 
-    deleteBtn.addEventListener('click', function() {
-      if (confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) {
-        // This will be implemented in Slice 5 with real API calls
-        deleteMessage.textContent = 'Account deletion ready for Slice 5 (HTTP endpoint integration)';
-        deleteMessage.style.color = 'var(--c-accent)';
-        deleteMessage.style.display = 'block';
+    function showModal() {
+      modalOverlay.style.display = 'flex';
+      transferInput.value = '';
+      modalMessage.style.display = 'none';
+    }
+
+    function hideModal() {
+      modalOverlay.style.display = 'none';
+    }
+
+    function showModalMessage(text, isError) {
+      modalMessage.textContent = text;
+      modalMessage.style.color = isError ? 'var(--c-red)' : 'var(--c-green)';
+      modalMessage.style.display = 'block';
+    }
+
+    deleteBtn.addEventListener('click', showModal);
+    cancelBtn.addEventListener('click', hideModal);
+
+    // Close modal on overlay click (outside the modal)
+    modalOverlay.addEventListener('click', function(e) {
+      if (e.target === this) {
+        hideModal();
+      }
+    });
+
+    confirmBtn.addEventListener('click', async function() {
+      var transferToId = transferInput.value.trim();
+      var queryString = transferToId ? '?transfer_to=' + encodeURIComponent(transferToId) : '';
+
+      showModalMessage('Deleting account…', false);
+      confirmBtn.disabled = true;
+
+      try {
+        var resp = await apiClient.fetch('/api/user' + queryString, {
+          method: 'DELETE',
+        });
+        showModalMessage('Account deleted successfully. Redirecting…', false);
+        setTimeout(function() {
+          window.location.href = '/';
+        }, 2000);
+      } catch (err) {
+        confirmBtn.disabled = false;
+        var msg = err.message || 'Error deleting account';
+        if (err.status === 400) {
+          msg = err.body && err.body.error ? err.body.error : 'Invalid transfer user';
+        } else if (err.status === 403) {
+          msg = 'You are the sole owner of an organization. Please transfer ownership before deleting.';
+        } else if (err.status === 404) {
+          msg = 'User not found';
+        } else if (err.status === 503) {
+          msg = 'Service temporarily unavailable';
+        }
+        showModalMessage(msg, true);
       }
     });
   }
 
   function init() {
+    apiClient = initApiClient();
+    if (!apiClient) {
+      console.error('[account-app] Failed to initialize API client');
+      return;
+    }
     initAuthArea();
     initNavigation();
     initProfileForm();
-    initDeleteButton();
+    initDeleteModal();
   }
 
-  // Wait for MSAL to be ready
+  // Wait for MSAL and modules to be ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
