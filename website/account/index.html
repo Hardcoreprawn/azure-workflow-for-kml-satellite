@@ -237,6 +237,65 @@
     margin-bottom: 24px;
   }
 
+  /* Members list */
+  .member-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    background: var(--c-surface);
+  }
+
+  .member-info {
+    flex: 1;
+  }
+
+  .member-email {
+    font-weight: 500;
+    color: var(--c-text);
+  }
+
+  .member-role {
+    font-size: 0.85rem;
+    color: var(--c-muted);
+    margin-top: 2px;
+  }
+
+  .member-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .member-actions .btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+
+  .invite-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    background: var(--c-surface);
+    opacity: 0.8;
+  }
+
+  .invite-email {
+    font-weight: 500;
+    color: var(--c-muted);
+  }
+
+  .invite-status {
+    font-size: 0.85rem;
+    color: var(--c-orange);
+  }
+
   /* Responsive */
   @media (max-width: 768px) {
     .account-container {
@@ -347,6 +406,49 @@
       <p class="section-description">View and manage your organization membership and invitations.</p>
       <div id="org-content">
         <p style="color: var(--c-muted);">Loading organization information…</p>
+      </div>
+      
+      <!-- Organization details -->
+      <div id="org-details" style="display: none; margin-bottom: 32px;">
+        <div style="background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;">
+          <h2 style="font-size: 1.1rem; margin-bottom: 12px;" id="org-name">Organization Name</h2>
+          <p style="color: var(--c-muted); margin-bottom: 8px;">
+            <strong>Members:</strong> <span id="org-member-count">0</span>
+          </p>
+          <p style="color: var(--c-muted);">
+            <strong>Owner:</strong> <span id="org-owner-name">Unknown</span>
+          </p>
+        </div>
+
+        <!-- Members list -->
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 1.1rem; margin-bottom: 12px;">Members</h2>
+          <div id="members-list" style="display: none;">
+            <!-- Members will be populated here -->
+          </div>
+          <p id="members-loading" style="color: var(--c-muted);">Loading members…</p>
+        </div>
+
+        <!-- Pending invites (owner-only) -->
+        <div id="org-invites-section" style="display: none; margin-bottom: 32px;">
+          <h2 style="font-size: 1.1rem; margin-bottom: 12px;">Pending Invitations</h2>
+          <div id="invites-list">
+            <p style="color: var(--c-muted);">No pending invitations.</p>
+          </div>
+        </div>
+
+        <!-- Invite form (owner-only) -->
+        <div id="org-invite-form-section" style="display: none; margin-bottom: 32px;">
+          <h2 style="font-size: 1.1rem; margin-bottom: 12px;">Invite Member</h2>
+          <form id="org-invite-form" style="max-width: 400px;">
+            <div class="form-group">
+              <label for="invite-email">Email Address</label>
+              <input type="email" id="invite-email" name="email" placeholder="user@example.com" required>
+            </div>
+            <button type="submit" class="btn primary">Send Invitation</button>
+          </form>
+          <div id="invite-message" style="margin-top: 12px; display: none;"></div>
+        </div>
       </div>
     </section>
 
@@ -668,6 +770,242 @@
     });
   }
 
+  function initOrgSection() {
+    var orgSection = document.getElementById('section-organization');
+    var orgDetails = document.getElementById('org-details');
+    var orgContent = document.getElementById('org-content');
+    var membersList = document.getElementById('members-list');
+    var membersLoading = document.getElementById('members-loading');
+    var inviteForm = document.getElementById('org-invite-form');
+    var inviteEmail = document.getElementById('invite-email');
+    var inviteMessage = document.getElementById('invite-message');
+    var invitesSection = document.getElementById('org-invites-section');
+    var invitesList = document.getElementById('invites-list');
+    var inviteFormSection = document.getElementById('org-invite-form-section');
+
+    var currentUserId = null;
+    var currentOrg = null;
+    var isOwner = false;
+
+    function showInviteMessage(text, isError) {
+      inviteMessage.textContent = text;
+      inviteMessage.style.color = isError ? 'var(--c-red)' : 'var(--c-green)';
+      inviteMessage.style.display = 'block';
+    }
+
+    function clearInviteMessage() {
+      inviteMessage.style.display = 'none';
+    }
+
+    async function loadOrgData() {
+      membersLoading.style.display = 'block';
+      membersList.style.display = 'none';
+      invitesSection.style.display = 'none';
+      inviteFormSection.style.display = 'none';
+      orgDetails.style.display = 'none';
+      orgContent.style.display = 'block';
+      clearInviteMessage();
+
+      try {
+        // Get current user ID
+        var ciam = window.CanopexCiam || {};
+        var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+        if (!account || !account.homeAccountId) {
+          orgContent.innerHTML = '<p style="color: var(--c-red);">Not authenticated. Please sign in.</p>';
+          return;
+        }
+        currentUserId = account.homeAccountId.split('.')[0];
+
+        // Load org
+        var orgResp = await apiClient.fetch('/api/org', { method: 'GET' });
+        var orgData = await orgResp.json();
+        if (!orgData.org) {
+          orgContent.innerHTML = '<p style="color: var(--c-muted);">You do not belong to an organization yet.</p>';
+          return;
+        }
+
+        currentOrg = orgData.org;
+        isOwner = false;
+        if (currentOrg.members) {
+          var me = currentOrg.members.find(function(m) { return m.user_id === currentUserId; });
+          isOwner = me && me.role === 'owner';
+        }
+
+        // Show org details
+        orgDetails.style.display = 'block';
+        orgContent.style.display = 'none';
+        document.getElementById('org-name').textContent = currentOrg.name || 'Organization';
+        document.getElementById('org-member-count').textContent = currentOrg.members ? currentOrg.members.length : 0;
+        
+        var owner = currentOrg.members ? currentOrg.members.find(function(m) { return m.role === 'owner'; }) : null;
+        document.getElementById('org-owner-name').textContent = owner ? (owner.display_name || owner.email) : 'Unknown';
+
+        // Load members
+        membersLoading.style.display = 'none';
+        membersList.innerHTML = '';
+        if (currentOrg.members && currentOrg.members.length > 0) {
+          currentOrg.members.forEach(function(member) {
+            var memberDiv = document.createElement('div');
+            memberDiv.className = 'member-item';
+            var isMe = member.user_id === currentUserId;
+            var displayName = member.display_name || member.email;
+            memberDiv.innerHTML = '<div class="member-info">' +
+              '<div class="member-email">' + displayName + ' ' + (isMe ? '<em style="color: var(--c-muted);">(you)</em>' : '') + '</div>' +
+              '<div class="member-role">' + member.role + '</div>' +
+              '</div>';
+            if (isOwner && !isMe) {
+              var actionsDiv = document.createElement('div');
+              actionsDiv.className = 'member-actions';
+              var removeBtn = document.createElement('button');
+              removeBtn.className = 'btn danger';
+              removeBtn.textContent = 'Remove';
+              removeBtn.onclick = function(e) {
+                e.preventDefault();
+                if (confirm('Remove ' + displayName + ' from the organization?')) {
+                  removeMember(member.user_id);
+                }
+              };
+              actionsDiv.appendChild(removeBtn);
+              memberDiv.appendChild(actionsDiv);
+            }
+            membersList.appendChild(memberDiv);
+          });
+          membersList.style.display = 'block';
+        }
+
+        // Show invite form if owner
+        if (isOwner) {
+          inviteFormSection.style.display = 'block';
+          invitesSection.style.display = 'block';
+          loadPendingInvites();
+        }
+
+      } catch (err) {
+        var msg = 'Error loading organization: ' + (err.message || 'Unknown error');
+        if (err.status === 404) {
+          msg = 'You do not belong to an organization.';
+        } else if (err.status === 503) {
+          msg = 'Service temporarily unavailable.';
+        }
+        orgContent.innerHTML = '<p style="color: var(--c-red);">' + msg + '</p>';
+      }
+    }
+
+    async function loadPendingInvites() {
+      try {
+        var resp = await apiClient.fetch('/api/org/invites', { method: 'GET' });
+        var data = await resp.json();
+        var invites = data.invites || [];
+        
+        invitesList.innerHTML = '';
+        if (invites.length === 0) {
+          invitesList.innerHTML = '<p style="color: var(--c-muted);">No pending invitations.</p>';
+          return;
+        }
+
+        invites.forEach(function(invite) {
+          if (invite.status === 'pending') {
+            var inviteDiv = document.createElement('div');
+            inviteDiv.className = 'invite-item';
+            inviteDiv.innerHTML = '<div>' +
+              '<div class="invite-email">' + invite.email + '</div>' +
+              '<div class="invite-status">Pending</div>' +
+              '</div>';
+            var revokeBtn = document.createElement('button');
+            revokeBtn.className = 'btn danger';
+            revokeBtn.style.cssText = 'padding: 6px 12px; font-size: 0.85rem;';
+            revokeBtn.textContent = 'Revoke';
+            revokeBtn.onclick = function(e) {
+              e.preventDefault();
+              if (confirm('Revoke invite for ' + invite.email + '?')) {
+                revokeInvite(invite.email);
+              }
+            };
+            inviteDiv.appendChild(revokeBtn);
+            invitesList.appendChild(inviteDiv);
+          }
+        });
+      } catch (err) {
+        console.warn('Failed to load pending invites:', err);
+      }
+    }
+
+    async function removeMember(memberId) {
+      try {
+        await apiClient.fetch('/api/org/members/' + encodeURIComponent(memberId), {
+          method: 'DELETE',
+        });
+        loadOrgData();
+      } catch (err) {
+        alert('Error removing member: ' + (err.message || 'Unknown error'));
+      }
+    }
+
+    async function revokeInvite(email) {
+      try {
+        await apiClient.fetch('/api/org/invites/' + encodeURIComponent(email) + '/revoke', {
+          method: 'PATCH',
+        });
+        loadPendingInvites();
+      } catch (err) {
+        alert('Error revoking invite: ' + (err.message || 'Unknown error'));
+      }
+    }
+
+    inviteForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      clearInviteMessage();
+
+      var email = inviteEmail.value.trim();
+      if (!email || !email.includes('@')) {
+        showInviteMessage('Valid email is required', true);
+        return;
+      }
+
+      showInviteMessage('Sending invitation…', false);
+      var submitBtn = inviteForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+
+      try {
+        await apiClient.fetch('/api/org/invite', {
+          method: 'POST',
+          body: JSON.stringify({ email: email }),
+        });
+        showInviteMessage('Invitation sent to ' + email, false);
+        inviteEmail.value = '';
+        setTimeout(function() { loadPendingInvites(); }, 500);
+      } catch (err) {
+        submitBtn.disabled = false;
+        var msg = err.message || 'Error sending invitation';
+        if (err.status === 400) {
+          msg = 'Invalid email address';
+        } else if (err.status === 403) {
+          msg = 'Only organization owners can send invitations';
+        } else if (err.status === 404) {
+          msg = 'Organization not found';
+        } else if (err.status === 503) {
+          msg = 'Service temporarily unavailable';
+        }
+        showInviteMessage(msg, true);
+      }
+    });
+
+    // Monitor section activation
+    if (orgSection) {
+      var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+          if (mutation.attributeName === 'data-active') {
+            var isActive = orgSection.getAttribute('data-active') === 'true';
+            if (isActive) {
+              loadOrgData();
+            }
+          }
+        });
+      });
+      observer.observe(orgSection, { attributes: true });
+    }
+  }
+
   function init() {
     apiClient = initApiClient();
     if (!apiClient) {
@@ -677,6 +1015,7 @@
     initAuthArea();
     initNavigation();
     initProfileForm();
+    initOrgSection();
     initDeleteModal();
   }
 
