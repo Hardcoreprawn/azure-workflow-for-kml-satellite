@@ -104,6 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #837 | fix(upload): Cosmos cross-partition query-lag fallback — `create_org` return value captured as `new_org` and used as `user_org` fallback when `get_user_org`'s `ARRAY_CONTAINS` membership query lags behind the write; eliminates residual "Unable to set up your organisation" 503 that survived #836. Updated test to assert 200 (fallback path) instead of 503. |
 | #836 | fix(orgs): repair `_set_user_org` partition-key bug + self-healing `get_user_org` — root cause of "Unable to set up your organisation" 503: legacy user docs missing `user_id` field caused `upsert_item` to raise (Cosmos SDK can't extract `/user_id`), exception swallowed, user doc never stamped. Fix: `setdefault` before upsert (matches `record_user_sign_in`). Also adds membership-query fallback in `get_user_org` to recover when user doc has no org_id, with best-effort doc repair. 5 new tests. 1788 tests passing. |
 | #835 | fix(ci): add `.trivyignore` entries for 3 new Debian bookworm CVEs (exp:2026-05-30) + switch base-image rebuild schedule from weekly to daily — CVEs cleared within ≤24h of Debian publishing fixes. |
 | #833 | fix(ci): extend expired `.trivyignore` entries (exp:2026-05-01/09) to 2026-06-16 — unblocked Deploy workflow after #831 merge; filed #834 for pre-expiry CI warning. |
