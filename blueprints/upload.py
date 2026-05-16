@@ -30,7 +30,7 @@ from treesight.billing.accounting import (
 )
 from treesight.config import STORAGE_ACCOUNT_NAME
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.security.orgs import get_user_org
+from treesight.security.orgs import create_org, get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
@@ -309,11 +309,44 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         )
 
     if not user_org:
-        return error_response(
-            403,
-            "You must belong to an organisation to submit analyses. Create or join an org first.",
-            req=req,
-        )
+        # Auto-create a personal org so existing users aren't blocked.
+        # They can rename or share it from the account dashboard.
+        try:
+            from treesight.security.users import get_user
+
+            user_doc = get_user(user_id) or {}
+            email = user_doc.get("email", "")
+            display_name = user_doc.get("display_name", "")
+            org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
+            create_org(user_id, name=org_name, email=email)
+            # Re-read to verify the association persisted.  _set_user_org() swallows
+            # its own exceptions, so we cannot trust the return value of create_org().
+            # Re-reading also handles concurrent submissions: if a racing request
+            # already stamped a different org on the user record, we adopt that org
+            # rather than the one we just created, avoiding split reservations.
+            user_org = get_user_org(user_id)
+            if not user_org:
+                logger.error(
+                    "Auto-created org for user=%s but association was not persisted",
+                    _redact(user_id),
+                )
+                return error_response(
+                    503,
+                    "Unable to set up your organisation. Please try again or contact support.",
+                    req=req,
+                )
+            logger.info(
+                "Auto-created personal org for user=%s org_id=%s",
+                _redact(user_id),
+                user_org["org_id"],
+            )
+        except Exception:
+            logger.exception("Failed to auto-create org for user=%s", _redact(user_id))
+            return error_response(
+                503,
+                "Unable to set up your organisation. Please try again or contact support.",
+                req=req,
+            )
 
     org_id = user_org["org_id"]
     submission_id = str(uuid.uuid4())
