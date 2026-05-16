@@ -19,8 +19,9 @@ on:
       - "Dockerfile.base"
       - "scripts/container_smoke_test.py"
   schedule:
-    # Weekly Monday 05:00 UTC — picks up MS image updates and new .NET patches
-    - cron: "0 5 * * 1"
+    # Daily 05:00 UTC — picks up upstream python:3.12-slim-bookworm rebuilds and
+    # new Debian bookworm security fixes within ~24 h of release.
+    - cron: "0 5 * * *"
   workflow_dispatch:
 
 permissions:
