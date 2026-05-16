@@ -57,16 +57,11 @@ def create_invite_token(org_id: str, email: str) -> str:
         "exp": int(exp.timestamp()),
     }
 
-    try:
-        token = jwt.encode(
-            payload,
-            _get_invite_secret(),
-            algorithm="HS256",
-        )
-        return token
-    except Exception:
-        logger.error("Failed to create invite token", exc_info=True)
-        return ""
+    return jwt.encode(
+        payload,
+        _get_invite_secret(),
+        algorithm="HS256",
+    )
 
 
 def validate_invite_token(token: str) -> dict[str, Any] | None:
@@ -334,8 +329,7 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
     Returns the updated org document.
     Raises ValueError if token is invalid, invite not found, or email mismatch.
     """
-    from treesight.security.users import get_user  # lazy — avoids circular import
-    from treesight.storage.cosmos import query_items, upsert_item
+    from treesight.storage.cosmos import query_items, read_item, upsert_item
 
     payload = validate_invite_token(token)
     if not payload:
@@ -348,10 +342,11 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
         raise ValueError("Malformed invite token — missing org_id or email")
 
     # Verify the token was issued for this user's email address.
-    user = get_user(user_id)
-    if not user:
+    # Fetch directly from storage to avoid a circular import with users.py.
+    user_doc = read_item("users", user_id, user_id)
+    if not user_doc:
         raise ValueError("Authenticated user not found")
-    user_email = user.get("email", "").lower().strip()
+    user_email = user_doc.get("email", "").lower().strip()
     if user_email != email.lower().strip():
         raise ValueError("This invite was not issued to your email address")
 
@@ -372,6 +367,10 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
         raise ValueError(f"Invite not found for org={org_id}, email={email}")
 
     invite = results[0]
+
+    # Verify this is the current token — rejects replays of superseded/re-issued tokens.
+    if invite.get("token") != token:
+        raise ValueError("Invite token has been superseded — please request a new invitation")
 
     # Check status
     if invite.get("status") == "revoked":
@@ -458,7 +457,8 @@ def list_orgs_for_user(user_id: str) -> list[dict[str, Any]]:
             "orgs",
             "SELECT c.org_id, c.name, c.created_at, c.members"
             " FROM c WHERE c.doc_type = 'org'"
-            " AND ARRAY_CONTAINS(c.members, {user_id: @user_id}, true)",
+            ' AND ARRAY_CONTAINS(c.members, {"user_id": @user_id}, true)',
+            # Note: Cosmos SQL requires quoted property names in object literals.
             parameters=[{"name": "@user_id", "value": user_id}],
         )
         # Extract role from members list; avoids the Cosmos subquery array-projection issue.

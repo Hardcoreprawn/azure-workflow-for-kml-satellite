@@ -1,8 +1,10 @@
 """Tests for org/team data model and service (#614)."""
 
+import json
 from contextlib import ExitStack
 from unittest.mock import patch
 
+import azure.functions as func
 import pytest
 
 _COSMOS_PKG = "treesight.storage.cosmos"
@@ -400,3 +402,174 @@ class TestOrgInvites:
         # Only non-revoked invites should be returned
         assert len(invites) == 1
         assert invites[0]["email"] == "charlie@test.com"
+
+    def test_accept_invite_by_token_rejects_superseded_token(self):
+        """An original token is rejected after the invite document records a newer one.
+
+        Simulates re-issuance: the stored ``token`` field is overwritten; the
+        old JWT (still unexpired) must raise "superseded" so the caller is
+        forced to request a fresh invitation.
+        """
+        from treesight.security.orgs import (
+            accept_invite_by_token,
+            create_invite,
+            create_org,
+        )
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org = create_org("user-1")
+            invite = create_invite(org["org_id"], "bob@test.com", invited_by="user-1")
+            original_token = invite["token"]
+
+            # Simulate re-issuance: overwrite the stored token so it no longer
+            # matches the JWT that was issued first.
+            stored = store[f"orgs:{invite['id']}"]
+            stored["token"] = "different-token-after-reissue"
+
+            # Seed user with matching email
+            store["users:user-2"] = {
+                "id": "user-2",
+                "user_id": "user-2",
+                "email": "bob@test.com",
+            }
+
+            with pytest.raises(ValueError, match="superseded"):
+                accept_invite_by_token(original_token, "user-2")
+
+    def test_create_invite_token_propagates_exception(self):
+        """create_invite_token raises when the secret env var is missing.
+
+        Ensures the removed try/except no longer swallows errors.
+        """
+        import os
+        from unittest.mock import patch
+
+        from treesight.security.orgs import create_invite_token
+
+        with patch.dict(os.environ, {}, clear=False):
+            # Temporarily unset the secret so _get_invite_secret raises.
+            saved = os.environ.pop("INVITE_TOKEN_SECRET", None)
+            try:
+                with pytest.raises(RuntimeError, match="INVITE_TOKEN_SECRET"):
+                    create_invite_token("org-1", "bob@test.com")
+            finally:
+                if saved is not None:
+                    os.environ["INVITE_TOKEN_SECRET"] = saved
+
+
+class TestListOrgsForUser:
+    """F1 — list_orgs_for_user uses correct Cosmos SQL with quoted property names."""
+
+    def test_lists_orgs_for_member(self):
+        from treesight.security.orgs import add_member, create_org, list_orgs_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org1 = create_org("user-1")
+            add_member(org1["org_id"], "user-2")
+            create_org("user-3", name="Other Org")
+
+            result = list_orgs_for_user("user-2")
+
+        assert len(result) == 1
+        assert result[0]["org_id"] == org1["org_id"]
+
+    def test_returns_empty_for_non_member(self):
+        from treesight.security.orgs import create_org, list_orgs_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            create_org("user-1")
+
+            result = list_orgs_for_user("user-99")
+
+        assert result == []
+
+    def test_owner_appears_in_own_org(self):
+        from treesight.security.orgs import create_org, list_orgs_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org = create_org("user-1")
+
+            result = list_orgs_for_user("user-1")
+
+        assert len(result) == 1
+        assert result[0]["org_id"] == org["org_id"]
+
+
+class TestOrgInviteListEndpoint:
+    """S1 + Q2 — GET /api/org/invites is owner-only."""
+
+    def _make_req(self, user_id: str) -> func.HttpRequest:
+        from tests.conftest import TEST_LOCAL_ORIGIN, make_test_request
+
+        return make_test_request(
+            url="/api/org/invites",
+            method="GET",
+            origin=TEST_LOCAL_ORIGIN,
+            principal_user_id=user_id,
+            auth_header=None,
+        )
+
+    @patch("treesight.security.users.get_user", return_value={"org_id": "org-abc"})
+    @patch(
+        "treesight.security.orgs.get_org",
+        return_value={
+            "org_id": "org-abc",
+            "members": [{"user_id": "owner-user", "role": "owner"}],
+        },
+    )
+    @patch(
+        "treesight.security.orgs.list_pending_invites",
+        return_value=[{"email": "bob@test.com", "status": "pending"}],
+    )
+    def test_owner_receives_invite_list(self, _mock_pending, _mock_org, _mock_user):
+        from blueprints.org import org_invites_list
+
+        req = self._make_req("owner-user")
+        resp = org_invites_list(req)
+
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert len(body["invites"]) == 1
+        assert body["invites"][0]["email"] == "bob@test.com"
+        # Token must NOT be exposed in the listing.
+        assert "token" not in body["invites"][0]
+
+    @patch("treesight.security.users.get_user", return_value={"org_id": "org-abc"})
+    @patch(
+        "treesight.security.orgs.get_org",
+        return_value={
+            "org_id": "org-abc",
+            "members": [
+                {"user_id": "owner-user", "role": "owner"},
+                {"user_id": "member-user", "role": "member"},
+            ],
+        },
+    )
+    def test_member_receives_403(self, _mock_org, _mock_user):
+        from blueprints.org import org_invites_list
+
+        req = self._make_req("member-user")
+        resp = org_invites_list(req)
+
+        assert resp.status_code == 403
+
+    @patch("treesight.security.users.get_user", return_value=None)
+    def test_user_without_org_receives_404(self, _mock_user):
+        from blueprints.org import org_invites_list
+
+        req = self._make_req("no-org-user")
+        resp = org_invites_list(req)
+
+        assert resp.status_code == 404

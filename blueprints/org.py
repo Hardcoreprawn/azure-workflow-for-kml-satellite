@@ -311,6 +311,16 @@ def org_invites_list(
     if not org_id:
         return error_response(404, "You do not belong to an organisation", req=req)
 
+    from treesight.security.orgs import get_org
+
+    _org = get_org(org_id)
+    if not _org:
+        return error_response(404, "Organisation not found", req=req)
+    _members = _org.get("members", [])
+    _me = next((m for m in _members if m["user_id"] == user_id), None)
+    if not _me or _me.get("role") != "owner":
+        return error_response(403, "Only owners can view pending invitations", req=req)
+
     invites = list_pending_invites(org_id)
     # Filter sensitive fields; exclude token — live JWTs must not be exposed in listings.
     safe_invites = [
