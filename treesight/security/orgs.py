@@ -394,7 +394,7 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
     upsert_item("orgs", invite)
 
     logger.info(
-        "Invite accepted by token org=%s user=%s email=%s",
+        "Invite accepted org=%s user=%s email=%s",
         org_id,
         user_id,
         email,

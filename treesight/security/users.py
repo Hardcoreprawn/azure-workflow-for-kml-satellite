@@ -228,6 +228,9 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
     # Handle org membership: remove from orgs, transfer ownership if needed
     for user_org in user_orgs:
         org_id = user_org.get("org_id")
+        if not isinstance(org_id, str) or not org_id:
+            logger.warning("Skipping org entry with missing org_id for user %s", user_id)
+            continue
         org_role = user_org.get("org_role")
 
         if org_role == "owner":
