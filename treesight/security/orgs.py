@@ -25,12 +25,23 @@ INVITE_TTL_DAYS = 7
 def _get_invite_secret() -> str:
     """Get the signing secret for invite tokens.
 
-    Falls back to a stable default if not configured (for testing).
-    In production, this should be injected via env var.
+    Raises RuntimeError in Azure Functions runtime if INVITE_TOKEN_SECRET is
+    not configured — an absent secret in production would allow token forgery.
+    For local dev / test environments the key falls back to a stable default.
     """
     import os
 
-    return os.environ.get("INVITE_TOKEN_SECRET", "default-insecure-test-secret")
+    secret = os.environ.get("INVITE_TOKEN_SECRET")
+    if not secret:
+        if os.environ.get("FUNCTIONS_WORKER_RUNTIME"):
+            raise RuntimeError(
+                "INVITE_TOKEN_SECRET environment variable is not set. "
+                "Configure it in your Azure Functions application settings."
+            )
+        # Local dev / test only — never use in production.
+        logger.warning("INVITE_TOKEN_SECRET not set; using insecure local fallback")
+        return "dev-only-local-invite-secret-fallback-xyzabc"  # ≥32 bytes
+    return secret
 
 
 def create_invite_token(org_id: str, email: str) -> str:
@@ -321,9 +332,12 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
     """Accept an invite using a signed token.
 
     Token must be valid (not expired, correct signature).
+    The authenticated user's email must match the invite email (prevents a
+    forwarded link from being accepted by an unintended recipient).
     Returns the updated org document.
-    Raises ValueError if token is invalid or invite not found.
+    Raises ValueError if token is invalid, invite not found, or email mismatch.
     """
+    from treesight.security.users import get_user  # lazy — avoids circular import
     from treesight.storage.cosmos import query_items, upsert_item
 
     payload = validate_invite_token(token)
@@ -335,6 +349,14 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
 
     if not org_id or not email:
         raise ValueError("Malformed invite token — missing org_id or email")
+
+    # Verify the token was issued for this user's email address.
+    user = get_user(user_id)
+    if not user:
+        raise ValueError("Authenticated user not found")
+    user_email = user.get("email", "").lower().strip()
+    if user_email != email.lower().strip():
+        raise ValueError("This invite was not issued to your email address")
 
     # Find the invite document
     now = datetime.now(UTC).isoformat()
@@ -426,20 +448,32 @@ def list_pending_invites(org_id: str) -> list[dict[str, Any]]:
 
 
 def list_orgs_for_user(user_id: str) -> list[dict[str, Any]]:
-    """List all orgs a user is a member of, with role information."""
+    """List all orgs a user is a member of, with role information.
+
+    NOTE: Cosmos DB SQL subquery projections return arrays, not scalars.
+    We include the full ``members`` array and extract the role in Python
+    to guarantee ``org_role`` is a string (not ``["owner"]``).
+    """
     from treesight.storage.cosmos import query_items
 
     try:
         results = query_items(
             "orgs",
-            "SELECT c.org_id, c.name, c.created_at,"
-            " (SELECT VALUE m.role FROM m IN c.members"
-            " WHERE m.user_id = @user_id) AS org_role"
+            "SELECT c.org_id, c.name, c.created_at, c.members"
             " FROM c WHERE c.doc_type = 'org'"
             " AND ARRAY_CONTAINS(c.members, {user_id: @user_id}, true)",
             parameters=[{"name": "@user_id", "value": user_id}],
         )
-        return results
+        # Extract role from members list; avoids the Cosmos subquery array-projection issue.
+        # Copy each row before mutating so we don't disturb Cosmos SDK objects (or mock stores).
+        output = []
+        for result in results:
+            row = {k: v for k, v in result.items() if k != "members"}
+            members = result.get("members", [])
+            member = next((m for m in members if m["user_id"] == user_id), None)
+            row["org_role"] = member["role"] if member else None
+            output.append(row)
+        return output
     except Exception:
         logger.warning("Failed to query orgs for user=%s", user_id, exc_info=True)
         return []

@@ -8,7 +8,7 @@ import pytest
 _COSMOS_PKG = "treesight.storage.cosmos"
 
 
-def _mock_cosmos():
+def _mock_cosmos():  # noqa: C901
     """Return mock patches for Cosmos read/write operations."""
     store: dict[str, dict] = {}
 
@@ -23,7 +23,7 @@ def _mock_cosmos():
     def delete(container: str, item_id: str, partition_key: str):
         store.pop(f"{container}:{item_id}", None)
 
-    def query(container: str, query_str: str, **kwargs):
+    def query(container: str, query_str: str, **kwargs):  # noqa: C901
         """Mock SQL query — performs basic filtering."""
         results = []
         params = {}
@@ -41,25 +41,32 @@ def _mock_cosmos():
             matches = True
 
             # WHERE c.org_id = @org_id
-            if "@org_id" in params:
-                if val.get("org_id") != params["@org_id"]:
-                    matches = False
+            if "@org_id" in params and val.get("org_id") != params["@org_id"]:
+                matches = False
 
             # WHERE c.doc_type = 'invite'
-            if "doc_type = 'invite'" in query_str:
-                if val.get("doc_type") != "invite":
-                    matches = False
+            if "doc_type = 'invite'" in query_str and val.get("doc_type") != "invite":
+                matches = False
+
+            # WHERE c.doc_type = 'org'
+            if "doc_type = 'org'" in query_str and val.get("doc_type") != "org":
+                matches = False
 
             # WHERE c.status = 'pending'
-            if "c.status = 'pending'" in query_str:
-                if val.get("status") != "pending":
-                    matches = False
+            if "c.status = 'pending'" in query_str and val.get("status") != "pending":
+                matches = False
 
             # WHERE LOWER(c.email) = LOWER(@email)
             if "@email" in params:
                 val_email = val.get("email", "").lower()
                 param_email = params["@email"].lower()
                 if val_email != param_email:
+                    matches = False
+
+            # ARRAY_CONTAINS(c.members, {user_id: @user_id}, true)
+            if "@user_id" in params and "ARRAY_CONTAINS(c.members" in query_str:
+                members = val.get("members", [])
+                if not any(m.get("user_id") == params["@user_id"] for m in members):
                     matches = False
 
             if matches:
@@ -299,6 +306,13 @@ class TestOrgInvites:
             invite = create_invite(org["org_id"], "bob@test.com", invited_by="user-1")
             token = invite["token"]
 
+            # Seed user-2 with matching email (B3: token binds to invitee email).
+            store["users:user-2"] = {
+                "id": "user-2",
+                "user_id": "user-2",
+                "email": "bob@test.com",
+            }
+
             result = accept_invite_by_token(token, "user-2")
 
         assert len(result["members"]) == 2
@@ -355,6 +369,13 @@ class TestOrgInvites:
             _apply_patches(stack, store, upsert, read, delete, query)
             invite = create_invite("org-1", "bob@test.com", invited_by="user-1")
             revoke_invite("org-1", "bob@test.com")
+
+            # Seed user-2 with matching email (B3: token binds to invitee email).
+            store["users:user-2"] = {
+                "id": "user-2",
+                "user_id": "user-2",
+                "email": "bob@test.com",
+            }
 
             with pytest.raises(ValueError, match="revoked"):
                 accept_invite_by_token(invite["token"], "user-2")

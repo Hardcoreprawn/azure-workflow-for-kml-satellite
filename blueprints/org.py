@@ -146,18 +146,23 @@ def _update_org(req: func.HttpRequest, user_id: str) -> func.HttpResponse:
 def org_invite(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/org/invite — owner invites a member by email."""
     del auth_claims  # unused
-    from treesight.security.orgs import create_invite
+    from treesight.security.orgs import create_invite, get_user_org
     from treesight.security.users import get_user
 
     user = get_user(user_id)
     if not user:
-        return error_response(404, "You do not belong to an organisation", req=req)
+        return error_response(404, "User not found", req=req)
     org_id = user.get("org_id")
     if not org_id:
         return error_response(404, "You do not belong to an organisation", req=req)
 
-    org_role = user.get("org_role")
-    if org_role != "owner":
+    # Read ownership from the org document — user doc org_role can be stale.
+    org = get_user_org(user_id)
+    if not org:
+        return error_response(404, "Organisation not found", req=req)
+    _members = org.get("members", [])
+    _me = next((m for m in _members if m["user_id"] == user_id), None)
+    if not _me or _me.get("role") != "owner":
         return error_response(403, "Only owners can invite members", req=req)
 
     try:
@@ -230,7 +235,15 @@ def org_member_manage(
     org_id = user.get("org_id")
     if not org_id:
         return error_response(404, "You do not belong to an organisation", req=req)
-    if user.get("org_role") != "owner":
+    # Read ownership from the org document — user doc org_role can be stale.
+    from treesight.security.orgs import get_org
+
+    _org = get_org(org_id)
+    if not _org:
+        return error_response(404, "Organisation not found", req=req)
+    _members = _org.get("members", [])
+    _me = next((m for m in _members if m["user_id"] == user_id), None)
+    if not _me or _me.get("role") != "owner":
         return error_response(403, "Only owners can manage members", req=req)
 
     if req.method == "DELETE":
@@ -299,8 +312,11 @@ def org_invites_list(
         return error_response(404, "You do not belong to an organisation", req=req)
 
     invites = list_pending_invites(org_id)
-    # Filter sensitive fields
-    safe_invites = [{k: v for k, v in inv.items() if not k.startswith("_")} for inv in invites]
+    # Filter sensitive fields; exclude token — live JWTs must not be exposed in listings.
+    safe_invites = [
+        {k: v for k, v in inv.items() if not k.startswith("_") and k != "token"}
+        for inv in invites
+    ]
     return func.HttpResponse(
         json.dumps({"invites": safe_invites}),
         status_code=200,
@@ -334,15 +350,22 @@ def org_invite_revoke(
     if not org_id:
         return error_response(404, "You do not belong to an organisation", req=req)
 
-    # Only owners can revoke invites
-    if user.get("org_role") != "owner":
+    # Read ownership from the org document — user doc org_role can be stale.
+    from treesight.security.orgs import get_org
+
+    _org = get_org(org_id)
+    if not _org:
+        return error_response(404, "Organisation not found", req=req)
+    _members = _org.get("members", [])
+    _me = next((m for m in _members if m["user_id"] == user_id), None)
+    if not _me or _me.get("role") != "owner":
         return error_response(403, "Only owners can revoke invitations", req=req)
 
     try:
-        org = revoke_invite(org_id, email)
-        safe = {k: v for k, v in org.items() if not k.startswith("_")}
+        invite_doc = revoke_invite(org_id, email)
+        safe = {k: v for k, v in invite_doc.items() if not k.startswith("_")}
         return func.HttpResponse(
-            json.dumps({"org": safe}),
+            json.dumps({"invite": safe}),  # N1 fix: was "org"
             status_code=200,
             headers={**cors_headers(req), "Content-Type": "application/json"},
         )
