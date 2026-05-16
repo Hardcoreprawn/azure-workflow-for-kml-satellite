@@ -318,7 +318,23 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
             email = user_doc.get("email", "")
             display_name = user_doc.get("display_name", "")
             org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
-            user_org = create_org(user_id, name=org_name, email=email)
+            create_org(user_id, name=org_name, email=email)
+            # Re-read to verify the association persisted.  _set_user_org() swallows
+            # its own exceptions, so we cannot trust the return value of create_org().
+            # Re-reading also handles concurrent submissions: if a racing request
+            # already stamped a different org on the user record, we adopt that org
+            # rather than the one we just created, avoiding split reservations.
+            user_org = get_user_org(user_id)
+            if not user_org:
+                logger.error(
+                    "Auto-created org for user=%s but association was not persisted",
+                    _redact(user_id),
+                )
+                return error_response(
+                    503,
+                    "Unable to set up your organisation. Please try again or contact support.",
+                    req=req,
+                )
             logger.info(
                 "Auto-created personal org for user=%s org_id=%s",
                 _redact(user_id),

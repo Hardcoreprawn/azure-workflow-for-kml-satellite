@@ -226,13 +226,15 @@ class TestUploadToken:
         """Users without an org get a personal org auto-created on first submission."""
         from blueprints.upload import upload_token
 
-        self.mock_get_user_org.return_value = None  # no org yet
+        auto_org = {"org_id": "auto-org-1", "name": "Test User's Organisation"}
+        # First call returns None (no org yet); second call (post-creation verification)
+        # returns the newly created org.
+        self.mock_get_user_org.side_effect = [None, auto_org]
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
         mock_gen_sas.return_value = "sv=2024&sig=fakesig"
 
-        auto_org = {"org_id": "auto-org-1", "name": "Test User's Organisation"}
         with (
-            patch("blueprints.upload.create_org", return_value=auto_org) as mock_create,
+            patch("blueprints.upload.create_org") as mock_create,
             patch(
                 "treesight.security.users.get_user",
                 return_value={"email": "t@example.com", "display_name": "Test User"},
@@ -246,6 +248,27 @@ class TestUploadToken:
         mock_create.assert_called_once_with(
             "test-user", name="Test User's Organisation", email="t@example.com"
         )
+
+    def test_auto_create_org_association_failure_returns_503(self):
+        """If create_org succeeds but _set_user_org silently failed, return 503."""
+        from blueprints.upload import upload_token
+
+        # First call: no org. Second call (verification after create): still no org
+        # because _set_user_org swallowed its failure.
+        self.mock_get_user_org.side_effect = [None, None]
+
+        with (
+            patch("blueprints.upload.create_org"),
+            patch(
+                "treesight.security.users.get_user",
+                return_value={"display_name": "Test User", "email": "t@example.com"},
+            ),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            req = _make_req("/api/upload/token", method="POST")
+            resp = upload_token(req)
+
+        assert resp.status_code == 503
 
     def test_auto_create_org_failure_returns_503(self):
         """If org auto-creation fails, return 503 rather than 403."""
@@ -517,15 +540,16 @@ class TestUploadTokenSingleGate:
         self._reserve_patcher.stop()
         self._org_patcher.stop()
 
-    @patch("blueprints.upload.get_user_org", return_value=None)
-    def test_auto_creates_org_when_none_and_proceeds(self, mock_org):
+    def test_auto_creates_org_when_none_and_proceeds(self):
         """Users without an org get one auto-created; submission then succeeds."""
         from blueprints.upload import upload_token
 
         auto_org = {"org_id": "new-org-1", "name": "Test User's Organisation"}
+        # First call: no org. Second call (post-creation verification): org exists.
+        self.mock_get_user_org.side_effect = [None, auto_org]
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
         with (
-            patch("blueprints.upload.create_org", return_value=auto_org),
+            patch("blueprints.upload.create_org"),
             patch(
                 "treesight.security.users.get_user",
                 return_value={"display_name": "Test User", "email": "t@example.com"},
@@ -540,11 +564,11 @@ class TestUploadTokenSingleGate:
         assert resp.status_code == 200
         self.mock_reserve_run.assert_called_once()
 
-    @patch("blueprints.upload.get_user_org", return_value=None)
-    def test_returns_503_when_auto_create_org_fails(self, mock_org):
+    def test_returns_503_when_auto_create_org_fails(self):
         """If org auto-creation fails, 503 is returned and reserve_run is not called."""
         from blueprints.upload import upload_token
 
+        self.mock_get_user_org.return_value = None
         req = _make_req("/api/upload/token", method="POST")
         with (
             patch("blueprints.upload.create_org", side_effect=RuntimeError("cosmos down")),
