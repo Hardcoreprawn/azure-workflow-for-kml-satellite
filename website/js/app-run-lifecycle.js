@@ -493,34 +493,6 @@
       return;
     }
 
-    // EUDR entitlement gate: show subscribe modal when trial is exhausted.
-    // If billing hasn't loaded yet, fetch it before deciding.
-    var activeProfile = _d.getActiveProfile ? _d.getActiveProfile() : {};
-    if (activeProfile.requiresEudrBillingGate && typeof window.eudrBillingData === 'function') {
-      var billing = window.eudrBillingData();
-      if (!billing) {
-        try {
-          var apiReady0 = _d.getApiReady ? _d.getApiReady() : Promise.resolve();
-          await apiReady0;
-          var billingRes = await _d.apiFetch('/api/eudr/billing');
-          billing = await billingRes.json();
-        } catch (_) { /* proceed — server will enforce */ }
-      }
-      if (billing && !billing.subscribed && billing.trial_remaining != null && billing.trial_remaining <= 0) {
-        if (_d.setAnalysisStatus) {
-          _d.setAnalysisStatus(
-            'Your free EUDR reports have been used. Subscribe to run more assessments.',
-            'error'
-          );
-        }
-        if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
-        if (typeof window.showEudrSubscribeModal === 'function') {
-          window.showEudrSubscribeModal();
-        }
-        return;
-      }
-    }
-
     var button = document.getElementById('app-analysis-submit-btn');
     var textarea = document.getElementById('app-analysis-kml');
     if (!button || !textarea) return;

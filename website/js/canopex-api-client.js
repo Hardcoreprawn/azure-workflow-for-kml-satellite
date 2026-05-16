@@ -7,7 +7,12 @@
     serviceStatusTtlMs: 2 * 60 * 1000,
     apiConfigPath: '/api-config.json',
     apiConfigTimeoutMs: 900,
-    apiHealthTimeoutMs: 1200
+    apiHealthTimeoutMs: 1200,
+    // Cold-start warm-up probe: retry health check in the background so the
+    // badge updates to "Online" after the container finishes starting.
+    warmUpMaxAttempts: 12,   // up to ~4 minutes worst-case retry budget
+    warmUpIntervalMs: 5000,  // 5 s between retries
+    warmUpTimeoutMs: 15000   // 15 s per retry (long enough for a live container)
   };
 
   function runningOnLocalDevOrigin() {
@@ -91,6 +96,45 @@
     }
   }
 
+  function delayMs(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  // After a cold-start timeout, retry health probes in the background so the
+  // status badge updates to "Online" once the container finishes starting.
+  // Bounded by warmUpMaxAttempts and per-attempt timeout/interval values.
+  function scheduleWarmUpProbe(config, base, onApiBaseResolved) {
+    const maxAttempts = config.warmUpMaxAttempts;
+    const intervalMs = config.warmUpIntervalMs;
+    const timeoutMs = config.warmUpTimeoutMs;
+
+    async function runWarmUpProbe() {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        await delayMs(intervalMs);
+        try {
+          const res = await fetchWithTimeout(base + '/api/health', timeoutMs);
+          if (!res.ok) {
+            continue;
+          }
+          onApiBaseResolved();
+          applyServiceStatus(config, 'online');
+          writeCachedServiceStatus(config, 'online');
+          return;
+        } catch (err) {
+          if (attempt === maxAttempts) {
+            console.warn('[CanopexApiClient] Warm-up probe exhausted retry budget.', err);
+          }
+        }
+      }
+    }
+
+    runWarmUpProbe().catch(function(err) {
+      console.warn('[CanopexApiClient] Warm-up probe failed unexpectedly.', err);
+    });
+  }
+
   function createClient(options) {
     const config = Object.assign({}, DEFAULTS, options || {});
     let apiBase = '';
@@ -138,6 +182,13 @@
         }
       }
 
+      // All probes failed (e.g. Container App cold-starting). Use the configured
+      // base URL anyway so uploads and API calls are routed to the correct host
+      // rather than falling back to relative SWA paths (which have no API backend).
+      if (configuredBase) {
+        apiBase = configuredBase;
+        scheduleWarmUpProbe(config, configuredBase, function() { apiBase = configuredBase; });
+      }
       if (!cachedStatus) {
         applyServiceStatus(config, 'offline');
       }

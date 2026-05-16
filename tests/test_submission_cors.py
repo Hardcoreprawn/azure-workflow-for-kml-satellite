@@ -137,7 +137,9 @@ class TestAnalysisSubmitCORS:
         side_effect=QuotaExhaustedError("org-123", 5),
     )
     @pytest.mark.asyncio
-    async def test_quota_error_has_cors_headers(self, mock_reserve_run, mock_get_user_org, mock_auth):
+    async def test_quota_error_has_cors_headers(
+        self, mock_reserve_run, mock_get_user_org, mock_auth
+    ):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request({"kml_content": "<kml>test</kml>"})
@@ -156,7 +158,9 @@ class TestAnalysisSubmitCORS:
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @pytest.mark.asyncio
-    async def test_invalid_json_error_has_cors_headers(self, mock_reserve_run, mock_get_user_org, mock_auth):
+    async def test_invalid_json_error_has_cors_headers(
+        self, mock_reserve_run, mock_get_user_org, mock_auth
+    ):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request()  # no body → ValueError
@@ -230,7 +234,13 @@ class TestSubmissionResilience:
     )
     @pytest.mark.asyncio
     async def test_quota_storage_error_still_allows_submission(
-        self, mock_sub, mock_storage_cls, mock_auth, mock_get_user_org, mock_reserve_run, mock_persist
+        self,
+        mock_sub,
+        mock_storage_cls,
+        mock_auth,
+        mock_get_user_org,
+        mock_reserve_run,
+        mock_persist,
     ):
         """If quota storage is transiently unavailable, submit anyway."""
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -264,7 +274,13 @@ class TestSubmissionResilience:
     )
     @pytest.mark.asyncio
     async def test_storage_failure_returns_502_and_refunds_quota(
-        self, mock_sub, mock_storage_cls, mock_auth, mock_get_user_org, mock_reserve_run, mock_finalize
+        self,
+        mock_sub,
+        mock_storage_cls,
+        mock_auth,
+        mock_get_user_org,
+        mock_reserve_run,
+        mock_finalize,
     ):
         """If KML upload fails, return 502 with CORS and finalize (refund) quota."""
         from blueprints.pipeline.submission import _submit_analysis_request

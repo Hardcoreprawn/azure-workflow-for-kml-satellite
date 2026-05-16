@@ -32,4 +32,6 @@ orch_min_instances           = 0
 ciam_tenant_subdomain = "canopex"
 ciam_tenant_id        = "98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7"
 ciam_client_id        = "1b51e2e8-15af-448b-8886-1345aeda73ba"
-ciam_api_audience     = "api://canopex"
+# CIAM External ID issues access tokens with `aud=<clientId>` when a SPA calls
+# its own backend (no separate API app reg). Backend validates against this aud.
+ciam_api_audience     = "1b51e2e8-15af-448b-8886-1345aeda73ba"

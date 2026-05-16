@@ -69,7 +69,7 @@ class TestUploadToken:
         self.mock_persist = self._persist_patcher.start()
         self.mock_get_user_org = self._org_patcher.start()
         self.mock_reserve_run = self._reserve_patcher.start()
-        
+
         # Set up default returns for new mocks
         self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}  # MagicMock accepts any call
@@ -276,15 +276,10 @@ class TestUploadToken:
         assert record["feature_count"] == 3
         assert record["aoi_count"] == 2
 
-    @patch("blueprints.upload.consume_eudr_trial")
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "free_trial"},
-    )
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial):
+    def test_eudr_mode_true_in_ticket(self, mock_bsc, mock_gen_sas, mock_org):
         from blueprints.upload import upload_token
 
         mock_blob_client = MagicMock()
@@ -340,17 +335,10 @@ class TestUploadToken:
         ticket_data = json.loads(mock_blob_client.upload_blob.call_args[0][0])
         assert "eudr_mode" not in ticket_data
 
-    @patch("blueprints.upload.consume_eudr_trial")
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "free_trial"},
-    )
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_stored_in_run_record(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent, mock_trial
-    ):
+    def test_eudr_mode_stored_in_run_record(self, mock_bsc, mock_gen_sas, mock_org):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -459,12 +447,12 @@ class TestUploadToken:
 
 
 # ===================================================================
-# EUDR entitlement enforcement on upload/token
+# Single parcel gate enforcement on upload/token
 # ===================================================================
 
 
-class TestUploadTokenEudrEntitlement:
-    """Server-side EUDR entitlement gate (#664)."""
+class TestUploadTokenSingleGate:
+    """Server-side parcel gate is enforced only through reserve_run."""
 
     def setup_method(self):
         self._org_patcher = patch("blueprints.upload.get_user_org")
@@ -473,7 +461,7 @@ class TestUploadTokenEudrEntitlement:
         self.mock_get_user_org = self._org_patcher.start()
         self.mock_reserve_run = self._reserve_patcher.start()
         self.mock_persist = self._persist_patcher.start()
-        
+
         # Default return values
         self.mock_get_user_org.return_value = {"org_id": "org-1", "name": "Test Org"}
         self.mock_reserve_run.return_value = {"reserved_parcels": 1}
@@ -484,7 +472,7 @@ class TestUploadTokenEudrEntitlement:
         self._org_patcher.stop()
 
     @patch("blueprints.upload.get_user_org", return_value=None)
-    def test_eudr_mode_rejects_user_without_org(self, mock_org):
+    def test_rejects_user_without_org(self, mock_org):
         from blueprints.upload import upload_token
 
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
@@ -496,77 +484,27 @@ class TestUploadTokenEudrEntitlement:
         assert "org" in data["error"].lower()
         self.mock_reserve_run.assert_not_called()
 
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": False, "reason": "subscription_required"},
-    )
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
-    def test_eudr_mode_rejects_when_entitlement_denied(self, mock_org, mock_ent):
+    def test_eudr_mode_marks_reservation_as_eudr(self, mock_org):
         from blueprints.upload import upload_token
 
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
-            resp = upload_token(req)
-
-        assert resp.status_code == 403
-        data = json.loads(resp.get_body())
-        assert "subscription" in data["error"].lower() or "entitlement" in data["error"].lower()
-        self.mock_reserve_run.assert_not_called()
-
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "free_trial"},
-    )
-    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
-    @patch("blueprints.upload.generate_blob_sas")
-    @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_consumes_trial_when_free(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
-    ):
-        from blueprints.upload import upload_token
-
-        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
-        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
-
-        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+        with (
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch("blueprints.upload.generate_blob_sas", return_value="sv=2024&sig=fakesig"),
+            patch("blueprints.upload.get_blob_service_client") as mock_bsc,
+        ):
+            mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
             resp = upload_token(req)
 
         assert resp.status_code == 200
-        # Check that reserve_run was called with EUDR mode
         self.mock_reserve_run.assert_called_once()
-        call_kwargs = self.mock_reserve_run.call_args.kwargs
-        assert call_kwargs["is_eudr"] is True
+        assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
 
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "subscription"},
-    )
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_skips_trial_when_subscribed(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
-    ):
-        from blueprints.upload import upload_token
-
-        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
-        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
-
-        req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
-            resp = upload_token(req)
-
-        assert resp.status_code == 200
-        # Check that reserve_run was called
-        self.mock_reserve_run.assert_called_once()
-        call_kwargs = self.mock_reserve_run.call_args.kwargs
-        assert call_kwargs["is_eudr"] is True
-
-    @patch("blueprints.upload.generate_blob_sas")
-    @patch("blueprints.upload.get_blob_service_client")
-    def test_non_eudr_mode_skips_entitlement_check(self, mock_bsc, mock_gen_sas):
-        """Non-EUDR submissions should not check EUDR entitlement."""
+    def test_non_eudr_mode_marks_reservation_as_non_eudr(self, mock_bsc, mock_gen_sas, mock_org):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -577,23 +515,14 @@ class TestUploadTokenEudrEntitlement:
             resp = upload_token(req)
 
         assert resp.status_code == 200
+        self.mock_reserve_run.assert_called_once()
+        assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is False
 
-    @patch(
-        "blueprints.upload.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "free_trial"},
-    )
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
-    @patch("blueprints.upload.generate_blob_sas")
-    @patch("blueprints.upload.get_blob_service_client")
-    def test_eudr_mode_refunds_quota_on_trial_consume_failure(
-        self, mock_bsc, mock_gen_sas, mock_org, mock_ent
-    ):
-        """If trial consumption fails after quota was consumed, quota is refunded."""
+    def test_eudr_mode_rejected_when_parcel_pool_rejects(self, mock_org):
         from blueprints.upload import upload_token
         from treesight.billing.accounting import MemberCapExceededError
 
-        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
-        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
         self.mock_reserve_run.side_effect = MemberCapExceededError("Member cap exceeded")
 
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})

@@ -25,6 +25,8 @@ from treesight.constants import (
 
 logger = logging.getLogger(__name__)
 
+_EUDR_EMULATION_TIERS: frozenset[str] = frozenset({"eudr_pro", "pro", "team", "enterprise"})
+
 
 # ---------------------------------------------------------------------------
 # Tier helpers
@@ -101,28 +103,42 @@ def consume_eudr_trial(org_id: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_eudr_entitlement(org_id: str) -> dict[str, Any]:
+def _has_active_eudr_subscription(billing: dict[str, Any]) -> bool:
+    """Return True when org billing has an active EUDR Pro subscription."""
+    return billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro"
+
+
+def _has_emulated_eudr_access(user_id: str | None) -> bool:
+    """Return True when user has active paid-tier emulation for EUDR testing."""
+    if not user_id:
+        return False
+
+    from treesight.security.billing import get_effective_subscription
+
+    sub = get_effective_subscription(user_id)
+    tier = str(sub.get("tier", "")).strip().lower()
+    status = str(sub.get("status", "")).strip().lower()
+    return bool(sub.get("emulated")) and status == "active" and tier in _EUDR_EMULATION_TIERS
+
+
+def check_eudr_entitlement(org_id: str, *, user_id: str | None = None) -> dict[str, Any]:
     """Check whether an org can submit an EUDR assessment.
 
     Returns a dict with ``allowed`` (bool) and ``reason`` (str).
     """
-    from treesight.security.orgs import get_org
+    del user_id  # Reserved for compatibility with existing call sites.
 
-    org = get_org(org_id)
-    if not org:
+    from treesight.billing.accounting import OrgNotFoundError, get_pool_status
+
+    try:
+        status = get_pool_status(org_id)
+    except OrgNotFoundError:
         return {"allowed": False, "reason": "org_not_found"}
 
-    # Check active subscription first
-    billing = org.get("billing", {})
-    if billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro":
-        return {"allowed": True, "reason": "subscription"}
-
-    # Fall back to free trial
-    used = org.get("eudr_assessments_used", 0)
-    if used < EUDR_FREE_ASSESSMENTS:
-        return {"allowed": True, "reason": "free_trial"}
-
-    return {"allowed": False, "reason": "subscription_required"}
+    available = int(status.get("available", 0) or 0)
+    if available > 0:
+        return {"allowed": True, "reason": "pool_available"}
+    return {"allowed": False, "reason": "pool_exhausted"}
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +146,11 @@ def check_eudr_entitlement(org_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def get_eudr_billing_status(org_id: str) -> dict[str, Any]:
+def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[str, Any]:
     """Return EUDR billing status for the frontend."""
+    del user_id  # Reserved for compatibility with existing call sites.
+
+    from treesight.billing.accounting import OrgNotFoundError, get_pool_status
     from treesight.security.orgs import get_org
 
     org = get_org(org_id)
@@ -146,19 +165,30 @@ def get_eudr_billing_status(org_id: str) -> dict[str, Any]:
             "overage_parcels": 0,
         }
 
+    try:
+        pool = get_pool_status(org_id)
+    except OrgNotFoundError:
+        pool = {
+            "allowance": 0,
+            "available": 0,
+            "completed": 0,
+            "reserved": 0,
+        }
+
     billing = org.get("billing", {})
-    used = org.get("eudr_assessments_used", 0)
-    subscribed = billing.get("eudr_status") == "active" and billing.get("eudr_tier") == "eudr_pro"
-    period_parcels = billing.get("eudr_period_parcels", 0) if subscribed else 0
-    overage = max(period_parcels - EUDR_INCLUDED_PARCELS, 0) if subscribed else 0
+    allowance = int(pool.get("allowance", 0) or 0)
+    available = int(pool.get("available", 0) or 0)
+    used = max(allowance - available, 0)
+    period_parcels = int(pool.get("completed", 0) or 0) + int(pool.get("reserved", 0) or 0)
+    overage = max(period_parcels - allowance, 0)
 
     return {
-        "plan": "eudr_pro" if subscribed else "free_trial",
-        "subscribed": subscribed,
+        "plan": "parcel_pool",
+        "subscribed": False,
         "assessments_used": used,
-        "trial_remaining": max(EUDR_FREE_ASSESSMENTS - used, 0),
+        "trial_remaining": available,
         "period_parcels_used": period_parcels,
-        "included_parcels": EUDR_INCLUDED_PARCELS,
+        "included_parcels": allowance,
         "overage_parcels": overage,
         "stripe_customer_id": billing.get("stripe_customer_id"),
     }
