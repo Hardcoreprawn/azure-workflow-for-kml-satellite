@@ -17,7 +17,9 @@
 <link rel="stylesheet" href="/css/shared.css">
 <script src="/js/analytics.js"></script>
 <script src="/js/canopex-helpers.js"></script>
-<script src="/js/canopex-auth.js" id="canopex-ciam-config" type="application/json"></script>
+<script id="canopex-ciam-config" type="application/json">{"clientId":"","authority":"","tenantId":"","apiAudience":""}</script>
+<script src="https://unpkg.com/@azure/msal-browser@3.30.0/lib/msal-browser.min.js" integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi" crossorigin="anonymous"></script>
+<script src="/js/canopex-auth.js"></script>
 <script src="/js/canopex-api-client.js"></script>
 <style>
   body {
@@ -275,13 +277,19 @@
     return null;
   }
 
-  // Initialize API client
+  // Initialize API client with auth token provider
   function initApiClient() {
     if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
       console.error('[invite-app] CanopexApiClient not found');
       return null;
     }
-    return window.CanopexApiClient.createClient();
+    var client = window.CanopexApiClient.createClient();
+    if (typeof ciam.getToken === 'function') {
+      client.setGetToken(function() {
+        return Promise.resolve(ciam.getToken());
+      });
+    }
+    return client;
   }
 
   function updateAuthUI() {
@@ -343,7 +351,11 @@
       var parts = token.split('.');
       if (parts.length !== 3) return null;
 
-      var decoded = JSON.parse(atob(parts[1]));
+      // JWTs use base64url encoding (RFC 4648 §5): '-' instead of '+', '_' instead of '/',
+      // and padding '=' is omitted. Convert to standard base64 before calling atob().
+      var b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      var padded = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
+      var decoded = JSON.parse(atob(padded));
       return {
         org_id: decoded.org_id,
         email: decoded.email,

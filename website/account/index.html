@@ -23,7 +23,6 @@
 <script src="/js/canopex-api-client.js" defer></script>
 <script src="https://unpkg.com/@azure/msal-browser@3.30.0/lib/msal-browser.min.js" integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi" crossorigin="anonymous" defer></script>
 <script src="/js/canopex-auth.js" defer></script>
-<script src="/js/account-app.js" defer></script>
 <style>
   /* Account-specific layout and sidebar */
   body[data-account-app] {
@@ -814,7 +813,11 @@
           orgContent.innerHTML = '<p style="color: var(--c-red);">Not authenticated. Please sign in.</p>';
           return;
         }
-        currentUserId = account.homeAccountId.split('.')[0];
+        // MSAL homeAccountId is "<oid>.<tenantId>". The backend derives user_id
+        // from JWT claims as "<tid>:<oid>" (see get_user_id_from_bearer_claims).
+        // Reconstruct that format so member lookups against currentOrg.members match.
+        var idParts = account.homeAccountId.split('.');
+        currentUserId = (idParts.length >= 2) ? (idParts[1] + ':' + idParts[0]) : idParts[0];
 
         // Load org
         var orgResp = await apiClient.fetch('/api/org', { method: 'GET' });
@@ -849,10 +852,23 @@
             memberDiv.className = 'member-item';
             var isMe = member.user_id === currentUserId;
             var displayName = member.display_name || member.email;
-            memberDiv.innerHTML = '<div class="member-info">' +
-              '<div class="member-email">' + displayName + ' ' + (isMe ? '<em style="color: var(--c-muted);">(you)</em>' : '') + '</div>' +
-              '<div class="member-role">' + member.role + '</div>' +
-              '</div>';
+            var infoDiv = document.createElement('div');
+            infoDiv.className = 'member-info';
+            var emailDiv = document.createElement('div');
+            emailDiv.className = 'member-email';
+            emailDiv.textContent = displayName;
+            if (isMe) {
+              var youLabel = document.createElement('em');
+              youLabel.style.color = 'var(--c-muted)';
+              youLabel.textContent = ' (you)';
+              emailDiv.appendChild(youLabel);
+            }
+            var roleDiv = document.createElement('div');
+            roleDiv.className = 'member-role';
+            roleDiv.textContent = member.role;
+            infoDiv.appendChild(emailDiv);
+            infoDiv.appendChild(roleDiv);
+            memberDiv.appendChild(infoDiv);
             if (isOwner && !isMe) {
               var actionsDiv = document.createElement('div');
               actionsDiv.className = 'member-actions';
@@ -907,10 +923,16 @@
           if (invite.status === 'pending') {
             var inviteDiv = document.createElement('div');
             inviteDiv.className = 'invite-item';
-            inviteDiv.innerHTML = '<div>' +
-              '<div class="invite-email">' + invite.email + '</div>' +
-              '<div class="invite-status">Pending</div>' +
-              '</div>';
+            var detailDiv = document.createElement('div');
+            var inviteEmailDiv = document.createElement('div');
+            inviteEmailDiv.className = 'invite-email';
+            inviteEmailDiv.textContent = invite.email;
+            var inviteStatusDiv = document.createElement('div');
+            inviteStatusDiv.className = 'invite-status';
+            inviteStatusDiv.textContent = 'Pending';
+            detailDiv.appendChild(inviteEmailDiv);
+            detailDiv.appendChild(inviteStatusDiv);
+            inviteDiv.appendChild(detailDiv);
             var revokeBtn = document.createElement('button');
             revokeBtn.className = 'btn danger';
             revokeBtn.style.cssText = 'padding: 6px 12px; font-size: 0.85rem;';
@@ -971,6 +993,7 @@
           method: 'POST',
           body: JSON.stringify({ email: email }),
         });
+        submitBtn.disabled = false;
         showInviteMessage('Invitation sent to ' + email, false);
         inviteEmail.value = '';
         setTimeout(function() { loadPendingInvites(); }, 500);
@@ -1012,6 +1035,10 @@
       console.error('[account-app] Failed to initialize API client');
       return;
     }
+    // Discover the API base URL (routes browser to orchestrator ingress if needed).
+    apiClient.discoverApiBase().catch(function(e) {
+      console.warn('[account-app] discoverApiBase failed, using default origin:', e);
+    });
     initAuthArea();
     initNavigation();
     initProfileForm();
