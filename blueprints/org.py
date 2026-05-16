@@ -314,8 +314,7 @@ def org_invites_list(
     invites = list_pending_invites(org_id)
     # Filter sensitive fields; exclude token — live JWTs must not be exposed in listings.
     safe_invites = [
-        {k: v for k, v in inv.items() if not k.startswith("_") and k != "token"}
-        for inv in invites
+        {k: v for k, v in inv.items() if not k.startswith("_") and k != "token"} for inv in invites
     ]
     return func.HttpResponse(
         json.dumps({"invites": safe_invites}),

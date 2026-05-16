@@ -211,4 +211,3 @@ class TestAccountDeletionWithTransfer:
             delete_user("member-2")
 
         assert store.get("users:member-2") is None
-

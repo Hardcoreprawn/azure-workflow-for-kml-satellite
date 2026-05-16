@@ -33,14 +33,11 @@ def _get_invite_secret() -> str:
 
     secret = os.environ.get("INVITE_TOKEN_SECRET")
     if not secret:
-        if os.environ.get("FUNCTIONS_WORKER_RUNTIME"):
-            raise RuntimeError(
-                "INVITE_TOKEN_SECRET environment variable is not set. "
-                "Configure it in your Azure Functions application settings."
-            )
-        # Local dev / test only — never use in production.
-        logger.warning("INVITE_TOKEN_SECRET not set; using insecure local fallback")
-        return "dev-only-local-invite-secret-fallback-xyzabc"  # ≥32 bytes
+        raise RuntimeError(
+            "INVITE_TOKEN_SECRET environment variable is not set. "
+            "Set it in Azure Functions application settings (production) "
+            "or in your local.settings.json / test environment."
+        )
     return secret
 
 
