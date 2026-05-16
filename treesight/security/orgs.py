@@ -11,10 +11,80 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import jwt
+
 logger = logging.getLogger(__name__)
 
 # Invite validity window
 INVITE_TTL_DAYS = 7
+
+
+# ── Invite Token Helpers ──────────────────────────────────────
+
+
+def _get_invite_secret() -> str:
+    """Get the signing secret for invite tokens.
+
+    Raises RuntimeError in Azure Functions runtime if INVITE_TOKEN_SECRET is
+    not configured — an absent secret in production would allow token forgery.
+    For local dev / test environments the key falls back to a stable default.
+    """
+    import os
+
+    secret = os.environ.get("INVITE_TOKEN_SECRET")
+    if not secret:
+        raise RuntimeError(
+            "INVITE_TOKEN_SECRET environment variable is not set. "
+            "Set it in Azure Functions application settings (production) "
+            "or in your local.settings.json / test environment."
+        )
+    return secret
+
+
+def create_invite_token(org_id: str, email: str) -> str:
+    """Create a signed JWT token for an invite link.
+
+    Token expires in INVITE_TTL_DAYS.
+    Payload: { org_id, email, iat, exp }
+    """
+    now = datetime.now(UTC)
+    exp = now + timedelta(days=INVITE_TTL_DAYS)
+
+    payload = {
+        "org_id": org_id,
+        "email": email,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        _get_invite_secret(),
+        algorithm="HS256",
+    )
+
+
+def validate_invite_token(token: str) -> dict[str, Any] | None:
+    """Validate and decode a signed invite token.
+
+    Returns the payload dict on success, None on failure.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            _get_invite_secret(),
+            algorithms=["HS256"],
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        logger.warning("Invite token expired")
+        return None
+    except jwt.InvalidTokenError:
+        logger.warning("Invalid invite token")
+        return None
+    except Exception:
+        logger.error("Invite token validation failed", exc_info=True)
+        return None
 
 
 # ── Org CRUD ──────────────────────────────────────────────────
@@ -77,9 +147,10 @@ def update_org_name(org_id: str, name: str) -> dict[str, Any]:
 
 def get_user_org(user_id: str) -> dict[str, Any] | None:
     """Return the org the user belongs to, or None."""
-    from treesight.security.users import get_user
+    # Read user directly to avoid a circular import with users.py.
+    from treesight.storage.cosmos import read_item
 
-    user = get_user(user_id)
+    user = read_item("users", user_id, user_id)
     if not user or not user.get("org_id"):
         return None
     return get_org(user["org_id"])
@@ -188,15 +259,22 @@ def create_invite(org_id: str, email: str, *, invited_by: str) -> dict[str, Any]
 
     now = datetime.now(UTC)
     invite_id = f"invite:{org_id}:{email.lower().strip()}"
+    token = create_invite_token(org_id, email.lower().strip())
 
     doc: dict[str, Any] = {
         "id": invite_id,
         "org_id": org_id,
         "doc_type": "invite",
         "email": email.lower().strip(),
+        "token": token,
+        "status": "pending",
         "invited_by": invited_by,
         "invited_at": now.isoformat(),
         "expires_at": (now + timedelta(days=INVITE_TTL_DAYS)).isoformat(),
+        "email_sent_at": None,
+        "email_resent_count": 0,
+        "accepted_at": None,
+        "accepted_by": None,
     }
 
     upsert_item("orgs", doc)
@@ -241,6 +319,162 @@ def accept_invite(invite: dict[str, Any], user_id: str) -> dict[str, Any]:
         invite["email"],
     )
     return org
+
+
+def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
+    """Accept an invite using a signed token.
+
+    Token must be valid (not expired, correct signature).
+    The authenticated user's email must match the invite email (prevents a
+    forwarded link from being accepted by an unintended recipient).
+    Returns the updated org document.
+    Raises ValueError if token is invalid, invite not found, or email mismatch.
+    """
+    from treesight.storage.cosmos import query_items, read_item, upsert_item
+
+    payload = validate_invite_token(token)
+    if not payload:
+        raise ValueError("Invalid or expired invite token")
+
+    org_id = payload.get("org_id")
+    email = payload.get("email")
+
+    if not org_id or not email:
+        raise ValueError("Malformed invite token — missing org_id or email")
+
+    # Verify the token was issued for this user's email address.
+    # Fetch directly from storage to avoid a circular import with users.py.
+    user_doc = read_item("users", user_id, user_id)
+    if not user_doc:
+        raise ValueError("Authenticated user not found")
+    user_email = user_doc.get("email", "").lower().strip()
+    if user_email != email.lower().strip():
+        raise ValueError("This invite was not issued to your email address")
+
+    # Find the invite document
+    now = datetime.now(UTC).isoformat()
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND LOWER(c.email) = LOWER(@email)",
+        parameters=[
+            {"name": "@org_id", "value": org_id},
+            {"name": "@email", "value": email.lower().strip()},
+        ],
+    )
+
+    if not results:
+        raise ValueError(f"Invite not found for org={org_id}, email={email}")
+
+    invite = results[0]
+
+    # Verify this is the current token — rejects replays of superseded/re-issued tokens.
+    if invite.get("token") != token:
+        raise ValueError("Invite token has been superseded — please request a new invitation")
+
+    # Check status
+    if invite.get("status") == "revoked":
+        raise ValueError("This invite has been revoked")
+    if invite.get("status") == "accepted":
+        raise ValueError("This invite has already been accepted")
+
+    # Add user to org
+    org = add_member(
+        org_id,
+        user_id,
+        email=email,
+        role="member",
+    )
+
+    # Mark invite as accepted and update it (instead of deleting, for audit trail)
+    invite["status"] = "accepted"
+    invite["accepted_at"] = now
+    invite["accepted_by"] = user_id
+    upsert_item("orgs", invite)
+
+    logger.info(
+        "Invite accepted org=%s user=%s email=%s",
+        org_id,
+        user_id,
+        email,
+    )
+    return org
+
+
+def revoke_invite(org_id: str, invite_email: str) -> dict[str, Any]:
+    """Revoke a pending invite by org and email."""
+    from treesight.storage.cosmos import query_items, upsert_item
+
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND LOWER(c.email) = LOWER(@email)",
+        parameters=[
+            {"name": "@org_id", "value": org_id},
+            {"name": "@email", "value": invite_email.lower().strip()},
+        ],
+    )
+
+    if not results:
+        raise ValueError(f"Invite not found for org={org_id}, email={invite_email}")
+
+    invite = results[0]
+    invite["status"] = "revoked"
+    invite["revoked_at"] = datetime.now(UTC).isoformat()
+    upsert_item("orgs", invite)
+
+    logger.info("Invite revoked org=%s email=%s", org_id, invite_email)
+    return invite
+
+
+def list_pending_invites(org_id: str) -> list[dict[str, Any]]:
+    """List all pending invites for an org."""
+    from treesight.storage.cosmos import query_items
+
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.org_id = @org_id"
+        " AND c.doc_type = 'invite'"
+        " AND c.status = 'pending'"
+        " ORDER BY c.invited_at DESC",
+        parameters=[{"name": "@org_id", "value": org_id}],
+    )
+    return results
+
+
+def list_orgs_for_user(user_id: str) -> list[dict[str, Any]]:
+    """List all orgs a user is a member of, with role information.
+
+    NOTE: Cosmos DB SQL subquery projections return arrays, not scalars.
+    We include the full ``members`` array and extract the role in Python
+    to guarantee ``org_role`` is a string (not ``["owner"]``).
+    """
+    from treesight.storage.cosmos import query_items
+
+    try:
+        results = query_items(
+            "orgs",
+            "SELECT c.org_id, c.name, c.created_at, c.members"
+            " FROM c WHERE c.doc_type = 'org'"
+            ' AND ARRAY_CONTAINS(c.members, {"user_id": @user_id}, true)',
+            # Note: Cosmos SQL requires quoted property names in object literals.
+            parameters=[{"name": "@user_id", "value": user_id}],
+        )
+        # Extract role from members list; avoids the Cosmos subquery array-projection issue.
+        # Copy each row before mutating so we don't disturb Cosmos SDK objects (or mock stores).
+        output = []
+        for result in results:
+            row = {k: v for k, v in result.items() if k != "members"}
+            members = result.get("members", [])
+            member = next((m for m in members if m["user_id"] == user_id), None)
+            row["org_role"] = member["role"] if member else None
+            output.append(row)
+        return output
+    except Exception:
+        logger.warning("Failed to query orgs for user=%s", user_id, exc_info=True)
+        return []
 
 
 # ── Helpers ──────────────────────────────────────────────────

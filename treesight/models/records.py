@@ -126,6 +126,7 @@ class UserRecord(BaseModel):
     last_seen: str | None = None
     last_modified: str | None = None
     assigned_tier: str | None = None
+    created_at: str | None = None
     org_id: str | None = None
     org_role: str | None = None
     quota: QuotaState | None = None
@@ -173,13 +174,23 @@ class OrgRecord(BaseModel):
 
 
 class OrgInvite(BaseModel):
-    """A pending org invite stored alongside org docs."""
+    """A pending org invite stored alongside org docs.
+
+    Invites are keyed by a signed JWT token (7-day TTL).
+    Status progression: pending → accepted | revoked | expired.
+    """
 
     org_id: str
     email: str
+    token: str = ""
+    status: str = "pending"  # pending | accepted | revoked | expired
     invited_by: str = ""
     invited_at: str | None = None
     expires_at: str | None = None
+    accepted_at: str | None = None
+    accepted_by: str | None = None
+    email_sent_at: str | None = None
+    email_resent_count: int = 0
 
     model_config = ConfigDict(extra="allow")
 
