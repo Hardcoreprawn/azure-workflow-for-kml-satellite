@@ -220,6 +220,52 @@ class TestUploadToken:
         call_kwargs = self.mock_reserve_run.call_args.kwargs
         assert call_kwargs["is_eudr"] is False  # Default: not EUDR mode
 
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_auto_creates_org_for_unaffiliated_user(self, mock_bsc, mock_gen_sas):
+        """Users without an org get a personal org auto-created on first submission."""
+        from blueprints.upload import upload_token
+
+        self.mock_get_user_org.return_value = None  # no org yet
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        auto_org = {"org_id": "auto-org-1", "name": "Test User's Organisation"}
+        with (
+            patch("blueprints.upload.create_org", return_value=auto_org) as mock_create,
+            patch(
+                "treesight.security.users.get_user",
+                return_value={"email": "t@example.com", "display_name": "Test User"},
+            ),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            req = _make_req("/api/upload/token", method="POST")
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        mock_create.assert_called_once_with(
+            "test-user", name="Test User's Organisation", email="t@example.com"
+        )
+
+    def test_auto_create_org_failure_returns_503(self):
+        """If org auto-creation fails, return 503 rather than 403."""
+        from blueprints.upload import upload_token
+
+        self.mock_get_user_org.return_value = None
+
+        with (
+            patch("blueprints.upload.create_org", side_effect=RuntimeError("cosmos down")),
+            patch(
+                "treesight.security.users.get_user",
+                return_value={},
+            ),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            req = _make_req("/api/upload/token", method="POST")
+            resp = upload_token(req)
+
+        assert resp.status_code == 503
+
     def test_returns_403_when_quota_exhausted(self):
         from blueprints.upload import upload_token
         from treesight.billing.accounting import QuotaExhaustedError
@@ -472,16 +518,42 @@ class TestUploadTokenSingleGate:
         self._org_patcher.stop()
 
     @patch("blueprints.upload.get_user_org", return_value=None)
-    def test_rejects_user_without_org(self, mock_org):
+    def test_auto_creates_org_when_none_and_proceeds(self, mock_org):
+        """Users without an org get one auto-created; submission then succeeds."""
         from blueprints.upload import upload_token
 
+        auto_org = {"org_id": "new-org-1", "name": "Test User's Organisation"}
         req = _make_req("/api/upload/token", method="POST", body={"eudr_mode": True})
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+        with (
+            patch("blueprints.upload.create_org", return_value=auto_org),
+            patch(
+                "treesight.security.users.get_user",
+                return_value={"display_name": "Test User", "email": "t@example.com"},
+            ),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch("blueprints.upload.generate_blob_sas", return_value="sv=2024&sig=fakesig"),
+            patch("blueprints.upload.get_blob_service_client") as mock_bsc,
+        ):
+            mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
             resp = upload_token(req)
 
-        assert resp.status_code == 403
-        data = json.loads(resp.get_body())
-        assert "org" in data["error"].lower()
+        assert resp.status_code == 200
+        self.mock_reserve_run.assert_called_once()
+
+    @patch("blueprints.upload.get_user_org", return_value=None)
+    def test_returns_503_when_auto_create_org_fails(self, mock_org):
+        """If org auto-creation fails, 503 is returned and reserve_run is not called."""
+        from blueprints.upload import upload_token
+
+        req = _make_req("/api/upload/token", method="POST")
+        with (
+            patch("blueprints.upload.create_org", side_effect=RuntimeError("cosmos down")),
+            patch("treesight.security.users.get_user", return_value={}),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            resp = upload_token(req)
+
+        assert resp.status_code == 503
         self.mock_reserve_run.assert_not_called()
 
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
