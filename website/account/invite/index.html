@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accept Invitation — Canopex</title>
+<meta name="description" content="Accept your invitation to join an organization on Canopex.">
+<link rel="canonical" href="/account/invite/">
+<meta property="og:title" content="Accept Invitation — Canopex">
+<meta property="og:description" content="Accept your invitation to join an organization on Canopex.">
+<meta property="og:url" content="/account/invite/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Canopex">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Accept Invitation — Canopex">
+<meta name="twitter:description" content="Accept your invitation to join an organization on Canopex.">
+<link rel="stylesheet" href="/css/shared.css">
+<script src="/js/analytics.js"></script>
+<script src="/js/canopex-helpers.js"></script>
+<script src="/js/canopex-auth.js" id="canopex-ciam-config" type="application/json"></script>
+<script src="/js/canopex-api-client.js"></script>
+<style>
+  body {
+    background: var(--c-bg);
+    color: var(--c-text);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  nav {
+    background: var(--c-surface);
+    border-bottom: 1px solid var(--c-border);
+    padding: 12px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  nav .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  nav a {
+    color: var(--c-text);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  nav a:hover {
+    color: var(--c-accent);
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .nav-right .btn {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+  }
+
+  .invite-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+
+  .invite-card {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 40px;
+    max-width: 500px;
+    width: 100%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .invite-card h1 {
+    font-size: 1.5rem;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+
+  .invite-card p {
+    color: var(--c-muted);
+    text-align: center;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .invite-details {
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+
+  .invite-details p {
+    margin: 4px 0;
+    font-size: 0.9rem;
+  }
+
+  .invite-details strong {
+    color: var(--c-text);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .btn {
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    width: 100%;
+  }
+
+  .btn.primary {
+    background: var(--c-accent);
+    color: #0b1411;
+  }
+
+  .btn.primary:hover:not(:disabled) {
+    background: #a8f5e0;
+    box-shadow: 0 0 14px rgba(94, 236, 196, 0.45);
+  }
+
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .message {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: var(--radius);
+    text-align: center;
+    display: none;
+  }
+
+  .message.success {
+    background: rgba(76, 175, 80, 0.1);
+    color: #4caf50;
+    border: 1px solid #4caf50;
+  }
+
+  .message.error {
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--c-red);
+    border: 1px solid var(--c-red);
+  }
+
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .loading {
+    text-align: center;
+    color: var(--c-muted);
+  }
+
+  .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--c-border);
+    border-top-color: var(--c-accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+</head>
+<body data-invite-app>
+<nav>
+  <div class="container">
+    <a href="/">Canopex</a>
+    <div class="nav-right">
+      <div id="auth-status">
+        <span id="status-badge" style="display: none; color: var(--c-muted);">Not signed in</span>
+        <span id="auth-user" style="display: none;"></span>
+      </div>
+      <button class="btn primary" id="login-btn" style="width: auto; padding: 8px 16px;">Sign In</button>
+      <button class="btn primary" id="logout-btn" style="display: none; width: auto; padding: 8px 16px;">Sign Out</button>
+    </div>
+  </div>
+</nav>
+
+<div class="invite-container">
+  <div class="invite-card">
+    <div id="loading-state">
+      <h1>Loading invitation…</h1>
+      <p>
+        <div class="loading-spinner"></div>
+      </p>
+    </div>
+
+    <div id="invite-state" style="display: none;">
+      <h1>You've been invited!</h1>
+      <p>Accept this invitation to join an organization on Canopex.</p>
+
+      <div class="invite-details">
+        <strong>Organization:</strong>
+        <p id="org-name">Loading…</p>
+        <strong style="margin-top: 12px;">Invited Email:</strong>
+        <p id="invited-email">Loading…</p>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="accept-btn">Accept Invitation</button>
+      </div>
+
+      <div class="message" id="message"></div>
+    </div>
+
+    <div id="error-state" style="display: none;">
+      <h1>Invalid Invitation</h1>
+      <p id="error-message">This invitation is invalid or has expired.</p>
+      <div style="margin-top: 24px;">
+        <a href="/" class="btn primary" style="text-decoration: none; display: inline-block;">Back to Home</a>
+      </div>
+    </div>
+
+    <div id="success-state" style="display: none;">
+      <h1>Invitation Accepted!</h1>
+      <p>You've successfully joined the organization.</p>
+      <div style="margin-top: 24px;">
+        <a href="/account/#organization" class="btn primary" style="text-decoration: none; display: inline-block;">Go to Organization Settings</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var ciam = window.CanopexCiam || {};
+  var apiClient = null;
+
+  // Extract token from URL query parameter or path
+  function extractTokenFromUrl() {
+    // First try query parameter: /account/invite/?token=xxx
+    var params = new URLSearchParams(window.location.search);
+    if (params.has('token')) {
+      return params.get('token');
+    }
+
+    // For production (SWA routing), also support path: /account/invite/{token}
+    // SWA will rewrite to /account/invite/index.html?token={token}
+    var pathname = window.location.pathname;
+    var parts = pathname.split('/').filter(Boolean);
+    if (parts.length >= 3 && parts[0] === 'account' && parts[1] === 'invite') {
+      return parts[2];
+    }
+    return null;
+  }
+
+  // Initialize API client
+  function initApiClient() {
+    if (!window.CanopexApiClient || typeof window.CanopexApiClient.createClient !== 'function') {
+      console.error('[invite-app] CanopexApiClient not found');
+      return null;
+    }
+    return window.CanopexApiClient.createClient();
+  }
+
+  function updateAuthUI() {
+    var statusBadge = document.getElementById('status-badge');
+    var authUser = document.getElementById('auth-user');
+    var loginBtn = document.getElementById('login-btn');
+    var logoutBtn = document.getElementById('logout-btn');
+
+    var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+    if (account) {
+      statusBadge.style.display = 'none';
+      authUser.style.display = 'inline';
+      authUser.textContent = account.name || account.username || 'User';
+      loginBtn.style.display = 'none';
+      logoutBtn.style.display = 'inline-block';
+    } else {
+      statusBadge.style.display = 'inline';
+      authUser.style.display = 'none';
+      loginBtn.style.display = 'inline-block';
+      logoutBtn.style.display = 'none';
+    }
+  }
+
+  function loginRedirect() {
+    if (typeof ciam.login === 'function') {
+      ciam.login();
+    }
+  }
+
+  function logoutRedirect() {
+    if (typeof ciam.logout === 'function') {
+      ciam.logout();
+    }
+  }
+
+  function showState(stateId) {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('invite-state').style.display = 'none';
+    document.getElementById('error-state').style.display = 'none';
+    document.getElementById('success-state').style.display = 'none';
+    document.getElementById(stateId).style.display = 'block';
+  }
+
+  function showMessage(text, isError) {
+    var msg = document.getElementById('message');
+    msg.textContent = text;
+    msg.className = 'message ' + (isError ? 'error' : 'success');
+    msg.style.display = 'block';
+  }
+
+  function showError(msg) {
+    document.getElementById('error-message').textContent = msg;
+    showState('error-state');
+  }
+
+  function decodeInviteToken(token) {
+    // Try to decode the JWT to extract org_id and email
+    try {
+      var parts = token.split('.');
+      if (parts.length !== 3) return null;
+
+      var decoded = JSON.parse(atob(parts[1]));
+      return {
+        org_id: decoded.org_id,
+        email: decoded.email,
+        exp: decoded.exp
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function fetchOrgName(orgId) {
+    try {
+      var resp = await apiClient.fetch('/api/org', { method: 'GET' });
+      var data = await resp.json();
+      if (data.org && data.org.org_id === orgId) {
+        return data.org.name;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch org name:', e);
+    }
+    return 'Organization';
+  }
+
+  async function acceptInvitation(token) {
+    var acceptBtn = document.getElementById('accept-btn');
+    acceptBtn.disabled = true;
+    showMessage('Accepting invitation…', false);
+
+    try {
+      var resp = await apiClient.fetch('/api/org/invites/' + encodeURIComponent(token) + '/accept', {
+        method: 'POST',
+      });
+
+      if (resp.status === 200) {
+        showState('success-state');
+        setTimeout(function() {
+          window.location.href = '/account/#organization';
+        }, 2000);
+      } else {
+        var body = await resp.json();
+        var msg = body.error || 'Failed to accept invitation';
+        showMessage(msg, true);
+        acceptBtn.disabled = false;
+      }
+    } catch (err) {
+      acceptBtn.disabled = false;
+      var msg = err.message || 'Error accepting invitation';
+      if (err.status === 400) {
+        msg = 'Invalid or expired invitation';
+      } else if (err.status === 403) {
+        msg = 'You are not authorized to accept this invitation';
+      } else if (err.status === 503) {
+        msg = 'Service temporarily unavailable';
+      }
+      showMessage(msg, true);
+    }
+  }
+
+  function init() {
+    apiClient = initApiClient();
+    if (!apiClient) {
+      showError('Unable to initialize application. Please try again.');
+      return;
+    }
+
+    var token = extractTokenFromUrl();
+    if (!token) {
+      showError('No invitation token found in URL.');
+      return;
+    }
+
+    // Setup auth UI
+    var loginBtn = document.getElementById('login-btn');
+    var logoutBtn = document.getElementById('logout-btn');
+    loginBtn.addEventListener('click', loginRedirect);
+    logoutBtn.addEventListener('click', logoutRedirect);
+    if (typeof ciam.onAccountChange === 'function') {
+      ciam.onAccountChange(updateAuthUI);
+    }
+    updateAuthUI();
+
+    // Decode token to get org_id and email
+    var decoded = decodeInviteToken(token);
+    if (!decoded) {
+      showError('Invalid invitation token format.');
+      return;
+    }
+
+    // Check if token is expired
+    if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+      showError('This invitation has expired.');
+      return;
+    }
+
+    // Show invite state
+    document.getElementById('invited-email').textContent = decoded.email;
+
+    // Try to fetch org name if authenticated
+    var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+    if (account && decoded.org_id) {
+      fetchOrgName(decoded.org_id).then(function(orgName) {
+        document.getElementById('org-name').textContent = orgName;
+      });
+    } else {
+      document.getElementById('org-name').textContent = 'Organization';
+    }
+
+    showState('invite-state');
+
+    // Setup accept button
+    var acceptBtn = document.getElementById('accept-btn');
+    acceptBtn.addEventListener('click', function() {
+      var currentAccount = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+      if (!currentAccount) {
+        loginRedirect();
+        return;
+      }
+      acceptInvitation(token);
+    });
+
+    // Update accept button text if not authenticated
+    if (!account) {
+      acceptBtn.textContent = 'Sign In to Accept';
+    }
+
+    // Subscribe to account changes to update button
+    if (typeof ciam.onAccountChange === 'function') {
+      ciam.onAccountChange(function() {
+        var currentAccount = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
+        acceptBtn.textContent = currentAccount ? 'Accept Invitation' : 'Sign In to Accept';
+      });
+    }
+  }
+
+  // Wait for page to load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+</body>
+</html>
