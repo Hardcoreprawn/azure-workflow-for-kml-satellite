@@ -96,26 +96,24 @@ Content-Type: application/json
 **How Canopex implements it**:
 
 ```bash
-DELETE /api/user
+DELETE /api/user?transfer_to=u-recipient123
 Authorization: Bearer {JWT}
-Content-Type: application/json
-
-{
-  "transfer_to": "u-recipient123"  // Optional; required if user is sole org owner
-}
 ```
+
+`transfer_to` (optional query parameter): user_id to transfer org ownership to.
+Required if the authenticated user is the sole owner of any organisation.
 
 **Deletion scope** (cascading):
 
 1. **User document** → Deleted entirely
 2. **Org memberships** → User removed from all organizations
-3. **Org ownership** → If user is sole owner, ownership transferred (if `transfer_to` provided) or deletion blocked with 403
+3. **Org ownership** → If user is sole owner, ownership transferred (if `transfer_to` provided) or deletion blocked with 400
 4. **Analyses & runs** → Marked for deletion (soft-delete, cascading audit log cleanup follows)
 5. **Invites** → Pending invites issued by user are revoked; invites TO user are deleted
 6. **Billing records** → Retained for 7 years per tax law (CANNOT delete; anonymized in GDPR export)
 
 **Ownership transfer rules**:
-- If user is **sole owner** of an org and `transfer_to` is not provided → **403 Forbidden**
+- If user is **sole owner** of an org and `transfer_to` is not provided → **400 Bad Request**
 - If user is **sole owner** and `transfer_to` is provided:
   - `transfer_to` user must already be an org member
   - Ownership transferred to recipient

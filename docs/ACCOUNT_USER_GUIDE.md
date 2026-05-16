@@ -21,21 +21,21 @@ Welcome to Canopex! This guide explains how to manage your account, invite team 
 ### Edit Your Profile
 
 1. Go to Account → **Profile**
-2. Click the **Edit** button
-3. Update your **Display Name** (up to 200 characters)
-4. Click **Save**
+2. The **Display Name** field is always editable
+3. Update your name (up to 200 characters)
+4. Click **Update Profile**
 5. Your profile is updated immediately
 
 ---
 
 ## Organizations: Invite & Manage Team Members
 
-### Create an Organization
+### Organization Membership
 
-1. Go to Account → **Organization**
-2. If you don't have an org yet, click **Create Organization**
-3. Enter your organization name
-4. You become the **Owner** (full permissions)
+Your organization is assigned by an owner who invites you. The Organization section
+shows your current org, its members, and (for owners) pending invitations.
+
+To join an organization, accept an invitation link sent by your org owner.
 
 ### Invite Team Members
 
@@ -164,12 +164,7 @@ Your account page shows all personal data Canopex holds about you:
 - Account creation date
 - Organization memberships and roles
 
-### Export Your Data
-
-1. Go to Account → **Profile**
-2. Click **Export My Data**
-3. A JSON file downloads with all your personal information
-4. You can import this data into other services
+For a full structured export of your data, contact **support@canopex.com** citing GDPR Article 20.
 
 ### Delete Your Data
 
