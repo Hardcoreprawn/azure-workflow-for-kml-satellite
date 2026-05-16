@@ -25,18 +25,20 @@ AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
 # We cannot patch these — they require a rebuilt host from Microsoft.
 # Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
 # Review: remove these entries once Microsoft ships a patched Functions host image.
-CVE-2026-25679 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
-CVE-2026-27139 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
-CVE-2026-27142 # exp:2026-05-09 Go stdlib in Functions host — tracking upstream
-CVE-2026-40894 # exp:2026-05-24 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3
+# Reviewed 2026-05-16: upstream still unpatched; extended 30 days.
+CVE-2026-25679 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
+CVE-2026-27139 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
+CVE-2026-27142 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
+CVE-2026-40894 # exp:2026-06-16 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3
 
-# libpng16-16: fix version 1.6.39-2+deb12u4 not yet in Debian bookworm mirrors.
-# apt-get upgrade cannot pull what the mirror doesn't have yet.
-CVE-2026-33416 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
-CVE-2026-33636 # exp:2026-05-01 libpng16-16 HIGH — tracking #355
+# libpng16-16: Dockerfile.base already runs apt-get upgrade -y which will apply the fix
+# once it lands in Debian bookworm mirrors. Trigger a base-image rebuild to pick it up.
+# Reviewed 2026-05-16: extended 30 days pending mirror propagation + base rebuild.
+CVE-2026-33416 # exp:2026-06-16 libpng16-16 HIGH — tracking #355
+CVE-2026-33636 # exp:2026-06-16 libpng16-16 HIGH — tracking #355
 
 # pip 25.0.1 CVEs in base container image — not exploitable at runtime.
 # We do not install arbitrary wheels in production; pip is only used during
 # image build. Upgrade when Microsoft publishes a patched Functions base image.
-CVE-2025-8869 # exp:2026-05-09 pip symlink extraction — medium
-CVE-2026-1703 # exp:2026-05-09 pip path traversal via crafted wheels — low
+CVE-2025-8869 # exp:2026-06-16 pip symlink extraction — medium
+CVE-2026-1703 # exp:2026-06-16 pip path traversal via crafted wheels — low
