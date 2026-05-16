@@ -276,6 +276,9 @@ class TestUploadToken:
 
         # Should succeed despite query lag — fallback to new_org is used.
         assert resp.status_code == 200
+        # Reserve was called with the fallback org_id from create_org, not an empty/wrong value.
+        self.mock_reserve_run.assert_called_once()
+        assert self.mock_reserve_run.call_args.kwargs["org_id"] == "new-org-1"
 
     def test_auto_create_org_failure_returns_503(self):
         """If org auto-creation fails, return 503 rather than 403."""
