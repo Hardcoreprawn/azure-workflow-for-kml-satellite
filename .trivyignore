@@ -42,3 +42,21 @@ CVE-2026-33636 # exp:2026-06-16 libpng16-16 HIGH — tracking #355
 # image build. Upgrade when Microsoft publishes a patched Functions base image.
 CVE-2025-8869 # exp:2026-06-16 pip symlink extraction — medium
 CVE-2026-1703 # exp:2026-06-16 pip path traversal via crafted wheels — low
+
+# Debian bookworm package CVEs — all have fixed versions in the archive.
+# Dockerfile.base runs apt-get upgrade -y; these clear on the next base image rebuild.
+# Base rebuild triggered 2026-05-16. Remove these entries once the rebuilt image deploys.
+#
+# systemd: Arbitrary code execution or DoS via spurious IPC API call data.
+# libsystemd0/libudev1 are present in the Debian base but the systemd IPC attack
+# surface is not reachable inside a container (no systemd daemon running).
+CVE-2026-29111 # exp:2026-05-30 libsystemd0+libudev1 HIGH — fixed in deb12u2, base rebuild pending
+#
+# libcap: Privilege escalation via TOCTOU race in cap_set_file().
+# Application code does not call cap_set_file(); not reachable.
+CVE-2026-4878 # exp:2026-05-30 libcap2 HIGH — fixed in deb12u3, base rebuild pending
+#
+# glibc: Integer overflow in memalign leads to heap corruption.
+# Requires attacker-controlled memalign call size. Not directly reachable
+# via our application but glibc is load-bearing — base rebuild prioritised.
+CVE-2026-0861 # exp:2026-05-30 libc6+libc-bin HIGH — fixed in deb12u14, base rebuild pending
