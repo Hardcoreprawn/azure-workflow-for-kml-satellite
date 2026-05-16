@@ -249,16 +249,22 @@ class TestUploadToken:
             "test-user", name="Test User's Organisation", email="t@example.com"
         )
 
-    def test_auto_create_org_association_failure_returns_503(self):
-        """If create_org succeeds but _set_user_org silently failed, return 503."""
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_cosmos_query_lag_falls_back_to_created_org(self, mock_bsc, mock_gen_sas):
+        """If get_user_org returns None after create_org (Cosmos query consistency lag),
+        the org returned by create_org is used as a fallback so the request succeeds."""
         from blueprints.upload import upload_token
 
-        # First call: no org. Second call (verification after create): still no org
-        # because _set_user_org swallowed its failure.
+        new_org = {"org_id": "new-org-1", "name": "Test User's Organisation"}
+        # Both get_user_org calls return None (simulates cross-partition query lag).
+        # The fallback to create_org's return value should carry the request through.
         self.mock_get_user_org.side_effect = [None, None]
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
 
         with (
-            patch("blueprints.upload.create_org"),
+            patch("blueprints.upload.create_org", return_value=new_org),
             patch(
                 "treesight.security.users.get_user",
                 return_value={"display_name": "Test User", "email": "t@example.com"},
@@ -268,7 +274,8 @@ class TestUploadToken:
             req = _make_req("/api/upload/token", method="POST")
             resp = upload_token(req)
 
-        assert resp.status_code == 503
+        # Should succeed despite query lag — fallback to new_org is used.
+        assert resp.status_code == 200
 
     def test_auto_create_org_failure_returns_503(self):
         """If org auto-creation fails, return 503 rather than 403."""

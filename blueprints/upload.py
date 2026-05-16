@@ -318,13 +318,14 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
             email = user_doc.get("email", "")
             display_name = user_doc.get("display_name", "")
             org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
-            create_org(user_id, name=org_name, email=email)
-            # Re-read to verify the association persisted.  _set_user_org() swallows
-            # its own exceptions, so we cannot trust the return value of create_org().
-            # Re-reading also handles concurrent submissions: if a racing request
-            # already stamped a different org on the user record, we adopt that org
-            # rather than the one we just created, avoiding split reservations.
-            user_org = get_user_org(user_id)
+            new_org = create_org(user_id, name=org_name, email=email)
+            # Re-read to handle concurrent submissions: if a racing request already
+            # stamped a different org on the user record, adopt that org rather than
+            # the one we just created (avoids split reservations).
+            # Fall back to new_org if the membership query lags the write — Cosmos
+            # cross-partition queries can briefly trail a direct upsert, causing
+            # get_user_org's slow path to return None even though the org exists.
+            user_org = get_user_org(user_id) or new_org
             if not user_org:
                 logger.error(
                     "Auto-created org for user=%s but association was not persisted",
