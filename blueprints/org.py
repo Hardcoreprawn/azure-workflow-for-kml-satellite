@@ -278,3 +278,108 @@ def _change_role(req: func.HttpRequest, org_id: str, member_id: str) -> func.Htt
         status_code=200,
         headers={**cors_headers(req), "Content-Type": "application/json"},
     )
+
+
+# ── GET /api/org/invites ────────────────────────────────────
+
+
+@bp.route(route="org/invites", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@require_auth
+def org_invites_list(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """GET /api/org/invites — list pending invitations for the org."""
+    del auth_claims  # unused
+    from treesight.security.orgs import list_pending_invites
+    from treesight.security.users import get_user
+
+    user = get_user(user_id)
+    org_id = user.get("org_id") if user else None
+    if not org_id:
+        return error_response(404, "You do not belong to an organisation", req=req)
+
+    invites = list_pending_invites(org_id)
+    # Filter sensitive fields
+    safe_invites = [
+        {k: v for k, v in inv.items() if not k.startswith("_")}
+        for inv in invites
+    ]
+    return func.HttpResponse(
+        json.dumps({"invites": safe_invites}),
+        status_code=200,
+        headers={**cors_headers(req), "Content-Type": "application/json"},
+    )
+
+
+# ── PATCH /api/org/invites/{email}/revoke ──────────────────
+
+
+@bp.route(
+    route="org/invites/{email}/revoke",
+    methods=["PATCH", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@require_auth
+def org_invite_revoke(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """PATCH /api/org/invites/{email}/revoke — revoke a pending invitation."""
+    del auth_claims  # unused
+    email = req.route_params.get("email", "")
+    if not email:
+        return error_response(400, "email is required", req=req)
+
+    from treesight.security.orgs import revoke_invite
+    from treesight.security.users import get_user
+
+    user = get_user(user_id)
+    org_id = user.get("org_id") if user else None
+    if not org_id:
+        return error_response(404, "You do not belong to an organisation", req=req)
+
+    # Only owners can revoke invites
+    if user.get("org_role") != "owner":
+        return error_response(403, "Only owners can revoke invitations", req=req)
+
+    try:
+        org = revoke_invite(org_id, email)
+        safe = {k: v for k, v in org.items() if not k.startswith("_")}
+        return func.HttpResponse(
+            json.dumps({"org": safe}),
+            status_code=200,
+            headers={**cors_headers(req), "Content-Type": "application/json"},
+        )
+    except ValueError as exc:
+        return error_response(400, str(exc), req=req)
+
+
+# ── POST /api/org/invites/{token}/accept ───────────────────
+
+
+@bp.route(
+    route="org/invites/{token}/accept",
+    methods=["POST", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@require_auth
+def org_invite_accept(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """POST /api/org/invites/{token}/accept — accept an invitation by token."""
+    del auth_claims  # unused
+    token = req.route_params.get("token", "")
+    if not token:
+        return error_response(400, "token is required", req=req)
+
+    from treesight.security.orgs import accept_invite_by_token
+
+    try:
+        org = accept_invite_by_token(token, user_id)
+        safe = {k: v for k, v in org.items() if not k.startswith("_")}
+        return func.HttpResponse(
+            json.dumps({"org": safe}),
+            status_code=200,
+            headers={**cors_headers(req), "Content-Type": "application/json"},
+        )
+    except ValueError as exc:
+        return error_response(400, str(exc), req=req)

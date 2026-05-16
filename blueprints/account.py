@@ -19,6 +19,43 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
+# ── GET /api/user ────────────────────────────────────
+
+
+@bp.route(
+    route="user",
+    methods=["GET", "OPTIONS"],
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+@require_auth
+def get_profile_endpoint(
+    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+) -> func.HttpResponse:
+    """Get current user profile."""
+    del auth_claims  # unused
+
+    try:
+        from treesight.security.users import get_user
+
+        user = get_user(user_id)
+        if not user:
+            return error_response(404, "User not found", req=req)
+        safe_user = {k: v for k, v in user.items() if not k.startswith("_")}
+        return func.HttpResponse(
+            json.dumps(safe_user),
+            status_code=200,
+            headers={**cors_headers(req), "Content-Type": "application/json"},
+        )
+    except RuntimeError as e:
+        if "not available" in str(e).lower():
+            return error_response(503, "Cosmos DB is not available", req=req)
+        logger.error("Unexpected error fetching profile: %s", e, exc_info=True)
+        return error_response(500, "Internal server error", req=req)
+    except Exception as e:
+        logger.error("Unexpected error fetching profile: %s", e, exc_info=True)
+        return error_response(500, "Internal server error", req=req)
+
+
 # ── PATCH /api/user/profile ──────────────────────────────────
 
 
