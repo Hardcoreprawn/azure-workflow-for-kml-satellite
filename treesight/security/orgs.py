@@ -147,9 +147,10 @@ def update_org_name(org_id: str, name: str) -> dict[str, Any]:
 
 def get_user_org(user_id: str) -> dict[str, Any] | None:
     """Return the org the user belongs to, or None."""
-    from treesight.security.users import get_user
+    # Read user directly to avoid a circular import with users.py.
+    from treesight.storage.cosmos import read_item
 
-    user = get_user(user_id)
+    user = read_item("users", user_id, user_id)
     if not user or not user.get("org_id"):
         return None
     return get_org(user["org_id"])
