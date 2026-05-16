@@ -245,6 +245,125 @@ class TestOrgService:
         assert len(members) == 2
 
 
+class TestSetUserOrgRobustness:
+    """_set_user_org must not fail when the user doc is a legacy document that
+    pre-dates the user_id field (partition-key normalisation).
+
+    If the existing Cosmos doc only has 'id' but not 'user_id', the old
+    ``or {fallback}`` branch never fires and upsert_item raises because the
+    SDK cannot extract the /user_id partition key from the document.
+    """
+
+    def test_legacy_doc_missing_user_id_field_is_repaired(self):
+        from treesight.security.orgs import _set_user_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        # Seed a legacy user doc with only 'id', no 'user_id' field.
+        store["users:user-1"] = {"id": "user-1", "email": "old@test.com"}
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            _set_user_org("user-1", "org-abc", "owner")
+
+        user_doc = store.get("users:user-1")
+        assert user_doc is not None, "_set_user_org should have upserted the user doc"
+        assert user_doc["user_id"] == "user-1", "partition-key field must be added"
+        assert user_doc["org_id"] == "org-abc"
+        assert user_doc["org_role"] == "owner"
+        # Legacy field preserved
+        assert user_doc["email"] == "old@test.com"
+
+    def test_no_existing_doc_creates_minimal_doc(self):
+        from treesight.security.orgs import _set_user_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        # Store is empty — no user doc exists yet.
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            _set_user_org("user-99", "org-xyz", "member")
+
+        user_doc = store.get("users:user-99")
+        assert user_doc is not None
+        assert user_doc["id"] == "user-99"
+        assert user_doc["user_id"] == "user-99"
+        assert user_doc["org_id"] == "org-xyz"
+
+
+class TestGetUserOrgRecovery:
+    """get_user_org falls back to membership query when user doc has no org_id.
+
+    This covers the scenario where _set_user_org failed silently during
+    create_org (e.g. partition-key bug on legacy doc, transient Cosmos error).
+    The org's members array is the authoritative source of membership.
+    """
+
+    def test_returns_org_when_user_doc_has_org_id(self):
+        from treesight.security.orgs import create_org, get_user_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org = create_org("user-1")
+            result = get_user_org("user-1")
+
+        assert result is not None
+        assert result["org_id"] == org["org_id"]
+
+    def test_recovers_via_membership_when_user_doc_missing_org_id(self):
+        """org exists with user in members, but user doc has no org_id set."""
+        from treesight.security.orgs import get_user_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        org_id = "org-orphan"
+        # Org doc exists; user is an owner in the members array.
+        store[f"orgs:{org_id}"] = {
+            "id": org_id,
+            "org_id": org_id,
+            "doc_type": "org",
+            "name": "Orphaned Org",
+            "created_by": "user-1",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "members": [
+                {
+                    "user_id": "user-1",
+                    "email": "",
+                    "role": "owner",
+                    "joined_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
+            "billing": {},
+        }
+        # User doc exists but _set_user_org never ran — no org_id.
+        store["users:user-1"] = {"id": "user-1", "user_id": "user-1", "email": "u@test.com"}
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = get_user_org("user-1")
+
+        assert result is not None
+        assert result["org_id"] == org_id
+
+        # Recovery should have repaired the user doc.
+        user_doc = store.get("users:user-1")
+        assert user_doc is not None
+        assert user_doc.get("org_id") == org_id, "user doc should be repaired in place"
+
+    def test_returns_none_when_user_has_no_org_anywhere(self):
+        from treesight.security.orgs import get_user_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["users:user-1"] = {"id": "user-1", "user_id": "user-1", "email": "u@test.com"}
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = get_user_org("user-1")
+
+        assert result is None
+
+
 class TestOrgInvites:
     def test_create_invite(self):
         from treesight.security.orgs import create_invite
