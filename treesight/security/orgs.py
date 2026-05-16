@@ -146,14 +146,32 @@ def update_org_name(org_id: str, name: str) -> dict[str, Any]:
 
 
 def get_user_org(user_id: str) -> dict[str, Any] | None:
-    """Return the org the user belongs to, or None."""
+    """Return the org the user belongs to, or None.
+
+    Fast path: user doc carries ``org_id`` — single read, O(1).
+    Slow path: user doc missing ``org_id`` (e.g. ``_set_user_org`` failed
+    during org creation).  Falls back to a membership query on the orgs
+    container and repairs the user doc so the fast path works next time.
+    """
     # Read user directly to avoid a circular import with users.py.
     from treesight.storage.cosmos import read_item
 
     user = read_item("users", user_id, user_id)
-    if not user or not user.get("org_id"):
+    if user and user.get("org_id"):
+        org = get_org(user["org_id"])
+        if org:
+            return org
+
+    # Slow-path recovery: user doc missing org_id or org doc missing.
+    # The org's members array is the authoritative source of membership.
+    orgs = list_orgs_for_user(user_id)
+    if not orgs:
         return None
-    return get_org(user["org_id"])
+    org = get_org(orgs[0]["org_id"])
+    if org:
+        # Best-effort repair so the fast path works on subsequent calls.
+        _set_user_org(user_id, org["org_id"], orgs[0].get("org_role", "owner"))
+    return org
 
 
 # ── Member management ────────────────────────────────────────
@@ -487,10 +505,13 @@ def _set_user_org(user_id: str, org_id: str, role: str) -> None:
     if not cosmos_available():
         return
     try:
-        existing = read_item("users", user_id, user_id) or {
-            "id": user_id,
-            "user_id": user_id,
-        }
+        existing = read_item("users", user_id, user_id) or {}
+        # setdefault ensures the partition-key field (/user_id) and id are
+        # present even on legacy documents that pre-date field normalisation.
+        # Without this, upsert_item raises because Cosmos cannot extract the
+        # partition key from a doc that only has 'id' but not 'user_id'.
+        existing.setdefault("id", user_id)
+        existing.setdefault("user_id", user_id)
         existing["org_id"] = org_id
         existing["org_role"] = role
         upsert_item("users", existing)
