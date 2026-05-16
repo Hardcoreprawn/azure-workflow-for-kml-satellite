@@ -300,10 +300,7 @@ def org_invites_list(
 
     invites = list_pending_invites(org_id)
     # Filter sensitive fields
-    safe_invites = [
-        {k: v for k, v in inv.items() if not k.startswith("_")}
-        for inv in invites
-    ]
+    safe_invites = [{k: v for k, v in inv.items() if not k.startswith("_")} for inv in invites]
     return func.HttpResponse(
         json.dumps({"invites": safe_invites}),
         status_code=200,
