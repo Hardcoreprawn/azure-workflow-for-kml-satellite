@@ -494,13 +494,20 @@ jobs:
 
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
-          az rest --method PATCH \
-            --url "${FUNC_ID}/config/web?api-version=2024-04-01" \
-            --body "$CORS_BODY"
+          # ARM returns 409 ConflictingConcurrentWriteNotAllowed when two writes land
+          # on the same resource in quick succession. Retry up to 3 times with backoff.
+          az_patch_with_retry() {
+            local url="$1" body="$2" attempt
+            for attempt in 1 2 3; do
+              if az rest --method PATCH --url "$url" --body "$body"; then return 0; fi
+              [ "$attempt" -lt 3 ] && echo "⚠️  PATCH attempt $attempt failed, retrying in 20s..." && sleep 20
+            done
+            echo "❌ PATCH failed after 3 attempts: $url"; return 1
+          }
+          az_patch_with_retry "${FUNC_ID}/config/web?api-version=2024-04-01" "$CORS_BODY"
 
           # Apply scaling config from Terraform outputs (body is ignore_changes
-          # in tofu due to the azapi identity bug).  Single PATCH to avoid 409
-          # Conflict race between back-to-back updates on the same resource.
+          # in tofu due to the azapi identity bug).
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
           MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
           if [ "$MIN_INSTANCES" -gt 0 ]; then
@@ -512,9 +519,7 @@ jobs:
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
             '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
-          az rest --method PATCH \
-            --url "${FUNC_ID}?api-version=2024-04-01" \
-            --body "$SCALE_BODY"
+          az_patch_with_retry "${FUNC_ID}?api-version=2024-04-01" "$SCALE_BODY"
 
           # Verify scaling config applied
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
@@ -556,9 +561,17 @@ jobs:
 
           ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
-          az rest --method PATCH \
-            --url "${ORCH_ID}/config/web?api-version=2024-04-01" \
-            --body "$CORS_BODY"
+          # ARM returns 409 ConflictingConcurrentWriteNotAllowed when two writes land
+          # on the same resource in quick succession. Retry up to 3 times with backoff.
+          az_patch_with_retry() {
+            local url="$1" body="$2" attempt
+            for attempt in 1 2 3; do
+              if az rest --method PATCH --url "$url" --body "$body"; then return 0; fi
+              [ "$attempt" -lt 3 ] && echo "⚠️  PATCH attempt $attempt failed, retrying in 20s..." && sleep 20
+            done
+            echo "❌ PATCH failed after 3 attempts: $url"; return 1
+          }
+          az_patch_with_retry "${ORCH_ID}/config/web?api-version=2024-04-01" "$CORS_BODY"
 
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
           ORCH_MIN_INSTANCES=$(tofu output -raw function_app_orch_minimum_instance_count)
@@ -571,9 +584,7 @@ jobs:
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
             '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
-          az rest --method PATCH \
-            --url "${ORCH_ID}?api-version=2024-04-01" \
-            --body "$SCALE_BODY"
+          az_patch_with_retry "${ORCH_ID}?api-version=2024-04-01" "$SCALE_BODY"
 
       - name: Verify Function App config contract
         id: verify-config-contract
