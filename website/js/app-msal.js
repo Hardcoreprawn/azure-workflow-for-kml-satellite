@@ -47,6 +47,7 @@
   var _clearClientAuth = null;
   var _setAnalysisStatus = null;
   var _setGetToken = null; // wire getToken into the API client
+  var _applyFirstRunLayout = null;
 
   // ── MSAL primitives delegated to window.CanopexCiam (canopex-auth.js) ──
   if (!window.CanopexCiam) {
@@ -109,6 +110,7 @@
     _setAnalysisStatus = deps.setAnalysisStatus;
     // New dep: wire getToken into the API client so apiFetch can call it.
     _setGetToken = deps.setGetToken;
+    _applyFirstRunLayout = deps.applyFirstRunLayout;
     if (_setGetToken) {
       _setGetToken(getToken);
     }
@@ -234,7 +236,7 @@
     }
     if (elements.analysisAuthGate) elements.analysisAuthGate.hidden = true;
     if (elements.analysisFormFields) elements.analysisFormFields.hidden = false;
-    if (elements.historyCard) elements.historyCard.hidden = false;
+    if (_applyFirstRunLayout) _applyFirstRunLayout();
 
     if (!historyLoaded && !latestRun) {
       if (_setHeroRunSummary) _setHeroRunSummary('Checking recent runs', 'Loading your recent runs.');

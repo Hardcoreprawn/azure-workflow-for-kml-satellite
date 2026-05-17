@@ -443,6 +443,7 @@
       postLoginDestinationKey: POST_LOGIN_DESTINATION_KEY,
       setAnalysisStatus: setAnalysisStatus,
       clearAnalysisState: runtimeModule.clearAnalysisState,
+      applyFirstRunLayout: runLifecycleModule.applyFirstRunLayout,
     });
   }
 

@@ -367,9 +367,8 @@
     var activeRunPill = document.getElementById('app-hero-active-run');
     if (!firstRun) return;
 
-    var historyLoaded = _d.getAnalysisHistoryLoaded ? _d.getAnalysisHistoryLoaded() : false;
     var historyRuns = _d.getAnalysisHistoryRuns ? _d.getAnalysisHistoryRuns() : [];
-    var isEmpty = historyLoaded && historyRuns.length === 0 && !latestAnalysisRun;
+    var isEmpty = historyRuns.length === 0 && !latestAnalysisRun;
     firstRun.hidden = !isEmpty;
     if (evidenceHero) evidenceHero.hidden = isEmpty;
 
@@ -636,7 +635,6 @@
       if (_d.clearCacheKey) { _d.clearCacheKey('history'); _d.clearCacheKey('billing'); }
       var data = { instance_id: submissionId };
       if (_d.setAnalysisHistoryLoaded) _d.setAnalysisHistoryLoaded(true);
-      applyFirstRunLayout();
       var queuedAt = new Date().toISOString();
       upsertHistoryRun({
         instanceId: data.instance_id,
