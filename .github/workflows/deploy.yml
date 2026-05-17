@@ -510,7 +510,7 @@ jobs:
             --argjson ready "$ALWAYS_READY" \
             '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
-          # Retry with backoff: transient ARM 409 can still occur under concurrent platform writes.
+          # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
           for attempt in 1 2 3; do
             az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" && break
             [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
