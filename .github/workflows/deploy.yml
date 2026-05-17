@@ -492,15 +492,11 @@ jobs:
             exit 1
           fi
 
-          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
-          CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
-          az rest --method PATCH \
-            --url "${FUNC_ID}/config/web?api-version=2024-04-01" \
-            --body "$CORS_BODY"
-
-          # Apply scaling config from Terraform outputs (body is ignore_changes
-          # in tofu due to the azapi identity bug).  Single PATCH to avoid 409
-          # Conflict race between back-to-back updates on the same resource.
+          # CORS and scaling are combined into a single root-resource PATCH.
+          # Two back-to-back PATCHes on the same entity cause ARM's
+          # ConflictingConcurrentWriteNotAllowed (409). siteConfig.cors is the
+          # root-resource equivalent of /config/web — same data path that tofu
+          # already uses in the initial body.
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
           MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
           if [ "$MIN_INSTANCES" -gt 0 ]; then
@@ -508,13 +504,19 @@ jobs:
           else
             ALWAYS_READY='[]'
           fi
-          SCALE_BODY=$(jq -cn \
+          PATCH_BODY=$(jq -cn \
+            --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
-            '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
-          az rest --method PATCH \
-            --url "${FUNC_ID}?api-version=2024-04-01" \
-            --body "$SCALE_BODY"
+            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
+          FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
+          for attempt in 1 2 3; do
+            az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" && break
+            [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
+            echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+            sleep 20
+          done
 
           # Verify scaling config applied
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
@@ -554,12 +556,7 @@ jobs:
             exit 1
           fi
 
-          ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
-          CORS_BODY=$(jq -cn --argjson origins "$ALLOWED_ORIGINS_JSON" '{properties:{cors:{allowedOrigins:$origins,supportCredentials:false}}}')
-          az rest --method PATCH \
-            --url "${ORCH_ID}/config/web?api-version=2024-04-01" \
-            --body "$CORS_BODY"
-
+          # Single PATCH combining CORS + scaling (same rationale as Configure Function App).
           MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
           ORCH_MIN_INSTANCES=$(tofu output -raw function_app_orch_minimum_instance_count)
           if [ "$ORCH_MIN_INSTANCES" -gt 0 ]; then
@@ -567,13 +564,18 @@ jobs:
           else
             ALWAYS_READY='[]'
           fi
-          SCALE_BODY=$(jq -cn \
+          PATCH_BODY=$(jq -cn \
+            --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
-            '{properties:{functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
-          az rest --method PATCH \
-            --url "${ORCH_ID}?api-version=2024-04-01" \
-            --body "$SCALE_BODY"
+            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
+          ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
+          for attempt in 1 2 3; do
+            az rest --method PATCH --url "${ORCH_ID}?api-version=2024-04-01" --body "$PATCH_BODY" && break
+            [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
+            echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+            sleep 20
+          done
 
       - name: Verify Function App config contract
         id: verify-config-contract
