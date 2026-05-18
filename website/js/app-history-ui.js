@@ -138,6 +138,7 @@
   // Load history payload, apply selection logic, update UI.
 
   function applyAnalysisHistory(payload, options) {
+    var appRuns = window.CanopexAppRuns || {};
     options = options || {};
     var readRunSelectionFromLocation = _d.readRunSelectionFromLocation || function() { return { instanceId: '' }; };
     var locationSelection = readRunSelectionFromLocation();
@@ -241,6 +242,7 @@
   }
 
   function historyRunIsActive(run) {
+    var appRuns = window.CanopexAppRuns || {};
     if (typeof appRuns.isRunActive === 'function') {
       return appRuns.isRunActive(run);
     }
