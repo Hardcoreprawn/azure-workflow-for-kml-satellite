@@ -115,7 +115,7 @@ def update_profile_endpoint(
 
 @bp.route(
     route="user",
-    methods=["DELETE", "OPTIONS"],
+    methods=["DELETE"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
