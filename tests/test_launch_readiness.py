@@ -242,6 +242,39 @@ class TestLogAnalyticsCap:
 
 
 # ---------------------------------------------------------------------------
+# 5a. Static Web App cost controls
+# ---------------------------------------------------------------------------
+
+
+class TestStaticWebAppCostControls:
+    """Ensure the Static Web App SKU stays on Free tier."""
+
+    @staticmethod
+    def _static_web_app_main_body(tf: str) -> str:
+        match = re.search(
+            r'resource\s+"azurerm_static_web_app"\s+"main"\s*\{(?P<body>.*?)\n\}',
+            tf,
+            re.DOTALL,
+        )
+        assert match, "main.tf must define azurerm_static_web_app.main"
+        return match.group("body")
+
+    def test_static_web_app_sku_tier_is_free(self):
+        body = self._static_web_app_main_body(MAIN_TF.read_text())
+        assert 'sku_tier = "Free"' in body, (
+            "azurerm_static_web_app.main must keep sku_tier=\"Free\" "
+            "to preserve the agreed SWA cost reduction"
+        )
+
+    def test_static_web_app_sku_size_is_free(self):
+        body = self._static_web_app_main_body(MAIN_TF.read_text())
+        assert 'sku_size = "Free"' in body, (
+            "azurerm_static_web_app.main must keep sku_size=\"Free\" "
+            "to preserve the agreed SWA cost reduction"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 5b. Host logging cost controls
 # ---------------------------------------------------------------------------
 
