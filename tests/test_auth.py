@@ -356,3 +356,44 @@ class TestCorsHeaders:
         )
         headers = cors_headers(req)
         assert "Authorization" in headers["Access-Control-Allow-Headers"]
+
+    def test_delete_and_patch_in_allowed_methods(self):
+        """DELETE and PATCH must be advertised so account/org/monitoring preflights pass."""
+        import azure.functions as func
+
+        from blueprints._helpers import cors_headers
+
+        req = func.HttpRequest(
+            method="OPTIONS",
+            url="/api/user",
+            headers={"Origin": "https://canopex.hrdcrprwn.com"},
+            body=b"",
+        )
+        headers = cors_headers(req)
+        allowed = headers["Access-Control-Allow-Methods"]
+        # DELETE: account deletion, member removal. PATCH: profile update, org update.
+        assert "DELETE" in allowed
+        assert "PATCH" in allowed
+
+    def test_delete_account_endpoint_has_no_options_binding(self):
+        """delete_account_endpoint must not declare OPTIONS.
+
+        Both delete_account_endpoint and get_profile_endpoint bind route='user'.
+        Azure Functions raises a conflict if both declare OPTIONS. The GET handler
+        covers OPTIONS preflight for this route.
+        """
+        from blueprints.account import delete_account_endpoint
+
+        # Azure Functions decorators store binding info on the function object
+        bindings = getattr(delete_account_endpoint, "__bindings__", None) or []
+        # Fall back to checking the trigger metadata attached by @bp.route
+        trigger = getattr(delete_account_endpoint, "trigger", None)
+        if trigger is not None:
+            methods = getattr(trigger, "methods", []) or []
+        else:
+            # Read it from the raw decorator kwargs if bindings are stored differently
+            methods = [m for b in bindings if hasattr(b, "methods") for m in (b.methods or [])]
+        assert "OPTIONS" not in [m.upper() for m in methods], (
+            "delete_account_endpoint must not declare OPTIONS — it conflicts with "
+            "get_profile_endpoint on route='user'. OPTIONS is handled by the GET handler."
+        )
