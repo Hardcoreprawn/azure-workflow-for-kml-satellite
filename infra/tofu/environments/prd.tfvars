@@ -3,7 +3,7 @@ location                          = "uksouth"
 static_web_app_location           = "westeurope"
 location_code                     = "uks"
 project_code                      = "kmlsat"
-log_retention_days                = 90
+log_retention_days                = 31
 log_daily_cap_gb                  = 0.5
 enable_event_grid_subscription    = true
 enable_key_vault_purge_protection = true
@@ -17,6 +17,11 @@ custom_domain         = "canopex.hrdcrprwn.com"
 enable_azure_ai       = false
 enable_stripe         = true
 enable_cosmos_db      = true
+
+# Scale orchestrator to zero — no idle container cost.
+# HTTP cold starts are acceptable given the planned Flex Consumption migration (#846).
+orch_min_instances    = 0
+function_min_instances = 0
 
 # --- CIAM (Entra External ID) ---
 # Public values: visible in the deployed page HTML (canopex-ciam-config script).
