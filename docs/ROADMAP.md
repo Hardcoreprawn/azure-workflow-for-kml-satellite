@@ -24,7 +24,7 @@ not at the bottom.
 | 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | ❌ Closed — compute FA already £0 at idle (Consumption plan, alwaysReady=0); CAJ adds complexity without cost benefit |
 | 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | ✅ Closed |
 | 9 | #708 | #763 | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) — Slice A | ✅ #763 |
-| 10 | #403 | — | fix: smoke gates + promotion/demotion — Stage 2E.4 | Open |
+| 10 | #403 | #848 | feat(rollout): generalised feature flag evaluator — Phase 1 ✅ #848; Phases 2–3 open — Stage 2E.4 | In Progress |
 | 11 | #764 | — | ux: client-side cold start masking (warm on load, retry, loading states) — Stage 3.1 | Open |
 | 12 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
 | 13 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
@@ -104,12 +104,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #848 | feat(rollout): generalised feature flag evaluator Phase 1 (#403) — `is_feature_enabled()` with 7-rule fail-closed evaluation order (kill_switch, missing doc, per-user override with expiry, off/blocked, preview_only, percentage_rollout, on); deterministic sha256 bucketing; 2 new Cosmos containers (`feature_flags`, `feature_flag_overrides`); 2 operator scripts; 31 tests. Phases 2 (smoke evidence) and 3 (scheduled controller) remain open on #403. |
 | #847 | chore(infra): cost quick wins — set `orch_min_instances=0` (orchestrator scales to zero, saves ~£18/month idle), `log_retention_days=31` (free-tier window, saves ~£5/month), explicit `function_min_instances=0` to prevent drift. Requires `tofu apply` after merge. |
 | #845 | fix(js): declare `appRuns` in `app-history-ui.js` — `historyRunIsActive()` and `applyAnalysisHistory()` referenced `appRuns` as a free variable; under `'use strict'` this throws `ReferenceError`. Root cause of "Could not queue analysis request." error: `queueAnalysis()→upsertHistoryRun()→selectAnalysisRun()→renderAnalysisHistoryList()→historyRunIsActive()→ReferenceError→catch→error message`. Submission was succeeding on the backend; the UI was throwing before showing success. Confirmed via `AppExceptions` in Log Analytics. |
 | #844 | fix(infra): add missing `orgs` Cosmos container — container was never provisioned, causing every `upsert_item("orgs", ...)` call to raise `CosmosResourceNotFoundError`. Breaks org auto-create on first upload, billing `reserve_run`, and all org management endpoints. Container uses `/org_id` partition key with composite indexes for `doc_type`, `members[]/user_id`, and `created_at`. Root cause of persistent 503 "Unable to set up your organisation". |
 | #843 | fix(ux): layout flash + org 503 on first sign-in — drop `historyLoaded` gate from `applyFirstRunLayout`, thread `applyFirstRunLayout` into `app-msal.js` `renderSignedInUI` (replaces unconditional `historyCard.hidden=false`), remove redundant pre-`upsertHistoryRun` call in `queueAnalysis`. Backend: `_create_org_with_retry` (1 retry, 0.5s backoff) with typed exception logging on `upload_token` org auto-create path. 1788 tests passing. |
 | #841 | ci(deploy): fix ARM 409 ConflictingConcurrentWriteNotAllowed — consolidates CORS (`siteConfig.cors`) and scaling (`functionAppConfig.scaleAndConcurrency`) into a single root-resource PATCH per Function App, eliminating the race between two back-to-back writes on the same entity. Adds an inline 3-attempt retry loop (20s fixed delay) as a safety net for unrelated transient platform conflicts. Applied to both Configure Function App and Configure Orchestrator Function App steps. |
-| #839 | ci(deploy): retry SWA upload once on timeout — adds `continue-on-error: true` to the Azure Static Web Apps deploy step and a second identical retry step (`if: steps.swa-deploy.outcome == 'failure'`) to survive the hard 600s server-side upload timeout seen on slow days. |
 
 ---
 

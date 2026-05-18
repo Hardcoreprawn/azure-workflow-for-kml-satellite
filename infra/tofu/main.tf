@@ -754,6 +754,57 @@ resource "azurerm_cosmosdb_sql_container" "orgs" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "feature_flags" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "feature_flags"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/feature_name"]
+
+  # Queries served:
+  #   F1: Point read by (feature_name, feature_name) — is_feature_enabled fast path
+  #   F2: List all flags — operator tooling / smoke validation
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/status/?"
+    }
+
+    included_path {
+      path = "/kill_switch/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+  }
+}
+
+resource "azurerm_cosmosdb_sql_container" "feature_flag_overrides" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "feature_flag_overrides"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/user_id"]
+
+  # Queries served:
+  #   OV1: Point read by (user_id, user_id) — per-user override lookup in is_feature_enabled
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/user_id/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location
