@@ -130,14 +130,14 @@ class TestMissingDoc:
         from treesight.security.rollout import is_feature_enabled
 
         flag = _make_flag(status="on")
-        # Override read blows up; should still fail closed on the override path
-        # but continue to evaluate (no override means fall through to status).
+        # Override read blows up; per spec §6, any storage read failure
+        # must fail closed — the exception propagates and is_feature_enabled
+        # catches it, logs feature_eval_failed, and returns False.
         with (
             patch.object(r, "_read_flag", return_value=flag),
             patch.object(r, "_read_override", side_effect=Exception("cosmos down")),
         ):
-            # flag is "on" and override is unreadable → treat as no override → enabled
-            assert is_feature_enabled(FEATURE, USER) is True
+            assert is_feature_enabled(FEATURE, USER) is False
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +171,39 @@ class TestPerUserOverride:
         override = _make_override(USER, "other-feature", enabled=True)
         p1, p2 = _patch_flag(flag, override)
         with p1, p2:
+            assert is_feature_enabled(FEATURE, USER) is False
+
+    def test_expired_override_is_ignored(self):
+        from treesight.security.rollout import is_feature_enabled
+
+        flag = _make_flag(status="off")
+        # Override says enabled=True but expired in 2020.
+        expired_override = {
+            "id": USER,
+            "user_id": USER,
+            "features": {
+                FEATURE: {"enabled": True, "expires_at": "2020-01-01T00:00:00+00:00"},
+            },
+        }
+        p1, p2 = _patch_flag(flag, expired_override)
+        with p1, p2:
+            # Expired override is treated as absent → falls through to status=off.
+            assert is_feature_enabled(FEATURE, USER) is False
+
+    def test_malformed_expires_at_is_treated_as_absent(self):
+        from treesight.security.rollout import is_feature_enabled
+
+        flag = _make_flag(status="off")
+        bad_override = {
+            "id": USER,
+            "user_id": USER,
+            "features": {
+                FEATURE: {"enabled": True, "expires_at": "not-a-date"},
+            },
+        }
+        p1, p2 = _patch_flag(flag, bad_override)
+        with p1, p2:
+            # Malformed expires_at → override ignored (fail-closed) → flag=off.
             assert is_feature_enabled(FEATURE, USER) is False
 
     def test_no_override_falls_through(self):
@@ -337,6 +370,16 @@ class TestPercentageRollout:
         p1, p2 = _patch_flag(flag, override)
         with p1, p2:
             assert is_feature_enabled(FEATURE, uid) is True
+
+    def test_rollout_pct_above_100_is_rejected(self):
+        from treesight.security.rollout import is_feature_enabled
+
+        # A malformed flag document with rollout_pct > 100 must fail closed
+        # rather than silently enabling every bucket.
+        flag = _make_flag(status="percentage_rollout", rollout_pct=101)
+        p1, p2 = _patch_flag(flag, None)
+        with p1, p2:
+            assert is_feature_enabled(FEATURE, USER) is False
 
 
 # ---------------------------------------------------------------------------

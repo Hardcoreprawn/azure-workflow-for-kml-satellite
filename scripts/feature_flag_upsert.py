@@ -20,7 +20,7 @@ ensure the executing identity has the Cosmos DB Built-in Data Contributor role.
 Required environment variables::
 
     COSMOS_ENDPOINT  — e.g. https://cosmos-kmlsat-prd.documents.azure.com:443/
-    COSMOS_DATABASE_NAME — e.g. canopex
+    COSMOS_DATABASE_NAME — e.g. treesight
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def main() -> None:
     args = parse_args()
 
     endpoint = os.environ.get("COSMOS_ENDPOINT", "")
-    db_name = os.environ.get("COSMOS_DATABASE_NAME", "canopex")
+    db_name = os.environ.get("COSMOS_DATABASE_NAME", "treesight")
     if not endpoint:
         print("ERROR: COSMOS_ENDPOINT environment variable is not set.", file=sys.stderr)
         sys.exit(1)

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger("treesight.security.rollout")
@@ -111,26 +112,45 @@ def is_feature_enabled(feature_name: str, user_id: str | None) -> bool:
 def _check_override(feature_name: str, user_id: str) -> bool | None:
     """Return override decision for *user_id*, or ``None`` if no override applies.
 
-    Returns ``None`` on read failure so the evaluator can fall through to
-    flag-level status evaluation rather than blocking the request.
+    Raises on storage read failure — propagates to ``is_feature_enabled`` to
+    preserve fail-closed behaviour (any unreadable state → disabled).
+
+    Returns ``None`` for absent, expired, or malformed override entries so
+    the evaluator falls through to flag-level status rules.
     """
-    try:
-        override_doc = _read_override(user_id)
-    except Exception:
-        logger.debug(
-            "override read failed user=%s feature=%s; ignoring override",
-            user_id,
-            feature_name,
-            exc_info=True,
-        )
-        return None
+    override_doc = _read_override(user_id)
 
     if not override_doc:
         return None
     feature_overrides: dict = override_doc.get("features", {})
-    if feature_name in feature_overrides:
-        return bool(feature_overrides[feature_name].get("enabled", False))
-    return None
+    if feature_name not in feature_overrides:
+        return None
+
+    entry: dict = feature_overrides[feature_name]
+
+    # Honour expiry: an expired override is treated as absent.
+    expires_at = entry.get("expires_at")
+    if expires_at:
+        try:
+            expiry = datetime.fromisoformat(expires_at)
+            # Normalise to UTC when the stored value is offset-aware.
+            now = datetime.now(tz=UTC)
+            if expiry.tzinfo is not None:
+                if now >= expiry:
+                    return None
+            else:
+                if datetime.utcnow() >= expiry:
+                    return None
+        except (ValueError, TypeError):
+            # Malformed expires_at — treat override as absent (fail-closed).
+            logger.warning(
+                "malformed expires_at in override user=%s feature=%s; ignoring",
+                user_id,
+                feature_name,
+            )
+            return None
+
+    return bool(entry.get("enabled", False))
 
 
 def _evaluate(feature_name: str, user_id: str | None) -> bool:
@@ -180,6 +200,13 @@ def _evaluate(feature_name: str, user_id: str | None) -> bool:
     # ── Rule 6: percentage_rollout ────────────────────────────────────────
     if status == _STATUS_PERCENTAGE_ROLLOUT:
         rollout_pct = int(flag.get("rollout_pct", 0))
+        if not (0 <= rollout_pct <= 100):
+            logger.warning(
+                "invalid rollout_pct=%d feature=%s; disabling",
+                rollout_pct,
+                feature_name,
+            )
+            return False
         bucket = _rollout_bucket(feature_name, user_id or "anonymous")
         return bucket < rollout_pct
 
