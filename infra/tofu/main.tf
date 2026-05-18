@@ -721,6 +721,39 @@ resource "azurerm_cosmosdb_sql_container" "catalogue" {
   }
 }
 
+resource "azurerm_cosmosdb_sql_container" "orgs" {
+  count               = var.enable_cosmos_db ? 1 : 0
+  name                = "orgs"
+  resource_group_name = azurerm_resource_group.main.name
+  account_name        = azurerm_cosmosdb_account.main[0].name
+  database_name       = azurerm_cosmosdb_sql_database.main[0].name
+  partition_key_paths = ["/org_id"]
+
+  # Queries served:
+  #   O1: Point read by (org_id, org_id) — get_org fast path
+  #   O2: Cross-partition ARRAY_CONTAINS(c.members, {"user_id": @uid}, true) — list_orgs_for_user
+  #   O3: Upsert by org_id — create_org, add_member, remove_member, reserve_run
+  indexing_policy {
+    indexing_mode = "consistent"
+
+    included_path {
+      path = "/doc_type/?"
+    }
+
+    included_path {
+      path = "/members/[]/user_id/?"
+    }
+
+    included_path {
+      path = "/created_at/?"
+    }
+
+    excluded_path {
+      path = "/*"
+    }
+  }
+}
+
 resource "azurerm_container_app_environment" "main" {
   name                       = local.names.container_apps_environment
   location                   = azurerm_resource_group.main.location
