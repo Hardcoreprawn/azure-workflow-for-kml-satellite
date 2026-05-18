@@ -1110,9 +1110,16 @@ resource "azurerm_static_web_app" "main" {
   name                = local.names.static_web_app
   location            = var.static_web_app_location
   resource_group_name = azurerm_resource_group.main.name
-  sku_tier            = "Standard"
-  sku_size            = "Standard"
-  tags                = local.tags
+  # Free tier: linked backend feature is unusable for ACA-hosted Function
+  # Apps anyway (see comment block below + #282), so Standard's SLA and
+  # BYOF capabilities buy us nothing. Free covers our usage:
+  #   - 1 custom domain (limit 2)
+  #   - tiny static bundle (limit 250 MB)
+  #   - low traffic (limit 100 GB/month bandwidth)
+  # Saves ~£16/month on the dev/single-env footprint.
+  sku_tier = "Free"
+  sku_size = "Free"
+  tags     = local.tags
 }
 
 # --- Linked backend (disabled): the linkedBackends ARM API returns 500
