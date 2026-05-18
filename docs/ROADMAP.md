@@ -104,7 +104,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
-| #849 | chore(infra): drop SWA `stapp-kmlsat-dev-site` from Standard to Free SKU — saves ~£16/month (~50% of dev/single-env bill). Confirmed safe: no linked backend (ACA-hosted FA API is unsupported anyway, see #282), 1 custom domain (Free limit is 2), static bundle/traffic well under Free limits. No code or auth impact. |
+| #849 | chore(infra): drop SWA `stapp-kmlsat-dev-site` from Standard to Free SKU — saves ~£7–16/month (~50% of dev bill). Also ships `fix(deploy): retry az functionapp config container set on 503` and launch-readiness regression lock for Free SKU. Confirmed safe: no linked backend (ACA-hosted FA API unsupported, see #282), 1 custom domain (Free limit is 2), static bundle/traffic well under Free limits. |
 | #848 | feat(rollout): generalised feature flag evaluator Phase 1 (#403) — `is_feature_enabled()` with 7-rule fail-closed evaluation order (kill_switch, missing doc, per-user override with expiry, off/blocked, preview_only, percentage_rollout, on); deterministic sha256 bucketing; 2 new Cosmos containers (`feature_flags`, `feature_flag_overrides`); 2 operator scripts; 31 tests. Phases 2 (smoke evidence) and 3 (scheduled controller) remain open on #403. |
 | #847 | chore(infra): cost quick wins — set `orch_min_instances=0` (orchestrator scales to zero, saves ~£18/month idle), `log_retention_days=31` (free-tier window, saves ~£5/month), explicit `function_min_instances=0` to prevent drift. Requires `tofu apply` after merge. |
 | #845 | fix(js): declare `appRuns` in `app-history-ui.js` — `historyRunIsActive()` and `applyAnalysisHistory()` referenced `appRuns` as a free variable; under `'use strict'` this throws `ReferenceError`. Root cause of "Could not queue analysis request." error: `queueAnalysis()→upsertHistoryRun()→selectAnalysisRun()→renderAnalysisHistoryList()→historyRunIsActive()→ReferenceError→catch→error message`. Submission was succeeding on the backend; the UI was throwing before showing success. Confirmed via `AppExceptions` in Log Analytics. |
@@ -209,7 +209,7 @@ JTBD: upload a parcel KMZ, get a determination result, and show it to a client
 | 2E.6.2 | #757 | Harden MSAL token lifecycle — always-fresh, 401-to-reauth | Auth surface fix | ✅ #762 |
 | 2E.6.3 | #759 | Hard concurrency cap + SAFE_MODE flag — bound monthly spend | Cost guardrail | ✅ #762 |
 | 2E.6.4 | #760 | Deep health endpoint — pre-demo smoke validation | Ops reliability | ✅ #762 |
-| 2E.6.5 | #758 | Container Apps Jobs for GDAL compute — near-zero idle cost | Cost + simplicity | Open (separate infra PR) |
+| 2E.6.5 | #758 | Container Apps Jobs for GDAL compute — near-zero idle cost | Cost + simplicity | ❌ Closed — compute FA already £0 idle (Consumption plan, alwaysReady=0); CAJ adds complexity without benefit |
 
 **Delivery order:** 2E.6.1 first (unblocks #757). 2E.6.3 and 2E.6.4 are
 independent — can ship in parallel. 2E.6.5 is the largest (infra change); run
