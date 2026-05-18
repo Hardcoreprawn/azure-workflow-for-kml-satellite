@@ -262,14 +262,14 @@ class TestStaticWebAppCostControls:
     def test_static_web_app_sku_tier_is_free(self):
         body = self._static_web_app_main_body(MAIN_TF.read_text())
         assert 'sku_tier = "Free"' in body, (
-            "azurerm_static_web_app.main must keep sku_tier=\"Free\" "
+            'azurerm_static_web_app.main must keep sku_tier="Free" '
             "to preserve the agreed SWA cost reduction"
         )
 
     def test_static_web_app_sku_size_is_free(self):
         body = self._static_web_app_main_body(MAIN_TF.read_text())
         assert 'sku_size = "Free"' in body, (
-            "azurerm_static_web_app.main must keep sku_size=\"Free\" "
+            'azurerm_static_web_app.main must keep sku_size="Free" '
             "to preserve the agreed SWA cost reduction"
         )
 
