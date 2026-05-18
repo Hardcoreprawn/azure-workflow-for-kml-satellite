@@ -174,7 +174,7 @@ def fetch_durable_instances(host: str) -> list[dict]:
     url = (
         f"https://{host}/runtime/webhooks/durabletask/instances"
         f"?runtimeStatus=Running,Pending&top=20"
-        f"&taskHub=TreeSightHub"
+        f"&taskHub=DurableFunctionsHub"
     )
     result = _http_get(url, timeout=10)
     if isinstance(result, list):

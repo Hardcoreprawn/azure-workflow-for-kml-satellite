@@ -86,7 +86,7 @@ Frontend (Static Web App)
 │  └─ Shared dependencies: treesight.*, blueprints.*       │
 │                                                           │
 │  Durable Functions (orchestration)                       │
-│  ├─ Task hub: TreeSightHub (shared between both FA)      │
+│  ├─ Task hub: DurableFunctionsHub (shared between both FA)│
 │  ├─ Control queue (Azure Queue Storage)                  │
 │  └─ Orchestration history: Azure Storage backend         │
 │     (storageProvider__type=AzureStorage in main.tf)      │

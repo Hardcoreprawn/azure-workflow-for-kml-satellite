@@ -3,22 +3,22 @@
   "logging": {
     "logLevel": {
       "default": "Warning",
-      "Function": "Warning",
+      "Function": "Information",
       "Host.Aggregator": "Warning",
       "Host.Results": "Information",
-      "Host.Triggers.DurableTask": "Warning"
+      "Host.Triggers.DurableTask": "Information"
     },
     "applicationInsights": {
       "samplingSettings": {
         "isEnabled": true,
-        "maxTelemetryItemsPerSecond": 1,
+        "maxTelemetryItemsPerSecond": 5,
         "excludedTypes": "Exception"
       }
     }
   },
   "extensions": {
     "durableTask": {
-      "hubName": "TreeSightHub"
+      "hubName": "DurableFunctionsHub"
     }
   },
   "extensionBundle": {
