@@ -273,3 +273,56 @@ class TestKmlInputValidation:
           <Document><name>Test</name></Document>
         </kml>"""
         validate_kml_bytes(kml)
+
+
+class TestFionaParserTimeout:
+    """Fiona parser timeout and fallback behavior (\u00a77.1)."""
+
+    def test_fiona_timeout_raises_timeout_error(self, sample_kml_bytes: bytes, monkeypatch):
+        """parse_kml_fiona raises TimeoutError when GDAL hangs past the deadline."""
+        import time
+
+        import treesight.parsers.fiona_parser as fp_module
+
+        def _slow_open(tmp_path: str, source_file: str) -> list:
+            time.sleep(0.5)  # longer than 0.1s deadline; shorter than 5s (keeps tests fast)
+            return []
+
+        monkeypatch.setattr(fp_module, "_fiona_open_and_collect", _slow_open)
+        monkeypatch.setattr(fp_module, "_FIONA_TIMEOUT_SECONDS", 0.1)
+
+        with pytest.raises(TimeoutError, match="timed out"):
+            fp_module.parse_kml_fiona(sample_kml_bytes)
+
+    def test_ingestion_falls_back_to_lxml_on_fiona_timeout(
+        self, sample_kml_bytes: bytes, monkeypatch
+    ):
+        """When Fiona times out, parse_kml_from_blob falls back to lxml successfully."""
+        import time
+        from unittest.mock import MagicMock
+
+        import treesight.parsers.fiona_parser as fp_module
+        from treesight.models.blob_event import BlobEvent
+        from treesight.pipeline.ingestion import parse_kml_from_blob
+
+        def _slow_open(tmp_path: str, source_file: str) -> list:
+            time.sleep(0.5)
+            return []
+
+        monkeypatch.setattr(fp_module, "_fiona_open_and_collect", _slow_open)
+        monkeypatch.setattr(fp_module, "_FIONA_TIMEOUT_SECONDS", 0.1)
+
+        storage = MagicMock()
+        storage.download_bytes.return_value = sample_kml_bytes
+        blob_event = BlobEvent(
+            blob_url="https://teststorage.blob.core.windows.net/kml-input/analysis/test.kml",
+            container_name="kml-input",
+            blob_name="analysis/test.kml",
+            content_length=len(sample_kml_bytes),
+            content_type="application/vnd.google-earth.kml+xml",
+            event_time="2025-01-15T10:30:00Z",
+            correlation_id="test-123",
+        )
+
+        features = parse_kml_from_blob(blob_event, storage)
+        assert len(features) >= 1  # lxml fallback parsed at least one feature

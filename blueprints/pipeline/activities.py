@@ -53,9 +53,19 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     from treesight.storage.client import BlobStorageClient
     from treesight.storage.offload import PayloadOffloader
 
+    logger.info(
+        "parse_kml: started correlation_id=%s",
+        payload.get("correlation_id", "unknown"),
+    )
     blob_event = BlobEvent.model_validate(payload)
     storage = BlobStorageClient()
+    logger.info(
+        "parse_kml: parsing container=%s blob=%s",
+        blob_event.container_name,
+        blob_event.blob_name,
+    )
     features = parse_kml_from_blob(blob_event, storage)
+    logger.info("parse_kml: got features=%d", len(features))
 
     from treesight.constants import MAX_FEATURES_PER_KML
 
