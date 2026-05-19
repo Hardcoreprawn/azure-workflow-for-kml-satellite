@@ -660,6 +660,19 @@ class TestDeployWorkflowSettings:
             "infra gate validation step must not read the compute hostname"
         )
 
+    def test_deploy_runs_pipeline_smoke_test(self, deploy_yml):
+        assert "Run pipeline smoke test" in deploy_yml, (
+            "deploy.yml must run a pipeline smoke test after the liveness gate "
+            "to verify parse → acquire → fulfil without going through the auth gate"
+        )
+        assert "pipeline_smoke.py" in deploy_yml, (
+            "deploy.yml pipeline smoke step must invoke scripts/pipeline_smoke.py"
+        )
+        assert "DEPLOY_ENV != 'prd'" in deploy_yml, (
+            "deploy.yml pipeline smoke test must be skipped in production "
+            "to avoid triggering live imagery acquisition"
+        )
+
 
 class TestStripeKeyVaultBootstrap:
     """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
