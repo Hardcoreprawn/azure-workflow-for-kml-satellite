@@ -31,27 +31,51 @@ def parse_kml_from_blob(blob_event: BlobEvent, storage: BlobStorageClient) -> li
 
     from treesight.parsers import maybe_unzip, validate_kml_bytes
 
+    logger.info(
+        "parse_kml_from_blob: downloading container=%s blob=%s",
+        blob_event.container_name,
+        blob_event.blob_name,
+    )
     raw_bytes = storage.download_bytes(blob_event.container_name, blob_event.blob_name)
+    logger.info(
+        "parse_kml_from_blob: downloaded bytes=%d blob=%s",
+        len(raw_bytes),
+        blob_event.blob_name,
+    )
     kml_bytes = maybe_unzip(raw_bytes)
     source_file = PurePosixPath(blob_event.blob_name).name
 
     # Reject malformed or dangerous XML before parser dispatch
     validate_kml_bytes(kml_bytes)
+    logger.info(
+        "parse_kml_from_blob: KML validated, dispatching Fiona parser blob=%s",
+        blob_event.blob_name,
+    )
 
     # Try Fiona first, fall back to lxml
     try:
         from treesight.parsers.fiona_parser import parse_kml_fiona
 
         features = parse_kml_fiona(kml_bytes, source_file=source_file)
+        logger.info(
+            "parse_kml_from_blob: Fiona parsed features=%d blob=%s",
+            len(features),
+            blob_event.blob_name,
+        )
     except Exception:
         logger.warning(
-            "Fiona parser failed for %s, falling back to lxml",
+            "parse_kml_from_blob: Fiona failed for %s, falling back to lxml",
             blob_event.blob_name,
             exc_info=True,
         )
         from treesight.parsers.lxml_parser import parse_kml_lxml
 
         features = parse_kml_lxml(kml_bytes, source_file=source_file)
+        logger.info(
+            "parse_kml_from_blob: lxml parsed features=%d blob=%s",
+            len(features),
+            blob_event.blob_name,
+        )
 
     log_phase("ingestion", "parse_kml", feature_count=len(features), blob_name=blob_event.blob_name)
     return features
