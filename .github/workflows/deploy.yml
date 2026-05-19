@@ -997,6 +997,31 @@ jobs:
             sleep "$SMOKE_POLL_INTERVAL"
           done
 
+      - name: Run pipeline smoke test
+        id: pipeline-smoke
+        if: env.DEPLOY_ENV != 'prd'
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+          SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
+          SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
+        run: |
+          STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
+          ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          ORCH_APP_NAME=$(tofu output -raw function_app_orch_name)
+          RG_NAME=$(tofu output -raw resource_group_name)
+          python ../../scripts/pipeline_smoke.py \
+            --storage-account "$STORAGE_ACCOUNT" \
+            --orch-hostname "$ORCH_HOSTNAME" \
+            --resource-group "$RG_NAME" \
+            --orch-app-name "$ORCH_APP_NAME" \
+            --kml-file ../../tests/fixtures/sample.kml \
+            --max-attempts "$SMOKE_MAX_ATTEMPTS" \
+            --poll-interval "$SMOKE_POLL_INTERVAL"
+
       # ── Safe deploy: rollback to previous image on readiness failure ──
       - name: Rollback to previous image
         if: |
