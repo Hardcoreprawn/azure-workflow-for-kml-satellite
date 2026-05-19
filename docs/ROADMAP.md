@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. This list holds the order.
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ---
 
@@ -104,12 +104,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #855 | feat(ci): auth-free pipeline smoke test in deploy workflow — `scripts/pipeline_smoke.py` injects KML + demo ticket directly into blob storage (stdlib+az CLI only; storage key via ARM Contributor, no Blob Data RBAC needed); Event Grid fires `blob_trigger` naturally; polls Durable management API to assert `runtimeStatus==Completed`. Gated `DEPLOY_ENV != prd`. Regression lock in `test_launch_readiness.py`. |
 | #853 | fix(parse): GDAL/PROJ parse hang — `PROJ_NETWORK=OFF` + `GDAL_HTTP_TIMEOUT=30` + `GDAL_MAX_HTTP_RETRY=0` + `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` set at module load before GDAL initialises; 60s `ThreadPoolExecutor` timeout with `shutdown(wait=False)` so a stuck GDAL thread never blocks teardown; structured `logger.info` throughout parse activity, ingestion, and fiona_parser for Log Analytics visibility; 2 new `TestFionaParserTimeout` tests. Fixes #852. |
 | #851 | fix(account): remove OPTIONS from `delete_account_endpoint` — eliminates cold-start route conflict with `get_profile_endpoint` on `route='user'`. Also fixes `cors_headers()` to advertise `PATCH` and `DELETE` (was missing — browser preflights for account deletion, profile update, and org member management would be rejected). Adds 3 CORS contract tests. Also: standardise Durable task hub → `DurableFunctionsHub`; raise telemetry sampling 1→5/s; raise log levels to `Information`. |
 | #849 | chore(infra): drop SWA `stapp-kmlsat-dev-site` from Standard to Free SKU — saves ~£7–16/month (~50% of dev bill). Also ships `fix(deploy): retry az functionapp config container set on 503` and launch-readiness regression lock for Free SKU. Confirmed safe: no linked backend (ACA-hosted FA API unsupported, see #282), 1 custom domain (Free limit is 2), static bundle/traffic well under Free limits. |
 | #848 | feat(rollout): generalised feature flag evaluator Phase 1 (#403) — `is_feature_enabled()` with 7-rule fail-closed evaluation order (kill_switch, missing doc, per-user override with expiry, off/blocked, preview_only, percentage_rollout, on); deterministic sha256 bucketing; 2 new Cosmos containers (`feature_flags`, `feature_flag_overrides`); 2 operator scripts; 31 tests. Phases 2 (smoke evidence) and 3 (scheduled controller) remain open on #403. |
 | #847 | chore(infra): cost quick wins — set `orch_min_instances=0` (orchestrator scales to zero, saves ~£18/month idle), `log_retention_days=31` (free-tier window, saves ~£5/month), explicit `function_min_instances=0` to prevent drift. Requires `tofu apply` after merge. |
-| #845 | fix(js): declare `appRuns` in `app-history-ui.js` — `historyRunIsActive()` and `applyAnalysisHistory()` referenced `appRuns` as a free variable; under `'use strict'` this throws `ReferenceError`. Root cause of "Could not queue analysis request." error: `queueAnalysis()→upsertHistoryRun()→selectAnalysisRun()→renderAnalysisHistoryList()→historyRunIsActive()→ReferenceError→catch→error message`. Submission was succeeding on the backend; the UI was throwing before showing success. Confirmed via `AppExceptions` in Log Analytics. |
 
 ---
 
