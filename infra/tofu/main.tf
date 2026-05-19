@@ -963,7 +963,7 @@ resource "azapi_resource" "function_app" {
 
 # Orchestrator function app (#466): slim image — HTTP + Durable orchestrators, no GDAL/rasterio.
 # Shares the same Container Apps environment, storage account, and Durable task hub
-# ("TreeSightHub", set in host.json) as the compute function app so orchestrators
+# ("DurableFunctionsHub", the default, set in host.json) as the compute function app so orchestrators
 # can dispatch activity calls to the compute image's worker queue.
 resource "azapi_resource" "function_app_orch" {
   type      = "Microsoft.Web/sites@2024-04-01"

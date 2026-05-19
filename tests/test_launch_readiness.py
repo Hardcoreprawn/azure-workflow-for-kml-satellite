@@ -292,11 +292,11 @@ class TestHostLoggingCostControls:
             "host.json should default runtime logging to Warning to reduce console log ingest"
         )
 
-    def test_durable_task_logs_are_warning_only(self, host_config):
+    def test_durable_task_logs_are_information(self, host_config):
         levels = host_config["logging"]["logLevel"]
-        assert levels["Host.Triggers.DurableTask"] == "Warning", (
-            "DurableTask lease-renewal/info chatter must be suppressed "
-            "to control Log Analytics cost"
+        assert levels["Host.Triggers.DurableTask"] == "Information", (
+            "DurableTask must be at Information level so activity scheduling "
+            "events appear in Log Analytics for pipeline debugging"
         )
 
     def test_sampling_keeps_exceptions_unsampled(self, host_config):
