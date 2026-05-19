@@ -285,7 +285,7 @@ class TestFionaParserTimeout:
         import treesight.parsers.fiona_parser as fp_module
 
         def _slow_open(tmp_path: str, source_file: str) -> list:
-            time.sleep(5)  # simulate GDAL network hang
+            time.sleep(0.5)  # longer than 0.1s deadline; shorter than 5s (keeps tests fast)
             return []
 
         monkeypatch.setattr(fp_module, "_fiona_open_and_collect", _slow_open)
@@ -306,7 +306,7 @@ class TestFionaParserTimeout:
         from treesight.pipeline.ingestion import parse_kml_from_blob
 
         def _slow_open(tmp_path: str, source_file: str) -> list:
-            time.sleep(5)
+            time.sleep(0.5)
             return []
 
         monkeypatch.setattr(fp_module, "_fiona_open_and_collect", _slow_open)

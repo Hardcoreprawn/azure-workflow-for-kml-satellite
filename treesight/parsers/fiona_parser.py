@@ -50,15 +50,21 @@ def parse_kml_fiona(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
             len(kml_bytes),
             _FIONA_TIMEOUT_SECONDS,
         )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_fiona_open_and_collect, tmp_path, source_file)
-            try:
-                records = future.result(timeout=_FIONA_TIMEOUT_SECONDS)
-            except concurrent.futures.TimeoutError as exc:
-                raise TimeoutError(
-                    f"Fiona/GDAL parse timed out after {_FIONA_TIMEOUT_SECONDS}s "
-                    f"for {source_file!r} — GDAL may be making a blocked network call"
-                ) from exc
+        # Use an explicit executor (not a context manager) so that on timeout we
+        # call shutdown(wait=False) and return immediately. The context-manager form
+        # calls shutdown(wait=True) on __exit__, which would block until the stuck
+        # GDAL thread finally finishes — defeating the entire purpose of the timeout.
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(_fiona_open_and_collect, tmp_path, source_file)
+        try:
+            records = future.result(timeout=_FIONA_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError as exc:
+            pool.shutdown(wait=False)  # detach; worker stays alive until process exits
+            raise TimeoutError(
+                f"Fiona/GDAL parse timed out after {_FIONA_TIMEOUT_SECONDS}s "
+                f"for {source_file!r} — GDAL may be making a blocked network call"
+            ) from exc
+        pool.shutdown(wait=False)
 
         for idx, record in enumerate(records):
             geom: dict[str, Any] = record.get("geometry", {})
