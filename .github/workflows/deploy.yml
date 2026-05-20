@@ -1018,7 +1018,7 @@ jobs:
             --orch-hostname "$ORCH_HOSTNAME" \
             --resource-group "$RG_NAME" \
             --orch-app-name "$ORCH_APP_NAME" \
-            --kml-file ../../tests/fixtures/sample.kml \
+            --kml-file ../../tests/fixtures/single_polygon.kml \
             --max-attempts "$SMOKE_MAX_ATTEMPTS" \
             --poll-interval "$SMOKE_POLL_INTERVAL"
 
