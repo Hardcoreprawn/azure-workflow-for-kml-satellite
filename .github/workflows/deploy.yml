@@ -247,7 +247,7 @@ jobs:
               [.Results[]?.Vulnerabilities[]?]
               | sort_by(.Severity, .VulnerabilityID)
               | .[]
-              | "- \(.Severity) \(.VulnerabilityID) pkg=\(.PkgName) installed=\(.InstalledVersion // \"unknown\") fixed=\(.FixedVersion // \"unfixed\")"
+              | "- \(.Severity) \(.VulnerabilityID) pkg=\(.PkgName) installed=\(.InstalledVersion // "unknown") fixed=\(.FixedVersion // "unfixed")"
             ' trivy-image.json | head -30
             critical_count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-image.json)
             high_count=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-image.json)
@@ -1018,7 +1018,7 @@ jobs:
             --orch-hostname "$ORCH_HOSTNAME" \
             --resource-group "$RG_NAME" \
             --orch-app-name "$ORCH_APP_NAME" \
-            --kml-file ../../tests/fixtures/sample.kml \
+            --kml-file ../../tests/fixtures/single_polygon.kml \
             --max-attempts "$SMOKE_MAX_ATTEMPTS" \
             --poll-interval "$SMOKE_POLL_INTERVAL"
 
