@@ -46,3 +46,10 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - Prefer behavior-scoped tests over broad suite runs when iterating.
 - For cross-cutting, deploy, auth, billing, API, or runtime changes, run the `Code Review Critic` after local validation and before requesting PR review.
 - Call out residual rollout risk when runtime validation is unavailable.
+
+---
+
+## Recently Landed
+
+- [#873](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/873): board-based prioritisation + pipeline regression guards
+- [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874): parallelise per-AOI enrichment loop (#863)
