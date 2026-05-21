@@ -504,11 +504,22 @@ jobs:
           else
             ALWAYS_READY='[]'
           fi
+          # KEDA scale trigger: wake the activities app when items arrive in the
+          # Durable Task work-items queue (hub name DurableFunctionsHub → queue
+          # durablefunctionshub-workitems).  queueLength=1 means "start a replica
+          # as soon as any item is enqueued" which gives the lowest cold-start
+          # latency for user-facing jobs.
+          # "connection":"AzureWebJobsStorage" tells the Functions platform to
+          # resolve the queue endpoint via the keyless AzureWebJobsStorage__*
+          # env vars (accountName + managed identity) already configured on the
+          # app — no connection string or shared key required.
+          TRIGGERS='[{"type":"AzureStorageQueue","metadata":{"queueName":"durablefunctionshub-workitems","connection":"AzureWebJobsStorage","queueLength":"1"}}]'
           PATCH_BODY=$(jq -cn \
             --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
-            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
+            --argjson triggers "$TRIGGERS" \
+            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready,triggers:$triggers}}}}')
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
           for attempt in 1 2 3; do
@@ -520,7 +531,7 @@ jobs:
 
           # Verify scaling config applied
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
-            | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
+            | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // []), triggers: (.properties.functionAppConfig.scaleAndConcurrency.triggers // [])}')
           echo "Scaling config: $ACTUAL"
 
       - name: Configure Orchestrator Function App
