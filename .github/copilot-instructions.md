@@ -52,4 +52,4 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 ## Recently Landed
 
 - [#873](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/873): board-based prioritisation + pipeline regression guards
-- [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874): parallelise per-AOI enrichment loop (#863)
+- [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863))
