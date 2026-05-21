@@ -20,7 +20,7 @@ Last updated: 2026-05-21
 | Date       | PR   | Issue(s) | Description                                      |
 |------------|------|----------|--------------------------------------------------|
 | 2026-05-21 | [#873](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/873) | #—       | chore: board-based prioritisation + pipeline regression guards |
-| 2026-05-21 | [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874) | [#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)     | fix(pipeline): parallelise per-AOI enrichment loop — prevent activity timeout at 50+ AOIs |
+| 2026-05-21 | [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874) | [#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)     | fix(pipeline): parallelise per-AOI enrichment loop — prevent activity timeout at 50+ AOIs (ThreadPoolExecutor, concurrency cap, error isolation) |
 | 2026-05-20 | #848 | #403     | feat(rollout): generalised feature flag evaluator (phase 1) |
 | 2026-05-20 | #763 | #708     | fix(release): full e2e production smoke gate as promotion blocker |
 | 2026-05-20 | #762 | #756, #757, #759, #760 | fix(auth/ops): CIAM, token lifecycle, concurrency cap, health endpoint |
