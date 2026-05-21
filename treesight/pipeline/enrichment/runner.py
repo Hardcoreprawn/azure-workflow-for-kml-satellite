@@ -15,6 +15,7 @@ from treesight.constants import (
     DEFAULT_ENRICHMENT_CONCURRENCY,
     DEFAULT_HTTP_TIMEOUT_SECONDS,
     EUDR_CUTOFF_DATE,
+    MULTI_REGION_THRESHOLD_KM,
 )
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.aoi_metrics import (
@@ -570,6 +571,49 @@ def _enrich_single_aoi(
     return result
 
 
+# ── Multi-region detection ─────────────────────────────────────────────────
+
+
+def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
+    """Return True when any two AOI centroids are farther apart than MULTI_REGION_THRESHOLD_KM.
+
+    When True, union-level mosaic/NDVI/change-detection and EUDR stats would
+    span continents and are geographically meaningless.  Each AOI's data is
+    still produced via the per-AOI fan-out.
+    """
+    import math
+
+    if len(per_aoi_coords) < 2:
+        return False
+
+    def _centroid(coords: list[list[float]]) -> tuple[float, float]:
+        lons = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        return sum(lons) / len(lons), sum(lats) / len(lats)
+
+    def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+        r = 6_371.0  # Earth radius in km
+        phi1, phi2 = math.radians(lat1), math.radians(lat2)
+        dphi = math.radians(lat2 - lat1)
+        dlam = math.radians(lon2 - lon1)
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+        return 2 * r * math.asin(math.sqrt(a))
+
+    centroids = []
+    for entry in per_aoi_coords:
+        coords = entry.get("coords")
+        if coords:
+            centroids.append(_centroid(coords))
+
+    for i in range(len(centroids)):
+        for j in range(i + 1, len(centroids)):
+            lon1, lat1 = centroids[i]
+            lon2, lat2 = centroids[j]
+            if _haversine_km(lon1, lat1, lon2, lat2) > MULTI_REGION_THRESHOLD_KM:
+                return True
+    return False
+
+
 # ── Main orchestrator ─────────────────────────────────────────
 
 
@@ -654,34 +698,45 @@ def run_enrichment(
     # 1b/1c. Flood + fire
     _run_flood_fire_phase(bbox, center_lat, center_lon, results, acc=acc)
 
-    # 1d. EUDR-specific enrichments (WorldCover + WDPA)
-    if eudr_mode:
+    # Detect multi-region: AOI centroids spanning > MULTI_REGION_THRESHOLD_KM mean
+    # union-level imagery and EUDR stats are geographically meaningless (#860).
+    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    if multi_region:
+        results["multi_region"] = True
+        log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
+
+    # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
+    if eudr_mode and not multi_region:
         _run_eudr_phase(bbox, center_lat, center_lon, results, acc=acc)
 
-    # 2/3. Mosaic registration + NDVI computation
-    ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
-        bbox,
-        coords,
-        frame_plan,
-        project_name,
-        timestamp,
-        output_container,
-        storage,
-        results,
-        acc=acc,
-    )
+    # 2/3. Mosaic registration + NDVI computation — skipped for multi-region
+    if not multi_region:
+        ndvi_stats, ndvi_raster_paths = _run_mosaic_ndvi_phase(
+            bbox,
+            coords,
+            frame_plan,
+            project_name,
+            timestamp,
+            output_container,
+            storage,
+            results,
+            acc=acc,
+        )
+    else:
+        ndvi_stats, ndvi_raster_paths = [], []
 
-    # 5. Change detection
-    _run_change_detection_phase(
-        frame_plan,
-        ndvi_raster_paths,
-        output_container,
-        project_name,
-        timestamp,
-        storage,
-        results,
-        acc=acc,
-    )
+    # 5. Change detection — skipped for multi-region
+    if not multi_region:
+        _run_change_detection_phase(
+            frame_plan,
+            ndvi_raster_paths,
+            output_container,
+            project_name,
+            timestamp,
+            storage,
+            results,
+            acc=acc,
+        )
 
     # 6. Per-AOI quantitative metrics
     if aoi_list is not None:

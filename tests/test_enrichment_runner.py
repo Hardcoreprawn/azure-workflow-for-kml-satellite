@@ -638,3 +638,378 @@ class TestEnrichFinalize:
         )
         assert result["eudr_mode"] is True
         assert result["determination"] == {"status": "compliant"}
+
+
+class TestIsMultiRegion:
+    """Unit tests for _is_multi_region helper (#860)."""
+
+    def test_same_location_is_not_multi_region(self):
+        """AOIs all at the same centroid are not multi-region."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        aois = [
+            {"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]},
+            {"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]},
+        ]
+        assert not _is_multi_region(aois)
+
+    def test_nearby_aois_within_threshold_not_multi_region(self):
+        """AOIs within the same country (< 500 km apart) should not be multi-region."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        # Two AOIs ~100 km apart in Brazil
+        aois = [
+            {"coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]},
+            {"coords": [[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]]},
+        ]
+        assert not _is_multi_region(aois)
+
+    def test_continent_spanning_aois_are_multi_region(self):
+        """AOIs in Brazil and Indonesia are clearly multi-region (> 500 km)."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        aois = [
+            {"coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]]},  # São Paulo
+            {"coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]]},  # Jakarta
+        ]
+        assert _is_multi_region(aois)
+
+    def test_africa_and_southeast_asia_multi_region(self):
+        """AOIs in Côte d'Ivoire and Indonesia are multi-region."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        aois = [
+            {"coords": [[-4.0, 5.0], [-4.0, 5.5], [-3.5, 5.5]]},  # Côte d'Ivoire
+            {"coords": [[103.0, 1.0], [103.0, 1.5], [103.5, 1.5]]},  # Singapore area
+        ]
+        assert _is_multi_region(aois)
+
+    def test_single_aoi_is_not_multi_region(self):
+        """A single AOI should never trigger multi-region detection."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        aois = [{"coords": [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]}]
+        assert not _is_multi_region(aois)
+
+    def test_empty_list_is_not_multi_region(self):
+        """Empty AOI list should return False without error."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        assert not _is_multi_region([])
+
+    def test_threshold_boundary_just_under(self):
+        """Pair of AOIs just under 500 km apart should NOT be multi-region."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        # ~490 km north along same longitude from (0, 0)
+        # 1 degree latitude ≈ 111.32 km, 490/111.32 ≈ 4.4 degrees
+        aois = [
+            {"coords": [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]},
+            {"coords": [[0.0, 4.3], [0.1, 4.3], [0.0, 4.4]]},
+        ]
+        assert not _is_multi_region(aois)
+
+    def test_threshold_boundary_just_over(self):
+        """Pair of AOIs just over 500 km apart SHOULD be multi-region."""
+        from treesight.pipeline.enrichment.runner import _is_multi_region
+
+        # ~560 km north (5 degrees latitude)
+        aois = [
+            {"coords": [[0.0, 0.0], [0.1, 0.0], [0.0, 0.1]]},
+            {"coords": [[0.0, 5.0], [0.1, 5.0], [0.0, 5.1]]},
+        ]
+        assert _is_multi_region(aois)
+
+
+class TestMultiRegionRunEnrichment:
+    """Verify run_enrichment multi-region behaviour (#860)."""
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_single_region_no_flag(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Single-region runs do not set multi_region flag."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        # Two AOIs in the same country (~100 km apart)
+        per_aoi = [
+            {
+                "name": "Farm A",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Farm B",
+                "coords": [[-46.0, -23.0], [-46.0, -22.5], [-45.5, -22.5]],
+                "area_ha": 200,
+            },
+        ]
+
+        result = run_enrichment(
+            coords=[[-47.0, -23.0], [-46.0, -23.0]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert result.get("multi_region") is not True
+        # Union-level mosaic and change detection were called (not skipped)
+        assert mock_mosaic.call_count >= 1
+        assert mock_change.call_count >= 1
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_sets_flag(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Multi-region runs set multi_region=True in results."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        # AOIs in Brazil and Indonesia
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        result = run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert result.get("multi_region") is True
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_skips_union_mosaic_and_change_detection(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Union mosaic/NDVI and change detection are skipped for multi-region runs."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_still_runs_weather(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Weather phase still runs even for multi-region runs."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        mock_weather.assert_called_once()
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_skips_union_eudr_phase(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Union-level EUDR phase is skipped for multi-region runs."""
+        mock_plan.return_value = [{"start": "2021-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+            eudr_mode=True,
+        )
+
+        mock_eudr.assert_not_called()
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_per_aoi_still_runs(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Per-AOI enrichment still runs for multi-region submissions."""
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        result = run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert "per_aoi_enrichment" in result
+        assert len(result["per_aoi_enrichment"]) == 2
