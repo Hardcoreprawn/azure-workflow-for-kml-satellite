@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 from treesight.pipeline.enrichment.runner import (
@@ -375,16 +376,13 @@ class TestPerAoiEnrichment:
         self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
     ):
         """If one AOI's enrichment fails, others still succeed."""
-        call_count = 0
 
-        def plan_side_effect(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 3:  # 3rd call is 2nd per-AOI (1 main + 2 per-AOI)
+        def enrich_side_effect(entry, **kwargs):
+            if entry.get("name") == "Farm B":
                 raise RuntimeError("API limit hit")
-            return [{"start": "2024-01-01", "end": "2024-03-01"}]
+            return {"name": entry.get("name", "")}
 
-        mock_plan.side_effect = plan_side_effect
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
@@ -393,18 +391,21 @@ class TestPerAoiEnrichment:
             {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
         ]
 
-        result = run_enrichment(
-            coords=[[-50, -10], [30, 1]],
-            project_name="test",
-            timestamp="20240101",
-            output_container="out",
-            storage=storage,
-            per_aoi_coords=per_aoi,
-        )
+        with patch(
+            "treesight.pipeline.enrichment.runner._enrich_single_aoi",
+            side_effect=enrich_side_effect,
+        ):
+            result = run_enrichment(
+                coords=[[-50, -10], [30, 1]],
+                project_name="test",
+                timestamp="20240101",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=per_aoi,
+            )
 
         assert "per_aoi_enrichment" in result
         assert len(result["per_aoi_enrichment"]) == 2
-        # One succeeded, one failed
         errors = [r for r in result["per_aoi_enrichment"] if "error" in r]
         successes = [r for r in result["per_aoi_enrichment"] if "error" not in r]
         assert len(errors) == 1
@@ -420,8 +421,6 @@ class TestPerAoiEnrichment:
         self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
     ):
         """Per-AOI loop uses ThreadPoolExecutor — not a plain serial for-loop (#863)."""
-        from concurrent.futures import ThreadPoolExecutor
-
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
@@ -516,7 +515,7 @@ class TestPerAoiEnrichment:
     def test_per_aoi_concurrency_uses_default_constant(
         self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
     ):
-        """ThreadPoolExecutor for per-AOI loop uses DEFAULT_ENRICHMENT_CONCURRENCY (#863)."""
+        """Per-AOI pool is capped at min(DEFAULT_ENRICHMENT_CONCURRENCY, len(aois)) (#863)."""
         from treesight.constants import DEFAULT_ENRICHMENT_CONCURRENCY
 
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
@@ -530,11 +529,7 @@ class TestPerAoiEnrichment:
 
         seen_workers: list[int | None] = []
 
-        import concurrent.futures as _cf
-
-        _real_tpe = _cf.ThreadPoolExecutor
-
-        class _CapturingTPE(_real_tpe):
+        class _CapturingTPE(ThreadPoolExecutor):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 seen_workers.append(kwargs.get("max_workers") or (args[0] if args else None))
@@ -549,8 +544,9 @@ class TestPerAoiEnrichment:
                 per_aoi_coords=per_aoi,
             )
 
-        # At least one pool uses DEFAULT_ENRICHMENT_CONCURRENCY
-        assert DEFAULT_ENRICHMENT_CONCURRENCY in seen_workers
+        # Pool is capped: no more workers than AOIs, never exceeds the constant.
+        expected = min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi))
+        assert expected in seen_workers
 
 
 class TestCollectPerAoiCoords:

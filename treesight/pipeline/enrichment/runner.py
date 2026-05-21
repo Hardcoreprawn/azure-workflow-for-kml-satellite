@@ -714,7 +714,11 @@ def run_enrichment(
                 )
                 return {"name": entry.get("name", ""), "error": "enrichment_failed"}
 
-        with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+        # Bound max_workers: never exceed the cap, never create more workers than AOIs,
+        # never allow 0 (which raises ValueError). Nested calls to _run_mosaic_ndvi_phase
+        # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
+        max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
             future_to_idx = {
                 pool.submit(_enrich_safe, entry): idx for idx, entry in enumerate(per_aoi_coords)
             }
