@@ -442,3 +442,119 @@ class TestEnforceAoiLimit:
         # 51 AOIs on pro (limit 50) → suggest Team (limit 200)
         with pytest.raises(ValueError, match=r"Team plan supports up to 200"):
             enforce_aoi_limit(feature_count=51, tier="pro")
+
+
+# ---------------------------------------------------------------------------
+# Duplicate feature names (regression guards for pipeline flakiness)
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicateFeatureNames:
+    """Guards against duplicate AOI names causing claim-check key collisions.
+
+    A KML with two identically-named placemarks was observed to cause a
+    silent collision in the aoi_ref_lookup, making the second run appear
+    to hang in the 'Parsing parcels and validating geometry' phase.
+    """
+
+    def test_parse_duplicate_names_returns_all_features(self) -> None:
+        """Parser returns all features even when names collide."""
+        from treesight.parsers.lxml_parser import parse_kml_lxml
+
+        kml_bytes = (FIXTURES_DIR / "duplicate_names.kml").read_bytes()
+        features = parse_kml_lxml(kml_bytes, source_file="duplicate_names.kml")
+
+        assert len(features) == 2
+        assert all(f.name == "Block A" for f in features)
+
+    def test_duplicate_names_have_distinct_feature_indices(self) -> None:
+        """Each parsed feature carries a unique feature_index even with shared names."""
+        from treesight.parsers.lxml_parser import parse_kml_lxml
+
+        kml_bytes = (FIXTURES_DIR / "duplicate_names.kml").read_bytes()
+        features = parse_kml_lxml(kml_bytes, source_file="duplicate_names.kml")
+
+        indices = [f.feature_index for f in features]
+        assert len(set(indices)) == 2, "Duplicate features must have distinct feature_index values"
+
+    def test_store_claims_batch_duplicate_names_unique_claim_ids(self) -> None:
+        """store_claims_batch must produce unique claim_ids for same-named AOIs."""
+        from treesight.storage.offload import PayloadOffloader
+
+        storage = MagicMock()
+        storage.upload_bytes = MagicMock()
+
+        offloader = PayloadOffloader(storage)
+        items = [
+            {"feature_name": "Block A", "area_ha": 10.0},
+            {"feature_name": "Block A", "area_ha": 20.0},
+        ]
+        refs = offloader.store_claims_batch("inst-dup", items)
+
+        assert len(refs) == 2
+        claim_ids = [r["claim_id"] for r in refs]
+        assert claim_ids[0] != claim_ids[1], "Same-named AOIs must have distinct claim_ids"
+        assert refs[0]["key"] == "Block A"
+        assert refs[1]["key"] == "Block A"
+
+    def test_orchestrator_raises_on_duplicate_aoi_keys(self) -> None:
+        """The acquisition phase raises ValueError on duplicate AOI keys.
+
+        This is the explicit guard in _phase_acquisition — it must fire before
+        the aoi_ref_lookup silently drops one of the two entries.
+        """
+        import pytest
+
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = []
+        ctx.task_all.return_value = []
+
+        # Two refs with the same key simulate duplicate-named AOIs
+        aoi_refs = [
+            {"ref": "claims/inst/0.json", "key": "Block A"},
+            {"ref": "claims/inst/1.json", "key": "Block A"},
+        ]
+        aoi_area_by_name: dict[str, float] = {"Block A": 10.0}
+
+        gen = _phase_acquisition(ctx, {}, aoi_refs, aoi_area_by_name)
+        gen.send(None)  # first yield: acquisition task_all
+
+        with pytest.raises(ValueError, match="Duplicate AOI key"):
+            gen.send([])  # resume with empty acquisition results → hits aoi_ref_lookup build
+
+
+class TestEmptyFeatureNames:
+    """Guards against blank names causing all AOIs to share the same claim key."""
+
+    def test_store_claims_batch_empty_name_uses_fallback_key(self) -> None:
+        """Items with empty feature_name get a per-index fallback, not a shared ''."""
+        from treesight.storage.offload import PayloadOffloader
+
+        storage = MagicMock()
+        storage.upload_bytes = MagicMock()
+        offloader = PayloadOffloader(storage)
+
+        items = [
+            {"feature_name": "", "area_ha": 5.0},
+            {"feature_name": "", "area_ha": 8.0},
+        ]
+        refs = offloader.store_claims_batch("inst-empty", items)
+
+        claim_ids = [r["claim_id"] for r in refs]
+        assert claim_ids[0] != claim_ids[1], "Empty-named AOIs must get distinct claim_ids"
+
+    def test_store_claims_batch_none_name_uses_fallback_key(self) -> None:
+        """Items with None feature_name get an index-based fallback key."""
+        from treesight.storage.offload import PayloadOffloader
+
+        storage = MagicMock()
+        storage.upload_bytes = MagicMock()
+        offloader = PayloadOffloader(storage)
+
+        items = [{"area_ha": 5.0}, {"area_ha": 8.0}]  # no 'feature_name' key at all
+        refs = offloader.store_claims_batch("inst-none", items)
+
+        # key should be the fallback, not "None"
+        assert refs[0]["key"] != refs[1]["key"] or refs[0]["claim_id"] != refs[1]["claim_id"]
