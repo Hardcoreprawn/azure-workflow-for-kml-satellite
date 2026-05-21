@@ -687,13 +687,14 @@ def run_enrichment(
     if aoi_list is not None:
         _run_aoi_metrics_phase(aoi_list, ndvi_stats, results)
 
-    # 6b. Per-AOI enrichment — each AOI gets its own weather, NDVI, change detection
+    # 6b. Per-AOI enrichment — parallel fan-out; each AOI gets weather, NDVI, change detection
     if per_aoi_coords and len(per_aoi_coords) > 1:
         log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
-        per_aoi_enrichment: list[dict[str, Any]] = []
-        for entry in per_aoi_coords:
+        per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_coords)
+
+        def _enrich_safe(entry: dict[str, Any]) -> dict[str, Any]:
             try:
-                aoi_result = _enrich_single_aoi(
+                return _enrich_single_aoi(
                     entry,
                     date_start=date_start,
                     date_end=date_end,
@@ -705,16 +706,21 @@ def run_enrichment(
                     output_container=output_container,
                     storage=storage,
                 )
-                per_aoi_enrichment.append(aoi_result)
             except Exception:
                 logger.warning(
                     "Per-AOI enrichment failed for %s — skipping",
                     entry.get("name", "?"),
                     exc_info=True,
                 )
-                per_aoi_enrichment.append(
-                    {"name": entry.get("name", ""), "error": "enrichment_failed"}
-                )
+                return {"name": entry.get("name", ""), "error": "enrichment_failed"}
+
+        with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+            future_to_idx = {
+                pool.submit(_enrich_safe, entry): idx for idx, entry in enumerate(per_aoi_coords)
+            }
+            for future in as_completed(future_to_idx):
+                per_aoi_enrichment[future_to_idx[future]] = future.result()
+
         results["per_aoi_enrichment"] = per_aoi_enrichment
         log_phase(
             "enrichment",

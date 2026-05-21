@@ -411,6 +411,147 @@ class TestPerAoiEnrichment:
         assert len(successes) == 1
         assert errors[0]["name"] == "Farm B"
 
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_per_aoi_uses_thread_pool(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """Per-AOI loop uses ThreadPoolExecutor — not a plain serial for-loop (#863)."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        per_aoi = [
+            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
+            for i in range(4)
+        ]
+
+        submitted: list[int] = []
+        real_tpe = ThreadPoolExecutor
+
+        class _TrackingTPE(real_tpe):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                submitted.append(kwargs.get("max_workers") or (args[0] if args else None))
+
+        with patch("treesight.pipeline.enrichment.runner.ThreadPoolExecutor", _TrackingTPE):
+            run_enrichment(
+                coords=[[-50, -10], [-50, -9], [-49, -9]],
+                project_name="test",
+                timestamp="20240101",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=per_aoi,
+            )
+
+        # At least one pool was created for the per-AOI fan-out
+        assert len(submitted) >= 1
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_per_aoi_results_preserve_order(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """Results list preserves submission order even when tasks complete out-of-order (#863)."""
+        import threading
+        import time
+
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        # AOI 0 sleeps longer so it finishes last; order must still be 0,1,2
+        delays = [0.05, 0.01, 0.02]
+        lock = threading.Lock()
+        completion_order: list[str] = []
+
+        def plan_side_effect(*args, **kwargs):
+            # Infer which AOI this call is for via centre coords
+            return [{"start": "2024-01-01", "end": "2024-03-01"}]
+
+        def slow_enrich(entry, **kwargs):
+            idx = int(entry["name"].split()[-1])
+            time.sleep(delays[idx])
+            with lock:
+                completion_order.append(entry["name"])
+            return {"name": entry["name"], "ndvi": idx}
+
+        mock_plan.side_effect = plan_side_effect
+
+        per_aoi = [
+            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
+            for i in range(3)
+        ]
+
+        with patch(
+            "treesight.pipeline.enrichment.runner._enrich_single_aoi", side_effect=slow_enrich
+        ):
+            result = run_enrichment(
+                coords=[[-50, -10], [-50, -9], [-49, -9]],
+                project_name="test",
+                timestamp="20240101",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=per_aoi,
+            )
+
+        enrichment = result["per_aoi_enrichment"]
+        # Order must match submission regardless of completion order
+        assert [r["name"] for r in enrichment] == ["Farm 0", "Farm 1", "Farm 2"]
+        # Confirm they actually ran concurrently (Farm 0 finished last)
+        assert completion_order.index("Farm 0") > completion_order.index("Farm 1")
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_per_aoi_concurrency_uses_default_constant(
+        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
+    ):
+        """ThreadPoolExecutor for per-AOI loop uses DEFAULT_ENRICHMENT_CONCURRENCY (#863)."""
+        from treesight.constants import DEFAULT_ENRICHMENT_CONCURRENCY
+
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        per_aoi = [
+            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
+            for i in range(3)
+        ]
+
+        seen_workers: list[int | None] = []
+
+        import concurrent.futures as _cf
+
+        _real_tpe = _cf.ThreadPoolExecutor
+
+        class _CapturingTPE(_real_tpe):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                seen_workers.append(kwargs.get("max_workers") or (args[0] if args else None))
+
+        with patch("treesight.pipeline.enrichment.runner.ThreadPoolExecutor", _CapturingTPE):
+            run_enrichment(
+                coords=[[-50, -10], [-50, -9], [-49, -9]],
+                project_name="test",
+                timestamp="20240101",
+                output_container="out",
+                storage=storage,
+                per_aoi_coords=per_aoi,
+            )
+
+        # At least one pool uses DEFAULT_ENRICHMENT_CONCURRENCY
+        assert DEFAULT_ENRICHMENT_CONCURRENCY in seen_workers
+
 
 class TestCollectPerAoiCoords:
     """Test _collect_per_aoi_coords helper (#578)."""
