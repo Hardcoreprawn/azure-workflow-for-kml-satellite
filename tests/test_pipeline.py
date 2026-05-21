@@ -1195,7 +1195,7 @@ class TestAoiPollOrderRetry:
 # ---------------------------------------------------------------------------
 
 
-class TestAggregateAoiResults:
+class TestAggregateAoiResultsEdgeCases:
     """Guards against aggregation crashes on empty or minimal input."""
 
     def test_empty_list_returns_default_summaries(self):
@@ -1313,12 +1313,13 @@ class TestBuildOrderLookupsEdgeCases:
         assert asset_urls == {}
         assert order_meta == {}
 
-    def test_orders_missing_order_id_use_empty_string_key(self):
+    def test_orders_missing_order_id_are_skipped(self):
+        """Orders without an order_id are skipped — inserting under '' causes collisions."""
         from blueprints.pipeline._helpers import _build_order_lookups
 
         orders = [{"asset_url": "https://example.com/img.tif"}]  # no order_id
         asset_urls, _ = _build_order_lookups(orders)
-        assert "" in asset_urls
+        assert asset_urls == {}
 
     def test_duplicate_order_ids_last_write_wins(self):
         """Duplicate order IDs are a provider anomaly — last value wins in lookup."""

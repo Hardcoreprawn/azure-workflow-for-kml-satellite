@@ -529,7 +529,7 @@ class TestEmptyFeatureNames:
     """Guards against blank names causing all AOIs to share the same claim key."""
 
     def test_store_claims_batch_empty_name_uses_fallback_key(self) -> None:
-        """Items with empty feature_name get a per-index fallback, not a shared ''."""
+        """Items with empty feature_name get a per-index fallback key, not a shared ''."""
         from treesight.storage.offload import PayloadOffloader
 
         storage = MagicMock()
@@ -542,8 +542,9 @@ class TestEmptyFeatureNames:
         ]
         refs = offloader.store_claims_batch("inst-empty", items)
 
-        claim_ids = [r["claim_id"] for r in refs]
-        assert claim_ids[0] != claim_ids[1], "Empty-named AOIs must get distinct claim_ids"
+        # Empty string is treated as missing — each AOI gets a unique index-based key.
+        assert refs[0]["key"] != refs[1]["key"], "Empty-named AOIs must get distinct keys"
+        assert refs[0]["claim_id"] != refs[1]["claim_id"], "Claim IDs must be distinct"
 
     def test_store_claims_batch_none_name_uses_fallback_key(self) -> None:
         """Items with None feature_name get an index-based fallback key."""

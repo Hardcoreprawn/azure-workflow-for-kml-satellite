@@ -2,7 +2,7 @@
 
 ## Source Of Truth
 
-- Treat `docs/ROADMAP.md` as the order-of-work source of truth.
+- Treat `docs/ROADMAP.md` as the stage and direction source of truth. Day-to-day work ordering lives on the [GitHub Project board](https://github.com/users/Hardcoreprawn/projects/2) (`priority:now` → `priority:next` → `priority:backlog`).
 - Treat `docs/PERSONA_DEEP_DIVE.md` as the source of truth for conservation, ESG/EUDR, and agricultural-advisor needs.
 - Use `docs/PID.md` for product scope and system intent.
 - Use `docs/ARCHITECTURE_OVERVIEW.md`, `docs/API_INTERFACE_REFERENCE.md`, and `docs/OPERATIONS_RUNBOOK.md` when changing runtime behavior, contracts, or operations.
