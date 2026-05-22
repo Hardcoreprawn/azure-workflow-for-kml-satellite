@@ -208,12 +208,24 @@ jobs:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
           ORCH_IMAGE_NAME: ${{ steps.meta.outputs.orch_image_name }}
         run: |
-          docker push "${IMAGE_NAME}:${{ github.sha }}"
-          docker push "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
-          docker push "${IMAGE_NAME}:latest"
-          docker push "${ORCH_IMAGE_NAME}:${{ github.sha }}"
-          docker push "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
-          docker push "${ORCH_IMAGE_NAME}:latest"
+          push_with_retry() {
+            local n=0
+            until docker push "$1"; do
+              n=$((n + 1))
+              if [[ $n -ge 3 ]]; then
+                echo "::error::Push failed after 3 attempts: $1"
+                return 1
+              fi
+              echo "Push failed (attempt $n/3), retrying in 15s..."
+              sleep 15
+            done
+          }
+          push_with_retry "${IMAGE_NAME}:${{ github.sha }}"
+          push_with_retry "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
+          push_with_retry "${IMAGE_NAME}:latest"
+          push_with_retry "${ORCH_IMAGE_NAME}:${{ github.sha }}"
+          push_with_retry "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
+          push_with_retry "${ORCH_IMAGE_NAME}:latest"
 
       - name: Trivy container scan (single pass to JSON)
         id: trivy-scan
