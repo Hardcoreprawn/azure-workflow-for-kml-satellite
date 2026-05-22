@@ -579,6 +579,25 @@ class TestDeployWorkflowSettings:
             "readiness so ingestion wiring is restored"
         )
 
+    def test_deploy_sets_keda_queue_trigger_for_activities_app(self, deploy_yml):
+        assert "AzureStorageQueue" in deploy_yml, (
+            "deploy.yml must configure an AzureStorageQueue KEDA trigger for the "
+            "activities app so it wakes from zero replicas when Durable Task "
+            "work items arrive — without this, jobs stall at zero replicas"
+        )
+
+    def test_deploy_keda_trigger_uses_keyless_connection(self, deploy_yml):
+        assert "AzureWebJobsStorage" in deploy_yml, (
+            "KEDA trigger must reference the AzureWebJobsStorage connection "
+            "(resolved via managed-identity env vars) — do not use a shared key"
+        )
+
+    def test_deploy_keda_queue_name_derived_from_host_json(self, deploy_yml):
+        assert "host.json" in deploy_yml, (
+            "deploy.yml must derive the Durable Task work-items queue name from "
+            "host.json so the KEDA trigger stays in sync when the hub name changes"
+        )
+
     def test_event_grid_reconcile_step_uses_orchestrator_outputs(self, deploy_yml):
         match = re.search(
             r"- name: Reconcile Event Grid subscription(?P<body>.*?)(?:\n\s*- name:|\Z)",

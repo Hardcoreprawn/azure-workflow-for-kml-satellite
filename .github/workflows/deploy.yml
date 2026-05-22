@@ -517,15 +517,18 @@ jobs:
             ALWAYS_READY='[]'
           fi
           # KEDA scale trigger: wake the activities app when items arrive in the
-          # Durable Task work-items queue (hub name DurableFunctionsHub → queue
-          # durablefunctionshub-workitems).  queueLength=1 means "start a replica
-          # as soon as any item is enqueued" which gives the lowest cold-start
-          # latency for user-facing jobs.
-          # "connection":"AzureWebJobsStorage" tells the Functions platform to
-          # resolve the queue endpoint via the keyless AzureWebJobsStorage__*
-          # env vars (accountName + managed identity) already configured on the
-          # app — no connection string or shared key required.
-          TRIGGERS='[{"type":"AzureStorageQueue","metadata":{"queueName":"durablefunctionshub-workitems","connection":"AzureWebJobsStorage","queueLength":"1"}}]'
+          # Durable Task work-items queue.  Queue name is derived from the hub
+          # name in host.json (lowercased + "-workitems") so it stays in sync
+          # automatically if the hub name is ever changed.
+          # queueLength=1 means "start a replica as soon as any item is
+          # enqueued" which gives the lowest cold-start latency for user jobs.
+          # "connection":"AzureWebJobsStorage" uses the keyless MI-based
+          # AzureWebJobsStorage__* env vars — no connection string needed.
+          DURABLE_HUB=$(jq -r '.extensions.durableTask.hubName // "DurableFunctionsHub"' \
+            "${GITHUB_WORKSPACE}/host.json" | tr '[:upper:]' '[:lower:]')
+          WORKITEMS_QUEUE="${DURABLE_HUB}-workitems"
+          TRIGGERS=$(jq -cn --arg q "$WORKITEMS_QUEUE" \
+            '[{"type":"AzureStorageQueue","metadata":{"queueName":$q,"connection":"AzureWebJobsStorage","queueLength":"1"}}]')
           PATCH_BODY=$(jq -cn \
             --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
