@@ -1013,3 +1013,125 @@ class TestMultiRegionRunEnrichment:
 
         assert "per_aoi_enrichment" in result
         assert len(result["per_aoi_enrichment"]) == 2
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_results_dict_lacks_union_outputs(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Union-level outputs must be absent from the results dict for multi-region runs.
+
+        Prevents regressions where skipped phases might still emit zeros or
+        empty dicts that downstream consumers could mistake for real data.
+        """
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        result = run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+        )
+
+        assert result.get("multi_region") is True
+        # Union-level imagery keys must be absent — not zeroed-out or empty-dict
+        for key in (
+            "search_ids",
+            "ndvi_search_ids",
+            "display_collections",
+            "ndvi_stats",
+            "ndvi_raster_paths",
+            "change_detection",
+        ):
+            assert key not in result, (
+                f"results['{key}'] must not be present for multi-region runs — "
+                "downstream consumers must not see misleading union-level data"
+            )
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_eudr_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_multi_region_eudr_skips_determination(
+        self,
+        mock_plan,
+        mock_weather,
+        mock_flood,
+        mock_eudr,
+        mock_mosaic,
+        mock_change,
+        mock_enrich_aoi,
+    ):
+        """Top-level EUDR determination must be absent for multi-region runs.
+
+        With union-level change_detection absent, determine_deforestation_free()
+        would return a misleading non-compliant result.  Per-AOI determinations
+        in per_aoi_enrichment are the authoritative signal instead.
+        """
+        mock_plan.return_value = [{"start": "2021-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        mock_enrich_aoi.side_effect = lambda entry, **kw: {"name": entry.get("name", "")}
+        storage = MagicMock()
+
+        per_aoi = [
+            {
+                "name": "Brazil Farm",
+                "coords": [[-47.0, -23.0], [-47.0, -22.5], [-46.5, -22.5]],
+                "area_ha": 100,
+            },
+            {
+                "name": "Jakarta Farm",
+                "coords": [[107.0, -6.5], [107.0, -6.0], [107.5, -6.0]],
+                "area_ha": 200,
+            },
+        ]
+
+        result = run_enrichment(
+            coords=[[-47.0, -23.0], [107.0, -6.5]],
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=per_aoi,
+            eudr_mode=True,
+        )
+
+        assert result.get("multi_region") is True
+        assert result.get("eudr_mode") is True
+        assert "determination" not in result, (
+            "top-level determination must be absent for multi-region EUDR runs — "
+            "union change_detection is missing so the result would be misleading"
+        )

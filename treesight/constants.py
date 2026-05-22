@@ -72,6 +72,7 @@ PIPELINE_PAYLOADS_CONTAINER = "pipeline-payloads"
 # --- Geodesy ---
 METRES_PER_DEGREE_LATITUDE = 111_320.0
 EARTH_RADIUS_M = 6_371_000.0
+EARTH_RADIUS_KM = EARTH_RADIUS_M / 1_000.0
 # Distance threshold for treating a multi-AOI run as "multi-region":
 # when any two AOI centroids are farther apart than this, union-level
 # mosaic/NDVI/change-detection stats would span continents and are meaningless.

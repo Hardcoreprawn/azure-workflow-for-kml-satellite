@@ -14,6 +14,7 @@ from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
     DEFAULT_ENRICHMENT_CONCURRENCY,
     DEFAULT_HTTP_TIMEOUT_SECONDS,
+    EARTH_RADIUS_KM,
     EUDR_CUTOFF_DATE,
     MULTI_REGION_THRESHOLD_KM,
 )
@@ -587,17 +588,19 @@ def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
         return False
 
     def _centroid(coords: list[list[float]]) -> tuple[float, float]:
-        lons = [c[0] for c in coords]
-        lats = [c[1] for c in coords]
+        # Drop the closing point of a ring polygon (coords[0] == coords[-1])
+        # to avoid double-weighting that vertex in the centroid calculation.
+        pts = coords[:-1] if len(coords) > 1 and coords[0] == coords[-1] else coords
+        lons = [c[0] for c in pts]
+        lats = [c[1] for c in pts]
         return sum(lons) / len(lons), sum(lats) / len(lats)
 
     def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-        r = 6_371.0  # Earth radius in km
         phi1, phi2 = math.radians(lat1), math.radians(lat2)
         dphi = math.radians(lat2 - lat1)
         dlam = math.radians(lon2 - lon1)
         a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-        return 2 * r * math.asin(math.sqrt(a))
+        return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
     centroids = []
     for entry in per_aoi_coords:
@@ -798,12 +801,16 @@ def run_enrichment(
         results["eudr_mode"] = True
         results["eudr_date_start"] = date_start
 
-        # Overall deforestation-free determination (#603)
-        from treesight.pipeline.enrichment.determination import (
-            determine_deforestation_free,
-        )
+        # Overall deforestation-free determination (#603).
+        # Skipped for multi-region runs: union-level change_detection is absent,
+        # so a top-level determination would be misleading.  Per-AOI determinations
+        # are available in per_aoi_enrichment instead.
+        if not multi_region:
+            from treesight.pipeline.enrichment.determination import (
+                determine_deforestation_free,
+            )
 
-        results["determination"] = determine_deforestation_free(results)
+            results["determination"] = determine_deforestation_free(results)
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     storage.upload_json(output_container, manifest_path, results)
