@@ -516,25 +516,20 @@ jobs:
           else
             ALWAYS_READY='[]'
           fi
-          # KEDA scale trigger: wake the activities app when items arrive in the
-          # Durable Task work-items queue.  Queue name is derived from the hub
-          # name in host.json (lowercased + "-workitems") so it stays in sync
-          # automatically if the hub name is ever changed.
-          # queueLength=1 means "start a replica as soon as any item is
-          # enqueued" which gives the lowest cold-start latency for user jobs.
-          # "connection":"AzureWebJobsStorage" uses the keyless MI-based
-          # AzureWebJobsStorage__* env vars — no connection string needed.
+          # Derive Durable Task work-items queue name from host.json so the KEDA
+          # trigger stays in sync automatically if the hub name changes.
           DURABLE_HUB=$(jq -r '.extensions.durableTask.hubName // "DurableFunctionsHub"' \
             "${GITHUB_WORKSPACE}/host.json" | tr '[:upper:]' '[:lower:]')
           WORKITEMS_QUEUE="${DURABLE_HUB}-workitems"
-          TRIGGERS=$(jq -cn --arg q "$WORKITEMS_QUEUE" \
-            '[{"type":"AzureStorageQueue","metadata":{"queueName":$q,"connection":"AzureWebJobsStorage","queueLength":"1"}}]')
+
+          # CORS + scaling via the Function App (Microsoft.Web/sites) PATCH.
+          # NOTE: functionAppConfig.scaleAndConcurrency.triggers is Flex-Consumption-only
+          # and silently ignored for azurecontainerapps kind — KEDA triggers go below.
           PATCH_BODY=$(jq -cn \
             --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
             --argjson ready "$ALWAYS_READY" \
-            --argjson triggers "$TRIGGERS" \
-            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready,triggers:$triggers}}}}')
+            '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
           for attempt in 1 2 3; do
@@ -546,8 +541,67 @@ jobs:
 
           # Verify scaling config applied
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
-            | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // []), triggers: (.properties.functionAppConfig.scaleAndConcurrency.triggers // [])}')
+            | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
           echo "Scaling config: $ACTUAL"
+
+          # KEDA azure-queue scale trigger on the backing Container App resource.
+          # For azurecontainerapps kind, scale triggers must go on
+          # Microsoft.App/containerApps (not functionAppConfig which is Flex-only).
+          # The system-assigned MI has Storage Queue Data Contributor on the storage
+          # account so KEDA authenticates keylessly via identity=system (no shared key).
+          STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
+          CONTAINER_APP_ID="/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${FUNC_RG}/providers/Microsoft.App/containerApps/${FUNC_NAME}"
+
+          # GET current Container App, inject scale rules, PUT back.
+          # Strips ARM read-only fields; preserves existing containers/ingress/config.
+          CURRENT=$(az rest --method GET --url "${CONTAINER_APP_ID}?api-version=2024-03-01")
+          PUT_BODY=$(echo "$CURRENT" | jq \
+            --arg  q   "$WORKITEMS_QUEUE" \
+            --arg  sa  "$STORAGE_ACCOUNT" \
+            --argjson max "$MAX_INSTANCES" \
+            '{
+              location: .location,
+              tags: (.tags // {}),
+              identity: .identity,
+              properties: (
+                .properties
+                | .template.scale = {
+                    minReplicas: 0,
+                    maxReplicas: $max,
+                    rules: [{
+                      name: "durable-workitems",
+                      custom: {
+                        type: "azure-queue",
+                        metadata: {
+                          queueName: $q,
+                          queueLength: "1",
+                          accountName: $sa,
+                          cloud: "AzurePublicCloud"
+                        },
+                        identity: "system"
+                      }
+                    }]
+                  }
+                | {
+                    managedEnvironmentId: .managedEnvironmentId,
+                    configuration: .configuration,
+                    template: .template
+                  }
+              )
+            }')
+          for attempt in 1 2 3; do
+            az rest --method PUT \
+              --url "${CONTAINER_APP_ID}?api-version=2024-03-01" \
+              --body "$PUT_BODY" && break
+            [ "$attempt" -lt 3 ] || { echo "❌ Container App scale rules PUT failed after 3 attempts"; exit 1; }
+            echo "⚠️  PUT attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+            sleep 20
+          done
+
+          # Verify KEDA scale rules applied
+          RULES=$(az rest --method GET --url "${CONTAINER_APP_ID}?api-version=2024-03-01" \
+            | jq '.properties.template.scale')
+          echo "Container App scale config: $RULES"
 
       - name: Configure Orchestrator Function App
         id: configure-orch-app
