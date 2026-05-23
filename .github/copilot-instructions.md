@@ -21,6 +21,7 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 ## Delivery Workflow
 
 - Always start new work on a clean branch from `main`. Before creating the branch, verify the working tree is clean (`git status`). Do not pile unrelated changes onto an existing feature branch.
+- **Every PR must close at least one GitHub issue.** Prefer exactly one issue per PR. If no issue exists for the work, create one before opening the PR. Include `closes #NNN` (or `fixes #NNN`) in the PR body so the issue auto-closes on merge and the board moves automatically.
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
