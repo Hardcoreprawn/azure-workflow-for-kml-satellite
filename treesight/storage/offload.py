@@ -97,7 +97,9 @@ class PayloadOffloader:
         refs: list[dict[str, str]] = []
         for idx, item in enumerate(items):
             raw_key = item.get(key_field)
-            key = str(raw_key) if raw_key is not None else f"item_{idx}"
+            # Treat empty string the same as missing: both get an index-based fallback
+            # so that two nameless AOIs never share the same key.
+            key = str(raw_key) if raw_key else f"item_{idx}"
             claim_id = f"{key_field}_{idx}_{_short_hash(key)}"
             blob_ref = self.store_claim(instance_id, claim_id, item)
             refs.append({"claim_id": claim_id, "ref": blob_ref, "key": key})

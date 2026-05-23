@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Duplicate Name Test</name>
+    <description>Two placemarks sharing the same feature name — exercises collision handling</description>
+    <Placemark>
+      <name>Block A</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.800,-1.300,0
+              36.810,-1.300,0
+              36.810,-1.310,0
+              36.800,-1.310,0
+              36.800,-1.300,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Block A</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              36.820,-1.300,0
+              36.830,-1.300,0
+              36.830,-1.310,0
+              36.820,-1.310,0
+              36.820,-1.300,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

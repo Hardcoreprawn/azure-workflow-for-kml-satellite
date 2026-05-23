@@ -1188,3 +1188,186 @@ class TestAoiPollOrderRetry:
             c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"
         ]
         assert len(retry_calls) >= 1
+
+
+# ---------------------------------------------------------------------------
+# §5 — Orchestrator helpers edge cases (second-run flakiness regression)
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateAoiResultsEdgeCases:
+    """Guards against aggregation crashes on empty or minimal input."""
+
+    def test_empty_list_returns_default_summaries(self):
+        from blueprints.pipeline._helpers import _aggregate_aoi_results
+
+        acq, ful = _aggregate_aoi_results([])
+        assert acq["ready_count"] == 0
+        assert acq["failed_count"] == 0
+        assert acq["imagery_outcomes"] == []
+        assert ful["downloads_completed"] == 0
+        assert ful["pp_completed"] == 0
+
+    def test_single_aoi_result_aggregated(self):
+        from blueprints.pipeline._helpers import _aggregate_aoi_results
+
+        aoi_result = {
+            "acquisition": {
+                "ready_count": 1,
+                "failed_count": 0,
+                "imagery_outcomes": [{"aoi_feature_name": "farm", "state": "ready"}],
+            },
+            "fulfilment": {
+                "download_results": [{"aoi_feature_name": "farm", "state": "completed"}],
+                "downloads_completed": 1,
+                "downloads_succeeded": 1,
+                "downloads_failed": 0,
+                "batch_submitted": 0,
+                "batch_succeeded": 0,
+                "batch_failed": 0,
+                "post_process_results": [],
+                "pp_completed": 0,
+                "pp_clipped": 0,
+                "pp_reprojected": 0,
+                "pp_failed": 0,
+            },
+        }
+        acq, ful = _aggregate_aoi_results([aoi_result])
+        assert acq["ready_count"] == 1
+        assert len(acq["imagery_outcomes"]) == 1
+        assert ful["downloads_completed"] == 1
+        assert ful["downloads_succeeded"] == 1
+
+
+class TestCollectEnrichmentCoordsEdgeCases:
+    """Guards against coord-collection failures with unusual AOI shapes."""
+
+    def test_empty_aois_returns_empty(self):
+        from blueprints.pipeline._helpers import _collect_enrichment_coords
+
+        result = _collect_enrichment_coords([])
+        assert result == []
+
+    def test_aoi_with_no_exterior_coords_falls_back_to_bbox(self):
+        from blueprints.pipeline._helpers import _collect_enrichment_coords
+
+        aois = [{"feature_name": "farm", "bbox": [36.8, -1.31, 36.81, -1.3], "exterior_coords": []}]
+        result = _collect_enrichment_coords(aois)
+        assert len(result) == 5  # bbox-derived ring has 5 points
+
+    def test_aoi_with_no_coords_and_no_bbox_returns_empty(self):
+        from blueprints.pipeline._helpers import _collect_enrichment_coords
+
+        aois = [{"feature_name": "unknown"}]
+        result = _collect_enrichment_coords(aois)
+        assert result == []
+
+
+class TestCollectPerAoiCoordsEdgeCases:
+    """Guards against per-AOI coord collection with missing/empty coordinates."""
+
+    def test_aoi_without_coords_or_bbox_excluded(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [{"feature_name": "ghost"}]  # no exterior_coords, no bbox
+        result = _collect_per_aoi_coords(aois)
+        assert result == []
+
+    def test_aoi_with_empty_exterior_uses_bbox_ring(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {
+                "feature_name": "field",
+                "exterior_coords": [],
+                "bbox": [36.8, -1.31, 36.81, -1.3],
+                "area_ha": 5.0,
+            }
+        ]
+        result = _collect_per_aoi_coords(aois)
+        assert len(result) == 1
+        assert result[0]["name"] == "field"
+        assert len(result[0]["coords"]) == 5  # bbox-derived ring
+
+    def test_single_aoi_assigned_cluster_zero(self):
+        from blueprints.pipeline._helpers import _collect_per_aoi_coords
+
+        aois = [
+            {
+                "feature_name": "solo",
+                "exterior_coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                "area_ha": 3.0,
+            }
+        ]
+        result = _collect_per_aoi_coords(aois)
+        assert result[0]["cluster"] == 0
+
+
+class TestBuildOrderLookupsEdgeCases:
+    """Guards against lookup-dict collisions with malformed order data."""
+
+    def test_empty_orders(self):
+        from blueprints.pipeline._helpers import _build_order_lookups
+
+        asset_urls, order_meta = _build_order_lookups([])
+        assert asset_urls == {}
+        assert order_meta == {}
+
+    def test_orders_missing_order_id_are_skipped(self):
+        """Orders without an order_id are skipped — inserting under '' causes collisions."""
+        from blueprints.pipeline._helpers import _build_order_lookups
+
+        orders = [{"asset_url": "https://example.com/img.tif"}]  # no order_id
+        asset_urls, _ = _build_order_lookups(orders)
+        assert asset_urls == {}
+
+    def test_duplicate_order_ids_last_write_wins(self):
+        """Duplicate order IDs are a provider anomaly — last value wins in lookup."""
+        from blueprints.pipeline._helpers import _build_order_lookups
+
+        orders = [
+            {"order_id": "o1", "asset_url": "https://first.com/img.tif", "role": "visual"},
+            {"order_id": "o1", "asset_url": "https://second.com/img.tif", "role": "visual"},
+        ]
+        asset_urls, _ = _build_order_lookups(orders)
+        assert asset_urls["o1"] == "https://second.com/img.tif"
+
+
+class TestOffloadedFeaturesPath:
+    """Verify the ingestion phase correctly handles both inline and offloaded features."""
+
+    def test_phase_ingestion_inline_features_branch(self):
+        """When parse_kml returns a list, offloaded=False and no load_offloaded call."""
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        # parse_kml returns a list (inline, not offloaded)
+        one_feature = [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
+        ctx.call_activity.return_value = "sentinel"
+        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-1", {})
+        gen.send(None)  # first yield: parse_kml
+
+        # Resume with inline list — must NOT call load_offloaded_features
+        gen.send(one_feature)
+
+        activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
+        assert "load_offloaded_features" not in activity_names
+
+    def test_phase_ingestion_offloaded_features_branch(self):
+        """When parse_kml returns a dict (ref), load_offloaded_features is called next."""
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        ctx.call_activity.return_value = "sentinel"
+        ctx.task_all.return_value = [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-2", {})
+        gen.send(None)  # first yield: parse_kml
+
+        # Resume with a dict (offload ref) — must call load_offloaded_features
+        gen.send({"ref": "payloads/inst-2/abc.json", "count": 1})
+
+        activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
+        assert "load_offloaded_features" in activity_names
