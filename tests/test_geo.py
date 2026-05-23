@@ -256,6 +256,94 @@ class TestClusterAois:
         assert len(flat) == 2
         assert flat[0]["area_ha"] in {10, 20}
 
+
+# ---------------------------------------------------------------------------
+# Geometry edge cases (regression guards for pipeline flakiness)
+# ---------------------------------------------------------------------------
+
+
+class TestPrepareAoiEdgeCases:
+    """Guards against degenerate geometry that can stall the ingestion phase."""
+
+    def test_collinear_coords_zero_area(self):
+        """Collinear exterior coords produce zero area but do not raise."""
+        f = Feature(
+            name="Line",
+            exterior_coords=[[36.8, -1.3], [36.81, -1.3], [36.82, -1.3], [36.8, -1.3]],
+        )
+        aoi = prepare_aoi(f)
+        assert isinstance(aoi, AOI)
+        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
+
+    def test_two_point_exterior_coords(self):
+        """Two-point exterior produces zero area and a valid bbox."""
+        f = Feature(
+            name="TwoPoint",
+            exterior_coords=[[36.8, -1.3], [36.81, -1.31]],
+        )
+        aoi = prepare_aoi(f)
+        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
+        # Bbox should still be non-degenerate (contains both points)
+        assert aoi.bbox[0] == pytest.approx(36.8)
+        assert aoi.bbox[2] == pytest.approx(36.81)
+
+    def test_single_point_exterior_coords(self):
+        """Single-point exterior produces zero area and degenerate bbox."""
+        f = Feature(
+            name="SinglePoint",
+            exterior_coords=[[36.8, -1.3]],
+        )
+        aoi = prepare_aoi(f)
+        assert aoi.area_ha == pytest.approx(0.0, abs=0.01)
+        assert aoi.bbox == [36.8, -1.3, 36.8, -1.3]
+
+    def test_polygon_near_antimeridian(self):
+        """Polygon near ±180° longitude does not crash and produces valid bbox."""
+        f = Feature(
+            name="Antimeridian",
+            exterior_coords=[
+                [179.9, -16.5],
+                [-179.8, -16.5],
+                [-179.8, -16.6],
+                [179.9, -16.6],
+                [179.9, -16.5],
+            ],
+        )
+        aoi = prepare_aoi(f)
+        assert isinstance(aoi, AOI)
+        # Bbox is computed from raw coords — min/max will cross zero,
+        # which is a known limitation. Verify we get *something* back
+        # without raising and that the centroid is inside the computed bbox.
+        assert aoi.bbox[0] <= aoi.centroid[0] <= aoi.bbox[2] or aoi.bbox[0] > aoi.bbox[2]
+
+    def test_prepare_aoi_duplicate_adjacent_coords(self):
+        """Exterior ring with repeated consecutive points does not raise."""
+        f = Feature(
+            name="Dupes",
+            exterior_coords=[
+                [36.8, -1.3],
+                [36.8, -1.3],  # duplicate of first
+                [36.81, -1.31],
+                [36.8, -1.3],
+            ],
+        )
+        aoi = prepare_aoi(f)
+        assert isinstance(aoi, AOI)
+
+
+class TestGeodesicAreaEdgeCases:
+    def test_three_collinear_points_zero_area(self):
+        """Three collinear points have zero geodesic area."""
+        coords = [[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]
+        area, _ = _geodesic_area_and_perimeter(coords)
+        assert area == pytest.approx(0.0, abs=1.0)
+
+    def test_negative_buffer_treated_as_zero(self):
+        """Negative buffer should not shrink the bbox (clamp to original)."""
+        bbox = [36.8, -1.31, 36.81, -1.3]
+        result = _buffer_bbox(bbox, -100)
+        assert result == bbox
+
     def test_chain_linkage(self):
         """AOIs forming a chain should be merged into one cluster via transitivity."""
         # A-B close, B-C close, but A-C might be > eps apart

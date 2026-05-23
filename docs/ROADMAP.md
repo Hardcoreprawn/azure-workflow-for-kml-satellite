@@ -1,54 +1,27 @@
 # Canopex — Roadmap
 
 **Single source of truth for what to build next.**
-Issues hold the detail. This list holds the order.
+Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-05-20
+Last updated: 2026-05-21
 
 ---
 
-## Execution Order
+## Active Work Queue
 
-**The stacked PR queue. Work top-to-bottom. Each row is one PR unless noted.**
-Update status as work moves. Add new items at the correct priority position,
-not at the bottom.
+**Live prioritised board:** [github.com/users/Hardcoreprawn/projects/2](https://github.com/users/Hardcoreprawn/projects/2/views/1)
 
-| # | Issue(s) | PR | Description | Status |
-| --- | ---------- | ---- | ------------- | -------- |
-| 1 | #709 | — | feat(auth): CIAM-native JWT auth in Function App (Option B phase 1) | ✅ Closed |
-| 2 | #710 | #744 | feat(auth): frontend CIAM token flow with MSAL (Option B phase 2) | ✅ Closed |
-| 3 | #756 | — | fix(auth): register CIAM custom API scope — eliminate token audience ambiguity — **Stage 2E.6** | ✅ #762 |
-| 4 | #757 | — | fix(auth): harden MSAL token lifecycle — always-fresh tokens, 401-to-reauth — **Stage 2E.6** | ✅ #762 |
-| 5 | #759 | — | chore(ops): hard concurrency cap + SAFE_MODE flag — bound monthly spend at £30 — **Stage 2E.6** | ✅ #762 |
-| 6 | #760 | — | fix(ops): deep health endpoint for pre-demo smoke validation — **Stage 2E.6** | ✅ #762 |
-| 7 | #758 | — | feat(infra): Container Apps Jobs for GDAL compute — near-zero idle cost — **Stage 2E.6** | ❌ Closed — compute FA already £0 at idle (Consumption plan, alwaysReady=0); CAJ adds complexity without cost benefit |
-| 8 | #535 | — | fix: live Stripe billing flow verification on production — Stage 2D.R3 | ✅ Closed |
-| 9 | #708 | #763 | fix(release): full e2e production smoke gate as promotion blocker (execution slice for #403) — Slice A | ✅ #763 |
-| 10 | #403 | #848 | feat(rollout): generalised feature flag evaluator — Phase 1 ✅ #848; Phases 2–3 open — Stage 2E.4 | In Progress |
-| 11 | #764 | — | ux: client-side cold start masking (warm on load, retry, loading states) — Stage 3.1 | Open |
-| 12 | #400 | — | feat: pipeline run telemetry — Stage 3.2 | Open |
-| 13 | #399 | — | feat: pipeline ETA estimator (needs #400) — Stage 3.3 | Open |
-| 14 | #78 + #79 | — | feat: temporal catalogue in Cosmos + API (bundle) — Stage 3.4/3.5 | Open |
-| 15 | #437 | — | test: E2E 200+ AOI KMZ scale validation — Stage 3.11 | Open |
-| 16 | #488 | — | perf: pipeline performance optimisation — Stage 3.6 | Open |
-| 17 | #675 | — | feat: DMS/UTM coordinate format support — Stage 3.12 | Open |
-| 18 | #586 | — | feat: per-user AOI imagery reuse + retention — Stage 3.7 | Open |
-| 19 | #679 | — | feat: shareable analysis links — Stage 3.8 | Open |
-| 20 | #618 | — | feat: Brazilian data enrichment (PRODES, DETER, CAR) — Stage 3.9 | Open |
-| 21 | #699 | — | research: supplier valet-token intake (may supersede #676) — Stage 3.14 | Research first |
-| 22 | #676 | — | feat: supplier data collection template — Stage 3.13 | Open (post #699 research) |
-| 23 | #678 | — | feat: country-risk auto-flagging — Stage 3.15 | Open |
-| 24 | #677 | — | feat: commodity tracking per parcel — Stage 3.16 | Open |
-| 25 | #680 | — | feat: GeoJSON/shapefile upload — Stage 3.17 | Open |
-| 26 | #619 | — | eval: Mapbox/Maxar satellite basemap — Stage 3.10 | Open |
+Use the board for day-to-day prioritisation. Issues are labelled:
 
-**Low-priority housekeeping** (bundle with adjacent work, don't schedule separately):
+- `priority:now` — currently being worked on
+- `priority:next` — up next after current work
+- `priority:backlog` — ordered, not yet scheduled
+
+**Housekeeping** (bundle with adjacent work, don't schedule separately):
 `#573` CSP wildcards · `#593` Pydantic deprecation · `#625` poll_order refactor ·
 `#519` self-host Leaflet · `#569` old domain · `#570` ops docs risk · `#584` data model ·
 `#525`/`#526` deploy perf · `#252`/`#228` rate limiter/replay (Stage 4) ·
-`#402` security-gated production deploys (deferred in single-environment operation; keep minimal blocking scan control shipped in PR #711)
-
-**Stage 4 starts after Stage 3 is generating revenue** — see Stage 4 section below.
+`#402` security-gated production deploys (deferred; partial hardening in PR #711)
 
 ---
 
@@ -104,6 +77,8 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
+| —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 | #856 | chore(deps): bump idna 3.11→3.15 — fixes CVE-2024-3651 (IDNA label length bypass, possible ReDoS via crafted hostname). `uv lock --upgrade-package idna`. All 1826 tests pass. |
 | #855 | feat(ci): auth-free pipeline smoke test in deploy workflow — `scripts/pipeline_smoke.py` injects KML + demo ticket directly into blob storage (stdlib+az CLI only; storage key via ARM Contributor, no Blob Data RBAC needed); Event Grid fires `blob_trigger` naturally; polls Durable management API to assert `runtimeStatus==Completed`. Gated `DEPLOY_ENV != prd`. Regression lock in `test_launch_readiness.py`. |
 | #853 | fix(parse): GDAL/PROJ parse hang — `PROJ_NETWORK=OFF` + `GDAL_HTTP_TIMEOUT=30` + `GDAL_MAX_HTTP_RETRY=0` + `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` set at module load before GDAL initialises; 60s `ThreadPoolExecutor` timeout with `shutdown(wait=False)` so a stuck GDAL thread never blocks teardown; structured `logger.info` throughout parse activity, ingestion, and fiona_parser for Log Analytics visibility; 2 new `TestFionaParserTimeout` tests. Fixes #852. |
