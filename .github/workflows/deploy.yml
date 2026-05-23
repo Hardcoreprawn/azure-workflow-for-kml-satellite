@@ -208,12 +208,24 @@ jobs:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
           ORCH_IMAGE_NAME: ${{ steps.meta.outputs.orch_image_name }}
         run: |
-          docker push "${IMAGE_NAME}:${{ github.sha }}"
-          docker push "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
-          docker push "${IMAGE_NAME}:latest"
-          docker push "${ORCH_IMAGE_NAME}:${{ github.sha }}"
-          docker push "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
-          docker push "${ORCH_IMAGE_NAME}:latest"
+          push_with_retry() {
+            local n=0
+            until docker push "$1"; do
+              n=$((n + 1))
+              if [[ $n -ge 3 ]]; then
+                echo "::error::Push failed after 3 attempts: $1"
+                return 1
+              fi
+              echo "Push failed (attempt $n/3), retrying in 15s..."
+              sleep 15
+            done
+          }
+          push_with_retry "${IMAGE_NAME}:${{ github.sha }}"
+          push_with_retry "${IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
+          push_with_retry "${IMAGE_NAME}:latest"
+          push_with_retry "${ORCH_IMAGE_NAME}:${{ github.sha }}"
+          push_with_retry "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
+          push_with_retry "${ORCH_IMAGE_NAME}:latest"
 
       - name: Trivy container scan (single pass to JSON)
         id: trivy-scan
@@ -504,6 +516,15 @@ jobs:
           else
             ALWAYS_READY='[]'
           fi
+          # Derive Durable Task work-items queue name from host.json so the KEDA
+          # trigger stays in sync automatically if the hub name changes.
+          DURABLE_HUB=$(jq -r '.extensions.durableTask.hubName // "DurableFunctionsHub"' \
+            "${GITHUB_WORKSPACE}/host.json" | tr '[:upper:]' '[:lower:]')
+          WORKITEMS_QUEUE="${DURABLE_HUB}-workitems"
+
+          # CORS + scaling via the Function App (Microsoft.Web/sites) PATCH.
+          # NOTE: functionAppConfig.scaleAndConcurrency.triggers is Flex-Consumption-only
+          # and silently ignored for azurecontainerapps kind — KEDA triggers go below.
           PATCH_BODY=$(jq -cn \
             --argjson origins "$ALLOWED_ORIGINS_JSON" \
             --argjson max "$MAX_INSTANCES" \
@@ -522,6 +543,65 @@ jobs:
           ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
             | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
           echo "Scaling config: $ACTUAL"
+
+          # KEDA azure-queue scale trigger on the backing Container App resource.
+          # For azurecontainerapps kind, scale triggers must go on
+          # Microsoft.App/containerApps (not functionAppConfig which is Flex-only).
+          # The system-assigned MI has Storage Queue Data Contributor on the storage
+          # account so KEDA authenticates keylessly via identity=system (no shared key).
+          STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
+          CONTAINER_APP_ID="/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${FUNC_RG}/providers/Microsoft.App/containerApps/${FUNC_NAME}"
+
+          # GET current Container App, inject scale rules, PUT back.
+          # Strips ARM read-only fields; preserves existing containers/ingress/config.
+          CURRENT=$(az rest --method GET --url "${CONTAINER_APP_ID}?api-version=2024-03-01")
+          PUT_BODY=$(echo "$CURRENT" | jq \
+            --arg  q   "$WORKITEMS_QUEUE" \
+            --arg  sa  "$STORAGE_ACCOUNT" \
+            --argjson max "$MAX_INSTANCES" \
+            '{
+              location: .location,
+              tags: (.tags // {}),
+              identity: .identity,
+              properties: (
+                .properties
+                | .template.scale = {
+                    minReplicas: 0,
+                    maxReplicas: $max,
+                    rules: [{
+                      name: "durable-workitems",
+                      custom: {
+                        type: "azure-queue",
+                        metadata: {
+                          queueName: $q,
+                          queueLength: "1",
+                          accountName: $sa,
+                          cloud: "AzurePublicCloud"
+                        },
+                        identity: "system"
+                      }
+                    }]
+                  }
+                | {
+                    managedEnvironmentId: .managedEnvironmentId,
+                    configuration: .configuration,
+                    template: .template
+                  }
+              )
+            }')
+          for attempt in 1 2 3; do
+            az rest --method PUT \
+              --url "${CONTAINER_APP_ID}?api-version=2024-03-01" \
+              --body "$PUT_BODY" && break
+            [ "$attempt" -lt 3 ] || { echo "❌ Container App scale rules PUT failed after 3 attempts"; exit 1; }
+            echo "⚠️  PUT attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+            sleep 20
+          done
+
+          # Verify KEDA scale rules applied
+          RULES=$(az rest --method GET --url "${CONTAINER_APP_ID}?api-version=2024-03-01" \
+            | jq '.properties.template.scale')
+          echo "Container App scale config: $RULES"
 
       - name: Configure Orchestrator Function App
         id: configure-orch-app

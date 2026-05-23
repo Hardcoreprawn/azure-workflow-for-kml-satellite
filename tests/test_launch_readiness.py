@@ -579,6 +579,34 @@ class TestDeployWorkflowSettings:
             "readiness so ingestion wiring is restored"
         )
 
+    def test_deploy_sets_keda_queue_trigger_for_activities_app(self, deploy_yml):
+        assert "azure-queue" in deploy_yml, (
+            "deploy.yml must configure an azure-queue KEDA trigger on the backing "
+            "Microsoft.App/containerApps resource so the activities app wakes from "
+            "zero replicas when Durable Task work items arrive. "
+            "functionAppConfig.scaleAndConcurrency.triggers is Flex-Consumption-only "
+            "and silently ignored for azurecontainerapps kind."
+        )
+
+    def test_deploy_keda_uses_container_apps_api(self, deploy_yml):
+        assert "Microsoft.App/containerApps" in deploy_yml, (
+            "KEDA scale rules must be set via the Microsoft.App/containerApps API — "
+            "functionAppConfig triggers are Flex-Consumption-only and silently "
+            "ignored for azurecontainerapps kind"
+        )
+
+    def test_deploy_keda_trigger_uses_keyless_connection(self, deploy_yml):
+        assert "accountName" in deploy_yml, (
+            "KEDA azure-queue trigger must use accountName metadata (managed-identity / "
+            "keyless auth, identity=system) — do not use a storage connection string"
+        )
+
+    def test_deploy_keda_queue_name_derived_from_host_json(self, deploy_yml):
+        assert "host.json" in deploy_yml, (
+            "deploy.yml must derive the Durable Task work-items queue name from "
+            "host.json so the KEDA trigger stays in sync when the hub name changes"
+        )
+
     def test_event_grid_reconcile_step_uses_orchestrator_outputs(self, deploy_yml):
         match = re.search(
             r"- name: Reconcile Event Grid subscription(?P<body>.*?)(?:\n\s*- name:|\Z)",
