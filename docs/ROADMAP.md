@@ -12,6 +12,7 @@ Last updated: 2026-05-21
 **Live prioritised board:** [github.com/users/Hardcoreprawn/projects/2](https://github.com/users/Hardcoreprawn/projects/2/views/1)
 
 Use the board for day-to-day prioritisation. Issues are labelled:
+
 - `priority:now` — currently being worked on
 - `priority:next` — up next after current work
 - `priority:backlog` — ordered, not yet scheduled
@@ -76,6 +77,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 | #856 | chore(deps): bump idna 3.11→3.15 — fixes CVE-2024-3651 (IDNA label length bypass, possible ReDoS via crafted hostname). `uv lock --upgrade-package idna`. All 1826 tests pass. |
 | #855 | feat(ci): auth-free pipeline smoke test in deploy workflow — `scripts/pipeline_smoke.py` injects KML + demo ticket directly into blob storage (stdlib+az CLI only; storage key via ARM Contributor, no Blob Data RBAC needed); Event Grid fires `blob_trigger` naturally; polls Durable management API to assert `runtimeStatus==Completed`. Gated `DEPLOY_ENV != prd`. Regression lock in `test_launch_readiness.py`. |
