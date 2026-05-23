@@ -252,14 +252,22 @@ def _collect_per_aoi_coords(
 def _build_order_lookups(
     orders: list[dict[str, Any]],
 ) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
-    """Build asset URL and order metadata lookup dicts from order results."""
-    asset_urls: dict[str, str] = {o.get("order_id", ""): o.get("asset_url", "") for o in orders}
+    """Build asset URL and order metadata lookup dicts from order results.
+
+    Orders that have no ``order_id`` are silently skipped; they cannot be
+    looked up and inserting them under the empty-string key would cause all
+    ID-less orders to collide and overwrite each other.
+    """
+    asset_urls: dict[str, str] = {
+        o["order_id"]: o.get("asset_url", "") for o in orders if o.get("order_id")
+    }
     order_meta: dict[str, dict[str, str]] = {
-        o.get("order_id", ""): {
+        o["order_id"]: {
             "role": o.get("role", ""),
             "collection": o.get("collection", ""),
         }
         for o in orders
+        if o.get("order_id")
     }
     return asset_urls, order_meta
 

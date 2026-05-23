@@ -2,7 +2,7 @@
 
 ## Source Of Truth
 
-- Treat `docs/ROADMAP.md` as the order-of-work source of truth.
+- Treat `docs/ROADMAP.md` as the stage and direction source of truth. Day-to-day work ordering lives on the [GitHub Project board](https://github.com/users/Hardcoreprawn/projects/2) (`priority:now` → `priority:next` → `priority:backlog`).
 - Treat `docs/PERSONA_DEEP_DIVE.md` as the source of truth for conservation, ESG/EUDR, and agricultural-advisor needs.
 - Use `docs/PID.md` for product scope and system intent.
 - Use `docs/ARCHITECTURE_OVERVIEW.md`, `docs/API_INTERFACE_REFERENCE.md`, and `docs/OPERATIONS_RUNBOOK.md` when changing runtime behavior, contracts, or operations.
@@ -21,6 +21,7 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 ## Delivery Workflow
 
 - Always start new work on a clean branch from `main`. Before creating the branch, verify the working tree is clean (`git status`). Do not pile unrelated changes onto an existing feature branch.
+- **Every PR must close at least one GitHub issue.** Prefer exactly one issue per PR. If no issue exists for the work, create one before opening the PR. Include `closes #NNN` (or `fixes #NNN`) in the PR body so the issue auto-closes on merge and the board moves automatically.
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
