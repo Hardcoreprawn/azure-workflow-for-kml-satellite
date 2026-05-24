@@ -460,6 +460,20 @@ class TestDeployWorkflowSettings:
             "body is ignore_changes in tofu"
         )
 
+    def test_deploy_updates_container_app_scale_rules_via_patch(self, deploy_yml):
+        patch_call = (
+            "az rest --method PATCH \\\n"
+            '              --url "${CONTAINER_APP_ID}?api-version=2024-03-01"'
+        )
+        assert patch_call in deploy_yml, (
+            "deploy.yml must use PATCH (not PUT) when wiring KEDA scale rules"
+            " on the backing Container App"
+        )
+        assert "az rest --method PUT" not in deploy_yml, (
+            "deploy.yml must not replace the entire Container App resource"
+            " when updating scale rules"
+        )
+
     def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
         assert "tofu output -json function_app_cli_app_settings" in deploy_yml, (
             "deploy.yml must source CLI-managed Function App app settings from tofu outputs "

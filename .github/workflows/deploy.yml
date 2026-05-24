@@ -552,10 +552,11 @@ jobs:
           STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
           CONTAINER_APP_ID="/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${FUNC_RG}/providers/Microsoft.App/containerApps/${FUNC_NAME}"
 
-          # GET current Container App, inject scale rules, PUT back.
-          # Strips ARM read-only fields; preserves existing containers/ingress/config.
+          # GET current Container App, inject scale rules, PATCH back.
+          # PATCH avoids replacing the whole resource while preserving existing
+          # containers/ingress/config and only updating the scale rules we own.
           CURRENT=$(az rest --method GET --url "${CONTAINER_APP_ID}?api-version=2024-03-01")
-          PUT_BODY=$(echo "$CURRENT" | jq \
+          PATCH_BODY=$(echo "$CURRENT" | jq \
             --arg  q   "$WORKITEMS_QUEUE" \
             --arg  sa  "$STORAGE_ACCOUNT" \
             --argjson max "$MAX_INSTANCES" \
@@ -590,11 +591,11 @@ jobs:
               )
             }')
           for attempt in 1 2 3; do
-            az rest --method PUT \
+            az rest --method PATCH \
               --url "${CONTAINER_APP_ID}?api-version=2024-03-01" \
-              --body "$PUT_BODY" && break
-            [ "$attempt" -lt 3 ] || { echo "❌ Container App scale rules PUT failed after 3 attempts"; exit 1; }
-            echo "⚠️  PUT attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+              --body "$PATCH_BODY" && break
+            [ "$attempt" -lt 3 ] || { echo "❌ Container App scale rules PATCH failed after 3 attempts"; exit 1; }
+            echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
             sleep 20
           done
 
