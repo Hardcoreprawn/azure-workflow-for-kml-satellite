@@ -246,7 +246,10 @@ class TestUploadToken:
 
         assert resp.status_code == 200
         mock_create.assert_called_once_with(
-            "test-user", name="Test User's Organisation", email="t@example.com"
+            "test-user",
+            name="Test User's Organisation",
+            email="t@example.com",
+            org_id="personal-test-user",
         )
 
     @patch("blueprints.upload.generate_blob_sas")
@@ -279,6 +282,49 @@ class TestUploadToken:
         # Reserve was called with the fallback org_id from create_org, not an empty/wrong value.
         self.mock_reserve_run.assert_called_once()
         assert self.mock_reserve_run.call_args.kwargs["org_id"] == "new-org-1"
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_concurrent_first_submission_uses_same_personal_org_id(self, mock_bsc, mock_gen_sas):
+        """Concurrent first submissions use deterministic personal org id.
+
+        Simulate eventual-consistency lag where both requests fail to re-read org
+        membership immediately after auto-create. Both fallback paths must still
+        reserve against the same org_id.
+        """
+        from blueprints.upload import upload_token
+
+        self.mock_get_user_org.side_effect = [None, None, None, None]
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        def _create_org_side_effect(user_id, *, name, email, org_id):
+            return {"org_id": org_id, "name": name}
+
+        with (
+            patch(
+                "blueprints.upload.create_org", side_effect=_create_org_side_effect
+            ) as mock_create,
+            patch(
+                "treesight.security.users.get_user",
+                return_value={"display_name": "Test User", "email": "t@example.com"},
+            ),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            req_1 = _make_req("/api/upload/token", method="POST")
+            req_2 = _make_req("/api/upload/token", method="POST")
+            resp_1 = upload_token(req_1)
+            resp_2 = upload_token(req_2)
+
+        assert resp_1.status_code == 200
+        assert resp_2.status_code == 200
+        assert mock_create.call_count == 2
+        assert all(
+            call.kwargs.get("org_id") == "personal-test-user" for call in mock_create.call_args_list
+        )
+        assert self.mock_reserve_run.call_count == 2
+        reserved_org_ids = [call.kwargs["org_id"] for call in self.mock_reserve_run.call_args_list]
+        assert reserved_org_ids == ["personal-test-user", "personal-test-user"]
 
     def test_auto_create_org_failure_returns_503(self):
         """If org auto-creation fails, return 503 rather than 403."""

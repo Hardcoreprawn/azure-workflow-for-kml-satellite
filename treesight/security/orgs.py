@@ -95,11 +95,12 @@ def create_org(
     *,
     name: str = "My Organisation",
     email: str = "",
+    org_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a new organisation with *user_id* as the initial owner."""
     from treesight.storage.cosmos import upsert_item
 
-    org_id = str(uuid.uuid4())
+    org_id = org_id or str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
 
     doc: dict[str, Any] = {
