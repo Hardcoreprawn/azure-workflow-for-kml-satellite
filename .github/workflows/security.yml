@@ -62,7 +62,15 @@ jobs:
                 f'line {line_no}: {vuln} is missing exp:YYYY-MM-DD metadata'
               )
               continue
-            expiry = date.fromisoformat(match.group(1))
+            exp_raw = match.group(1)
+            try:
+              expiry = date.fromisoformat(exp_raw)
+            except ValueError:
+              errors.append(
+                f'line {line_no}: {vuln} has invalid exp date {exp_raw!r} '
+                '(expected YYYY-MM-DD)'
+              )
+              continue
             if expiry < today:
               errors.append(
                 f'line {line_no}: {vuln} expired on {expiry.isoformat()}'
