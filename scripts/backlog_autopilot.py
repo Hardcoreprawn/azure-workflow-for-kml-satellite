@@ -14,6 +14,8 @@ from datetime import UTC, date, datetime
 from typing import Any
 from urllib import error, request
 
+COPILOT_ACTOR_ID = "BOT_kgDOC9w8XQ"
+
 
 @dataclass(frozen=True)
 class BudgetStatus:
@@ -145,6 +147,37 @@ def _fetch_paginated(token: str, path: str) -> list[dict[str, Any]]:
     return results
 
 
+def _github_graphql(*, token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    req = request.Request(
+        url="https://api.github.com/graphql",
+        data=payload,
+        method="POST",
+        headers=headers,
+    )
+    try:
+        with request.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+            parsed = json.loads(data.decode("utf-8")) if data else {}
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"GitHub GraphQL error {exc.code}: {detail}") from exc
+
+    errors = parsed.get("errors")
+    if errors:
+        raise RuntimeError(f"GitHub GraphQL returned errors: {errors}")
+
+    result = parsed.get("data")
+    if not isinstance(result, dict):
+        raise RuntimeError("GitHub GraphQL response missing 'data' object")
+    return result
+
+
 def load_open_issues(*, token: str, owner: str, repo: str) -> list[IssueCandidate]:
     raw_issues = _fetch_paginated(token, f"/repos/{owner}/{repo}/issues?state=open")
     out: list[IssueCandidate] = []
@@ -185,11 +218,55 @@ def count_open_copilot_prs(*, token: str, owner: str, repo: str) -> int:
 
 
 def assign_issue_to_copilot(*, token: str, owner: str, repo: str, issue_number: int) -> None:
-    _github_api(
+    issue_data = _github_graphql(
         token=token,
-        method="POST",
-        path=f"/repos/{owner}/{repo}/issues/{issue_number}/assignees",
-        body={"assignees": ["Copilot"]},
+        query=(
+            "query AssignableIssue($owner: String!, $repo: String!, $number: Int!) {"
+            " repository(owner: $owner, name: $repo) {"
+            "   issue(number: $number) {"
+            "     id"
+            "     assignees(first: 100) { nodes { id login } }"
+            "   }"
+            " }"
+            "}"
+        ),
+        variables={"owner": owner, "repo": repo, "number": issue_number},
+    )
+    repository = issue_data.get("repository")
+    issue = repository.get("issue") if isinstance(repository, dict) else None
+    if not isinstance(issue, dict):
+        raise RuntimeError(f"Issue #{issue_number} not found for {owner}/{repo}")
+
+    assignable_id = issue.get("id")
+    if not isinstance(assignable_id, str) or not assignable_id:
+        raise RuntimeError(f"Issue #{issue_number} missing assignable id")
+
+    assignees_obj = issue.get("assignees")
+    nodes = assignees_obj.get("nodes", []) if isinstance(assignees_obj, dict) else []
+    existing_actor_ids: list[str] = []
+    existing_logins: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        actor_id = node.get("id")
+        login = node.get("login")
+        if isinstance(actor_id, str) and actor_id:
+            existing_actor_ids.append(actor_id)
+        if isinstance(login, str) and login:
+            existing_logins.add(login)
+
+    if "Copilot" in existing_logins:
+        return
+
+    actor_ids = [*existing_actor_ids, COPILOT_ACTOR_ID]
+    _github_graphql(
+        token=token,
+        query=(
+            "mutation ReplaceActorsForAssignable($input: ReplaceActorsForAssignableInput!) {"
+            "  replaceActorsForAssignable(input: $input) { __typename }"
+            "}"
+        ),
+        variables={"input": {"assignableId": assignable_id, "actorIds": actor_ids}},
     )
 
 
