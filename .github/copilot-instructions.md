@@ -27,6 +27,20 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
 - When behavior, contracts, or rollout expectations change, update the relevant tests and docs in the same change.
 
+## Backlog Hygiene
+
+- When manipulating GitHub Issues or Projects, always fetch the full dataset explicitly. For CLI operations, pass a `--limit` large enough to cover the whole board; never rely on defaults.
+- When reordering a GitHub Project, verify the exact final order against the intended full ordered set and report the mismatch count. Do not stop at checking only the top items.
+- If a dependency is discovered (`blocked by`, `depends on`, stage ordering, prerequisite architecture work), link the issues in GitHub and reorder the board in the same task.
+- For staged issues with numbered prefixes (for example `2E.5.1`, `2E.5.2`), preserve ascending execution order unless an issue body or roadmap note explicitly states a different dependency.
+- Never mark issues as duplicate or superseded from title similarity or keyword overlap alone. Require explicit scope containment, linked acceptance criteria, or a clear umbrella/child relationship.
+- Prefer umbrella issue plus child slices over multiple overlapping top-level issues. When a broader tracker already exists, attach narrower work to it instead of creating another peer issue.
+- Default to `link and conditionally close later` when overlap is plausible but not certain. Only close immediately when duplication is unambiguous.
+- Consolidation guidance must be directional. Do not post symmetrical `A may replace B` and `B may replace A` claims.
+- For GitHub Project GraphQL reordering, omit `afterId` entirely for the first item. Do not send empty or null node IDs.
+- Before posting dependency or consolidation comments, check for an existing equivalent comment and skip duplicates.
+- Backlog simplification is part of planning work. When asked to plan or prioritise, identify blockers, umbrellas, child slices, and likely covered follow-on work so the backlog stays executable rather than merely sorted.
+
 ## Release Safety
 
 - For deploy, infra, auth, billing, and rollout work, prefer build-once/promote semantics and avoid accidental PR-branch deploys to shared environments.
