@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-05-21
+Last updated: 2026-06-13
 
 ---
 
@@ -77,15 +77,13 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| —  | **Recovery confirmed (#894):** `origin/feat/landsat-deep-integration` examined — the single unique feature commit (Landsat deep integration, #612) was already incorporated into main via PR #657. All 25 `test_landsat_deep.py` tests pass. Branch can be retired. |
 | #874 | fix(pipeline): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)) — prevent activity timeout at 50+ AOIs with ThreadPoolExecutor fan-out, capped concurrency, per-AOI failure isolation, and ordering-preservation tests. |
 | #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 | #856 | chore(deps): bump idna 3.11→3.15 — fixes CVE-2024-3651 (IDNA label length bypass, possible ReDoS via crafted hostname). `uv lock --upgrade-package idna`. All 1826 tests pass. |
 | #855 | feat(ci): auth-free pipeline smoke test in deploy workflow — `scripts/pipeline_smoke.py` injects KML + demo ticket directly into blob storage (stdlib+az CLI only; storage key via ARM Contributor, no Blob Data RBAC needed); Event Grid fires `blob_trigger` naturally; polls Durable management API to assert `runtimeStatus==Completed`. Gated `DEPLOY_ENV != prd`. Regression lock in `test_launch_readiness.py`. |
-| #853 | fix(parse): GDAL/PROJ parse hang — `PROJ_NETWORK=OFF` + `GDAL_HTTP_TIMEOUT=30` + `GDAL_MAX_HTTP_RETRY=0` + `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` set at module load before GDAL initialises; 60s `ThreadPoolExecutor` timeout with `shutdown(wait=False)` so a stuck GDAL thread never blocks teardown; structured `logger.info` throughout parse activity, ingestion, and fiona_parser for Log Analytics visibility; 2 new `TestFionaParserTimeout` tests. Fixes #852. |
-| #851 | fix(account): remove OPTIONS from `delete_account_endpoint` — eliminates cold-start route conflict with `get_profile_endpoint` on `route='user'`. Also fixes `cors_headers()` to advertise `PATCH` and `DELETE` (was missing — browser preflights for account deletion, profile update, and org member management would be rejected). Adds 3 CORS contract tests. Also: standardise Durable task hub → `DurableFunctionsHub`; raise telemetry sampling 1→5/s; raise log levels to `Information`. |
-| #849 | chore(infra): drop SWA `stapp-kmlsat-dev-site` from Standard to Free SKU — saves ~£7–16/month (~50% of dev bill). Also ships `fix(deploy): retry az functionapp config container set on 503` and launch-readiness regression lock for Free SKU. Confirmed safe: no linked backend (ACA-hosted FA API unsupported, see #282), 1 custom domain (Free limit is 2), static bundle/traffic well under Free limits. |
-| #848 | feat(rollout): generalised feature flag evaluator Phase 1 (#403) — `is_feature_enabled()` with 7-rule fail-closed evaluation order (kill_switch, missing doc, per-user override with expiry, off/blocked, preview_only, percentage_rollout, on); deterministic sha256 bucketing; 2 new Cosmos containers (`feature_flags`, `feature_flag_overrides`); 2 operator scripts; 31 tests. Phases 2 (smoke evidence) and 3 (scheduled controller) remain open on #403. |
+| #853 | fix(parse): GDAL/PROJ parse hang — `PROJ_NETWORK=OFF` + `GDAL_HTTP_TIMEOUT=30` + `GDAL_MAX_HTTP_RETRY=0` + `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` set at module load before GDAL initialises; 60s `ThreadPoolExecutor` timeout with `shutdown(wait=False)` so a stuck GDAL thread never blocks teardown. Fixes #852. |
 
 ---
 
