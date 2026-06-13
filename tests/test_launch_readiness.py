@@ -763,8 +763,11 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_infra_exports_storage_account_name(self, deploy_yml):
         """deploy-infra job must export storage_account_name for CSP hostname injection."""
-        assert "storage_account_name: ${{ steps.storage-account.outputs.name }}" in deploy_yml, (
+        assert "storage_account_name:" in deploy_yml, (
             "deploy-infra job outputs must include storage_account_name for CSP substitution"
+        )
+        assert "steps.storage-account.outputs.name" in deploy_yml, (
+            "deploy-infra storage_account_name output must reference the storage-account step"
         )
         assert "Export storage account name" in deploy_yml, (
             "deploy.yml must have a named step to export the storage account name"

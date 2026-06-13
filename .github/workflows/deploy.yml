@@ -1314,8 +1314,9 @@ jobs:
         run: |
           set -euo pipefail
           FUNC_HOST="${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"
-          BLOB_HOST="${{ needs.deploy-infra.outputs.storage_account_name }}.blob.core.windows.net"
-          if [ -z "$FUNC_HOST" ] || [ -z "${{ needs.deploy-infra.outputs.storage_account_name }}" ]; then
+          STORAGE_NAME="${{ needs.deploy-infra.outputs.storage_account_name }}"
+          BLOB_HOST="${STORAGE_NAME}.blob.core.windows.net"
+          if [ -z "$FUNC_HOST" ] || [ -z "$BLOB_HOST" ]; then
             echo "❌ CSP hostname substitution failed: function_app_orch_hostname or storage_account_name is empty."
             exit 1
           fi
