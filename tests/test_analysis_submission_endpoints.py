@@ -626,6 +626,37 @@ class TestAnalysisSubmissionRoutes:
 
         assert resp.status_code == 409
 
+    def test_prior_submission_id_accepts_matching_ticket_context(self):
+        """A fallback submit reuses the reserved ticket when EUDR mode and parcel count match."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": prior_id,
+                "eudr_mode": True,
+                "parcel_count": 3,
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 3},
+            ),
+            patch("blueprints.pipeline.submission.reserve_run") as mock_reserve,
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        data = json.loads(resp.get_body())
+        assert data["instance_id"] == prior_id
+        mock_reserve.assert_not_called()
+
     def test_submit_failure_refunds_reserved_submission_id(self):
         """Storage failures refund the same reserved submission id."""
         from blueprints.pipeline.submission import _submit_analysis_request

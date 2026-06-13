@@ -80,7 +80,10 @@ def _requested_is_eudr(body: Any) -> bool:
 
 
 def _requested_parcel_count(body: Any, *, default: int = 1) -> int:
-    """Return a positive parcel count from the request body or *default*."""
+    """Return a positive parcel count from the request body or *default*.
+
+    Missing, non-numeric, zero, and negative values fall back to *default*.
+    """
     if not isinstance(body, dict):
         return default
     parcel_count = body.get("parcel_count", default)
@@ -93,10 +96,12 @@ def _prior_ticket_matches_request(ticket: dict[str, Any], body: Any) -> bool:
     """Return True when fallback submission matches the reserved upload ticket."""
     ticket_is_eudr = ticket.get("eudr_mode") is True
     ticket_parcel_count = _requested_parcel_count(ticket, default=1)
-    requested_parcel_count = _requested_parcel_count(body, default=ticket_parcel_count)
-    return (
-        _requested_is_eudr(body) is ticket_is_eudr and requested_parcel_count == ticket_parcel_count
-    )
+    if _requested_is_eudr(body) is not ticket_is_eudr:
+        return False
+    if isinstance(body, dict) and "parcel_count" in body:
+        requested_parcel_count = _requested_parcel_count(body, default=0)
+        return requested_parcel_count == ticket_parcel_count
+    return True
 
 
 def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
@@ -356,7 +361,7 @@ async def _submit_analysis_request(
             **plan_overrides,
             **eudr_input,
         },
-        submission_id=submission_id,
+        instance_id=submission_id,
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
@@ -398,7 +403,7 @@ async def _submit_kml(
     body: Any,
     *,
     blob_prefix: str,
-    submission_id: str,
+    instance_id: str,
     extra_input: dict[str, Any] | None = None,
     log_tag: str = "",
 ) -> func.HttpResponse:
@@ -413,7 +418,7 @@ async def _submit_kml(
         return kml_bytes
 
     safe_prefix = blob_prefix.strip("/") or "analysis"
-    kml_blob_name = f"{safe_prefix}/{submission_id}.kml"
+    kml_blob_name = f"{safe_prefix}/{instance_id}.kml"
 
     from treesight.storage.client import BlobStorageClient
 
@@ -428,7 +433,7 @@ async def _submit_kml(
             ticket.update(extra_input)
         storage.upload_json(
             DEFAULT_INPUT_CONTAINER,
-            f".tickets/{submission_id}.json",
+            f".tickets/{instance_id}.json",
             ticket,
         )
 
@@ -446,10 +451,10 @@ async def _submit_kml(
             req=req,
         )
 
-    logger.info("%s submission_id=%s blob=%s", log_tag, submission_id, kml_blob_name)
+    logger.info("%s submission_id=%s blob=%s", log_tag, instance_id, kml_blob_name)
 
     return func.HttpResponse(
-        json.dumps({"instance_id": submission_id, "submission_prefix": safe_prefix}),
+        json.dumps({"instance_id": instance_id, "submission_prefix": safe_prefix}),
         status_code=202,
         mimetype="application/json",
         headers=cors_headers(req),
