@@ -43,17 +43,28 @@ jobs:
       - name: Run backlog autopilot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          INPUT_MONTHLY_BUDGET_USD: ${{ github.event.inputs.monthly_budget_usd || '' }}
+          INPUT_MONTH_SPEND_USED_USD: ${{ github.event.inputs.month_spend_used_usd || '' }}
+          INPUT_MAX_NEW_ASSIGNMENTS: ${{ github.event.inputs.max_new_assignments || '' }}
+          VAR_MONTHLY_BUDGET_USD: ${{ vars.AUTOPILOT_MONTHLY_BUDGET_USD || '200' }}
+          VAR_MONTH_SPEND_USED_USD: ${{ vars.AUTOPILOT_MONTH_SPEND_USED_USD || '0' }}
+          VAR_MAX_NEW_ASSIGNMENTS: ${{ vars.AUTOPILOT_MAX_NEW_ASSIGNMENTS || '2' }}
+          VAR_RESERVE_RATIO: ${{ vars.AUTOPILOT_RESERVE_RATIO || '0.25' }}
+          VAR_MAX_OPEN_AUTOPILOT_PRS: ${{ vars.AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS || '8' }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
-          DRY_RUN="${{ github.event.inputs.dry_run || 'true' }}"
-          MONTHLY_BUDGET_USD="${{ github.event.inputs.monthly_budget_usd || vars.AUTOPILOT_MONTHLY_BUDGET_USD || '200' }}"
-          MONTH_SPEND_USED_USD="${{ github.event.inputs.month_spend_used_usd || vars.AUTOPILOT_MONTH_SPEND_USED_USD || '0' }}"
-          MAX_NEW_ASSIGNMENTS="${{ github.event.inputs.max_new_assignments || vars.AUTOPILOT_MAX_NEW_ASSIGNMENTS || '2' }}"
-          RESERVE_RATIO="${{ vars.AUTOPILOT_RESERVE_RATIO || '0.25' }}"
-          MAX_OPEN_AUTOPILOT_PRS="${{ vars.AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS || '8' }}"
+          DRY_RUN="${INPUT_DRY_RUN:-true}"
+          MONTHLY_BUDGET_USD="${INPUT_MONTHLY_BUDGET_USD:-$VAR_MONTHLY_BUDGET_USD}"
+          MONTH_SPEND_USED_USD="${INPUT_MONTH_SPEND_USED_USD:-$VAR_MONTH_SPEND_USED_USD}"
+          MAX_NEW_ASSIGNMENTS="${INPUT_MAX_NEW_ASSIGNMENTS:-$VAR_MAX_NEW_ASSIGNMENTS}"
+          RESERVE_RATIO="$VAR_RESERVE_RATIO"
+          MAX_OPEN_AUTOPILOT_PRS="$VAR_MAX_OPEN_AUTOPILOT_PRS"
 
           ARGS=(
-            --owner "${{ github.repository_owner }}"
-            --repo "${{ github.event.repository.name }}"
+            --owner "$REPOSITORY_OWNER"
+            --repo "$REPOSITORY_NAME"
             --monthly-budget-usd "$MONTHLY_BUDGET_USD"
             --month-spend-used-usd "$MONTH_SPEND_USED_USD"
             --reserve-ratio "$RESERVE_RATIO"

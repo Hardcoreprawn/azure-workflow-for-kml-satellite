@@ -35,13 +35,18 @@ jobs:
       - name: Run watchdog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          INPUT_MAX_PRS: ${{ github.event.inputs.max_prs || '' }}
+          VAR_MAX_PRS: ${{ vars.AUTOPILOT_WATCHDOG_MAX_PRS || '20' }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
-          DRY_RUN="${{ github.event.inputs.dry_run || 'true' }}"
-          MAX_PRS="${{ github.event.inputs.max_prs || vars.AUTOPILOT_WATCHDOG_MAX_PRS || '20' }}"
+          DRY_RUN="${INPUT_DRY_RUN:-true}"
+          MAX_PRS="${INPUT_MAX_PRS:-$VAR_MAX_PRS}"
 
           ARGS=(
-            --owner "${{ github.repository_owner }}"
-            --repo "${{ github.event.repository.name }}"
+            --owner "$REPOSITORY_OWNER"
+            --repo "$REPOSITORY_NAME"
             --max-prs "$MAX_PRS"
           )
 
