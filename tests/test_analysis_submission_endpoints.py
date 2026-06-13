@@ -206,6 +206,36 @@ class TestAnalysisSubmissionRoutes:
         assert ticket_data["cadence"] == "seasonal"
         assert ticket_data["max_history_years"] == 2
 
+    def test_eudr_submit_marks_reservation_as_eudr(self):
+        """Direct EUDR submit path must use the same EUDR reservation flag as upload-token."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "eudr_mode": True,
+            },
+        )
+
+        mock_reserve = MagicMock(return_value={"reserved_parcels": 1})
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        assert mock_reserve.call_args.kwargs["is_eudr"] is True
+
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
 

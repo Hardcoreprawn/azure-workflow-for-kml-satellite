@@ -228,12 +228,14 @@ def _resolve_quota(
     if not isinstance(org_id, str) or not org_id:
         return False, "", error_response(403, "User not in any org", req=req)
 
+    is_eudr = isinstance(body, dict) and body.get("eudr_mode") is True
+
     try:
         reserve_run(
             org_id=org_id,
             user_id=user_id,
             parcel_count=1,
-            is_eudr=False,
+            is_eudr=is_eudr,
             instance_id=str(uuid.uuid4()),
         )
         return True, org_id, None
