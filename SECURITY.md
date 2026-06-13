@@ -51,3 +51,8 @@ Current temporary exceptions:
 - `AVD-AZU-0016` (Key Vault purge protection — variable defaults to `true`; Trivy cannot resolve variable refs)
 - `AVD-AZU-0057` (Storage Analytics logging — superseded by `azurerm_monitor_diagnostic_setting`)
 - `AVD-AZU-0061` (Infrastructure encryption — already enabled; Trivy false positive)
+- `CVE-2026-48109` (MessagePack HIGH — in `FuncExtensionBundles` baked into Microsoft's base image; fix
+  released 2026-06-09 as MessagePack 2.5.301/3.1.7, but no patched extension bundle exists yet.
+  Attack surface is limited to internal Durable Functions state serialisation over Azure Storage,
+  not reachable from untrusted user input.  Will clear automatically on next base-image rebuild
+  once Microsoft ships a patched bundle. Expiry: 2026-07-13. Tracked in #904.)

@@ -60,3 +60,18 @@ CVE-2026-4878 # exp:2026-07-09 libcap2 HIGH — fixed in deb12u3, base rebuild p
 # Requires attacker-controlled memalign call size. Not directly reachable
 # via our application but glibc is load-bearing — base rebuild prioritised.
 CVE-2026-0861 # exp:2026-07-09 libc6+libc-bin HIGH — fixed in deb12u14, base rebuild pending
+
+# MessagePack CVE-2026-48109 (LZ4 unsafe deserialization, HIGH) in
+# FuncExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.35.0/bin/.
+# The vulnerable library is baked into the Microsoft base image
+# (mcr.microsoft.com/azure-functions/python:4-python3.12); we cannot patch it
+# independently.  The fix (MessagePack >= 2.5.301 / 3.1.7) was published
+# 2026-06-09 — AFTER bundle 4.36.0 shipped (2026-05-27), so no patched bundle
+# exists yet.  Attack surface is limited: MessagePack is used exclusively for
+# internal Durable Functions orchestration-state serialisation over Azure
+# Storage; it is NOT reachable from untrusted user input.
+# Remediation path: next stable bundle release (≥4.37.0) must adopt
+# MessagePack ≥ 2.5.301; Microsoft base image then auto-refreshed by the daily
+# base-image.yml rebuild.  Remove this entry once the rebuilt image is pushed.
+# Tracked in #904.
+CVE-2026-48109 # exp:2026-07-13 MessagePack HIGH in extension bundle — awaiting upstream bundle + base rebuild
