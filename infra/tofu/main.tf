@@ -1216,9 +1216,9 @@ data "azuread_service_principal" "msgraph" {
 
 # Federated identity credentials for the deploy SP — one per GitHub Environment.
 # Allows CI/CD to exchange a GitHub OIDC token for a CIAM-tenant access token
-# without storing a client secret anywhere.
-# NOTE: import blocks support `for_each` only (not `count`); the resource also
-# uses `for_each` so addresses align (`...deploy_sp["dev"]`, `...deploy_sp["prd"]`).
+# without storing a client secret anywhere. `for_each` is used (rather than
+# `count`) because there are two distinct instances (dev and prd) that need
+# individual state addresses for targeted imports.
 # To adopt existing manually-created credentials run:
 #   tofu import \
 #     'azuread_application_federated_identity_credential.deploy_sp["dev"]' \
@@ -1241,10 +1241,13 @@ resource "azuread_application_federated_identity_credential" "deploy_sp" {
 # Keep the deploy SP as an owner of the SPA app registration.
 # Ownership grants the deploy SP an implicit Application.ReadWrite.OwnedBy scope
 # over the SPA app without requiring a broader tenant-level role.
-# NOTE: import blocks support `for_each` only (not `count`), so the resource also
-# uses `for_each` so addresses align (`...deploy_sp_owns_canopex["owner"]`).
-# The import block below adopts the manually-created owner relationship on first
-# apply; subsequent applies are idempotent regardless of how it was created.
+# NOTE: OpenTofu import blocks support `for_each` only (not `count`), so this
+# resource uses a single-element `for_each` so its address aligns with the import
+# block below (`...deploy_sp_owns_canopex["owner"]`). Without this alignment the
+# import block cannot reference the resource. See the same pattern used above for
+# `azuread_application_redirect_uris.ciam_spa["spa"]`.
+# The import block adopts the manually-created owner relationship on first apply;
+# subsequent applies are idempotent regardless of how the relationship was created.
 resource "azuread_application_owner" "deploy_sp_owns_canopex" {
   for_each        = local.ciam_redirect_enabled ? toset(["owner"]) : toset([])
   application_id  = data.azuread_application.ciam[0].id

@@ -105,6 +105,10 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
      -var-file="environments/<env>.tfvars"
    ```
 
+   Bare resource names (no `["dev"]` or `[0]` suffix) tell Tofu to target
+   **all instances** of each resource — both `["dev"]` and `["prd"]` for
+   the federated credentials, and `[0]` for the app role assignment.
+
    Tofu will:
    - Create federated credentials (`github-dev` and `github-prd`) on the deploy SP
    - **Import or create** the owner relationship (an `import` block in `main.tf`
