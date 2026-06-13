@@ -77,6 +77,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #895 | feat: EUDR content cluster — supplier guide, data sources, FAQ, glossary (fixes #617); add 4 EUDR doc pages to sitemap.xml. |
 | #874 | fix(pipeline): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)) — prevent activity timeout at 50+ AOIs with ThreadPoolExecutor fan-out, capped concurrency, per-AOI failure isolation, and ordering-preservation tests. |
 | #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |

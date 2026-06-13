@@ -31,6 +31,26 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://canopex.hrdcrprwn.com/docs/eudr-supplier-guide.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://canopex.hrdcrprwn.com/docs/eudr-data-sources.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://canopex.hrdcrprwn.com/docs/eudr-faq.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://canopex.hrdcrprwn.com/docs/eudr-glossary.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://canopex.hrdcrprwn.com/terms.html</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
