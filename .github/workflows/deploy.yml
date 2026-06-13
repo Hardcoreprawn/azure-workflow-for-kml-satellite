@@ -292,6 +292,7 @@ jobs:
       swa_hostname: ${{ steps.swa-hostname.outputs.hostname }}
       custom_domain: ${{ steps.swa-hostname.outputs.custom_domain }}
       ciam_page_config: ${{ steps.ciam-page-config.outputs.json }}
+      storage_account_name: ${{ steps.storage-account.outputs.name }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -918,6 +919,17 @@ jobs:
           # page HTML by the SWA deploy job. No Key Vault round-trip needed.
           echo "json=$(tofu output -raw ciam_page_config)" >> "$GITHUB_OUTPUT"
 
+      - name: Export storage account name
+        id: storage-account
+        working-directory: infra/tofu
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          echo "name=$(tofu output -raw storage_account_name)" >> "$GITHUB_OUTPUT"
+
       - name: Verify runtime readiness
         id: verify-readiness
         working-directory: infra/tofu
@@ -1297,6 +1309,21 @@ jobs:
           ESCAPED=$(printf '%s' "$CIAM_JSON" | sed -e 's/[\&|]/\\&/g')
           find website -name '*.html' -exec sed -i \
             's|{"clientId":"","authority":"","tenantId":"","apiAudience":""}|'"${ESCAPED}"'|' {} +
+
+      - name: Inject CSP hostnames
+        run: |
+          set -euo pipefail
+          FUNC_HOST="${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"
+          BLOB_HOST="${{ needs.deploy-infra.outputs.storage_account_name }}.blob.core.windows.net"
+          if [ -z "$FUNC_HOST" ] || [ -z "${{ needs.deploy-infra.outputs.storage_account_name }}" ]; then
+            echo "❌ CSP hostname substitution failed: function_app_orch_hostname or storage_account_name is empty."
+            exit 1
+          fi
+          sed -i \
+            -e "s|__FUNC_HOSTNAME__|${FUNC_HOST}|g" \
+            -e "s|__BLOB_HOSTNAME__|${BLOB_HOST}|g" \
+            website/staticwebapp.config.json
+          echo "✅ CSP pinned: connect-src allows ${FUNC_HOST} and ${BLOB_HOST}"
 
       - name: Deploy to Azure Static Web Apps
         id: swa-deploy

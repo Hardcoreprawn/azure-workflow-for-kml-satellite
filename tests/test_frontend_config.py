@@ -196,6 +196,40 @@ class TestCsp:
             "CSP still references deprecated alcdn.msauth.net CDN"
         )
 
+    def test_connect_src_no_wildcard_container_apps(self, swa_config):
+        """CSP connect-src must not use *.azurecontainerapps.io wildcard.
+
+        The wildcard matches any Container App on Azure, not just ours.
+        Use the placeholder token __FUNC_HOSTNAME__ (substituted at deploy time)
+        instead. See issue #573.
+        """
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        assert "*.azurecontainerapps.io" not in csp, (
+            "CSP connect-src must not use *.azurecontainerapps.io wildcard — "
+            "pin to the specific hostname via __FUNC_HOSTNAME__ placeholder"
+        )
+        assert "__FUNC_HOSTNAME__" in csp, (
+            "CSP connect-src must contain the __FUNC_HOSTNAME__ placeholder "
+            "that is substituted with the actual Container App FQDN at deploy time"
+        )
+
+    def test_connect_src_no_wildcard_blob_storage(self, swa_config):
+        """CSP connect-src must not use *.blob.core.windows.net wildcard.
+
+        The wildcard matches any Azure Storage account globally.
+        Use the placeholder token __BLOB_HOSTNAME__ (substituted at deploy time)
+        instead. See issue #573.
+        """
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        assert "*.blob.core.windows.net" not in csp, (
+            "CSP connect-src must not use *.blob.core.windows.net wildcard — "
+            "pin to the specific storage account hostname via __BLOB_HOSTNAME__ placeholder"
+        )
+        assert "__BLOB_HOSTNAME__" in csp, (
+            "CSP connect-src must contain the __BLOB_HOSTNAME__ placeholder "
+            "that is substituted with the actual storage hostname at deploy time"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Auth integration — login/logout use SWA routes

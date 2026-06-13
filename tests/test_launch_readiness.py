@@ -746,6 +746,33 @@ class TestDeployWorkflowSettings:
             "to avoid triggering live imagery acquisition"
         )
 
+    def test_deploy_injects_csp_hostnames_before_swa_upload(self, deploy_yml):
+        """Deploy must substitute CSP placeholder tokens before uploading to SWA."""
+        assert "Inject CSP hostnames" in deploy_yml, (
+            "deploy.yml must have a named step to inject CSP hostnames before SWA upload"
+        )
+        assert "__FUNC_HOSTNAME__" in deploy_yml, (
+            "deploy.yml must substitute the __FUNC_HOSTNAME__ placeholder in staticwebapp.config.json"
+        )
+        assert "__BLOB_HOSTNAME__" in deploy_yml, (
+            "deploy.yml must substitute the __BLOB_HOSTNAME__ placeholder in staticwebapp.config.json"
+        )
+        assert "storage_account_name" in deploy_yml, (
+            "deploy.yml CSP injection must use the storage_account_name tofu output"
+        )
+
+    def test_deploy_infra_exports_storage_account_name(self, deploy_yml):
+        """deploy-infra job must export storage_account_name for CSP hostname injection."""
+        assert "storage_account_name: ${{ steps.storage-account.outputs.name }}" in deploy_yml, (
+            "deploy-infra job outputs must include storage_account_name for CSP substitution"
+        )
+        assert "Export storage account name" in deploy_yml, (
+            "deploy.yml must have a named step to export the storage account name"
+        )
+        assert "tofu output -raw storage_account_name" in deploy_yml, (
+            "export step must read storage_account_name from tofu outputs"
+        )
+
 
 class TestStripeKeyVaultBootstrap:
     """Ensure Stripe secret bootstrap tolerates fresh Key Vault RBAC propagation."""
