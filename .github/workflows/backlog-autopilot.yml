@@ -1,0 +1,68 @@
+name: Backlog Autopilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run only (no assignments)"
+        required: false
+        default: "true"
+      monthly_budget_usd:
+        description: "Monthly budget for agent automation (USD)"
+        required: false
+        default: "200"
+      month_spend_used_usd:
+        description: "Month-to-date spend used for this automation (USD)"
+        required: false
+        default: "0"
+      max_new_assignments:
+        description: "Max new assignments per run"
+        required: false
+        default: "2"
+  schedule:
+    - cron: "15 */8 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  dispatch:
+    name: Budget-Paced Dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5
+        with:
+          python-version: "3.12"
+
+      - name: Run backlog autopilot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DRY_RUN="${{ github.event.inputs.dry_run || 'true' }}"
+          MONTHLY_BUDGET_USD="${{ github.event.inputs.monthly_budget_usd || vars.AUTOPILOT_MONTHLY_BUDGET_USD || '200' }}"
+          MONTH_SPEND_USED_USD="${{ github.event.inputs.month_spend_used_usd || vars.AUTOPILOT_MONTH_SPEND_USED_USD || '0' }}"
+          MAX_NEW_ASSIGNMENTS="${{ github.event.inputs.max_new_assignments || vars.AUTOPILOT_MAX_NEW_ASSIGNMENTS || '2' }}"
+          RESERVE_RATIO="${{ vars.AUTOPILOT_RESERVE_RATIO || '0.25' }}"
+          MAX_OPEN_AUTOPILOT_PRS="${{ vars.AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS || '8' }}"
+
+          ARGS=(
+            --owner "${{ github.repository_owner }}"
+            --repo "${{ github.event.repository.name }}"
+            --monthly-budget-usd "$MONTHLY_BUDGET_USD"
+            --month-spend-used-usd "$MONTH_SPEND_USED_USD"
+            --reserve-ratio "$RESERVE_RATIO"
+            --max-new-assignments "$MAX_NEW_ASSIGNMENTS"
+            --max-open-autopilot-prs "$MAX_OPEN_AUTOPILOT_PRS"
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+
+          python scripts/backlog_autopilot.py "${ARGS[@]}"
