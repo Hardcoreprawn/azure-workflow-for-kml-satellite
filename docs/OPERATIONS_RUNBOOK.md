@@ -160,6 +160,25 @@ the startup logging installer ran before config validation and replay-store setu
 4. Confirm workflow pre-flight passed `GHCR_PULL_TOKEN` contract validation.
 5. After recovery, restart Function App and verify `/api/health` returns 200.
 
+### Function App write blocked by stuck ARM operation
+
+Symptom in deploy logs:
+
+- `Cannot modify this site because another operation is in progress`
+- Usually appears during `Configure Function App` or `Configure Orchestrator Function App`
+
+Responder actions:
+
+1. Capture the workflow-emitted activity log table (`Microsoft.Web/sites/write` operation IDs + timestamps).
+2. Retry the same write from Azure Portal once (portal path can clear backend lock state).
+3. If lock persists for more than 1 hour, open an Azure Support ticket and attach the operation ID/correlation ID.
+4. Re-run deploy after lock clears and confirm readiness checks (`/api/health`, `/api/readiness`) pass for both compute + orchestrator hosts.
+
+Rollback/readiness note:
+
+- Rollback image steps also require ARM writes; if the lock is active, rollback cannot proceed until Azure clears the operation.
+- Treat the environment as unchanged until deploy resumes and the workflow readiness probes complete successfully.
+
 ## Add New Imagery Provider Adapter
 
 1. Implement ImageryProvider in treesight/providers.
