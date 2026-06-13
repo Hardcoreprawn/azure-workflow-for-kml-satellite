@@ -42,7 +42,8 @@ jobs:
 
       - name: Run backlog autopilot
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTOPILOT_USER_TOKEN: ${{ secrets.AUTOPILOT_USER_TOKEN || '' }}
+          DEFAULT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
           INPUT_MONTHLY_BUDGET_USD: ${{ github.event.inputs.monthly_budget_usd || '' }}
           INPUT_MONTH_SPEND_USED_USD: ${{ github.event.inputs.month_spend_used_usd || '' }}
@@ -62,6 +63,17 @@ jobs:
           MAX_NEW_ASSIGNMENTS="${INPUT_MAX_NEW_ASSIGNMENTS:-$VAR_MAX_NEW_ASSIGNMENTS}"
           RESERVE_RATIO="$VAR_RESERVE_RATIO"
           MAX_OPEN_AUTOPILOT_PRS="$VAR_MAX_OPEN_AUTOPILOT_PRS"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            GITHUB_TOKEN="$DEFAULT_GITHUB_TOKEN"
+          else
+            if [ -z "$AUTOPILOT_USER_TOKEN" ]; then
+              echo "::error::AUTOPILOT_USER_TOKEN secret is required for non-dry-run Copilot assignment"
+              exit 1
+            fi
+            GITHUB_TOKEN="$AUTOPILOT_USER_TOKEN"
+          fi
+          export GITHUB_TOKEN
 
           ARGS=(
             --owner "$REPOSITORY_OWNER"
