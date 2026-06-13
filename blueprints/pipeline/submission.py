@@ -91,14 +91,12 @@ def _requested_parcel_count(body: Any, *, default: int = 1) -> int:
 
 def _prior_ticket_matches_request(ticket: dict[str, Any], body: Any) -> bool:
     """Return True when fallback submission matches the reserved upload ticket."""
-    expected_is_eudr = bool(ticket.get("eudr_mode") is True)
-    expected_parcel_count = _requested_parcel_count(
-        body,
-        default=_requested_parcel_count(ticket, default=1),
+    ticket_is_eudr = ticket.get("eudr_mode") is True
+    ticket_parcel_count = _requested_parcel_count(ticket, default=1)
+    requested_parcel_count = _requested_parcel_count(body, default=ticket_parcel_count)
+    return (
+        _requested_is_eudr(body) is ticket_is_eudr and requested_parcel_count == ticket_parcel_count
     )
-    return _requested_is_eudr(
-        body
-    ) is expected_is_eudr and expected_parcel_count == _requested_parcel_count(ticket, default=1)
 
 
 def _submission_plan_overrides(user_id: str) -> dict[str, Any]:

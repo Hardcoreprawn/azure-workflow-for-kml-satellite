@@ -579,6 +579,53 @@ class TestAnalysisSubmissionRoutes:
 
         assert resp.status_code == 409
 
+    def test_prior_submission_id_rejects_missing_eudr_flag_for_eudr_ticket(self):
+        """A fallback submit must preserve the reserved ticket's EUDR mode."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 1},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
+    def test_prior_submission_id_rejects_parcel_count_mismatch(self):
+        """A fallback submit must preserve the original reserved parcel count."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "parcel_count": 3,
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "parcel_count": 1},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
     def test_submit_failure_refunds_reserved_submission_id(self):
         """Storage failures refund the same reserved submission id."""
         from blueprints.pipeline.submission import _submit_analysis_request
