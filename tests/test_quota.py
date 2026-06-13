@@ -127,8 +127,8 @@ class TestConsumeQuota:
             try:
                 future.result()
                 successes += 1
-            except ValueError:
-                pass
+            except ValueError as exc:
+                assert "Quota exhausted" in str(exc)
 
         assert successes == allowance
         assert _mock_cosmos[f"users/{user_id}"]["quota"]["used"] == allowance

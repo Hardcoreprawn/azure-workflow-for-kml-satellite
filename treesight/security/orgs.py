@@ -524,6 +524,29 @@ def _set_user_org(user_id: str, org_id: str, role: str) -> None:
         existing.setdefault("user_id", user_id)
         existing["org_id"] = org_id
         existing["org_role"] = role
+
+        latest = read_item("users", user_id, user_id)
+        if isinstance(latest, dict):
+            latest_quota_raw = latest.get("quota")
+            if isinstance(latest_quota_raw, dict):
+                latest_quota: dict = latest_quota_raw
+                existing_quota_raw = existing.get("quota")
+                existing_quota: dict = (
+                    existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
+                )
+                merged_quota = dict(latest_quota)
+                merged_quota.update(existing_quota)
+                merged_quota["used"] = max(
+                    int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0))
+                )
+                latest_runs = latest_quota.get("runs", [])
+                existing_runs = existing_quota.get("runs", [])
+                if isinstance(latest_runs, list) and isinstance(existing_runs, list):
+                    merged_quota["runs"] = (
+                        latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
+                    )
+                existing["quota"] = merged_quota
+
         upsert_item("users", existing)
     except Exception:
         logger.warning("Failed to set org on user=%s", user_id, exc_info=True)
@@ -540,6 +563,31 @@ def _clear_user_org(user_id: str) -> None:
         if existing:
             existing.pop("org_id", None)
             existing.pop("org_role", None)
+
+            latest = read_item("users", user_id, user_id)
+            if isinstance(latest, dict):
+                latest_quota_raw = latest.get("quota")
+                if isinstance(latest_quota_raw, dict):
+                    latest_quota: dict = latest_quota_raw
+                    existing_quota_raw = (
+                        existing.get("quota") if isinstance(existing.get("quota"), dict) else {}
+                    )
+                    existing_quota: dict = (
+                        existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
+                    )
+                    merged_quota = dict(latest_quota)
+                    merged_quota.update(existing_quota)
+                    merged_quota["used"] = max(
+                        int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0))
+                    )
+                    latest_runs = latest_quota.get("runs", [])
+                    existing_runs = existing_quota.get("runs", [])
+                    if isinstance(latest_runs, list) and isinstance(existing_runs, list):
+                        merged_quota["runs"] = (
+                            latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
+                        )
+                    existing["quota"] = merged_quota
+
             upsert_item("users", existing)
     except Exception:
         logger.warning("Failed to clear org on user=%s", user_id, exc_info=True)

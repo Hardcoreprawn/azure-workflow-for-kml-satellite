@@ -45,12 +45,35 @@ def _get_quota_record(user_id: str) -> dict[str, Any]:
     return {"used": 0, "runs": []}
 
 
-def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
+def _save_quota_record(
+    user_id: str,
+    record: dict[str, Any],
+    *,
+    preserve_higher_used: bool = False,
+) -> None:
     """Persist the quota record to Cosmos (users container)."""
     from treesight.storage.cosmos import read_item, upsert_item
 
     existing = read_item("users", user_id, user_id) or {}
-    existing.update({"id": user_id, "user_id": user_id, "quota": record})
+    existing_quota_raw = existing.get("quota")
+    existing_quota: dict[str, Any] = (
+        existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
+    )
+    merged_quota: dict[str, Any] = dict(existing_quota)
+    merged_quota.update(record)
+    incoming_used = int(record.get("used", 0))
+    if preserve_higher_used:
+        merged_quota["used"] = max(int(existing_quota.get("used", 0)), incoming_used)
+    else:
+        merged_quota["used"] = incoming_used
+    existing_runs = existing_quota.get("runs", [])
+    record_runs = record.get("runs", [])
+    if isinstance(existing_runs, list) and isinstance(record_runs, list):
+        merged_quota["runs"] = (
+            existing_runs if len(existing_runs) >= len(record_runs) else record_runs
+        )
+
+    existing.update({"id": user_id, "user_id": user_id, "quota": merged_quota})
     from treesight.models.records import UserRecord
 
     UserRecord.model_validate(existing)
@@ -97,7 +120,11 @@ def consume_quota(user_id: str) -> int:
     for _ in range(MAX_QUOTA_ETAG_RETRIES):
         loaded = read_item_with_etag("users", user_id, user_id)
         if not loaded:
-            _save_quota_record(user_id, {"used": 0, "runs": []})
+            _save_quota_record(
+                user_id,
+                {"used": 0, "runs": []},
+                preserve_higher_used=True,
+            )
             loaded = read_item_with_etag("users", user_id, user_id)
             if not loaded:
                 logger.debug("consume_quota bootstrap race user=%s", user_id)

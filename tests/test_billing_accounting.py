@@ -582,9 +582,12 @@ class TestEtagConcurrency:
         assert state["replace_calls"] == 5  # MAX_ETAG_RETRIES
 
     def test_parallel_reservations_cap_successes_at_allowance(self):
+        from treesight.security.billing import plan_capabilities
+
         org = _org(members=[{"user_id": "u-free", "role": "owner"}])
         _state, _read, _replace = _stub_storage_live_etag(org)
         attempts = 8
+        allowance = int(plan_capabilities("free")["run_limit"])
 
         with (
             patch(_READ_ETAG, side_effect=_read),
@@ -609,11 +612,11 @@ class TestEtagConcurrency:
             try:
                 future.result()
                 successes += 1
-            except QuotaExhaustedError:
-                pass
+            except QuotaExhaustedError as exc:
+                assert "exhausted" in str(exc)
 
-        assert successes == 5
-        assert org["usage"]["runs_reserved"] == 5
+        assert successes == allowance
+        assert org["usage"]["runs_reserved"] == allowance
 
 
 # =========================================================================
