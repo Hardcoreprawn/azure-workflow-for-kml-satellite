@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from treesight.security.eudr_billing import report_eudr_stripe_usage
+
 logger = logging.getLogger(__name__)
 
 #: Maximum number of times ``reserve_run`` / ``finalize_run`` will retry
@@ -182,6 +184,42 @@ def _member_period_usage(usage: dict[str, Any], user_id: str) -> int:
     are refunded by :func:`finalize_run` so they don't count.
     """
     return int(usage.get("member_used", {}).get(user_id, 0))
+
+
+def _record_completed_eudr_counters(org: dict[str, Any], parcel_count: int) -> None:
+    """Persist completed EUDR counters on the org document in place."""
+    org["eudr_assessments_used"] = int(org.get("eudr_assessments_used", 0)) + parcel_count
+
+    billing = org.get("billing", {})
+    if billing.get("eudr_status") != "active":
+        return
+
+    billing["eudr_period_parcels"] = int(billing.get("eudr_period_parcels", 0)) + parcel_count
+    org["billing"] = billing
+
+
+def _report_completed_eudr_metering(
+    *,
+    org: dict[str, Any],
+    org_id: str,
+    instance_id: str,
+    parcel_count: int,
+) -> None:
+    """Report completed EUDR metering without failing finalization."""
+    try:
+        report_eudr_stripe_usage(
+            org_id,
+            parcel_count=parcel_count,
+            idempotency_key=instance_id,
+            org=org,
+        )
+    except Exception:
+        logger.exception(
+            "finalize_run metering report failed org=%s instance=%s parcels=%d",
+            org_id,
+            instance_id,
+            parcel_count,
+        )
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -368,12 +406,12 @@ def finalize_run(
 
         n = int(reservation["parcel_count"])
         res_user_id = reservation.get("user_id")
-        is_eudr = bool(reservation.get("is_eudr", False))
+        is_eudr = reservation.get("is_eudr", False)
         usage["runs_reserved"] = max(0, int(usage.get("runs_reserved", 0)) - n)
         if status == "completed":
             usage["runs_completed"] = int(usage.get("runs_completed", 0)) + n
             if is_eudr:
-                org["eudr_assessments_used"] = int(org.get("eudr_assessments_used", 0)) + n
+                _record_completed_eudr_counters(org, n)
         else:
             usage["runs_refunded"] = int(usage.get("runs_refunded", 0)) + n
             # Refund the per-member counter so failures don't burn caps.
@@ -399,13 +437,11 @@ def finalize_run(
             n,
         )
         if status == "completed" and is_eudr:
-            from treesight.security.eudr_billing import report_eudr_stripe_usage
-
-            report_eudr_stripe_usage(
-                org_id,
-                parcel_count=n,
-                idempotency_key=instance_id,
+            _report_completed_eudr_metering(
                 org=org,
+                org_id=org_id,
+                instance_id=instance_id,
+                parcel_count=n,
             )
         return
 
