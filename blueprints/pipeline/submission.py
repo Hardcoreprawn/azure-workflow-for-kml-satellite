@@ -46,15 +46,14 @@ _PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
 )
 
 
-def _quota_already_consumed(user_id: str, prior_submission_id: str) -> bool:
-    """Return True when upload-token already consumed quota for *prior_submission_id*.
+def _load_prior_ticket_for_user(user_id: str, prior_submission_id: str) -> dict[str, Any] | None:
+    """Return the prior ticket when it belongs to *user_id*, else ``None``.
 
-    Reads the ticket blob written by the upload-token endpoint and checks that
-    it belongs to *user_id*.  Any lookup failure is treated as "not consumed"
-    so the fallback path still charges quota rather than leaking a free slot.
+    Any lookup failure is treated as a cache miss so the fallback path still
+    charges quota rather than leaking a free slot.
     """
     if not _PRIOR_SUBMISSION_ID_RE.match(prior_submission_id):
-        return False
+        return None
     try:
         from treesight.storage.client import BlobStorageClient
 
@@ -62,10 +61,44 @@ def _quota_already_consumed(user_id: str, prior_submission_id: str) -> bool:
         ticket = storage.download_json(
             DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"
         )
-        return isinstance(ticket, dict) and ticket.get("user_id") == user_id
+        if isinstance(ticket, dict) and ticket.get("user_id") == user_id:
+            return ticket
+        return None
     except Exception:
         logger.debug("Prior quota ticket not found for prior_submission_id=%s", prior_submission_id)
-        return False
+        return None
+
+
+def _quota_already_consumed(user_id: str, prior_submission_id: str) -> bool:
+    """Return True when upload-token already consumed quota for *prior_submission_id*."""
+    return _load_prior_ticket_for_user(user_id, prior_submission_id) is not None
+
+
+def _requested_is_eudr(body: Any) -> bool:
+    """Return True only for explicit EUDR submissions."""
+    return isinstance(body, dict) and body.get("eudr_mode") is True
+
+
+def _requested_parcel_count(body: Any, *, default: int = 1) -> int:
+    """Return a positive parcel count from the request body or *default*."""
+    if not isinstance(body, dict):
+        return default
+    parcel_count = body.get("parcel_count", default)
+    if isinstance(parcel_count, (int, float)) and parcel_count > 0:
+        return int(parcel_count)
+    return default
+
+
+def _prior_ticket_matches_request(ticket: dict[str, Any], body: Any) -> bool:
+    """Return True when fallback submission matches the reserved upload ticket."""
+    expected_is_eudr = bool(ticket.get("eudr_mode") is True)
+    expected_parcel_count = _requested_parcel_count(
+        body,
+        default=_requested_parcel_count(ticket, default=1),
+    )
+    return _requested_is_eudr(
+        body
+    ) is expected_is_eudr and expected_parcel_count == _requested_parcel_count(ticket, default=1)
 
 
 def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
@@ -188,7 +221,12 @@ async def analysis_submit(
 
 
 def _resolve_quota(
-    user_id: str, body: Any, req: func.HttpRequest
+    user_id: str,
+    body: Any,
+    submission_id: str,
+    req: func.HttpRequest,
+    *,
+    prior_ticket: dict[str, Any] | None = None,
 ) -> tuple[bool, str, func.HttpResponse | None]:
     """Reserve run via org-pooled accounting unless prior upload-token already reserved it.
 
@@ -196,25 +234,14 @@ def _resolve_quota(
     When the caller already has a verified ticket the run is considered
     reserved via prior_submission_id without a second charge (fixes #767).
     """
-    prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
-    if prior_submission_id and _quota_already_consumed(user_id, prior_submission_id):
+    if prior_ticket:
         logger.info(
             "Skipping reserve — reusing ticket from prior_submission_id=%s user=%s",
-            prior_submission_id,
+            submission_id,
             _redact(user_id),
         )
-        try:
-            from treesight.storage.client import BlobStorageClient
-
-            storage = BlobStorageClient()
-            ticket = storage.download_json(
-                DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"
-            )
-            org_id = ticket.get("org_id", "")
-            return True, org_id, None
-        except Exception:
-            logger.debug("Could not extract org_id from prior ticket")
-            return True, "", None
+        org_id = prior_ticket.get("org_id", "")
+        return True, org_id if isinstance(org_id, str) else "", None
 
     try:
         user_org = get_user_org(user_id)
@@ -228,15 +255,16 @@ def _resolve_quota(
     if not isinstance(org_id, str) or not org_id:
         return False, "", error_response(403, "User not in any org", req=req)
 
-    is_eudr = isinstance(body, dict) and body.get("eudr_mode") is True
+    is_eudr = _requested_is_eudr(body)
+    parcel_count = _requested_parcel_count(body)
 
     try:
         reserve_run(
             org_id=org_id,
             user_id=user_id,
-            parcel_count=1,
+            parcel_count=parcel_count,
             is_eudr=is_eudr,
-            instance_id=str(uuid.uuid4()),
+            instance_id=submission_id,
         )
         return True, org_id, None
     except MemberCapExceededError:
@@ -246,14 +274,12 @@ def _resolve_quota(
     except OrgNotFoundError:
         return False, "", error_response(503, "Org not found", req=req)
     except Exception:
-        # Transient quota storage errors (e.g. Cosmos unavailable) should not block
-        # submission. Allow request to proceed and handle quota accounting later.
-        logger.warning(
-            "Transient quota reserve failed for org=%s user=%s (continuing with submission)",
+        logger.exception(
+            "Transient quota reserve failed for org=%s user=%s",
             org_id,
             _redact(user_id),
         )
-        return True, org_id, None
+        return False, org_id, error_response(503, "Unable to reserve runs right now.", req=req)
 
 
 async def _submit_analysis_request(
@@ -284,7 +310,23 @@ async def _submit_analysis_request(
     except ValueError:
         return error_response(400, "Invalid JSON body", req=req)
 
-    reserved, org_id, quota_err = _resolve_quota(user_id, body, req)
+    prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
+    prior_ticket = _load_prior_ticket_for_user(user_id, prior_submission_id)
+    if prior_ticket and not _prior_ticket_matches_request(prior_ticket, body):
+        return error_response(
+            409,
+            "prior_submission_id does not match the requested submission context",
+            req=req,
+        )
+
+    submission_id = prior_submission_id if prior_ticket else str(uuid.uuid4())
+    reserved, org_id, quota_err = _resolve_quota(
+        user_id,
+        body,
+        submission_id,
+        req,
+        prior_ticket=prior_ticket,
+    )
     if quota_err:
         return quota_err
 
@@ -312,23 +354,20 @@ async def _submit_analysis_request(
             "provider_name": effective_provider,
             "user_id": user_id,
             "org_id": org_id,
+            "parcel_count": _requested_parcel_count(body),
             **plan_overrides,
             **eudr_input,
         },
+        submission_id=submission_id,
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
     # If submission failed, refund the reserved parcel.
     if resp.status_code != 202 and reserved and org_id:
-        instance_id = body.get("submission_id", "") if isinstance(body, dict) else ""
-        if not instance_id:
-            instance_id = str(uuid.uuid4())
-        _finalize_run_on_failure(org_id, instance_id)
+        _finalize_run_on_failure(org_id, submission_id)
 
     # Persist submission record for analysis history
     if resp.status_code == 202 and (blob_prefix.strip("/") or "analysis") == "analysis":
-        resp_data = json.loads(resp.get_body())
-        submission_id = resp_data["instance_id"]
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()
@@ -361,6 +400,7 @@ async def _submit_kml(
     body: Any,
     *,
     blob_prefix: str,
+    submission_id: str,
     extra_input: dict[str, Any] | None = None,
     log_tag: str = "",
 ) -> func.HttpResponse:
@@ -374,7 +414,6 @@ async def _submit_kml(
     if isinstance(kml_bytes, func.HttpResponse):
         return kml_bytes
 
-    submission_id = str(uuid.uuid4())
     safe_prefix = blob_prefix.strip("/") or "analysis"
     kml_blob_name = f"{safe_prefix}/{submission_id}.kml"
 

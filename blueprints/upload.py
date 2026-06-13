@@ -224,6 +224,10 @@ def _build_ticket(body: dict, user_id: str, submission_context: dict, org_id: st
     if submission_context:
         ticket["submission_context"] = submission_context
 
+    parcel_count = body.get("parcel_count")
+    if isinstance(parcel_count, (int, float)) and parcel_count > 0:
+        ticket["parcel_count"] = int(parcel_count)
+
     # EUDR mode flag — only accept strict boolean True
     if body.get("eudr_mode") is True:
         ticket["eudr_mode"] = True

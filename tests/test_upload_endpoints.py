@@ -113,7 +113,7 @@ class TestUploadToken:
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
         mock_gen_sas.return_value = "sv=2024&sig=fakesig"
 
-        body = {"submission_context": {"feature_count": 5, "aoi_count": 3}}
+        body = {"submission_context": {"feature_count": 5, "aoi_count": 3}, "parcel_count": 4}
         req = _make_req("/api/upload/token", method="POST", body=body)
         with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
             resp = upload_token(req)
@@ -124,6 +124,7 @@ class TestUploadToken:
         assert ticket_data["user_id"] == "test-user"
         assert "created_at" in ticket_data
         assert ticket_data["submission_context"]["feature_count"] == 5
+        assert ticket_data["parcel_count"] == 4
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
