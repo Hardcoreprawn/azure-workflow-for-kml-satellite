@@ -24,8 +24,12 @@ def _mock_cosmos():
     store: dict[str, dict] = {}  # item_id → document
     lock = threading.Lock()
 
-    def _read_item(container: str, item_id: str, partition_key: str):
-        del partition_key
+    def _next_etag(current: dict | None) -> str:
+        if not current:
+            return "1"
+        return str(int(current.get("_etag", "0")) + 1)
+
+    def _read_item(container: str, item_id: str, _partition_key: str):
         with lock:
             item = store.get(f"{container}/{item_id}")
             return deepcopy(item) if item is not None else None
@@ -34,9 +38,8 @@ def _mock_cosmos():
         with lock:
             key = f"{container}/{item['id']}"
             current = store.get(key)
-            next_etag = int(current.get("_etag", "0")) + 1 if current else 1
             saved = deepcopy(item)
-            saved["_etag"] = str(next_etag)
+            saved["_etag"] = _next_etag(current)
             store[key] = saved
             return deepcopy(saved)
 
@@ -52,9 +55,8 @@ def _mock_cosmos():
             current = store.get(key)
             if not current or current.get("_etag", "") != etag:
                 raise cosmos_mod.EtagPreconditionFailedError("simulated conflict")
-            next_etag = str(int(current.get("_etag", "0")) + 1)
             saved = deepcopy(item)
-            saved["_etag"] = next_etag
+            saved["_etag"] = _next_etag(current)
             store[key] = saved
             return deepcopy(saved)
 

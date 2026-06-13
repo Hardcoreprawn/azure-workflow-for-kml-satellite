@@ -89,7 +89,6 @@ def consume_quota(user_id: str) -> int:
         EtagPreconditionFailedError,
         read_item_with_etag,
         replace_item_with_etag,
-        upsert_item,
     )
 
     limit = _run_limit(user_id)
@@ -98,11 +97,10 @@ def consume_quota(user_id: str) -> int:
     for _ in range(MAX_QUOTA_ETAG_RETRIES):
         loaded = read_item_with_etag("users", user_id, user_id)
         if not loaded:
-            bootstrap = {"id": user_id, "user_id": user_id, "quota": {"used": 0, "runs": []}}
-            UserRecord.model_validate(bootstrap)
-            upsert_item("users", bootstrap)
+            _save_quota_record(user_id, {"used": 0, "runs": []})
             loaded = read_item_with_etag("users", user_id, user_id)
             if not loaded:
+                logger.debug("consume_quota bootstrap race user=%s", user_id)
                 continue
         user_doc, etag = loaded
 
@@ -116,7 +114,8 @@ def consume_quota(user_id: str) -> int:
         record["used"] = used + 1
         record.setdefault("runs", [])
         user_doc.update({"id": user_id, "user_id": user_id, "quota": record})
-        UserRecord.model_validate(user_doc)
+        # Defensive schema check before committing the conditional write.
+        _ = UserRecord.model_validate(user_doc)
 
         try:
             replace_item_with_etag("users", user_doc, etag=etag)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
@@ -111,22 +112,22 @@ def _stub_storage_live_etag(org: dict[str, Any], *, etag_version: int = 1):
 
     lock = threading.Lock()
     state = {"replace_calls": 0, "read_calls": 0}
-    version = {"value": etag_version}
+    version = [etag_version]
 
     def _read(_container: str, _item_id: str, _pk: str):
         with lock:
             state["read_calls"] += 1
-            return dict(org), f"etag-{version['value']}"
+            return deepcopy(org), f"etag-{version[0]}"
 
     def _replace(_container: str, item: dict[str, Any], *, etag: str):
         with lock:
             state["replace_calls"] += 1
-            expected = f"etag-{version['value']}"
+            expected = f"etag-{version[0]}"
             if etag != expected:
                 raise cosmos_mod.EtagPreconditionFailedError("simulated conflict")
             org.clear()
             org.update(item)
-            version["value"] += 1
+            version[0] += 1
             return item
 
     return state, _read, _replace
@@ -603,15 +604,15 @@ class TestEtagConcurrency:
                     for i in range(attempts)
                 ]
 
-        success = 0
+        successes = 0
         for future in futures:
             try:
                 future.result()
-                success += 1
+                successes += 1
             except QuotaExhaustedError:
                 pass
 
-        assert success == 5
+        assert successes == 5
         assert org["usage"]["runs_reserved"] == 5
 
 
