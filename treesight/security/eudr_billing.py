@@ -236,42 +236,6 @@ def save_eudr_subscription(
 
 
 # ---------------------------------------------------------------------------
-# Usage recording
-# ---------------------------------------------------------------------------
-
-
-def record_eudr_usage(org_id: str, *, parcel_count: int) -> None:
-    """Record parcel usage after successful assessment completion.
-
-    Increments the lifetime counter and, for subscribed orgs, the period
-    parcel counter.
-    """
-    from treesight.security.orgs import get_org
-    from treesight.storage.cosmos import upsert_item
-
-    org = get_org(org_id)
-    if not org:
-        raise ValueError(f"Org {org_id} not found")
-
-    # Always increment lifetime counter
-    org["eudr_assessments_used"] = org.get("eudr_assessments_used", 0) + parcel_count
-
-    # Increment period parcels only for subscribed orgs
-    billing = org.get("billing", {})
-    if billing.get("eudr_status") == "active":
-        billing["eudr_period_parcels"] = billing.get("eudr_period_parcels", 0) + parcel_count
-        org["billing"] = billing
-
-    upsert_item("orgs", org)
-    logger.info(
-        "EUDR usage recorded org=%s parcels=%d lifetime=%d",
-        org_id,
-        parcel_count,
-        org["eudr_assessments_used"],
-    )
-
-
-# ---------------------------------------------------------------------------
 # Stripe usage reporting
 # ---------------------------------------------------------------------------
 
@@ -281,15 +245,17 @@ def report_eudr_stripe_usage(
     *,
     parcel_count: int,
     idempotency_key: str,
+    org: dict[str, Any] | None = None,
 ) -> str | None:
     """Report metered parcel usage to Stripe.
 
     Returns the Stripe UsageRecord ID, or None if reporting was skipped
     (e.g. free trial, no subscription item).
     """
-    from treesight.security.orgs import get_org
+    if org is None:
+        from treesight.security.orgs import get_org
 
-    org = get_org(org_id)
+        org = get_org(org_id)
     if not org:
         return None
 
