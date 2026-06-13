@@ -90,16 +90,60 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 
 1. `az login --tenant <CIAM_TENANT_ID> --allow-no-subscriptions` as a CIAM
    tenant admin (typically the tenant owner identity).
-2. Create the deploy SP in the CIAM tenant: `az ad app create --display-name
-   "Canopex Tofu Deploy"`. Note its `appId` (this is `TF_VAR_CIAM_DEPLOY_CLIENT_ID`).
-3. Grant it `Application.ReadWrite.OwnedBy` on Microsoft Graph and admin-consent.
-4. Add it as an Owner of the SPA app (`1b51e2e8-…`) via Microsoft Graph
-   (`POST /applications/<spa-objectId>/owners/$ref`).
-5. Add a federated credential on the deploy SP for each GitHub Environment:
-   - Issuer: `https://token.actions.githubusercontent.com`
-   - Subject: `repo:<owner>/<repo>:environment:<env>`
-   - Audience: `api://AzureADTokenExchange`
-6. Set `TF_VAR_CIAM_DEPLOY_CLIENT_ID` in the matching GitHub Environment.
+2. Create the deploy SP: `az ad app create --display-name "Canopex Tofu Deploy"`.
+   Note its `appId` — this becomes `TF_VAR_CIAM_DEPLOY_CLIENT_ID`.
+3. Set `TF_VAR_CIAM_DEPLOY_CLIENT_ID` in the matching GitHub Environment(s).
+4. Run Tofu to create the remaining resources in one step:
+
+   ```bash
+   tofu apply \
+     -target=azuread_application_federated_identity_credential.deploy_sp \
+     -target=azuread_application_owner.deploy_sp_owns_canopex \
+     -target=azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby \
+     -var "subscription_id=<SUBSCRIPTION_ID>" \
+     -var "deploy_principal_client_id=<AZURE_CLIENT_ID>" \
+     -var-file="environments/<env>.tfvars"
+   ```
+
+   Tofu will:
+   - Create federated credentials (`github-dev` and `github-prd`) on the deploy SP
+   - Add the deploy SP as an owner of the SPA app registration
+   - Grant `Application.ReadWrite.OwnedBy` on Microsoft Graph via
+     `azuread_app_role_assignment` (bypasses the `az ad app permission
+     admin-consent` path that silently no-ops in CIAM tenants)
+
+### Adopting existing manually-created state
+
+If resources were created manually before this Tofu config existed, import them:
+
+**Federated credentials** — find credential IDs first:
+```bash
+az ad app federated-credential list --id <ciam_deploy_client_id>
+```
+Then import each:
+```bash
+tofu import \
+  'azuread_application_federated_identity_credential.deploy_sp["dev"]' \
+  '<deploy_sp_object_id>/federatedIdentityCredentials/<dev_credential_id>'
+tofu import \
+  'azuread_application_federated_identity_credential.deploy_sp["prd"]' \
+  '<deploy_sp_object_id>/federatedIdentityCredentials/<prd_credential_id>'
+```
+
+**Owner relationship** — auto-imported by the import block in `main.tf` on the
+next `tofu apply`. No manual import command needed.
+
+**App role assignment** — find the assignment ID first:
+```bash
+az rest --method GET \
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<deploy_sp_id>/appRoleAssignments"
+```
+Then import:
+```bash
+tofu import \
+  'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby["assignment"]' \
+  '<deploy_sp_object_id>/<app_role_assignment_id>'
+```
 
 For an emergency redirect-URI fix without running Tofu (e.g. to add a new
 origin immediately), after step 1 above:

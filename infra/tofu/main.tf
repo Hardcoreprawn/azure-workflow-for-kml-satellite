@@ -1155,30 +1155,10 @@ resource "azurerm_static_web_app_custom_domain" "main" {
 # with AADSTS50011. Active when ciam_deploy_client_id is set; the SPA app's
 # own client_id is always present in tfvars (validated in variables.tf).
 #
-# Operator prerequisite (one-time, manual):
-#   1. In the CIAM tenant, create a service principal (app registration).
-#   2. Grant it Application.ReadWrite.OwnedBy on the target app registration.
-#   3. Add a federated credential for:
-#        Issuer: https://token.actions.githubusercontent.com
-#        Subject: repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:<env>
-#        Audience: api://AzureADTokenExchange
-#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub Environment secrets
-#      (the SPA app's client_id lives in environments/<env>.tfvars).
-# --- CIAM SPA redirect URIs ---
-# Registers root redirect URIs so MSAL loginRedirect() is not rejected with
-# AADSTS50011. canopex-auth.js always uses window.location.origin+'/' as the
-# redirectUri; MSAL's navigateToLoginRequestUrl (default true) returns the
-# user to the originating page (/eudr/, /app/, etc.) after auth completes.
-# Only root URIs are needed — no per-page registration, no per-page CI wiring.
-#
-# Active when ciam_deploy_client_id is set. Requires a one-time operator step:
-#   1. In the CIAM tenant, create a service principal (app registration).
-#   2. Grant it Application.ReadWrite.OwnedBy on the SPA app registration.
-#   3. Add a federated credential on that SP:
-#        Issuer:   https://token.actions.githubusercontent.com
-#        Subject:  repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:prd
-#        Audience: api://AzureADTokenExchange
-#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub 'prd' environment secrets.
+# Operator prerequisite (one-time): create the deploy SP and set
+# TF_VAR_CIAM_DEPLOY_CLIENT_ID, then run `tofu apply` — Tofu manages the
+# federated credentials, owner relationship, and app role assignment below.
+# See infra/tofu/README.md "CIAM deploy SP bootstrap" for details.
 data "azuread_application" "ciam" {
   count     = local.ciam_redirect_enabled ? 1 : 0
   client_id = var.ciam_client_id
@@ -1209,6 +1189,87 @@ import {
   for_each = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
   to       = azuread_application_redirect_uris.ciam_spa[each.key]
   id       = "${data.azuread_application.ciam[0].id}/redirectUris/SPA"
+}
+
+# --- CIAM deploy SP: federated credentials, owner, and app role assignment ---
+#
+# These resources place the three manual CIAM bootstrap steps under Tofu
+# management so they are reproducible, auditable, and cannot silently drift.
+# All are gated on local.ciam_redirect_enabled (same as the redirect URI block
+# above) so they are skipped when ciam_deploy_client_id is unset.
+
+data "azuread_application" "ciam_deploy_sp" {
+  count     = local.ciam_redirect_enabled ? 1 : 0
+  client_id = var.ciam_deploy_client_id
+}
+
+data "azuread_service_principal" "ciam_deploy_sp" {
+  count     = local.ciam_redirect_enabled ? 1 : 0
+  client_id = var.ciam_deploy_client_id
+}
+
+# Microsoft Graph service principal — required target for the app role assignment.
+data "azuread_service_principal" "msgraph" {
+  count        = local.ciam_redirect_enabled ? 1 : 0
+  display_name = "Microsoft Graph"
+}
+
+# Federated identity credentials for the deploy SP — one per GitHub Environment.
+# Allows CI/CD to exchange a GitHub OIDC token for a CIAM-tenant access token
+# without storing a client secret anywhere.
+# NOTE: import blocks support `for_each` only (not `count`); the resource also
+# uses `for_each` so addresses align (`...deploy_sp["dev"]`, `...deploy_sp["prd"]`).
+# To adopt existing manually-created credentials run:
+#   tofu import \
+#     'azuread_application_federated_identity_credential.deploy_sp["dev"]' \
+#     '<deploy_sp_object_id>/federatedIdentityCredentials/<dev_credential_id>'
+#   tofu import \
+#     'azuread_application_federated_identity_credential.deploy_sp["prd"]' \
+#     '<deploy_sp_object_id>/federatedIdentityCredentials/<prd_credential_id>'
+# Credential IDs can be found with:
+#   az ad app federated-credential list --id <ciam_deploy_client_id>
+resource "azuread_application_federated_identity_credential" "deploy_sp" {
+  for_each       = local.ciam_redirect_enabled ? toset(["dev", "prd"]) : toset([])
+  application_id = data.azuread_application.ciam_deploy_sp[0].id
+  display_name   = "github-${each.key}"
+  description    = "GitHub Actions OIDC federation for the ${each.key} environment"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:${each.key}"
+}
+
+# Keep the deploy SP as an owner of the SPA app registration.
+# Ownership grants the deploy SP an implicit Application.ReadWrite.OwnedBy scope
+# over the SPA app without requiring a broader tenant-level role.
+# NOTE: import block adopts the manually-created owner relationship on first apply.
+resource "azuread_application_owner" "deploy_sp_owns_canopex" {
+  for_each        = local.ciam_redirect_enabled ? toset(["owner"]) : toset([])
+  application_id  = data.azuread_application.ciam[0].id
+  owner_object_id = data.azuread_service_principal.ciam_deploy_sp[0].object_id
+}
+
+import {
+  for_each = local.ciam_redirect_enabled ? toset(["owner"]) : toset([])
+  to       = azuread_application_owner.deploy_sp_owns_canopex[each.key]
+  id       = "${data.azuread_application.ciam[0].id}/${data.azuread_service_principal.ciam_deploy_sp[0].object_id}"
+}
+
+# Grant Application.ReadWrite.OwnedBy on Microsoft Graph to the deploy SP.
+# Uses azuread_app_role_assignment (POST /servicePrincipals/{id}/appRoleAssignments)
+# rather than `az ad app permission admin-consent`, which silently no-ops in
+# Entra External ID (CIAM) tenants.
+# NOTE: to adopt an existing assignment run:
+#   tofu import \
+#     'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby["assignment"]' \
+#     '<deploy_sp_object_id>/<app_role_assignment_id>'
+# Assignment IDs can be found with:
+#   az rest --method GET \
+#     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<sp_id>/appRoleAssignments"
+resource "azuread_app_role_assignment" "deploy_sp_app_readwrite_ownedby" {
+  for_each            = local.ciam_redirect_enabled ? toset(["assignment"]) : toset([])
+  app_role_id         = "18a4783c-866b-4cc7-a460-3d5e5662c884" # Application.ReadWrite.OwnedBy
+  principal_object_id = data.azuread_service_principal.ciam_deploy_sp[0].object_id
+  resource_object_id  = data.azuread_service_principal.msgraph[0].object_id
 }
 
 resource "azurerm_role_assignment" "storage_blob_data_owner" {

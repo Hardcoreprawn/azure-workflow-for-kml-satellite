@@ -1578,3 +1578,68 @@ class TestEndpointAuthAudit:
         assert "proxy_limiter.is_allowed" in src, (
             "demo.py proxy endpoint must call proxy_limiter.is_allowed() to rate-limit requests"
         )
+
+
+# ---------------------------------------------------------------------------
+# 14. CIAM deploy SP managed in Tofu (#804)
+# ---------------------------------------------------------------------------
+
+
+class TestCiamDeploySpResources:
+    """Federated credentials, owner, and app role assignment must be Tofu-managed.
+
+    Ensures the three manual CIAM bootstrap steps are codified as Tofu resources
+    so they are reproducible from clean state and cannot silently drift.
+    """
+
+    @pytest.fixture()
+    def main_tf(self):
+        return MAIN_TF.read_text()
+
+    def test_federated_credential_resource_exists(self, main_tf):
+        assert "azuread_application_federated_identity_credential" in main_tf, (
+            "main.tf must define azuread_application_federated_identity_credential "
+            "so the CIAM deploy SP's OIDC federation is managed by Tofu"
+        )
+
+    def test_federated_credential_covers_dev_environment(self, main_tf):
+        assert 'environment:dev"' in main_tf or "environment:${each.key}" in main_tf, (
+            "main.tf federated credential subject must cover the dev GitHub environment"
+        )
+
+    def test_federated_credential_covers_prd_environment(self, main_tf):
+        assert '"prd"' in main_tf, (
+            "main.tf federated credential for_each must include the prd environment key"
+        )
+
+    def test_application_owner_resource_exists(self, main_tf):
+        assert "azuread_application_owner" in main_tf, (
+            "main.tf must define azuread_application_owner to keep the deploy SP "
+            "as owner of the SPA app registration under Tofu management"
+        )
+
+    def test_app_role_assignment_resource_exists(self, main_tf):
+        assert "azuread_app_role_assignment" in main_tf, (
+            "main.tf must define azuread_app_role_assignment so "
+            "Application.ReadWrite.OwnedBy is granted via Tofu, not a silent az CLI no-op"
+        )
+
+    def test_app_role_assignment_uses_correct_role_id(self, main_tf):
+        # Application.ReadWrite.OwnedBy well-known GUID on Microsoft Graph
+        assert "18a4783c-866b-4cc7-a460-3d5e5662c884" in main_tf, (
+            "main.tf app_role_assignment must use the Application.ReadWrite.OwnedBy "
+            "role ID (18a4783c-866b-4cc7-a460-3d5e5662c884)"
+        )
+
+    def test_deploy_sp_data_source_exists(self, main_tf):
+        assert '"ciam_deploy_sp"' in main_tf, (
+            "main.tf must have a data source named ciam_deploy_sp to look up the "
+            "deploy SP so its object_id can be referenced without hard-coding GUIDs"
+        )
+
+    def test_owner_import_block_exists(self, main_tf):
+        assert "azuread_application_owner.deploy_sp_owns_canopex" in main_tf, (
+            "main.tf must include an import block targeting "
+            "azuread_application_owner.deploy_sp_owns_canopex to adopt the existing "
+            "manually-created owner relationship"
+        )
