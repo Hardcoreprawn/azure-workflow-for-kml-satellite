@@ -177,14 +177,25 @@ def _resolve_provider(body: dict, submission_context: dict) -> str:
     return submission_context.get("provider_name", DEFAULT_PROVIDER)
 
 
-def _create_org_with_retry(user_id: str, org_name: str, email: str) -> dict:
+def _personal_org_id(user_id: str) -> str:
+    """Return deterministic org id for a user's auto-created personal org."""
+    return f"personal-{user_id.replace('/', '_')}"
+
+
+def _create_org_with_retry(
+    user_id: str,
+    org_name: str,
+    email: str,
+    *,
+    org_id: str | None = None,
+) -> dict:
     """Call create_org with one retry on transient Cosmos failures."""
     import time
 
     last_exc: Exception | None = None
     for attempt in range(2):
         try:
-            return create_org(user_id, name=org_name, email=email)
+            return create_org(user_id, name=org_name, email=email, org_id=org_id)
         except Exception as exc:
             last_exc = exc
             logger.warning(
@@ -340,7 +351,12 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
             email = user_doc.get("email", "")
             display_name = user_doc.get("display_name", "")
             org_name = f"{display_name}'s Organisation" if display_name else "My Organisation"
-            new_org = _create_org_with_retry(user_id, org_name, email)
+            new_org = _create_org_with_retry(
+                user_id,
+                org_name,
+                email,
+                org_id=_personal_org_id(user_id),
+            )
             # Re-read to handle concurrent submissions: if a racing request already
             # stamped a different org on the user record, adopt that org rather than
             # the one we just created (avoids split reservations).

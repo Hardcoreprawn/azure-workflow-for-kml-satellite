@@ -131,6 +131,55 @@ class TestOrgService:
         assert org["members"][1]["user_id"] == "user-2"
         assert org["members"][1]["role"] == "member"
 
+    def test_create_org_with_existing_explicit_org_id_preserves_state(self):
+        from treesight.security.orgs import create_org
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        existing_org = {
+            "id": "personal-user-1",
+            "org_id": "personal-user-1",
+            "doc_type": "org",
+            "name": "My Organisation",
+            "created_by": "user-1",
+            "created_at": "2026-06-01T00:00:00+00:00",
+            "members": [
+                {
+                    "user_id": "user-1",
+                    "email": "alice@test.com",
+                    "role": "owner",
+                    "joined_at": "2026-06-01T00:00:00+00:00",
+                }
+            ],
+            "billing": {},
+            "usage": {
+                "month": "2026-06",
+                "runs_used": 3,
+            },
+        }
+        store["orgs:personal-user-1"] = existing_org.copy()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org = create_org(
+                "user-1",
+                name="Should Not Overwrite",
+                email="new@test.com",
+                org_id="personal-user-1",
+            )
+
+        # Existing document must be reused as-is.
+        assert org["usage"]["runs_used"] == 3
+        assert org["name"] == "My Organisation"
+
+        stored_org = store["orgs:personal-user-1"]
+        assert stored_org["usage"]["runs_used"] == 3
+        assert stored_org["name"] == "My Organisation"
+
+        # User org pointer should still be repaired/confirmed.
+        user_doc = store.get("users:user-1")
+        assert user_doc is not None
+        assert user_doc["org_id"] == "personal-user-1"
+
     def test_add_duplicate_member_raises(self):
         from treesight.security.orgs import add_member, create_org
 
