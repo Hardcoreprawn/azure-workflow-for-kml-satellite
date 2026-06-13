@@ -621,6 +621,37 @@ class TestDeployWorkflowSettings:
             "host.json so the KEDA trigger stays in sync when the hub name changes"
         )
 
+    def test_deploy_surfaces_stuck_arm_operation_diagnostics(self, deploy_yml):
+        assert "another operation is in progress" in deploy_yml, (
+            "deploy.yml must detect stuck ARM write locks so retries do not hide "
+            "the blocking operation"
+        )
+        assert 'az monitor activity-log list --resource-id "$FUNC_ID"' in deploy_yml, (
+            "deploy.yml must emit recent write activity for compute app lock diagnosis"
+        )
+        assert 'az monitor activity-log list --resource-id "$ORCH_ID"' in deploy_yml, (
+            "deploy.yml must emit recent write activity for orchestrator lock diagnosis"
+        )
+
+    def test_deploy_stuck_arm_lock_detection_fails_fast(self, deploy_yml):
+        lock_blocks = re.findall(
+            (
+                r'if echo "\$PATCH_ERROR" \| grep -qi "another operation is in progress"; '
+                r"then(.*?)fi"
+            ),
+            deploy_yml,
+            re.DOTALL,
+        )
+        assert len(lock_blocks) >= 2, (
+            "deploy.yml must have stuck ARM lock detection blocks for both "
+            "compute and orchestrator Function Apps"
+        )
+        for block in lock_blocks:
+            assert "exit 1" in block, (
+                "deploy.yml stuck ARM lock handling must fail fast so deploy "
+                "does not continue with a blocked write path"
+            )
+
     def test_event_grid_reconcile_step_uses_orchestrator_outputs(self, deploy_yml):
         match = re.search(
             r"- name: Reconcile Event Grid subscription(?P<body>.*?)(?:\n\s*- name:|\Z)",
