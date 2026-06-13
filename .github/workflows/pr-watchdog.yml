@@ -1,0 +1,59 @@
+name: PR Watchdog
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run only (no PR comment updates)"
+        required: false
+        default: "true"
+      max_prs:
+        description: "Maximum open autopilot PRs to scan"
+        required: false
+        default: "20"
+  schedule:
+    - cron: "45 */6 * * *"
+
+permissions:
+  checks: read
+  contents: read
+  pull-requests: read
+  issues: write
+
+jobs:
+  watchdog:
+    name: Track PR Blockers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Python
+        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5
+        with:
+          python-version: "3.12"
+
+      - name: Run watchdog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
+          INPUT_MAX_PRS: ${{ github.event.inputs.max_prs || '' }}
+          VAR_DRY_RUN: ${{ vars.AUTOPILOT_WATCHDOG_DRY_RUN || 'true' }}
+          VAR_MAX_PRS: ${{ vars.AUTOPILOT_WATCHDOG_MAX_PRS || '20' }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          DRY_RUN="${INPUT_DRY_RUN:-$VAR_DRY_RUN}"
+          MAX_PRS="${INPUT_MAX_PRS:-$VAR_MAX_PRS}"
+
+          ARGS=(
+            --owner "$REPOSITORY_OWNER"
+            --repo "$REPOSITORY_NAME"
+            --max-prs "$MAX_PRS"
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+
+          python scripts/pr_watchdog.py "${ARGS[@]}"
