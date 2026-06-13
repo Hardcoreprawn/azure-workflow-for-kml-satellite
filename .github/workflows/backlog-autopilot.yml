@@ -43,10 +43,11 @@ jobs:
       - name: Run backlog autopilot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
           INPUT_MONTHLY_BUDGET_USD: ${{ github.event.inputs.monthly_budget_usd || '' }}
           INPUT_MONTH_SPEND_USED_USD: ${{ github.event.inputs.month_spend_used_usd || '' }}
           INPUT_MAX_NEW_ASSIGNMENTS: ${{ github.event.inputs.max_new_assignments || '' }}
+          VAR_DRY_RUN: ${{ vars.AUTOPILOT_DRY_RUN || 'true' }}
           VAR_MONTHLY_BUDGET_USD: ${{ vars.AUTOPILOT_MONTHLY_BUDGET_USD || '200' }}
           VAR_MONTH_SPEND_USED_USD: ${{ vars.AUTOPILOT_MONTH_SPEND_USED_USD || '0' }}
           VAR_MAX_NEW_ASSIGNMENTS: ${{ vars.AUTOPILOT_MAX_NEW_ASSIGNMENTS || '2' }}
@@ -55,7 +56,7 @@ jobs:
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
-          DRY_RUN="${INPUT_DRY_RUN:-true}"
+          DRY_RUN="${INPUT_DRY_RUN:-$VAR_DRY_RUN}"
           MONTHLY_BUDGET_USD="${INPUT_MONTHLY_BUDGET_USD:-$VAR_MONTHLY_BUDGET_USD}"
           MONTH_SPEND_USED_USD="${INPUT_MONTH_SPEND_USED_USD:-$VAR_MONTH_SPEND_USED_USD}"
           MAX_NEW_ASSIGNMENTS="${INPUT_MAX_NEW_ASSIGNMENTS:-$VAR_MAX_NEW_ASSIGNMENTS}"

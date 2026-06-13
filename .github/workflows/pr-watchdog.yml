@@ -15,6 +15,7 @@ on:
     - cron: "45 */6 * * *"
 
 permissions:
+  checks: read
   contents: read
   pull-requests: read
   issues: write
@@ -35,13 +36,14 @@ jobs:
       - name: Run watchdog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'true' }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
           INPUT_MAX_PRS: ${{ github.event.inputs.max_prs || '' }}
+          VAR_DRY_RUN: ${{ vars.AUTOPILOT_WATCHDOG_DRY_RUN || 'true' }}
           VAR_MAX_PRS: ${{ vars.AUTOPILOT_WATCHDOG_MAX_PRS || '20' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
-          DRY_RUN="${INPUT_DRY_RUN:-true}"
+          DRY_RUN="${INPUT_DRY_RUN:-$VAR_DRY_RUN}"
           MAX_PRS="${INPUT_MAX_PRS:-$VAR_MAX_PRS}"
 
           ARGS=(

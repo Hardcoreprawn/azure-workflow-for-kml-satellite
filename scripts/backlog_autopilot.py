@@ -62,10 +62,11 @@ def compute_budget_status(
     automation_budget = monthly_budget_usd * max(0.0, 1.0 - reserve_ratio)
     month_days = _days_in_month(today)
     allowed_today = automation_budget * (today.day / month_days)
+    allowed_today_rounded = round(allowed_today, 2)
     return BudgetStatus(
-        allowed_today=round(allowed_today, 2),
+        allowed_today=allowed_today_rounded,
         spent=month_spend_used_usd,
-        can_spend=month_spend_used_usd < allowed_today,
+        can_spend=month_spend_used_usd < allowed_today_rounded,
     )
 
 
