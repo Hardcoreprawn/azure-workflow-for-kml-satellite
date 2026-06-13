@@ -647,7 +647,7 @@ class TestFinalizeRun:
         with (
             patch(_READ_ETAG, side_effect=_read),
             patch(_REPLACE_ETAG, side_effect=_replace),
-            patch("treesight.billing.accounting.report_eudr_stripe_usage") as mock_report,
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
         ):
             finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
         assert org["eudr_assessments_used"] == 9
@@ -658,6 +658,27 @@ class TestFinalizeRun:
             idempotency_key="inst-1",
             org=ANY,
         )
+
+    def test_completed_eudr_run_without_active_subscription_skips_period_and_metering(self):
+        org = self._seed()
+        org["eudr_assessments_used"] = 2
+        org["billing"] = {
+            "eudr_tier": "eudr_pro",
+            "eudr_status": "canceled",
+            "eudr_period_parcels": 5,
+            "stripe_subscription_item_id": "si_123",
+        }
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
+        ):
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+
+        assert org["eudr_assessments_used"] == 9
+        assert org["billing"]["eudr_period_parcels"] == 5
+        mock_report.assert_not_called()
 
     def test_completed_non_eudr_run_skips_eudr_usage_recording(self):
         org = self._seed()
@@ -673,7 +694,7 @@ class TestFinalizeRun:
         with (
             patch(_READ_ETAG, side_effect=_read),
             patch(_REPLACE_ETAG, side_effect=_replace),
-            patch("treesight.billing.accounting.report_eudr_stripe_usage") as mock_report,
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
         ):
             finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
 
@@ -707,7 +728,7 @@ class TestFinalizeRun:
         with (
             patch(_READ_ETAG, side_effect=_read),
             patch(_REPLACE_ETAG, side_effect=_replace),
-            patch("treesight.billing.accounting.report_eudr_stripe_usage") as mock_report,
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
         ):
             finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
             finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
@@ -720,6 +741,32 @@ class TestFinalizeRun:
             idempotency_key="inst-1",
             org=ANY,
         )
+
+    def test_completed_eudr_metering_failure_retries_on_idempotent_replay(self):
+        org = self._seed()
+        org["eudr_assessments_used"] = 2
+        org["billing"] = {
+            "eudr_tier": "eudr_pro",
+            "eudr_status": "active",
+            "eudr_period_parcels": 5,
+            "stripe_subscription_item_id": "si_123",
+        }
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch(
+                "treesight.security.eudr_billing.report_eudr_stripe_usage",
+                side_effect=[RuntimeError("stripe down"), None],
+            ) as mock_report,
+        ):
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+
+        assert org["eudr_assessments_used"] == 9
+        assert org["billing"]["eudr_period_parcels"] == 12
+        assert (org["usage"].get("pending_eudr_metering") or {}).get("inst-1") is None
+        assert mock_report.call_count == 2
 
     def test_unknown_reservation_is_noop(self):
         org = self._seed()

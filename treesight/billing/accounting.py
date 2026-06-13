@@ -37,8 +37,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from treesight.security.eudr_billing import report_eudr_stripe_usage
-
 logger = logging.getLogger(__name__)
 
 #: Maximum number of times ``reserve_run`` / ``finalize_run`` will retry
@@ -198,21 +196,33 @@ def _record_completed_eudr_counters(org: dict[str, Any], parcel_count: int) -> N
     org["billing"] = billing
 
 
+def _should_report_completed_eudr_metering(org: dict[str, Any]) -> bool:
+    """Return True when EUDR metering should be reported for this org."""
+    billing = org.get("billing")
+    return isinstance(billing, dict) and billing.get("eudr_status") == "active"
+
+
 def _report_completed_eudr_metering(
     *,
     org: dict[str, Any],
     org_id: str,
     instance_id: str,
     parcel_count: int,
-) -> None:
-    """Report completed EUDR metering without failing finalization."""
+) -> bool:
+    """Report completed EUDR metering without failing finalization.
+
+    Returns True when metering was reported, False when the call failed.
+    """
     try:
+        from treesight.security.eudr_billing import report_eudr_stripe_usage
+
         report_eudr_stripe_usage(
             org_id,
             parcel_count=parcel_count,
             idempotency_key=instance_id,
             org=org,
         )
+        return True
     except Exception:
         logger.exception(
             "finalize_run metering report failed org=%s instance=%s parcels=%d",
@@ -220,6 +230,63 @@ def _report_completed_eudr_metering(
             instance_id,
             parcel_count,
         )
+        return False
+
+
+def _queue_failed_metering_for_retry(
+    *,
+    usage: dict[str, Any],
+    org: dict[str, Any],
+    org_id: str,
+    instance_id: str,
+    parcel_count: int,
+) -> None:
+    """Report metering and queue retry marker when reporting fails."""
+    if not _should_report_completed_eudr_metering(org):
+        return
+    if _report_completed_eudr_metering(
+        org=org,
+        org_id=org_id,
+        instance_id=instance_id,
+        parcel_count=parcel_count,
+    ):
+        return
+    usage.setdefault("pending_eudr_metering", {})[instance_id] = parcel_count
+
+
+def _replay_pending_eudr_metering(
+    *,
+    usage: dict[str, Any],
+    org: dict[str, Any],
+    org_id: str,
+    instance_id: str,
+) -> bool:
+    """Retry pending metering for an already-finalized instance.
+
+    Returns True when pending markers were cleared and storage should be saved.
+    """
+    pending_metering = (usage.get("pending_eudr_metering") or {}).get(instance_id)
+    if not isinstance(pending_metering, int) or pending_metering <= 0:
+        return False
+
+    if not _report_completed_eudr_metering(
+        org=org,
+        org_id=org_id,
+        instance_id=instance_id,
+        parcel_count=pending_metering,
+    ):
+        return False
+
+    pending = usage.get("pending_eudr_metering") or {}
+    if instance_id not in pending:
+        return False
+
+    del pending[instance_id]
+    if pending:
+        usage["pending_eudr_metering"] = pending
+    else:
+        usage.pop("pending_eudr_metering", None)
+    return True
 
 
 # ── Public API ───────────────────────────────────────────────────────────
@@ -350,7 +417,7 @@ def reserve_run(
     )
 
 
-def finalize_run(
+def finalize_run(  # noqa: C901
     *,
     org_id: str,
     instance_id: str,
@@ -393,6 +460,24 @@ def finalize_run(
             return
 
         if instance_id in usage.get("finalized_instance_ids", []):
+            should_save = status == "completed" and _replay_pending_eudr_metering(
+                usage=usage,
+                org=org,
+                org_id=org_id,
+                instance_id=instance_id,
+            )
+            if should_save:
+                try:
+                    replace_item_with_etag("orgs", org, etag=etag)
+                except EtagPreconditionFailedError as exc:
+                    last_error = exc
+                    logger.debug(
+                        "finalize_run etag conflict while clearing metering marker "
+                        "org=%s instance=%s",
+                        org_id,
+                        instance_id,
+                    )
+                    continue
             return
 
         reservation = usage.get("reservations", {}).get(instance_id)
@@ -412,6 +497,13 @@ def finalize_run(
             usage["runs_completed"] = int(usage.get("runs_completed", 0)) + n
             if is_eudr:
                 _record_completed_eudr_counters(org, n)
+                _queue_failed_metering_for_retry(
+                    usage=usage,
+                    org=org,
+                    org_id=org_id,
+                    instance_id=instance_id,
+                    parcel_count=n,
+                )
         else:
             usage["runs_refunded"] = int(usage.get("runs_refunded", 0)) + n
             # Refund the per-member counter so failures don't burn caps.
@@ -436,13 +528,6 @@ def finalize_run(
             status,
             n,
         )
-        if status == "completed" and is_eudr:
-            _report_completed_eudr_metering(
-                org=org,
-                org_id=org_id,
-                instance_id=instance_id,
-                parcel_count=n,
-            )
         return
 
     raise ConcurrencyError(
