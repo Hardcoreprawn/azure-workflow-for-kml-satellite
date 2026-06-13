@@ -49,8 +49,8 @@ servers:
     description: Development (Orchestrator Function App ingress)
     variables:
       developmentHost:
-        default: func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io
-        description: Development API ingress hostname
+        default: func-kmlsat-dev-orch.example.azurecontainerapps.io
+        description: Development API ingress hostname (replace with actual value from tofu output)
   - url: http://localhost:7071/api
     description: Local development
 

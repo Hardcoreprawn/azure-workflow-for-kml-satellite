@@ -34,6 +34,38 @@ This repository uses the following free GitHub security features:
 - **Private vulnerability reporting** — responsible disclosure channel
 - **Branch protection** — PRs required, CI must pass, stale reviews dismissed
 
+## Open-Source Documentation Posture
+
+This is an Apache 2.0 open-source repository.  The source code, infrastructure
+definitions, and API documentation are intentionally public.  As noted in issue
+[#570](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/570),
+the following information appears in the public docs and source code:
+
+- API route table with auth/anonymous annotations
+- Infrastructure naming conventions and container names
+- Deployment workflow design and secrets pipeline shape
+- Durable Functions hub name and orchestration patterns
+- Architecture diagrams and component relationships
+
+**Risk acceptance decision (2026-06-13):** The real security boundary is
+auth + network controls (CIAM bearer JWT, managed identity, RBAC), not
+documentation obscurity.  The source code already makes these details
+discoverable, so hiding them only from docs would provide no meaningful
+reduction in attack surface.
+
+Mitigations in place:
+
+- All non-trivial API endpoints require a valid CIAM JWT.
+- Storage, Cosmos DB, and Key Vault are accessed exclusively via managed
+  identity with minimal RBAC grants — no connection strings in app config.
+- Network: Container Apps environment, Key Vault network rules, and Cosmos
+  DB firewall restrict inbound surface.
+- Ephemeral operational identifiers (deployed hostnames, SWA URLs) are not
+  stored in this repository — retrieve them from the Azure portal or
+  `tofu output` after provisioning.
+- Deploy workflow credentials use short-lived OIDC tokens; no long-lived
+  secrets are stored in repository secrets beyond GHCR pull credentials.
+
 ## Trivy Triage Policy
 
 To keep findings actionable while staying cost-conscious in dev environments:

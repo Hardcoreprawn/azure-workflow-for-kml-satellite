@@ -6,7 +6,8 @@ Issue: #18
 
 ### Quick Verification Reference
 
-Function App base URL (dev, orchestrator ingress): `https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io`
+Retrieve the current Function App base URL from the Azure portal or via
+`tofu output orch_hostname` after provisioning.
 
 | Method | Path | Auth | Expected (unauthed) | Purpose |
 | --- | --- | --- | --- | --- |

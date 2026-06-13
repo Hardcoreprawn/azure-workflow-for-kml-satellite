@@ -61,7 +61,7 @@ SWA serves **static files and auth only** — no managed functions.
 
 - Managed identity (DefaultAzureCredential) for Blob, Cosmos, Key Vault
 - Key Vault references for Stripe secrets
-- Durable Functions v2 with `KmlSatelliteHub` task hub
+- Durable Functions v2 with `DurableFunctionsHub` task hub (set in `host.json`)
 - Python 3.12
 - Application Insights telemetry
 
@@ -84,7 +84,7 @@ SWA serves **static files and auth only** — no managed functions.
 
 **Shared with T2:**
 
-- Same Durable Functions task hub (`KmlSatelliteHub`)
+- Same Durable Functions task hub (`DurableFunctionsHub`, set in `host.json`)
 - Same storage account
 - Activities auto-route via the shared work queue — no explicit dispatch needed
 

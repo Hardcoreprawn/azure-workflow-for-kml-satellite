@@ -20,39 +20,42 @@ Use this as the default mental model when building features:
 
 All resources are named using `{prefix}-{project_code}-{environment}` where:
 
-- `project_code` is set in `infra/tofu/environments/{env}.tfvars` (dev: `kmlsat`)
-- `environment` is set per deployment (dev: `dev`)
+- `project_code` is set in `infra/tofu/environments/{env}.tfvars` (default: `kmlsat`)
+- `environment` is set per deployment (`dev`, `prd`)
 - Prefixes follow Azure naming standards defined in `infra/tofu/locals.tf`
 
-| Resource | Naming Pattern | Dev Value |
-| --- | --- | --- |
-| Resource Group | `rg-{code}-{env}` | `rg-kmlsat-dev` |
-| Function App (compute) | `func-{code}-{env}` | `func-kmlsat-dev` |
-| Function App (orchestrator) | `func-{code}-{env}-orch` | `func-kmlsat-dev-orch` |
-| Static Web App | `stapp-{code}-{env}-site` | `stapp-kmlsat-dev-site` |
-| Event Grid Topic | `evgt-{code}-{env}` | `evgt-kmlsat-dev` |
-| Event Grid Sub | `evgs-kml-upload` | `evgs-kml-upload` |
-| Key Vault | `kv-{code}-{env}` | `kv-kmlsat-dev` |
-| Cosmos DB | `cosmos-{code}-{env}` | `cosmos-kmlsat-dev` |
-| App Insights | `appi-{code}-{env}` | `appi-kmlsat-dev` |
-| Log Analytics | `log-{code}-{env}` | `log-kmlsat-dev` |
-| Container Apps Env | `cae-{code}-{env}` | `cae-kmlsat-dev` |
-| Communication Svc | `acs-{code}-{env}` | `acs-kmlsat-dev` |
-| Email Service | `ecs-{code}-{env}` | `ecs-kmlsat-dev` |
+| Resource | Naming Pattern |
+| --- | --- |
+| Resource Group | `rg-{code}-{env}` |
+| Function App (compute) | `func-{code}-{env}` |
+| Function App (orchestrator) | `func-{code}-{env}-orch` |
+| Static Web App | `stapp-{code}-{env}-site` |
+| Event Grid Topic | `evgt-{code}-{env}` |
+| Event Grid Sub | `evgs-kml-upload` |
+| Key Vault | `kv-{code}-{env}` |
+| Cosmos DB | `cosmos-{code}-{env}` |
+| App Insights | `appi-{code}-{env}` |
+| Log Analytics | `log-{code}-{env}` |
+| Container Apps Env | `cae-{code}-{env}` |
+| Communication Svc | `acs-{code}-{env}` |
+| Email Service | `ecs-{code}-{env}` |
 
 Additional fixed names:
 
 - Input container: `kml-input`
 - Output container: `kml-output`
-- Durable task hub: `KmlSatelliteHub`
+- Durable task hub: `DurableFunctionsHub` (set in `host.json`)
 
 ### Dev Environment Endpoints
 
-| Endpoint | URL |
+Specific hostnames are not stored in this document; retrieve them from the
+Azure portal or via `tofu output` after provisioning.  Pattern:
+
+| Endpoint | Pattern |
 | --- | --- |
-| **Site (SWA)** | `https://green-moss-0e849ac03.2.azurestaticapps.net` |
-| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<azure-host>.azurecontainerapps.io` |
-| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<azure-host>.azurecontainerapps.io` |
+| **Site (SWA)** | Azure-assigned SWA default hostname |
+| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<cae-suffix>.azurecontainerapps.io` |
+| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<cae-suffix>.azurecontainerapps.io` |
 | **Cosmos DB** | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
 
 The SWA hostname is Azure-assigned (no custom domain currently configured).
