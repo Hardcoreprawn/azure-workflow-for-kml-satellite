@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
+DEFENDER_TF = INFRA / "defender.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
@@ -1577,4 +1578,153 @@ class TestEndpointAuthAudit:
         )
         assert "proxy_limiter.is_allowed" in src, (
             "demo.py proxy endpoint must call proxy_limiter.is_allowed() to rate-limit requests"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 14. Defender for Cloud plan pricing controls (issue #850)
+# ---------------------------------------------------------------------------
+
+
+class TestDefenderForCloudPlans:
+    """Ensure Defender for Cloud pricing tiers are pinned in tofu to prevent bill drift.
+
+    Every plan must be explicitly declared so a future Portal click or
+    ``az security pricing create`` command cannot silently re-enable a paid
+    plan for resource types we don't use.
+    """
+
+    @pytest.fixture()
+    def defender_tf(self) -> str:
+        assert DEFENDER_TF.exists(), (
+            "infra/tofu/defender.tf must exist — Defender plan pricing must be "
+            "managed by tofu to prevent bill drift (issue #850)"
+        )
+        return DEFENDER_TF.read_text()
+
+    # --- Active (Standard) plans ---
+
+    def test_app_services_is_standard(self, defender_tf: str) -> None:
+        assert 'resource_type = "AppServices"' in defender_tf, (
+            "defender.tf must declare an AppServices pricing resource"
+        )
+        match = re.search(
+            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"app_services"\s*\{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, "defender.tf must define azurerm_security_center_subscription_pricing.app_services"
+        assert 'tier          = "Standard"' in match.group("body"), (
+            "AppServices Defender plan must be Standard (active FAs + SWA)"
+        )
+
+    def test_storage_accounts_is_standard_per_transaction(self, defender_tf: str) -> None:
+        match = re.search(
+            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"storage_accounts"\s*\{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, (
+            "defender.tf must define azurerm_security_center_subscription_pricing.storage_accounts"
+        )
+        body = match.group("body")
+        assert 'tier          = "Standard"' in body, (
+            "StorageAccounts Defender plan must be Standard (active storage with real data)"
+        )
+        assert 'subplan       = "PerTransaction"' in body, (
+            "StorageAccounts Defender plan must use PerTransaction subplan to control costs"
+        )
+
+    def test_key_vaults_is_standard_per_transaction(self, defender_tf: str) -> None:
+        match = re.search(
+            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"key_vaults"\s*\{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, (
+            "defender.tf must define azurerm_security_center_subscription_pricing.key_vaults"
+        )
+        body = match.group("body")
+        assert 'tier          = "Standard"' in body, (
+            "KeyVaults Defender plan must be Standard (active KV with real secrets)"
+        )
+        assert 'subplan       = "PerTransaction"' in body, (
+            "KeyVaults Defender plan must use PerTransaction subplan to control costs"
+        )
+
+    def test_discovery_is_standard(self, defender_tf: str) -> None:
+        match = re.search(
+            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"discovery"\s*\{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, (
+            "defender.tf must define azurerm_security_center_subscription_pricing.discovery"
+        )
+        assert 'tier          = "Standard"' in match.group("body"), (
+            "Discovery Defender plan must be Standard (CSPM mandatory foundation)"
+        )
+
+    def test_foundational_cspm_is_standard(self, defender_tf: str) -> None:
+        match = re.search(
+            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"foundational_cspm"\s*\{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, (
+            "defender.tf must define azurerm_security_center_subscription_pricing.foundational_cspm"
+        )
+        assert 'tier          = "Standard"' in match.group("body"), (
+            "FoundationalCspm Defender plan must be Standard (CSPM mandatory foundation)"
+        )
+
+    # --- Unused plans pinned to Free ---
+
+    @pytest.mark.parametrize(
+        ("resource_name", "resource_type", "rationale"),
+        [
+            ("virtual_machines", "VirtualMachines", "no VMs in this subscription"),
+            ("sql_servers", "SqlServers", "no Azure SQL in this subscription"),
+            ("sql_server_virtual_machines", "SqlServerVirtualMachines", "no SQL VMs"),
+            ("kubernetes_service", "KubernetesService", "no AKS in this subscription"),
+            ("container_registry", "ContainerRegistry", "no ACR in this subscription"),
+            ("arm", "Arm", "low value for dev"),
+            ("dns", "Dns", "no public DNS zones in scope"),
+            ("open_source_relational_databases", "OpenSourceRelationalDatabases", "no OSS RDB"),
+            ("containers", "Containers", "no containers outside Function Apps"),
+            ("cosmos_dbs", "CosmosDbs", "serverless Cosmos; no sensitive PII"),
+            ("api", "Api", "no API Management in this subscription"),
+        ],
+    )
+    def test_unused_plan_is_free(
+        self,
+        defender_tf: str,
+        resource_name: str,
+        resource_type: str,
+        rationale: str,
+    ) -> None:
+        match = re.search(
+            rf'resource\s+"azurerm_security_center_subscription_pricing"\s+"{re.escape(resource_name)}"\s*\{{'
+            r'(?P<body>.*?)\n\}',
+            defender_tf,
+            re.DOTALL,
+        )
+        assert match, (
+            f"defender.tf must define azurerm_security_center_subscription_pricing.{resource_name} "
+            f"({rationale})"
+        )
+        body = match.group("body")
+        assert 'tier          = "Free"' in body, (
+            f"{resource_type} Defender plan must be Free ({rationale})"
+        )
+
+    def test_rationale_comment_block_exists(self, defender_tf: str) -> None:
+        assert "Rationale matrix" in defender_tf, (
+            "defender.tf must contain a rationale comment matrix documenting "
+            "which plans are paid and why (issue #850 acceptance criterion)"
         )
