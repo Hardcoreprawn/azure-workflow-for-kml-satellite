@@ -1603,7 +1603,7 @@ class TestCiamDeploySpResources:
         )
 
     def test_federated_credential_covers_dev_environment(self, main_tf):
-        assert 'environment:dev"' in main_tf or "environment:${each.key}" in main_tf, (
+        assert "environment:${each.key}" in main_tf, (
             "main.tf federated credential subject must cover the dev GitHub environment"
         )
 

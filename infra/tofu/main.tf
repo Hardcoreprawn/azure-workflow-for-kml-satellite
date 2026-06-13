@@ -1241,7 +1241,10 @@ resource "azuread_application_federated_identity_credential" "deploy_sp" {
 # Keep the deploy SP as an owner of the SPA app registration.
 # Ownership grants the deploy SP an implicit Application.ReadWrite.OwnedBy scope
 # over the SPA app without requiring a broader tenant-level role.
-# NOTE: import block adopts the manually-created owner relationship on first apply.
+# NOTE: import blocks support `for_each` only (not `count`), so the resource also
+# uses `for_each` so addresses align (`...deploy_sp_owns_canopex["owner"]`).
+# The import block below adopts the manually-created owner relationship on first
+# apply; subsequent applies are idempotent regardless of how it was created.
 resource "azuread_application_owner" "deploy_sp_owns_canopex" {
   for_each        = local.ciam_redirect_enabled ? toset(["owner"]) : toset([])
   application_id  = data.azuread_application.ciam[0].id
@@ -1260,13 +1263,13 @@ import {
 # Entra External ID (CIAM) tenants.
 # NOTE: to adopt an existing assignment run:
 #   tofu import \
-#     'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby["assignment"]' \
+#     'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby[0]' \
 #     '<deploy_sp_object_id>/<app_role_assignment_id>'
 # Assignment IDs can be found with:
 #   az rest --method GET \
 #     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<sp_id>/appRoleAssignments"
 resource "azuread_app_role_assignment" "deploy_sp_app_readwrite_ownedby" {
-  for_each            = local.ciam_redirect_enabled ? toset(["assignment"]) : toset([])
+  count               = local.ciam_redirect_enabled ? 1 : 0
   app_role_id         = "18a4783c-866b-4cc7-a460-3d5e5662c884" # Application.ReadWrite.OwnedBy
   principal_object_id = data.azuread_service_principal.ciam_deploy_sp[0].object_id
   resource_object_id  = data.azuread_service_principal.msgraph[0].object_id

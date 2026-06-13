@@ -107,7 +107,9 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 
    Tofu will:
    - Create federated credentials (`github-dev` and `github-prd`) on the deploy SP
-   - Add the deploy SP as an owner of the SPA app registration
+   - **Import or create** the owner relationship (an `import` block in `main.tf`
+     adopts an existing manually-created relationship on first apply; if it does
+     not yet exist, Tofu creates it instead — subsequent applies are idempotent)
    - Grant `Application.ReadWrite.OwnedBy` on Microsoft Graph via
      `azuread_app_role_assignment` (bypasses the `az ad app permission
      admin-consent` path that silently no-ops in CIAM tenants)
@@ -141,7 +143,7 @@ az rest --method GET \
 Then import:
 ```bash
 tofu import \
-  'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby["assignment"]' \
+  'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby[0]' \
   '<deploy_sp_object_id>/<app_role_assignment_id>'
 ```
 
