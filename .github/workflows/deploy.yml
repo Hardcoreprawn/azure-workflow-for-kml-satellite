@@ -533,7 +533,19 @@ jobs:
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
           for attempt in 1 2 3; do
-            az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" && break
+            if PATCH_ERROR=$(az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
+              break
+            fi
+            echo "$PATCH_ERROR"
+            if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
+              echo "::error title=Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
+              echo "Recent Microsoft.Web/sites write activity for ${FUNC_NAME}:"
+              az monitor activity-log list --resource-id "$FUNC_ID" --offset 24h --max-events 20 \
+                --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
+                -o table || true
+              echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
+              exit 1
+            fi
             [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
             echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
             sleep 20
@@ -652,7 +664,19 @@ jobs:
             '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
           for attempt in 1 2 3; do
-            az rest --method PATCH --url "${ORCH_ID}?api-version=2024-04-01" --body "$PATCH_BODY" && break
+            if PATCH_ERROR=$(az rest --method PATCH --url "${ORCH_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
+              break
+            fi
+            echo "$PATCH_ERROR"
+            if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
+              echo "::error title=Orchestrator Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
+              echo "Recent Microsoft.Web/sites write activity for ${ORCH_NAME}:"
+              az monitor activity-log list --resource-id "$ORCH_ID" --offset 24h --max-events 20 \
+                --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
+                -o table || true
+              echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
+              exit 1
+            fi
             [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
             echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
             sleep 20

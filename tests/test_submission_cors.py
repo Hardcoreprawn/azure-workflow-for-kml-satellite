@@ -233,7 +233,7 @@ class TestSubmissionResilience:
         return_value={"tier": "free", "status": "none"},
     )
     @pytest.mark.asyncio
-    async def test_quota_storage_error_still_allows_submission(
+    async def test_quota_storage_error_returns_503_with_cors(
         self,
         mock_sub,
         mock_storage_cls,
@@ -242,14 +242,15 @@ class TestSubmissionResilience:
         mock_reserve_run,
         mock_persist,
     ):
-        """If quota storage is transiently unavailable, submit anyway."""
+        """Accounting storage failures must block submission instead of creating free runs."""
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request({"kml_content": "<kml>test</kml>"})
 
         resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
-        assert resp.status_code == 202, "Transient quota storage error should not block submission"
+        assert resp.status_code == 503
+        assert "Access-Control-Allow-Origin" in resp.headers
 
     @patch("blueprints.pipeline.submission.finalize_run")
     @patch(
