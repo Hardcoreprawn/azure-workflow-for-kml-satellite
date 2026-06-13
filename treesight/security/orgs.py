@@ -98,9 +98,18 @@ def create_org(
     org_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a new organisation with *user_id* as the initial owner."""
-    from treesight.storage.cosmos import upsert_item
+    from treesight.storage.cosmos import read_item, upsert_item
 
     org_id = org_id or str(uuid.uuid4())
+
+    # Deterministic personal org ids may race on first submission. If the org
+    # already exists, return it as-is instead of overwriting billing/usage state.
+    existing = read_item("orgs", org_id, org_id)
+    if existing:
+        _set_user_org(user_id, org_id, "owner")
+        logger.info("Org already exists org_id=%s for user=%s", org_id, user_id)
+        return existing
+
     now = datetime.now(UTC).isoformat()
 
     doc: dict[str, Any] = {

@@ -11,6 +11,8 @@ The decorator extracts auth_claims/user_id from X-MS-CLIENT-PRINCIPAL.
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import azure.functions as func
@@ -294,7 +296,19 @@ class TestUploadToken:
         """
         from blueprints.upload import upload_token
 
-        self.mock_get_user_org.side_effect = [None, None, None, None]
+        get_user_org_calls = {"count": 0}
+        get_user_org_lock = threading.Lock()
+
+        def _get_user_org_side_effect(_user_id):
+            with get_user_org_lock:
+                get_user_org_calls["count"] += 1
+                # First four calls map to: two initial lookups + two post-create
+                # lookups. Return None to simulate eventual-consistency lag.
+                if get_user_org_calls["count"] <= 4:
+                    return None
+            return {"org_id": "personal-test-user", "name": "Test User's Organisation"}
+
+        self.mock_get_user_org.side_effect = _get_user_org_side_effect
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
         mock_gen_sas.return_value = "sv=2024&sig=fakesig"
 
@@ -313,8 +327,17 @@ class TestUploadToken:
         ):
             req_1 = _make_req("/api/upload/token", method="POST")
             req_2 = _make_req("/api/upload/token", method="POST")
-            resp_1 = upload_token(req_1)
-            resp_2 = upload_token(req_2)
+            barrier = threading.Barrier(2)
+
+            def _invoke(req):
+                barrier.wait(timeout=2)
+                return upload_token(req)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_1 = executor.submit(_invoke, req_1)
+                future_2 = executor.submit(_invoke, req_2)
+                resp_1 = future_1.result(timeout=5)
+                resp_2 = future_2.result(timeout=5)
 
         assert resp_1.status_code == 200
         assert resp_2.status_code == 200
@@ -324,7 +347,7 @@ class TestUploadToken:
         )
         assert self.mock_reserve_run.call_count == 2
         reserved_org_ids = [call.kwargs["org_id"] for call in self.mock_reserve_run.call_args_list]
-        assert reserved_org_ids == ["personal-test-user", "personal-test-user"]
+        assert sorted(reserved_org_ids) == ["personal-test-user", "personal-test-user"]
 
     def test_auto_create_org_failure_returns_503(self):
         """If org auto-creation fails, return 503 rather than 403."""
