@@ -959,6 +959,24 @@ class TestTrivySignalQuality:
             ".trivyignore must explicitly track current low-cost network ACL exceptions"
         )
 
+    def test_security_workflow_checks_trivyignore_expiry(self):
+        yml = SECURITY_YML.read_text()
+        assert "Trivyignore Expiry Check" in yml, (
+            "security.yml must run a dedicated .trivyignore expiry check job"
+        )
+        assert "Validate .trivyignore expiries" in yml, (
+            "security.yml must validate exp:YYYY-MM-DD metadata for .trivyignore entries"
+        )
+
+    def test_trivyignore_expiry_policy_is_enforced(self):
+        yml = SECURITY_YML.read_text()
+        assert "missing exp:YYYY-MM-DD metadata" in yml, (
+            "security.yml expiry check must fail when .trivyignore entries lack exp metadata"
+        )
+        assert "expires soon" in yml and "timedelta(days=14)" in yml, (
+            "security.yml expiry check must warn for entries expiring within 14 days"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 13. Container runtime prerequisites
