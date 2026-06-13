@@ -7,6 +7,9 @@ orchestrator lands in stage 2 (#815/#816/#818).
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import ANY, patch
@@ -99,6 +102,33 @@ def _stub_storage(
         org.clear()
         org.update(item)
         return item
+
+    return state, _read, _replace
+
+
+def _stub_storage_live_etag(org: dict[str, Any], *, etag_version: int = 1):
+    """Patch read/replace with real etag checks for parallel tests."""
+    from treesight.storage import cosmos as cosmos_mod
+
+    lock = threading.Lock()
+    state = {"replace_calls": 0, "read_calls": 0}
+    version = [etag_version]
+
+    def _read(_container: str, _item_id: str, _pk: str):
+        with lock:
+            state["read_calls"] += 1
+            return deepcopy(org), f"etag-{version[0]}"
+
+    def _replace(_container: str, item: dict[str, Any], *, etag: str):
+        with lock:
+            state["replace_calls"] += 1
+            expected = f"etag-{version[0]}"
+            if etag != expected:
+                raise cosmos_mod.EtagPreconditionFailedError("simulated conflict")
+            org.clear()
+            org.update(item)
+            version[0] += 1
+            return item
 
     return state, _read, _replace
 
@@ -550,6 +580,43 @@ class TestEtagConcurrency:
                     instance_id="inst",
                 )
         assert state["replace_calls"] == 5  # MAX_ETAG_RETRIES
+
+    def test_parallel_reservations_cap_successes_at_allowance(self):
+        from treesight.security.billing import plan_capabilities
+
+        org = _org(members=[{"user_id": "u-free", "role": "owner"}])
+        _state, _read, _replace = _stub_storage_live_etag(org)
+        attempts = 8
+        allowance = int(plan_capabilities("free")["run_limit"])
+
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch(_GET_SUB, return_value=_sub("free")),
+        ):
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [
+                    executor.submit(
+                        reserve_run,
+                        org_id="org-1",
+                        user_id="u-free",
+                        parcel_count=1,
+                        is_eudr=False,
+                        instance_id=f"inst-{i}",
+                    )
+                    for i in range(attempts)
+                ]
+
+        successes = 0
+        for future in futures:
+            try:
+                future.result()
+                successes += 1
+            except QuotaExhaustedError as exc:
+                assert "exhausted" in str(exc)
+
+        assert successes == allowance
+        assert org["usage"]["runs_reserved"] == allowance
 
 
 # =========================================================================

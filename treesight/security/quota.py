@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 #: Maximum free pipeline runs per user (kept for backwards compat).
 FREE_TIER_LIMIT = FREE_TIER_RUN_LIMIT
 
+#: Maximum optimistic-concurrency retries for ``consume_quota``.
+MAX_QUOTA_ETAG_RETRIES = 5
+
 
 def _run_limit(user_id: str) -> int:
     """Return the run limit for a user, checking subscription tier."""
@@ -42,12 +45,35 @@ def _get_quota_record(user_id: str) -> dict[str, Any]:
     return {"used": 0, "runs": []}
 
 
-def _save_quota_record(user_id: str, record: dict[str, Any]) -> None:
+def _save_quota_record(
+    user_id: str,
+    record: dict[str, Any],
+    *,
+    preserve_higher_used: bool = False,
+) -> None:
     """Persist the quota record to Cosmos (users container)."""
     from treesight.storage.cosmos import read_item, upsert_item
 
     existing = read_item("users", user_id, user_id) or {}
-    existing.update({"id": user_id, "user_id": user_id, "quota": record})
+    existing_quota_raw = existing.get("quota")
+    existing_quota: dict[str, Any] = (
+        existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
+    )
+    merged_quota: dict[str, Any] = dict(existing_quota)
+    merged_quota.update(record)
+    incoming_used = int(record.get("used", 0))
+    if preserve_higher_used:
+        merged_quota["used"] = max(int(existing_quota.get("used", 0)), incoming_used)
+    else:
+        merged_quota["used"] = incoming_used
+    existing_runs = existing_quota.get("runs", [])
+    record_runs = record.get("runs", [])
+    if isinstance(existing_runs, list) and isinstance(record_runs, list):
+        merged_quota["runs"] = (
+            existing_runs if len(existing_runs) >= len(record_runs) else record_runs
+        )
+
+    existing.update({"id": user_id, "user_id": user_id, "quota": merged_quota})
     from treesight.models.records import UserRecord
 
     UserRecord.model_validate(existing)
@@ -80,32 +106,65 @@ def consume_quota(user_id: str) -> int:
     """Increment usage and return remaining runs (after this one).
 
     Raises ``ValueError`` if the user has exhausted their quota.
-
-    .. warning::
-
-        The read/increment/write cycle is **not atomic**.  Concurrent
-        requests for the same user may over-count or under-count.
     """
-    # TODO: use Cosmos stored procedure for atomic quota increment
-    limit = _run_limit(user_id)
-    record = _get_quota_record(user_id)
-
-    used: int = record.get("used", 0)
-    if used >= limit:
-        raise ValueError(f"Quota exhausted ({limit} pipeline runs). Please upgrade to continue.")
-
-    record["used"] = used + 1
-    record.setdefault("runs", [])
-    _save_quota_record(user_id, record)
-    remaining = limit - record["used"]
-    logger.info(
-        "Quota consumed user=%s used=%d remaining=%d limit=%d",
-        user_id,
-        record["used"],
-        remaining,
-        limit,
+    from treesight.models.records import UserRecord
+    from treesight.storage.cosmos import (
+        EtagPreconditionFailedError,
+        read_item_with_etag,
+        replace_item_with_etag,
     )
-    return remaining
+
+    limit = _run_limit(user_id)
+    last_error: Exception | None = None
+
+    for _ in range(MAX_QUOTA_ETAG_RETRIES):
+        loaded = read_item_with_etag("users", user_id, user_id)
+        if not loaded:
+            _save_quota_record(
+                user_id,
+                {"used": 0, "runs": []},
+                preserve_higher_used=True,
+            )
+            loaded = read_item_with_etag("users", user_id, user_id)
+            if not loaded:
+                logger.debug("consume_quota bootstrap race user=%s", user_id)
+                continue
+        user_doc, etag = loaded
+
+        record = user_doc.get("quota", {"used": 0, "runs": []})
+        used = int(record.get("used", 0))
+        if used >= limit:
+            raise ValueError(
+                f"Quota exhausted ({limit} pipeline runs). Please upgrade to continue."
+            )
+
+        record["used"] = used + 1
+        record.setdefault("runs", [])
+        user_doc.update({"id": user_id, "user_id": user_id, "quota": record})
+        # Defensive schema check before committing the conditional write.
+        _ = UserRecord.model_validate(user_doc)
+
+        try:
+            replace_item_with_etag("users", user_doc, etag=etag)
+        except EtagPreconditionFailedError as exc:
+            last_error = exc
+            logger.debug("consume_quota etag conflict user=%s", user_id)
+            continue
+
+        remaining = limit - record["used"]
+        logger.info(
+            "Quota consumed user=%s used=%d remaining=%d limit=%d",
+            user_id,
+            record["used"],
+            remaining,
+            limit,
+        )
+        return remaining
+
+    raise RuntimeError(
+        f"consume_quota user={user_id}: {MAX_QUOTA_ETAG_RETRIES} etag retries exhausted "
+        f"(last={last_error})"
+    )
 
 
 def release_quota(user_id: str, *, instance_id: str = "") -> int:

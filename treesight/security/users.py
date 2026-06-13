@@ -28,6 +28,39 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -> None:
+    """Merge quota fields from latest persisted user doc into *doc*.
+
+    This prevents unrelated profile writes from resetting concurrently updated
+    quota counters.
+    """
+    if not isinstance(latest, dict):
+        return
+    latest_quota_raw = latest.get("quota")
+    if not isinstance(latest_quota_raw, dict):
+        return
+    latest_quota: dict[str, Any] = latest_quota_raw
+
+    current_quota_raw = doc.get("quota")
+    current_quota: dict[str, Any] = current_quota_raw if isinstance(current_quota_raw, dict) else {}
+    merged_quota = dict(latest_quota)
+    merged_quota.update(current_quota)
+    merged_quota["used"] = max(int(latest_quota.get("used", 0)), int(current_quota.get("used", 0)))
+
+    latest_runs = latest_quota.get("runs", [])
+    current_runs = current_quota.get("runs", [])
+    if (
+        ("runs" in latest_quota or "runs" in current_quota)
+        and isinstance(latest_runs, list)
+        and isinstance(current_runs, list)
+    ):
+        merged_quota["runs"] = (
+            latest_runs if len(latest_runs) >= len(current_runs) else current_runs
+        )
+
+    doc["quota"] = merged_quota
+
+
 def record_user_sign_in(
     user_id: str,
     *,
@@ -68,6 +101,8 @@ def record_user_sign_in(
         from treesight.models.records import UserRecord
 
         UserRecord.model_validate(existing)
+        latest = read_item("users", user_id, user_id)
+        _preserve_quota_fields(existing, latest)
         upsert_item("users", existing)
     except Exception:
         logger.warning("Failed to record sign-in for user=%s", user_id, exc_info=True)
@@ -125,6 +160,8 @@ def set_user_role(
     from treesight.models.records import UserRecord
 
     UserRecord.model_validate(existing)
+    latest = read_item("users", user_id, user_id)
+    _preserve_quota_fields(existing, latest)
     upsert_item("users", existing)
     return existing
 
@@ -195,6 +232,8 @@ def update_user_profile(user_id: str, *, display_name: str) -> dict[str, Any]:
     existing["last_modified"] = datetime.now(UTC).isoformat()
 
     UserRecord.model_validate(existing)
+    latest = read_item("users", user_id, user_id)
+    _preserve_quota_fields(existing, latest)
     upsert_item("users", existing)
     logger.info("Profile updated user=%s", user_id)
     return existing
