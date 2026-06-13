@@ -626,10 +626,10 @@ class TestDeployWorkflowSettings:
             "deploy.yml must detect stuck ARM write locks so retries do not hide "
             "the blocking operation"
         )
-        assert "az monitor activity-log list --resource-id \"$FUNC_ID\"" in deploy_yml, (
+        assert 'az monitor activity-log list --resource-id "$FUNC_ID"' in deploy_yml, (
             "deploy.yml must emit recent write activity for compute app lock diagnosis"
         )
-        assert "az monitor activity-log list --resource-id \"$ORCH_ID\"" in deploy_yml, (
+        assert 'az monitor activity-log list --resource-id "$ORCH_ID"' in deploy_yml, (
             "deploy.yml must emit recent write activity for orchestrator lock diagnosis"
         )
 
