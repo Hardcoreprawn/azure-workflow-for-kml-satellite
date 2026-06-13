@@ -1,5 +1,8 @@
 """Tests for treesight.security.quota."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
@@ -15,19 +18,54 @@ from treesight.security.quota import (
 
 @pytest.fixture(autouse=True)
 def _mock_cosmos():
-    """Auto-patch Cosmos read_item/upsert_item with in-memory dict store."""
+    """Auto-patch Cosmos helpers with an in-memory, etag-aware store."""
+    from treesight.storage import cosmos as cosmos_mod
+
     store: dict[str, dict] = {}  # item_id → document
+    lock = threading.Lock()
 
     def _read_item(container: str, item_id: str, partition_key: str):
-        return store.get(f"{container}/{item_id}")
+        del partition_key
+        with lock:
+            item = store.get(f"{container}/{item_id}")
+            return deepcopy(item) if item is not None else None
 
     def _upsert_item(container: str, item: dict):
-        store[f"{container}/{item['id']}"] = item
-        return item
+        with lock:
+            key = f"{container}/{item['id']}"
+            current = store.get(key)
+            next_etag = int(current.get("_etag", "0")) + 1 if current else 1
+            saved = deepcopy(item)
+            saved["_etag"] = str(next_etag)
+            store[key] = saved
+            return deepcopy(saved)
+
+    def _read_item_with_etag(container: str, item_id: str, partition_key: str):
+        item = _read_item(container, item_id, partition_key)
+        if item is None:
+            return None
+        return item, item.get("_etag", "")
+
+    def _replace_item_with_etag(container: str, item: dict, *, etag: str):
+        with lock:
+            key = f"{container}/{item['id']}"
+            current = store.get(key)
+            if not current or current.get("_etag", "") != etag:
+                raise cosmos_mod.EtagPreconditionFailedError("simulated conflict")
+            next_etag = str(int(current.get("_etag", "0")) + 1)
+            saved = deepcopy(item)
+            saved["_etag"] = next_etag
+            store[key] = saved
+            return deepcopy(saved)
 
     with (
         patch("treesight.storage.cosmos.read_item", side_effect=_read_item),
         patch("treesight.storage.cosmos.upsert_item", side_effect=_upsert_item),
+        patch("treesight.storage.cosmos.read_item_with_etag", side_effect=_read_item_with_etag),
+        patch(
+            "treesight.storage.cosmos.replace_item_with_etag",
+            side_effect=_replace_item_with_etag,
+        ),
     ):
         yield store
 
@@ -72,6 +110,26 @@ class TestConsumeQuota:
         consume_quota("alice")
         remaining_bob = consume_quota("bob")
         assert remaining_bob == FREE_TIER_LIMIT - 1
+
+    def test_concurrent_consumption_caps_successes_at_limit(self, _mock_cosmos):
+        allowance = 3
+        attempts = 10
+        user_id = "user-concurrent"
+
+        with patch("treesight.security.quota._run_limit", return_value=allowance):
+            with ThreadPoolExecutor(max_workers=attempts) as executor:
+                futures = [executor.submit(consume_quota, user_id) for _ in range(attempts)]
+
+        successes = 0
+        for future in futures:
+            try:
+                future.result()
+                successes += 1
+            except ValueError:
+                pass
+
+        assert successes == allowance
+        assert _mock_cosmos[f"users/{user_id}"]["quota"]["used"] == allowance
 
 
 class TestGetUsage:

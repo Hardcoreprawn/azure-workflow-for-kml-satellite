@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 #: Maximum free pipeline runs per user (kept for backwards compat).
 FREE_TIER_LIMIT = FREE_TIER_RUN_LIMIT
 
+#: Maximum optimistic-concurrency retries for ``consume_quota``.
+MAX_QUOTA_ETAG_RETRIES = 5
+
 
 def _run_limit(user_id: str) -> int:
     """Return the run limit for a user, checking subscription tier."""
@@ -80,32 +83,62 @@ def consume_quota(user_id: str) -> int:
     """Increment usage and return remaining runs (after this one).
 
     Raises ``ValueError`` if the user has exhausted their quota.
-
-    .. warning::
-
-        The read/increment/write cycle is **not atomic**.  Concurrent
-        requests for the same user may over-count or under-count.
     """
-    # TODO: use Cosmos stored procedure for atomic quota increment
-    limit = _run_limit(user_id)
-    record = _get_quota_record(user_id)
-
-    used: int = record.get("used", 0)
-    if used >= limit:
-        raise ValueError(f"Quota exhausted ({limit} pipeline runs). Please upgrade to continue.")
-
-    record["used"] = used + 1
-    record.setdefault("runs", [])
-    _save_quota_record(user_id, record)
-    remaining = limit - record["used"]
-    logger.info(
-        "Quota consumed user=%s used=%d remaining=%d limit=%d",
-        user_id,
-        record["used"],
-        remaining,
-        limit,
+    from treesight.models.records import UserRecord
+    from treesight.storage.cosmos import (
+        EtagPreconditionFailedError,
+        read_item_with_etag,
+        replace_item_with_etag,
+        upsert_item,
     )
-    return remaining
+
+    limit = _run_limit(user_id)
+    last_error: Exception | None = None
+
+    for _ in range(MAX_QUOTA_ETAG_RETRIES):
+        loaded = read_item_with_etag("users", user_id, user_id)
+        if not loaded:
+            bootstrap = {"id": user_id, "user_id": user_id, "quota": {"used": 0, "runs": []}}
+            UserRecord.model_validate(bootstrap)
+            upsert_item("users", bootstrap)
+            loaded = read_item_with_etag("users", user_id, user_id)
+            if not loaded:
+                continue
+        user_doc, etag = loaded
+
+        record = user_doc.get("quota", {"used": 0, "runs": []})
+        used = int(record.get("used", 0))
+        if used >= limit:
+            raise ValueError(
+                f"Quota exhausted ({limit} pipeline runs). Please upgrade to continue."
+            )
+
+        record["used"] = used + 1
+        record.setdefault("runs", [])
+        user_doc.update({"id": user_id, "user_id": user_id, "quota": record})
+        UserRecord.model_validate(user_doc)
+
+        try:
+            replace_item_with_etag("users", user_doc, etag=etag)
+        except EtagPreconditionFailedError as exc:
+            last_error = exc
+            logger.debug("consume_quota etag conflict user=%s", user_id)
+            continue
+
+        remaining = limit - record["used"]
+        logger.info(
+            "Quota consumed user=%s used=%d remaining=%d limit=%d",
+            user_id,
+            record["used"],
+            remaining,
+            limit,
+        )
+        return remaining
+
+    raise RuntimeError(
+        f"consume_quota user={user_id}: {MAX_QUOTA_ETAG_RETRIES} etag retries exhausted "
+        f"(last={last_error})"
+    )
 
 
 def release_quota(user_id: str, *, instance_id: str = "") -> int:
