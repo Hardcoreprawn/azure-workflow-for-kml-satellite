@@ -17,6 +17,10 @@ from urllib import error, request
 COPILOT_ACTOR_ID = "BOT_kgDOC9w8XQ"
 
 
+def _copilot_actor_id() -> str:
+    return os.getenv("AUTOPILOT_COPILOT_ACTOR_ID", COPILOT_ACTOR_ID).strip() or COPILOT_ACTOR_ID
+
+
 @dataclass(frozen=True)
 class BudgetStatus:
     allowed_today: float
@@ -150,9 +154,10 @@ def _fetch_paginated(token: str, path: str) -> list[dict[str, Any]]:
 def _github_graphql(*, token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
     payload = json.dumps({"query": query, "variables": variables}).encode("utf-8")
     headers = {
-        "Accept": "application/json",
+        "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
     req = request.Request(
         url="https://api.github.com/graphql",
@@ -244,7 +249,9 @@ def assign_issue_to_copilot(*, token: str, owner: str, repo: str, issue_number: 
     assignees_obj = issue.get("assignees")
     nodes = assignees_obj.get("nodes", []) if isinstance(assignees_obj, dict) else []
     existing_actor_ids: list[str] = []
+    existing_actor_id_set: set[str] = set()
     existing_logins: set[str] = set()
+    copilot_actor_id = _copilot_actor_id()
     for node in nodes:
         if not isinstance(node, dict):
             continue
@@ -252,13 +259,14 @@ def assign_issue_to_copilot(*, token: str, owner: str, repo: str, issue_number: 
         login = node.get("login")
         if isinstance(actor_id, str) and actor_id:
             existing_actor_ids.append(actor_id)
+            existing_actor_id_set.add(actor_id)
         if isinstance(login, str) and login:
             existing_logins.add(login)
 
-    if "Copilot" in existing_logins:
+    if "Copilot" in existing_logins or copilot_actor_id in existing_actor_id_set:
         return
 
-    actor_ids = [*existing_actor_ids, COPILOT_ACTOR_ID]
+    actor_ids = list(dict.fromkeys([*existing_actor_ids, copilot_actor_id]))
     _github_graphql(
         token=token,
         query=(
