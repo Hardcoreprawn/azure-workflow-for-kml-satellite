@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 
@@ -625,6 +625,29 @@ class TestFinalizeRun:
             finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
         assert org["usage"]["member_used"]["u-pro"] == 7
 
+    def test_completed_eudr_run_records_usage_and_reports_metering(self):
+        org = self._seed()
+        org["eudr_assessments_used"] = 2
+        org["billing"] = {
+            "eudr_tier": "eudr_pro",
+            "eudr_status": "active",
+            "stripe_subscription_item_id": "si_123",
+        }
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
+        ):
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+        assert org["eudr_assessments_used"] == 9
+        mock_report.assert_called_once_with(
+            "org-1",
+            parcel_count=7,
+            idempotency_key="inst-1",
+            org=ANY,
+        )
+
     def test_idempotent_replay_is_noop(self):
         org = self._seed()
         state, _read, _replace = _stub_storage(org)
@@ -637,6 +660,31 @@ class TestFinalizeRun:
 
         assert org["usage"]["runs_completed"] == 7  # NOT 14
         assert state["replace_calls"] == 1
+
+    def test_completed_eudr_replay_does_not_double_charge_or_count(self):
+        org = self._seed()
+        org["eudr_assessments_used"] = 2
+        org["billing"] = {
+            "eudr_tier": "eudr_pro",
+            "eudr_status": "active",
+            "stripe_subscription_item_id": "si_123",
+        }
+        _state, _read, _replace = _stub_storage(org)
+        with (
+            patch(_READ_ETAG, side_effect=_read),
+            patch(_REPLACE_ETAG, side_effect=_replace),
+            patch("treesight.security.eudr_billing.report_eudr_stripe_usage") as mock_report,
+        ):
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+            finalize_run(org_id="org-1", instance_id="inst-1", status="completed")
+
+        assert org["eudr_assessments_used"] == 9
+        mock_report.assert_called_once_with(
+            "org-1",
+            parcel_count=7,
+            idempotency_key="inst-1",
+            org=ANY,
+        )
 
     def test_unknown_reservation_is_noop(self):
         org = self._seed()

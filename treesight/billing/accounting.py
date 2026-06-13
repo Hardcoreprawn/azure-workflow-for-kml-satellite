@@ -324,7 +324,9 @@ def finalize_run(
     silently ignored. Unknown reservations are also no-ops (logged at
     warning) so this is safe to call from at-least-once orchestrator
     callbacks for runs that never reserved (e.g. submission rejected
-    before reaching ``reserve_run``).
+    before reaching ``reserve_run``). Completed EUDR runs also increment
+    the org's lifetime parcel counter and emit a Stripe metered usage
+    event keyed to the durable instance id.
     """
     if status not in ("completed", "failed"):
         raise ValueError(f"status must be 'completed' or 'failed', got {status!r}")
@@ -366,9 +368,12 @@ def finalize_run(
 
         n = int(reservation["parcel_count"])
         res_user_id = reservation.get("user_id")
+        is_eudr = bool(reservation.get("is_eudr", False))
         usage["runs_reserved"] = max(0, int(usage.get("runs_reserved", 0)) - n)
         if status == "completed":
             usage["runs_completed"] = int(usage.get("runs_completed", 0)) + n
+            if is_eudr:
+                org["eudr_assessments_used"] = int(org.get("eudr_assessments_used", 0)) + n
         else:
             usage["runs_refunded"] = int(usage.get("runs_refunded", 0)) + n
             # Refund the per-member counter so failures don't burn caps.
@@ -393,6 +398,15 @@ def finalize_run(
             status,
             n,
         )
+        if status == "completed" and is_eudr:
+            from treesight.security.eudr_billing import report_eudr_stripe_usage
+
+            report_eudr_stripe_usage(
+                org_id,
+                parcel_count=n,
+                idempotency_key=instance_id,
+                org=org,
+            )
         return
 
     raise ConcurrencyError(

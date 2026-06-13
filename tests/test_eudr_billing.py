@@ -315,71 +315,7 @@ class TestSaveEudrSubscription:
 
 
 # ---------------------------------------------------------------------------
-# §5 — Record EUDR usage (parcel count)
-# ---------------------------------------------------------------------------
-
-
-class TestRecordEudrUsage:
-    """Record parcel usage after successful enrichment completion."""
-
-    @patch(_UPSERT_ITEM)
-    @patch(_GET_ORG)
-    def test_increments_period_parcels(self, mock_get_org, mock_upsert):
-        from treesight.security.eudr_billing import record_eudr_usage
-
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "active",
-                "eudr_period_parcels": 5,
-                "stripe_subscription_item_id": "si_123",
-            },
-        }
-        record_eudr_usage("org-1", parcel_count=3)
-        doc = mock_upsert.call_args[0][1]
-        assert doc["billing"]["eudr_period_parcels"] == 8
-
-    @patch(_UPSERT_ITEM)
-    @patch(_GET_ORG)
-    def test_increments_lifetime_counter(self, mock_get_org, mock_upsert):
-        from treesight.security.eudr_billing import record_eudr_usage
-
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": 2,
-            "billing": {
-                "eudr_tier": "eudr_pro",
-                "eudr_status": "active",
-                "eudr_period_parcels": 0,
-            },
-        }
-        record_eudr_usage("org-1", parcel_count=2)
-        doc = mock_upsert.call_args[0][1]
-        assert doc["eudr_assessments_used"] == 4
-
-    @patch(_UPSERT_ITEM)
-    @patch(_GET_ORG)
-    def test_free_trial_usage_increments_lifetime_only(self, mock_get_org, mock_upsert):
-        from treesight.security.eudr_billing import record_eudr_usage
-
-        mock_get_org.return_value = {
-            "id": "org-1",
-            "org_id": "org-1",
-            "eudr_assessments_used": 0,
-            "billing": {},
-        }
-        record_eudr_usage("org-1", parcel_count=1)
-        doc = mock_upsert.call_args[0][1]
-        assert doc["eudr_assessments_used"] == 1
-        # No period parcels tracked for free trial
-        assert doc["billing"].get("eudr_period_parcels", 0) == 0
-
-
-# ---------------------------------------------------------------------------
-# §6 — EUDR Stripe usage reporting
+# §5 — EUDR Stripe usage reporting
 # ---------------------------------------------------------------------------
 
 
@@ -468,7 +404,7 @@ class TestReportEudrStripeUsage:
 
 
 # ---------------------------------------------------------------------------
-# §7 — Owner-only guard
+# §6 — Owner-only guard
 # ---------------------------------------------------------------------------
 
 
