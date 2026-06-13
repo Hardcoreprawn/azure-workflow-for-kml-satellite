@@ -23,6 +23,78 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  # ── 0. .trivyignore hygiene — expiry discipline ─────────────
+  trivyignore-hygiene:
+    name: Trivyignore Expiry Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Validate .trivyignore expiries
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          from datetime import UTC, date, datetime, timedelta
+          from pathlib import Path
+          import re
+
+          ignore_file = Path('.trivyignore')
+          if not ignore_file.exists():
+            print('::error::.trivyignore is missing')
+            raise SystemExit(1)
+
+          exp_re = re.compile(r"\bexp:(\d{4}-\d{2}-\d{2})\b")
+          today = datetime.now(UTC).date()
+          warn_before = today + timedelta(days=14)
+
+          errors: list[str] = []
+          warnings: list[str] = []
+
+          for line_no, raw in enumerate(ignore_file.read_text().splitlines(), start=1):
+            line = raw.strip()
+            if not line or line.startswith('#'):
+              continue
+            vuln = line.split()[0]
+            match = exp_re.search(raw)
+            if not match:
+              errors.append(
+                f'line {line_no}: {vuln} is missing exp:YYYY-MM-DD metadata'
+              )
+              continue
+            exp_raw = match.group(1)
+            try:
+              expiry = date.fromisoformat(exp_raw)
+            except ValueError:
+              errors.append(
+                f'line {line_no}: {vuln} has invalid exp date {exp_raw!r} '
+                '(expected YYYY-MM-DD)'
+              )
+              continue
+            if expiry < today:
+              errors.append(
+                f'line {line_no}: {vuln} expired on {expiry.isoformat()}'
+              )
+            elif expiry <= warn_before:
+              warnings.append(
+                f'line {line_no}: {vuln} expires soon on {expiry.isoformat()}'
+              )
+
+          for warning in warnings:
+            print(f'::warning::{warning}')
+          for error in errors:
+            print(f'::error::{error}')
+
+          if errors:
+            print(
+              f'::error::Found {len(errors)} expired/missing .trivyignore entries; '
+              'renew, remove, or fix upstream before merge.'
+            )
+            raise SystemExit(1)
+
+          print('.trivyignore expiry check passed')
+          PY
+
   # ── 1. Semgrep — fast Python SAST ──────────────────────────
   semgrep:
     name: Semgrep SAST
