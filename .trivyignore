@@ -46,6 +46,8 @@ CVE-2026-1703 # exp:2026-06-16 pip path traversal via crafted wheels — low
 # Debian bookworm package CVEs — all have fixed versions in the archive.
 # Dockerfile.base runs apt-get upgrade -y; these clear on the next base image rebuild.
 # Base rebuild triggered 2026-05-16. Remove these entries once the rebuilt image deploys.
+# pyo3 GHSA in Rust extension lockfile. Upgrade tracked in #898.
+GHSA-36hh-v3qg-5jq4 # exp:2026-07-13 pyo3 0.25.1 in rust/Cargo.lock — upgrade tracked in #898
 #
 # systemd: Arbitrary code execution or DoS via spurious IPC API call data.
 # libsystemd0/libudev1 are present in the Debian base but the systemd IPC attack
