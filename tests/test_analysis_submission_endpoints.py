@@ -206,6 +206,43 @@ class TestAnalysisSubmissionRoutes:
         assert ticket_data["cadence"] == "seasonal"
         assert ticket_data["max_history_years"] == 2
 
+    def test_eudr_submit_marks_reservation_as_eudr(self):
+        """Direct EUDR submit path must use the same EUDR reservation flag as upload-token."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        submission_id = "11111111-2222-3333-4444-555555555555"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "eudr_mode": True,
+                "parcel_count": 3,
+            },
+        )
+
+        mock_reserve = MagicMock(return_value={"reserved_parcels": 1})
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("blueprints.pipeline.submission.uuid.uuid4", return_value=submission_id),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        data = json.loads(resp.get_body())
+        assert data["instance_id"] == submission_id
+        assert mock_reserve.call_args.kwargs["is_eudr"] is True
+        assert mock_reserve.call_args.kwargs["parcel_count"] == 3
+        assert mock_reserve.call_args.kwargs["instance_id"] == submission_id
+
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
 
@@ -476,14 +513,16 @@ class TestAnalysisSubmissionRoutes:
             patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
-                "blueprints.pipeline.submission._quota_already_consumed",
-                return_value=True,
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123"},
             ),
             patch("treesight.storage.client.BlobStorageClient"),
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 202
+        data = json.loads(resp.get_body())
+        assert data["instance_id"] == prior_id
         mock_reserve.assert_not_called()
 
     def test_invalid_prior_submission_id_still_consumes_quota(self):
@@ -506,8 +545,8 @@ class TestAnalysisSubmissionRoutes:
             ),
             patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
             patch(
-                "blueprints.pipeline.submission._quota_already_consumed",
-                return_value=False,
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value=None,
             ),
             patch("treesight.storage.client.BlobStorageClient"),
         ):
@@ -515,6 +554,204 @@ class TestAnalysisSubmissionRoutes:
 
         assert resp.status_code == 202
         mock_reserve.assert_called_once()
+
+    def test_prior_submission_id_rejects_eudr_mismatch(self):
+        """A fallback submit cannot reinterpret a non-EUDR reserved ticket as EUDR."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "eudr_mode": True,
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "parcel_count": 1},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
+    def test_prior_submission_id_rejects_missing_eudr_flag_for_eudr_ticket(self):
+        """A fallback submit must preserve the reserved ticket's EUDR mode."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 1},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
+    def test_prior_submission_id_rejects_parcel_count_mismatch(self):
+        """A fallback submit must preserve the original reserved parcel count."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "parcel_count": 3,
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "parcel_count": 1},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
+    def test_prior_submission_id_rejects_missing_parcel_count_for_multi_parcel_ticket(self):
+        """A fallback submit cannot omit parcel_count when reserved ticket used >1 parcel."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "parcel_count": 3},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
+    def test_prior_submission_id_accepts_matching_ticket_context(self):
+        """A fallback submit reuses the reserved ticket when EUDR mode and parcel count match."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": prior_id,
+                "eudr_mode": True,
+                "parcel_count": 3,
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "eudr_mode": True, "parcel_count": 3},
+            ),
+            patch("blueprints.pipeline.submission.reserve_run") as mock_reserve,
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        data = json.loads(resp.get_body())
+        assert data["instance_id"] == prior_id
+        mock_reserve.assert_not_called()
+
+    def test_submit_failure_refunds_reserved_submission_id(self):
+        """Storage failures refund the same reserved submission id."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        submission_id = "11111111-2222-3333-4444-555555555555"
+        req = _make_req("/api/analysis/submit", {"kml_content": "<kml></kml>"})
+        mock_storage = MagicMock()
+        mock_storage.upload_json.side_effect = RuntimeError("blob down")
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch(
+                "blueprints.pipeline.submission.reserve_run",
+                return_value={"reserved_parcels": 1},
+            ),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient", return_value=mock_storage),
+            patch("blueprints.pipeline.submission.finalize_run") as mock_finalize,
+            patch("blueprints.pipeline.submission.uuid.uuid4", return_value=submission_id),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 502
+        mock_finalize.assert_called_once_with(
+            org_id="org-123",
+            instance_id=submission_id,
+            status="failed",
+        )
+
+    def test_reserve_run_failure_returns_503(self):
+        """Transient accounting failures must block submission instead of creating free runs."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req("/api/analysis/submit", {"kml_content": "<kml></kml>"})
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch(
+                "blueprints.pipeline.submission.reserve_run",
+                side_effect=RuntimeError("cosmos down"),
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 503
+
+    def test_submit_rejects_non_integer_parcel_count(self):
+        """Submit rejects non-integer parcel_count instead of coercing values."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "parcel_count": 1.9},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.reserve_run") as mock_reserve,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 400
+        mock_reserve.assert_not_called()
 
 
 class TestBlobTriggerIngress:

@@ -224,6 +224,10 @@ def _build_ticket(body: dict, user_id: str, submission_context: dict, org_id: st
     if submission_context:
         ticket["submission_context"] = submission_context
 
+    parcel_count = _requested_parcel_count(body, default=1)
+    if parcel_count > 0:
+        ticket["parcel_count"] = parcel_count
+
     # EUDR mode flag — only accept strict boolean True
     if body.get("eudr_mode") is True:
         ticket["eudr_mode"] = True
@@ -310,6 +314,21 @@ def _reserve_run_or_error(
     return None
 
 
+def _requested_parcel_count(body: dict, *, default: int = 1) -> int:
+    """Return positive parcel_count, *default* when missing, or 0 when invalid."""
+    if "parcel_count" not in body:
+        return default
+
+    parcel_count = body.get("parcel_count")
+    if isinstance(parcel_count, bool):
+        return 0
+    if isinstance(parcel_count, int) and parcel_count > 0:
+        return parcel_count
+    if isinstance(parcel_count, float) and parcel_count.is_integer() and parcel_count > 0:
+        return int(parcel_count)
+    return 0
+
+
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
 def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
@@ -389,7 +408,9 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
 
     org_id = user_org["org_id"]
     submission_id = str(uuid.uuid4())
-    parcel_count = body.get("parcel_count", 1)  # Default to 1 if not provided
+    parcel_count = _requested_parcel_count(body, default=1)
+    if parcel_count <= 0:
+        return error_response(400, "parcel_count must be a positive integer", req=req)
 
     reservation_err = _reserve_run_or_error(
         org_id, user_id, parcel_count, is_eudr, submission_id, req

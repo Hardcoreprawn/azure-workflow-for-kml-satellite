@@ -181,6 +181,18 @@ paths:
                 kml_content:
                   type: string
                   description: Raw KML/KMZ XML content
+                eudr_mode:
+                  type: boolean
+                  description: When true, reserve and process this submission as an EUDR run
+                parcel_count:
+                  type: integer
+                  minimum: 1
+                  description: Positive parcel count reserved against the org pool for this run
+                prior_submission_id:
+                  type: string
+                  description: >
+                    Upload-token submission id to reuse when the direct submit path is
+                    retrying the same reserved upload without double-charging
                 submission_context:
                   type: object
                   description: Optional signed-in submission metadata for analysis history
@@ -206,8 +218,20 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/QuotaExhausted"
+        "409":
+          description: prior_submission_id does not match the requested submission context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          description: Reservation or org lookup is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "502":
           description: Upstream storage or orchestration startup is temporarily unavailable
           content:
