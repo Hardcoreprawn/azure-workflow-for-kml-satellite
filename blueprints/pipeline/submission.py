@@ -80,28 +80,33 @@ def _requested_is_eudr(body: Any) -> bool:
 
 
 def _requested_parcel_count(body: Any, *, default: int = 1) -> int:
-    """Return a positive parcel count from the request body or *default*.
+    """Return a positive parcel count from request body.
 
-    Missing, non-numeric, zero, and negative values fall back to *default*.
+    Returns *default* when parcel_count is missing.
+    Returns 0 for invalid values so callers can reject malformed requests.
     """
     if not isinstance(body, dict):
         return default
-    parcel_count = body.get("parcel_count", default)
-    if isinstance(parcel_count, (int, float)) and parcel_count > 0:
+    if "parcel_count" not in body:
+        return default
+    parcel_count = body.get("parcel_count")
+    if isinstance(parcel_count, bool):
+        return 0
+    if isinstance(parcel_count, int) and parcel_count > 0:
+        return parcel_count
+    if isinstance(parcel_count, float) and parcel_count.is_integer() and parcel_count > 0:
         return int(parcel_count)
-    return default
+    return 0
 
 
 def _prior_ticket_matches_request(ticket: dict[str, Any], body: Any) -> bool:
     """Return True when fallback submission matches the reserved upload ticket."""
     ticket_is_eudr = ticket.get("eudr_mode") is True
     ticket_parcel_count = _requested_parcel_count(ticket, default=1)
+    requested_parcel_count = _requested_parcel_count(body, default=1)
     if _requested_is_eudr(body) is not ticket_is_eudr:
         return False
-    if isinstance(body, dict) and "parcel_count" in body:
-        requested_parcel_count = _requested_parcel_count(body, default=0)
-        return requested_parcel_count == ticket_parcel_count
-    return True
+    return requested_parcel_count == ticket_parcel_count
 
 
 def _submission_plan_overrides(user_id: str) -> dict[str, Any]:
@@ -313,6 +318,10 @@ async def _submit_analysis_request(
     except ValueError:
         return error_response(400, "Invalid JSON body", req=req)
 
+    requested_parcel_count = _requested_parcel_count(body, default=1)
+    if requested_parcel_count <= 0:
+        return error_response(400, "parcel_count must be a positive integer", req=req)
+
     prior_submission_id = body.get("prior_submission_id", "") if isinstance(body, dict) else ""
     prior_ticket = _load_prior_ticket_for_user(user_id, prior_submission_id)
     if prior_ticket and not _prior_ticket_matches_request(prior_ticket, body):
@@ -357,7 +366,7 @@ async def _submit_analysis_request(
             "provider_name": effective_provider,
             "user_id": user_id,
             "org_id": org_id,
-            "parcel_count": _requested_parcel_count(body),
+            "parcel_count": requested_parcel_count,
             **plan_overrides,
             **eudr_input,
         },

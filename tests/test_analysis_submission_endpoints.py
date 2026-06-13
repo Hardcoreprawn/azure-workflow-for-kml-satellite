@@ -626,6 +626,29 @@ class TestAnalysisSubmissionRoutes:
 
         assert resp.status_code == 409
 
+    def test_prior_submission_id_rejects_missing_parcel_count_for_multi_parcel_ticket(self):
+        """A fallback submit cannot omit parcel_count when reserved ticket used >1 parcel."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            },
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123", "parcel_count": 3},
+            ),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 409
+
     def test_prior_submission_id_accepts_matching_ticket_context(self):
         """A fallback submit reuses the reserved ticket when EUDR mode and parcel count match."""
         from blueprints.pipeline.submission import _submit_analysis_request
@@ -711,6 +734,24 @@ class TestAnalysisSubmissionRoutes:
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
 
         assert resp.status_code == 503
+
+    def test_submit_rejects_non_integer_parcel_count(self):
+        """Submit rejects non-integer parcel_count instead of coercing values."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "parcel_count": 1.9},
+        )
+
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.reserve_run") as mock_reserve,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 400
+        mock_reserve.assert_not_called()
 
 
 class TestBlobTriggerIngress:

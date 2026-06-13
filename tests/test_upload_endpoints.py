@@ -128,6 +128,42 @@ class TestUploadToken:
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
+    def test_rejects_non_integer_parcel_count(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req(
+            "/api/upload/token",
+            method="POST",
+            body={"parcel_count": 1.5},
+        )
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 400
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_rejects_boolean_parcel_count(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req(
+            "/api/upload/token",
+            method="POST",
+            body={"parcel_count": True},
+        )
+        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
+            resp = upload_token(req)
+
+        assert resp.status_code == 400
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
     def test_sas_uses_user_delegation_key(self, mock_bsc, mock_gen_sas):
         from blueprints.upload import upload_token
 
