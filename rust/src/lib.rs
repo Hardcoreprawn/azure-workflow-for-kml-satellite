@@ -27,6 +27,7 @@ fn contiguous_slice<'a, T: numpy::Element>(
 ///   - ndvi is float32 with NaN for invalid pixels
 ///   - valid_mask is bool (True where both bands > 0 and NDVI is finite)
 #[pyfunction]
+#[allow(clippy::type_complexity)]
 fn compute_ndvi_array<'py>(
     py: Python<'py>,
     red: PyReadonlyArray2<'py, f32>,
@@ -75,7 +76,7 @@ fn compute_ndvi_array<'py>(
 ///
 /// Returns dict with mean, min, max, std, median, valid_pixels, total_pixels.
 #[pyfunction]
-fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonlyArray2<'_, bool>) -> PyResult<PyObject> {
+fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonlyArray2<'_, bool>) -> PyResult<Py<PyAny>> {
     let ndvi = ndvi.as_array();
     let valid = valid.as_array();
 
@@ -89,7 +90,7 @@ fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonly
     });
 
     if vals.is_empty() {
-        return Ok(py.None());
+        return Ok(py.None().into_any());
     }
 
     let n = vals.len() as f64;
@@ -116,7 +117,7 @@ fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonly
 
     // Median via partial sort
     vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let median = if vals.len() % 2 == 0 {
+    let median = if vals.len().is_multiple_of(2) {
         let mid = vals.len() / 2;
         (vals[mid - 1] as f64 + vals[mid] as f64) / 2.0
     } else {
@@ -132,7 +133,7 @@ fn ndvi_stats(py: Python<'_>, ndvi: PyReadonlyArray2<'_, f32>, valid: PyReadonly
     dict.set_item("valid_pixels", vals.len())?;
     dict.set_item("total_pixels", total)?;
 
-    Ok(dict.into())
+    Ok(dict.into_any().unbind())
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +254,7 @@ fn round4(v: f64) -> f64 {
 
 /// Compute the median of a sorted f32 slice (as f64).
 fn sorted_median(vals: &[f32]) -> f64 {
-    if vals.len() % 2 == 0 {
+    if vals.len().is_multiple_of(2) {
         let mid = vals.len() / 2;
         (vals[mid - 1] as f64 + vals[mid] as f64) / 2.0
     } else {
@@ -267,7 +268,7 @@ fn build_change_dict(
     acc: &DeltaAccum,
     median: f64,
     pixel_area_ha: f64,
-) -> PyResult<PyObject> {
+) -> PyResult<Py<PyAny>> {
     let nf = acc.n_valid as f64;
     let mean = acc.sum / nf;
     let std = ((acc.sq_sum / nf) - mean * mean).abs().sqrt();
@@ -288,7 +289,7 @@ fn build_change_dict(
     dict.set_item("loss_pct", pct(acc.n_loss))?;
     dict.set_item("gain_pct", pct(acc.n_gain))?;
     dict.set_item("valid_pixels", acc.n_valid)?;
-    Ok(dict.into())
+    Ok(dict.into_any().unbind())
 }
 
 /// Compute per-pixel NDVI change and aggregate statistics.
@@ -304,7 +305,7 @@ fn compute_change<'py>(
     pixel_area_ha: f64,
     loss_threshold: f64,
     gain_threshold: f64,
-) -> PyResult<(Bound<'py, PyArray2<f32>>, PyObject)> {
+) -> PyResult<(Bound<'py, PyArray2<f32>>, Py<PyAny>)> {
     let a = ndvi_a.as_array();
     let b = ndvi_b.as_array();
     let rows = a.nrows().min(b.nrows());
@@ -334,7 +335,7 @@ fn compute_change<'py>(
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()));
 
     if acc.n_valid == 0 {
-        return Ok((to_array(delta_buf)?.into_pyarray(py), py.None()));
+        return Ok((to_array(delta_buf)?.into_pyarray(py), py.None().into_any()));
     }
 
     let mut valid_vals: Vec<f32> = delta_buf.iter().copied().filter(|v| v.is_finite()).collect();
