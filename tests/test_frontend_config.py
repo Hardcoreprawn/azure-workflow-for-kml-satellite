@@ -732,6 +732,17 @@ class TestStaticDiscoveryFiles:
     def test_sitemap_xml_exists(self):
         assert (WEBSITE / "sitemap.xml").is_file(), "sitemap.xml must exist"
 
+    def test_sitemap_includes_eudr_content_pages(self):
+        """EUDR content cluster pages must appear in sitemap.xml for SEO (fixes #617)."""
+        sitemap = (WEBSITE / "sitemap.xml").read_text()
+        for page in (
+            "eudr-supplier-guide.html",
+            "eudr-data-sources.html",
+            "eudr-faq.html",
+            "eudr-glossary.html",
+        ):
+            assert page in sitemap, f"sitemap.xml must list {page}"
+
     def test_security_txt_exists(self):
         assert (WEBSITE / ".well-known" / "security.txt").is_file(), (
             ".well-known/security.txt must exist"
