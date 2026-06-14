@@ -1610,19 +1610,21 @@ class TestDefenderForCloudPlans:
         )
         match = re.search(
             r'resource\s+"azurerm_security_center_subscription_pricing"\s+"app_services"\s*\{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
-        assert match, "defender.tf must define azurerm_security_center_subscription_pricing.app_services"
-        assert 'tier          = "Standard"' in match.group("body"), (
+        assert match, (
+            "defender.tf must define azurerm_security_center_subscription_pricing.app_services"
+        )
+        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
             "AppServices Defender plan must be Standard (active FAs + SWA)"
         )
 
     def test_storage_accounts_is_standard_per_transaction(self, defender_tf: str) -> None:
         match = re.search(
             r'resource\s+"azurerm_security_center_subscription_pricing"\s+"storage_accounts"\s*\{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
@@ -1630,17 +1632,17 @@ class TestDefenderForCloudPlans:
             "defender.tf must define azurerm_security_center_subscription_pricing.storage_accounts"
         )
         body = match.group("body")
-        assert 'tier          = "Standard"' in body, (
+        assert re.search(r'tier\s*=\s*"Standard"', body), (
             "StorageAccounts Defender plan must be Standard (active storage with real data)"
         )
-        assert 'subplan       = "PerTransaction"' in body, (
+        assert re.search(r'subplan\s*=\s*"PerTransaction"', body), (
             "StorageAccounts Defender plan must use PerTransaction subplan to control costs"
         )
 
     def test_key_vaults_is_standard_per_transaction(self, defender_tf: str) -> None:
         match = re.search(
             r'resource\s+"azurerm_security_center_subscription_pricing"\s+"key_vaults"\s*\{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
@@ -1648,38 +1650,38 @@ class TestDefenderForCloudPlans:
             "defender.tf must define azurerm_security_center_subscription_pricing.key_vaults"
         )
         body = match.group("body")
-        assert 'tier          = "Standard"' in body, (
+        assert re.search(r'tier\s*=\s*"Standard"', body), (
             "KeyVaults Defender plan must be Standard (active KV with real secrets)"
         )
-        assert 'subplan       = "PerTransaction"' in body, (
+        assert re.search(r'subplan\s*=\s*"PerTransaction"', body), (
             "KeyVaults Defender plan must use PerTransaction subplan to control costs"
         )
 
     def test_discovery_is_standard(self, defender_tf: str) -> None:
         match = re.search(
             r'resource\s+"azurerm_security_center_subscription_pricing"\s+"discovery"\s*\{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
         assert match, (
             "defender.tf must define azurerm_security_center_subscription_pricing.discovery"
         )
-        assert 'tier          = "Standard"' in match.group("body"), (
+        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
             "Discovery Defender plan must be Standard (CSPM mandatory foundation)"
         )
 
     def test_foundational_cspm_is_standard(self, defender_tf: str) -> None:
         match = re.search(
             r'resource\s+"azurerm_security_center_subscription_pricing"\s+"foundational_cspm"\s*\{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
         assert match, (
             "defender.tf must define azurerm_security_center_subscription_pricing.foundational_cspm"
         )
-        assert 'tier          = "Standard"' in match.group("body"), (
+        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
             "FoundationalCspm Defender plan must be Standard (CSPM mandatory foundation)"
         )
 
@@ -1710,7 +1712,7 @@ class TestDefenderForCloudPlans:
     ) -> None:
         match = re.search(
             rf'resource\s+"azurerm_security_center_subscription_pricing"\s+"{re.escape(resource_name)}"\s*\{{'
-            r'(?P<body>.*?)\n\}',
+            r"(?P<body>.*?)\n\}",
             defender_tf,
             re.DOTALL,
         )
@@ -1719,8 +1721,12 @@ class TestDefenderForCloudPlans:
             f"({rationale})"
         )
         body = match.group("body")
-        assert 'tier          = "Free"' in body, (
+        assert re.search(r'tier\s*=\s*"Free"', body), (
             f"{resource_type} Defender plan must be Free ({rationale})"
+        )
+        assert re.search(rf'resource_type\s*=\s*"{re.escape(resource_type)}"', body), (
+            f'Defender plan resource_type must be "{resource_type}" — wrong resource_type '
+            f"would let tier drift pass undetected"
         )
 
     def test_rationale_comment_block_exists(self, defender_tf: str) -> None:

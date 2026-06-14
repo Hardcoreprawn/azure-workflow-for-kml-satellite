@@ -17,7 +17,7 @@
 # | ContainerRegistry          | Free     | —              | No ACR in this subscription            |
 # | Arm                        | Free     | —              | Low value for dev; ARM activity logged |
 # | Dns                        | Free     | —              | No public DNS zones in scope           |
-# | OpenSourceRelationalDbs    | Free     | —              | No OSS RDB in this subscription        |
+# | OpenSourceRelationalDatabases | Free     | —              | No OSS RDB in this subscription        |
 # | Containers                 | Free     | —              | No containers outside Function Apps    |
 # | CosmosDbs                  | Free     | —              | Serverless Cosmos; no sensitive PII    |
 # | Api                        | Free     | —              | No API Management in this subscription |
