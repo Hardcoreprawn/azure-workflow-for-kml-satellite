@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _register_blueprints(app: func.FunctionApp) -> None:
     from function_registration import register_function_blueprints
 
-    register_function_blueprints(app, include_monitoring_scheduler=True)
+    register_function_blueprints(app, role="compute")
 
 
 # Fail-fast config validation (§8.6)

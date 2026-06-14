@@ -1,11 +1,14 @@
 """Azure Functions entry point for the orchestrator image (#466).
 
-Registers all HTTP blueprints and Durable orchestration blueprints.
+Registers only the pipeline and health blueprints — not the full public API.
 Does NOT register activity functions — those run in the compute image.
 
 Both images share the same Durable task hub and Azure Storage connection.
 PIPELINE_ROLE=orchestrator is set in Dockerfile.orchestrator so
 blueprints/pipeline/__init__.py skips importing the activities module.
+
+The orchestrator deliberately omits all public-API blueprints (billing, ops,
+export, etc.) to reduce attack surface and cold-start cost (#779).
 """
 
 import logging
@@ -29,7 +32,7 @@ logger = logging.getLogger(__name__)
 def _register_blueprints(app: func.FunctionApp) -> None:
     from function_registration import register_function_blueprints
 
-    register_function_blueprints(app, include_monitoring_scheduler=False)
+    register_function_blueprints(app, role="orchestrator")
 
 
 # Fail-fast config validation (§8.6)
