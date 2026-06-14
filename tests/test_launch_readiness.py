@@ -240,6 +240,17 @@ class TestLogAnalyticsCap:
             "so the SWA serves CORS headers for the correct origin"
         )
 
+    def test_no_legacy_jablab_domain_examples_in_infra_docs(self):
+        legacy_domain = "treesight.jablab.dev"
+        assert legacy_domain not in MAIN_TF.read_text(), (
+            "main.tf must not include legacy custom-domain examples; use the "
+            "active canopex.hrdcrprwn.com domain instead"
+        )
+        assert legacy_domain not in VARIABLES_TF.read_text(), (
+            "variables.tf must not include legacy custom-domain examples; use the "
+            "active canopex.hrdcrprwn.com domain instead"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 5a. Static Web App cost controls
