@@ -123,32 +123,38 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 If resources were created manually before this Tofu config existed, import them:
 
 **Federated credentials** — find credential IDs first:
+
 ```bash
 az ad app federated-credential list --id <ciam_deploy_client_id>
 ```
+
 Then import each:
+
 ```bash
 tofu import \
   'azuread_application_federated_identity_credential.deploy_sp["dev"]' \
-  '<deploy_sp_object_id>/federatedIdentityCredentials/<dev_credential_id>'
+  '<deploy_sp_app_object_id>/federatedIdentityCredentials/<dev_credential_id>'
 tofu import \
   'azuread_application_federated_identity_credential.deploy_sp["prd"]' \
-  '<deploy_sp_object_id>/federatedIdentityCredentials/<prd_credential_id>'
+  '<deploy_sp_app_object_id>/federatedIdentityCredentials/<prd_credential_id>'
 ```
 
 **Owner relationship** — auto-imported by the import block in `main.tf` on the
 next `tofu apply`. No manual import command needed.
 
 **App role assignment** — find the assignment ID first:
+
 ```bash
 az rest --method GET \
-  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<deploy_sp_id>/appRoleAssignments"
+  --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<deploy_sp_sp_object_id>/appRoleAssignments"
 ```
+
 Then import:
+
 ```bash
 tofu import \
   'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby[0]' \
-  '<deploy_sp_object_id>/<app_role_assignment_id>'
+  '<deploy_sp_sp_object_id>/<app_role_assignment_id>'
 ```
 
 For an emergency redirect-URI fix without running Tofu (e.g. to add a new

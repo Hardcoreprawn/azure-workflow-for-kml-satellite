@@ -1211,7 +1211,9 @@ data "azuread_service_principal" "ciam_deploy_sp" {
 # Microsoft Graph service principal — required target for the app role assignment.
 data "azuread_service_principal" "msgraph" {
   count        = local.ciam_redirect_enabled ? 1 : 0
-  display_name = "Microsoft Graph"
+  # Use the well-known Microsoft Graph application ID (stable across all tenants
+  # and independent of display-name localisation or renames).
+  client_id = "00000003-0000-0000-c000-000000000002"
 }
 
 # Federated identity credentials for the deploy SP — one per GitHub Environment.
@@ -1222,10 +1224,10 @@ data "azuread_service_principal" "msgraph" {
 # To adopt existing manually-created credentials run:
 #   tofu import \
 #     'azuread_application_federated_identity_credential.deploy_sp["dev"]' \
-#     '<deploy_sp_object_id>/federatedIdentityCredentials/<dev_credential_id>'
+#     '<deploy_sp_app_object_id>/federatedIdentityCredentials/<dev_credential_id>'
 #   tofu import \
 #     'azuread_application_federated_identity_credential.deploy_sp["prd"]' \
-#     '<deploy_sp_object_id>/federatedIdentityCredentials/<prd_credential_id>'
+#     '<deploy_sp_app_object_id>/federatedIdentityCredentials/<prd_credential_id>'
 # Credential IDs can be found with:
 #   az ad app federated-credential list --id <ciam_deploy_client_id>
 resource "azuread_application_federated_identity_credential" "deploy_sp" {
@@ -1267,10 +1269,10 @@ import {
 # NOTE: to adopt an existing assignment run:
 #   tofu import \
 #     'azuread_app_role_assignment.deploy_sp_app_readwrite_ownedby[0]' \
-#     '<deploy_sp_object_id>/<app_role_assignment_id>'
+#     '<deploy_sp_sp_object_id>/<app_role_assignment_id>'
 # Assignment IDs can be found with:
 #   az rest --method GET \
-#     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<sp_id>/appRoleAssignments"
+#     --uri "https://graph.microsoft.com/v1.0/servicePrincipals/<deploy_sp_sp_object_id>/appRoleAssignments"
 resource "azuread_app_role_assignment" "deploy_sp_app_readwrite_ownedby" {
   count               = local.ciam_redirect_enabled ? 1 : 0
   app_role_id         = "18a4783c-866b-4cc7-a460-3d5e5662c884" # Application.ReadWrite.OwnedBy
