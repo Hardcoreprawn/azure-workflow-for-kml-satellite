@@ -217,7 +217,7 @@ def _validate_proxy_url(target_url: str) -> tuple[str | None, func.HttpResponse 
         return None, error_response(403, "Private or reserved addresses are not allowed")
 
     if not _is_domain_allowed(hostname):
-        return None, error_response(403, "Domain not whitelisted")
+        return None, error_response(403, "Domain not in allowlist")
 
     return target_url, None
 
@@ -238,11 +238,15 @@ def _fetch_upstream(
         resp.close()
 
     if len(body) > _PROXY_MAX_RESPONSE_BYTES:
-        return error_response(502, "Upstream response too large", req=req)
+        return error_response(502, "Upstream response exceeds 5 MiB limit", req=req)
 
     upstream_ct = resp.headers.get("Content-Type", "")
     if not _content_type_allowed(upstream_ct):
-        return error_response(502, "Upstream content-type not allowed", req=req)
+        return error_response(
+            502,
+            "Upstream content-type not allowed (must be JSON, CSV, plain text, or image)",
+            req=req,
+        )
 
     hdrs = cors_headers(req)
     hdrs["Cache-Control"] = "max-age=3600"

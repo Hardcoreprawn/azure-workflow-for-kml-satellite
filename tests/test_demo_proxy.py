@@ -247,7 +247,7 @@ class TestProxyResponseHandling:
                     _proxy_req("https://environment.data.gov.uk/flood-monitoring/id/floods")
                 )
         assert resp.status_code == 502
-        assert b"too large" in resp.get_body().lower()
+        assert b"5 mib" in resp.get_body().lower()
 
     def test_disallowed_content_type_rejected(self):
         """Binary or unexpected content-types from upstream must be blocked."""
