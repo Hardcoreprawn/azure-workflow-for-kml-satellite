@@ -101,8 +101,8 @@ def test_entrypoints_use_shared_registration_module():
 
     assert "from function_registration import register_function_blueprints" in compute_source
     assert "from function_registration import register_function_blueprints" in orch_source
-    assert "register_function_blueprints(app, include_monitoring_scheduler=True)" in compute_source
-    assert "register_function_blueprints(app, include_monitoring_scheduler=False)" in orch_source
+    assert 'register_function_blueprints(app, role="compute")' in compute_source
+    assert 'register_function_blueprints(app, role="orchestrator")' in orch_source
 
 
 def test_function_app_orch_does_not_hardcode_activities():
@@ -115,14 +115,14 @@ def test_function_app_orch_does_not_hardcode_activities():
 def test_function_app_orch_does_not_register_monitoring_scheduler():
     """The orchestrator image must not register the monitoring timer trigger."""
     source = (REPO_ROOT / "function_app_orch.py").read_text()
-    assert "register_function_blueprints(app, include_monitoring_scheduler=False)" in source
+    assert 'role="orchestrator"' in source
     assert "monitoring_scheduler_bp" not in source
 
 
 def test_function_app_registers_monitoring_scheduler():
     """The compute image must keep the monitoring timer trigger."""
     source = (REPO_ROOT / "function_app.py").read_text()
-    assert "register_function_blueprints(app, include_monitoring_scheduler=True)" in source
+    assert 'role="compute"' in source
 
 
 def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypatch):
@@ -141,6 +141,63 @@ def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypa
     assert functions, "function_app_orch must index at least one function"
     assert "monitoring_scheduler" not in names, (
         "function_app_orch must not register the monitoring timer trigger"
+    )
+
+
+# ── 7. Blueprint role-filter contract (#779) ────────────────────────────
+
+
+def test_orchestrator_blueprints_are_strict_subset_of_compute():
+    """Orchestrator blueprint set must be a strict subset of compute blueprint set.
+
+    Every blueprint registered by the orchestrator must also be registered by
+    compute, but compute must register additional public-API blueprints that the
+    orchestrator deliberately omits to reduce attack surface (#779).
+    """
+    from function_registration import _compute_blueprints, _orchestrator_blueprints
+
+    compute_bps = _compute_blueprints()
+    orch_bps = _orchestrator_blueprints()
+
+    # Blueprint objects are module-level singletons; id() comparison is stable.
+    compute_ids = {id(bp) for bp in compute_bps}
+    orch_ids = {id(bp) for bp in orch_bps}
+
+    assert orch_ids < compute_ids, (
+        "Orchestrator blueprint set must be a strict (proper) subset of compute. "
+        f"Orchestrator: {len(orch_bps)} blueprints; compute: {len(compute_bps)} blueprints."
+    )
+
+
+def test_orchestrator_excludes_public_api_blueprints():
+    """Billing, export, and ops blueprints must not appear in the orchestrator set (#779)."""
+    from blueprints.billing import bp as billing_bp
+    from blueprints.export import bp as export_bp
+    from blueprints.ops import bp as ops_bp
+    from function_registration import _orchestrator_blueprints
+
+    orch_ids = {id(bp) for bp in _orchestrator_blueprints()}
+
+    for name, bp in [("billing", billing_bp), ("export", export_bp), ("ops", ops_bp)]:
+        assert id(bp) not in orch_ids, (
+            f"Orchestrator must not register the '{name}' blueprint — "
+            "public-API routes must be compute-only (#779)."
+        )
+
+
+def test_orchestrator_registers_health_and_pipeline():
+    """Orchestrator must register exactly the health and pipeline blueprints (#779)."""
+    from blueprints.health import bp as health_bp
+    from blueprints.pipeline import bp as pipeline_bp
+    from function_registration import _orchestrator_blueprints
+
+    orch_bps = _orchestrator_blueprints()
+    orch_ids = {id(bp) for bp in orch_bps}
+
+    assert id(health_bp) in orch_ids, "Orchestrator must register health_bp"
+    assert id(pipeline_bp) in orch_ids, "Orchestrator must register pipeline_bp"
+    assert len(orch_bps) == 2, (
+        f"Orchestrator must register exactly 2 blueprints (health + pipeline), got {len(orch_bps)}"
     )
 
 
