@@ -14,6 +14,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Maximum times get_and_increment will retry on ETag conflict or creation race
+# before raising RuntimeError. Mirrors MAX_ETAG_RETRIES in billing.accounting.
+_MAX_RETRIES = 5
+
 
 class ReplayStore(Protocol):
     """Interface for checking and incrementing token replay counts."""
@@ -82,7 +86,12 @@ class TableReplayStore:
     def get_and_increment(self, nonce: str, ttl_seconds: int) -> int:
         import datetime
 
-        from azure.core.exceptions import ResourceNotFoundError
+        from azure.core import MatchConditions
+        from azure.core.exceptions import (
+            ResourceExistsError,
+            ResourceModifiedError,
+            ResourceNotFoundError,
+        )
 
         now = datetime.datetime.now(datetime.UTC)
         expires = now + datetime.timedelta(seconds=ttl_seconds)
@@ -90,23 +99,41 @@ class TableReplayStore:
         partition_key = nonce[:8] if len(nonce) >= 8 else nonce
         row_key = nonce
 
-        try:
-            entity = self._table.get_entity(partition_key=partition_key, row_key=row_key)
-            count = int(entity.get("use_count", 0))
-            entity_expires = entity.get("expires")
-            if entity_expires and entity_expires < now:
-                count = 0
-            prev = count
-            entity["use_count"] = count + 1
-            entity["expires"] = expires
-            self._table.update_entity(entity, mode="merge")  # type: ignore[arg-type]
-            return prev
-        except ResourceNotFoundError:
-            entity = {
-                "PartitionKey": partition_key,
-                "RowKey": row_key,
-                "use_count": 1,
-                "expires": expires,
-            }
-            self._table.create_entity(entity)
-            return 0
+        for _ in range(_MAX_RETRIES):
+            try:
+                entity = self._table.get_entity(partition_key=partition_key, row_key=row_key)
+                count = int(entity.get("use_count", 0))
+                entity_expires = entity.get("expires")
+                if entity_expires and entity_expires < now:
+                    count = 0
+                prev = count
+                entity["use_count"] = count + 1
+                entity["expires"] = expires
+                self._table.update_entity(
+                    entity,
+                    mode="merge",
+                    match_condition=MatchConditions.IfNotModified,
+                )
+                return prev
+            except ResourceNotFoundError:
+                # Entity doesn't exist — try to create it atomically.
+                try:
+                    self._table.create_entity(
+                        {
+                            "PartitionKey": partition_key,
+                            "RowKey": row_key,
+                            "use_count": 1,
+                            "expires": expires,
+                        }
+                    )
+                    return 0
+                except ResourceExistsError:
+                    # Another instance created it first — retry the read/update.
+                    continue
+            except ResourceModifiedError:
+                # ETag mismatch — another instance updated it concurrently — retry.
+                continue
+
+        raise RuntimeError(
+            f"TableReplayStore: could not atomically update replay count after {_MAX_RETRIES} max retries for nonce {nonce[:8]}"  # noqa: E501
+        )
