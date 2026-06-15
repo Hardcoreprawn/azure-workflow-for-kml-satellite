@@ -4,19 +4,24 @@ Issue: #18
 
 ## Quick Reference — Dev Environment
 
-| Resource | Value |
+Specific hostnames and resource identifiers for the dev environment are not
+stored in this document; retrieve them from the Azure portal or from
+`tofu output` after provisioning.  The patterns below follow
+[INFRA_NAMING_STANDARD.md](INFRA_NAMING_STANDARD.md).
+
+| Resource | Pattern |
 | --- | --- |
-| Site URL | `https://green-moss-0e849ac03.2.azurestaticapps.net` |
-| Function App URL (public ingress) | `https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io` |
-| Health check | `curl -sS https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/health` |
-| Readiness check | `curl -sS https://func-kmlsat-dev-orch.jollysea-48e72cf8.uksouth.azurecontainerapps.io/api/readiness` |
-| API config | `curl -sS https://green-moss-0e849ac03.2.azurestaticapps.net/api-config.json` |
+| Site URL | Azure Static Web App default hostname (check Azure portal) |
+| Function App URL (public ingress) | `https://func-kmlsat-dev-orch.<cae-suffix>.uksouth.azurecontainerapps.io` |
+| Health check | `curl -sS <func-app-url>/api/health` |
+| Readiness check | `curl -sS <func-app-url>/api/readiness` |
+| API config | `curl -sS <swa-url>/api-config.json` |
 | Resource Group | `rg-kmlsat-dev` |
 | Cosmos DB | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
-| Auth | Transition mode: SWA principal (+ optional HMAC) by default; CIAM bearer JWT path available when enabled |
+| Auth | CIAM bearer JWT (bearer-only; see CIAM config) via MSAL.js |
 | Container image | `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:{sha}` |
 
-**Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details).
+**Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details). Use `tofu output -raw function_app_orch_default_hostname` to retrieve the exact ingress hostname.
 
 ## Deploy
 
