@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import datetime
 import importlib
 import time
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -115,3 +117,131 @@ class TestVerifyValetToken:
         claims = valet_mod.verify_valet_token(token, secret=SECRET)
         assert "recipient_hash" in claims
         assert "@" not in claims.get("recipient_hash", "")
+
+
+# ---------------------------------------------------------------------------
+# TableReplayStore — ETag-based optimistic concurrency (§11.2 M1.8)
+# ---------------------------------------------------------------------------
+
+
+def _make_table_store(table_client: MagicMock) -> replay_mod.TableReplayStore:
+    """Build a TableReplayStore backed by a mock table client."""
+    store = replay_mod.TableReplayStore.__new__(replay_mod.TableReplayStore)
+    store._table_name = "valetreplay"
+    store._table_client = table_client
+    return store
+
+
+def _future_entity(use_count: int = 1) -> dict:
+    """Return a table entity with a future expiry."""
+    return {
+        "PartitionKey": "testnon",
+        "RowKey": "testnonce123456",
+        "use_count": use_count,
+        "expires": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
+    }
+
+
+class TestTableReplayStore:
+    """TableReplayStore with ETag-based optimistic concurrency (§11.2 M1.8)."""
+
+    def test_first_use_creates_entity_and_returns_zero(self):
+        from azure.core.exceptions import ResourceNotFoundError
+
+        table = MagicMock()
+        table.get_entity.side_effect = ResourceNotFoundError()
+
+        store = _make_table_store(table)
+        result = store.get_and_increment("testnonce123456", 60)
+
+        assert result == 0
+        table.create_entity.assert_called_once()
+        created = table.create_entity.call_args[0][0]
+        assert created["use_count"] == 1
+
+    def test_subsequent_use_increments_and_returns_previous_count(self):
+        table = MagicMock()
+        table.get_entity.return_value = _future_entity(use_count=1)
+
+        store = _make_table_store(table)
+        result = store.get_and_increment("testnonce123456", 60)
+
+        assert result == 1
+        table.update_entity.assert_called_once()
+
+    def test_etag_conflict_retries_and_succeeds(self):
+        """One ETag conflict is transparently retried."""
+        from azure.core.exceptions import ResourceModifiedError
+
+        table = MagicMock()
+        # Return a fresh copy each call so mutation from attempt 1 doesn't leak.
+        table.get_entity.side_effect = [_future_entity(use_count=2), _future_entity(use_count=2)]
+        # First update conflicts; second succeeds.
+        table.update_entity.side_effect = [ResourceModifiedError(), None]
+
+        store = _make_table_store(table)
+        result = store.get_and_increment("testnonce123456", 60)
+
+        assert result == 2
+        assert table.get_entity.call_count == 2
+        assert table.update_entity.call_count == 2
+
+    def test_max_retries_exceeded_raises_runtime_error(self):
+        from azure.core.exceptions import ResourceModifiedError
+
+        table = MagicMock()
+        table.get_entity.return_value = _future_entity(use_count=1)
+        table.update_entity.side_effect = ResourceModifiedError()
+
+        store = _make_table_store(table)
+        with pytest.raises(RuntimeError, match="max retries"):
+            store.get_and_increment("testnonce123456", 60)
+
+        assert table.update_entity.call_count == replay_mod._MAX_RETRIES
+
+    def test_creation_race_retries_and_succeeds(self):
+        """When another instance creates the entity first, the loser retries the read."""
+        from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+
+        table = MagicMock()
+        # First read: not found; after failed create, second read returns entity.
+        table.get_entity.side_effect = [ResourceNotFoundError(), _future_entity(use_count=1)]
+        table.create_entity.side_effect = ResourceExistsError()
+
+        store = _make_table_store(table)
+        result = store.get_and_increment("testnonce123456", 60)
+
+        assert result == 1
+        assert table.get_entity.call_count == 2
+        table.update_entity.assert_called_once()
+
+    def test_expired_entity_resets_count_to_zero(self):
+        """An entry whose 'expires' is in the past is treated as a fresh start."""
+        table = MagicMock()
+        expired = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
+        table.get_entity.return_value = {
+            "PartitionKey": "testnon",
+            "RowKey": "testnonce123456",
+            "use_count": 5,
+            "expires": expired,
+        }
+
+        store = _make_table_store(table)
+        result = store.get_and_increment("testnonce123456", 3600)
+
+        # Expired entry resets — previous count returned as 0.
+        assert result == 0
+        table.update_entity.assert_called_once()
+
+    def test_update_called_with_match_condition(self):
+        """update_entity must be called with IfNotModified to enforce ETag safety."""
+        from azure.core import MatchConditions
+
+        table = MagicMock()
+        table.get_entity.return_value = _future_entity(use_count=0)
+
+        store = _make_table_store(table)
+        store.get_and_increment("testnonce123456", 60)
+
+        _args, kwargs = table.update_entity.call_args
+        assert kwargs.get("match_condition") == MatchConditions.IfNotModified
