@@ -752,10 +752,12 @@ class TestDeployWorkflowSettings:
             "deploy.yml must have a named step to inject CSP hostnames before SWA upload"
         )
         assert "__FUNC_HOSTNAME__" in deploy_yml, (
-            "deploy.yml must substitute the __FUNC_HOSTNAME__ placeholder in staticwebapp.config.json"
+            "deploy.yml must substitute the __FUNC_HOSTNAME__ placeholder"
+            " in staticwebapp.config.json"
         )
         assert "__BLOB_HOSTNAME__" in deploy_yml, (
-            "deploy.yml must substitute the __BLOB_HOSTNAME__ placeholder in staticwebapp.config.json"
+            "deploy.yml must substitute the __BLOB_HOSTNAME__ placeholder"
+            " in staticwebapp.config.json"
         )
         assert "storage_account_name" in deploy_yml, (
             "deploy.yml CSP injection must use the storage_account_name tofu output"
