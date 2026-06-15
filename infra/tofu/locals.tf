@@ -100,4 +100,10 @@ locals {
   # Maps GitHub environment names to use for deploy SP federated credentials.
   # Active only when federated credential management is enabled.
   ciam_deploy_envs = local.ciam_federated_creds_enabled ? tomap({ dev = "dev", prd = "prd" }) : tomap({})
+
+  # Resolves to the object (resource) ID of the SPA app registration.
+  # Phase 2+: use the managed resource; Phase 1 fallback: use the data source.
+  # Used by both the redirect-URI resource and its companion import block to
+  # keep the two references in sync without duplication.
+  ciam_app_id = local.ciam_app_import_enabled ? azuread_application_registration.ciam["ciam"].id : data.azuread_application.ciam[0].id
 }

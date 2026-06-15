@@ -1614,10 +1614,7 @@ class TestCiamTofuOwnership:
             "so Tofu adopts the existing app without recreating it (issue #806)"
         )
         # The import block uses for_each so it can be gated conditionally
-        assert (
-            "to       = azuread_application_registration.ciam[each.key]" in main_tf
-            or "to = azuread_application_registration.ciam[each.key]" in main_tf
-        ), (
+        assert re.search(r"to\s*=\s*azuread_application_registration\.ciam\[each\.key\]", main_tf), (
             "import block for azuread_application_registration.ciam must use for_each "
             "so it is only active when ciam_app_object_id is set"
         )
@@ -1666,9 +1663,13 @@ class TestCiamTofuOwnership:
 
     def test_ciam_federated_creds_use_correct_issuer(self, main_tf):
         """Federated credentials must use the GitHub Actions OIDC issuer."""
-        assert "https://token.actions.githubusercontent.com" in main_tf, (
+        oidc_issuer = "token.actions.githubusercontent.com"
+        assert re.search(
+            r'issuer\s*=\s*"https://' + re.escape(oidc_issuer) + r'"',
+            main_tf,
+        ), (
             "azuread_application_federated_identity_credential must set issuer to "
-            "https://token.actions.githubusercontent.com for GitHub Actions OIDC"
+            f"https://{oidc_issuer} for GitHub Actions OIDC"
         )
 
     def test_ciam_app_owner_resource_declared(self, main_tf):
@@ -1700,10 +1701,14 @@ class TestCiamTofuOwnership:
         )
 
     def test_ciam_app_import_enabled_local_declared(self, locals_tf):
-        """ciam_app_import_enabled local must be declared in locals.tf."""
+        """ciam_app_import_enabled and ciam_app_id locals must be declared in locals.tf."""
         assert "ciam_app_import_enabled" in locals_tf, (
             "locals.tf must declare ciam_app_import_enabled to gate Phase 2 "
             "resources on ciam_app_object_id being non-empty"
+        )
+        assert "ciam_app_id" in locals_tf, (
+            "locals.tf must declare ciam_app_id to consolidate the Phase 1/2 "
+            "application ID reference used by redirect URIs and import block"
         )
 
     def test_ciam_readme_documents_tofu_ownership(self):

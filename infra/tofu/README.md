@@ -51,7 +51,7 @@ Configure for each environment (`dev`, `prd`):
 - `TF_STATE_CONTAINER`
 - `TF_STATE_KEY`
 
-## Required GitHub Environment Secrets (CIAM/****** Auth)
+## Required GitHub Environment Secrets (CIAM/Bearer Token Auth)
 
 Bearer-token authentication is mandatory. All public CIAM values
 (`ciam_tenant_subdomain`, `ciam_tenant_id`, `ciam_client_id`,

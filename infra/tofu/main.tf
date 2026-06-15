@@ -1210,7 +1210,7 @@ resource "azuread_application_owner" "ciam_deploy_sp" {
 # (Phase 2) or the data source (Phase 1).
 resource "azuread_application_redirect_uris" "ciam_spa" {
   for_each       = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
-  application_id = local.ciam_app_import_enabled ? azuread_application_registration.ciam["ciam"].id : data.azuread_application.ciam[0].id
+  application_id = local.ciam_app_id
   type           = "SPA"
   redirect_uris  = local.ciam_spa_redirect_uris
 }
@@ -1222,7 +1222,7 @@ resource "azuread_application_redirect_uris" "ciam_spa" {
 import {
   for_each = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
   to       = azuread_application_redirect_uris.ciam_spa[each.key]
-  id       = "${local.ciam_app_import_enabled ? azuread_application_registration.ciam["ciam"].id : data.azuread_application.ciam[0].id}/redirectUris/SPA"
+  id       = "${local.ciam_app_id}/redirectUris/SPA"
 }
 
 # --- CIAM deploy SP federated identity credentials (#804) ---
