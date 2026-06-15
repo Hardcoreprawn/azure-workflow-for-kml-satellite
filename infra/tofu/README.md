@@ -67,12 +67,85 @@ The only CIAM-related GitHub Environment secret you must set is:
   principal **in the CIAM tenant** that has `Application.ReadWrite.OwnedBy`
   permission and is an Owner of the SPA app, with a federated GitHub OIDC
   credential trusting `repo:<owner>/<repo>:environment:<env>`. When set, Tofu
-  manages the SPA app's redirect URIs (`azuread_application_redirect_uris`).
-  When unset, redirect URI registration is skipped silently — see
-  "CIAM deploy SP bootstrap" below.
+  manages the SPA app's redirect URIs (`azuread_application_redirect_uris`)
+  and, once `ciam_app_object_id` is also set, the full app registration
+  (`azuread_application_registration.ciam`). When unset, redirect URI
+  registration is skipped silently — see "CIAM deploy SP bootstrap" below.
 
 The Function App validates the CIAM settings at startup and fails fast if any
 are missing.
+
+## CIAM Tofu ownership (issue #781/#806/#804)
+
+The CIAM SPA app registration is progressively brought under Tofu state:
+
+| Phase | Condition | Tofu manages |
+|-------|-----------|-------------|
+| 1 — read-only | `ciam_app_object_id = ""` | Redirect URIs only (via data source) |
+| 2 — full ownership | `ciam_app_object_id = "<objectId>"` | Full app registration + SP + redirect URIs |
+| 3 — deploy SP creds | `ciam_deploy_app_object_id = "<objectId>"` | Federated identity credentials on deploy SP |
+| 4 — owner assertion | `ciam_deploy_sp_object_id = "<objectId>"` | App owner relationship |
+
+**Portal changes are no longer safe** once Phase 2 is active. All configuration
+must go through `environments/<env>.tfvars` + `tofu apply`. `tofu plan` will
+surface drift as a planned change.
+
+### Completing Phase 2 (import the app registration)
+
+1. Get the SPA app object ID:
+   ```bash
+   az ad app show --id 1b51e2e8-15af-448b-8886-1345aeda73ba \
+     --query id -o tsv \
+     --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
+     --allow-no-subscriptions
+   ```
+2. Set `ciam_app_object_id = "<result>"` in `environments/<env>.tfvars`.
+3. Run `tofu plan` — confirm Tofu plans to **import** the registration (not create).
+4. Run `tofu apply` — registration is now in state.
+
+### Completing Phase 3 (federated identity credentials)
+
+1. Get the deploy SP app registration object ID:
+   ```bash
+   az ad app show --id <TF_VAR_CIAM_DEPLOY_CLIENT_ID> \
+     --query id -o tsv \
+     --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
+     --allow-no-subscriptions
+   ```
+2. Set `ciam_deploy_app_object_id = "<result>"` in `environments/<env>.tfvars`.
+3. Import existing federated credentials (prevents Tofu creating duplicates):
+   ```bash
+   # List existing credential IDs
+   az rest --method GET \
+     --uri "https://graph.microsoft.com/v1.0/applications/<deploy-app-object-id>/federatedIdentityCredentials" \
+     --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 | jq '.value[] | {id, name: .name}'
+
+   # Import each credential
+   tofu import \
+     'azuread_application_federated_identity_credential.ciam_deploy_sp["dev"]' \
+     '<deploy-app-object-id>/<credential-object-id-for-dev>'
+   tofu import \
+     'azuread_application_federated_identity_credential.ciam_deploy_sp["prd"]' \
+     '<deploy-app-object-id>/<credential-object-id-for-prd>'
+   ```
+4. Run `tofu plan` — confirm no-op for existing credentials.
+
+### Completing Phase 4 (owner assertion)
+
+1. Get the deploy SP service principal object ID:
+   ```bash
+   az ad sp show --id <TF_VAR_CIAM_DEPLOY_CLIENT_ID> \
+     --query id -o tsv \
+     --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
+     --allow-no-subscriptions
+   ```
+2. Set `ciam_deploy_sp_object_id = "<result>"` in `environments/<env>.tfvars`.
+3. Run `tofu plan` — Tofu will assert the owner relationship.
+4. Run `tofu apply`.
+
+**Deprecation of manual portal workflow:** Once Phase 2 is active, do NOT
+modify the app registration via the Azure portal or `az ad app` commands.
+Changes must go through `infra/tofu/` to be tracked in state.
 
 ## CIAM deploy SP bootstrap (one-time, done)
 
@@ -84,7 +157,9 @@ on Microsoft Graph), Owner of SPA app `1b51e2e8-…`, and federated GitHub OIDC
 credentials for `repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:{dev,prd}`.
 Both GitHub Environments have `TF_VAR_CIAM_DEPLOY_CLIENT_ID` set. Tofu manages
 `azuread_application_redirect_uris.ciam_spa["spa"]` from
-`local.ciam_spa_redirect_uris` in `locals.tf`.
+`local.ciam_spa_redirect_uris` in `locals.tf`. Full app registration ownership
+(Phases 2–4) requires object IDs in `environments/<env>.tfvars` — see "CIAM
+Tofu ownership" above.
 
 If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
 
@@ -100,16 +175,8 @@ If the deploy SP needs to be re-created (e.g. for a new tenant or rotated):
    - Subject: `repo:<owner>/<repo>:environment:<env>`
    - Audience: `api://AzureADTokenExchange`
 6. Set `TF_VAR_CIAM_DEPLOY_CLIENT_ID` in the matching GitHub Environment.
-
-For an emergency redirect-URI fix without running Tofu (e.g. to add a new
-origin immediately), after step 1 above:
-
-```bash
-az rest --method PATCH \
-  --uri "https://graph.microsoft.com/v1.0/applications/<spa-objectId>" \
-  --headers "Content-Type=application/json" \
-  --body '{"spa":{"redirectUris":["https://canopex.hrdcrprwn.com/", ...]}}'
-```
+7. Complete Phases 2–4 from "CIAM Tofu ownership" above to bring the new SP
+   under Tofu state management.
 
 ## Local Usage
 

@@ -1149,66 +1149,109 @@ resource "azurerm_static_web_app_custom_domain" "main" {
   validation_type   = "cname-delegation"
 }
 
-# --- CIAM SPA redirect URIs ---
-# Keeps the app registration's allowed redirect URIs in sync with the deployed
-# site URL so that MSAL loginRedirect() (canopex-auth.js) is never rejected
-# with AADSTS50011. Active when ciam_deploy_client_id is set; the SPA app's
-# own client_id is always present in tfvars (validated in variables.tf).
+# --- CIAM app registration and redirect URIs ---
+# Brings the SPA app registration fully under Tofu state ownership.
 #
-# Operator prerequisite (one-time, manual):
-#   1. In the CIAM tenant, create a service principal (app registration).
-#   2. Grant it Application.ReadWrite.OwnedBy on the target app registration.
-#   3. Add a federated credential for:
-#        Issuer: https://token.actions.githubusercontent.com
-#        Subject: repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:<env>
-#        Audience: api://AzureADTokenExchange
-#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub Environment secrets
-#      (the SPA app's client_id lives in environments/<env>.tfvars).
-# --- CIAM SPA redirect URIs ---
-# Registers root redirect URIs so MSAL loginRedirect() is not rejected with
-# AADSTS50011. canopex-auth.js always uses window.location.origin+'/' as the
-# redirectUri; MSAL's navigateToLoginRequestUrl (default true) returns the
-# user to the originating page (/eudr/, /app/, etc.) after auth completes.
-# Only root URIs are needed — no per-page registration, no per-page CI wiring.
+# Migration path (issue #806):
+#   Phase 1 (current): ciam_app_object_id is empty — Tofu reads the existing
+#     registration via data source and manages only redirect URIs.
+#   Phase 2 (operator action): set ciam_app_object_id in environments/<env>.tfvars
+#     to the SPA app's object ID (az ad app show --id <ciam_client_id> --query id).
+#     On next `tofu plan`, the import block adopts the existing registration;
+#     `tofu apply` completes the import. Redirect URIs then reference the managed
+#     resource instead of the data source.
 #
-# Active when ciam_deploy_client_id is set. Requires a one-time operator step:
-#   1. In the CIAM tenant, create a service principal (app registration).
-#   2. Grant it Application.ReadWrite.OwnedBy on the SPA app registration.
-#   3. Add a federated credential on that SP:
-#        Issuer:   https://token.actions.githubusercontent.com
-#        Subject:  repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:prd
-#        Audience: api://AzureADTokenExchange
-#   4. Set TF_VAR_CIAM_DEPLOY_CLIENT_ID in the GitHub 'prd' environment secrets.
+# Both data source and resource are defined simultaneously; the condition on
+# each ensures exactly one is active at a time, preventing orphan state.
+
+# Phase 1 fallback: data source active when ciam_app_object_id is NOT set.
+# Read-only; Tofu cannot prevent out-of-band changes to the registration itself.
 data "azuread_application" "ciam" {
-  count     = local.ciam_redirect_enabled ? 1 : 0
+  count     = local.ciam_redirect_enabled && !local.ciam_app_import_enabled ? 1 : 0
   client_id = var.ciam_client_id
 }
 
+# Phase 2: managed resource active once ciam_app_object_id is set.
+# Owned by Tofu; drift is a planned change after import.
+resource "azuread_application_registration" "ciam" {
+  for_each         = local.ciam_app_import_enabled ? toset(["ciam"]) : toset([])
+  display_name     = "Canopex"
+  sign_in_audience = "AzureADandPersonalMicrosoftAccount"
+}
+
+# One-time import: adopts the existing app registration into state so Tofu
+# takes ownership without recreating it (which would change the client_id and
+# invalidate all existing tokens). After the first successful apply this block
+# is a no-op.
+import {
+  for_each = local.ciam_app_import_enabled ? toset(["ciam"]) : toset([])
+  to       = azuread_application_registration.ciam[each.key]
+  id       = var.ciam_app_object_id
+}
+
+# Service principal for the SPA app; use_existing = true prevents Tofu from
+# creating a new SP if one already exists in the CIAM tenant.
+resource "azuread_service_principal" "ciam" {
+  for_each     = local.ciam_app_import_enabled ? toset(["ciam"]) : toset([])
+  client_id    = azuread_application_registration.ciam["ciam"].client_id
+  use_existing = true
+}
+
+# Assert the deploy SP as owner of the SPA app so it retains
+# Application.ReadWrite.OwnedBy rights even if manually removed.
+# Active once both ciam_app_object_id and ciam_deploy_sp_object_id are set.
+resource "azuread_application_owner" "ciam_deploy_sp" {
+  for_each        = local.ciam_owner_enabled ? toset(["ciam"]) : toset([])
+  application_id  = azuread_application_registration.ciam["ciam"].id
+  owner_object_id = var.ciam_deploy_sp_object_id
+}
+
+# Redirect URIs: source the application object ID from the managed resource
+# (Phase 2) or the data source (Phase 1).
 resource "azuread_application_redirect_uris" "ciam_spa" {
   for_each       = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
-  application_id = data.azuread_application.ciam[0].id
+  application_id = local.ciam_app_id
   type           = "SPA"
   redirect_uris  = local.ciam_spa_redirect_uris
 }
 
 # One-time state adoption: the SPA redirect URI block was set in Azure manually
-# (via `az ad app update --set spa.redirectUris=...` during the original CIAM
-# bootstrap) BEFORE the matching resource existed in Tofu config, so the first
-# real apply after #799 merged failed with "resource already exists - to be
-# managed via Terraform this resource needs to be imported into the State".
-#
-# This import block (OpenTofu 1.6+ syntax) adopts the existing redirect URI
-# block into state on next plan/apply. After the first successful apply it
-# becomes a no-op (Tofu detects the resource is already in state). The block
-# can be removed in a follow-up PR once dev has reconciled.
-#
-# NOTE: import blocks support `for_each` only (not `count`), and `to` must
-# reference `each.key`. The matching resource above therefore also uses
-# `for_each` so the addresses align (`...ciam_spa["spa"]`).
+# before the matching resource existed in Tofu config. After the first successful
+# apply (post-#799) this is a no-op. The `to` target references the managed
+# resource in Phase 2, falling back to the data source in Phase 1.
 import {
   for_each = local.ciam_redirect_enabled ? toset(["spa"]) : toset([])
   to       = azuread_application_redirect_uris.ciam_spa[each.key]
-  id       = "${data.azuread_application.ciam[0].id}/redirectUris/SPA"
+  id       = "${local.ciam_app_id}/redirectUris/SPA"
+}
+
+# --- CIAM deploy SP federated identity credentials (#804) ---
+# Brings the GitHub OIDC trust on the deploy SP under Tofu state so that
+# federation cannot be silently revoked between deploys.
+#
+# Active when ciam_deploy_app_object_id is set in environments/<env>.tfvars.
+# Find the object ID with:
+#   az ad app show --id <ciam_deploy_client_id> --query id -o tsv \
+#     --tenant <ciam_tenant_id> --allow-no-subscriptions
+#
+# Existing credentials must be imported before the first apply or Tofu will
+# attempt to create duplicates. Run once per credential per environment:
+#   tofu import \
+#     'azuread_application_federated_identity_credential.ciam_deploy_sp["dev"]' \
+#     '<deploy-app-object-id>/<credential-object-id>'
+#
+# List existing credential object IDs with:
+#   az rest --method GET \
+#     --uri "https://graph.microsoft.com/v1.0/applications/<deploy-app-object-id>/federatedIdentityCredentials" \
+#     --tenant <ciam_tenant_id> | jq '.value[].id'
+resource "azuread_application_federated_identity_credential" "ciam_deploy_sp" {
+  for_each       = local.ciam_deploy_envs
+  application_id = var.ciam_deploy_app_object_id
+  display_name   = "github-${each.key}"
+  description    = "GitHub Actions OIDC trust for ${each.key} environment deployments"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:Hardcoreprawn/azure-workflow-for-kml-satellite:environment:${each.key}"
 }
 
 resource "azurerm_role_assignment" "storage_blob_data_owner" {

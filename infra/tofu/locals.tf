@@ -80,4 +80,30 @@ locals {
       "https://${var.custom_domain}/",
     ] : []
   ))
+
+  # Gates whether the SPA app registration is managed as a Tofu resource
+  # (azuread_application_registration.ciam) vs. read-only data source.
+  # Requires ciam_app_object_id to be set so the import block can adopt the
+  # existing registration without creating a new one.
+  ciam_app_import_enabled = local.ciam_redirect_enabled && var.ciam_app_object_id != ""
+
+  # Gates whether the deploy SP's federated identity credentials are managed
+  # by Tofu. Requires ciam_deploy_app_object_id (the object ID of the deploy
+  # SP's app registration, distinct from the SPA app's object ID).
+  ciam_federated_creds_enabled = local.ciam_redirect_enabled && var.ciam_deploy_app_object_id != ""
+
+  # Gates whether the deploy SP owner relationship on the SPA app is managed
+  # by Tofu. Requires both ciam_app_import_enabled (to reference the registration
+  # resource) and ciam_deploy_sp_object_id (the deploy SP's service principal object ID).
+  ciam_owner_enabled = local.ciam_app_import_enabled && var.ciam_deploy_sp_object_id != ""
+
+  # Maps GitHub environment names to use for deploy SP federated credentials.
+  # Active only when federated credential management is enabled.
+  ciam_deploy_envs = local.ciam_federated_creds_enabled ? tomap({ dev = "dev", prd = "prd" }) : tomap({})
+
+  # Resolves to the object (resource) ID of the SPA app registration.
+  # Phase 2+: use the managed resource; Phase 1 fallback: use the data source.
+  # Used by both the redirect-URI resource and its companion import block to
+  # keep the two references in sync without duplication.
+  ciam_app_id = local.ciam_app_import_enabled ? azuread_application_registration.ciam["ciam"].id : data.azuread_application.ciam[0].id
 }

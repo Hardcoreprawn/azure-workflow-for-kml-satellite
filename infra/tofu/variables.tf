@@ -238,6 +238,24 @@ variable "ciam_deploy_client_id" {
   sensitive   = true
 }
 
+variable "ciam_app_object_id" {
+  description = "Object ID of the CIAM SPA app registration in the CIAM tenant. Required to bring the app registration under Tofu state (azuread_application_registration). Find with: az ad app show --id <ciam_client_id> --query id -o tsv --tenant <ciam_tenant_id> --allow-no-subscriptions. Leave empty to fall back to data source (read-only) mode."
+  type        = string
+  default     = ""
+}
+
+variable "ciam_deploy_app_object_id" {
+  description = "Object ID of the deploy SP's app registration in the CIAM tenant. Required to manage federated identity credentials for the GitHub Actions deploy SP. Find with: az ad app show --id <ciam_deploy_client_id> --query id -o tsv --tenant <ciam_tenant_id> --allow-no-subscriptions. Leave empty to skip federated credential management."
+  type        = string
+  default     = ""
+}
+
+variable "ciam_deploy_sp_object_id" {
+  description = "Object ID of the deploy SP's service principal in the CIAM tenant. Required to assert the deploy SP as an owner of the SPA app registration. Find with: az ad sp show --id <ciam_deploy_client_id> --query id -o tsv --tenant <ciam_tenant_id> --allow-no-subscriptions. Leave empty to skip app owner assertion."
+  type        = string
+  default     = ""
+}
+
 # Cross-variable validation: all four required CIAM tfvars must be populated.
 # Cannot be expressed in a per-variable validation block (those may only
 # reference the validated variable itself), so enforced here as a plan-time

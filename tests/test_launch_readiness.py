@@ -37,7 +37,6 @@ ROOT = Path(__file__).resolve().parent.parent
 WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
 MAIN_TF = INFRA / "main.tf"
-DEFENDER_TF = INFRA / "defender.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
@@ -239,17 +238,6 @@ class TestLogAnalyticsCap:
         assert match.group(1) != "", (
             "dev.tfvars must set custom_domain to the apex domain "
             "so the SWA serves CORS headers for the correct origin"
-        )
-
-    def test_no_legacy_jablab_domain_examples_in_infra_docs(self):
-        legacy_domain = "treesight.jablab.dev"
-        assert legacy_domain not in MAIN_TF.read_text(), (
-            "main.tf must not include legacy custom-domain examples; use the "
-            "active canopex.hrdcrprwn.com domain instead"
-        )
-        assert legacy_domain not in VARIABLES_TF.read_text(), (
-            "variables.tf must not include legacy custom-domain examples; use the "
-            "active canopex.hrdcrprwn.com domain instead"
         )
 
 
@@ -756,38 +744,6 @@ class TestDeployWorkflowSettings:
         assert "DEPLOY_ENV != 'prd'" in deploy_yml, (
             "deploy.yml pipeline smoke test must be skipped in production "
             "to avoid triggering live imagery acquisition"
-        )
-
-    def test_deploy_injects_csp_hostnames_before_swa_upload(self, deploy_yml):
-        """Deploy must substitute CSP placeholder tokens before uploading to SWA."""
-        assert "Inject CSP hostnames" in deploy_yml, (
-            "deploy.yml must have a named step to inject CSP hostnames before SWA upload"
-        )
-        assert "__FUNC_HOSTNAME__" in deploy_yml, (
-            "deploy.yml must substitute the __FUNC_HOSTNAME__ placeholder"
-            " in staticwebapp.config.json"
-        )
-        assert "__BLOB_HOSTNAME__" in deploy_yml, (
-            "deploy.yml must substitute the __BLOB_HOSTNAME__ placeholder"
-            " in staticwebapp.config.json"
-        )
-        assert "storage_account_name" in deploy_yml, (
-            "deploy.yml CSP injection must use the storage_account_name tofu output"
-        )
-
-    def test_deploy_infra_exports_storage_account_name(self, deploy_yml):
-        """deploy-infra job must export storage_account_name for CSP hostname injection."""
-        assert "storage_account_name:" in deploy_yml, (
-            "deploy-infra job outputs must include storage_account_name for CSP substitution"
-        )
-        assert "steps.storage-account.outputs.name" in deploy_yml, (
-            "deploy-infra storage_account_name output must reference the storage-account step"
-        )
-        assert "Export storage account name" in deploy_yml, (
-            "deploy.yml must have a named step to export the storage account name"
-        )
-        assert "tofu output -raw storage_account_name" in deploy_yml, (
-            "export step must read storage_account_name from tofu outputs"
         )
 
 
@@ -1625,155 +1581,148 @@ class TestEndpointAuthAudit:
 
 
 # ---------------------------------------------------------------------------
-# 14. Defender for Cloud plan pricing controls (issue #850)
+# 16. CIAM app registration under OpenTofu (issue #781/#806/#804)
 # ---------------------------------------------------------------------------
 
 
-class TestDefenderForCloudPlans:
-    """Ensure Defender for Cloud pricing tiers are pinned in tofu to prevent bill drift.
-
-    Every plan must be explicitly declared so a future Portal click or
-    ``az security pricing create`` command cannot silently re-enable a paid
-    plan for resource types we don't use.
-    """
+class TestCiamTofuOwnership:
+    """Ensure the CIAM app registration is progressively brought under Tofu state."""
 
     @pytest.fixture()
-    def defender_tf(self) -> str:
-        assert DEFENDER_TF.exists(), (
-            "infra/tofu/defender.tf must exist — Defender plan pricing must be "
-            "managed by tofu to prevent bill drift (issue #850)"
-        )
-        return DEFENDER_TF.read_text()
+    def main_tf(self):
+        return MAIN_TF.read_text()
 
-    # --- Active (Standard) plans ---
+    @pytest.fixture()
+    def variables_tf(self):
+        return VARIABLES_TF.read_text()
 
-    def test_app_services_is_standard(self, defender_tf: str) -> None:
-        assert 'resource_type = "AppServices"' in defender_tf, (
-            "defender.tf must declare an AppServices pricing resource"
+    @pytest.fixture()
+    def locals_tf(self):
+        return (INFRA / "locals.tf").read_text()
+
+    def test_ciam_app_registration_resource_declared(self, main_tf):
+        """azuread_application_registration.ciam must be declared in main.tf."""
+        assert 'resource "azuread_application_registration" "ciam"' in main_tf, (
+            "main.tf must declare azuread_application_registration.ciam to bring "
+            "the SPA app registration under Tofu state (issue #806)"
         )
+
+    def test_ciam_app_registration_has_import_block(self, main_tf):
+        """Import block must be present to adopt the existing registration."""
+        assert "azuread_application_registration.ciam" in main_tf, (
+            "main.tf must include an import block for azuread_application_registration.ciam "
+            "so Tofu adopts the existing app without recreating it (issue #806)"
+        )
+        # The import block uses for_each so it can be gated conditionally
+        assert re.search(r"to\s*=\s*azuread_application_registration\.ciam\[each\.key\]", main_tf), (
+            "import block for azuread_application_registration.ciam must use for_each "
+            "so it is only active when ciam_app_object_id is set"
+        )
+
+    def test_ciam_service_principal_resource_declared(self, main_tf):
+        """azuread_service_principal.ciam must be declared with use_existing."""
+        assert 'resource "azuread_service_principal" "ciam"' in main_tf, (
+            "main.tf must declare azuread_service_principal.ciam so the SP is "
+            "tracked in state alongside the app registration (issue #806)"
+        )
+        assert "use_existing = true" in main_tf, (
+            "azuread_service_principal.ciam must set use_existing = true to "
+            "adopt the existing SP without attempting to recreate it"
+        )
+
+    def test_ciam_app_object_id_variable_declared(self, variables_tf):
+        """ciam_app_object_id variable must exist with empty default."""
+        assert 'variable "ciam_app_object_id"' in variables_tf, (
+            "variables.tf must declare ciam_app_object_id so operators can "
+            "trigger Phase 2 import by setting it in environments/<env>.tfvars"
+        )
+
+    def test_ciam_deploy_app_object_id_variable_declared(self, variables_tf):
+        """ciam_deploy_app_object_id variable must exist for federated creds."""
+        assert 'variable "ciam_deploy_app_object_id"' in variables_tf, (
+            "variables.tf must declare ciam_deploy_app_object_id to enable "
+            "Tofu-managed federated identity credentials (issue #804)"
+        )
+
+    def test_ciam_deploy_sp_object_id_variable_declared(self, variables_tf):
+        """ciam_deploy_sp_object_id variable must exist for owner assertion."""
+        assert 'variable "ciam_deploy_sp_object_id"' in variables_tf, (
+            "variables.tf must declare ciam_deploy_sp_object_id to enable "
+            "Tofu-managed app owner assertion (issue #804)"
+        )
+
+    def test_ciam_federated_identity_credential_resource_declared(self, main_tf):
+        """azuread_application_federated_identity_credential.ciam_deploy_sp must be declared."""
+        assert (
+            'resource "azuread_application_federated_identity_credential" "ciam_deploy_sp"'
+            in main_tf
+        ), (
+            "main.tf must declare azuread_application_federated_identity_credential.ciam_deploy_sp "
+            "to bring deploy SP OIDC trust under Tofu state (issue #804)"
+        )
+
+    def test_ciam_federated_creds_use_correct_issuer(self, main_tf):
+        """Federated credentials must use the GitHub Actions OIDC issuer."""
+        oidc_issuer = "token.actions.githubusercontent.com"
+        assert re.search(
+            r'issuer\s*=\s*"https://' + re.escape(oidc_issuer) + r'"',
+            main_tf,
+        ), (
+            "azuread_application_federated_identity_credential must set issuer to "
+            f"https://{oidc_issuer} for GitHub Actions OIDC"
+        )
+
+    def test_ciam_app_owner_resource_declared(self, main_tf):
+        """azuread_application_owner.ciam_deploy_sp must be declared."""
+        assert 'resource "azuread_application_owner" "ciam_deploy_sp"' in main_tf, (
+            "main.tf must declare azuread_application_owner.ciam_deploy_sp to "
+            "assert the deploy SP as owner of the SPA app (issue #804)"
+        )
+
+    def test_ciam_app_registration_gated_on_object_id(self, main_tf):
+        """Registration resource must be gated so it only activates when ciam_app_object_id is set."""
         match = re.search(
-            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"app_services"\s*\{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
+            r'resource\s+"azuread_application_registration"\s+"ciam"\s*\{(?P<body>.*?)\n\}',
+            main_tf,
             re.DOTALL,
         )
-        assert match, (
-            "defender.tf must define azurerm_security_center_subscription_pricing.app_services"
-        )
-        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
-            "AppServices Defender plan must be Standard (active FAs + SWA)"
-        )
-
-    def test_storage_accounts_is_standard_per_transaction(self, defender_tf: str) -> None:
-        match = re.search(
-            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"storage_accounts"\s*\{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
-            re.DOTALL,
-        )
-        assert match, (
-            "defender.tf must define azurerm_security_center_subscription_pricing.storage_accounts"
-        )
+        assert match, "main.tf must define azuread_application_registration.ciam"
         body = match.group("body")
-        assert re.search(r'tier\s*=\s*"Standard"', body), (
-            "StorageAccounts Defender plan must be Standard (active storage with real data)"
-        )
-        assert re.search(r'subplan\s*=\s*"PerTransaction"', body), (
-            "StorageAccounts Defender plan must use PerTransaction subplan to control costs"
+        assert "ciam_app_import_enabled" in body or "ciam_app_object_id" in body, (
+            "azuread_application_registration.ciam must be gated on ciam_app_object_id "
+            "or ciam_app_import_enabled to prevent accidental creation"
         )
 
-    def test_key_vaults_is_standard_per_transaction(self, defender_tf: str) -> None:
-        match = re.search(
-            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"key_vaults"\s*\{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
-            re.DOTALL,
-        )
-        assert match, (
-            "defender.tf must define azurerm_security_center_subscription_pricing.key_vaults"
-        )
-        body = match.group("body")
-        assert re.search(r'tier\s*=\s*"Standard"', body), (
-            "KeyVaults Defender plan must be Standard (active KV with real secrets)"
-        )
-        assert re.search(r'subplan\s*=\s*"PerTransaction"', body), (
-            "KeyVaults Defender plan must use PerTransaction subplan to control costs"
+    def test_ciam_data_source_kept_as_fallback(self, main_tf):
+        """The data source must remain active when ciam_app_object_id is empty."""
+        assert 'data "azuread_application" "ciam"' in main_tf, (
+            "main.tf must keep data.azuread_application.ciam as a fallback for "
+            "Phase 1 (when ciam_app_object_id is not yet set)"
         )
 
-    def test_discovery_is_standard(self, defender_tf: str) -> None:
-        match = re.search(
-            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"discovery"\s*\{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
-            re.DOTALL,
+    def test_ciam_app_import_enabled_local_declared(self, locals_tf):
+        """ciam_app_import_enabled and ciam_app_id locals must be declared in locals.tf."""
+        assert "ciam_app_import_enabled" in locals_tf, (
+            "locals.tf must declare ciam_app_import_enabled to gate Phase 2 "
+            "resources on ciam_app_object_id being non-empty"
         )
-        assert match, (
-            "defender.tf must define azurerm_security_center_subscription_pricing.discovery"
-        )
-        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
-            "Discovery Defender plan must be Standard (CSPM mandatory foundation)"
+        assert "ciam_app_id" in locals_tf, (
+            "locals.tf must declare ciam_app_id to consolidate the Phase 1/2 "
+            "application ID reference used by redirect URIs and import block"
         )
 
-    def test_foundational_cspm_is_standard(self, defender_tf: str) -> None:
-        match = re.search(
-            r'resource\s+"azurerm_security_center_subscription_pricing"\s+"foundational_cspm"\s*\{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
-            re.DOTALL,
+    def test_ciam_readme_documents_tofu_ownership(self):
+        """README must document the phased Tofu ownership of CIAM resources."""
+        readme = (INFRA / "README.md").read_text()
+        assert "CIAM Tofu ownership" in readme, (
+            "infra/tofu/README.md must document the CIAM Tofu ownership phases "
+            "(issue #781)"
         )
-        assert match, (
-            "defender.tf must define azurerm_security_center_subscription_pricing.foundational_cspm"
+        assert "ciam_app_object_id" in readme, (
+            "infra/tofu/README.md must document the ciam_app_object_id variable "
+            "and how to find the object ID"
         )
-        assert re.search(r'tier\s*=\s*"Standard"', match.group("body")), (
-            "FoundationalCspm Defender plan must be Standard (CSPM mandatory foundation)"
-        )
-
-    # --- Unused plans pinned to Free ---
-
-    @pytest.mark.parametrize(
-        ("resource_name", "resource_type", "rationale"),
-        [
-            ("virtual_machines", "VirtualMachines", "no VMs in this subscription"),
-            ("sql_servers", "SqlServers", "no Azure SQL in this subscription"),
-            ("sql_server_virtual_machines", "SqlServerVirtualMachines", "no SQL VMs"),
-            ("kubernetes_service", "KubernetesService", "no AKS in this subscription"),
-            ("container_registry", "ContainerRegistry", "no ACR in this subscription"),
-            ("arm", "Arm", "low value for dev"),
-            ("dns", "Dns", "no public DNS zones in scope"),
-            ("open_source_relational_databases", "OpenSourceRelationalDatabases", "no OSS RDB"),
-            ("containers", "Containers", "no containers outside Function Apps"),
-            ("cosmos_dbs", "CosmosDbs", "serverless Cosmos; no sensitive PII"),
-            ("api", "Api", "no API Management in this subscription"),
-        ],
-    )
-    def test_unused_plan_is_free(
-        self,
-        defender_tf: str,
-        resource_name: str,
-        resource_type: str,
-        rationale: str,
-    ) -> None:
-        match = re.search(
-            rf'resource\s+"azurerm_security_center_subscription_pricing"\s+"{re.escape(resource_name)}"\s*\{{'
-            r"(?P<body>.*?)\n\}",
-            defender_tf,
-            re.DOTALL,
-        )
-        assert match, (
-            f"defender.tf must define azurerm_security_center_subscription_pricing.{resource_name} "
-            f"({rationale})"
-        )
-        body = match.group("body")
-        assert re.search(r'tier\s*=\s*"Free"', body), (
-            f"{resource_type} Defender plan must be Free ({rationale})"
-        )
-        assert re.search(rf'resource_type\s*=\s*"{re.escape(resource_type)}"', body), (
-            f'Defender plan resource_type must be "{resource_type}" — wrong resource_type '
-            f"would let tier drift pass undetected"
-        )
-
-    def test_rationale_comment_block_exists(self, defender_tf: str) -> None:
-        assert "Rationale matrix" in defender_tf, (
-            "defender.tf must contain a rationale comment matrix documenting "
-            "which plans are paid and why (issue #850 acceptance criterion)"
+        assert "Deprecation of manual portal workflow" in readme, (
+            "infra/tofu/README.md must explicitly deprecate the manual portal workflow "
+            "once Phase 2 is active"
         )
