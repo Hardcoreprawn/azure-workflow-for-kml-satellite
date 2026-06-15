@@ -99,7 +99,7 @@ class TableReplayStore:
         partition_key = nonce[:8] if len(nonce) >= 8 else nonce
         row_key = nonce
 
-        for _attempt in range(_MAX_RETRIES):
+        for _ in range(_MAX_RETRIES):
             try:
                 entity = self._table.get_entity(partition_key=partition_key, row_key=row_key)
                 count = int(entity.get("use_count", 0))
@@ -135,6 +135,5 @@ class TableReplayStore:
                 continue
 
         raise RuntimeError(
-            f"TableReplayStore: could not atomically update replay count after"
-            f" {_MAX_RETRIES} max retries for nonce {nonce[:8]}"
+            f"TableReplayStore: could not atomically update replay count after {_MAX_RETRIES} max retries for nonce {nonce[:8]}"  # noqa: E501
         )
