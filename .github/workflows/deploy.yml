@@ -320,10 +320,13 @@ jobs:
           set -euo pipefail
           # tenant_id, subdomain, client_id, api_audience are sourced from tfvars
           # (public values). Only deploy_client_id remains a secret; without it,
-          # Tofu skips redirect URI management.
+          # Tofu skips CIAM management entirely.
           ciam_deploy_client_id="$(trim_space "${TF_VAR_ciam_deploy_client_id:-}")"
           if [[ -z "$ciam_deploy_client_id" ]]; then
-            echo "⚠️  TF_VAR_CIAM_DEPLOY_CLIENT_ID not set — Tofu will skip managing CIAM SPA redirect URIs. Bootstrap the deploy SP and set this secret to enable automatic redirect URI registration."
+            echo "⚠️  TF_VAR_CIAM_DEPLOY_CLIENT_ID not set — Tofu will skip all CIAM management (redirect URIs, app registration, federated creds). Bootstrap the deploy SP and set this secret to enable."
+          else
+            echo "✅ TF_VAR_CIAM_DEPLOY_CLIENT_ID is set — Tofu will manage CIAM redirect URIs and (once object IDs are set in tfvars) the full app registration, federated creds, and owner assertion."
+            echo "   See infra/tofu/README.md 'CIAM Tofu ownership' for Phases 2–4 instructions."
           fi
 
       - name: Cache OpenTofu providers
