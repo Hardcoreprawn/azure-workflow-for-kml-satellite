@@ -1131,7 +1131,7 @@ resource "azurerm_static_web_app" "main" {
 # --- Custom domain (M1.5) ---
 # Prerequisites (manual, one-time):
 #   1. Create a CNAME record in your DNS provider (e.g. Cloudflare):
-#      treesight.jablab.dev → <SWA default hostname>
+#      canopex.hrdcrprwn.com → <SWA default hostname>
 #   2. Wait for DNS propagation, then run tofu apply.
 
 # One-time import: adopt a pre-existing SWA custom domain into state.

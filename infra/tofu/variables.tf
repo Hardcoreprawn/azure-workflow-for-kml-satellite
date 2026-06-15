@@ -126,7 +126,7 @@ variable "log_daily_cap_gb" {
 }
 
 variable "custom_domain" {
-  description = "Full custom domain for the Static Web App (e.g. treesight.jablab.dev). Empty to skip."
+  description = "Full custom domain for the Static Web App (e.g. canopex.hrdcrprwn.com). Empty to skip."
   type        = string
   default     = ""
 }
