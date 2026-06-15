@@ -48,23 +48,30 @@ the following information appears in the public docs and source code:
 - Architecture diagrams and component relationships
 
 **Risk acceptance decision (2026-06-13):** The real security boundary is
-auth + network controls (CIAM bearer JWT, managed identity, RBAC), not
+auth + network controls (CIAM bearer JWT for user endpoints, explicit
+controls for special-purpose endpoints, managed identity, RBAC), not
 documentation obscurity.  The source code already makes these details
 discoverable, so hiding them only from docs would provide no meaningful
 reduction in attack surface.
 
 Mitigations in place:
 
-- All non-trivial API endpoints require a valid CIAM JWT.
-- Storage, Cosmos DB, and Key Vault are accessed exclusively via managed
-  identity with minimal RBAC grants — no connection strings in app config.
+- User-facing analysis, monitoring, catalogue, billing status, and export
+  endpoints require a valid CIAM JWT. Special-purpose endpoints use
+  explicit alternative controls (for example, ops-key bearer auth,
+  Stripe webhook signature verification, function-key auth, or
+  documented anonymous access for health/readiness probes).
+- Production storage, Cosmos DB, and Key Vault access uses managed
+  identity with minimal RBAC grants; local development may still use
+  connection strings where required.
 - Network: Container Apps environment, Key Vault network rules, and Cosmos
   DB firewall restrict inbound surface.
 - Ephemeral operational identifiers (deployed hostnames, SWA URLs) are not
   stored in this repository — retrieve them from the Azure portal or
   `tofu output` after provisioning.
-- Deploy workflow credentials use short-lived OIDC tokens; no long-lived
-  secrets are stored in repository secrets beyond GHCR pull credentials.
+- Deploy workflows prefer short-lived OIDC tokens where supported, but
+  some long-lived secrets remain today, including GHCR pull credentials
+  and Static Web Apps deployment tokens.
 
 ## Trivy Triage Policy
 

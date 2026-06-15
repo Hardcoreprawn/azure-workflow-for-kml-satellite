@@ -7,7 +7,9 @@ Issue: #18
 ### Quick Verification Reference
 
 Retrieve the current Function App base URL from the Azure portal or via
-`tofu output orch_hostname` after provisioning.
+`tofu output -raw function_app_orch_default_hostname` after provisioning.
+
+Production API base URL: `https://{productionHost}/api`
 
 | Method | Path | Auth | Expected (unauthed) | Purpose |
 | --- | --- | --- | --- | --- |

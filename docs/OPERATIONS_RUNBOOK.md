@@ -12,7 +12,7 @@ stored in this document; retrieve them from the Azure portal or from
 | Resource | Pattern |
 | --- | --- |
 | Site URL | Azure Static Web App default hostname (check Azure portal) |
-| Function App URL (public ingress) | `https://func-kmlsat-dev-orch.<cae-suffix>.azurecontainerapps.io` |
+| Function App URL (public ingress) | `https://func-kmlsat-dev-orch.<cae-suffix>.uksouth.azurecontainerapps.io` |
 | Health check | `curl -sS <func-app-url>/api/health` |
 | Readiness check | `curl -sS <func-app-url>/api/readiness` |
 | API config | `curl -sS <swa-url>/api-config.json` |
@@ -21,7 +21,7 @@ stored in this document; retrieve them from the Azure portal or from
 | Auth | CIAM bearer JWT (bearer-only; see CIAM config) via MSAL.js |
 | Container image | `ghcr.io/hardcoreprawn/azure-workflow-for-kml-satellite:{sha}` |
 
-**Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details).
+**Note:** The SWA does not proxy `/api/*` — all API calls go directly to the Function App hostname (see Architecture Overview for details). Use `tofu output -raw function_app_orch_default_hostname` to retrieve the exact ingress hostname.
 
 ## Deploy
 

@@ -54,12 +54,13 @@ Azure portal or via `tofu output` after provisioning.  Pattern:
 | Endpoint | Pattern |
 | --- | --- |
 | **Site (SWA)** | Azure-assigned SWA default hostname |
-| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<cae-suffix>.azurecontainerapps.io` |
-| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<cae-suffix>.azurecontainerapps.io` |
+| **Function App (orchestrator/public API)** | `https://func-kmlsat-dev-orch.<cae-suffix>.uksouth.azurecontainerapps.io` |
+| **Function App (compute/internal worker)** | `https://func-kmlsat-dev.<cae-suffix>.uksouth.azurecontainerapps.io` |
 | **Cosmos DB** | `https://cosmos-kmlsat-dev.documents.azure.com:443/` |
 
 The SWA hostname is Azure-assigned (no custom domain currently configured).
 Both Function Apps run on Azure Container Apps in `uksouth`; SWA is in `westeurope`.
+Retrieve the exact orchestrator hostname with `tofu output -raw function_app_orch_default_hostname` after provisioning.
 
 ### API Routing — BYOF (Bring Your Own Function App)
 
