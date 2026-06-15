@@ -190,9 +190,7 @@ class TestProxyUserinfoBypass:
         with patch("blueprints.demo.proxy_limiter") as lim:
             lim.is_allowed.return_value = True
             with patch("blueprints.demo.requests.get") as mock_get:
-                resp = cors_proxy(
-                    _proxy_req("******environment.data.gov.uk/data")
-                )
+                resp = cors_proxy(_proxy_req("******environment.data.gov.uk/data"))
         assert resp.status_code == 400
         mock_get.assert_not_called()
 
@@ -219,9 +217,7 @@ class TestProxyIdnAttacks:
         with patch("blueprints.demo.proxy_limiter") as lim:
             lim.is_allowed.return_value = True
             with patch("blueprints.demo.requests.get") as mock_get:
-                resp = cors_proxy(
-                    _proxy_req("https://xn--nvironment-gcb.data.gov.uk/data")
-                )
+                resp = cors_proxy(_proxy_req("https://xn--nvironment-gcb.data.gov.uk/data"))
         assert resp.status_code == 403
         mock_get.assert_not_called()
 
@@ -327,9 +323,7 @@ class TestProxyHappyPath:
             lim.is_allowed.return_value = True
             with patch("blueprints.demo.requests.get", return_value=mock_resp) as mock_get:
                 resp = cors_proxy(
-                    _proxy_req(
-                        "https://environment.data.gov.uk/flood-monitoring/id/floods"
-                    )
+                    _proxy_req("https://environment.data.gov.uk/flood-monitoring/id/floods")
                 )
         assert resp.status_code == 200
         mock_get.assert_called_once()
@@ -345,9 +339,7 @@ class TestProxyHappyPath:
             lim.is_allowed.return_value = True
             with patch("blueprints.demo.requests.get", return_value=mock_resp):
                 resp = cors_proxy(
-                    _proxy_req(
-                        "https://sub.environment.data.gov.uk/flood-monitoring/id/floods"
-                    )
+                    _proxy_req("https://sub.environment.data.gov.uk/flood-monitoring/id/floods")
                 )
         assert resp.status_code == 200
 

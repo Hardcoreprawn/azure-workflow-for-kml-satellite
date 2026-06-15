@@ -222,9 +222,7 @@ def _validate_proxy_url(target_url: str) -> tuple[str | None, func.HttpResponse 
     return target_url, None
 
 
-def _fetch_upstream(
-    target_url: str, req: func.HttpRequest
-) -> func.HttpResponse:
+def _fetch_upstream(target_url: str, req: func.HttpRequest) -> func.HttpResponse:
     """Fetch *target_url* and return a validated proxied response."""
     resp = requests.get(
         target_url,
