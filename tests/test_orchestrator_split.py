@@ -196,9 +196,8 @@ def test_orchestrator_registers_health_and_pipeline():
 
     assert id(health_bp) in orch_ids, "Orchestrator must register health_bp"
     assert id(pipeline_bp) in orch_ids, "Orchestrator must register pipeline_bp"
-    assert len(orch_bps) == 2, (  # noqa: PLR2004
-        f"Orchestrator must register exactly 2 blueprints (health + pipeline), "
-        f"got {len(orch_bps)}"
+    assert len(orch_bps) == 2, (
+        f"Orchestrator must register exactly 2 blueprints (health + pipeline), got {len(orch_bps)}"
     )
 
 
