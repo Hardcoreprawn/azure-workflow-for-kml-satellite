@@ -385,19 +385,29 @@ class TestStuckArmWriteLockAlert:
         assert "Microsoft.Web/sites/write" in tf, (
             "stuck write-lock alert must filter to Microsoft.Web/sites/write operations"
         )
-        assert "ago(1h)" in tf, (
+        assert "where StartTime < ago(1h)" in tf, (
             "stuck write-lock alert must trigger when a write operation remains unresolved for >1h"
+        )
+        assert "where TimeGenerated > ago(6h)" in tf, (
+            "stuck write-lock alert must keep a wider lookback window so joins can evaluate "
+            "operation starts and terminal events reliably"
+        )
+        assert "join kind=leftanti completed on OperationId" in tf, (
+            "stuck write-lock alert must exclude operations that already reached a terminal state"
         )
 
     def test_stuck_write_lock_alert_notifies_ops_group(self):
-        match = re.search(
-            r'resource\s+"azurerm_monitor_scheduled_query_rules_alert_v2"\s+"stuck_webapp_write_lock"\s*\{(?P<body>.*?)\n\}',
-            MAIN_TF.read_text(),
-            re.DOTALL,
+        tf = MAIN_TF.read_text()
+        start = tf.find(
+            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" '
+            '"stuck_webapp_write_lock" {'
         )
-        assert match, "stuck write-lock alert resource block not found"
-        body = match.group("body")
-        assert "azurerm_monitor_action_group.ops.id" in body, (
+        assert start != -1, "stuck write-lock alert resource block not found"
+        next_resource = tf.find('\nresource "', start + 1)
+        if next_resource == -1:
+            next_resource = len(tf)
+        block = tf[start:next_resource]
+        assert "azurerm_monitor_action_group.ops.id" in block, (
             "stuck write-lock alert must notify the shared ops action group"
         )
 

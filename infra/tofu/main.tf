@@ -289,14 +289,14 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "stuck_webapp_write_lo
 
   criteria {
     query = <<-QUERY
-      let started = AzureActivity
+      let relevant = AzureActivity
       | where TimeGenerated > ago(6h)
       | where OperationNameValue =~ "Microsoft.Web/sites/write"
+      | project OperationId, ActivityStatusValue, TimeGenerated;
+      let started = relevant
       | where ActivityStatusValue =~ "Start"
       | project OperationId, StartTime=TimeGenerated;
-      let completed = AzureActivity
-      | where TimeGenerated > ago(6h)
-      | where OperationNameValue =~ "Microsoft.Web/sites/write"
+      let completed = relevant
       | where ActivityStatusValue in~ ("Succeeded", "Failed")
       | project OperationId;
       started
@@ -314,6 +314,9 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "stuck_webapp_write_lo
   }
 
   action {
+    # v2 scheduled-query alerts accept a list of action groups; we route through
+    # the shared ops group so alert fan-out stays centralized. (Metric alert
+    # resources above use action_group_id because that is their v1 schema.)
     action_groups = [azurerm_monitor_action_group.ops.id]
   }
 
