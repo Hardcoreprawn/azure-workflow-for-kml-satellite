@@ -1265,6 +1265,21 @@ class TestInfracostCostGate:
             "Infracost workflow must include a budget threshold check"
         )
 
+    def test_infracost_workflow_reuses_current_run_plan_artifact(self):
+        content = INFRACOST_YML.read_text()
+        assert "actions/upload-artifact" in content, (
+            "Infracost workflow must upload the current run plan as an artifact"
+        )
+        assert "actions/download-artifact" in content, (
+            "Infracost workflow must download the current run plan artifact"
+        )
+        assert "/tmp/infracost-artifacts/plan.json" in content, (
+            "Infracost workflow must reuse the same-run plan.json artifact"
+        )
+        assert "/tmp/infracost-artifacts/infracost-usage.yml" in content, (
+            "Infracost workflow must reuse the same-run usage file artifact"
+        )
+
     def test_infracost_usage_file_has_version(self):
         content = INFRACOST_USAGE.read_text()
         assert "version:" in content, "Infracost usage file must declare a version"

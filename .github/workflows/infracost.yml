@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────
 # Infracost — Cost estimation for infrastructure changes
 #
-# Runs on PRs that touch infra/tofu/** files. Collects live
-# Azure usage metrics, generates a cost estimate, and posts
-# a PR comment with the diff vs current baseline.
+# Runs on PRs that touch infra/tofu/** files. Generates the plan
+# once in the current run, reuses that same-run artifact for cost
+# estimation, and posts a PR comment with the diff vs current baseline.
 #
 # Required GitHub Secrets (set in 'dev' environment):
 #   AZURE_CLIENT_ID           — SP / managed identity client ID (OIDC)
@@ -35,10 +35,12 @@ env:
   BUDGET_GBP: "10"
 
 jobs:
-  infracost:
-    name: Cost Estimate
+  plan:
+    name: Tofu Plan
     runs-on: ubuntu-latest
     environment: dev
+    outputs:
+      azure_login_success: ${{ steps.login_status.outputs.success }}
     env:
       TF_VAR_deploy_principal_client_id: ${{ secrets.AZURE_CLIENT_ID }}
       # Public CIAM values (tenant_subdomain, tenant_id, client_id, api_audience)
@@ -57,6 +59,11 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Record login status
+        id: login_status
+        if: always()
+        run: echo "success=${{ steps.azure_login.outcome == 'success' }}" >> "$GITHUB_OUTPUT"
 
       # ── Collect live usage metrics ─────────────────────────
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -140,28 +147,57 @@ jobs:
             -var="deploy_principal_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
             -var-file="environments/dev.tfvars"
           tofu show -json tfplan > plan.json
+          mkdir -p /tmp/infracost-artifacts
+          cp plan.json infracost-usage.yml /tmp/infracost-artifacts/
 
-      # ── Infracost ──────────────────────────────────────────
-      - name: Setup Infracost
+      - name: Upload plan artifacts
         if: steps.azure_login.outcome == 'success'
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: infracost-inputs
+          path: /tmp/infracost-artifacts
+
+      # ── Fallback: post a note when Azure auth was unavailable ──
+      - name: Post skip notice
+        if: steps.azure_login.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "::notice::Cost estimate skipped — Azure OIDC login was unavailable (transient)"
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "💰 **Infracost**: Cost estimate skipped — Azure OIDC login was unavailable (transient). Re-run the workflow to retry." \
+            2>/dev/null || true
+
+  infracost:
+    name: Cost Estimate
+    runs-on: ubuntu-latest
+    needs: [plan]
+    if: needs.plan.outputs.azure_login_success == 'true'
+    environment: dev
+    steps:
+      - name: Download plan artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: infracost-inputs
+          path: /tmp/infracost-artifacts
+
+      - name: Setup Infracost
         uses: infracost/actions/setup@9accc4137ae3f13ede9182e0afa2bed39a23c4c0 # v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Generate Infracost breakdown
-        if: steps.azure_login.outcome == 'success'
-        working-directory: infra/tofu
         env:
           INFRACOST_CURRENCY: GBP
         run: |
           infracost breakdown \
-            --path=plan.json \
-            --usage-file=infracost-usage.yml \
+            --path=/tmp/infracost-artifacts/plan.json \
+            --usage-file=/tmp/infracost-artifacts/infracost-usage.yml \
             --format=json \
             --out-file=/tmp/infracost-base.json
 
       - name: Post PR comment
-        if: steps.azure_login.outcome == 'success'
         run: |
           infracost comment github \
             --path=/tmp/infracost-base.json \
@@ -173,7 +209,6 @@ jobs:
 
       # ── Budget gate ────────────────────────────────────────
       - name: Check budget threshold
-        if: steps.azure_login.outcome == 'success'
         run: |
           MONTHLY=$(infracost output \
             --path=/tmp/infracost-base.json \
@@ -188,15 +223,3 @@ jobs:
             # Warn but don't fail — cost estimates have uncertainty.
             # Change to exit 1 to hard-gate deploys on budget.
           fi
-
-      # ── Fallback: post a note when Azure auth was unavailable ──
-      - name: Post skip notice
-        if: steps.azure_login.outcome != 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "::notice::Cost estimate skipped — Azure OIDC login was unavailable (transient)"
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body "💰 **Infracost**: Cost estimate skipped — Azure OIDC login was unavailable (transient). Re-run the workflow to retry." \
-            2>/dev/null || true
