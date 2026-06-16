@@ -1718,8 +1718,7 @@ class TestCiamTofuOwnership:
         """README must document the phased Tofu ownership of CIAM resources."""
         readme = (INFRA / "README.md").read_text()
         assert "CIAM Tofu ownership" in readme, (
-            "infra/tofu/README.md must document the CIAM Tofu ownership phases "
-            "(issue #781)"
+            "infra/tofu/README.md must document the CIAM Tofu ownership phases (issue #781)"
         )
         assert "ciam_app_object_id" in readme, (
             "infra/tofu/README.md must document the ciam_app_object_id variable "
