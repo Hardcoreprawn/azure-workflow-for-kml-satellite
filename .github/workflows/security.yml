@@ -220,6 +220,7 @@ jobs:
           scan-ref: infra/tofu
           format: sarif
           output: trivy-iac.sarif
+          trivyignores: .trivyignore
           severity: CRITICAL,HIGH,MEDIUM
           exit-code: "0"   # advisory — findings upload to Code Scanning
 
