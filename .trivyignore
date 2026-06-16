@@ -21,6 +21,11 @@ AVD-AZU-0057 # exp:2026-07-09 false positive — using modern diagnostic setting
 # on the storage account resource. Trivy's dual-pass config scanner misses it.
 AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
 
+# AZU-0045: Defender plan tier intentionally set to Free for non-used services
+# to keep costs controlled in this subscription. Active services are explicitly
+# pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
+AZU-0045 # exp:2026-07-16 accepted cost posture — unused Defender plans intentionally Free
+
 # Go stdlib CVEs in the .NET Functions host binary (compiled into the host by Microsoft).
 # We cannot patch these — they require a rebuilt host from Microsoft.
 # Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
