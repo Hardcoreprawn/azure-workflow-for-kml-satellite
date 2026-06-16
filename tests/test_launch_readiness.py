@@ -372,8 +372,7 @@ class TestStuckArmWriteLockAlert:
     def test_stuck_write_lock_alert_resource_exists(self):
         tf = MAIN_TF.read_text()
         expected = (
-            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" '
-            '"stuck_webapp_write_lock"'
+            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" "stuck_webapp_write_lock"'
         )
         assert expected in tf, (
             "main.tf must define a scheduled query alert for stuck Microsoft.Web/sites write locks"
@@ -399,8 +398,7 @@ class TestStuckArmWriteLockAlert:
     def test_stuck_write_lock_alert_notifies_ops_group(self):
         tf = MAIN_TF.read_text()
         start = tf.find(
-            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" '
-            '"stuck_webapp_write_lock" {'
+            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" "stuck_webapp_write_lock" {'
         )
         assert start != -1, "stuck write-lock alert resource block not found"
         next_resource = tf.find('\nresource "', start + 1)
