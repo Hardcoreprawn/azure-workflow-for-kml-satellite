@@ -141,6 +141,16 @@ resource "azurerm_monitor_diagnostic_setting" "storage_blob" {
   }
 }
 
+resource "azurerm_monitor_diagnostic_setting" "subscription_activity" {
+  name                       = "diag-${local.name_suffix}-subscription-activity"
+  target_resource_id         = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+
+  enabled_log {
+    category = "Administrative"
+  }
+}
+
 resource "azurerm_log_analytics_workspace" "main" {
   name                = local.names.log_analytics_workspace
   location            = azurerm_resource_group.main.location
@@ -261,6 +271,50 @@ resource "azurerm_monitor_metric_alert" "eventgrid_dropped_events" {
 
   action {
     action_group_id = azurerm_monitor_action_group.ops.id
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "stuck_webapp_write_lock" {
+  name                = "alert-${local.name_suffix}-stuck-webapp-write-lock"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  scopes              = [azurerm_log_analytics_workspace.main.id]
+  description         = "Accepted Microsoft.Web/sites/write operation has no terminal status for >1h."
+  evaluation_frequency = "PT5M"
+  window_duration      = "PT1H"
+  severity             = 2
+  enabled              = true
+
+  criteria {
+    query = <<-QUERY
+      let started = AzureActivity
+      | where TimeGenerated > ago(6h)
+      | where OperationNameValue =~ "Microsoft.Web/sites/write"
+      | where ActivityStatusValue =~ "Start"
+      | project OperationId, StartTime=TimeGenerated;
+      let completed = AzureActivity
+      | where TimeGenerated > ago(6h)
+      | where OperationNameValue =~ "Microsoft.Web/sites/write"
+      | where ActivityStatusValue in~ ("Succeeded", "Failed")
+      | project OperationId;
+      started
+      | join kind=leftanti completed on OperationId
+      | where StartTime < ago(1h)
+    QUERY
+    time_aggregation_method = "Count"
+    operator                = "GreaterThan"
+    threshold               = 0
+
+    failing_periods {
+      minimum_failing_periods_to_trigger_alert = 1
+      number_of_evaluation_periods             = 1
+    }
+  }
+
+  action {
+    action_groups = [azurerm_monitor_action_group.ops.id]
   }
 
   tags = local.tags

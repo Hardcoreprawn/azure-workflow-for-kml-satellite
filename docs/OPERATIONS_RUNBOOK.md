@@ -184,6 +184,12 @@ Rollback/readiness note:
 - Rollback image steps also require ARM writes; if the lock is active, rollback cannot proceed until Azure clears the operation.
 - Treat the environment as unchanged until deploy resumes and the workflow readiness probes complete successfully.
 
+Preventive monitor:
+
+- `infra/tofu/main.tf` provisions `azurerm_monitor_scheduled_query_rules_alert_v2.stuck_webapp_write_lock`.
+- The alert queries `AzureActivity` for `Microsoft.Web/sites/write` operations older than `ago(1h)` without a terminal `Succeeded`/`Failed` event.
+- Alert notifications route through the shared `azurerm_monitor_action_group.ops` receivers.
+
 ## Add New Imagery Provider Adapter
 
 1. Implement ImageryProvider in treesight/providers.

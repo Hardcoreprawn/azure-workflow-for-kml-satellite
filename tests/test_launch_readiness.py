@@ -362,6 +362,47 @@ class TestAvailabilityTest:
 
 
 # ---------------------------------------------------------------------------
+# 7b. Stuck ARM write-lock alert
+# ---------------------------------------------------------------------------
+
+
+class TestStuckArmWriteLockAlert:
+    """Ensure stuck Microsoft.Web/sites write operations trigger an ops alert."""
+
+    def test_stuck_write_lock_alert_resource_exists(self):
+        tf = MAIN_TF.read_text()
+        expected = (
+            'resource "azurerm_monitor_scheduled_query_rules_alert_v2" '
+            '"stuck_webapp_write_lock"'
+        )
+        assert expected in tf, (
+            "main.tf must define a scheduled query alert for stuck Microsoft.Web/sites write locks"
+        )
+
+    def test_stuck_write_lock_alert_query_is_one_hour(self):
+        tf = MAIN_TF.read_text()
+        assert "AzureActivity" in tf, "stuck write-lock alert must query AzureActivity records"
+        assert "Microsoft.Web/sites/write" in tf, (
+            "stuck write-lock alert must filter to Microsoft.Web/sites/write operations"
+        )
+        assert "ago(1h)" in tf, (
+            "stuck write-lock alert must trigger when a write operation remains unresolved for >1h"
+        )
+
+    def test_stuck_write_lock_alert_notifies_ops_group(self):
+        match = re.search(
+            r'resource\s+"azurerm_monitor_scheduled_query_rules_alert_v2"\s+"stuck_webapp_write_lock"\s*\{(?P<body>.*?)\n\}',
+            MAIN_TF.read_text(),
+            re.DOTALL,
+        )
+        assert match, "stuck write-lock alert resource block not found"
+        body = match.group("body")
+        assert "azurerm_monitor_action_group.ops.id" in body, (
+            "stuck write-lock alert must notify the shared ops action group"
+        )
+
+
+# ---------------------------------------------------------------------------
 # 8. CSP allows App Insights SDK
 # ---------------------------------------------------------------------------
 
