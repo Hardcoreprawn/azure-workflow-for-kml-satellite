@@ -57,6 +57,7 @@ def test_pipeline_role_orchestrator_skips_activities(monkeypatch):
     """When PIPELINE_ROLE=orchestrator, importing blueprints.pipeline must
     not import the activities module.
     """
+    import importlib
     import sys
 
     monkeypatch.setenv("PIPELINE_ROLE", "orchestrator")
@@ -66,7 +67,7 @@ def test_pipeline_role_orchestrator_skips_activities(monkeypatch):
     for mod in mods_to_remove:
         sys.modules.pop(mod, None)
 
-    import blueprints.pipeline  # noqa: F401
+    importlib.import_module("blueprints.pipeline")
 
     assert "blueprints.pipeline.activities" not in sys.modules, (
         "blueprints.pipeline.activities must not be imported when PIPELINE_ROLE=orchestrator"

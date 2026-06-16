@@ -1665,7 +1665,10 @@ class TestCiamTofuOwnership:
             "so Tofu adopts the existing app without recreating it (issue #806)"
         )
         # The import block uses for_each so it can be gated conditionally
-        assert re.search(r"to\s*=\s*azuread_application_registration\.ciam\[each\.key\]", main_tf), (
+        assert re.search(
+            r"to\s*=\s*azuread_application_registration\.ciam\[each\.key\]",
+            main_tf,
+        ), (
             "import block for azuread_application_registration.ciam must use for_each "
             "so it is only active when ciam_app_object_id is set"
         )
@@ -1731,7 +1734,7 @@ class TestCiamTofuOwnership:
         )
 
     def test_ciam_app_registration_gated_on_object_id(self, main_tf):
-        """Registration resource must be gated so it only activates when ciam_app_object_id is set."""
+        """Registration resource must be gated when ciam_app_object_id is set."""
         match = re.search(
             r'resource\s+"azuread_application_registration"\s+"ciam"\s*\{(?P<body>.*?)\n\}',
             main_tf,
@@ -1766,8 +1769,7 @@ class TestCiamTofuOwnership:
         """README must document the phased Tofu ownership of CIAM resources."""
         readme = (INFRA / "README.md").read_text()
         assert "CIAM Tofu ownership" in readme, (
-            "infra/tofu/README.md must document the CIAM Tofu ownership phases "
-            "(issue #781)"
+            "infra/tofu/README.md must document the CIAM Tofu ownership phases (issue #781)"
         )
         assert "ciam_app_object_id" in readme, (
             "infra/tofu/README.md must document the ciam_app_object_id variable "

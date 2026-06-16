@@ -92,6 +92,7 @@ class TableReplayStore:
             ResourceModifiedError,
             ResourceNotFoundError,
         )
+        from azure.data.tables import UpdateMode
 
         now = datetime.datetime.now(datetime.UTC)
         expires = now + datetime.timedelta(seconds=ttl_seconds)
@@ -111,7 +112,7 @@ class TableReplayStore:
                 entity["expires"] = expires
                 self._table.update_entity(
                     entity,
-                    mode="merge",
+                    mode=UpdateMode.MERGE,
                     match_condition=MatchConditions.IfNotModified,
                 )
                 return prev
