@@ -5,7 +5,7 @@ A feature after geometric processing — includes bounding box, area, centroid.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from treesight.constants import DEFAULT_AOI_BUFFER_M
 
@@ -44,3 +44,9 @@ class AOI(BaseModel):
     crs: str = "EPSG:4326"
     metadata: dict[str, str] = Field(default_factory=dict)
     area_warning: str = ""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def dedup_key(self) -> str:
+        """Deterministic key for same-named AOIs in a source file."""
+        return f"{self.source_file}:{self.feature_index}"

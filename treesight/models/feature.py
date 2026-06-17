@@ -42,3 +42,9 @@ class Feature(BaseModel):
     def has_holes(self) -> bool:
         """Whether the polygon has interior rings (holes)."""
         return len(self.interior_coords) > 0
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def dedup_key(self) -> str:
+        """Deterministic key for same-named features in a source file."""
+        return f"{self.source_file}:{self.feature_index}"

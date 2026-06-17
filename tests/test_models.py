@@ -15,6 +15,8 @@ from treesight.models.outcomes import (
     DownloadResult,
     ImageryOutcome,
     PipelineSummary,
+    PipelineSummaryCounts,
+    PostProcessResult,
 )
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,10 @@ class TestFeature:
         assert sample_feature.metadata["crop"] == "apple"
         assert sample_feature.metadata["variety"] == "fuji"
 
+    def test_dedup_key_uses_source_and_index(self):
+        f = Feature(name="Block A", source_file="farm.kml", feature_index=7)
+        assert f.dedup_key == "farm.kml:7"
+
 
 # ---------------------------------------------------------------------------
 # AOI
@@ -83,6 +89,10 @@ class TestAOI:
     def test_area_warning_empty_by_default(self):
         aoi = AOI(feature_name="Small")
         assert aoi.area_warning == ""
+
+    def test_dedup_key_uses_source_and_index(self):
+        aoi = AOI(feature_name="Block A", source_file="farm.kml", feature_index=7)
+        assert aoi.dedup_key == "farm.kml:7"
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +233,10 @@ class TestImageryOutcome:
         assert restored.state == "ready"
         assert restored.order_id == "ord-1"
 
+    def test_invalid_state_rejected(self):
+        with pytest.raises(ValidationError):
+            ImageryOutcome(state="not-a-real-state")
+
 
 class TestDownloadResult:
     def test_model_dump(self):
@@ -236,6 +250,16 @@ class TestDownloadResult:
         )
         d = dr.model_dump()
         assert d["blob_path"] == "imagery/raw/test.tif"
+
+    def test_invalid_state_rejected(self):
+        with pytest.raises(ValidationError):
+            DownloadResult(state="pending")
+
+
+class TestPostProcessResult:
+    def test_invalid_state_rejected(self):
+        with pytest.raises(ValidationError):
+            PostProcessResult(state="pending")
 
 
 class TestPipelineSummary:
@@ -323,3 +347,7 @@ class TestPipelineSummary:
         assert arts["metadataPaths"] == ["metadata/farm/ts/block_a.json"]
         assert arts["rawImageryPaths"] == ["imagery/raw/farm/ts/block_a/scene1.tif"]
         assert arts["clippedImageryPaths"] == ["imagery/clipped/farm/ts/block_a/scene1.tif"]
+
+    def test_summary_inherits_counts_model(self):
+        s = PipelineSummary(instance_id="inst-1")
+        assert isinstance(s, PipelineSummaryCounts)
