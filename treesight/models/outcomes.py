@@ -9,8 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, computed_field
 
+# Poll lifecycle values emitted by providers and normalized pipeline outcomes.
 ImageryOutcomeState = Literal[
-    "",
     "active",
     "pending",
     "processing",
@@ -21,8 +21,10 @@ ImageryOutcomeState = Literal[
     "cancelled",
     "acquisition_timeout",
 ]
+# Terminal state for download and post-process transfers.
 TransferState = Literal["completed", "failed"]
-PipelineStatus = Literal["", "completed", "partial_imagery"]
+# Final orchestrator summary status.
+PipelineStatus = Literal["pending", "completed", "partial_imagery"]
 
 
 class MetadataResult(BaseModel):
@@ -58,7 +60,7 @@ class ImageryOutcome(BaseModel):
         error: Error message (empty on success).
     """
 
-    state: ImageryOutcomeState = ""
+    state: ImageryOutcomeState = "pending"
     order_id: str = ""
     scene_id: str = ""
     provider: str = ""
@@ -152,10 +154,11 @@ class AoiSummary(BaseModel):
 class PipelineSummaryCounts(BaseModel):
     """Headline counts and status for completed orchestration output.
 
-    Status is ``completed`` when all imagery succeeded, otherwise ``partial_imagery``.
+    Status is ``pending`` before ``compute_status()`` runs, then ``completed`` when all
+    imagery succeeded, otherwise ``partial_imagery``.
     """
 
-    status: PipelineStatus = ""
+    status: PipelineStatus = "pending"
     instance_id: str = ""
     blob_name: str = ""
     blob_url: str = ""

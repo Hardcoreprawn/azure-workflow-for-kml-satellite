@@ -65,6 +65,10 @@ class TestFeature:
         f = Feature(name="Block A", source_file="farm.kml", feature_index=7)
         assert f.dedup_key == "farm.kml:7"
 
+    def test_dedup_key_uses_placeholder_without_source(self):
+        f = Feature(name="Block A")
+        assert f.dedup_key == "<unspecified>:0"
+
 
 # ---------------------------------------------------------------------------
 # AOI
@@ -93,6 +97,10 @@ class TestAOI:
     def test_dedup_key_uses_source_and_index(self):
         aoi = AOI(feature_name="Block A", source_file="farm.kml", feature_index=7)
         assert aoi.dedup_key == "farm.kml:7"
+
+    def test_dedup_key_uses_placeholder_without_source(self):
+        aoi = AOI(feature_name="Block A")
+        assert aoi.dedup_key == "<unspecified>:0"
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +231,7 @@ class TestSearchResult:
 class TestImageryOutcome:
     def test_defaults(self):
         o = ImageryOutcome()
-        assert o.state == ""
+        assert o.state == "pending"
         assert o.error == ""
 
     def test_model_dump_roundtrip(self):

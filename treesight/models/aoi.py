@@ -45,8 +45,12 @@ class AOI(BaseModel):
     metadata: dict[str, str] = Field(default_factory=dict)
     area_warning: str = ""
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[prop-decorator]  # Pydantic computed_field wraps @property.
     @property
     def dedup_key(self) -> str:
-        """Deterministic key for same-named AOIs in a source file."""
-        return f"{self.source_file}:{self.feature_index}"
+        """Deterministic key for same-named AOIs in a source file.
+
+        Uniqueness assumes ingestion-populated ``source_file`` + ``feature_index``.
+        """
+        source = self.source_file or "<unspecified>"
+        return f"{source}:{self.feature_index}"

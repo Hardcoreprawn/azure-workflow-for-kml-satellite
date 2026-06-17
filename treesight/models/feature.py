@@ -43,8 +43,12 @@ class Feature(BaseModel):
         """Whether the polygon has interior rings (holes)."""
         return len(self.interior_coords) > 0
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[prop-decorator]  # Pydantic computed_field wraps @property.
     @property
     def dedup_key(self) -> str:
-        """Deterministic key for same-named features in a source file."""
-        return f"{self.source_file}:{self.feature_index}"
+        """Deterministic key for same-named features in a source file.
+
+        Uniqueness assumes parser-populated ``source_file`` + ``feature_index``.
+        """
+        source = self.source_file or "<unspecified>"
+        return f"{source}:{self.feature_index}"
