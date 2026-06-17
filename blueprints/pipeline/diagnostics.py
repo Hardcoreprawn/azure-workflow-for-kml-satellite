@@ -50,7 +50,7 @@ async def _build_orchestrator_status_response(
             mimetype="application/json",
         )
 
-    status = await client.get_status(instance_id)
+    status = await client.get_status(instance_id, show_history=True)
     if not status:
         return func.HttpResponse(
             json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"

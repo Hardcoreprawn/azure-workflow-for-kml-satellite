@@ -220,6 +220,13 @@
       _setAnalysisStatus(detail, 'success');
       return;
     }
+    if (runtime === 'Stalled') {
+      _setAnalysisStatus(
+        'Pipeline updates have stalled during ' + phase + '. Check ops/logs before retrying this run.',
+        'error'
+      );
+      return;
+    }
     if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
       _setAnalysisStatus('Analysis stopped during ' + phase + '. ' + detail, 'error');
       return;

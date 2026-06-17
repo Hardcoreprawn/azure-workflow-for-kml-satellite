@@ -631,6 +631,15 @@ class TestAuthConfig:
             "app-runs.js must keep org history cache separate from user-scoped history cache"
         )
 
+    def test_app_runs_treats_stalled_runs_as_inactive(self, app_runs_js):
+        """Stalled runs must not auto-resume indefinitely in history or polling."""
+        assert "'stalled'" in app_runs_js, (
+            "app-runs.js must treat stalled runtime status as inactive"
+        )
+        assert "run.customStatus.stalled === true" in app_runs_js, (
+            "app-runs.js must treat explicit stalled customStatus as inactive"
+        )
+
 
 class TestBillingEmulationUi:
     def test_billing_module_defines_fallback_emulation_tiers(self, app_billing_js):

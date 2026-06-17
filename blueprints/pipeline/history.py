@@ -437,4 +437,7 @@ async def _build_analysis_history_entry(
 
 def _history_run_is_active(run: dict[str, Any]) -> bool:
     runtime_status = str(run.get("runtimeStatus") or "").strip().lower()
-    return runtime_status not in {"", "completed", "failed", "terminated", "canceled"}
+    if runtime_status in {"", "completed", "failed", "terminated", "canceled", "stalled"}:
+        return False
+    custom_status = run.get("customStatus")
+    return not (isinstance(custom_status, dict) and custom_status.get("stalled") is True)

@@ -57,6 +57,7 @@ class _FakeDurableStatus:
         last_updated_time: datetime,
         custom_status: dict[str, object] | None = None,
         output: dict[str, object] | None = None,
+        history: list[object] | None = None,
     ) -> None:
         self.instance_id = instance_id
         self.name = "treesight_orchestrator"
@@ -65,6 +66,7 @@ class _FakeDurableStatus:
         self.last_updated_time = last_updated_time
         self.custom_status = custom_status
         self.output = output
+        self.history = history
 
 
 class _HistoryDurableClient(_FakeDurableClient):
@@ -72,7 +74,7 @@ class _HistoryDurableClient(_FakeDurableClient):
         super().__init__()
         self._statuses = statuses
 
-    async def get_status(self, instance_id: str):
+    async def get_status(self, instance_id: str, show_history: bool = False, **_kwargs):
         return self._statuses.get(instance_id)
 
 
@@ -275,6 +277,106 @@ class TestAnalysisSubmissionRoutes:
         data = json.loads(resp.get_body())
         assert data["instanceId"] == "demo-run"
         assert data["runtimeStatus"] == "Completed"
+
+    def test_orchestrator_status_uses_history_hint_when_custom_status_lags(self):
+        from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
+
+        recent = datetime.now(UTC)
+
+        client = _HistoryDurableClient(
+            {
+                "demo-run": _FakeDurableStatus(
+                    "demo-run",
+                    runtime_status="Running",
+                    created_time=recent,
+                    last_updated_time=recent,
+                    custom_status={"phase": "ingestion", "step": "preparing_aois"},
+                    history=[{"FunctionName": "acquire_imagery"}],
+                )
+            }
+        )
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/orchestrator/demo-run",
+            headers={"Origin": TEST_LOCAL_ORIGIN},
+            params={},
+            route_params={"instance_id": "demo-run"},
+            body=b"",
+        )
+
+        with patch(
+            "blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True
+        ):
+            resp = asyncio.run(_build_orchestrator_status_response(req, client))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["runtimeStatus"] == "Running"
+        assert data["customStatus"]["phase"] == "acquisition"
+        assert data["customStatus"]["step"] == "searching"
+
+    def test_analysis_history_does_not_treat_stalled_run_as_active(self):
+        from blueprints.pipeline.history import _build_analysis_history_response
+
+        client = _HistoryDurableClient(
+            {
+                "stale-run": _FakeDurableStatus(
+                    "stale-run",
+                    runtime_status="Running",
+                    created_time=datetime(2026, 3, 28, 19, 7, 20, tzinfo=UTC),
+                    last_updated_time=datetime(2026, 3, 28, 19, 7, 53, tzinfo=UTC),
+                    custom_status={"phase": "ingestion", "step": "preparing_aois"},
+                ),
+                "done-run": _FakeDurableStatus(
+                    "done-run",
+                    runtime_status="Completed",
+                    created_time=datetime(2026, 3, 28, 18, 0, 0, tzinfo=UTC),
+                    last_updated_time=datetime(2026, 3, 28, 18, 4, 0, tzinfo=UTC),
+                    output={"status": "completed", "message": "Analysis complete"},
+                ),
+            }
+        )
+        req = _make_req(
+            "/api/analysis/history",
+            body={},
+            method="GET",
+            params={"limit": "2"},
+        )
+
+        with (
+            patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+        ):
+            mock_storage_cls.return_value.list_blobs.return_value = [
+                "analysis-submissions/user-123/done-run.json",
+                "analysis-submissions/user-123/stale-run.json",
+            ]
+            mock_storage_cls.return_value.download_json.side_effect = [
+                {
+                    "submission_id": "done-run",
+                    "instance_id": "done-run",
+                    "user_id": "user-123",
+                    "submitted_at": "2026-03-28T18:00:00+00:00",
+                    "submission_prefix": "analysis",
+                    "status": "submitted",
+                },
+                {
+                    "submission_id": "stale-run",
+                    "instance_id": "stale-run",
+                    "user_id": "user-123",
+                    "submitted_at": "2026-03-28T19:07:20+00:00",
+                    "submission_prefix": "analysis",
+                    "status": "submitted",
+                },
+            ]
+            resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        stale = next(run for run in data["runs"] if run["instanceId"] == "stale-run")
+        assert stale["runtimeStatus"] == "Stalled"
+        assert data["activeRun"] is None
 
     def test_analysis_history_returns_recent_runs_and_active_run(self):
         from blueprints.pipeline.history import _build_analysis_history_response
