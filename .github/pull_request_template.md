@@ -11,6 +11,24 @@
 
 <!-- Implementation approach, key decisions -->
 
+## Summary
+
+<!-- What does this change do and why? -->
+
+## Linked issue
+
+<!-- REQUIRED: every PR must close at least one issue. -->
+closes #
+
+## Validation
+
+- [ ] `make check` passes locally
+- [ ] Behaviour verified (tests / manual)
+
+## Discovered issues
+
+<!-- List any #NNN created via the issue-tracking discipline, or "none". -->
+
 ## Checklist
 
 - [ ] Tests added/updated
