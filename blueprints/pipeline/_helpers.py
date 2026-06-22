@@ -234,8 +234,12 @@ def _normalize_runtime_status_payload(status: Any) -> tuple[str | None, dict[str
     if _is_stalled_runtime(runtime_status, status.last_updated_time):
         custom_status = dict(custom_status or {})
         custom_status["stalled"] = True
-        custom_status.setdefault("phase", custom_status.get("phase") or "queued")
-        custom_status.setdefault("step", custom_status.get("step") or "no_recent_updates")
+        # Fallback only — preserve any phase/step already set by the history
+        # hint (which is more accurate than a bare "queued"). setdefault is
+        # a no-op when the key is present, so a self-referential default
+        # would be misleading; use plain literals.
+        custom_status.setdefault("phase", "queued")
+        custom_status.setdefault("step", "no_recent_updates")
         runtime_status = "Stalled"
     return runtime_status, custom_status
 
