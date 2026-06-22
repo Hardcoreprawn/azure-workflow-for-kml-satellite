@@ -50,7 +50,11 @@ async def _build_orchestrator_status_response(
             mimetype="application/json",
         )
 
-    status = await client.get_status(instance_id, show_history=True)
+    # This endpoint is polled every ~3s by the frontend. Fetching full
+    # execution history on each poll is expensive and grows with run length.
+    # Stall detection relies on lastUpdatedTime + customStatus, which
+    # get_status returns without history, so omit show_history.
+    status = await client.get_status(instance_id)
     if not status:
         return func.HttpResponse(
             json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"
