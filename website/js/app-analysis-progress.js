@@ -222,7 +222,8 @@
     }
     if (runtime === 'Stalled') {
       _setAnalysisStatus(
-        'Pipeline updates have stalled during ' + phase + '. Check ops/logs before retrying this run.',
+        'This analysis has stopped responding and may not finish. '
+          + 'You can safely start a new run for the same area.',
         'error'
       );
       return;
