@@ -43,11 +43,13 @@ HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
+REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
 OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
+PULL_REQUEST_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
 
 HTML_PAGES = [
     WEBSITE / "index.html",
@@ -1248,7 +1250,41 @@ class TestInfracostCostGate:
 
 
 # ---------------------------------------------------------------------------
-# 14. KML polygon-with-hole parsing (#580)
+# 14. PR linked-issue enforcement gate (#945)
+# ---------------------------------------------------------------------------
+
+
+class TestLinkedIssuePullRequestGate:
+    """Ensure PRs are blocked unless they declare a closing issue reference."""
+
+    def test_linked_issue_workflow_exists(self):
+        assert REQUIRE_LINKED_ISSUE_YML.exists(), (
+            "Linked-issue workflow missing at .github/workflows/require-linked-issue.yml"
+        )
+
+    def test_linked_issue_check_context_name_is_stable(self):
+        content = REQUIRE_LINKED_ISSUE_YML.read_text()
+        assert "name: check-issue-link" in content, (
+            "Linked-issue workflow job must be named 'check-issue-link' "
+            "so it can be required by branch protection"
+        )
+
+    def test_linked_issue_workflow_validates_closing_keywords(self):
+        content = REQUIRE_LINKED_ISSUE_YML.read_text()
+        assert "closes/fixes/resolves" in content.lower()
+        assert "#[0-9]+" in content, (
+            "Linked-issue workflow must enforce closes/fixes/resolves #NNN in PR body"
+        )
+
+    def test_pull_request_template_prompts_issue_link(self):
+        content = PULL_REQUEST_TEMPLATE.read_text().lower()
+        assert "closes #" in content or "fixes #" in content or "resolves #" in content, (
+            "PR template must prompt authors to include closes/fixes/resolves #NNN"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 15. KML polygon-with-hole parsing (#580)
 # ---------------------------------------------------------------------------
 
 
@@ -1306,7 +1342,7 @@ class TestParseKmlGeometryHoleHandling:
 
 
 # ---------------------------------------------------------------------------
-# 15. EUDR mode toggle wiring (#600)
+# 16. EUDR mode toggle wiring (#600)
 # ---------------------------------------------------------------------------
 
 
