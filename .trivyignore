@@ -26,57 +26,17 @@ AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
 # pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
 AZU-0045 # exp:2026-07-16 accepted cost posture — unused Defender plans intentionally Free
 
-# Go stdlib CVEs in the .NET Functions host binary (compiled into the host by Microsoft).
-# We cannot patch these — they require a rebuilt host from Microsoft.
-# Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
-# Review: remove these entries once Microsoft ships a patched Functions host image.
-# Reviewed 2026-05-16: upstream still unpatched; extended 30 days.
-CVE-2026-25679 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
-CVE-2026-27139 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
-CVE-2026-27142 # exp:2026-06-16 Go stdlib in Functions host — tracking upstream
-CVE-2026-40894 # exp:2026-06-16 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3
-
-# libpng16-16: Dockerfile.base already runs apt-get upgrade -y which will apply the fix
-# once it lands in Debian bookworm mirrors. Trigger a base-image rebuild to pick it up.
-# Reviewed 2026-05-16: extended 30 days pending mirror propagation + base rebuild.
-CVE-2026-33416 # exp:2026-06-16 libpng16-16 HIGH — tracking #355
-CVE-2026-33636 # exp:2026-06-16 libpng16-16 HIGH — tracking #355
-
-# pip 25.0.1 CVEs in base container image — not exploitable at runtime.
-# We do not install arbitrary wheels in production; pip is only used during
-# image build. Upgrade when Microsoft publishes a patched Functions base image.
-CVE-2025-8869 # exp:2026-06-16 pip symlink extraction — medium
-CVE-2026-1703 # exp:2026-06-16 pip path traversal via crafted wheels — low
-
-# Debian bookworm package CVEs — all have fixed versions in the archive.
-# Dockerfile.base runs apt-get upgrade -y; these clear on the next base image rebuild.
-# Base rebuild triggered 2026-05-16. Remove these entries once the rebuilt image deploys.
-#
-# systemd: Arbitrary code execution or DoS via spurious IPC API call data.
-# libsystemd0/libudev1 are present in the Debian base but the systemd IPC attack
-# surface is not reachable inside a container (no systemd daemon running).
-CVE-2026-29111 # exp:2026-07-09 libsystemd0+libudev1 HIGH — fixed in deb12u2, base rebuild pending
-#
-# libcap: Privilege escalation via TOCTOU race in cap_set_file().
-# Application code does not call cap_set_file(); not reachable.
-CVE-2026-4878 # exp:2026-07-09 libcap2 HIGH — fixed in deb12u3, base rebuild pending
-#
-# glibc: Integer overflow in memalign leads to heap corruption.
-# Requires attacker-controlled memalign call size. Not directly reachable
-# via our application but glibc is load-bearing — base rebuild prioritised.
-CVE-2026-0861 # exp:2026-07-09 libc6+libc-bin HIGH — fixed in deb12u14, base rebuild pending
-
-# MessagePack CVE-2026-48109 (LZ4 unsafe deserialization, HIGH) in
-# FuncExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.35.0/bin/.
-# The vulnerable library is baked into the Microsoft base image
-# (mcr.microsoft.com/azure-functions/python:4-python3.12); we cannot patch it
-# independently.  The fix (MessagePack >= 2.5.301 / 3.1.7) was published
-# 2026-06-09 — AFTER bundle 4.36.0 shipped (2026-05-27), so no patched bundle
-# exists yet.  Attack surface is limited: MessagePack is used exclusively for
-# internal Durable Functions orchestration-state serialisation over Azure
-# Storage; it is NOT reachable from untrusted user input.
-# Remediation path: next stable bundle release (≥4.37.0) must adopt
-# MessagePack ≥ 2.5.301; Microsoft base image then auto-refreshed by the daily
-# base-image.yml rebuild.  Remove this entry once the rebuilt image is pushed.
-# Tracked in #904.
-CVE-2026-48109 # exp:2026-07-13 MessagePack HIGH in extension bundle — awaiting upstream bundle + base rebuild
+# ── Container CVE suppressions: NONE ───────────────────────────────────────
+# All previous container-image CVE ignores were removed 2026-06-23 after the
+# daily base-image rebuild cleared them. Verified with Trivy 0.69.3 against the
+# current images (treesight:latest built 2026-06-23, treesight-base:latest):
+#   • 0 HIGH/CRITICAL findings (ignore-unfixed) — the only severities the CI
+#     scans gate on (deploy.yml + base-image.yml use severity: CRITICAL,HIGH).
+#   • Go stdlib (CVE-2026-25679/27139/27142), libpng16-16
+#     (CVE-2026-33416/33636), systemd/libcap/glibc
+#     (CVE-2026-29111/4878/0861) and MessagePack (CVE-2026-48109) are gone.
+#   • OpenTelemetry.Api (CVE-2026-40894) and pip (CVE-2025-8869/CVE-2026-1703)
+#     remain only at MEDIUM/LOW, which the CRITICAL,HIGH-only scans never
+#     evaluate — so no suppression is required.
+# Do not re-add a CVE ignore without a fresh scan proving it is HIGH/CRITICAL
+# with no available fix in our image, plus an exp: date and rationale.
