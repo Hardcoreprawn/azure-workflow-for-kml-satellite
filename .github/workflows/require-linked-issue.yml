@@ -1,0 +1,26 @@
+name: Require Linked Issue
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check-issue-link:
+    name: check-issue-link
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR body links a closing issue
+        env:
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
+        run: |
+          pattern='(closes|fixes|resolves)\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+'
+          if printf '%s\n' "$PR_BODY" | grep -Eiq "$pattern"; then
+            echo "Found closes/fixes/resolves #NNN in PR body."
+            exit 0
+          fi
+
+          echo "::error::PR body must include closes/fixes/resolves #NNN so the linked issue auto-closes."
+          exit 1
