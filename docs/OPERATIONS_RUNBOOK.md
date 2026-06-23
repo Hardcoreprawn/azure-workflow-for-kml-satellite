@@ -25,6 +25,31 @@ stored in this document; retrieve them from the Azure portal or from
 
 ## Deploy
 
+### Reset Mode (pipeline reset in progress)
+
+During the pipeline reset there is **no cloud deployment**. Validation is
+local-only and the deploy workflow is gated by a release-safety `preflight`
+job in `.github/workflows/deploy.yml`:
+
+- **Production is frozen.** Any `prd` target fails immediately at `preflight`.
+  Lift by removing the prd guard step when ready to ship to production again.
+- **Auto dev deploys are paused.** While the repo variable `DEPLOY_PAUSED=true`,
+  a merge to `main` (CI success → `workflow_run`) will not deploy into the
+  torn-down dev environment. Set `DEPLOY_PAUSED=false` to resume, or deploy
+  deliberately via `workflow_dispatch`.
+
+Local validation loop (no Azure):
+
+1. `make dev-init` — start Azurite + create storage containers.
+2. `make dev-func` (terminal 1) and `make dev-web` (terminal 2), or `make dev-all`.
+3. `make test` for the suite; `make smoke` for host health.
+4. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
+
+When the reset lands and you are ready to deploy again: set `DEPLOY_PAUSED=false`,
+remove the prd freeze guard, then follow the standard deploy steps below.
+
+### Standard deploy
+
 1. Run CI checks.
 2. Deploy infrastructure and app via GitHub Actions deploy workflow.
 3. Confirm Terraform-managed browser origins include the SWA default hostname and the production custom domain so both `/api/*` and direct blob SAS uploads pass CORS preflight.
