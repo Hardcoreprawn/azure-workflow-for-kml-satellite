@@ -16,7 +16,7 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body || '' }}
         run: |
-          pattern='(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#[0-9]+'
+          pattern='(closes|fixes|resolves)\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+'
           if printf '%s\n' "$PR_BODY" | grep -Eiq "$pattern"; then
             echo "Found closes/fixes/resolves #NNN in PR body."
             exit 0

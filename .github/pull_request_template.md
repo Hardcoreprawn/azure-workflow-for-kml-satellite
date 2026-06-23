@@ -10,7 +10,7 @@
 
 ## Linked Issue
 
-closes #<!-- issue number -->
+closes #NNN
 
 ## How
 

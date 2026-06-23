@@ -1272,7 +1272,13 @@ class TestLinkedIssuePullRequestGate:
     def test_linked_issue_workflow_validates_closing_keywords(self):
         content = REQUIRE_LINKED_ISSUE_YML.read_text()
         assert "closes/fixes/resolves" in content.lower()
-        assert "#[0-9]+" in content, (
+        pattern_match = re.search(r"pattern=(['\"])(.+?)\1", content)
+        assert pattern_match, "Linked-issue workflow must define a regex pattern for PR body checks"
+        pattern = re.compile(pattern_match.group(2), re.IGNORECASE)
+        assert pattern.search("closes #945")
+        assert pattern.search("Fixes Hardcoreprawn/azure-workflow-for-kml-satellite#945")
+        assert pattern.search("resolves #945")
+        assert not pattern.search("related to #945"), (
             "Linked-issue workflow must enforce closes/fixes/resolves #NNN in PR body"
         )
 
