@@ -138,6 +138,51 @@ Responder action order for smoke failures:
 3. Cross-check App Insights using `instance_id` and stage-level exceptions.
 4. Validate blob existence and RBAC/storage connectivity for the output container.
 
+## Smoke Tests
+
+### Standard pipeline smoke (deployed environment)
+
+```sh
+python scripts/pipeline_smoke.py \
+  --storage-account <account> \
+  --orch-hostname   <func-hostname> \
+  --resource-group  <rg> \
+  --orch-app-name   <func-app>
+```
+
+Uses `tests/fixtures/sample.kml` by default (`--kml-file` to override).
+Asserts `runtimeStatus == Completed` and prints `featureCount` / `aoiCount`.
+
+### Duplicate-named AOI back-to-back smoke (local Azurite stack)
+
+Validates that two consecutive pipeline runs with a KML containing
+duplicate feature names both reach a terminal state without silent data
+loss or key collisions.  This test guards against the flakiness class
+described in issue #872.
+
+Prerequisites:
+
+```sh
+make dev-up    # Start Azurite
+make dev-func  # Start local Functions host (separate terminal)
+```
+
+Run:
+
+```sh
+uv run pytest tests/test_pipeline_smoke_e2e.py -v -m integration
+```
+
+What it checks:
+
+1. First submission of `tests/fixtures/duplicate_names.kml` reaches a terminal state.
+2. Second (back-to-back) submission reaches a terminal state.
+3. Both runs produce the **same** terminal status — no flakiness between submissions.
+4. If both runs complete, `aoiCount` equals the input feature count (2) — no silent data loss.
+
+The tests are skipped automatically when Azurite or the local Functions host
+is not reachable, so they will not break the standard `make test` suite.
+
 ## Monitor
 
 Primary telemetry:
