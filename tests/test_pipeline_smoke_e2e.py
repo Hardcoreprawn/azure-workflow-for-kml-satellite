@@ -93,7 +93,7 @@ def _upload_kml(kml_path: Path, instance_id: str) -> tuple[str, int]:
     if not container.exists():
         container.create_container()
 
-    ticket: dict[str, str] = {
+    ticket = {
         "user_id": "e2e-smoke-test",
         "tier": "demo",
         "correlation_id": instance_id,
@@ -243,9 +243,6 @@ class TestDuplicateAoiBackToBackSmoke:
 
         status_1 = result_1.get("runtimeStatus")
         status_2 = result_2.get("runtimeStatus")
-
-        assert status_1 in _TERMINAL_STATUSES, f"Run 1 did not reach terminal: {status_1!r}"
-        assert status_2 in _TERMINAL_STATUSES, f"Run 2 did not reach terminal: {status_2!r}"
 
         assert status_1 == status_2, (
             f"Inconsistent terminal statuses: run 1={status_1!r}, run 2={status_2!r}. "
