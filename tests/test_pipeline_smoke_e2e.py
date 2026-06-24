@@ -166,7 +166,7 @@ def _poll_orchestrator(
     while time.time() < deadline:
         try:
             resp = httpx.get(url, timeout=10.0)
-        except httpx.ConnectError:
+        except httpx.RequestError:
             time.sleep(interval)
             continue
         if resp.status_code == 404:
