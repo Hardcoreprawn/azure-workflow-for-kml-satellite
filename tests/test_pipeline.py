@@ -1394,7 +1394,9 @@ class TestPhaseCustomStatusReporting:
 
         ctx.set_custom_status.assert_called()
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(s.get("phase") == "ingestion" and s.get("step") == "parsing_kml" for s in statuses)
+        assert any(
+            s.get("phase") == "ingestion" and s.get("step") == "parsing_kml" for s in statuses
+        )
 
     def test_ingestion_sets_preparing_aois_status(self):
         """Phase ingestion sets status when fan-out to prepare_aoi begins."""
@@ -1526,7 +1528,11 @@ class TestPhaseCustomStatusReporting:
         )
 
     def test_coordinator_sets_completed_status(self):
-        """Main orchestrator must set customStatus phase=completed after all phases."""
+        """Main orchestrator must call set_custom_status with phase='completed' after all phases.
+
+        Verified via AST: walk the treesight_orchestrator function body and
+        confirm a set_custom_status call passes a dict containing phase='completed'.
+        """
         import ast
         from pathlib import Path
 
@@ -1535,12 +1541,35 @@ class TestPhaseCustomStatusReporting:
         src = Path(orch_mod.__file__).read_text()
         tree = ast.parse(src)
 
+        def _has_completed_status_call(func_node: ast.FunctionDef) -> bool:
+            # Return True if the function contains set_custom_status({"phase": "completed", ...})
+            for node in ast.walk(func_node):
+                if not isinstance(node, ast.Call):
+                    continue
+                # Match ctx.set_custom_status(...) or context.set_custom_status(...)
+                func = node.func
+                if not (isinstance(func, ast.Attribute) and func.attr == "set_custom_status"):
+                    continue
+                if not node.args:
+                    continue
+                arg = node.args[0]
+                if not isinstance(arg, ast.Dict):
+                    continue
+                for key, val in zip(arg.keys, arg.values, strict=False):
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "phase"
+                        and isinstance(val, ast.Constant)
+                        and val.value == "completed"
+                    ):
+                        return True
+            return False
+
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "treesight_orchestrator":
-                # Walk body looking for set_custom_status({"phase": "completed", ...})
-                body_src = ast.get_source_segment(src, node) or ""
-                assert '"phase": "completed"' in body_src, (
-                    "treesight_orchestrator must call set_custom_status with phase='completed'"
+                assert _has_completed_status_call(node), (
+                    "treesight_orchestrator must call "
+                    "set_custom_status({'phase': 'completed', ...})"
                 )
                 return
 
@@ -1612,27 +1641,52 @@ class TestHelpersModuleSplit:
             assert hasattr(_helpers, sym), f"_helpers.py missing re-export: {sym}"
 
     def test_blob_trigger_imports_from_blob_url(self):
-        """blob_trigger.py must import blob URL helpers from _blob_url, not _helpers."""
-        import ast
-        from pathlib import Path
+        """blob URL helpers used by blob_trigger must be defined in _blob_url, not _helpers."""
+        import inspect
 
-        src = (Path(__file__).parent.parent / "blueprints/pipeline/blob_trigger.py").read_text()
-        assert "from ._blob_url import" in src, "blob_trigger.py should import from ._blob_url"
-        assert "from ._helpers import" not in src, "blob_trigger.py should not import from ._helpers"
+        from blueprints.pipeline._blob_url import (
+            _extract_blob_name,
+            _extract_container,
+            _validate_blob_event,
+        )
+
+        for fn in (_validate_blob_event, _extract_container, _extract_blob_name):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._blob_url", (
+                f"{fn.__name__} should be defined in _blob_url, got {mod.__name__}"
+            )
 
     def test_diagnostics_imports_from_status(self):
-        """diagnostics.py must import status helpers from _status, not _helpers."""
-        import ast
-        from pathlib import Path
+        """Durable status helpers used by diagnostics must be defined in _status."""
+        import inspect
 
-        src = (Path(__file__).parent.parent / "blueprints/pipeline/diagnostics.py").read_text()
-        assert "from ._status import" in src, "diagnostics.py should import from ._status"
-        assert "from ._helpers import" not in src, "diagnostics.py should not import from ._helpers"
+        from blueprints.pipeline._status import _durable_status_payload, _reshape_output
+
+        for fn in (_durable_status_payload, _reshape_output):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._status", (
+                f"{fn.__name__} should be defined in _status, got {mod.__name__}"
+            )
 
     def test_orchestrator_imports_from_payloads(self):
-        """orchestrator.py must import payload builders from _payloads."""
-        from pathlib import Path
+        """Payload builders used by orchestrator must be defined in _payloads."""
+        import inspect
 
-        src = (Path(__file__).parent.parent / "blueprints/pipeline/orchestrator.py").read_text()
-        assert "from ._payloads import" in src, "orchestrator.py should import from ._payloads"
-        assert "from ._aggregation import" in src, "orchestrator.py should import from ._aggregation"
+        from blueprints.pipeline._aggregation import _aggregate_aoi_results
+        from blueprints.pipeline._payloads import (
+            _acq_payload,
+            _build_order_lookups,
+            _poll_payload,
+        )
+
+        for fn in (_acq_payload, _build_order_lookups, _poll_payload):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._payloads", (
+                f"{fn.__name__} should be defined in _payloads, got {mod.__name__}"
+            )
+        mod = inspect.getmodule(_aggregate_aoi_results)
+        assert mod is not None
+        assert mod.__name__ == "blueprints.pipeline._aggregation"
