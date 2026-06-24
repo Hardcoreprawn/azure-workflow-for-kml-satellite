@@ -1555,7 +1555,8 @@ class TestPhaseCustomStatusReporting:
                 arg = node.args[0]
                 if not isinstance(arg, ast.Dict):
                     continue
-                for key, val in zip(arg.keys, arg.values, strict=True):
+                for i in range(len(arg.keys)):
+                    key, val = arg.keys[i], arg.values[i]
                     if (
                         isinstance(key, ast.Constant)
                         and key.value == "phase"
