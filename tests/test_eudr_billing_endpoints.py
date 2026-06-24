@@ -2,7 +2,6 @@
 
 Covers:
 - GET /api/eudr/billing (status endpoint)
-- GET /api/eudr/entitlement (entitlement check)
 - GET /api/eudr/usage (usage dashboard)
 - GET /api/eudr/summary-export (aggregated CSV export)
 - POST /api/eudr/subscribe (Stripe checkout creation)
@@ -112,66 +111,8 @@ class TestEudrBillingStatus:
 
 
 # ---------------------------------------------------------------------------
-# §2 — GET /api/eudr/entitlement
 # ---------------------------------------------------------------------------
-
-
-class TestEudrEntitlement:
-    @_REQUIRE_AUTH
-    @patch("treesight.security.orgs.get_user_org", return_value=None)
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_no_org_returns_not_allowed(self, _auth, _org):
-        from blueprints.eudr import eudr_entitlement_check
-
-        req = _make_req(url="/api/eudr/entitlement")
-        resp = eudr_entitlement_check(req)
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["allowed"] is False
-        assert data["reason"] == "no_org"
-
-    @_REQUIRE_AUTH
-    @patch(
-        "treesight.security.eudr_billing.check_eudr_entitlement",
-        return_value={"allowed": True, "reason": "subscribed"},
-    )
-    @patch(
-        "treesight.security.orgs.get_user_org",
-        return_value={"org_id": "org-1"},
-    )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_subscribed_org_is_allowed(self, _auth, _org, _ent):
-        from blueprints.eudr import eudr_entitlement_check
-
-        req = _make_req(url="/api/eudr/entitlement")
-        resp = eudr_entitlement_check(req)
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["allowed"] is True
-
-    @_REQUIRE_AUTH
-    @patch(
-        "treesight.security.eudr_billing.check_eudr_entitlement",
-        return_value={"allowed": False, "reason": "trial_exhausted"},
-    )
-    @patch(
-        "treesight.security.orgs.get_user_org",
-        return_value={"org_id": "org-1"},
-    )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_exhausted_trial_returns_not_allowed(self, _auth, _org, _ent):
-        from blueprints.eudr import eudr_entitlement_check
-
-        req = _make_req(url="/api/eudr/entitlement")
-        resp = eudr_entitlement_check(req)
-        assert resp.status_code == 200
-        data = json.loads(resp.get_body())
-        assert data["allowed"] is False
-        assert data["reason"] == "trial_exhausted"
-
-
-# ---------------------------------------------------------------------------
-# §2.1 — GET /api/eudr/usage
+# §2 — GET /api/eudr/usage
 # ---------------------------------------------------------------------------
 
 

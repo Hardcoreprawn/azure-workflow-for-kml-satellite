@@ -192,7 +192,6 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET | `/api/upload/status/{submission_id}` | Upload/pipeline status | 200 | 404 |
 | POST | `/api/analysis/submit` | Submit KML for pipeline processing | 200 | 400 / 401 |
 | GET | `/api/analysis/history` | User analysis history | 200 | 401 |
-| POST | `/api/frame-analysis` | Single-frame analysis | 200 | 400 |
 | POST | `/api/timelapse-analysis` | Timelapse analysis | 200 | 400 / 401 |
 | POST | `/api/eudr-assessment` | EUDR compliance assessment | 200 | 400 / 401 |
 | POST | `/api/convert-coordinates` | Convert lat/lon to KML | 200 | 400 / 401 |
