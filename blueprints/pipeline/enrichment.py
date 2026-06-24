@@ -21,7 +21,7 @@ from blueprints._helpers import (
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER
 
 from . import bp
-from ._helpers import _reshape_output
+from ._status import _reshape_output
 from .history import (
     RunRecordLookupError,
     assert_run_write_access,

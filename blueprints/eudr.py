@@ -647,7 +647,7 @@ async def _eudr_summary_export(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
-    from blueprints.pipeline._helpers import _reshape_output
+    from blueprints.pipeline._status import _reshape_output
     from treesight.constants import DEFAULT_OUTPUT_CONTAINER
     from treesight.storage.client import BlobStorageClient
 

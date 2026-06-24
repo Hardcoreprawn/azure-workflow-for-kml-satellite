@@ -15,7 +15,7 @@ from treesight.models.blob_event import BlobEvent
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 
 from . import bp
-from ._helpers import _extract_blob_name, _extract_container, _validate_blob_event
+from ._blob_url import _extract_blob_name, _extract_container, _validate_blob_event
 
 logger = logging.getLogger(__name__)
 
