@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import socket
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from treesight.pipeline.enrichment.runner import (
     _run_mosaic_ndvi_phase,
@@ -33,6 +36,17 @@ def _make_frame(
 
 BBOX = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0]]
 COORDS = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0]]
+
+
+@pytest.fixture(autouse=True)
+def _block_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail fast if enrichment tests try to open real network sockets."""
+
+    def _deny_network(*args, **kwargs):
+        raise AssertionError("Network access is not allowed in enrichment runner tests.")
+
+    monkeypatch.setattr(socket, "create_connection", _deny_network)
+    monkeypatch.setattr(socket, "getaddrinfo", _deny_network)
 
 
 class TestMosaicNdviParallel:
@@ -189,9 +203,9 @@ class TestMosaicNdviParallel:
         assert results["search_ids"][0] is None
         assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
+    @patch("treesight.pipeline.enrichment.runner.compute_landsat_ndvi")
     @patch("treesight.pipeline.enrichment.runner.register_mosaic")
-    def test_landsat_unsuitable_rgb_still_registers_s2_ndvi(self, mock_mosaic, mock_ndvi):
+    def test_landsat_unsuitable_rgb_still_registers_s2_ndvi(self, mock_mosaic, mock_landsat_ndvi):
         """Landsat frames with rgb_display_suitable=False must still register an S2 NDVI mosaic.
 
         Previously the Landsat fallback branch was missing, leaving ndvi_search_ids[idx]=None
@@ -205,7 +219,7 @@ class TestMosaicNdviParallel:
             }
         ]
         mock_mosaic.return_value = "sid-sentinel-2-l2a"
-        mock_ndvi.return_value = {"mean": 0.4}
+        mock_landsat_ndvi.return_value = {"mean": 0.4}
         storage = MagicMock()
         results: dict = {}
 
@@ -216,6 +230,7 @@ class TestMosaicNdviParallel:
         # But a Sentinel-2 NDVI mosaic must have been registered as fallback
         assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
         mock_mosaic.assert_called_once()
+        mock_landsat_ndvi.assert_called_once()
 
     @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
     @patch("treesight.pipeline.enrichment.runner.register_mosaic")
@@ -461,25 +476,28 @@ class TestPerAoiEnrichment:
     ):
         """Results list preserves submission order even when tasks complete out-of-order (#863)."""
         import threading
-        import time
 
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
-        # AOI 0 sleeps longer so it finishes last; order must still be 0,1,2
-        delays = [0.05, 0.01, 0.02]
         lock = threading.Lock()
-        completion_order: list[str] = []
+        started = 0
+        overlap_observed = threading.Event()
 
         def plan_side_effect(*args, **kwargs):
             # Infer which AOI this call is for via centre coords
             return [{"start": "2024-01-01", "end": "2024-03-01"}]
 
         def slow_enrich(entry, **kwargs):
-            idx = int(entry["name"].split()[-1])
-            time.sleep(delays[idx])
+            nonlocal started
             with lock:
-                completion_order.append(entry["name"])
+                started += 1
+                if started >= 2:
+                    overlap_observed.set()
+            assert overlap_observed.wait(timeout=1), (
+                "Per-AOI tasks did not overlap; expected concurrent execution."
+            )
+            idx = int(entry["name"].split()[-1])
             return {"name": entry["name"], "ndvi": idx}
 
         mock_plan.side_effect = plan_side_effect
@@ -504,8 +522,8 @@ class TestPerAoiEnrichment:
         enrichment = result["per_aoi_enrichment"]
         # Order must match submission regardless of completion order
         assert [r["name"] for r in enrichment] == ["Farm 0", "Farm 1", "Farm 2"]
-        # Confirm they actually ran concurrently (Farm 0 finished last)
-        assert completion_order.index("Farm 0") > completion_order.index("Farm 1")
+        # Confirm at least two tasks overlapped in-flight
+        assert overlap_observed.is_set()
 
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
     @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
