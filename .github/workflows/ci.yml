@@ -29,9 +29,9 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
       - run: uv sync --all-extras
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run pyright treesight/ blueprints/
+      # Canonical lint lives in the Makefile (single source of truth shared
+      # with local `make lint` / `make check`). See issue #962.
+      - run: make lint
 
   test:
     name: Test
@@ -46,7 +46,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
       - run: uv sync --all-extras
-      - run: uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
+      # Canonical test command lives in the Makefile (matches local `make test`).
+      - run: make test
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:
