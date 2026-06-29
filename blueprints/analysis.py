@@ -99,7 +99,6 @@ def _run_analysis(
         return error_response(500, error_msg, req=req)
 
 
-
 def _default_analysis(text: str) -> dict[str, Any]:
     """Create a default analysis structure from fallback text."""
     return {

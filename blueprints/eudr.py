@@ -367,7 +367,6 @@ def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-
 @bp.route(
     route="eudr/subscribe",
     methods=["POST", "OPTIONS"],
