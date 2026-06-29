@@ -399,6 +399,7 @@ class TestUploadToken:
                 return_value={},
             ),
             patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch("time.sleep", return_value=None),
         ):
             req = _make_req("/api/upload/token", method="POST")
             resp = upload_token(req)
@@ -690,6 +691,7 @@ class TestUploadTokenSingleGate:
             patch("blueprints.upload.create_org", side_effect=RuntimeError("cosmos down")),
             patch("treesight.security.users.get_user", return_value={}),
             patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch("time.sleep", return_value=None),
         ):
             resp = upload_token(req)
 
