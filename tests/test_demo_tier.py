@@ -249,7 +249,7 @@ class TestSignedInLowCostSubmission:
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_free_tier_submission_returns_202(
         self,
         mock_storage_cls,
@@ -287,7 +287,7 @@ class TestSignedInLowCostSubmission:
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123"))
     @patch("treesight.storage.client.BlobStorageClient")
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_demo_emulation_uses_demo_controls(
         self,
         mock_storage_cls,
@@ -323,7 +323,7 @@ class TestSignedInLowCostSubmission:
         "blueprints.pipeline.submission.check_auth",
         side_effect=ValueError("Missing or malformed Authorization header"),
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_missing_auth_returns_401(self, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 

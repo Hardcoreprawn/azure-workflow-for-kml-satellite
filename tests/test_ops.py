@@ -160,7 +160,7 @@ class TestRequestTracking:
 class TestOpsDashboardEndpoint:
     """Integration-style tests for the ops_dashboard function."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_returns_401_without_key(self, monkeypatch):
         """When key is set, missing bearer → 401."""
         monkeypatch.setenv("OPS_DASHBOARD_KEY", "required-key")
@@ -171,7 +171,7 @@ class TestOpsDashboardEndpoint:
         resp = await ops_dashboard(req, client=_FAKE_STARTER)
         assert resp.status_code == 401
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_returns_200_with_correct_key(self, monkeypatch):
         """Correct bearer → 200 with expected payload keys."""
         monkeypatch.setenv("OPS_DASHBOARD_KEY", "good-key")
@@ -201,7 +201,7 @@ class TestOpsDashboardEndpoint:
         assert isinstance(body["activeUserCount"], int)
         assert isinstance(body["orchestrations"], list)
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_dev_mode_allows_unauthenticated(self, monkeypatch):
         """No key + no REQUIRE_AUTH → 200 (dev mode)."""
         monkeypatch.delenv("OPS_DASHBOARD_KEY", raising=False)
@@ -222,7 +222,7 @@ class TestOpsDashboardEndpoint:
 
         assert resp.status_code == 200
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_payload_counts_are_consistent(self, monkeypatch):
         """activeUserCount must equal len(activeUsers)."""
         monkeypatch.delenv("OPS_DASHBOARD_KEY", raising=False)

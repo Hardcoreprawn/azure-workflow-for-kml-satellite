@@ -333,7 +333,7 @@ class TestSafeBlobPath:
 class TestFetchEnrichmentManifest:
     """Regression tests for ``fetch_enrichment_manifest``."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_get_status_called_with_show_input(self) -> None:
         """get_status must pass show_input=True so the ownership check works."""
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -370,7 +370,7 @@ class TestFetchEnrichmentManifest:
         assert err is None
         assert manifest == {"frames": []}
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_ownership_mismatch_returns_404(self) -> None:
         """Different user_id in input vs caller returns 404."""
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -399,7 +399,7 @@ class TestFetchEnrichmentManifest:
         assert err is not None
         assert err.status_code == 404
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_input_as_json_string(self) -> None:
         """input_ from the Durable Functions SDK is a JSON string, not a dict."""
         from unittest.mock import AsyncMock, MagicMock, patch
