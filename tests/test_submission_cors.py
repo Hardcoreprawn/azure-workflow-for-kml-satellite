@@ -91,7 +91,7 @@ class TestAnalysisSubmitCORS:
         return_value=({"sub": "user-1"}, "user-1"),
     )
     @patch("treesight.storage.client.BlobStorageClient")
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_success_response_has_cors_headers(
         self, mock_storage_cls, mock_auth, mock_get_user_org, mock_reserve_run, mock_persist
     ):
@@ -111,7 +111,7 @@ class TestAnalysisSubmitCORS:
         "blueprints.pipeline.submission.check_auth",
         side_effect=ValueError("Missing or malformed Authorization header"),
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_auth_error_has_cors_headers(self, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
@@ -136,7 +136,7 @@ class TestAnalysisSubmitCORS:
         "blueprints.pipeline.submission.reserve_run",
         side_effect=QuotaExhaustedError("org-123", 5),
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_quota_error_has_cors_headers(
         self, mock_reserve_run, mock_get_user_org, mock_auth
     ):
@@ -157,7 +157,7 @@ class TestAnalysisSubmitCORS:
     )
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_invalid_json_error_has_cors_headers(
         self, mock_reserve_run, mock_get_user_org, mock_auth
     ):
@@ -182,7 +182,7 @@ class TestAnalysisSubmitCORS:
         "blueprints.pipeline.submission.get_effective_subscription",
         return_value={"tier": "free", "status": "none"},
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_missing_kml_error_has_cors_headers(
         self, mock_sub, mock_reserve_run, mock_get_user_org, mock_auth
     ):
@@ -232,7 +232,7 @@ class TestSubmissionResilience:
         "blueprints.pipeline.submission.get_effective_subscription",
         return_value={"tier": "free", "status": "none"},
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_quota_storage_error_returns_503_with_cors(
         self,
         mock_sub,
@@ -273,7 +273,7 @@ class TestSubmissionResilience:
         "blueprints.pipeline.submission.get_effective_subscription",
         return_value={"tier": "free", "status": "none"},
     )
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_storage_failure_returns_502_and_refunds_quota(
         self,
         mock_sub,
