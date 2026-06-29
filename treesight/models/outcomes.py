@@ -5,15 +5,32 @@ Result types for each pipeline phase and the final summary.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
+
+# Poll lifecycle values emitted by providers and normalized pipeline outcomes.
+ImageryOutcomeState = Literal[
+    "active",
+    "pending",
+    "processing",
+    "ready",
+    "completed",
+    "failed",
+    "error",
+    "cancelled",
+    "acquisition_timeout",
+]
+# Terminal state for download and post-process transfers.
+TransferState = Literal["completed", "failed"]
+# Final orchestrator summary status.
+PipelineStatus = Literal["pending", "completed", "partial_imagery"]
 
 
 class MetadataResult(BaseModel):
     """Result of writing AOI metadata to blob storage."""
 
-    metadata: dict[str, Any] = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
     metadata_path: str = ""
     kml_archive_path: str = ""
 
@@ -23,9 +40,9 @@ class IngestionResult(BaseModel):
 
     feature_count: int = 0
     offloaded: bool = False
-    aois: list[dict[str, Any]] = []
+    aois: list[dict[str, Any]] = Field(default_factory=list)
     aoi_count: int = 0
-    metadata_results: list[dict[str, Any]] = []
+    metadata_results: list[MetadataResult] = Field(default_factory=list)
     metadata_count: int = 0
 
 
@@ -43,7 +60,7 @@ class ImageryOutcome(BaseModel):
         error: Error message (empty on success).
     """
 
-    state: str = ""
+    state: ImageryOutcomeState = "pending"
     order_id: str = ""
     scene_id: str = ""
     provider: str = ""
@@ -62,7 +79,7 @@ class ImageryOutcome(BaseModel):
 class AcquisitionResult(BaseModel):
     """Phase 2 result — imagery search, order, and polling."""
 
-    imagery_outcomes: list[dict[str, Any]] = []
+    imagery_outcomes: list[ImageryOutcome] = Field(default_factory=list)
     ready_count: int = 0
     failed_count: int = 0
 
@@ -85,7 +102,7 @@ class DownloadResult(BaseModel):
     content_type: str = ""
     download_duration_seconds: float = 0.0
     retry_count: int = 0
-    state: str = "completed"
+    state: TransferState = "completed"
     error: str = ""
 
 
@@ -103,7 +120,7 @@ class PostProcessResult(BaseModel):
     source_size_bytes: int = 0
     output_size_bytes: int = 0
     processing_duration_seconds: float = 0.0
-    state: str = "completed"
+    state: TransferState = "completed"
     error: str = ""
     clip_error: str = ""
 
@@ -111,11 +128,11 @@ class PostProcessResult(BaseModel):
 class FulfillmentResult(BaseModel):
     """Phase 3 result — download and post-processing."""
 
-    download_results: list[dict[str, Any]] = []
+    download_results: list[DownloadResult] = Field(default_factory=list)
     downloads_completed: int = 0
     downloads_succeeded: int = 0
     downloads_failed: int = 0
-    post_process_results: list[dict[str, Any]] = []
+    post_process_results: list[PostProcessResult] = Field(default_factory=list)
     pp_completed: int = 0
     pp_clipped: int = 0
     pp_reprojected: int = 0
@@ -134,20 +151,20 @@ class AoiSummary(BaseModel):
     post_process_failed: int = 0
 
 
-class PipelineSummary(BaseModel):
-    """Final pipeline output aggregating all three phases (§3.4).
+class PipelineSummaryCounts(BaseModel):
+    """Headline counts and status for completed orchestration output.
 
-    Status is ``completed`` when all imagery succeeded, otherwise ``partial_imagery``.
+    Status is ``pending`` before ``compute_status()`` runs, then ``completed`` when all
+    imagery succeeded, otherwise ``partial_imagery``.
     """
 
-    status: str = ""
+    status: PipelineStatus = "pending"
     instance_id: str = ""
     blob_name: str = ""
     blob_url: str = ""
     feature_count: int = 0
     aoi_count: int = 0
     metadata_count: int = 0
-    metadata_results: list[dict[str, Any]] = []
     imagery_ready: int = 0
     imagery_failed: int = 0
     downloads_completed: int = 0
@@ -157,11 +174,17 @@ class PipelineSummary(BaseModel):
     post_process_clipped: int = 0
     post_process_reprojected: int = 0
     post_process_failed: int = 0
-    imagery_outcomes: list[dict[str, Any]] = []
-    download_results: list[dict[str, Any]] = []
-    post_process_results: list[dict[str, Any]] = []
-    per_aoi_summaries: list[dict[str, Any]] = []
     message: str = ""
+
+
+class PipelineSummary(PipelineSummaryCounts):
+    """Final pipeline output aggregating all three phases (§3.4)."""
+
+    metadata_results: list[MetadataResult] = Field(default_factory=list)
+    imagery_outcomes: list[ImageryOutcome] = Field(default_factory=list)
+    download_results: list[DownloadResult] = Field(default_factory=list)
+    post_process_results: list[PostProcessResult] = Field(default_factory=list)
+    per_aoi_summaries: list[AoiSummary] = Field(default_factory=list)
 
     def compute_status(self) -> None:
         """Compute ``status`` and ``message`` from phase results (§3.4)."""
@@ -186,14 +209,10 @@ class PipelineSummary(BaseModel):
     @property
     def artifacts(self) -> dict[str, list[str]]:
         """Aggregate artifact paths for the diagnostics endpoint (§4.3)."""
-        metadata_paths = [
-            r.get("metadata_path", "") for r in self.metadata_results if r.get("metadata_path")
-        ]
-        raw_paths = [r.get("blob_path", "") for r in self.download_results if r.get("blob_path")]
+        metadata_paths = [r.metadata_path for r in self.metadata_results if r.metadata_path]
+        raw_paths = [r.blob_path for r in self.download_results if r.blob_path]
         clipped_paths = [
-            r.get("clipped_blob_path", "")
-            for r in self.post_process_results
-            if r.get("clipped_blob_path")
+            r.clipped_blob_path for r in self.post_process_results if r.clipped_blob_path
         ]
         return {
             "metadataPaths": metadata_paths,

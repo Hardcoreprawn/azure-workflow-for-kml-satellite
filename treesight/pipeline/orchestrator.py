@@ -23,7 +23,7 @@ from treesight.models.outcomes import AoiSummary, PipelineSummary
 def _group_per_aoi(
     acquisition: dict[str, Any],
     fulfilment: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> list[AoiSummary]:
     """Group imagery/download/post-process results by ``aoi_feature_name``."""
     from collections import defaultdict
 
@@ -65,10 +65,7 @@ def _group_per_aoi(
         else:
             buckets[name]["post_process_completed"] += 1
 
-    return [
-        AoiSummary(feature_name=name, **counts).model_dump()
-        for name, counts in sorted(buckets.items())
-    ]
+    return [AoiSummary(feature_name=name, **counts) for name, counts in sorted(buckets.items())]
 
 
 def build_pipeline_summary(

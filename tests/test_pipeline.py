@@ -356,13 +356,13 @@ class TestGroupPerAoi:
 
         result = _group_per_aoi(acquisition, fulfilment)
         assert len(result) == 2
-        a = next(r for r in result if r["feature_name"] == "farm_a")
-        b = next(r for r in result if r["feature_name"] == "farm_b")
-        assert a["imagery_ready"] == 2
-        assert a["downloads_succeeded"] == 1
-        assert a["post_process_completed"] == 1
-        assert b["imagery_failed"] == 1
-        assert b["downloads_failed"] == 1
+        a = next(r for r in result if r.feature_name == "farm_a")
+        b = next(r for r in result if r.feature_name == "farm_b")
+        assert a.imagery_ready == 2
+        assert a.downloads_succeeded == 1
+        assert a.post_process_completed == 1
+        assert b.imagery_failed == 1
+        assert b.downloads_failed == 1
 
     def test_empty_inputs(self):
         from treesight.pipeline.orchestrator import _group_per_aoi

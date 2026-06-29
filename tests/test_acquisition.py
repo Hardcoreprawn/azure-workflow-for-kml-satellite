@@ -215,6 +215,20 @@ class TestPollOrder:
         assert outcome.state == "failed"
         assert outcome.poll_count == 1
 
+    def test_unknown_terminal_state_is_normalized_to_failed(self) -> None:
+        """Unsupported provider terminal states are narrowed at the boundary."""
+        from treesight.pipeline.acquisition import poll_order
+
+        provider = _StubProvider(
+            poll_sequence=[
+                OrderStatus(state="queued_for_review", is_terminal=True),
+            ],
+        )
+        outcome = poll_order("order-unknown", provider, poll_interval=0, poll_timeout=10)
+
+        assert outcome.state == "failed"
+        assert "queued_for_review" in outcome.error
+
     def test_max_iterations_cap(self) -> None:
         """Loop exits after MAX_POLL_ITERATIONS even if timeout hasn't fired."""
         from unittest.mock import patch
@@ -234,6 +248,16 @@ class TestPollOrder:
 
         assert outcome.state == "acquisition_timeout"
         assert "poll iterations" in outcome.error.lower()
+
+
+class TestImageryOutcomeStateGuard:
+    def test_is_imagery_outcome_state(self) -> None:
+        """Guard accepts known literals and rejects unknown provider states."""
+        from treesight.pipeline.acquisition import _is_imagery_outcome_state
+
+        assert _is_imagery_outcome_state("ready")
+        assert _is_imagery_outcome_state("failed")
+        assert not _is_imagery_outcome_state("queued_for_review")
 
 
 # ---------------------------------------------------------------------------
