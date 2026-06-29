@@ -470,3 +470,70 @@ class TestCatalogueByAoiEndpoint:
         body = json.loads(resp.get_body())
         assert body["total"] == 1
         assert body["entries"][0]["aoiName"] == "Farm Alpha"
+
+
+# ===========================================================================
+# Property-based tests (hypothesis)
+# ===========================================================================
+
+
+class TestSlugifyProperty:
+    """Property-based tests for ``_slugify`` covering format and uniqueness invariants."""
+
+    @pytest.mark.parametrize("max_examples", [200])
+    def test_always_returns_nonempty_valid_slug(self, max_examples):
+        """For any string input, _slugify returns a non-empty slug in the correct format."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        @given(name=st.text(min_size=0, max_size=500))
+        @settings(max_examples=max_examples)
+        def _inner(name: str) -> None:
+            import re
+
+            result = _slugify(name)
+            assert isinstance(result, str)
+            assert len(result) > 0, "_slugify must never return an empty string"
+            assert len(result) <= 80, "_slugify must truncate to 80 chars"
+            assert re.fullmatch(r"[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]", result), (
+                f"_slugify result {result!r} contains disallowed characters"
+            )
+
+        _inner()
+
+    @pytest.mark.parametrize("max_examples", [200])
+    def test_unique_names_with_unique_slugs_yield_unique_ids(self, max_examples):
+        """Uniqueness invariant: when distinct names produce distinct slugs, _make_id
+        must produce distinct document IDs for those names within the same run.
+
+        This guards against silent collisions in the Cosmos DB catalogue layer.
+        """
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        @given(
+            run_id=st.text(
+                alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd")),
+                min_size=1,
+                max_size=40,
+            ),
+            names=st.lists(
+                st.text(min_size=1, max_size=100),
+                min_size=2,
+                max_size=20,
+                unique=True,
+            ),
+        )
+        @settings(max_examples=max_examples)
+        def _inner(run_id: str, names: list[str]) -> None:
+            slugs = [_slugify(n) for n in names]
+            if len(set(slugs)) < len(slugs):
+                # Slug collision is possible for names that differ only in
+                # non-alphanumeric characters; skip uniqueness check in that case.
+                return
+            ids = [_make_id(run_id, n) for n in names]
+            assert len(set(ids)) == len(ids), (
+                f"Slug collision detected: names={names!r} produced ids={ids!r}"
+            )
+
+        _inner()

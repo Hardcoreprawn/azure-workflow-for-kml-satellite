@@ -326,3 +326,95 @@ class TestFionaParserTimeout:
 
         features = parse_kml_from_blob(blob_event, storage)
         assert len(features) >= 1  # lxml fallback parsed at least one feature
+
+
+# ---------------------------------------------------------------------------
+# Property-based tests (hypothesis)
+# ---------------------------------------------------------------------------
+
+
+class TestLxmlParserProperty:
+    """Property-based fuzz tests for the lxml KML parser.
+
+    Invariants checked:
+    - Arbitrary byte inputs never cause unhandled/unexpected exceptions.
+    - Well-formed KML with valid polygons always returns a list of Feature objects
+      with consistent internal state (closed rings, correct indices, EPSG:4326 CRS).
+    """
+
+    @pytest.mark.parametrize("max_examples", [200])
+    def test_arbitrary_bytes_no_unexpected_exception(self, max_examples):
+        """Fuzz the parser with arbitrary bytes; only known exceptions may escape."""
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+        from lxml.etree import XMLSyntaxError
+
+        @given(payload=st.binary(min_size=0, max_size=4096))
+        @settings(max_examples=max_examples)
+        def _inner(payload: bytes) -> None:
+            try:
+                result = parse_kml_lxml(payload)
+                assert isinstance(result, list)
+                for f in result:
+                    assert isinstance(f.name, str)
+                    assert isinstance(f.exterior_coords, list)
+            except (ValueError, XMLSyntaxError):
+                pass  # expected — malformed XML or validation error
+
+        _inner()
+
+    @pytest.mark.parametrize("max_examples", [200])
+    def test_well_formed_kml_returns_valid_features(self, max_examples):
+        """Generate minimal but structurally valid KML and verify feature invariants."""
+        from hypothesis import assume, given, settings
+        from hypothesis import strategies as st
+
+        # Strategies for coordinate components in WGS-84 range
+        lon_st = st.floats(min_value=-180.0, max_value=180.0, allow_nan=False, allow_infinity=False)
+        lat_st = st.floats(min_value=-90.0, max_value=90.0, allow_nan=False, allow_infinity=False)
+
+        coord_st = st.tuples(lon_st, lat_st)
+
+        # Build a 4-vertex polygon (will be auto-closed to 5 points)
+        polygon_st = st.lists(coord_st, min_size=4, max_size=20)
+
+        name_st = st.text(
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll", "Nd", "Zs")),
+            min_size=1,
+            max_size=80,
+        )
+
+        @given(name=name_st, coords=polygon_st)
+        @settings(max_examples=max_examples)
+        def _inner(name: str, coords: list[tuple[float, float]]) -> None:
+            # Require all coordinate components to be finite
+            assume(all(abs(lon) <= 180 and abs(lat) <= 90 for lon, lat in coords))
+
+            coord_str = " ".join(f"{lon},{lat},0" for lon, lat in coords)
+            kml = (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                '<kml xmlns="http://www.opengis.net/kml/2.2">'
+                "<Document>"
+                f"<Placemark><name>{name}</name>"
+                "<Polygon><outerBoundaryIs><LinearRing>"
+                f"<coordinates>{coord_str}</coordinates>"
+                "</LinearRing></outerBoundaryIs></Polygon>"
+                "</Placemark>"
+                "</Document>"
+                "</kml>"
+            )
+            features = parse_kml_lxml(kml.encode())
+            # Must return a list (possibly empty if polygon is degenerate)
+            assert isinstance(features, list)
+            for f in features:
+                # CRS must always be EPSG:4326
+                assert f.crs == "EPSG:4326"
+                # Exterior ring must be closed (first == last coord)
+                ext = f.exterior_coords
+                assert len(ext) >= 3
+                assert ext[0] == ext[-1], "Exterior ring must be closed"
+                # feature_index must be a non-negative integer
+                assert isinstance(f.feature_index, int)
+                assert f.feature_index >= 0
+
+        _inner()
