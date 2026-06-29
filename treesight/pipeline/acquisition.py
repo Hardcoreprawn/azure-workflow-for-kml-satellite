@@ -6,7 +6,7 @@ Pure business logic for imagery search, order, and polling.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, TypeGuard, get_args
 
 from treesight.config import config_get_int
 from treesight.constants import (
@@ -19,8 +19,13 @@ from treesight.constants import (
 from treesight.log import log_error, log_phase
 from treesight.models.aoi import AOI
 from treesight.models.imagery import ImageryFilters
-from treesight.models.outcomes import ImageryOutcome
+from treesight.models.outcomes import ImageryOutcome, ImageryOutcomeState
 from treesight.providers.base import ImageryProvider
+
+
+def _is_imagery_outcome_state(value: str) -> TypeGuard[ImageryOutcomeState]:
+    """Return whether ``value`` is a valid ``ImageryOutcome.state`` literal."""
+    return value in get_args(ImageryOutcomeState)
 
 
 def acquire_imagery(
@@ -163,12 +168,24 @@ def poll_order(
             )
 
             if status.is_terminal:
+                if _is_imagery_outcome_state(status.state):
+                    return ImageryOutcome(
+                        state=status.state,
+                        order_id=order_id,
+                        provider=provider.name,
+                        poll_count=poll_count,
+                        elapsed_seconds=time.monotonic() - start,
+                    )
                 return ImageryOutcome(
-                    state=status.state,
+                    state="failed",
                     order_id=order_id,
                     provider=provider.name,
                     poll_count=poll_count,
                     elapsed_seconds=time.monotonic() - start,
+                    error=(
+                        f"Unsupported terminal state '{status.state}' "
+                        f"from provider {provider.name}"
+                    ),
                 )
 
         except Exception as exc:

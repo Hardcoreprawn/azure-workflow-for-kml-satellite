@@ -212,9 +212,7 @@ class PipelineSummary(PipelineSummaryCounts):
         metadata_paths = [r.metadata_path for r in self.metadata_results if r.metadata_path]
         raw_paths = [r.blob_path for r in self.download_results if r.blob_path]
         clipped_paths = [
-            r.clipped_blob_path
-            for r in self.post_process_results
-            if r.clipped_blob_path
+            r.clipped_blob_path for r in self.post_process_results if r.clipped_blob_path
         ]
         return {
             "metadataPaths": metadata_paths,
