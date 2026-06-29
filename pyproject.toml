@@ -18,7 +18,7 @@ dependencies = [
     "pyproj>=3.7.0",
     "pystac-client>=0.8.0",
     "planetary-computer>=1.0.0",
-    "httpx>=0.28.0",
+    "httpx[socks]>=0.28.0",
     "stripe>=11.0.0",
     "requests>=2.33.0",  # CVE-2026-25645: predictable temp filename
     "fpdf2>=2.8.0",
@@ -31,7 +31,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
-    "pytest-asyncio>=0.24.0",
+    "anyio>=4.0",
     "pytest-cov>=6.0",
     "ruff>=0.8.0",
 ]
