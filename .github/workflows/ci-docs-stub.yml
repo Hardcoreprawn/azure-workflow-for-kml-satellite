@@ -5,6 +5,8 @@
 # Why this exists:
 #   `ci.yml` skips on docs-only changes via `paths-ignore`.
 #   Branch protection requires the `Lint` and `Test` contexts.
+#   Branch protection should also require `check-issue-link` from
+#   require-linked-issue.yml (that check always runs on pull_request).
 #   GitHub treats a skipped required check as missing (not passed),
 #   so docs-only PRs would be permanently BLOCKED without this stub.
 #
