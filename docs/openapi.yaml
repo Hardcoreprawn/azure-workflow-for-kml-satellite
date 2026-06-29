@@ -385,41 +385,6 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   # ── Analysis ──────────────────────────────────────────────
-  /frame-analysis:
-    post:
-      operationId: frameAnalysis
-      summary: AI analysis of a single imagery frame
-      description: |
-        Sends NDVI, weather, and imagery metadata to Azure AI Foundry
-        for single-frame analysis.  Returns structured observations,
-        a severity score, and plain-English summary.
-      tags: [analysis]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Frame context (NDVI stats, weather, metadata)
-        description: Maximum body size 32 KiB
-      responses:
-        "200":
-          description: Analysis result
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AnalysisResult"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "413":
-          description: Payload too large (> 32 KiB)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /timelapse-analysis:
     post:
       operationId: timelapseAnalysis

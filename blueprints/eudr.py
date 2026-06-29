@@ -368,42 +368,6 @@ def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @bp.route(
-    route="eudr/entitlement",
-    methods=["GET", "OPTIONS"],
-    auth_level=func.AuthLevel.ANONYMOUS,
-)
-def eudr_entitlement_check(req: func.HttpRequest) -> func.HttpResponse:
-    """GET /api/eudr/entitlement — check if the org can submit an assessment."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
-    from treesight.security.eudr_billing import check_eudr_entitlement
-    from treesight.security.orgs import get_user_org
-
-    org = get_user_org(user_id)
-    if not org:
-        return func.HttpResponse(
-            json.dumps({"allowed": False, "reason": "no_org"}),
-            status_code=200,
-            mimetype="application/json",
-            headers=cors_headers(req),
-        )
-
-    result = check_eudr_entitlement(org["org_id"], user_id=user_id)
-    return func.HttpResponse(
-        json.dumps(result),
-        status_code=200,
-        mimetype="application/json",
-        headers=cors_headers(req),
-    )
-
-
-@bp.route(
     route="eudr/subscribe",
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,

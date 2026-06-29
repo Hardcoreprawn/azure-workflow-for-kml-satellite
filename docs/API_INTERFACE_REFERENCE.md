@@ -18,7 +18,6 @@ Production API base URL: `https://{productionHost}/api`
 | GET | /api/contract | anonymous | 200 JSON | OpenAPI/contract metadata |
 | GET | /api/catalogue | SWA session | 401 | User analysis catalogue |
 | POST | /api/analysis/submit | SWA session | 401 | KML upload + pipeline start |
-| POST | /api/frame-analysis | anonymous | — | Single-frame analysis |
 | POST | /api/timelapse-analysis | SWA session | 401 | Timelapse analysis |
 | POST | /api/eudr-assessment | SWA session | 401 | EUDR compliance assessment |
 | GET | /api/monitoring | SWA session | 401 | AOI monitoring |
