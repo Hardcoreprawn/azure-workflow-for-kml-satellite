@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.pr_watchdog import PRSummary, ReviewThread, render_comment
+from scripts.pr_watchdog import PRSummary, ReviewThread, body_links_issue, render_comment
 
 
 def test_render_comment_marks_blocked_when_failing_checks_present() -> None:
@@ -50,3 +50,75 @@ def test_render_comment_marks_ready_when_no_blockers_or_pending() -> None:
     )
     body = render_comment(summary)
     assert "Status: READY_FOR_MAINTAINER_REVIEW" in body
+
+
+def test_render_comment_blocks_when_linked_issue_missing() -> None:
+    summary = PRSummary(
+        number=4,
+        url="https://example.invalid/pr/4",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        missing_linked_issue=True,
+    )
+    body = render_comment(summary)
+    assert "Linked issue: MISSING" in body
+    assert "Closes #NNN" in body
+    assert "Status: BLOCKED" in body
+
+
+def test_render_comment_shows_linked_issue_present_by_default() -> None:
+    summary = PRSummary(
+        number=5,
+        url="https://example.invalid/pr/5",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+    )
+    body = render_comment(summary)
+    assert "Linked issue: present" in body
+
+
+def test_render_comment_flags_draft_ready_to_promote() -> None:
+    summary = PRSummary(
+        number=6,
+        url="https://example.invalid/pr/6",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    body = render_comment(summary)
+    assert "Status: READY_TO_PROMOTE" in body
+    assert "gh pr ready" in body
+
+
+def test_draft_with_blockers_stays_blocked() -> None:
+    summary = PRSummary(
+        number=7,
+        url="https://example.invalid/pr/7",
+        title="Example",
+        failing_checks=("CI/Test",),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    body = render_comment(summary)
+    assert "Status: BLOCKED" in body
+
+
+def test_body_links_issue_detects_closing_keywords() -> None:
+    assert body_links_issue("Closes #809")
+    assert body_links_issue("This fixes #12 nicely")
+    assert body_links_issue("resolves owner/repo#3")
+    assert body_links_issue("FIXED #44")
+
+
+def test_body_links_issue_rejects_bare_references() -> None:
+    assert not body_links_issue("See #809 for context")
+    assert not body_links_issue("Related to #12")
+    assert not body_links_issue("")
+    assert not body_links_issue("closes the gap (no number)")

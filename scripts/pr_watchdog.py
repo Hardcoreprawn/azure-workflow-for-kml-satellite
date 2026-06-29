@@ -5,9 +5,23 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
+
+# Mirrors the regex in .github/workflows/require-linked-issue.yml so the
+# watchdog flags the same PRs the gate would reject (supports owner/repo#NNN).
+_ISSUE_LINK_RE = re.compile(
+    r"\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s+(?:[\w.-]+/[\w.-]+)?#\d+",
+    re.IGNORECASE,
+)
+
+
+def body_links_issue(body: str | None) -> bool:
+    """True when the PR body links a closing issue (closes/fixes/resolves #NNN)."""
+    return bool(_ISSUE_LINK_RE.search(body or ""))
+
 
 CHECK_FAILURE_CONCLUSIONS = {
     "failure",
@@ -37,10 +51,12 @@ class PRSummary:
     failing_checks: tuple[str, ...]
     pending_checks: tuple[str, ...]
     unresolved_threads: tuple[ReviewThread, ...]
+    missing_linked_issue: bool = False
+    is_draft: bool = False
 
     @property
     def has_blockers(self) -> bool:
-        return bool(self.failing_checks or self.unresolved_threads)
+        return bool(self.failing_checks or self.unresolved_threads or self.missing_linked_issue)
 
 
 def _github_rest(
@@ -225,6 +241,11 @@ def render_comment(summary: PRSummary) -> str:
     else:
         lines.append("- Unresolved review threads: none")
 
+    if summary.missing_linked_issue:
+        lines.append("- Linked issue: MISSING — add `Closes #NNN` to the PR body")
+    else:
+        lines.append("- Linked issue: present")
+
     lines.append("")
     lines.append("### Needs Opinion")
     if summary.unresolved_threads:
@@ -248,6 +269,10 @@ def render_comment(summary: PRSummary) -> str:
         lines.append("Status: BLOCKED")
     elif summary.pending_checks:
         lines.append("Status: WAITING_ON_CI")
+    elif summary.is_draft:
+        lines.append(
+            "Status: READY_TO_PROMOTE — no blockers; promote out of draft with `gh pr ready`"
+        )
     else:
         lines.append("Status: READY_FOR_MAINTAINER_REVIEW")
 
@@ -352,6 +377,8 @@ def main() -> int:
             failing_checks=failing,
             pending_checks=pending,
             unresolved_threads=unresolved,
+            missing_linked_issue=not body_links_issue(pr.get("body")),
+            is_draft=bool(pr.get("draft")),
         )
         comment = render_comment(summary)
 
