@@ -62,7 +62,10 @@
 
   function isRunActive(run) {
     var runtimeStatus = String((run && run.runtimeStatus) || '').trim().toLowerCase();
-    return ['completed', 'failed', 'terminated', 'canceled'].indexOf(runtimeStatus) === -1;
+    if (['completed', 'failed', 'terminated', 'canceled', 'stalled'].indexOf(runtimeStatus) !== -1) {
+      return false;
+    }
+    return !(run && run.customStatus && run.customStatus.stalled === true);
   }
 
   function mapPhase(customStatus, runtimeStatus, validPhases) {

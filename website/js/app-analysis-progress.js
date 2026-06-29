@@ -220,6 +220,14 @@
       _setAnalysisStatus(detail, 'success');
       return;
     }
+    if (runtime === 'Stalled') {
+      _setAnalysisStatus(
+        'This analysis has stopped responding and may not finish. '
+          + 'You can safely start a new run for the same area.',
+        'error'
+      );
+      return;
+    }
     if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
       _setAnalysisStatus('Analysis stopped during ' + phase + '. ' + detail, 'error');
       return;

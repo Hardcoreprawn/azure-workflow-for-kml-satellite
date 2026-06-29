@@ -429,7 +429,7 @@
               evidenceHero.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
             }, 400);
           }
-        } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated') {
+        } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated' || runtime === 'Stalled') {
           stopAnalysisPolling();
           if (_d.setAnalysisStep) _d.setAnalysisStep(phase, 'failed');
           if (_d.updateAnalysisStory) _d.updateAnalysisStory(phase, runtime, data);
@@ -453,7 +453,7 @@
     if (analysisPollGeneration !== thisGeneration) return; // superseded during initial fetch
     if (initialData) {
       var initialRuntime = initialData.runtimeStatus || '';
-      if (initialRuntime === 'Completed' || initialRuntime === 'Failed' || initialRuntime === 'Canceled' || initialRuntime === 'Terminated') {
+      if (initialRuntime === 'Completed' || initialRuntime === 'Failed' || initialRuntime === 'Canceled' || initialRuntime === 'Terminated' || initialRuntime === 'Stalled') {
         return;
       }
     }
