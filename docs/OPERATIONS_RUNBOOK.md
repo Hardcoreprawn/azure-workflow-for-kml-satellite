@@ -254,6 +254,29 @@ Rollback/readiness note:
 - Rollback image steps also require ARM writes; if the lock is active, rollback cannot proceed until Azure clears the operation.
 - Treat the environment as unchanged until deploy resumes and the workflow readiness probes complete successfully.
 
+### Agent PR checks stuck on `action_required` (no CI runs)
+
+Symptom: a Copilot SWE-agent PR shows every workflow (CI, CodeQL, Security,
+Require Linked Issue) as `action_required` and never executes, so the PR sits
+unvalidated for days.
+
+Cause: GitHub requires manual approval before workflows run on PRs from the
+agent actor. Marking the PR ready or editing its body does **not** clear this —
+only an approval or a maintainer-authored commit does.
+
+Responder actions:
+
+1. Preferred: open the PR's **Checks** tab and click **Approve and run** (or set
+   Settings → Actions → General → "Require approval for" to a less restrictive
+   option for the agent if this recurs constantly).
+2. Quick unblock from CLI: push a maintainer-authored commit so the
+   `synchronize` event runs CI without approval — e.g.
+   `git commit --allow-empty -m "ci: re-trigger checks" && git push`.
+3. The `/actions/runs/{id}/approve` REST endpoint only works for fork PRs and
+   returns 403 for in-repo agent branches — do not rely on it.
+4. Also confirm the PR links an issue (`Closes #NNN` in the body); the PR
+   Watchdog flags `Linked issue: MISSING` and draft PRs as `READY_TO_PROMOTE`.
+
 ## Add New Imagery Provider Adapter
 
 1. Implement ImageryProvider in treesight/providers.
