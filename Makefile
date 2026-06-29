@@ -129,19 +129,22 @@ dev-rebuild: _free-ports ## Rebuild and restart all services
 test-upload: ## Upload sample KML and trigger pipeline
 	uv run python scripts/simulate_upload.py
 
-test: ## Run unit tests
-	uv run pytest tests/ -v -m "not integration"
+test: ## Run unit tests (canonical — CI runs this exact command)
+	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
 
 test-int: ## Run integration tests (requires Azurite)
 	uv run pytest tests/test_integration.py -v
 
-lint: ## Lint with ruff
+lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
+	uv run ruff format --check .
+	uv run pyright
 
-fmt: ## Format with ruff
+fmt: ## Auto-format and autofix with ruff
 	uv run ruff format .
+	uv run ruff check --fix .
 
-check: lint test ## Lint + test
+check: lint test ## Full local gate (lint + test) — identical to CI
 
 smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \
