@@ -1,6 +1,11 @@
 # Pre-commit hooks — run automatically on every commit.
 # Install with: uv run pre-commit install
 # Run manually: uv run pre-commit run --all-files
+#
+# These hooks run the SAME uv-managed tools (ruff, pyright) as `make lint`
+# and CI, but incrementally on staged files for a fast inner loop. The
+# authoritative, whole-repo gate is `make check` (lint + test), which CI
+# runs verbatim — see the Makefile (single source of truth) and issue #962.
 
 repos:
   # ---------------------------------------------------------------------------
