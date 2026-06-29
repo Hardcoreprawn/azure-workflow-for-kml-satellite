@@ -183,8 +183,7 @@ def poll_order(
                     poll_count=poll_count,
                     elapsed_seconds=time.monotonic() - start,
                     error=(
-                        f"Unsupported terminal state '{status.state}' "
-                        f"from provider {provider.name}"
+                        f"Unsupported terminal state '{status.state}' from provider {provider.name}"
                     ),
                 )
 
