@@ -75,13 +75,26 @@ jobs:
             exit 1
           fi
 
-      # ── Security scan (canonical: make scan-image) ─────────
+      # ── Security scan (single no-suppression pass) ─────────
+      # One scan feeds everything: the gate (block on unsuppressed CRITICAL/HIGH),
+      # a clean SARIF (suppressed CVEs filtered out so they don't reappear in
+      # Code Scanning), and the reconcile job (consumes the same scan as an
+      # artifact instead of re-scanning the image). See scripts/reconcile_trivyignore.py.
       - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
 
-      - name: Trivy container scan via make
+      - name: Trivy container scan via make (no suppressions)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-base.sarif
+        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_IGNOREFILE= TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-noignore.json
+
+      - name: Gate + filter suppressions
+        run: |
+          python3 scripts/reconcile_trivyignore.py \
+            --scan trivy-noignore.json --gate --write-filtered trivy-base.filtered.json
+
+      - name: Convert filtered scan to SARIF
+        if: always()
+        run: trivy convert --format sarif --output trivy-base.sarif trivy-base.filtered.json
 
       - name: Upload Trivy SARIF
         if: always()
@@ -89,6 +102,14 @@ jobs:
         with:
           sarif_file: trivy-base.sarif
           category: trivy-base-image
+
+      - name: Upload scan for reconcile job
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: trivy-noignore-scan
+          path: trivy-noignore.json
+          retention-days: 1
 
       # ── Push to GHCR ───────────────────────────────────────
       - name: Log in to GHCR
@@ -123,7 +144,6 @@ jobs:
     needs: build-test-push
     permissions:
       contents: write          # push the reconcile branch
-      packages: read           # pull the published base image
       pull-requests: write     # open/update the reconcile PR
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -133,29 +153,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set image tag
-        id: meta
-        run: |
-          source .github/image-config.env
-          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${BASE_IMAGE_REPO}"
-          echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GHCR
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+      # Reuse the no-suppression scan from build-test-push instead of re-scanning
+      # the image — same ground truth, one fewer image scan + GHCR pull.
+      - name: Download base image scan
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Scan WITHOUT .trivyignore so every still-fixable HIGH/CRITICAL finding
-      # is visible to the reconciler. Non-blocking (TRIVY_IMAGE_EXIT=0) — the gate
-      # in build-test-push already enforces the policy.
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-
-      - name: Trivy scan (no suppressions) via make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_IGNOREFILE= TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-noignore.json
+          name: trivy-noignore-scan
 
       - name: Reconcile suppressions
         id: reconcile

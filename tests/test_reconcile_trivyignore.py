@@ -14,10 +14,14 @@ import pytest
 
 from scripts.reconcile_trivyignore import (
     Entry,
+    filter_scan,
     is_cve,
+    main,
     parse_ignore_file,
     present_ids_from_scans,
     reconcile,
+    suppressed_ids,
+    unsuppressed_findings,
 )
 
 TODAY = date(2026, 6, 23)
@@ -222,6 +226,79 @@ def test_present_ids_from_real_trivy_shape(tmp_path):
     path.write_text(json.dumps(scan))
     loaded = json.loads(path.read_text())
     assert present_ids_from_scans([loaded]) == {"CVE-2026-1"}
+
+
+# ── suppressed_ids / unsuppressed_findings / filter_scan ────────────────────
+
+
+def test_suppressed_ids_collects_all_entry_ids():
+    text = "CVE-2026-1 # exp:2026-12-01\nAVD-AZU-0001 # exp:2026-12-01\n# a comment\n"
+    assert suppressed_ids(text) == {"CVE-2026-1", "AVD-AZU-0001"}
+
+
+def test_unsuppressed_findings_returns_present_minus_suppressed():
+    scans = [_scan("CVE-2026-1", "CVE-2026-2", "CVE-2026-3")]
+    text = "CVE-2026-1 # exp:2026-12-01\nCVE-2026-3 # exp:2026-12-01\n"
+    assert unsuppressed_findings(scans, text) == ["CVE-2026-2"]
+
+
+def test_unsuppressed_findings_empty_when_all_suppressed():
+    scans = [_scan("CVE-2026-1", "CVE-2026-2")]
+    text = "CVE-2026-1 # exp:2026-12-01\nCVE-2026-2 # exp:2026-12-01\n"
+    assert unsuppressed_findings(scans, text) == []
+
+
+def test_filter_scan_removes_suppressed_vulns():
+    scan = _scan("CVE-2026-1", "CVE-2026-2", "CVE-2026-3")
+    filtered = filter_scan(scan, {"CVE-2026-2"})
+    assert present_ids_from_scans([filtered]) == {"CVE-2026-1", "CVE-2026-3"}
+    # original is not mutated
+    assert present_ids_from_scans([scan]) == {"CVE-2026-1", "CVE-2026-2", "CVE-2026-3"}
+
+
+# ── --gate / --write-filtered CLI ───────────────────────────────────────────
+
+
+def test_gate_fails_on_unsuppressed_finding(tmp_path, capsys):
+    scan = tmp_path / "scan.json"
+    scan.write_text(json.dumps(_scan("CVE-2026-1", "CVE-2026-2")))
+    ignore = tmp_path / ".trivyignore"
+    ignore.write_text("CVE-2026-1 # exp:2026-12-01\n")
+    rc = main(["--scan", str(scan), "--ignore-file", str(ignore), "--gate"])
+    assert rc == 1
+    assert "CVE-2026-2" in capsys.readouterr().out
+
+
+def test_gate_passes_when_all_suppressed(tmp_path):
+    scan = tmp_path / "scan.json"
+    scan.write_text(json.dumps(_scan("CVE-2026-1")))
+    ignore = tmp_path / ".trivyignore"
+    ignore.write_text("CVE-2026-1 # exp:2026-12-01\n")
+    rc = main(["--scan", str(scan), "--ignore-file", str(ignore), "--gate"])
+    assert rc == 0
+
+
+def test_write_filtered_emits_clean_scan(tmp_path):
+    scan = tmp_path / "scan.json"
+    scan.write_text(json.dumps(_scan("CVE-2026-1", "CVE-2026-2")))
+    ignore = tmp_path / ".trivyignore"
+    ignore.write_text("CVE-2026-2 # exp:2026-12-01\n")
+    out = tmp_path / "filtered.json"
+    rc = main(
+        [
+            "--scan",
+            str(scan),
+            "--ignore-file",
+            str(ignore),
+            "--gate",
+            "--write-filtered",
+            str(out),
+        ]
+    )
+    # gate still blocks on the unsuppressed CVE-2026-1...
+    assert rc == 1
+    # ...but the filtered scan was written first, with the suppressed CVE removed
+    assert present_ids_from_scans([json.loads(out.read_text())]) == {"CVE-2026-1"}
 
 
 if __name__ == "__main__":
