@@ -6,6 +6,11 @@
 ## Why
 
 <!-- Link to issue or explain motivation -->
+<!-- Required: closes #123 (or fixes/resolves #123) -->
+
+## Linked Issue
+
+closes #NNN
 
 ## How
 
