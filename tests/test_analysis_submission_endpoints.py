@@ -381,13 +381,17 @@ class TestAnalysisSubmissionRoutes:
     def test_analysis_history_returns_recent_runs_and_active_run(self):
         from blueprints.pipeline.history import _build_analysis_history_response
 
+        # A genuinely active run must have a recent lastUpdatedTime, otherwise
+        # stall detection reclassifies it as "Stalled" (see _is_stalled_runtime).
+        recent = datetime.now(UTC)
+
         client = _HistoryDurableClient(
             {
                 "active-run": _FakeDurableStatus(
                     "active-run",
                     runtime_status="Running",
-                    created_time=datetime(2026, 3, 28, 19, 7, 20, tzinfo=UTC),
-                    last_updated_time=datetime(2026, 3, 28, 19, 7, 53, tzinfo=UTC),
+                    created_time=recent,
+                    last_updated_time=recent,
                     custom_status={"phase": "enrichment", "step": "fetching_data"},
                 ),
                 "done-run": _FakeDurableStatus(
