@@ -18,7 +18,7 @@ from treesight.constants import DEFAULT_PROVIDER, PIPELINE_PAYLOADS_CONTAINER
 from treesight.security.orgs import get_user_org
 from treesight.storage import cosmos as _cosmos_mod
 
-from ._helpers import _durable_status_payload
+from ._status import _durable_status_payload
 
 logger = logging.getLogger(__name__)
 
