@@ -70,13 +70,46 @@ env:
   DEPLOY_ENV: ${{ inputs.environment || 'dev' }}
 
 jobs:
+  # ── 0. Release-safety gate ─────────────────────────────────
+  # Hard guards active during the pipeline reset (no production
+  # deployment; local-only validation). build-image needs this gate.
+  #   • Production is frozen: any prd target fails immediately (loud).
+  #   • Auto dev deploys (main CI success) are skipped while the repo
+  #     variable DEPLOY_PAUSED=true, so a merge to main does not push
+  #     into a torn-down dev environment (clean skip, no failed run).
+  # Lift by removing the prd guard and setting DEPLOY_PAUSED=false.
+  preflight:
+    name: Release-safety gate
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    steps:
+      - name: Block production deploys (reset freeze)
+        if: ${{ inputs.environment == 'prd' }}
+        run: |
+          echo "::error::Production deploys are frozen during the pipeline reset. Lift the freeze in .github/workflows/deploy.yml (preflight job) when ready to ship to prd."
+          exit 1
+
+      - name: Evaluate deploy gate
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ vars.DEPLOY_PAUSED }}" = "true" ]; then
+            echo "::notice::Auto dev deploy is paused (DEPLOY_PAUSED=true) during the pipeline reset. Skipping deploy. Set DEPLOY_PAUSED=false to resume, or deploy manually via workflow_dispatch."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Release-safety gate passed for env '${DEPLOY_ENV}' (trigger ${{ github.event_name }})." >> "$GITHUB_STEP_SUMMARY"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── 1. Build & push container to GHCR ──────────────────────
   # When promoting an existing image (image_tag input set), this job
   # resolves the URI without rebuilding.
   build-image:
     name: Build & Push Container
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    needs: preflight
+    if: ${{ needs.preflight.outputs.proceed == 'true' && (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch') }}
     outputs:
       image_uri: ${{ steps.resolve.outputs.image_uri || steps.meta.outputs.image_uri }}
       orch_image_uri: ${{ steps.resolve-orch.outputs.orch_image_uri || steps.orch-meta.outputs.orch_image_uri }}

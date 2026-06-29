@@ -95,3 +95,29 @@ Current temporary exceptions:
   Attack surface is limited to internal Durable Functions state serialisation over Azure Storage,
   not reachable from untrusted user input.  Will clear automatically on next base-image rebuild
   once Microsoft ships a patched bundle. Expiry: 2026-07-13. Tracked in #904.)
+
+### Build-time auto-reconciliation
+
+Container-CVE suppressions (the `CVE-*` entries) are reconciled automatically by
+the daily base-image build (`.github/workflows/base-image.yml`), so a calendar
+expiry never breaks a working image and a dead suppression never lingers.
+
+After the base image is rebuilt (which runs `apt-get upgrade -y`) and published,
+a dedicated least-privilege job rescans the fresh image **without** `.trivyignore`
+(`--severity CRITICAL,HIGH --ignore-unfixed`) and runs
+`scripts/reconcile_trivyignore.py`:
+
+- **Resolved** — the CVE is no longer in the scan. The fix shipped in the
+  rebuild, so the suppression is removed.
+- **Still present** — the CVE survived a fresh rebuild, so no installable fix
+  exists yet. The expiry is renewed (only when expired or within ~14 days of
+  expiry, to avoid churn).
+- **Config findings** (`AZU-*` / `AVD-*`) are never touched — they are infra
+  policy decisions, not image CVEs, and cannot be judged from an image scan.
+- The reconciler never **adds** a suppression. A new, unsuppressed HIGH/CRITICAL
+  finding is a real exposure that the build's blocking Trivy gate must fail on.
+
+Drift is healed through a reviewed bot PR on branch `chore/trivyignore-reconcile`
+— never an auto-commit to `main`. This requires the repository setting
+**Settings → Actions → General → "Allow GitHub Actions to create and approve
+pull requests"** to be enabled.
