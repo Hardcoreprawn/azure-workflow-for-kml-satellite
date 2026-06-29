@@ -1,11 +1,11 @@
-"""Tests for blueprints.pipeline._helpers durable status shaping."""
+"""Tests for blueprints.pipeline._status durable status shaping."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from blueprints.pipeline._helpers import _normalize_runtime_status_payload
+from blueprints.pipeline._status import _normalize_runtime_status_payload
 
 
 def test_stalled_payload_preserves_existing_phase():

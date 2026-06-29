@@ -34,9 +34,9 @@ from treesight.constants import (
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
 from . import bp
-from ._helpers import (
+from ._aggregation import _aggregate_aoi_results
+from ._payloads import (
     _acq_payload,
-    _aggregate_aoi_results,
     _build_order_lookups,
     _collect_enrichment_coords,
     _collect_per_aoi_coords,
@@ -724,6 +724,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
             fulfilment=ful_s,
         )
         _apply_enrichment_to_summary(summary, enrichment)
+        context.set_custom_status({"phase": "completed", "step": "done"})
         if user_id and tier != "demo" and inp.get("org_id"):
             yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
         return summary

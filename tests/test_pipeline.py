@@ -356,13 +356,13 @@ class TestGroupPerAoi:
 
         result = _group_per_aoi(acquisition, fulfilment)
         assert len(result) == 2
-        a = next(r for r in result if r["feature_name"] == "farm_a")
-        b = next(r for r in result if r["feature_name"] == "farm_b")
-        assert a["imagery_ready"] == 2
-        assert a["downloads_succeeded"] == 1
-        assert a["post_process_completed"] == 1
-        assert b["imagery_failed"] == 1
-        assert b["downloads_failed"] == 1
+        a = next(r for r in result if r.feature_name == "farm_a")
+        b = next(r for r in result if r.feature_name == "farm_b")
+        assert a.imagery_ready == 2
+        assert a.downloads_succeeded == 1
+        assert a.post_process_completed == 1
+        assert b.imagery_failed == 1
+        assert b.downloads_failed == 1
 
     def test_empty_inputs(self):
         from treesight.pipeline.orchestrator import _group_per_aoi
@@ -1371,3 +1371,321 @@ class TestOffloadedFeaturesPath:
 
         activity_names = [c[0][0] for c in ctx.call_activity.call_args_list]
         assert "load_offloaded_features" in activity_names
+
+
+# ---------------------------------------------------------------------------
+# Phase customStatus reporting — each phase sets status authoritatively (#943)
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseCustomStatusReporting:
+    """Verify each orchestrator phase sets customStatus at its phase boundary."""
+
+    def test_ingestion_sets_parsing_kml_status(self):
+        """Phase ingestion must set customStatus with phase=ingestion at the start."""
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        ctx.call_activity.return_value = "sentinel"
+        ctx.task_all.return_value = []
+
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "i1", {})
+        gen.send(None)  # first yield: parse_kml
+
+        ctx.set_custom_status.assert_called()
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "ingestion" and s.get("step") == "parsing_kml" for s in statuses
+        )
+
+    def test_ingestion_sets_preparing_aois_status(self):
+        """Phase ingestion sets status when fan-out to prepare_aoi begins."""
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        ctx.call_activity.return_value = "sentinel"
+        ctx.task_all.return_value = []
+
+        features = [{"feature_name": "f", "exterior_coords": [[1.0, 2.0]]}] * 2
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "i2", {})
+        gen.send(None)
+        with contextlib.suppress(StopIteration):
+            gen.send(features)
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "ingestion" and s.get("step") == "preparing_aois" for s in statuses
+        )
+
+    def test_acquisition_sets_searching_status(self):
+        """Phase acquisition must set customStatus with step=searching."""
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "sentinel"
+        ctx.task_all.return_value = [[]]
+
+        aoi_refs = [{"ref": "blob://aoi/1", "key": "farm-a"}]
+        gen = _phase_acquisition(ctx, {"composite_search": True}, aoi_refs, {"farm-a": 5.0})
+        gen.send(None)
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "acquisition" and s.get("step") == "searching" for s in statuses
+        )
+
+    def test_acquisition_sets_polling_status(self):
+        """Phase acquisition sets status when polling begins."""
+        from blueprints.pipeline.orchestrator import _phase_acquisition
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "sentinel"
+        ctx.task_all.side_effect = [
+            [{"order_id": "o1"}],  # acquisition
+            [{"state": "ready", "order_id": "o1"}],  # polling
+        ]
+
+        aoi_refs = [{"ref": "blob://aoi/1", "key": "farm-a"}]
+        gen = _phase_acquisition(ctx, {"composite_search": False}, aoi_refs, {"farm-a": 5.0})
+        gen.send(None)  # acquisition yield
+        with contextlib.suppress(StopIteration):
+            gen.send([{"order_id": "o1"}])  # poll yield
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(s.get("phase") == "acquisition" and s.get("step") == "polling" for s in statuses)
+
+    def test_fulfilment_sets_downloading_status(self):
+        """Phase fulfilment sets customStatus with step=downloading before download loop."""
+        from blueprints.pipeline.orchestrator import _phase_fulfilment
+
+        ctx = MagicMock()
+        ctx.call_activity_with_retry.return_value = "sentinel"
+        ctx.task_all.return_value = [{"state": "ok", "blob_path": "p"}]
+
+        acq_result = {
+            "serverless_ready": [{"order_id": "o1", "aoi_feature_name": "f"}],
+            "batch_ready": [],
+            "asset_urls": {"o1": "https://img.example"},
+            "order_meta": {"o1": {"role": "visual", "collection": "S2"}},
+            "aoi_ref_lookup": {"f": "blob://aoi/1"},
+        }
+        gen = _phase_fulfilment(ctx, {}, {"project_name": "p", "timestamp": "t"}, acq_result)
+        gen.send(None)
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "fulfilment" and s.get("step") == "downloading" for s in statuses
+        )
+
+    def test_enrichment_sets_data_sources_status(self):
+        """Phase enrichment sets customStatus for data_sources_and_imagery step."""
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+        ctx.task_all.return_value = MagicMock()
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=[],
+            output_container="out",
+        )
+        gen.send(None)
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "enrichment" and s.get("step") == "data_sources_and_imagery"
+            for s in statuses
+        )
+
+    def test_enrichment_sets_finalizing_status(self):
+        """Phase enrichment sets customStatus with step=finalizing before enrich_finalize."""
+        from blueprints.pipeline.orchestrator import _phase_enrichment
+
+        ctx = MagicMock()
+        ctx.task_all.return_value = [{"frame_plan": []}, {"ndvi": {}}]
+        ctx.call_activity_with_retry.return_value = "finalize_sentinel"
+
+        gen = _phase_enrichment(
+            ctx,
+            inp={},
+            ctx={"project_name": "p", "timestamp": "t"},
+            all_coords=[[10.0, 20.0]],
+            per_aoi_coords=[],
+            output_container="out",
+        )
+        gen.send(None)  # data_sources_and_imagery yield
+        with contextlib.suppress(StopIteration):
+            gen.send([{"frame_plan": []}, {"ndvi": {}}])  # resume after parallel
+
+        statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
+        assert any(
+            s.get("phase") == "enrichment" and s.get("step") == "finalizing" for s in statuses
+        )
+
+    def test_coordinator_sets_completed_status(self):
+        """Main orchestrator must call set_custom_status with phase='completed' after all phases.
+
+        Verified via AST: walk the treesight_orchestrator function body and
+        confirm a set_custom_status call passes a dict containing phase='completed'.
+        """
+        import ast
+        from pathlib import Path
+
+        from blueprints.pipeline import orchestrator as orch_mod
+
+        src = Path(orch_mod.__file__).read_text()
+        tree = ast.parse(src)
+
+        def _has_completed_status_call(func_node: ast.FunctionDef) -> bool:
+            # Return True if the function contains set_custom_status({"phase": "completed", ...})
+            for node in ast.walk(func_node):
+                if not isinstance(node, ast.Call):
+                    continue
+                # Match ctx.set_custom_status(...) or context.set_custom_status(...)
+                func = node.func
+                if not (isinstance(func, ast.Attribute) and func.attr == "set_custom_status"):
+                    continue
+                if not node.args:
+                    continue
+                arg = node.args[0]
+                if not isinstance(arg, ast.Dict):
+                    continue
+                for i in range(len(arg.keys)):
+                    key, val = arg.keys[i], arg.values[i]
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "phase"
+                        and isinstance(val, ast.Constant)
+                        and val.value == "completed"
+                    ):
+                        return True
+            return False
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "treesight_orchestrator":
+                assert _has_completed_status_call(node), (
+                    "treesight_orchestrator must call "
+                    "set_custom_status({'phase': 'completed', ...})"
+                )
+                return
+
+        raise AssertionError("treesight_orchestrator not found in source")
+
+
+# ---------------------------------------------------------------------------
+# Module split verification — each concern lives in its own focused module (#943)
+# ---------------------------------------------------------------------------
+
+
+class TestHelpersModuleSplit:
+    """Verify _helpers.py has been split into focused modules."""
+
+    def test_blob_url_module_exists(self):
+        from blueprints.pipeline import _blob_url
+
+        assert hasattr(_blob_url, "_validate_blob_event")
+        assert hasattr(_blob_url, "_extract_container")
+        assert hasattr(_blob_url, "_extract_blob_name")
+        assert hasattr(_blob_url, "_is_trusted_blob_host")
+        assert hasattr(_blob_url, "_expected_blob_host")
+
+    def test_status_module_exists(self):
+        from blueprints.pipeline import _status
+
+        assert hasattr(_status, "_durable_status_payload")
+        assert hasattr(_status, "_reshape_output")
+
+    def test_payloads_module_exists(self):
+        from blueprints.pipeline import _payloads
+
+        assert hasattr(_payloads, "_acq_payload")
+        assert hasattr(_payloads, "_poll_payload")
+        assert hasattr(_payloads, "_download_payload")
+        assert hasattr(_payloads, "_post_process_payload")
+        assert hasattr(_payloads, "_collect_enrichment_coords")
+        assert hasattr(_payloads, "_collect_per_aoi_coords")
+        assert hasattr(_payloads, "_build_order_lookups")
+        assert hasattr(_payloads, "_split_batch_routing")
+
+    def test_aggregation_module_exists(self):
+        from blueprints.pipeline import _aggregation
+
+        assert hasattr(_aggregation, "_aggregate_aoi_results")
+
+    def test_helpers_shim_re_exports_all_symbols(self):
+        """_helpers.py must still export all symbols for backward compatibility."""
+        from blueprints.pipeline import _helpers
+
+        for sym in [
+            "_acq_payload",
+            "_aggregate_aoi_results",
+            "_build_order_lookups",
+            "_collect_enrichment_coords",
+            "_collect_per_aoi_coords",
+            "_download_payload",
+            "_durable_status_payload",
+            "_expected_blob_host",
+            "_extract_blob_name",
+            "_extract_container",
+            "_is_trusted_blob_host",
+            "_poll_payload",
+            "_post_process_payload",
+            "_reshape_output",
+            "_split_batch_routing",
+            "_validate_blob_event",
+        ]:
+            assert hasattr(_helpers, sym), f"_helpers.py missing re-export: {sym}"
+
+    def test_blob_trigger_imports_from_blob_url(self):
+        """blob URL helpers used by blob_trigger must be defined in _blob_url, not _helpers."""
+        import inspect
+
+        from blueprints.pipeline._blob_url import (
+            _extract_blob_name,
+            _extract_container,
+            _validate_blob_event,
+        )
+
+        for fn in (_validate_blob_event, _extract_container, _extract_blob_name):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._blob_url", (
+                f"{fn.__name__} should be defined in _blob_url, got {mod.__name__}"
+            )
+
+    def test_diagnostics_imports_from_status(self):
+        """Durable status helpers used by diagnostics must be defined in _status."""
+        import inspect
+
+        from blueprints.pipeline._status import _durable_status_payload, _reshape_output
+
+        for fn in (_durable_status_payload, _reshape_output):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._status", (
+                f"{fn.__name__} should be defined in _status, got {mod.__name__}"
+            )
+
+    def test_orchestrator_imports_from_payloads(self):
+        """Payload builders used by orchestrator must be defined in _payloads."""
+        import inspect
+
+        from blueprints.pipeline._aggregation import _aggregate_aoi_results
+        from blueprints.pipeline._payloads import (
+            _acq_payload,
+            _build_order_lookups,
+            _poll_payload,
+        )
+
+        for fn in (_acq_payload, _build_order_lookups, _poll_payload):
+            mod = inspect.getmodule(fn)
+            assert mod is not None
+            assert mod.__name__ == "blueprints.pipeline._payloads", (
+                f"{fn.__name__} should be defined in _payloads, got {mod.__name__}"
+            )
+        mod = inspect.getmodule(_aggregate_aoi_results)
+        assert mod is not None
+        assert mod.__name__ == "blueprints.pipeline._aggregation"

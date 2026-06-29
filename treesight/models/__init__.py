@@ -13,6 +13,7 @@ from treesight.models.outcomes import (
     IngestionResult,
     MetadataResult,
     PipelineSummary,
+    PipelineSummaryCounts,
     PostProcessResult,
 )
 from treesight.models.records import (
@@ -36,6 +37,7 @@ __all__ = [
     "MetadataResult",
     "OrderState",
     "PipelineSummary",
+    "PipelineSummaryCounts",
     "PostProcessResult",
     "RunRecord",
     "SearchResult",
