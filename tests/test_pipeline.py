@@ -1469,9 +1469,7 @@ class TestPhaseCustomStatusReporting:
             "order_meta": {"o1": {"role": "visual", "collection": "S2"}},
             "aoi_ref_lookup": {"f": "blob://aoi/1"},
         }
-        gen = _phase_fulfilment(
-            ctx, {}, {"project_name": "p", "timestamp": "t"}, acq_result
-        )
+        gen = _phase_fulfilment(ctx, {}, {"project_name": "p", "timestamp": "t"}, acq_result)
         gen.send(None)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
