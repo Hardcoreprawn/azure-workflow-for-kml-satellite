@@ -154,8 +154,6 @@ def _reshape_output(output: dict[str, Any] | str) -> dict[str, Any]:
     instead of a parsed dict — handle both cases.
     """
     if isinstance(output, str):
-        import json
-
         try:
             output = json.loads(output)
         except (json.JSONDecodeError, TypeError):
