@@ -2,7 +2,7 @@
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
 	_free-ports _free-func-port _free-web-ports \
-	sast
+	sast scan scan-iac scan-fs scan-image
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -171,6 +171,31 @@ sast: ## Semgrep static analysis (pinned version + packs — reproducible local 
 		--exclude-rule html.security.audit.missing-integrity.missing-integrity \
 		$(if $(filter sarif,$(SEMGREP_FORMAT)),--sarif) \
 		$(_SEMGREP_OUT)
+
+# ───────────────────── Security scans (Trivy) ─────────────────────
+# Single source of truth for Trivy — local, pre-commit, and CI run these.
+# CI sets TRIVY_FORMAT=sarif + TRIVY_OUTPUT=<file> to emit SARIF for Code
+# Scanning; the base-image reconcile sets TRIVY_IGNOREFILE= to scan unsuppressed.
+TRIVY ?= trivy
+TRIVY_FORMAT ?= table
+TRIVY_OUTPUT ?=
+TRIVY_IGNOREFILE ?= .trivyignore
+TRIVY_IMAGE_EXIT ?= 1
+TRIVY_SCANNERS ?=
+_TRIVY_OUT = $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT),)
+_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)
+_TRIVY_SCAN = $(if $(TRIVY_SCANNERS),--scanners $(TRIVY_SCANNERS),)
+
+scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
+	$(TRIVY) config infra/tofu $(_TRIVY_IGN) --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-fs: ## Trivy filesystem scan (deps + Dockerfiles) — blocks on fixable CRITICAL/HIGH
+	$(TRIVY) fs . $(_TRIVY_IGN) --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-image: ## Trivy image scan (set IMAGE=...; TRIVY_IMAGE_EXIT=0 for advisory) — blocks on fixable CRITICAL/HIGH
+	$(TRIVY) image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) --severity CRITICAL,HIGH --ignore-unfixed --exit-code $(TRIVY_IMAGE_EXIT) --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan: scan-iac scan-fs ## Run repo Trivy scans (IaC + filesystem)
 
 smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \

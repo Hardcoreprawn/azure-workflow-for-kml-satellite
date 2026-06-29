@@ -260,21 +260,17 @@ jobs:
           push_with_retry "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
           push_with_retry "${ORCH_IMAGE_NAME}:latest"
 
-      - name: Trivy container scan (single pass to JSON)
-        id: trivy-scan
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         if: ${{ inputs.image_tag == '' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.70.0
-          cache: false
-          image-ref: ${{ steps.meta.outputs.image_uri }}
-          scanners: vuln
-          format: json
-          output: trivy-image.json
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          exit-code: "0"        # gate explicitly from JSON so SARIF and gate share one scan result
+
+      - name: Trivy container scan via make (single pass to JSON)
+        id: trivy-scan
+        if: ${{ inputs.image_tag == '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make scan-image IMAGE="${{ steps.meta.outputs.image_uri }}" TRIVY_SCANNERS=vuln TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-image.json
 
       - name: Convert Trivy JSON to SARIF
         if: ${{ inputs.image_tag == '' }}

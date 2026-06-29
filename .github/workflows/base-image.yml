@@ -75,18 +75,13 @@ jobs:
             exit 1
           fi
 
-      # ── Security scan ──────────────────────────────────────
-      - name: Trivy container scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.meta.outputs.image_latest }}
-          format: sarif
-          output: trivy-base.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          exit-code: "1"        # block on findings — base must be clean
-          limit-severities-for-sarif: true  # only CRITICAL/HIGH in SARIF; prevents LOW/MEDIUM triggering exit code
+      # ── Security scan (canonical: make scan-image) ─────────
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Trivy container scan via make
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-base.sarif
 
       - name: Upload Trivy SARIF
         if: always()
@@ -153,17 +148,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Scan WITHOUT .trivyignore so every still-fixable HIGH/CRITICAL finding
-      # is visible to the reconciler. Non-blocking (exit-code 0) — the gate in
-      # build-test-push already enforces the policy.
-      - name: Trivy scan (no suppressions)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.meta.outputs.image_latest }}
-          format: json
-          output: trivy-noignore.json
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "0"
+      # is visible to the reconciler. Non-blocking (TRIVY_IMAGE_EXIT=0) — the gate
+      # in build-test-push already enforces the policy.
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Trivy scan (no suppressions) via make
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_IGNOREFILE= TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-noignore.json
 
       - name: Reconcile suppressions
         id: reconcile
