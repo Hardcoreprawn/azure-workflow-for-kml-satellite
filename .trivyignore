@@ -35,6 +35,7 @@ CVE-2026-25679 # exp:2026-07-23 Go stdlib in Functions host — tracking upstrea
 CVE-2026-27139 # exp:2026-07-23 Go stdlib in Functions host — tracking upstream
 CVE-2026-27142 # exp:2026-07-23 Go stdlib in Functions host — tracking upstream
 CVE-2026-40894 # exp:2026-07-23 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3, awaiting patched host image
+CVE-2026-48506 # exp:2026-07-23 MessagePack in Functions extension bundle — fixed upstream in 2.5.301/3.1.7, awaiting patched bundle/image — tracking #965
 
 # libpng16-16: Dockerfile.base already runs apt-get upgrade -y which will apply the fix
 # once it lands in Debian bookworm mirrors. Trigger a base-image rebuild to pick it up.
