@@ -46,6 +46,7 @@ INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
+MAKEFILE = ROOT / "Makefile"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
 OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
@@ -968,10 +969,35 @@ class TestTrivySignalQuality:
     """Ensure Trivy scans stay actionable and exceptions remain explicit."""
 
     def test_security_trivy_fs_ignores_unfixed(self):
-        yml = SECURITY_YML.read_text()
-        assert "ignore-unfixed: true" in yml, (
-            "security.yml Trivy filesystem scan should ignore unfixed CVEs "
+        makefile = MAKEFILE.read_text()
+        assert "--ignore-unfixed" in makefile, (
+            "Makefile scan-fs target should ignore unfixed CVEs "
             "to reduce non-actionable alert noise"
+        )
+
+    def test_trivy_fs_make_uses_trivyignore(self):
+        makefile = MAKEFILE.read_text()
+        assert "--ignorefile .trivyignore" in makefile, (
+            "Makefile scan-fs and scan-iac targets must pass --ignorefile .trivyignore "
+            "so suppressions are honoured consistently in local and CI runs"
+        )
+
+    def test_trivy_scans_delegated_to_make(self):
+        yml = SECURITY_YML.read_text()
+        assert "make scan-fs" in yml, (
+            "security.yml trivy-fs job must delegate to 'make scan-fs' "
+            "so flags are defined exactly once in the Makefile"
+        )
+        assert "make scan-iac" in yml, (
+            "security.yml trivy-iac job must delegate to 'make scan-iac' "
+            "so flags are defined exactly once in the Makefile"
+        )
+
+    def test_base_image_trivy_scan_uses_make(self):
+        yml = (ROOT / ".github" / "workflows" / "base-image.yml").read_text()
+        assert "make scan-image" in yml, (
+            "base-image.yml container scan must delegate to 'make scan-image' "
+            "so flags are defined exactly once in the Makefile"
         )
 
     def test_deploy_trivy_image_ignores_unfixed(self):

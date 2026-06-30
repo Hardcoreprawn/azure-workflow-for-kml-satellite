@@ -1,7 +1,8 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
-	_free-ports _free-func-port _free-web-ports
+	_free-ports _free-func-port _free-web-ports \
+	scan-fs scan-iac scan-image scan-image-raw scan
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -161,3 +162,25 @@ smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 clean: dev-down ## Stop Azurite and remove data volume
 	docker volume rm kml-satellites_azurite-data 2>/dev/null || true
 	@echo "Cleaned up."
+
+# ───────────────────── Security Scanning (Trivy) ─────────────────────
+# Parametrised for both local (table) and CI (sarif) use.
+# Override TRIVY_FORMAT and TRIVY_OUTPUT when calling from CI.
+# Example CI call: make scan-fs TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-fs.sarif
+
+TRIVY_FORMAT ?= table
+TRIVY_OUTPUT ?=
+
+scan-fs: ## Trivy filesystem scan (deps + Dockerfile). CI: TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-fs.sarif
+	trivy fs . --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) $(if $(filter sarif,$(TRIVY_FORMAT)),--limit-severities-for-sarif) --exit-code 1
+
+scan-iac: ## Trivy IaC misconfiguration scan. CI: TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-iac.sarif
+	trivy config infra/tofu --severity CRITICAL,HIGH,MEDIUM --ignorefile .trivyignore --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) --exit-code 0
+
+scan-image: ## Trivy container image scan. Requires IMAGE=<ref>. CI: TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-base.sarif
+	trivy image $(IMAGE) --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) $(if $(filter sarif,$(TRIVY_FORMAT)),--limit-severities-for-sarif) --exit-code 1
+
+scan-image-raw: ## Trivy container scan without .trivyignore (reconciliation use only — intentional). Requires IMAGE=<ref>.
+	trivy image $(IMAGE) --severity CRITICAL,HIGH --ignore-unfixed --format $(TRIVY_FORMAT) $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) --exit-code 0
+
+scan: scan-iac scan-fs ## Run all local Trivy scans (IaC + filesystem)
