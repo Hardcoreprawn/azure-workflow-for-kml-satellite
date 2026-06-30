@@ -26,6 +26,7 @@ import typing
 from pathlib import Path
 
 import pytest
+import yaml
 
 from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
@@ -45,6 +46,7 @@ DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
+PREVIEW_SITE_YML = ROOT / ".github" / "workflows" / "preview-site.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 MAKEFILE = ROOT / "Makefile"
@@ -277,6 +279,72 @@ class TestStaticWebAppCostControls:
         assert 'sku_size = "Free"' in body, (
             'azurerm_static_web_app.main must keep sku_size="Free" '
             "to preserve the agreed SWA cost reduction"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5a-2. Preview-site workflow graceful degradation
+# ---------------------------------------------------------------------------
+
+
+class TestPreviewSiteGracefulDegradation:
+    """Ensure Deploy Preview cannot block merges when the SWA token is missing/invalid.
+
+    The deploy step must be guarded by a token-presence check so that an absent
+    or expired SWA_DEPLOYMENT_TOKEN causes a warning rather than a job failure.
+    """
+
+    @pytest.fixture()
+    def deploy_steps(self) -> list[dict]:
+        """Return the steps list from the deploy-preview job."""
+        workflow = yaml.safe_load(PREVIEW_SITE_YML.read_text())
+        return workflow["jobs"]["deploy-preview"]["steps"]
+
+    def _find_step(
+        self, steps: list[dict], step_id: str | None = None, name_fragment: str | None = None
+    ) -> dict | None:
+        for step in steps:
+            if step_id and step.get("id") == step_id:
+                return step
+            if name_fragment and name_fragment.lower() in (step.get("name") or "").lower():
+                return step
+        return None
+
+    def test_token_check_step_exists_and_sets_output(self, deploy_steps):
+        step = self._find_step(deploy_steps, step_id="check-token")
+        assert step is not None, (
+            "preview-site.yml deploy-preview job must contain a step with "
+            "id: check-token that probes SWA_DEPLOYMENT_TOKEN availability"
+        )
+        run_script = step.get("run", "")
+        assert "GITHUB_OUTPUT" in run_script, (
+            "check-token step must write 'available' to GITHUB_OUTPUT"
+        )
+        assert "available=false" in run_script or "available=true" in run_script, (
+            "check-token step must emit an 'available' output so downstream "
+            "steps can conditionally skip the deploy"
+        )
+
+    def test_deploy_step_gated_on_token_check(self, deploy_steps):
+        step = self._find_step(deploy_steps, name_fragment="Deploy to SWA")
+        assert step is not None, (
+            "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
+        )
+        condition = step.get("if", "")
+        assert "steps.check-token.outputs.available" in condition, (
+            "The 'Deploy to SWA staging environment' step must be gated on "
+            "steps.check-token.outputs.available so it skips when the token is absent"
+        )
+
+    def test_deploy_step_has_continue_on_error(self, deploy_steps):
+        step = self._find_step(deploy_steps, name_fragment="Deploy to SWA")
+        assert step is not None, (
+            "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
+        )
+        assert step.get("continue-on-error") is True, (
+            "The 'Deploy to SWA staging environment' step must set "
+            "continue-on-error: true so an invalid/expired token does not fail the "
+            "job and block the PR"
         )
 
 
