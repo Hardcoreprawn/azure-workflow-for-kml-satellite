@@ -42,6 +42,7 @@ DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
+BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
@@ -1012,17 +1013,45 @@ class TestTrivySignalQuality:
     """Ensure Trivy scans stay actionable and exceptions remain explicit."""
 
     def test_security_trivy_fs_ignores_unfixed(self):
-        yml = SECURITY_YML.read_text()
-        assert "ignore-unfixed: true" in yml, (
-            "security.yml Trivy filesystem scan should ignore unfixed CVEs "
-            "to reduce non-actionable alert noise"
-        )
+        makefile = MAKEFILE.read_text()
+        assert (
+            "scan-fs:" in makefile
+            and "$(TRIVY) fs . $(_TRIVY_IGN) --severity CRITICAL,HIGH --ignore-unfixed" in makefile
+        ), "Makefile scan-fs target should ignore unfixed CVEs to reduce non-actionable alert noise"
 
     def test_deploy_trivy_image_ignores_unfixed(self):
-        yml = DEPLOY_YML.read_text()
-        assert "ignore-unfixed: true" in yml, (
-            "deploy.yml Trivy image scan should ignore unfixed CVEs "
+        makefile = MAKEFILE.read_text()
+        scan_image_cmd = (
+            "$(TRIVY) image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) "
+            "--severity CRITICAL,HIGH --ignore-unfixed"
+        )
+        assert "scan-image:" in makefile and scan_image_cmd in makefile, (
+            "Makefile scan-image target should ignore unfixed CVEs "
             "to focus on actionable vulnerabilities"
+        )
+
+    def test_trivy_fs_make_uses_trivyignore(self):
+        makefile = MAKEFILE.read_text()
+        assert "TRIVY_IGNOREFILE ?= .trivyignore" in makefile, (
+            "Makefile must default TRIVY_IGNOREFILE to .trivyignore"
+        )
+        assert "$(TRIVY) fs . $(_TRIVY_IGN)" in makefile, (
+            "scan-fs must apply the configured Trivy ignorefile"
+        )
+
+    def test_trivy_scans_delegated_to_make(self):
+        yml = SECURITY_YML.read_text()
+        assert "make scan-iac" in yml and "make scan-fs" in yml, (
+            "security.yml must delegate Trivy scans to canonical Make targets"
+        )
+        assert "trivy-action" not in yml, (
+            "security.yml should avoid bespoke trivy-action blocks in favor of make"
+        )
+
+    def test_base_image_trivy_scan_uses_make(self):
+        yml = BASE_IMAGE_YML.read_text()
+        assert "make scan-image" in yml, (
+            "base-image.yml must run Trivy image scanning through make scan-image"
         )
 
     def test_trivy_ignore_file_exists(self):
