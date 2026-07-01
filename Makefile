@@ -6,7 +6,7 @@
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
 
-# Pinned Semgrep version — update deliberately (keep in sync with security.yml comment)
+# Pinned Semgrep version — update deliberately; single source of truth for local + CI
 SEMGREP_VERSION := 1.127.0
 
 # ───────────────────── Help ─────────────────────

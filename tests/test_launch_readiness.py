@@ -1798,9 +1798,9 @@ class TestSemgrepSastConsistency:
 
     def test_sast_target_version_is_pinned(self):
         makefile = MAKEFILE.read_text()
-        # SEMGREP_VERSION variable must be set to a concrete version string
-        assert re.search(r"SEMGREP_VERSION\s*:=\s*\d+\.\d+", makefile), (
-            "Makefile must define SEMGREP_VERSION := <major>.<minor>[.<patch>] "
+        # SEMGREP_VERSION variable must be set to a full three-part version string
+        assert re.search(r"SEMGREP_VERSION\s*:=\s*\d+\.\d+\.\d+", makefile), (
+            "Makefile must define SEMGREP_VERSION := <major>.<minor>.<patch> "
             "so the version is pinned and auditable"
         )
 
