@@ -1042,9 +1042,18 @@ class TestTrivySignalQuality:
 
     def test_trivy_scans_delegated_to_make(self):
         action = TRIVY_SCAN_ACTION.read_text()
-        assert 'make "scan-${{ inputs.scan }}"' in action, (
+        assert 'make "scan-${SCAN}"' in action, (
             "the trivy-scan composite action must delegate to the canonical "
             "make scan-* targets (single run path)"
+        )
+        # Inputs must reach the run: script via env (not ${{ }} interpolation)
+        # to avoid shell injection — Semgrep run-shell-injection.
+        assert "SCAN: ${{ inputs.scan }}" in action, (
+            "composite action must pass inputs to the run step via env vars"
+        )
+        assert 'scan-${{ inputs.scan }}"' not in action, (
+            "composite action run: script must not interpolate ${{ inputs }} "
+            "directly — pass via env and reference $VAR"
         )
         yml = SECURITY_YML.read_text()
         assert "./.github/actions/trivy-scan" in yml, (

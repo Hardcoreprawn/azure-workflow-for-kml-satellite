@@ -52,11 +52,20 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        # Pass inputs through env (never interpolate ${{ }} into run: — avoids
+        # shell injection; Semgrep run-shell-injection).
+        SCAN: ${{ inputs.scan }}
+        IMAGE: ${{ inputs.image }}
+        TRIVY_FORMAT: ${{ inputs.format }}
+        TRIVY_OUTPUT: ${{ inputs.output }}
+        TRIVY_IGNOREFILE: ${{ inputs.ignorefile }}
+        TRIVY_IMAGE_EXIT: ${{ inputs.image-exit }}
+        TRIVY_SCANNERS: ${{ inputs.scanners }}
       run: |
-        make "scan-${{ inputs.scan }}" \
-          IMAGE="${{ inputs.image }}" \
-          TRIVY_FORMAT="${{ inputs.format }}" \
-          TRIVY_OUTPUT="${{ inputs.output }}" \
-          TRIVY_IGNOREFILE="${{ inputs.ignorefile }}" \
-          TRIVY_IMAGE_EXIT="${{ inputs.image-exit }}" \
-          TRIVY_SCANNERS="${{ inputs.scanners }}"
+        make "scan-${SCAN}" \
+          IMAGE="${IMAGE}" \
+          TRIVY_FORMAT="${TRIVY_FORMAT}" \
+          TRIVY_OUTPUT="${TRIVY_OUTPUT}" \
+          TRIVY_IGNOREFILE="${TRIVY_IGNOREFILE}" \
+          TRIVY_IMAGE_EXIT="${TRIVY_IMAGE_EXIT}" \
+          TRIVY_SCANNERS="${TRIVY_SCANNERS}"
