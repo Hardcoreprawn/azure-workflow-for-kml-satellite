@@ -22,7 +22,8 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 
 - Always start new work on a clean branch from `main`. Before creating the branch, verify the working tree is clean (`git status`). Do not pile unrelated changes onto an existing feature branch.
 - **Every PR must close at least one GitHub issue.** Prefer exactly one issue per PR. If no issue exists for the work, create one before opening the PR. Put the link in the PR body's **Linked issue** section as `Closes #NNN` (or `fixes`/`resolves`) — a machine-readable reference, **not** prose like "Issue #NNN tracks this". The `require-linked-issue` gate and the PR Watchdog both check for this exact pattern; a bare `#NNN` mention does not count and will block the PR.
-- **Do not leave a finished PR in draft.** Once the work is complete and the PR Watchdog reports `READY_TO_PROMOTE` / `READY_FOR_MAINTAINER_REVIEW`, mark it ready (`gh pr ready`). Draft PRs do not run full CI, so a completed draft stalls with zero validation.
+- **Promotion responsibility sits with maintainer/orchestrator.** Copilot coding-agent PRs open as drafts and are not self-promoted. When the PR Watchdog reports `READY_TO_PROMOTE` on a draft, treat that as actionable and run `gh pr ready <n>`. Never treat "no failing checks" on a draft as green; draft PRs do not run full CI.
+- **Agent handoff must include self-validation.** Before handing work back, the agent must confirm `Closes #NNN` is present, run `make check`, and report the latest Watchdog status plus an explicit "ready to promote" handoff note.
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
