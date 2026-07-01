@@ -260,17 +260,18 @@ jobs:
           push_with_retry "${ORCH_IMAGE_NAME}:${{ steps.meta.outputs.app_version }}"
           push_with_retry "${ORCH_IMAGE_NAME}:latest"
 
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        if: ${{ inputs.image_tag == '' }}
-        with:
-          version: v0.70.0
-
-      - name: Trivy container scan via make (single pass to JSON)
+      - name: Trivy container scan (single pass to JSON)
         id: trivy-scan
         if: ${{ inputs.image_tag == '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-image IMAGE="${{ steps.meta.outputs.image_uri }}" TRIVY_SCANNERS=vuln TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-image.json
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: image
+          image: ${{ steps.meta.outputs.image_uri }}
+          scanners: vuln
+          image-exit: "0"
+          format: json
+          output: trivy-image.json
+          trivy-version: v0.70.0
 
       - name: Convert Trivy JSON to SARIF
         if: ${{ inputs.image_tag == '' }}

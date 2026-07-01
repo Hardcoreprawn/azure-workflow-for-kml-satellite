@@ -49,6 +49,7 @@ INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 MAKEFILE = ROOT / "Makefile"
 DEPENDABOT_YML = ROOT / ".github" / "dependabot.yml"
+TRIVY_SCAN_ACTION = ROOT / ".github" / "actions" / "trivy-scan" / "action.yml"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
 OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
@@ -1040,19 +1041,51 @@ class TestTrivySignalQuality:
         )
 
     def test_trivy_scans_delegated_to_make(self):
+        action = TRIVY_SCAN_ACTION.read_text()
+        assert 'make "scan-${{ inputs.scan }}"' in action, (
+            "the trivy-scan composite action must delegate to the canonical "
+            "make scan-* targets (single run path)"
+        )
         yml = SECURITY_YML.read_text()
-        assert "make scan-iac" in yml and "make scan-fs" in yml, (
-            "security.yml must delegate Trivy scans to canonical Make targets"
+        assert "./.github/actions/trivy-scan" in yml, (
+            "security.yml must run Trivy through the shared composite action"
         )
         assert "trivy-action" not in yml, (
-            "security.yml should avoid bespoke trivy-action blocks in favor of make"
+            "security.yml should avoid bespoke trivy-action blocks in favor of the "
+            "shared composite action"
         )
 
     def test_base_image_trivy_scan_uses_make(self):
         yml = BASE_IMAGE_YML.read_text()
-        assert "make scan-image" in yml, (
-            "base-image.yml must run Trivy image scanning through make scan-image"
+        assert "./.github/actions/trivy-scan" in yml, (
+            "base-image.yml must run Trivy image scanning through the shared "
+            "composite action (which delegates to make scan-image)"
         )
+
+    def test_trivy_uses_single_setup_and_run_path(self):
+        """The whole point: one setup action, one run path — no duplication.
+
+        setup-trivy and the ``make scan-*`` invocation must live only in the
+        composite action, never re-declared inline in a workflow. Each workflow
+        that scans references the action by path.
+        """
+        action = TRIVY_SCAN_ACTION.read_text()
+        assert "aquasecurity/setup-trivy@" in action, (
+            "the composite action must be the single place Trivy is installed"
+        )
+
+        workflow_files = [SECURITY_YML, BASE_IMAGE_YML, DEPLOY_YML]
+        for wf in workflow_files:
+            text = wf.read_text()
+            assert "aquasecurity/setup-trivy@" not in text, (
+                f"{wf.name} must not install Trivy inline — use the composite action"
+            )
+            assert "make scan-" not in text, (
+                f"{wf.name} must not call make scan-* inline — use the composite action"
+            )
+            assert "./.github/actions/trivy-scan" in text, (
+                f"{wf.name} must invoke the shared trivy-scan composite action"
+            )
 
     def test_trivy_ignore_file_exists(self):
         assert TRIVY_IGNORE.exists(), (

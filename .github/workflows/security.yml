@@ -205,12 +205,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-
-      - name: Run Trivy (IaC) via make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-iac TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-iac.sarif
+      - name: Run Trivy (IaC)
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: iac
+          output: trivy-iac.sarif
 
       - name: Upload Trivy IaC SARIF
         if: always()
@@ -226,12 +225,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-
-      - name: Run Trivy (filesystem) via make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-fs TRIVY_FORMAT=sarif TRIVY_OUTPUT=trivy-fs.sarif
+      - name: Run Trivy (filesystem)
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: fs
+          output: trivy-fs.sarif
 
       - name: Upload Trivy FS SARIF
         if: always()

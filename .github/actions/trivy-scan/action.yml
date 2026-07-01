@@ -1,0 +1,62 @@
+name: "Trivy scan"
+description: >-
+  Install Trivy once and run a repository scan through the canonical
+  `make scan-*` targets. Single source of truth for Trivy in CI: one setup
+  action, one run path. The scan flags live in the Makefile, not here, so
+  local (`make scan`) and CI runs stay identical.
+
+inputs:
+  scan:
+    description: "Scan type: iac, fs, or image."
+    required: true
+  image:
+    description: "Image reference to scan (required when scan=image)."
+    required: false
+    default: ""
+  format:
+    description: "Trivy output format: table, sarif, or json."
+    required: false
+    default: "sarif"
+  output:
+    description: "Output file path (empty writes to stdout)."
+    required: false
+    default: ""
+  ignorefile:
+    description: "Trivy ignore file path (empty string disables suppressions)."
+    required: false
+    default: ".trivyignore"
+  image-exit:
+    description: "Exit code for image scans on findings (0 = advisory, non-blocking)."
+    required: false
+    default: "1"
+  scanners:
+    description: "Comma-separated Trivy scanners (e.g. vuln). Empty = Trivy default."
+    required: false
+    default: ""
+  trivy-version:
+    description: "Trivy version for setup-trivy (e.g. v0.70.0). 'latest' tracks newest."
+    required: false
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Trivy
+      uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+      with:
+        version: ${{ inputs.trivy-version }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Run Trivy (${{ inputs.scan }}) via make
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        make "scan-${{ inputs.scan }}" \
+          IMAGE="${{ inputs.image }}" \
+          TRIVY_FORMAT="${{ inputs.format }}" \
+          TRIVY_OUTPUT="${{ inputs.output }}" \
+          TRIVY_IGNOREFILE="${{ inputs.ignorefile }}" \
+          TRIVY_IMAGE_EXIT="${{ inputs.image-exit }}" \
+          TRIVY_SCANNERS="${{ inputs.scanners }}"

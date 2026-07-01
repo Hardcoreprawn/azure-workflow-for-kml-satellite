@@ -80,12 +80,15 @@ jobs:
       # a clean SARIF (suppressed CVEs filtered out so they don't reappear in
       # Code Scanning), and the reconcile job (consumes the same scan as an
       # artifact instead of re-scanning the image). See scripts/reconcile_trivyignore.py.
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-
-      - name: Trivy container scan via make (no suppressions)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make scan-image IMAGE="${{ steps.meta.outputs.image_latest }}" TRIVY_IGNOREFILE= TRIVY_IMAGE_EXIT=0 TRIVY_FORMAT=json TRIVY_OUTPUT=trivy-noignore.json
+      - name: Trivy container scan (no suppressions)
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: image
+          image: ${{ steps.meta.outputs.image_latest }}
+          ignorefile: ""
+          image-exit: "0"
+          format: json
+          output: trivy-noignore.json
 
       - name: Gate + filter suppressions
         run: |
