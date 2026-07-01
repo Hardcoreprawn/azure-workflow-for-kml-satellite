@@ -1017,13 +1017,14 @@ class TestTrivySignalQuality:
         makefile = MAKEFILE.read_text()
         assert (
             "scan-fs:" in makefile
-            and "$(TRIVY) fs . $(_TRIVY_IGN) --severity CRITICAL,HIGH --ignore-unfixed" in makefile
+            and '"$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed'
+            in makefile
         ), "Makefile scan-fs target should ignore unfixed CVEs to reduce non-actionable alert noise"
 
     def test_deploy_trivy_image_ignores_unfixed(self):
         makefile = MAKEFILE.read_text()
         scan_image_cmd = (
-            "$(TRIVY) image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) "
+            '"$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) '
             "--severity CRITICAL,HIGH --ignore-unfixed"
         )
         assert "scan-image:" in makefile and scan_image_cmd in makefile, (
@@ -1036,7 +1037,7 @@ class TestTrivySignalQuality:
         assert "TRIVY_IGNOREFILE ?= .trivyignore" in makefile, (
             "Makefile must default TRIVY_IGNOREFILE to .trivyignore"
         )
-        assert "$(TRIVY) fs . $(_TRIVY_IGN)" in makefile, (
+        assert '"$$T" fs . $(_TRIVY_IGN)' in makefile, (
             "scan-fs must apply the configured Trivy ignorefile"
         )
 
@@ -1095,6 +1096,29 @@ class TestTrivySignalQuality:
             assert "./.github/actions/trivy-scan" in text, (
                 f"{wf.name} must invoke the shared trivy-scan composite action"
             )
+
+    def test_trivy_version_pinned_and_consistent(self):
+        """Trivy binary version is pinned (reproducible + supply-chain safe) and
+        the Makefile pin matches the composite action default, so local == CI."""
+        makefile = MAKEFILE.read_text()
+        action = TRIVY_SCAN_ACTION.read_text()
+        mk = re.search(r"TRIVY_VERSION \?= ([0-9]+\.[0-9]+\.[0-9]+)", makefile)
+        assert mk, "Makefile must pin TRIVY_VERSION to an explicit version"
+        act = re.search(r'default:\s*"v([0-9]+\.[0-9]+\.[0-9]+)"', action)
+        assert act, "composite action must pin trivy-version to an explicit version"
+        assert mk.group(1) == act.group(1), (
+            "Makefile TRIVY_VERSION must match the composite action trivy-version "
+            f"default ({mk.group(1)} != {act.group(1)}) so local and CI use one version"
+        )
+
+    def test_trivy_fs_scans_vulnerabilities_only(self):
+        """scan-fs scans vulns only; secret detection is owned by the dedicated
+        detect-secrets job (avoids duplicate/false-positive secret findings)."""
+        makefile = MAKEFILE.read_text()
+        scan_fs = re.search(r"^scan-fs:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+        assert scan_fs and "--scanners vuln" in scan_fs.group(0), (
+            "Makefile scan-fs must pass --scanners vuln (detect-secrets owns secrets)"
+        )
 
     def test_trivy_ignore_file_exists(self):
         assert TRIVY_IGNORE.exists(), (

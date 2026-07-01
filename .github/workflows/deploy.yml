@@ -271,7 +271,6 @@ jobs:
           image-exit: "0"
           format: json
           output: trivy-image.json
-          trivy-version: v0.70.0
 
       - name: Convert Trivy JSON to SARIF
         if: ${{ inputs.image_tag == '' }}

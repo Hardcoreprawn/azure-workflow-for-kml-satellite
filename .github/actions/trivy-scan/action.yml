@@ -34,9 +34,9 @@ inputs:
     required: false
     default: ""
   trivy-version:
-    description: "Trivy version for setup-trivy (e.g. v0.70.0). 'latest' tracks newest."
+    description: "Trivy binary version (pinned; keep in sync with Makefile TRIVY_VERSION)."
     required: false
-    default: "latest"
+    default: "v0.72.0"
 
 runs:
   using: "composite"
