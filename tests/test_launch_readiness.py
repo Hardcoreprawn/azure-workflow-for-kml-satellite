@@ -967,18 +967,56 @@ class TestPublicApiIngressDocsContract:
 class TestTrivySignalQuality:
     """Ensure Trivy scans stay actionable and exceptions remain explicit."""
 
-    def test_security_trivy_fs_ignores_unfixed(self):
-        yml = SECURITY_YML.read_text()
-        assert "ignore-unfixed: true" in yml, (
-            "security.yml Trivy filesystem scan should ignore unfixed CVEs "
-            "to reduce non-actionable alert noise"
+    TRIVY_ACTION = ROOT / ".github" / "actions" / "trivy-scan" / "action.yml"
+
+    def test_trivy_composite_action_exists(self):
+        assert self.TRIVY_ACTION.exists(), (
+            ".github/actions/trivy-scan/action.yml composite action must exist; "
+            "it is the single install+dispatch point for all Trivy scans"
         )
 
-    def test_deploy_trivy_image_ignores_unfixed(self):
+    def test_security_workflow_delegates_to_composite_action(self):
+        yml = SECURITY_YML.read_text()
+        assert ".github/actions/trivy-scan" in yml, (
+            "security.yml must delegate Trivy scans to the canonical composite action "
+            "(.github/actions/trivy-scan) rather than calling trivy-action inline"
+        )
+
+    def test_deploy_workflow_delegates_to_composite_action(self):
         yml = DEPLOY_YML.read_text()
-        assert "ignore-unfixed: true" in yml, (
-            "deploy.yml Trivy image scan should ignore unfixed CVEs "
-            "to focus on actionable vulnerabilities"
+        assert ".github/actions/trivy-scan" in yml, (
+            "deploy.yml must delegate Trivy scans to the canonical composite action "
+            "(.github/actions/trivy-scan) rather than calling trivy-action inline"
+        )
+
+    def test_setup_trivy_pinned_in_composite_action_only(self):
+        """aquasecurity/setup-trivy must be pinned in exactly one place."""
+        action_text = self.TRIVY_ACTION.read_text()
+        assert "setup-trivy" in action_text, (
+            "The composite action must reference aquasecurity/setup-trivy "
+            "so Trivy is installed in one canonical place"
+        )
+        for wf in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            assert "setup-trivy" not in wf.read_text(), (
+                f"{wf.name} must not reference aquasecurity/setup-trivy directly; "
+                "use .github/actions/trivy-scan instead"
+            )
+
+    def test_makefile_scan_targets_exist(self):
+        makefile = (ROOT / "Makefile").read_text()
+        for target in ("scan-fs:", "scan-iac:", "scan-image:"):
+            assert target in makefile, (
+                f"Makefile must have a {target[:-1]} target as the canonical "
+                "scan entrypoint (single source of truth for scan-policy flags)"
+            )
+
+    def test_makefile_fs_scan_ignores_unfixed(self):
+        """Policy flag encoded once in the Makefile, not in each workflow."""
+        makefile = (ROOT / "Makefile").read_text()
+        assert "--ignore-unfixed" in makefile, (
+            "Makefile scan-fs and scan-image targets must pass --ignore-unfixed "
+            "to suppress vulnerabilities with no available fix; "
+            "this flag is the single source of truth — not re-encoded in workflows"
         )
 
     def test_trivy_ignore_file_exists(self):

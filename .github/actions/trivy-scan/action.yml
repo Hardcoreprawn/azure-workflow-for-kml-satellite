@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────
+# Composite action: Trivy scan
+#
+# Installs Trivy once (via aquasecurity/setup-trivy, SHA-pinned
+# in this single location) and dispatches to the canonical make
+# target, which owns the scan-policy flags (severity, scanners,
+# ignore-unfixed).  Callers supply only the variable parts:
+# scan type, format, output path, ignorefile, and exit-code.
+# ─────────────────────────────────────────────────────────────
+name: Trivy scan
+description: >
+  Install Trivy and run a security scan via the canonical Makefile target.
+  Policy flags (severity, scanners, ignore-unfixed) live in the Makefile;
+  this action handles the install and dispatches to make scan-<type>.
+
+inputs:
+  scan:
+    description: 'Scan type: fs | iac | image'
+    required: true
+  image:
+    description: 'Container image reference (only required for scan=image)'
+    required: false
+    default: ''
+  format:
+    description: 'Trivy output format: table | sarif | json'
+    required: false
+    default: 'sarif'
+  output:
+    description: 'Output file path (required when format is sarif or json)'
+    required: false
+    default: ''
+  ignorefile:
+    description: >
+      Path to .trivyignore file.
+      Pass an empty string to scan without any suppressions (e.g. reconcile job).
+    required: false
+    default: '.trivyignore'
+  exit-code:
+    description: 'Exit code on findings: 0 = advisory-only, 1 = blocking'
+    required: false
+    default: '1'
+
+runs:
+  using: composite
+  steps:
+    - name: Install Trivy
+      uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567  # v0.3.1
+      with:
+        version: v0.70.0
+        cache: true
+
+    - name: Run Trivy ${{ inputs.scan }} scan
+      shell: bash
+      # Makefile variables are injected via the environment; ?= defaults in the
+      # Makefile are overridden by env vars.  An empty TRIVY_IGNOREFILE causes
+      # the $(if ...) conditional in each target to omit --ignorefile entirely.
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        TRIVY_FORMAT: ${{ inputs.format }}
+        TRIVY_OUTPUT: ${{ inputs.output }}
+        TRIVY_IGNOREFILE: ${{ inputs.ignorefile }}
+        TRIVY_EXIT_CODE: ${{ inputs.exit-code }}
+        TRIVY_IMAGE: ${{ inputs.image }}
+      run: make scan-${{ inputs.scan }}

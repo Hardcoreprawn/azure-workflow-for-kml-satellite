@@ -1,7 +1,8 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
-	_free-ports _free-func-port _free-web-ports
+	_free-ports _free-func-port _free-web-ports \
+	scan scan-fs scan-iac scan-image
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -155,6 +156,48 @@ smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	echo "Health status: $${STATUS}"; \
 	if [ "$$STATUS" = "failing" ]; then echo "FAILED: health/deep reports failing" >&2; exit 1; fi; \
 	echo "OK"
+
+# ───────────────────── Trivy scanning ─────────────────────
+# Policy flags (severity, scanners, ignore-unfixed) are the single source of truth here.
+# Overrideable: TRIVY_FORMAT, TRIVY_OUTPUT, TRIVY_IGNOREFILE, TRIVY_EXIT_CODE, TRIVY_IMAGE
+# The .github/actions/trivy-scan composite action calls these targets via env vars.
+
+TRIVY           ?= trivy
+TRIVY_FORMAT    ?= table
+TRIVY_OUTPUT    ?=
+TRIVY_IGNOREFILE ?= .trivyignore
+TRIVY_EXIT_CODE ?= 1
+TRIVY_IMAGE     ?=
+
+scan-fs: ## Trivy filesystem scan (vuln · CRITICAL,HIGH · ignore-unfixed)
+	$(TRIVY) fs . \
+		--scanners vuln \
+		--severity CRITICAL,HIGH \
+		--ignore-unfixed \
+		$(if $(TRIVY_FORMAT),--format $(TRIVY_FORMAT)) \
+		$(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) \
+		$(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE)) \
+		--exit-code $(TRIVY_EXIT_CODE)
+
+scan-iac: ## Trivy IaC config scan (CRITICAL,HIGH,MEDIUM)
+	$(TRIVY) config infra/tofu \
+		--severity CRITICAL,HIGH,MEDIUM \
+		$(if $(TRIVY_FORMAT),--format $(TRIVY_FORMAT)) \
+		$(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) \
+		$(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE)) \
+		--exit-code $(TRIVY_EXIT_CODE)
+
+scan-image: ## Trivy image scan (vuln · CRITICAL,HIGH · ignore-unfixed); set TRIVY_IMAGE=<ref>
+	$(TRIVY) image $(TRIVY_IMAGE) \
+		--scanners vuln \
+		--severity CRITICAL,HIGH \
+		--ignore-unfixed \
+		$(if $(TRIVY_FORMAT),--format $(TRIVY_FORMAT)) \
+		$(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT)) \
+		$(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE)) \
+		--exit-code $(TRIVY_EXIT_CODE)
+
+scan: scan-fs scan-iac ## Run all local Trivy scans (fs + iac)
 
 # ───────────────────── Cleanup ─────────────────────
 

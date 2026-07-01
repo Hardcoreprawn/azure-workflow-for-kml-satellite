@@ -77,16 +77,14 @@ jobs:
 
       # ── Security scan ──────────────────────────────────────
       - name: Trivy container scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/trivy-scan
         with:
-          image-ref: ${{ steps.meta.outputs.image_latest }}
+          scan: image
+          image: ${{ steps.meta.outputs.image_latest }}
           format: sarif
           output: trivy-base.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
+          ignorefile: .trivyignore
           exit-code: "1"        # block on findings — base must be clean
-          limit-severities-for-sarif: true  # only CRITICAL/HIGH in SARIF; prevents LOW/MEDIUM triggering exit code
 
       - name: Upload Trivy SARIF
         if: always()
@@ -156,13 +154,13 @@ jobs:
       # is visible to the reconciler. Non-blocking (exit-code 0) — the gate in
       # build-test-push already enforces the policy.
       - name: Trivy scan (no suppressions)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/trivy-scan
         with:
-          image-ref: ${{ steps.meta.outputs.image_latest }}
+          scan: image
+          image: ${{ steps.meta.outputs.image_latest }}
           format: json
           output: trivy-noignore.json
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+          ignorefile: ""
           exit-code: "0"
 
       - name: Reconcile suppressions

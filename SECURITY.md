@@ -77,11 +77,18 @@ Mitigations in place:
 
 To keep findings actionable while staying cost-conscious in dev environments:
 
-- Trivy image/filesystem scans are configured with `ignore-unfixed: true`.
-  This suppresses vulnerabilities that currently have no upstream fix version.
+- Trivy image/filesystem scans are configured with `--ignore-unfixed`, suppressing
+  vulnerabilities that currently have no upstream fix version.
 - Temporary low-cost infra exceptions are tracked in `.trivyignore` with
   explicit rationale. These are not blanket suppressions and must be revisited
   when a paid hardening change is approved.
+
+**Single source of truth for scan flags:** The exact flags for each scan type
+(`make scan-fs`, `make scan-iac`, `make scan-image`) are defined in the project
+`Makefile`.  The `.github/actions/trivy-scan` composite action installs Trivy
+and dispatches to these targets; CI workflows call the composite action without
+re-encoding scan policy.  To understand or change the scan configuration, read
+the `Makefile` `scan-*` targets.
 
 Current temporary exceptions:
 

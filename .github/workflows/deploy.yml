@@ -263,17 +263,13 @@ jobs:
       - name: Trivy container scan (single pass to JSON)
         id: trivy-scan
         if: ${{ inputs.image_tag == '' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/trivy-scan
         with:
-          version: v0.70.0
-          cache: false
-          image-ref: ${{ steps.meta.outputs.image_uri }}
-          scanners: vuln
+          scan: image
+          image: ${{ steps.meta.outputs.image_uri }}
           format: json
           output: trivy-image.json
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          trivyignores: .trivyignore
+          ignorefile: .trivyignore
           exit-code: "0"        # gate explicitly from JSON so SARIF and gate share one scan result
 
       - name: Convert Trivy JSON to SARIF
