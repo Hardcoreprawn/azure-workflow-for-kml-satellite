@@ -1,10 +1,13 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
-	test-upload test test-int lint fmt check smoke clean \
+	test-upload test test-int lint fmt check sast smoke clean \
 	_free-ports _free-func-port _free-web-ports
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
+
+# Pinned Semgrep version — update deliberately (keep in sync with security.yml comment)
+SEMGREP_VERSION := 1.127.0
 
 # ───────────────────── Help ─────────────────────
 
@@ -145,6 +148,18 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff check --fix .
 
 check: lint test ## Full local gate (lint + test) — identical to CI
+
+sast: ## SAST gate: Semgrep with pinned version (canonical — CI runs this exact command)
+	uvx semgrep@$(SEMGREP_VERSION) scan \
+		--config p/python \
+		--config p/owasp-top-ten \
+		--config p/security-audit \
+		--sarif --output semgrep.sarif \
+		--error \
+		--exclude tests/ \
+		--exclude scripts/ \
+		--exclude infra/ \
+		--exclude-rule html.security.audit.missing-integrity.missing-integrity
 
 smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \

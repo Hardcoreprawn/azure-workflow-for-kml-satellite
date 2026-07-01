@@ -26,6 +26,7 @@ import typing
 from pathlib import Path
 
 import pytest
+import yaml
 
 from treesight.security.url import csp_token_matches_host as _csp_token_matches_host
 
@@ -50,6 +51,8 @@ SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
 OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
 PULL_REQUEST_TEMPLATE = ROOT / ".github" / "pull_request_template.md"
+MAKEFILE = ROOT / "Makefile"
+DEPENDABOT_YML = ROOT / ".github" / "dependabot.yml"
 
 HTML_PAGES = [
     WEBSITE / "index.html",
@@ -1770,3 +1773,97 @@ class TestCiamTofuOwnership:
             "infra/tofu/README.md must explicitly deprecate the manual portal workflow "
             "once Phase 2 is active"
         )
+
+
+# ---------------------------------------------------------------------------
+# 17. Semgrep SAST consistency (issue #978)
+# ---------------------------------------------------------------------------
+
+
+class TestSemgrepSastConsistency:
+    """Ensure Semgrep is reproducible: pinned version, no --config auto, make sast target."""
+
+    def test_makefile_has_sast_target(self):
+        makefile = MAKEFILE.read_text()
+        assert re.search(r"^sast:", makefile, re.MULTILINE), (
+            "Makefile must have a `sast:` target so local and CI run the same command"
+        )
+
+    def test_sast_target_uses_uvx_semgrep(self):
+        makefile = MAKEFILE.read_text()
+        assert "uvx semgrep@" in makefile, (
+            "make sast must invoke Semgrep via `uvx semgrep@<version>` "
+            "to pin the version and match the uv toolchain"
+        )
+
+    def test_sast_target_version_is_pinned(self):
+        makefile = MAKEFILE.read_text()
+        # SEMGREP_VERSION variable must be set to a concrete version string
+        assert re.search(r"SEMGREP_VERSION\s*:=\s*\d+\.\d+", makefile), (
+            "Makefile must define SEMGREP_VERSION := <major>.<minor>[.<patch>] "
+            "so the version is pinned and auditable"
+        )
+
+    def test_security_yml_semgrep_delegates_to_make_sast(self):
+        yml = SECURITY_YML.read_text()
+        assert "make sast" in yml, (
+            "security.yml Semgrep job must run `make sast` — "
+            "single source of truth; do not inline semgrep scan in CI"
+        )
+
+    def test_security_yml_no_config_auto(self):
+        yml = SECURITY_YML.read_text()
+        assert "--config auto" not in yml, (
+            "security.yml must not use --config auto — "
+            "it selects rules server-side and causes non-reproducible CI failures"
+        )
+
+    def test_security_yml_no_semgrep_container(self):
+        yml = SECURITY_YML.read_text()
+        assert "semgrep/semgrep" not in yml, (
+            "security.yml must not use the unpinned semgrep/semgrep container image; "
+            "run Semgrep via `make sast` (uvx) instead"
+        )
+
+    def test_sast_target_excludes_non_production_paths(self):
+        makefile = MAKEFILE.read_text()
+        # Verify the core exclusions are delegated through make sast
+        assert "--exclude tests/" in makefile, "make sast must exclude tests/ from the Semgrep scan"
+        assert "--exclude infra/" in makefile, "make sast must exclude infra/ from the Semgrep scan"
+
+
+# ---------------------------------------------------------------------------
+# 18. Dependabot cooldown (issue #978)
+# ---------------------------------------------------------------------------
+
+
+class TestDependabotCooldown:
+    """Ensure every dependabot ecosystem has a cooldown.
+
+    Avoids instant adoption of brand-new releases (supply-chain hardening).
+    """
+
+    def test_every_ecosystem_has_cooldown(self):
+        config = yaml.safe_load(DEPENDABOT_YML.read_text())
+        updates = config.get("updates", [])
+        assert updates, "dependabot.yml must have at least one updates entry"
+        missing = [
+            entry.get("package-ecosystem", "<unknown>")
+            for entry in updates
+            if "cooldown" not in entry
+        ]
+        assert not missing, (
+            f"Every dependabot ecosystem must have a `cooldown:` key. "
+            f"Missing cooldown on: {missing}. "
+            "Supply-chain hardening: don't auto-adopt brand-new releases."
+        )
+
+    def test_dependabot_cooldown_has_default_days(self):
+        config = yaml.safe_load(DEPENDABOT_YML.read_text())
+        for entry in config.get("updates", []):
+            eco = entry.get("package-ecosystem", "<unknown>")
+            cooldown = entry.get("cooldown", {})
+            assert isinstance(cooldown, dict) and "default-days" in cooldown, (
+                f"dependabot ecosystem {eco!r} cooldown must specify `default-days` "
+                "to control the minimum wait period before a PR is opened"
+            )
