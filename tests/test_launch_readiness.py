@@ -1131,6 +1131,19 @@ class TestTrivySignalQuality:
             ".trivyignore must explicitly track current low-cost network ACL exceptions"
         )
 
+    def test_trivy_ignore_has_no_container_cve_suppressions(self):
+        ignore = TRIVY_IGNORE.read_text()
+        non_comment_entries = [
+            line.strip()
+            for line in ignore.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        cve_entries = [line for line in non_comment_entries if line.startswith("CVE-")]
+        assert cve_entries == [], (
+            ".trivyignore must not contain container CVE suppressions; "
+            "HIGH/CRITICAL container findings must be fixed at source"
+        )
+
     def test_security_workflow_checks_trivyignore_expiry(self):
         yml = SECURITY_YML.read_text()
         assert "Trivyignore Expiry Check" in yml, (
