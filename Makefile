@@ -1,7 +1,8 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
-	_free-ports _free-func-port _free-web-ports
+	_free-ports _free-func-port _free-web-ports \
+	sast
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -145,6 +146,31 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff check --fix .
 
 check: lint test ## Full local gate (lint + test) — identical to CI
+
+# ───────────────────── Static analysis (Semgrep) ─────────────────────
+# Single source of truth for Semgrep — local and CI run this exact command.
+# Pinned version (via uvx) + pinned rule packs (no server-side auto rule
+# selection) so results are reproducible and don't drift as the registry
+# publishes new rules.
+# CI sets SEMGREP_FORMAT=sarif + SEMGREP_OUTPUT=<file> to emit SARIF.
+SEMGREP_VERSION ?= 1.163.0
+SEMGREP ?= uvx --quiet semgrep@$(SEMGREP_VERSION)
+SEMGREP_FORMAT ?= text
+SEMGREP_OUTPUT ?=
+_SEMGREP_OUT = $(if $(SEMGREP_OUTPUT),--output $(SEMGREP_OUTPUT),)
+
+sast: ## Semgrep static analysis (pinned version + packs — reproducible local == CI)
+	$(SEMGREP) scan \
+		--config p/python \
+		--config p/owasp-top-ten \
+		--config p/security-audit \
+		--error \
+		--exclude tests/ \
+		--exclude scripts/ \
+		--exclude infra/ \
+		--exclude-rule html.security.audit.missing-integrity.missing-integrity \
+		$(if $(filter sarif,$(SEMGREP_FORMAT)),--sarif) \
+		$(_SEMGREP_OUT)
 
 smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \
