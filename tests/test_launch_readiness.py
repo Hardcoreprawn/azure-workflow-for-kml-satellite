@@ -46,6 +46,8 @@ INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
+MAKEFILE = ROOT / "Makefile"
+DEPENDABOT_YML = ROOT / ".github" / "dependabot.yml"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
 API_INTERFACE_REFERENCE = ROOT / "docs" / "API_INTERFACE_REFERENCE.md"
 OPENAPI_YAML = ROOT / "docs" / "openapi.yaml"
@@ -961,6 +963,48 @@ class TestPublicApiIngressDocsContract:
 
 # ---------------------------------------------------------------------------
 # 11. Trivy signal quality and exception discipline
+# ---------------------------------------------------------------------------
+
+
+class TestSemgrepConsistency:
+    """Semgrep must be reproducible: pinned, make-driven, no registry drift."""
+
+    def test_semgrep_runs_via_make_sast(self):
+        yml = SECURITY_YML.read_text()
+        assert "make sast" in yml, (
+            "security.yml Semgrep job must delegate to 'make sast' so the exact "
+            "config runs identically locally and in CI"
+        )
+        assert "semgrep scan" not in yml, (
+            "security.yml must not invoke 'semgrep scan' inline — use 'make sast'"
+        )
+
+    def test_semgrep_does_not_use_config_auto(self):
+        makefile = MAKEFILE.read_text()
+        yml = SECURITY_YML.read_text()
+        assert "--config auto" not in makefile and "--config auto" not in yml, (
+            "Semgrep must not use '--config auto' — it selects rules server-side "
+            "and drifts, breaking unrelated PRs. Use pinned rule packs."
+        )
+
+    def test_sast_target_is_pinned(self):
+        makefile = MAKEFILE.read_text()
+        assert "sast:" in makefile, "Makefile must define a canonical 'sast' target"
+        assert "SEMGREP_VERSION ?=" in makefile, (
+            "Makefile must pin the Semgrep version so local and CI match"
+        )
+        for pack in ("p/python", "p/owasp-top-ten", "p/security-audit"):
+            assert pack in makefile, f"sast target must include pinned pack {pack}"
+
+    def test_dependabot_has_cooldown(self):
+        cfg = DEPENDABOT_YML.read_text()
+        # One cooldown block per ecosystem (pip, github-actions, docker, terraform)
+        assert cfg.count("cooldown:") == cfg.count("- package-ecosystem:"), (
+            "every dependabot ecosystem must declare a cooldown to avoid adopting "
+            "brand-new (possibly compromised) releases immediately"
+        )
+
+
 # ---------------------------------------------------------------------------
 
 
