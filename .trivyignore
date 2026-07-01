@@ -31,23 +31,14 @@ AZU-0045 # exp:2026-07-16 accepted cost posture — unused Defender plans intent
 # Upstream issue: https://github.com/Azure/azure-functions-docker/issues/1249
 # Review: remove these entries once Microsoft ships a patched Functions host image.
 # Reviewed 2026-06-23: upstream still unpatched; extended 30 days.
-CVE-2026-25679 # exp:2026-07-23 Go stdlib in Functions host — tracking upstream
-CVE-2026-27139 # exp:2026-07-23 Go stdlib in Functions host — tracking upstream
-CVE-2026-27142 # exp:2026-07-23 Go stdlib in Functions host — tracking upstream
-CVE-2026-40894 # exp:2026-07-23 OpenTelemetry.Api in Functions host — fixed upstream in 1.15.3, awaiting patched host image
-CVE-2026-48506 # exp:2026-07-23 MessagePack in Functions extension bundle — fixed upstream in 2.5.301/3.1.7, awaiting patched bundle/image — tracking #965
 
 # libpng16-16: Dockerfile.base already runs apt-get upgrade -y which will apply the fix
 # once it lands in Debian bookworm mirrors. Trigger a base-image rebuild to pick it up.
 # Reviewed 2026-06-23: extended 30 days pending mirror propagation + base rebuild.
-CVE-2026-33416 # exp:2026-07-23 libpng16-16 HIGH — tracking #355
-CVE-2026-33636 # exp:2026-07-23 libpng16-16 HIGH — tracking #355
 
 # pip 25.0.1 CVEs in base container image — not exploitable at runtime.
 # We do not install arbitrary wheels in production; pip is only used during
 # image build. Upgrade when Microsoft publishes a patched Functions base image.
-CVE-2025-8869 # exp:2026-07-23 pip symlink extraction — medium
-CVE-2026-1703 # exp:2026-07-23 pip path traversal via crafted wheels — low
 
 # Debian bookworm package CVEs — all have fixed versions in the archive.
 # Dockerfile.base runs apt-get upgrade -y; these clear on the next base image rebuild.
@@ -56,16 +47,13 @@ CVE-2026-1703 # exp:2026-07-23 pip path traversal via crafted wheels — low
 # systemd: Arbitrary code execution or DoS via spurious IPC API call data.
 # libsystemd0/libudev1 are present in the Debian base but the systemd IPC attack
 # surface is not reachable inside a container (no systemd daemon running).
-CVE-2026-29111 # exp:2026-07-09 libsystemd0+libudev1 HIGH — fixed in deb12u2, base rebuild pending
 #
 # libcap: Privilege escalation via TOCTOU race in cap_set_file().
 # Application code does not call cap_set_file(); not reachable.
-CVE-2026-4878 # exp:2026-07-09 libcap2 HIGH — fixed in deb12u3, base rebuild pending
 #
 # glibc: Integer overflow in memalign leads to heap corruption.
 # Requires attacker-controlled memalign call size. Not directly reachable
 # via our application but glibc is load-bearing — base rebuild prioritised.
-CVE-2026-0861 # exp:2026-07-09 libc6+libc-bin HIGH — fixed in deb12u14, base rebuild pending
 
 # MessagePack CVE-2026-48109 (LZ4 unsafe deserialization, HIGH) in
 # FuncExtensionBundles/Microsoft.Azure.Functions.ExtensionBundle/4.35.0/bin/.
@@ -80,4 +68,3 @@ CVE-2026-0861 # exp:2026-07-09 libc6+libc-bin HIGH — fixed in deb12u14, base r
 # MessagePack ≥ 2.5.301; Microsoft base image then auto-refreshed by the daily
 # base-image.yml rebuild.  Remove this entry once the rebuilt image is pushed.
 # Tracked in #904.
-CVE-2026-48109 # exp:2026-07-13 MessagePack HIGH in extension bundle — awaiting upstream bundle + base rebuild
