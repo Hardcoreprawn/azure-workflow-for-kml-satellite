@@ -15,7 +15,18 @@ jobs:
       - name: Validate PR body links a closing issue
         env:
           PR_BODY: ${{ github.event.pull_request.body || '' }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
+          # Dependabot PRs don't (and can't) close a tracked issue. Exempt them
+          # by AUTHENTICATED IDENTITY only — pull_request.user.login is set by
+          # GitHub and cannot be spoofed (the [bot] suffix is reserved for Apps).
+          # Never key this off branch name, PR title, or commit author, which are
+          # all forgeable. Humans and the Copilot coding agent still must link.
+          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            echo "Automated dependency PR by ${PR_AUTHOR} — linked-issue requirement waived."
+            exit 0
+          fi
+
           pattern='(closes|fixes|resolves)\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+'
           if printf '%s\n' "$PR_BODY" | grep -Eiq "$pattern"; then
             echo "Found closes/fixes/resolves #NNN in PR body."

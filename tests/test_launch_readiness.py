@@ -1508,6 +1508,29 @@ class TestLinkedIssuePullRequestGate:
             "PR template must prompt authors to include closes/fixes/resolves #NNN"
         )
 
+    def test_dependabot_exempt_by_authenticated_identity_only(self):
+        """Dependabot is waived from the linked-issue gate, but ONLY via the
+        unspoofable authenticated author identity — never branch/title/commit."""
+        content = REQUIRE_LINKED_ISSUE_YML.read_text()
+        # Exemption keys off the GitHub-authenticated PR author login.
+        assert "PR_AUTHOR: ${{ github.event.pull_request.user.login }}" in content, (
+            "exemption must read the authenticated pull_request.user.login"
+        )
+        assert '"$PR_AUTHOR" = "dependabot[bot]"' in content, (
+            "exemption must match the dependabot[bot] identity exactly"
+        )
+        # Must NOT key off spoofable signals.
+        assert "head_ref" not in content and "head.ref" not in content, (
+            "exemption must not trust the (forgeable) branch name"
+        )
+        assert "pull_request.title" not in content, (
+            "exemption must not trust the (forgeable) PR title"
+        )
+        # Broad bot allowlisting would let any installed App bypass the gate.
+        assert "user.type" not in content, (
+            "do not exempt all bots (user.type == 'Bot'); allowlist dependabot only"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 15. KML polygon-with-hole parsing (#580)
