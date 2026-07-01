@@ -8,6 +8,9 @@ build/
 *.egg
 .venv/
 
+# Pinned local tool binaries (e.g. Trivy fetched by `make scan-*`)
+.tools/
+
 # Azure Functions
 local.settings.json
 .python_packages/

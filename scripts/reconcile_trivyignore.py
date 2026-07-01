@@ -115,6 +115,40 @@ def present_ids_from_scans(scans: list[dict]) -> set[str]:
     return present
 
 
+def suppressed_ids(ignore_text: str) -> set[str]:
+    """All vuln IDs currently suppressed by the ignore file (upper-cased)."""
+    return {e.vuln_id.upper() for e in parse_ignore_file(ignore_text)}
+
+
+def unsuppressed_findings(scans: list[dict], ignore_text: str) -> list[str]:
+    """Present vuln IDs that are NOT suppressed by the ignore file (sorted).
+
+    The image security gate fails when this is non-empty: a present finding with
+    no matching suppression is a real, un-triaged exposure.
+    """
+    return sorted(present_ids_from_scans(scans) - suppressed_ids(ignore_text))
+
+
+def filter_scan(scan: dict, suppressed: set[str]) -> dict:
+    """Return a copy of ``scan`` with suppressed vulnerabilities removed.
+
+    Used to produce a clean SARIF that matches the gate, so suppressed CVEs do
+    not reappear in Code Scanning.
+    """
+    suppressed_upper = {s.upper() for s in suppressed}
+    out = dict(scan)
+    new_results: list[dict] = []
+    for result in scan.get("Results", []) or []:
+        new_result = dict(result)
+        vulns = result.get("Vulnerabilities") or []
+        new_result["Vulnerabilities"] = [
+            v for v in vulns if (v.get("VulnerabilityID") or "").upper() not in suppressed_upper
+        ]
+        new_results.append(new_result)
+    out["Results"] = new_results
+    return out
+
+
 def _renew_expiry(raw: str, new_expiry: date) -> str:
     """Return ``raw`` with its exp date set to ``new_expiry``."""
     replaced = EXP_RE.sub(f"exp:{new_expiry.isoformat()}", raw)
@@ -256,10 +290,42 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit 1 if the file would change (drift); do not write.",
     )
+    mode.add_argument(
+        "--gate",
+        action="store_true",
+        help="Exit 1 if any present finding is not suppressed by the ignore file "
+        "(the base-image security gate).",
+    )
+    parser.add_argument(
+        "--write-filtered",
+        type=Path,
+        help="Write the scan with suppressed findings removed (for a clean SARIF "
+        "that matches the gate). Requires exactly one --scan.",
+    )
     args = parser.parse_args(argv)
 
     text = args.ignore_file.read_text()
-    present = present_ids_from_scans(_load_scans(args.scan))
+    scans = _load_scans(args.scan)
+
+    # Optional: emit a suppression-filtered scan so the SARIF matches the gate.
+    if args.write_filtered:
+        if len(scans) != 1:
+            parser.error("--write-filtered requires exactly one --scan")
+        args.write_filtered.write_text(json.dumps(filter_scan(scans[0], suppressed_ids(text))))
+        print(f"Wrote suppression-filtered scan to {args.write_filtered}")
+
+    # Gate mode: block on present findings that are not suppressed.
+    if args.gate:
+        unsuppressed = unsuppressed_findings(scans, text)
+        if unsuppressed:
+            print("::error::Unsuppressed HIGH/CRITICAL findings in image scan:")
+            for vid in unsuppressed:
+                print(f"  - {vid}")
+            return 1
+        print("Gate passed: no unsuppressed HIGH/CRITICAL findings.")
+        return 0
+
+    present = present_ids_from_scans(scans)
     today = datetime.now(UTC).date()
     result = reconcile(
         text,

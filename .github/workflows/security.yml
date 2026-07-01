@@ -206,15 +206,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy (IaC)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/trivy-scan
         with:
-          scan-type: config
-          scan-ref: infra/tofu
-          format: sarif
+          scan: iac
           output: trivy-iac.sarif
-          trivyignores: .trivyignore
-          severity: CRITICAL,HIGH,MEDIUM
-          exit-code: "0"   # advisory — findings upload to Code Scanning
 
       - name: Upload Trivy IaC SARIF
         if: always()
@@ -231,16 +226,10 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run Trivy (filesystem)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: ./.github/actions/trivy-scan
         with:
-          scan-type: fs
-          scan-ref: .
-          format: sarif
+          scan: fs
           output: trivy-fs.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-          limit-severities-for-sarif: true
 
       - name: Upload Trivy FS SARIF
         if: always()

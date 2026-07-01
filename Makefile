@@ -2,7 +2,7 @@
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
 	_free-ports _free-func-port _free-web-ports \
-	sast
+	sast scan scan-iac scan-fs scan-image
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -171,6 +171,51 @@ sast: ## Semgrep static analysis (pinned version + packs — reproducible local 
 		--exclude-rule html.security.audit.missing-integrity.missing-integrity \
 		$(if $(filter sarif,$(SEMGREP_FORMAT)),--sarif) \
 		$(_SEMGREP_OUT)
+
+# ───────────────────── Security scans (Trivy) ─────────────────────
+# Single source of truth for Trivy — local, pre-commit, and CI run these.
+# The binary version is PINNED for reproducibility + supply-chain safety (we
+# never run a brand-new, unvetted release the moment it drops). The vulnerability
+# DB is still fetched fresh every run, so CVE detection stays current. Upgrades
+# flow through Dependabot (setup-trivy action SHA) with a cooldown window.
+# CI installs this exact version via the pinned setup-trivy action; locally,
+# scan-* fetches the pinned build into .tools/ if the trivy on PATH differs, so
+# local runs match CI ("make updates first, like the pipeline").
+# CI sets TRIVY_FORMAT=sarif + TRIVY_OUTPUT=<file> to emit SARIF for Code
+# Scanning; the base-image reconcile sets TRIVY_IGNOREFILE= to scan unsuppressed.
+TRIVY_VERSION ?= 0.72.0
+TRIVY ?= trivy
+TRIVY_FORMAT ?= table
+TRIVY_OUTPUT ?=
+TRIVY_IGNOREFILE ?= .trivyignore
+TRIVY_IMAGE_EXIT ?= 1
+TRIVY_SCANNERS ?=
+_TRIVY_OUT = $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT),)
+_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)
+_TRIVY_SCAN = $(if $(TRIVY_SCANNERS),--scanners $(TRIVY_SCANNERS),)
+
+# Resolve a Trivy at exactly $(TRIVY_VERSION); install the pinned build into
+# .tools/ when the one on PATH differs. Sets shell var $$T to the binary.
+define _trivy
+T="$(TRIVY)"; \
+if [ "$$($$T --version 2>/dev/null | awk '/Version:/{print $$2; exit}')" != "$(TRIVY_VERSION)" ]; then \
+  echo ">> Installing pinned Trivy v$(TRIVY_VERSION) into .tools/ (PATH trivy differs)"; \
+  mkdir -p .tools; \
+  curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/v$(TRIVY_VERSION)/contrib/install.sh" | sh -s -- -b .tools "v$(TRIVY_VERSION)" >/dev/null; \
+  T="./.tools/trivy"; \
+fi
+endef
+
+scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
+	@$(_trivy); "$$T" config infra/tofu $(_TRIVY_IGN) --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
+	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan-image: ## Trivy image scan (set IMAGE=...; TRIVY_IMAGE_EXIT=0 for advisory) — blocks on fixable CRITICAL/HIGH
+	@$(_trivy); "$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) --severity CRITICAL,HIGH --ignore-unfixed --exit-code $(TRIVY_IMAGE_EXIT) --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+
+scan: scan-iac scan-fs ## Run repo Trivy scans (IaC + filesystem)
 
 smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 	@FUNC_URL=$${FUNC_URL:-http://localhost:7071}; \
