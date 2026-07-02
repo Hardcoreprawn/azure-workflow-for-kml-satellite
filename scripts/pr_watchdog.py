@@ -34,6 +34,10 @@ CHECK_FAILURE_CONCLUSIONS = {
 
 COMMENT_MARKER = "<!-- pr-watchdog -->"
 
+# GitHub logins that the Watchdog will auto-promote from draft.
+# Only the Copilot coding-agent is trusted by default; extend if needed.
+TRUSTED_PROMOTE_LOGINS: frozenset[str] = frozenset({"Copilot"})
+
 
 @dataclass(frozen=True)
 class ReviewThread:
@@ -57,6 +61,11 @@ class PRSummary:
     @property
     def has_blockers(self) -> bool:
         return bool(self.failing_checks or self.unresolved_threads or self.missing_linked_issue)
+
+    @property
+    def is_ready_to_promote(self) -> bool:
+        """True when the draft has no blockers and no pending checks — safe to un-draft."""
+        return self.is_draft and not self.has_blockers and not self.pending_checks
 
 
 def _github_rest(
@@ -329,6 +338,27 @@ def upsert_watchdog_comment(
     )
 
 
+def should_auto_promote(summary: PRSummary, author_login: str) -> bool:
+    """True when a draft PR can be auto-promoted: clean state and trusted author."""
+    return summary.is_ready_to_promote and author_login in TRUSTED_PROMOTE_LOGINS
+
+
+def promote_draft_pr(*, token: str, pr_node_id: str, pr_number: int) -> None:
+    """Convert a draft PR to ready-for-review via the GraphQL mutation."""
+    mutation = """
+    mutation($nodeId: ID!) {
+      markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) {
+        pullRequest {
+          isDraft
+          number
+        }
+      }
+    }
+    """
+    _github_graphql(token=token, query=mutation, variables={"nodeId": pr_node_id})
+    print(f"#{pr_number} auto-promoted from draft to ready-for-review")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--owner", required=True)
@@ -381,11 +411,16 @@ def main() -> int:
             is_draft=bool(pr.get("draft")),
         )
         comment = render_comment(summary)
+        author_login = str((pr.get("user") or {}).get("login", ""))
 
         print(
             f"#{summary.number} blockers={summary.has_blockers} pending={len(summary.pending_checks)}"
         )
         if args.dry_run:
+            if should_auto_promote(summary, author_login):
+                print(
+                    f"#{summary.number} dry-run: would auto-promote from draft to ready-for-review"
+                )
             continue
         upsert_watchdog_comment(
             token=token,
@@ -394,6 +429,9 @@ def main() -> int:
             pr_number=summary.number,
             body=comment,
         )
+        if should_auto_promote(summary, author_login):
+            pr_node_id = str(pr.get("node_id", ""))
+            promote_draft_pr(token=token, pr_node_id=pr_node_id, pr_number=summary.number)
 
     if args.dry_run:
         print("dry-run enabled; no comments were created or updated")

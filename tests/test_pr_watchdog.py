@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from scripts.pr_watchdog import PRSummary, ReviewThread, body_links_issue, render_comment
+from scripts.pr_watchdog import (
+    PRSummary,
+    ReviewThread,
+    body_links_issue,
+    render_comment,
+    should_auto_promote,
+)
 
 
 def test_render_comment_marks_blocked_when_failing_checks_present() -> None:
@@ -122,3 +128,82 @@ def test_body_links_issue_rejects_bare_references() -> None:
     assert not body_links_issue("Related to #12")
     assert not body_links_issue("")
     assert not body_links_issue("closes the gap (no number)")
+
+
+def test_should_auto_promote_trusted_draft_ready_returns_true() -> None:
+    summary = PRSummary(
+        number=10,
+        url="https://example.invalid/pr/10",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    assert should_auto_promote(summary, "Copilot") is True
+
+
+def test_should_auto_promote_untrusted_author_returns_false() -> None:
+    summary = PRSummary(
+        number=11,
+        url="https://example.invalid/pr/11",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    assert should_auto_promote(summary, "random-user") is False
+
+
+def test_should_auto_promote_draft_with_blockers_returns_false() -> None:
+    summary = PRSummary(
+        number=12,
+        url="https://example.invalid/pr/12",
+        title="Example",
+        failing_checks=("CI/Test",),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    assert should_auto_promote(summary, "Copilot") is False
+
+
+def test_should_auto_promote_draft_with_pending_checks_returns_false() -> None:
+    summary = PRSummary(
+        number=13,
+        url="https://example.invalid/pr/13",
+        title="Example",
+        failing_checks=(),
+        pending_checks=("CI/Test",),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    assert should_auto_promote(summary, "Copilot") is False
+
+
+def test_should_auto_promote_non_draft_returns_false() -> None:
+    summary = PRSummary(
+        number=14,
+        url="https://example.invalid/pr/14",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=False,
+    )
+    assert should_auto_promote(summary, "Copilot") is False
+
+
+def test_should_auto_promote_missing_linked_issue_returns_false() -> None:
+    summary = PRSummary(
+        number=15,
+        url="https://example.invalid/pr/15",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        missing_linked_issue=True,
+        is_draft=True,
+    )
+    assert should_auto_promote(summary, "Copilot") is False
