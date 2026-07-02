@@ -10,6 +10,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # ready_for_review so promoting a draft triggers CI (#1003/#1004).
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   schedule:
     # Weekly Monday 07:00 UTC (after CodeQL at 06:00)
