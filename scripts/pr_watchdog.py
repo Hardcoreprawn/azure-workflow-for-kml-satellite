@@ -345,6 +345,8 @@ def should_auto_promote(summary: PRSummary, author_login: str) -> bool:
 
 def promote_draft_pr(*, token: str, pr_node_id: str, pr_number: int) -> None:
     """Convert a draft PR to ready-for-review via the GraphQL mutation."""
+    if not pr_node_id:
+        raise ValueError(f"#{pr_number}: cannot promote draft — node_id is missing")
     mutation = """
     mutation($nodeId: ID!) {
       markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) {
@@ -355,7 +357,12 @@ def promote_draft_pr(*, token: str, pr_node_id: str, pr_number: int) -> None:
       }
     }
     """
-    _github_graphql(token=token, query=mutation, variables={"nodeId": pr_node_id})
+    result = _github_graphql(token=token, query=mutation, variables={"nodeId": pr_node_id})
+    pr_data = ((result.get("data") or {}).get("markPullRequestReadyForReview") or {}).get(
+        "pullRequest"
+    ) or {}
+    if pr_data.get("isDraft") is not False:
+        raise RuntimeError(f"#{pr_number}: promote mutation returned unexpected state: {pr_data}")
     print(f"#{pr_number} auto-promoted from draft to ready-for-review")
 
 
