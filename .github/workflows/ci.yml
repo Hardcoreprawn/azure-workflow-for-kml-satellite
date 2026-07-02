@@ -8,12 +8,12 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/**'
-      - '*.md'
+      - '**/*.md'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'docs/**'
-      - '*.md'
+      - '**/*.md'
 
 permissions:
   contents: read
