@@ -14,6 +14,7 @@ on:
     paths-ignore:
       - 'docs/**'
       - '*.md'
+  merge_group:
 
 permissions:
   contents: read
