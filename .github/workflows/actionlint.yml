@@ -44,6 +44,13 @@ jobs:
           bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}"
 
       - name: Run actionlint
-        # shellcheck is pre-installed on ubuntu runners; actionlint uses it
-        # automatically to lint run: scripts.
+        # shellcheck is pre-installed on ubuntu runners; actionlint runs it on
+        # `run:` scripts automatically. Scope shellcheck to genuine problems:
+        #  - SC2129 is pure style (group redirects); not a bug.
+        #  - SC2016 is a false positive for our jq programs, which legitimately
+        #    use single quotes so `$var` refers to jq variables, not shell.
+        # Real shellcheck errors/warnings still gate. Broader shellcheck
+        # cleanup is tracked separately (see the CI-assurance issue).
+        env:
+          SHELLCHECK_OPTS: "-e SC2129 -e SC2016"
         run: ./actionlint -color
