@@ -53,6 +53,18 @@ def test_select_issues_prioritizes_security_and_now() -> None:
     assert [issue.number for issue in selected] == [2, 3]
 
 
+def test_select_issues_prefers_oldest_within_same_tier() -> None:
+    # Within one priority tier, the oldest (lowest-numbered) issues go first so
+    # agents drain the backlog bottom-up rather than grabbing the newest.
+    issues = [
+        _issue(300, {"discovered"}),
+        _issue(100, {"discovered"}),
+        _issue(200, {"discovered"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=2)
+    assert [issue.number for issue in selected] == [100, 200]
+
+
 def test_select_issues_skips_assigned_issues() -> None:
     issues = [
         _issue(10, {"security"}, {"someone"}),
