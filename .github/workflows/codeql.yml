@@ -7,6 +7,7 @@ on:
     # ready_for_review so promoting a draft triggers CI (#1003/#1004).
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+  merge_group:
   schedule:
     # Run weekly on Monday at 06:00 UTC
     - cron: "0 6 * * 1"
