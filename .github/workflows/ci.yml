@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/**'
-      - '*.md'
+      - '**/*.md'
   pull_request:
     # Include ready_for_review so promoting a draft (manual or via the
     # watchdog auto-promote) actually triggers CI. See #1003/#1004.
@@ -16,7 +16,7 @@ on:
     branches: [main]
     paths-ignore:
       - 'docs/**'
-      - '*.md'
+      - '**/*.md'
   merge_group:
 
 permissions:
