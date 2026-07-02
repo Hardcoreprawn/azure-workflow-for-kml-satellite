@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# Actionlint — validate GitHub Actions workflow syntax in CI.
+#
+# Why this exists:
+#   Workflow YAML was only linted locally via the pre-commit actionlint
+#   hook. A workflow edit committed without pre-commit could reach main
+#   with a syntax/expression error uncaught, and workflow-only PRs that
+#   change base-image.yml / deploy.yml (which don't otherwise run on PRs)
+#   got no validation. See #995 / epic #1004.
+#
+#   Runs on every PR (no path filter) so it can be a required check
+#   without needing a docs-stub. Pinned to the same version as the
+#   pre-commit hook (.pre-commit-config.yaml) so local == CI.
+# ─────────────────────────────────────────────────────────────
+name: Actionlint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: Actionlint
+    runs-on: ubuntu-latest
+    env:
+      # Keep in lockstep with the actionlint pre-commit hook rev.
+      ACTIONLINT_VERSION: "1.7.11"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install actionlint
+        run: |
+          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}"
+
+      - name: Run actionlint
+        # shellcheck is pre-installed on ubuntu runners; actionlint uses it
+        # automatically to lint run: scripts.
+        run: ./actionlint -color

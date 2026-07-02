@@ -45,6 +45,7 @@ SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
 CI_DOCS_STUB_YML = ROOT / ".github" / "workflows" / "ci-docs-stub.yml"
 CODEQL_YML = ROOT / ".github" / "workflows" / "codeql.yml"
+ACTIONLINT_YML = ROOT / ".github" / "workflows" / "actionlint.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
@@ -1452,6 +1453,22 @@ class TestCIFeedbackHygiene:
                 f"{wf.name} pull_request trigger must include 'ready_for_review' so "
                 "promoting a draft (manual or auto) actually runs CI"
             )
+
+    def test_actionlint_gates_workflows_in_ci(self):
+        """Workflow YAML must be validated in CI (not just local pre-commit),
+        pinned to the same actionlint version as the hook so local == CI. #995."""
+        assert ACTIONLINT_YML.exists(), "actionlint.yml CI workflow must exist"
+        wf = ACTIONLINT_YML.read_text()
+        assert "download-actionlint" in wf and "./actionlint" in wf, (
+            "actionlint.yml must install and run actionlint"
+        )
+        pc = (ROOT / ".pre-commit-config.yaml").read_text()
+        pc_ver = re.search(r"rhysd/actionlint\s*\n\s*rev:\s*v([0-9.]+)", pc)
+        ci_ver = re.search(r'ACTIONLINT_VERSION:\s*"([0-9.]+)"', wf)
+        assert pc_ver and ci_ver and pc_ver.group(1) == ci_ver.group(1), (
+            "actionlint CI version must match the pre-commit hook rev "
+            f"(pre-commit={pc_ver and pc_ver.group(1)}, ci={ci_ver and ci_ver.group(1)})"
+        )
 
 
 class TestInfracostCostGate:
