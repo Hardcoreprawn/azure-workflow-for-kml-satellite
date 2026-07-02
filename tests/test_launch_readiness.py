@@ -1440,6 +1440,18 @@ class TestCIFeedbackHygiene:
                 "the environment on every job"
             )
 
+    def test_pr_workflows_run_on_ready_for_review(self):
+        """Promoting a draft must trigger CI — so pull_request needs the
+        ready_for_review type (otherwise a promoted draft runs nothing). #1003."""
+        for wf in (CI_YML, SECURITY_YML, CODEQL_YML):
+            workflow = yaml.safe_load(wf.read_text())
+            # PyYAML parses the bare `on:` key as the boolean True.
+            pr = (workflow.get(True) or {}).get("pull_request") or {}
+            assert "ready_for_review" in (pr.get("types") or []), (
+                f"{wf.name} pull_request trigger must include 'ready_for_review' so "
+                "promoting a draft (manual or auto) actually runs CI"
+            )
+
 
 class TestInfracostCostGate:
     """Verify Infracost CI gate is properly configured."""
