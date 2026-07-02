@@ -2071,8 +2071,7 @@ class TestCIDocsStubLockstep:
 
     def test_ci_docs_stub_exists(self):
         assert CI_DOCS_STUB_YML.exists(), (
-            "ci-docs-stub.yml must exist to satisfy required check-run contexts "
-            "on docs-only PRs"
+            "ci-docs-stub.yml must exist to satisfy required check-run contexts on docs-only PRs"
         )
 
     def test_stub_paths_match_ci_paths_ignore(self):
