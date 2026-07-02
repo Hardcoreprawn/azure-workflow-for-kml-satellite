@@ -42,6 +42,8 @@ VARIABLES_TF = INFRA / "variables.tf"
 DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
+CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
+CODEQL_YML = ROOT / ".github" / "workflows" / "codeql.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
@@ -1411,6 +1413,32 @@ class TestSignedOutStatusBadge:
 # ---------------------------------------------------------------------------
 # 13. Infracost cost-gate workflow and usage file
 # ---------------------------------------------------------------------------
+
+
+class TestCIFeedbackHygiene:
+    """PR CI should give fast feedback: cache deps + cancel superseded runs."""
+
+    def test_pr_workflows_cancel_superseded_runs(self):
+        for wf in (CI_YML, SECURITY_YML, CODEQL_YML, PREVIEW_SITE_YML):
+            text = wf.read_text()
+            assert "concurrency:" in text and "cancel-in-progress:" in text, (
+                f"{wf.name} must define a concurrency group so superseded PR runs "
+                "are cancelled (fast feedback, less wasted compute)"
+            )
+
+    def test_deploy_never_cancels_in_progress(self):
+        # Deploys must run to completion — never cancel a deploy mid-flight.
+        assert "cancel-in-progress: false" in DEPLOY_YML.read_text(), (
+            "deploy.yml must keep cancel-in-progress: false"
+        )
+
+    def test_uv_setup_enables_cache(self):
+        for wf in (CI_YML, SECURITY_YML):
+            text = wf.read_text()
+            assert "astral-sh/setup-uv" in text and "enable-cache: true" in text, (
+                f"{wf.name} setup-uv steps must enable caching to avoid re-resolving "
+                "the environment on every job"
+            )
 
 
 class TestInfracostCostGate:

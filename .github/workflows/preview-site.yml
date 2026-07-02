@@ -23,6 +23,11 @@ permissions:
   contents: read
   pull-requests: write       # for posting preview URL comment
 
+concurrency:
+  # Cancel superseded preview deploys for the same PR ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   deploy-preview:
     name: Deploy Preview
