@@ -101,7 +101,10 @@ def select_issues(
     ]
     ordered = sorted(
         eligible,
-        key=lambda issue: (issue_priority_score(issue.labels), issue.number),
+        # Priority tier DESC, then OLDEST issue first within a tier (lower
+        # number sorts ahead under reverse=True via the negation) so agents
+        # drain the backlog bottom-up instead of grabbing the newest issue.
+        key=lambda issue: (issue_priority_score(issue.labels), -issue.number),
         reverse=True,
     )
     return ordered[:max_new_assignments]
