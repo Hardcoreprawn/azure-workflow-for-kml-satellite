@@ -76,18 +76,42 @@ def compute_budget_status(
     )
 
 
+# Labels that exclude an issue from autopilot auto-assignment:
+#   epic         — trackers spanning many PRs, not a single agent task
+#   no-autopilot — manual gate for work that needs human design/approval
+#                  (infra, OpenTofu, CI/CD, workflows) or can't be validated
+#                  autonomously right now
+_AUTOPILOT_EXCLUDED_LABELS = frozenset({"epic", "no-autopilot"})
+
+
 def issue_priority_score(labels: set[str]) -> int:
-    score = 0
+    """Score an issue for autopilot eligibility (higher = assigned sooner).
+
+    Auto-assignment is MoSCoW-driven: only ``moscow:must`` and ``moscow:should``
+    are eligible. ``moscow:could`` / ``moscow:wont`` / untagged issues score 0
+    and are never auto-assigned, and any issue carrying an excluded label
+    (see ``_AUTOPILOT_EXCLUDED_LABELS``) is skipped. Security floats to the top
+    of its MoSCoW tier (floor: the top security item is never starved).
+    ``priority:*`` labels only refine ordering within a tier; ``discovered`` is
+    provenance-only and no longer affects the score.
+    """
+    # Epics and human-gated (`no-autopilot`) work are never auto-assigned.
+    if labels & _AUTOPILOT_EXCLUDED_LABELS:
+        return 0
+    if "moscow:must" in labels:
+        score = 2000
+    elif "moscow:should" in labels:
+        score = 1000
+    else:
+        return 0
+    # Security floor: lift the top security item to the front of its tier.
     if "security" in labels:
-        score += 1000
+        score += 500
+    # Legacy priority hints refine ordering within a MoSCoW tier.
     if "priority:now" in labels:
-        score += 600
-    if "priority:next" in labels:
-        score += 400
-    if "discovered" in labels:
-        score += 250
-    if "priority:backlog" in labels:
         score += 100
+    elif "priority:next" in labels:
+        score += 50
     return score
 
 
@@ -101,9 +125,9 @@ def select_issues(
     ]
     ordered = sorted(
         eligible,
-        # Priority tier DESC, then OLDEST issue first within a tier (lower
-        # number sorts ahead under reverse=True via the negation) so agents
-        # drain the backlog bottom-up instead of grabbing the newest issue.
+        # MoSCoW tier DESC (must > should), then OLDEST issue first within a
+        # tier (lower number sorts ahead under reverse=True via the negation)
+        # so agents drain the backlog bottom-up instead of grabbing the newest.
         key=lambda issue: (issue_priority_score(issue.labels), -issue.number),
         reverse=True,
     )

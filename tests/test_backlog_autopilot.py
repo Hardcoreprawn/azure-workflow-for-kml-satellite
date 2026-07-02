@@ -42,24 +42,48 @@ def test_budget_status_blocks_when_spend_above_pacing_target() -> None:
     assert status.can_spend is False
 
 
-def test_select_issues_prioritizes_security_and_now() -> None:
+def test_select_issues_assigns_must_before_should_and_excludes_others() -> None:
+    # Auto-assignment is MoSCoW-driven: Must ranks above Should, and
+    # Could/Won't/untagged/epic are never auto-assigned.
     issues = [
-        _issue(1, {"priority:next"}),
-        _issue(2, {"security"}),
-        _issue(3, {"priority:now"}),
-        _issue(4, {"discovered", "priority:backlog"}),
+        _issue(1, {"moscow:should"}),
+        _issue(2, {"moscow:could"}),  # not auto-eligible
+        _issue(3, {"moscow:must"}),
+        _issue(4, {"moscow:wont"}),  # not auto-eligible
+        _issue(5, {"epic", "moscow:must"}),  # epics are trackers, excluded
+        _issue(6, set()),  # untagged, excluded
     ]
-    selected = select_issues(issues, max_new_assignments=2)
-    assert [issue.number for issue in selected] == [2, 3]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [3, 1]
+
+
+def test_select_issues_excludes_no_autopilot_label() -> None:
+    # `no-autopilot` gates approval-gated / human-design work out of the fleet.
+    issues = [
+        _issue(1, {"moscow:must", "no-autopilot"}),
+        _issue(2, {"moscow:should"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [2]
+
+
+def test_select_issues_security_floats_to_top_within_tier() -> None:
+    # Security floor: within a MoSCoW tier the top security item is never starved.
+    issues = [
+        _issue(10, {"moscow:must"}),
+        _issue(11, {"moscow:must", "security"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=1)
+    assert [issue.number for issue in selected] == [11]
 
 
 def test_select_issues_prefers_oldest_within_same_tier() -> None:
-    # Within one priority tier, the oldest (lowest-numbered) issues go first so
+    # Within one MoSCoW tier, the oldest (lowest-numbered) issues go first so
     # agents drain the backlog bottom-up rather than grabbing the newest.
     issues = [
-        _issue(300, {"discovered"}),
-        _issue(100, {"discovered"}),
-        _issue(200, {"discovered"}),
+        _issue(300, {"moscow:should"}),
+        _issue(100, {"moscow:should"}),
+        _issue(200, {"moscow:should"}),
     ]
     selected = select_issues(issues, max_new_assignments=2)
     assert [issue.number for issue in selected] == [100, 200]
@@ -67,8 +91,8 @@ def test_select_issues_prefers_oldest_within_same_tier() -> None:
 
 def test_select_issues_skips_assigned_issues() -> None:
     issues = [
-        _issue(10, {"security"}, {"someone"}),
-        _issue(11, {"priority:now"}),
+        _issue(10, {"moscow:must"}, {"someone"}),
+        _issue(11, {"moscow:should"}),
     ]
     selected = select_issues(issues, max_new_assignments=2)
     assert [issue.number for issue in selected] == [11]
