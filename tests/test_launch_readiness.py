@@ -43,6 +43,7 @@ DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
 HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
+CI_DOCS_STUB_YML = ROOT / ".github" / "workflows" / "ci-docs-stub.yml"
 CODEQL_YML = ROOT / ".github" / "workflows" / "codeql.yml"
 DEPLOY_YML = ROOT / ".github" / "workflows" / "deploy.yml"
 BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
@@ -2052,4 +2053,74 @@ class TestCiamTofuOwnership:
         assert "Deprecation of manual portal workflow" in readme, (
             "infra/tofu/README.md must explicitly deprecate the manual portal workflow "
             "once Phase 2 is active"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 14. CI docs-stub path-filter lockstep guard
+# ---------------------------------------------------------------------------
+
+
+class TestCIDocsStubLockstep:
+    """ci-docs-stub.yml paths must stay the exact complement of ci.yml paths-ignore.
+
+    If they drift, a single-file change can trigger both real CI and the stub
+    (double check-runs) or trigger neither (protection gap).
+    """
+
+    def _load_paths_ignore(self) -> list[str]:
+        """Return the paths-ignore list from ci.yml (pull_request trigger)."""
+        workflow = yaml.safe_load(CI_YML.read_text())
+        # PyYAML parses the bare `on:` key as Python True (YAML boolean)
+        pr_trigger = (workflow.get(True) or {}).get("pull_request") or {}
+        return sorted(pr_trigger.get("paths-ignore", []))
+
+    def _load_stub_paths(self) -> list[str]:
+        """Return the paths list from ci-docs-stub.yml (pull_request trigger)."""
+        workflow = yaml.safe_load(CI_DOCS_STUB_YML.read_text())
+        pr_trigger = (workflow.get(True) or {}).get("pull_request") or {}
+        return sorted(pr_trigger.get("paths", []))
+
+    def test_ci_docs_stub_exists(self):
+        assert CI_DOCS_STUB_YML.exists(), (
+            "ci-docs-stub.yml must exist to satisfy required check-run contexts on docs-only PRs"
+        )
+
+    def test_stub_paths_match_ci_paths_ignore(self):
+        """The stub paths filter and ci.yml paths-ignore must be identical.
+
+        Any divergence means at least one file pattern will trigger both
+        real CI and the stub simultaneously (ambiguous check-runs) or will
+        trigger neither (branch protection gap).
+        """
+        ci_ignore = self._load_paths_ignore()
+        stub_paths = self._load_stub_paths()
+        assert ci_ignore == stub_paths, (
+            "ci-docs-stub.yml paths and ci.yml paths-ignore have drifted.\n"
+            f"  ci.yml paths-ignore:       {ci_ignore}\n"
+            f"  ci-docs-stub.yml paths:    {stub_paths}\n"
+            "Keep them identical so exactly one of {real CI, stub} runs for "
+            "any single-file change."
+        )
+
+    def test_push_and_pr_triggers_are_consistent_in_stub(self):
+        """push and pull_request triggers in ci-docs-stub.yml must use the same paths."""
+        workflow = yaml.safe_load(CI_DOCS_STUB_YML.read_text())
+        on = workflow.get(True) or {}
+        pr_paths = sorted((on.get("pull_request") or {}).get("paths", []))
+        push_paths = sorted((on.get("push") or {}).get("paths", []))
+        assert pr_paths == push_paths, (
+            "ci-docs-stub.yml pull_request and push triggers must have identical "
+            f"paths filters.\n  pull_request: {pr_paths}\n  push: {push_paths}"
+        )
+
+    def test_push_and_pr_triggers_are_consistent_in_ci(self):
+        """push and pull_request triggers in ci.yml must use the same paths-ignore."""
+        workflow = yaml.safe_load(CI_YML.read_text())
+        on = workflow.get(True) or {}
+        pr_ignore = sorted((on.get("pull_request") or {}).get("paths-ignore", []))
+        push_ignore = sorted((on.get("push") or {}).get("paths-ignore", []))
+        assert pr_ignore == push_ignore, (
+            "ci.yml pull_request and push triggers must have identical "
+            f"paths-ignore filters.\n  pull_request: {pr_ignore}\n  push: {push_ignore}"
         )
