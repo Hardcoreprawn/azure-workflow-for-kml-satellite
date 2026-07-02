@@ -19,6 +19,11 @@ permissions:
   contents: read
   security-events: write   # upload SARIF to Code Scanning
 
+concurrency:
+  # Cancel superseded runs for the same ref on PRs; never cancel main/scheduled runs.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.12"
 
@@ -103,6 +108,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
 
       - name: Run Semgrep
         # Single source of truth: identical config runs locally via `make sast`.
@@ -128,6 +135,8 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
 
       - name: Install dependencies
         run: uv sync --all-extras
