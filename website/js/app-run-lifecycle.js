@@ -635,7 +635,8 @@
         try {
           submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, submissionId);
         } catch (submitFetchErr) {
-          // Keep 401 behavior consistent with the upload-token request above.
+          // 401: apiFetch already called handleApiError which clears the session and
+          // shows the re-login prompt centrally — same as the upload-token path above.
           if (submitFetchErr && submitFetchErr.status === 401) {
             if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
             return;

@@ -661,7 +661,7 @@ class TestAuthConfig:
 
 
 class TestQuotaExhaustedUx:
-    def test_quota_exhausted_detection_checks_flag_not_message(self, app_run_lifecycle_js):
+    def test_quota_exhausted_detection_requires_explicit_field(self, app_run_lifecycle_js):
         """isQuotaExhaustedError must key off the quota_exhausted field, not message text.
 
         This prevents false-positive "out of runs" UX for unrelated 403 errors
@@ -708,13 +708,25 @@ class TestQuotaExhaustedUx:
         )
 
     def test_quota_exhausted_not_triggered_by_other_403(self, app_run_lifecycle_js):
-        """Non-quota 403s (401, member cap, permission) must not show quota-exhausted UX.
+        """Non-quota 403s (permission, member cap) must not show quota-exhausted UX.
 
-        Checks that the detection is gated on quota_exhausted, not just any 403.
+        The guard must require BOTH err.status === 403 AND err.body.quota_exhausted === true
+        in the same condition, ensuring that a plain permission-denied 403 (which has no
+        quota_exhausted field) never triggers the "out of runs" message.
         """
         assert "isQuotaExhaustedError" in app_run_lifecycle_js, (
             "app-run-lifecycle.js must use isQuotaExhaustedError() to isolate quota 403s "
             "from unrelated permission errors"
+        )
+        # Both conditions must be present in the detection function body so that
+        # a bare 403 without quota_exhausted:true (e.g. permission denied, member cap)
+        # returns false.
+        assert "err.status === 403" in app_run_lifecycle_js, (
+            "isQuotaExhaustedError must require HTTP 403 — guards against non-403 errors"
+        )
+        assert "err.body.quota_exhausted === true" in app_run_lifecycle_js, (
+            "isQuotaExhaustedError must require quota_exhausted:true — guards against "
+            "unrelated 403s that lack this field (permission denied, member cap, etc.)"
         )
 
     def test_quota_exhausted_handled_in_token_and_submit_paths(self, app_run_lifecycle_js):
