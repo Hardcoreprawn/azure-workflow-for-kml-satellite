@@ -278,7 +278,9 @@ def _resolve_quota(
     except MemberCapExceededError:
         return False, org_id, error_response(403, "Member parcel cap exceeded", req=req)
     except QuotaExhaustedError:
-        return False, org_id, error_response(403, "Org pool exhausted", req=req)
+        return False, org_id, error_response(
+            403, "Org pool exhausted", req=req, extra={"quota_exhausted": True}
+        )
     except OrgNotFoundError:
         return False, "", error_response(503, "Org not found", req=req)
     except Exception:

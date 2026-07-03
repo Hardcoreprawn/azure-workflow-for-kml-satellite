@@ -150,6 +150,11 @@ class TestAnalysisSubmitCORS:
         assert "Access-Control-Allow-Origin" in resp.headers, (
             "CORS headers missing on 403 quota error"
         )
+        import json as _json
+        body = _json.loads(resp.get_body())
+        assert body.get("quota_exhausted") is True, (
+            "quota-exhausted 403 from submission must include quota_exhausted: true"
+        )
 
     @patch(
         "blueprints.pipeline.submission.check_auth",

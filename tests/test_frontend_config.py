@@ -25,6 +25,8 @@ APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
 APP_BILLING_JS = WEBSITE / "js" / "app-billing.js"
 APP_EUDR_JS = WEBSITE / "js" / "app-eudr.js"
+APP_RUN_LIFECYCLE_JS = WEBSITE / "js" / "app-run-lifecycle.js"
+APP_CORE_DOM_JS = WEBSITE / "js" / "app-core-dom.js"
 API_CLIENT_JS = WEBSITE / "js" / "canopex-api-client.js"
 APP_CIAM_JS = WEBSITE / "js" / "canopex-auth.js"
 APP_MSAL_JS = WEBSITE / "js" / "app-msal.js"
@@ -80,6 +82,16 @@ def api_client_js():
 @pytest.fixture()
 def app_auth_js():
     return APP_MSAL_JS.read_text()
+
+
+@pytest.fixture()
+def app_run_lifecycle_js():
+    return APP_RUN_LIFECYCLE_JS.read_text()
+
+
+@pytest.fixture()
+def app_core_dom_js():
+    return APP_CORE_DOM_JS.read_text()
 
 
 @pytest.fixture()
@@ -638,6 +650,120 @@ class TestAuthConfig:
         )
         assert "run.customStatus.stalled === true" in app_runs_js, (
             "app-runs.js must treat explicit stalled customStatus as inactive"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Quota exhaustion UX — issue #737
+# Verify the frontend correctly detects quota_exhausted responses and shows
+# an explicit "out of runs" message with an upgrade CTA.
+# ---------------------------------------------------------------------------
+
+
+class TestQuotaExhaustedUx:
+    def test_quota_exhausted_detection_checks_flag_not_message(self, app_run_lifecycle_js):
+        """isQuotaExhaustedError must key off the quota_exhausted field, not message text.
+
+        This prevents false-positive "out of runs" UX for unrelated 403 errors
+        (permission denied, member cap, etc.) and guards against message drift.
+        """
+        assert "quota_exhausted === true" in app_run_lifecycle_js, (
+            "app-run-lifecycle.js must detect quota exhaustion via err.body.quota_exhausted "
+            "rather than parsing the error message string"
+        )
+
+    def test_quota_exhausted_error_function_checks_status_403(self, app_run_lifecycle_js):
+        """isQuotaExhaustedError must verify HTTP 403 before flagging quota exhaustion."""
+        assert "err.status === 403" in app_run_lifecycle_js, (
+            "app-run-lifecycle.js must confirm HTTP 403 before treating an error as quota-exhausted"
+        )
+
+    def test_quota_exhausted_shows_out_of_runs_message(self, app_run_lifecycle_js):
+        """Quota-exhausted path must surface 'out of runs' copy, not a generic error."""
+        assert "You are out of runs" in app_run_lifecycle_js, (
+            "app-run-lifecycle.js must display 'You are out of runs' when quota is exhausted"
+        )
+
+    def test_quota_exhausted_has_upgrade_cta(self, app_core_dom_js):
+        """showQuotaExhaustedStatus must create a visible upgrade CTA button."""
+        assert "showQuotaExhaustedStatus" in app_core_dom_js, (
+            "app-core-dom.js must expose showQuotaExhaustedStatus for the quota-exhausted UX"
+        )
+        assert "Upgrade plan" in app_core_dom_js, (
+            "app-core-dom.js must create an 'Upgrade plan' CTA button for quota-exhausted state"
+        )
+
+    def test_quota_exhausted_cta_calls_on_upgrade_callback(self, app_core_dom_js):
+        """The upgrade CTA must invoke the onUpgrade callback so the billing flow opens."""
+        assert "onUpgrade" in app_core_dom_js, (
+            "app-core-dom.js showQuotaExhaustedStatus must call an onUpgrade callback "
+            "so the CTA opens the existing billing flow directly"
+        )
+
+    def test_quota_exhausted_wired_to_billing_manage_in_shell(self, app_shell_js):
+        """app-shell.js must wire openBillingUpgrade to billingModule.manage."""
+        assert "openBillingUpgrade: billingModule.manage" in app_shell_js, (
+            "app-shell.js must pass openBillingUpgrade: billingModule.manage to the "
+            "run lifecycle module so the upgrade CTA opens the billing portal"
+        )
+
+    def test_quota_exhausted_not_triggered_by_other_403(self, app_run_lifecycle_js):
+        """Non-quota 403s (401, member cap, permission) must not show quota-exhausted UX.
+
+        Checks that the detection is gated on quota_exhausted, not just any 403.
+        """
+        assert "isQuotaExhaustedError" in app_run_lifecycle_js, (
+            "app-run-lifecycle.js must use isQuotaExhaustedError() to isolate quota 403s "
+            "from unrelated permission errors"
+        )
+
+    def test_quota_exhausted_handled_in_token_and_submit_paths(self, app_run_lifecycle_js):
+        """Both the upload-token and direct-submit fallback paths must handle quota errors."""
+        # isQuotaExhaustedError must be called at least twice: once in the upload-token
+        # error handler and once in the direct-submit fallback error handler.
+        occurrences = app_run_lifecycle_js.count("isQuotaExhaustedError(")
+        assert occurrences >= 2, (
+            f"isQuotaExhaustedError must be called in both the upload-token and "
+            f"submit-fallback error handlers (found {occurrences} call(s))"
+        )
+
+
+class TestQuotaExhaustedBackendSignal:
+    """Backend must emit a machine-readable quota_exhausted field for the frontend contract."""
+
+    def test_error_response_accepts_extra_fields(self):
+        """error_response must accept an extra dict that is merged into the JSON body."""
+        import inspect
+
+        from blueprints._helpers import error_response
+
+        sig = inspect.signature(error_response)
+        assert "extra" in sig.parameters, (
+            "_helpers.error_response must accept an 'extra' keyword argument "
+            "so callers can add machine-readable fields (e.g. quota_exhausted: true)"
+        )
+
+    def test_submission_quota_exhausted_includes_flag(self):
+        """submission.py quota-exhausted 403 must include quota_exhausted in the body."""
+        src = (
+            Path(__file__).resolve().parent.parent
+            / "blueprints"
+            / "pipeline"
+            / "submission.py"
+        ).read_text()
+        assert 'quota_exhausted' in src, (
+            "blueprints/pipeline/submission.py must set quota_exhausted in the 403 "
+            "response body for QuotaExhaustedError"
+        )
+
+    def test_upload_quota_exhausted_includes_flag(self):
+        """upload.py quota-exhausted 403 must include quota_exhausted in the body."""
+        src = (
+            Path(__file__).resolve().parent.parent / "blueprints" / "upload.py"
+        ).read_text()
+        assert 'quota_exhausted' in src, (
+            "blueprints/upload.py must set quota_exhausted in the 403 "
+            "response body for QuotaExhaustedError"
         )
 
 
