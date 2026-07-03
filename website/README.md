@@ -91,20 +91,23 @@ auth flow used for local sign-in.
 
 4. **Verify deployment** at `https://canopex-website.azurestaticapps.net`
 
-## API Proxying
+## API Calls
+
+The website calls the orchestrator Function App **cross-origin** — there is no
+SWA-managed API proxy. The orchestrator hostname is discovered at runtime from
+`/api-config.json` (injected at deploy time by the CI/CD pipeline).
 
 The `staticwebapp.config.json` file:
 
-- Routes `/api/*` requests to the backend Azure Functions API
-- Rewrites 404s to `index.html` (SPA behavior)
+- Rewrites unmatched paths to `index.html` (SPA behaviour), **including `/api/*`** — this
+  prevents SWA from attempting to forward API paths to a linked backend and
+  returning "Backend call failure" (500) if that backend is stale or unreachable.
 - Sets security headers (CSP, X-Frame-Options, etc.)
 
-### Linking to Backend
+### Key frontend API endpoints (called cross-origin to the orchestrator)
 
-The website expects:
-
-- **GET `/api/readiness`** — Returns status of the pipeline (used by status badge)
-- **POST `/api/contact-form`** — Form submission handler (implemented in #154)
+- **GET `{orchestratorBase}/api/health`** — Liveness probe (polled by landing page status badge)
+- **GET `{orchestratorBase}/api/readiness`** — Dependency readiness probe
 
 ## Development Checklist (for #153)
 

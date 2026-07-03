@@ -110,6 +110,24 @@ class TestSwaAuth:
             "all API calls go cross-origin to the Container Apps FA"
         )
 
+    def test_api_not_excluded_from_navigation_fallback(self, swa_config):
+        """/api/* must not be excluded from SPA fallback (#772).
+
+        Excluding /api/* causes SWA to forward those requests to the linked
+        backend.  When the linked backend is stale or unreachable (as happens
+        after the BYOF architecture migration) SWA returns 500
+        "Backend call failure".  Keeping /api/* inside the SPA fallback means
+        SWA returns index.html instead, and the frontend routes API calls
+        cross-origin to the orchestrator via api-config.json as intended.
+        """
+        exclude_list = swa_config.get("navigationFallback", {}).get("exclude", [])
+        api_excludes = [p for p in exclude_list if p == "/api/*" or p.startswith("/api/")]
+        assert not api_excludes, (
+            "navigationFallback.exclude must not contain /api/* paths — "
+            "excluding them causes SWA to proxy to a stale linked backend (500). "
+            "All API calls go cross-origin to the orchestrator via api-config.json."
+        )
+
     def test_api_config_json_route_anonymous(self, swa_config):
         """api-config.json route must allow anonymous access for BYOF discovery."""
         routes = swa_config.get("routes", [])
