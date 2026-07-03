@@ -175,3 +175,49 @@ class TestReleaseQuota:
         remaining = release_quota("user-idem", instance_id="run-abc")
         # Second call should be a no-op
         assert remaining == FREE_TIER_LIMIT - 1
+
+    def test_concurrent_release_does_not_overdecrement(self, _mock_cosmos):
+        """Concurrent refunds must not decrement below zero or overdecrement."""
+        refunds = 5
+        user_id = "user-concurrent-release"
+
+        # Pre-load exactly `refunds` consumed runs.
+        _mock_cosmos[f"users/{user_id}"] = {
+            "id": user_id,
+            "user_id": user_id,
+            "quota": {"used": refunds, "runs": []},
+            "_etag": "1",
+        }
+
+        with ThreadPoolExecutor(max_workers=refunds) as executor:
+            futures = [executor.submit(release_quota, user_id) for _ in range(refunds)]
+
+        for future in futures:
+            future.result()  # must not raise
+
+        assert _mock_cosmos[f"users/{user_id}"]["quota"]["used"] == 0
+
+    def test_concurrent_idempotent_release_with_instance_id(self, _mock_cosmos):
+        """Concurrent calls with the same instance_id must be idempotent (exactly one decrement)."""
+        user_id = "user-concurrent-idem"
+        instance_id = "run-xyz"
+        attempts = 8
+
+        _mock_cosmos[f"users/{user_id}"] = {
+            "id": user_id,
+            "user_id": user_id,
+            "quota": {"used": 3, "runs": []},
+            "_etag": "1",
+        }
+
+        with ThreadPoolExecutor(max_workers=attempts) as executor:
+            futures = [
+                executor.submit(release_quota, user_id, instance_id=instance_id)
+                for _ in range(attempts)
+            ]
+
+        for future in futures:
+            future.result()  # must not raise
+
+        # Exactly one decrement must have happened.
+        assert _mock_cosmos[f"users/{user_id}"]["quota"]["used"] == 2

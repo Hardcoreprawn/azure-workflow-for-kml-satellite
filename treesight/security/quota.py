@@ -174,35 +174,78 @@ def release_quota(user_id: str, *, instance_id: str = "") -> int:
     Idempotent when *instance_id* is provided — repeated calls for the
     same instance are no-ops to handle Durable Functions at-least-once
     activity delivery.
+
+    Uses optimistic concurrency (etag) so concurrent refunds cannot
+    race and double-decrement the same counter.
     """
-    limit = _run_limit(user_id)
-    record = _get_quota_record(user_id)
-
-    # Idempotency guard: skip if this instance was already refunded.
-    refunded: list[str] = record.get("refunded", [])
-    if instance_id and instance_id in refunded:
-        logger.info(
-            "Quota already released for instance=%s user=%s — skipping",
-            instance_id,
-            user_id,
-        )
-        used = record.get("used", 0)
-        return max(limit - used, 0)
-
-    used: int = record.get("used", 0)
-    new_used = used - 1 if used > 0 else 0
-    record["used"] = new_used
-    if instance_id:
-        refunded.append(instance_id)
-        record["refunded"] = refunded
-    _save_quota_record(user_id, record)
-    remaining = limit - new_used
-    logger.info(
-        "Quota released user=%s used=%d remaining=%d limit=%d instance=%s",
-        user_id,
-        new_used,
-        remaining,
-        limit,
-        instance_id,
+    from treesight.models.records import UserRecord
+    from treesight.storage.cosmos import (
+        EtagPreconditionFailedError,
+        read_item_with_etag,
+        replace_item_with_etag,
     )
-    return remaining
+
+    limit = _run_limit(user_id)
+    last_error: Exception | None = None
+
+    for _ in range(MAX_QUOTA_ETAG_RETRIES):
+        loaded = read_item_with_etag("users", user_id, user_id)
+        if not loaded:
+            # No quota record — nothing to release; return full quota.
+            remaining = limit
+            logger.info(
+                "Quota released (no record) user=%s remaining=%d limit=%d instance=%s",
+                user_id,
+                remaining,
+                limit,
+                instance_id,
+            )
+            return remaining
+
+        user_doc, etag = loaded
+        record = user_doc.get("quota", {"used": 0, "runs": []})
+
+        # Idempotency guard: skip if this instance was already refunded.
+        refunded: list[str] = record.get("refunded", [])
+        if instance_id and instance_id in refunded:
+            logger.info(
+                "Quota already released for instance=%s user=%s — skipping",
+                instance_id,
+                user_id,
+            )
+            used = record.get("used", 0)
+            return max(limit - used, 0)
+
+        used: int = record.get("used", 0)
+        new_used = used - 1 if used > 0 else 0
+        record["used"] = new_used
+        if instance_id:
+            refunded.append(instance_id)
+            record["refunded"] = refunded
+
+        user_doc.update({"id": user_id, "user_id": user_id, "quota": record})
+        # Defensive schema check before committing the conditional write.
+        UserRecord.model_validate(user_doc)
+
+        try:
+            replace_item_with_etag("users", user_doc, etag=etag)
+        except EtagPreconditionFailedError as exc:
+            last_error = exc
+            logger.debug("release_quota etag conflict user=%s", user_id)
+            continue
+
+        remaining = limit - new_used
+        logger.info(
+            "Quota released user=%s used=%d remaining=%d limit=%d instance=%s",
+            user_id,
+            new_used,
+            remaining,
+            limit,
+            instance_id,
+        )
+        return remaining
+
+    raise RuntimeError(
+        f"release_quota user={user_id}: {MAX_QUOTA_ETAG_RETRIES} etag retries exhausted "
+        f"(last={last_error})"
+    )
