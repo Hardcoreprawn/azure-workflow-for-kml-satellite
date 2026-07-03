@@ -219,5 +219,8 @@ class TestReleaseQuota:
         for future in futures:
             future.result()  # must not raise
 
+        final_quota = _mock_cosmos[f"users/{user_id}"]["quota"]
         # Exactly one decrement must have happened.
-        assert _mock_cosmos[f"users/{user_id}"]["quota"]["used"] == 2
+        assert final_quota["used"] == 2
+        # Idempotency: instance_id must appear exactly once in the refunded list.
+        assert final_quota.get("refunded", []).count(instance_id) == 1

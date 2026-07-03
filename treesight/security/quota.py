@@ -213,8 +213,8 @@ def release_quota(user_id: str, *, instance_id: str = "") -> int:
                 instance_id,
                 user_id,
             )
-            used = record.get("used", 0)
-            return max(limit - used, 0)
+            already_used = record.get("used", 0)
+            return max(limit - already_used, 0)
 
         used: int = record.get("used", 0)
         new_used = used - 1 if used > 0 else 0
