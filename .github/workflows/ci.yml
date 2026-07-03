@@ -67,6 +67,33 @@ jobs:
           name: coverage
           path: coverage.xml
 
+  integration:
+    name: Integration (Azurite)
+    runs-on: ubuntu-latest
+    # Runs the @pytest.mark.integration suite against a real Azurite instance.
+    # Without a live Azurite the suite silently skips (see #1022) — this job
+    # provides one as a service container so the tests actually execute.
+    services:
+      azurite:
+        image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+        ports:
+          - 10000:10000
+          - 10001:10001
+          - 10002:10002
+    env:
+      AzureWebJobsStorage: "UseDevelopmentStorage=true"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
+      # Deps + tests run via `make` so the exact same commands work locally
+      # and in CI (single source of truth). `make test-int` waits for Azurite
+      # and creates the pipeline containers before the suite collects.
+      - run: make setup
+      - name: Integration tests (make test-int)
+        run: make test-int
+
   build:
     name: Build Docker image
     runs-on: ubuntu-latest
