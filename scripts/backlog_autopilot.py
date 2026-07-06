@@ -330,7 +330,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--month-spend-used-usd", type=float, required=True)
     parser.add_argument("--reserve-ratio", type=float, default=0.25)
     parser.add_argument("--max-new-assignments", type=int, default=2)
-    parser.add_argument("--max-open-autopilot-prs", type=int, default=8)
+    # WIP limit: cap concurrent open Copilot agent PRs (drafts + ready) so
+    # agent work gets finished before more is started. See docs/ROADMAP.md
+    # "Working agreements".
+    parser.add_argument("--max-open-autopilot-prs", type=int, default=3)
     parser.add_argument("--today", default="")
     return parser.parse_args()
 

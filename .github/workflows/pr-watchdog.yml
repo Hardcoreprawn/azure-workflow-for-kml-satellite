@@ -36,10 +36,18 @@ jobs:
       - name: Run watchdog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # markPullRequestReadyForReview is FORBIDDEN for the default token;
+          # a PAT/user token is required to auto-promote drafts. Falls back to
+          # GITHUB_TOKEN (read/comment still work; promote will be skipped).
+          AUTOPILOT_USER_TOKEN: ${{ secrets.AUTOPILOT_USER_TOKEN || '' }}
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
           INPUT_MAX_PRS: ${{ github.event.inputs.max_prs || '' }}
           VAR_DRY_RUN: ${{ vars.AUTOPILOT_WATCHDOG_DRY_RUN || 'true' }}
           VAR_MAX_PRS: ${{ vars.AUTOPILOT_WATCHDOG_MAX_PRS || '20' }}
+          VAR_STALE_CLOSE_DAYS: ${{ vars.AUTOPILOT_WATCHDOG_STALE_CLOSE_DAYS || '5' }}
+          VAR_ENABLE_STALE_CLOSE: ${{ vars.AUTOPILOT_WATCHDOG_STALE_CLOSE || 'false' }}
+          VAR_ENABLE_RALPH: ${{ vars.AUTOPILOT_WATCHDOG_RALPH || 'false' }}
+          VAR_RALPH_MAX_ATTEMPTS: ${{ vars.AUTOPILOT_WATCHDOG_RALPH_MAX_ATTEMPTS || '3' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
@@ -50,10 +58,20 @@ jobs:
             --owner "$REPOSITORY_OWNER"
             --repo "$REPOSITORY_NAME"
             --max-prs "$MAX_PRS"
+            --stale-close-days "$VAR_STALE_CLOSE_DAYS"
+            --ralph-max-attempts "$VAR_RALPH_MAX_ATTEMPTS"
           )
 
           if [ "$DRY_RUN" = "true" ]; then
             ARGS+=(--dry-run)
+          fi
+
+          if [ "$VAR_ENABLE_STALE_CLOSE" = "true" ]; then
+            ARGS+=(--enable-stale-close)
+          fi
+
+          if [ "$VAR_ENABLE_RALPH" = "true" ]; then
+            ARGS+=(--enable-ralph)
           fi
 
           python scripts/pr_watchdog.py "${ARGS[@]}"

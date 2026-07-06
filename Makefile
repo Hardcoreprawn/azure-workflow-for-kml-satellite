@@ -133,7 +133,8 @@ test-upload: ## Upload sample KML and trigger pipeline
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
 
-test-int: ## Run integration tests (requires Azurite)
+test-int: ## Run integration tests against a running Azurite (creates containers first)
+	uv run python scripts/init_storage.py
 	uv run pytest tests/test_integration.py -v
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
