@@ -19,9 +19,10 @@ Closes #NNN
 
 <!-- Implementation approach, key decisions -->
 
-## Checklist
+## Breaking changes / migration
 
-- [ ] Tests added/updated
-- [ ] `make check` passes (lint + test)
-- [ ] No secrets or credentials in this PR
-- [ ] Breaking changes documented (if any)
+<!-- Note any breaking changes or migration steps, or "none". This is the one
+     thing CI can't check for you — everything else (tests, lint, `make check`,
+     secret scanning) is enforced by required checks, so there is no
+     self-attestation checklist to tick. Green required checks are the proof. -->
+none
