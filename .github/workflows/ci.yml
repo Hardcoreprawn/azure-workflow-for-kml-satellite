@@ -55,12 +55,37 @@ jobs:
       CIAM_API_AUDIENCE: "api://ci-test-audience"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # Full history so diff-cover can find the merge-base with the base branch.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
         with:
           enable-cache: true
       - run: uv sync --all-extras
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
+      # Changed-lines test coverage — REPORT-ONLY for now (never fails the build).
+      # Surfaces whether new/changed Python lines are covered by tests, enforcing
+      # the test-first standing order without blocking existing work. Flip to a
+      # required gate by removing `|| true` and wiring --fail-under. See #1042.
+      - name: Changed-lines coverage (report-only)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
+          uv run diff-cover coverage.xml \
+            --compare-branch "origin/${BASE_REF}" \
+            --fail-under 80 \
+            --markdown-report diff-cover.md || true
+          {
+            echo "## Changed-lines test coverage (report-only)"
+            echo ""
+            echo "Target: 80% of changed Python lines covered. This is informational"
+            echo "until #1042 promotes it to a required gate."
+            echo ""
+            cat diff-cover.md 2>/dev/null || echo "_diff-cover produced no report (no changed Python lines)._"
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
