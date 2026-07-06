@@ -25,6 +25,36 @@ Use the board for day-to-day prioritisation. Issues are labelled:
 
 ---
 
+## Working agreements
+
+**WIP limit — Copilot agent PRs: max 3 open.** No more than 3 open Copilot
+agent PRs (drafts + ready) at any time. Finish work before starting more:
+promote to ready and merge, or close, before the autopilot assigns new issues.
+
+- Enforced by the backlog autopilot queue cap
+  (`AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS=3`, fallback default `3` in
+  [scripts/backlog_autopilot.py](../scripts/backlog_autopilot.py) and
+  [.github/workflows/backlog-autopilot.yml](../.github/workflows/backlog-autopilot.yml)).
+- Scope is agent PRs only — Dependabot and human PRs are not counted.
+- When the cap is hit, drain first: a coding-agent draft whose Watchdog says
+  `READY_TO_PROMOTE` is actionable — `gh pr ready <n>` then review/merge; close
+  dead or superseded drafts. Do not raise the cap to unblock; clear the queue.
+
+**Definition of Done (agent PRs).** A PR is *finished* only when it links a
+closing issue (`Closes #NNN`), adds tests for any new behaviour, is green on
+`make check`, is marked ready (not draft), and reports its Watchdog status.
+Anything short of this is *started, not finished*. See
+[.github/copilot-instructions.md](../.github/copilot-instructions.md)
+"Delivery Workflow".
+
+**Completion SLA — 5 days.** An agent PR that stays `BLOCKED` or stale (no
+progress) for more than 5 days is closed and its linked issue re-queued, so the
+queue keeps moving instead of accreting half-done work. Enforced by the PR
+Watchdog stale-close path (opt-in via `AUTOPILOT_WATCHDOG_STALE_CLOSE`; off until
+the maintainer enables it).
+
+---
+
 ## Direction
 
 **EUDR compliance is the product.** Conservation monitoring is mothballed
@@ -77,14 +107,14 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1045 | feat(watchdog): "Ralph Wiggum" completion loop — `@copilot`-nudge blocked agent PRs toward the Definition of Done (opt-in `AUTOPILOT_WATCHDOG_RALPH`, attempt-capped, dedup by unmet-items signature; nudge posted via PAT so the agent actually wakes). Closes #1044. |
+| #1043 | fix(watchdog): resurrect auto-promote — the PR Watchdog was FORBIDDEN promoting drafts with the default `GITHUB_TOKEN` (failing every scheduled run); now promotes via `AUTOPILOT_USER_TOKEN` with per-PR error isolation. Adds opt-in stale-close (5-day completion SLA, default off) + report-only diff-cover changed-lines coverage in CI. Closes #1041. |
+| #1039 | chore(autopilot): WIP limit = 3 open Copilot agent PRs (queue cap 8→3, live var set) + agent Definition of Done, drain-first rule, and completion SLA. Closes #1038. |
+| #1023 | ci: run the integration suite against Azurite in CI — starts Azurite via `docker run` with `--blobHost 0.0.0.0` (service containers can't override the command); 14 integration tests now actually execute (were silently skipping). Closes #1022. |
 | #895 | feat: EUDR content cluster — supplier guide, data sources, FAQ, glossary + sitemap SEO entries (closes #617). |
-| —  | **Recovery confirmed (#894):** `origin/feat/landsat-deep-integration` examined — the single unique feature commit (Landsat deep integration, #612) was already incorporated into main via PR #657. All 25 `test_landsat_deep.py` tests pass. Branch can be retired. |
 | #874 | fix(pipeline): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)) — prevent activity timeout at 50+ AOIs with ThreadPoolExecutor fan-out, capped concurrency, per-AOI failure isolation, and ordering-preservation tests. |
 | #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
-| #856 | chore(deps): bump idna 3.11→3.15 — fixes CVE-2024-3651 (IDNA label length bypass, possible ReDoS via crafted hostname). `uv lock --upgrade-package idna`. All 1826 tests pass. |
-| #855 | feat(ci): auth-free pipeline smoke test in deploy workflow — `scripts/pipeline_smoke.py` injects KML + demo ticket directly into blob storage (stdlib+az CLI only; storage key via ARM Contributor, no Blob Data RBAC needed); Event Grid fires `blob_trigger` naturally; polls Durable management API to assert `runtimeStatus==Completed`. Gated `DEPLOY_ENV != prd`. Regression lock in `test_launch_readiness.py`. |
-| #853 | fix(parse): GDAL/PROJ parse hang — `PROJ_NETWORK=OFF` + `GDAL_HTTP_TIMEOUT=30` + `GDAL_MAX_HTTP_RETRY=0` + `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR` set at module load before GDAL initialises; 60s `ThreadPoolExecutor` timeout with `shutdown(wait=False)` so a stuck GDAL thread never blocks teardown. Fixes #852. |
 
 ---
 
