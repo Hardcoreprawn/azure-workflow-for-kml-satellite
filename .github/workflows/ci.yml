@@ -61,11 +61,43 @@ jobs:
       - run: uv sync --all-extras
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: coverage
           path: coverage.xml
+
+  integration:
+    name: Integration (Azurite)
+    runs-on: ubuntu-latest
+    # Runs the @pytest.mark.integration suite against a real Azurite instance.
+    # Without a live Azurite the suite silently skips (see #1022) — this job
+    # starts one so the tests actually execute.
+    env:
+      AzureWebJobsStorage: "UseDevelopmentStorage=true"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
+      # Azurite must be started as a docker-run step, NOT a `services:` container:
+      # a service container cannot override the image command, and Azurite binds
+      # to 127.0.0.1 by default (unreachable via the published port). We need
+      # --blobHost/--queueHost/--tableHost 0.0.0.0 (+ --loose/--skipApiVersionCheck)
+      # to match docker-compose.yml — the proven-working local config.
+      - name: Start Azurite
+        run: |
+          docker run -d --name azurite \
+            -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+            azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 \
+            --loose --skipApiVersionCheck
+      # Deps + tests run via `make` so the exact same commands work locally
+      # and in CI (single source of truth). `make test-int` waits for Azurite
+      # and creates the pipeline containers before the suite collects.
+      - run: make setup
+      - name: Integration tests (make test-int)
+        run: make test-int
 
   build:
     name: Build Docker image
