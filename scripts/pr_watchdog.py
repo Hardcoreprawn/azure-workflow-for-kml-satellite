@@ -446,6 +446,166 @@ def close_stale_pr(
     print(f"#{pr_number} auto-closed (stale >{threshold_days:.0f}d); issue={issue_number}")
 
 
+RALPH_MARKER = "<!-- pr-watchdog-ralph -->"
+_RALPH_SIG_RE = re.compile(r"<!-- ralph-sig: (.*?) -->")
+
+
+def unmet_dod_items(summary: PRSummary) -> tuple[str, ...]:
+    """Human-readable list of Definition-of-Done items a PR still fails."""
+    items: list[str] = []
+    if summary.missing_linked_issue:
+        items.append("Add a closing issue link (`Closes #NNN`) to the PR body.")
+    for check in summary.failing_checks:
+        items.append(f"Fix the failing check: {check}")
+    for thread in summary.unresolved_threads:
+        where = thread.path or "the PR"
+        items.append(f"Resolve the review thread on {where}: {thread.url}")
+    if summary.is_draft and not items:
+        items.append("Mark the PR ready for review once complete.")
+    return tuple(items)
+
+
+def ralph_signature(items: tuple[str, ...]) -> str:
+    """Stable signature of the unmet items, used to detect 'nothing changed'."""
+    return "|".join(sorted(items))
+
+
+def should_nudge_agent(
+    summary: PRSummary, author_login: str, attempts: int, max_attempts: int
+) -> bool:
+    """True when a blocked agent PR should be nudged to finish (within attempt cap)."""
+    return (
+        author_login in TRUSTED_PROMOTE_LOGINS and summary.has_blockers and attempts < max_attempts
+    )
+
+
+def ralph_nudge_history(
+    *, token: str, owner: str, repo: str, pr_number: int
+) -> tuple[int, str | None]:
+    """Return (nudge_count, last_signature) from prior Ralph comments on the PR."""
+    comments = _fetch_paginated(
+        token, f"/repos/{owner}/{repo}/issues/{pr_number}/comments?sort=created"
+    )
+    count = 0
+    last_sig: str | None = None
+    for comment in comments:
+        if not isinstance(comment, dict):
+            continue
+        body = str(comment.get("body", ""))
+        if RALPH_MARKER not in body:
+            continue
+        count += 1
+        match = _RALPH_SIG_RE.search(body)
+        last_sig = match.group(1) if match else None
+    return count, last_sig
+
+
+def fetch_issue_acceptance(*, token: str, owner: str, repo: str, issue_number: int) -> str:
+    """Best-effort extraction of the '## Acceptance' section from the linked issue."""
+    issue = _github_rest(
+        token=token, method="GET", path=f"/repos/{owner}/{repo}/issues/{issue_number}"
+    )
+    body = str((issue or {}).get("body") or "")
+    match = re.search(r"(?ims)^##\s*Acceptance\b.*?(?=^##\s|\Z)", body)
+    return match.group(0).strip() if match else ""
+
+
+def render_nudge_comment(
+    *,
+    items: tuple[str, ...],
+    acceptance: str,
+    attempt: int,
+    max_attempts: int,
+) -> str:
+    """Render the @copilot completion-nudge comment (Ralph loop)."""
+    bullets = "\n".join(f"- {item}" for item in items) or "- (no machine-detected blockers)"
+    spec = acceptance or (
+        "_No `## Acceptance` section found on the linked issue — see the issue for scope._"
+    )
+    return "\n".join(
+        [
+            RALPH_MARKER,
+            f"<!-- ralph-sig: {ralph_signature(items)} -->",
+            "## PR Watchdog — completion nudge",
+            "",
+            (
+                f"@copilot this PR does not yet meet its Definition of Done "
+                f"(attempt {attempt}/{max_attempts})."
+            ),
+            "",
+            "**Outstanding:**",
+            bullets,
+            "",
+            "**Acceptance criteria:**",
+            "",
+            spec,
+            "",
+            (
+                "Please push commits that resolve the outstanding items and leave the PR "
+                "ready for review. If an item does not apply, reply explaining why."
+            ),
+        ]
+    )
+
+
+def maybe_nudge_agent(
+    *,
+    read_token: str,
+    post_token: str,
+    owner: str,
+    repo: str,
+    summary: PRSummary,
+    pr_body: str | None,
+    author_login: str,
+    max_attempts: int,
+    dry_run: bool,
+) -> bool:
+    """Nudge a blocked agent PR toward completion. Returns True when a nudge fires.
+
+    Dedup: skip when the set of unmet items is identical to the last nudge — the
+    agent is mid-run or stuck, and re-nudging would double-drive it (see the
+    autopilot 'don't race the agent' lesson).
+    """
+    attempts, last_sig = ralph_nudge_history(
+        token=read_token, owner=owner, repo=repo, pr_number=summary.number
+    )
+    if not should_nudge_agent(summary, author_login, attempts, max_attempts):
+        return False
+    items = unmet_dod_items(summary)
+    if last_sig == ralph_signature(items):
+        print(f"#{summary.number} ralph: unchanged since last nudge; skipping")
+        return False
+    if dry_run:
+        print(
+            f"#{summary.number} dry-run: would ralph-nudge "
+            f"(attempt {attempts + 1}/{max_attempts}); unmet={list(items)}"
+        )
+        return True
+    issue_number = linked_issue_number(pr_body)
+    acceptance = (
+        fetch_issue_acceptance(token=read_token, owner=owner, repo=repo, issue_number=issue_number)
+        if issue_number is not None
+        else ""
+    )
+    body = render_nudge_comment(
+        items=items,
+        acceptance=acceptance,
+        attempt=attempts + 1,
+        max_attempts=max_attempts,
+    )
+    # Post as the PAT user, not github-actions[bot]: an @copilot mention from a
+    # bot is unlikely to trigger the coding agent (same class of restriction as
+    # the promote FORBIDDEN). A real-user author is what wakes the agent.
+    _github_rest(
+        token=post_token,
+        method="POST",
+        path=f"/repos/{owner}/{repo}/issues/{summary.number}/comments",
+        body={"body": body},
+    )
+    print(f"#{summary.number} ralph-nudged agent to complete (attempt {attempts + 1})")
+    return True
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--owner", required=True)
@@ -456,6 +616,10 @@ def parse_args() -> argparse.Namespace:
     # so it stays OFF unless --enable-stale-close is passed.
     parser.add_argument("--stale-close-days", type=float, default=5.0)
     parser.add_argument("--enable-stale-close", action="store_true")
+    # Ralph loop: @copilot-nudge blocked agent PRs toward completion. Spends agent
+    # sessions, so it stays OFF unless --enable-ralph is passed.
+    parser.add_argument("--enable-ralph", action="store_true")
+    parser.add_argument("--ralph-max-attempts", type=int, default=3)
     return parser.parse_args()
 
 
@@ -469,8 +633,10 @@ def _process_pr(
     dry_run: bool,
     enable_stale_close: bool,
     stale_close_days: float,
+    enable_ralph: bool,
+    ralph_max_attempts: int,
 ) -> None:
-    """Assess a single PR and post its status, then promote or stale-close it."""
+    """Assess a single PR and post its status, then promote, stale-close, or nudge."""
     number = int(pr["number"])
     head = pr.get("head") or {}
     head_sha = str(head.get("sha", ""))
@@ -498,6 +664,18 @@ def _process_pr(
             print(f"#{summary.number} dry-run: would auto-close (stale >{stale_close_days:.0f}d)")
         elif should_auto_promote(summary, author_login):
             print(f"#{summary.number} dry-run: would auto-promote from draft to ready-for-review")
+        elif enable_ralph:
+            maybe_nudge_agent(
+                read_token=token,
+                post_token=promote_token,
+                owner=owner,
+                repo=repo,
+                summary=summary,
+                pr_body=pr.get("body"),
+                author_login=author_login,
+                max_attempts=ralph_max_attempts,
+                dry_run=True,
+            )
         return
 
     upsert_watchdog_comment(
@@ -528,6 +706,20 @@ def _process_pr(
             pr_node_id=str(pr.get("node_id", "")),
             pr_number=summary.number,
         )
+        return
+
+    if enable_ralph:
+        maybe_nudge_agent(
+            read_token=token,
+            post_token=promote_token,
+            owner=owner,
+            repo=repo,
+            summary=summary,
+            pr_body=pr.get("body"),
+            author_login=author_login,
+            max_attempts=ralph_max_attempts,
+            dry_run=False,
+        )
 
 
 def main() -> int:
@@ -537,7 +729,8 @@ def main() -> int:
         raise ValueError("GITHUB_TOKEN is required")
     # The default Actions token cannot mark PRs ready-for-review (GitHub
     # loop-prevention returns FORBIDDEN). Use a PAT/user token for promotion
-    # when one is provided; fall back to GITHUB_TOKEN so dry-runs still work.
+    # and Ralph nudges when one is provided; fall back to GITHUB_TOKEN so
+    # dry-runs still work.
     promote_token = os.getenv("AUTOPILOT_USER_TOKEN", "").strip() or token
 
     pulls = list_active_autopilot_prs(
@@ -561,6 +754,8 @@ def main() -> int:
                 dry_run=args.dry_run,
                 enable_stale_close=args.enable_stale_close,
                 stale_close_days=args.stale_close_days,
+                enable_ralph=args.enable_ralph,
+                ralph_max_attempts=args.ralph_max_attempts,
             )
         except Exception as exc:
             # Isolate one PR's failure so it never aborts the whole run — the

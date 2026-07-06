@@ -7,11 +7,18 @@ from scripts.pr_watchdog import (
     ReviewThread,
     body_links_issue,
     close_stale_pr,
+    fetch_issue_acceptance,
     is_stale_closeable,
     linked_issue_number,
+    maybe_nudge_agent,
     pr_age_days,
+    ralph_nudge_history,
+    ralph_signature,
     render_comment,
+    render_nudge_comment,
     should_auto_promote,
+    should_nudge_agent,
+    unmet_dod_items,
 )
 
 
@@ -327,3 +334,190 @@ def test_close_stale_pr_skips_requeue_when_no_linked_issue(monkeypatch) -> None:
 
     # Only the PR comment + PR close; no issue comment path.
     assert calls == ["/repos/o/r/issues/1018/comments", "/repos/o/r/pulls/1018"]
+
+
+# ── Ralph loop (completion nudge) ────────────────────────────────────────────
+
+
+def _agent_blocked(number: int = 30, *, missing_issue: bool = True) -> PRSummary:
+    return PRSummary(
+        number=number,
+        url=f"https://example.invalid/pr/{number}",
+        title="Example",
+        failing_checks=("CI/Test",),
+        pending_checks=(),
+        unresolved_threads=(),
+        missing_linked_issue=missing_issue,
+        is_draft=False,
+    )
+
+
+def test_unmet_dod_items_lists_missing_issue_and_failing_checks() -> None:
+    items = unmet_dod_items(_agent_blocked())
+    joined = "\n".join(items)
+    assert "Closes #NNN" in joined
+    assert "CI/Test" in joined
+
+
+def test_unmet_dod_items_draft_with_no_other_blockers_asks_to_mark_ready() -> None:
+    draft = PRSummary(
+        number=31,
+        url="https://example.invalid/pr/31",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+        is_draft=True,
+    )
+    assert unmet_dod_items(draft) == ("Mark the PR ready for review once complete.",)
+
+
+def test_ralph_signature_is_order_independent() -> None:
+    assert ralph_signature(("b", "a")) == ralph_signature(("a", "b"))
+
+
+def test_should_nudge_agent_true_for_blocked_agent_under_cap() -> None:
+    assert should_nudge_agent(_agent_blocked(), "Copilot", attempts=0, max_attempts=3) is True
+
+
+def test_should_nudge_agent_false_over_cap() -> None:
+    assert should_nudge_agent(_agent_blocked(), "Copilot", attempts=3, max_attempts=3) is False
+
+
+def test_should_nudge_agent_false_for_non_agent_author() -> None:
+    result = should_nudge_agent(_agent_blocked(), "Hardcoreprawn", attempts=0, max_attempts=3)
+    assert result is False
+
+
+def test_should_nudge_agent_false_without_blockers() -> None:
+    clean = PRSummary(
+        number=32,
+        url="https://example.invalid/pr/32",
+        title="Example",
+        failing_checks=(),
+        pending_checks=(),
+        unresolved_threads=(),
+    )
+    assert should_nudge_agent(clean, "Copilot", attempts=0, max_attempts=3) is False
+
+
+def test_ralph_nudge_history_counts_and_returns_last_signature(monkeypatch) -> None:
+    comments = [
+        {"body": "unrelated"},
+        {"body": "<!-- pr-watchdog-ralph -->\n<!-- ralph-sig: a|b -->\nnudge 1"},
+        {"body": "<!-- pr-watchdog-ralph -->\n<!-- ralph-sig: c -->\nnudge 2"},
+    ]
+    monkeypatch.setattr("scripts.pr_watchdog._fetch_paginated", lambda token, path: comments)
+    count, last_sig = ralph_nudge_history(token="t", owner="o", repo="r", pr_number=30)
+    assert count == 2
+    assert last_sig == "c"
+
+
+def test_fetch_issue_acceptance_extracts_section(monkeypatch) -> None:
+    issue_body = "## Problem\n\nx\n\n## Acceptance\n\n- must do A\n- must do B\n\n## Notes\n\ny"
+    monkeypatch.setattr(
+        "scripts.pr_watchdog._github_rest",
+        lambda *, token, method, path, body=None: {"body": issue_body},
+    )
+    section = fetch_issue_acceptance(token="t", owner="o", repo="r", issue_number=99)
+    assert section.startswith("## Acceptance")
+    assert "must do A" in section
+    assert "## Notes" not in section
+
+
+def test_render_nudge_comment_mentions_copilot_and_items() -> None:
+    rendered = render_nudge_comment(
+        items=("Fix the failing check: CI/Test",),
+        acceptance="## Acceptance\n\n- do X",
+        attempt=1,
+        max_attempts=3,
+    )
+    assert "@copilot" in rendered
+    assert "<!-- pr-watchdog-ralph -->" in rendered
+    assert "attempt 1/3" in rendered
+    assert "CI/Test" in rendered
+
+
+def test_maybe_nudge_agent_dry_run_reports_without_posting(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.pr_watchdog.ralph_nudge_history",
+        lambda *, token, owner, repo, pr_number: (0, None),
+    )
+    posted: list[str] = []
+    monkeypatch.setattr(
+        "scripts.pr_watchdog._github_rest",
+        lambda *, token, method, path, body=None: posted.append(path),
+    )
+    fired = maybe_nudge_agent(
+        read_token="r",
+        post_token="p",
+        owner="o",
+        repo="r",
+        summary=_agent_blocked(),
+        pr_body="Closes #40",
+        author_login="Copilot",
+        max_attempts=3,
+        dry_run=True,
+    )
+    assert fired is True
+    assert posted == []  # dry-run must not post
+
+
+def test_maybe_nudge_agent_skips_when_unchanged(monkeypatch) -> None:
+    summary = _agent_blocked()
+    same_sig = ralph_signature(unmet_dod_items(summary))
+    monkeypatch.setattr(
+        "scripts.pr_watchdog.ralph_nudge_history",
+        lambda *, token, owner, repo, pr_number: (1, same_sig),
+    )
+    posted: list[str] = []
+    monkeypatch.setattr(
+        "scripts.pr_watchdog._github_rest",
+        lambda *, token, method, path, body=None: posted.append(path),
+    )
+    fired = maybe_nudge_agent(
+        read_token="r",
+        post_token="p",
+        owner="o",
+        repo="r",
+        summary=summary,
+        pr_body="Closes #40",
+        author_login="Copilot",
+        max_attempts=3,
+        dry_run=False,
+    )
+    assert fired is False
+    assert posted == []  # unchanged state → no re-nudge
+
+
+def test_maybe_nudge_agent_posts_with_post_token(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "scripts.pr_watchdog.ralph_nudge_history",
+        lambda *, token, owner, repo, pr_number: (0, None),
+    )
+    monkeypatch.setattr(
+        "scripts.pr_watchdog.fetch_issue_acceptance",
+        lambda *, token, owner, repo, issue_number: "## Acceptance\n\n- do X",
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    def fake_rest(*, token, method, path, body=None):
+        calls.append((token, method, path))
+        return None
+
+    monkeypatch.setattr("scripts.pr_watchdog._github_rest", fake_rest)
+
+    fired = maybe_nudge_agent(
+        read_token="read",
+        post_token="PAT",
+        owner="o",
+        repo="r",
+        summary=_agent_blocked(number=30),
+        pr_body="Closes #40",
+        author_login="Copilot",
+        max_attempts=3,
+        dry_run=False,
+    )
+    assert fired is True
+    # The nudge comment must be posted with the PAT (post_token), not the read token.
+    assert calls == [("PAT", "POST", "/repos/o/r/issues/30/comments")]
