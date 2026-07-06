@@ -33,12 +33,13 @@ dev = [
     "pytest>=9.0.3",
     "anyio>=4.0",
     "pytest-cov>=6.0",
+    "diff-cover>=9.2",
     "ruff>=0.8.0",
     "hypothesis>=6.0",
 ]
 infracost = [
     "azure-identity>=1.19.0",
-    "azure-monitor-query>=1.4.0,<2",
+    "azure-monitor-query>=1.4.0,<3",
     "azure-mgmt-resource>=23.0.0",
 ]
 
