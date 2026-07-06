@@ -528,8 +528,10 @@ def render_nudge_comment(
             f"<!-- ralph-sig: {ralph_signature(items)} -->",
             "## PR Watchdog — completion nudge",
             "",
-            f"@copilot this PR does not yet meet its Definition of Done "
-            f"(attempt {attempt}/{max_attempts}).",
+            (
+                f"@copilot this PR does not yet meet its Definition of Done "
+                f"(attempt {attempt}/{max_attempts})."
+            ),
             "",
             "**Outstanding:**",
             bullets,
@@ -538,8 +540,10 @@ def render_nudge_comment(
             "",
             spec,
             "",
-            "Please push commits that resolve the outstanding items and leave the PR "
-            "ready for review. If an item does not apply, reply explaining why.",
+            (
+                "Please push commits that resolve the outstanding items and leave the PR "
+                "ready for review. If an item does not apply, reply explaining why."
+            ),
         ]
     )
 
