@@ -7,6 +7,8 @@ from scripts.backlog_autopilot import (
     IssueCandidate,
     assign_issue_to_copilot,
     compute_budget_status,
+    count_open_copilot_prs,
+    parse_args,
     select_issues,
 )
 
@@ -145,3 +147,47 @@ def test_assign_issue_to_copilot_noop_when_already_assigned(monkeypatch) -> None
     assign_issue_to_copilot(token="t", owner="o", repo="r", issue_number=850)
 
     assert len(calls) == 1
+
+
+def test_max_open_autopilot_prs_default_enforces_wip_limit(monkeypatch) -> None:
+    # WIP limit contract: the autopilot must not start new agent work beyond
+    # 3 concurrent open Copilot PRs. This default is the enforced ceiling when
+    # the AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS repo variable is unset.
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "backlog_autopilot",
+            "--owner",
+            "o",
+            "--repo",
+            "r",
+            "--monthly-budget-usd",
+            "200",
+            "--month-spend-used-usd",
+            "0",
+        ],
+    )
+    args = parse_args()
+    assert args.max_open_autopilot_prs == 3
+
+
+def test_count_open_copilot_prs_counts_drafts_and_ready_agent_prs(monkeypatch) -> None:
+    # WIP scope: the limit counts all open Copilot-authored PRs regardless of
+    # draft state, plus any [WIP]-titled PR. Non-agent PRs do not count.
+    open_prs = [
+        {"user": {"login": "Copilot"}, "draft": True, "title": "fix: something"},
+        {"user": {"login": "Copilot"}, "draft": False, "title": "feat: ready"},
+        {"user": {"login": "Hardcoreprawn"}, "draft": False, "title": "[WIP] manual"},
+        {"user": {"login": "Hardcoreprawn"}, "draft": False, "title": "docs: normal"},
+        {"user": {"login": "dependabot[bot]"}, "draft": False, "title": "deps: bump"},
+    ]
+    monkeypatch.setattr(
+        "scripts.backlog_autopilot._fetch_paginated",
+        lambda token, path: open_prs,
+    )
+
+    count = count_open_copilot_prs(token="t", owner="o", repo="r")
+
+    # 2 Copilot PRs (draft + ready) + 1 [WIP]-titled PR = 3; the two other
+    # human/bot PRs are excluded.
+    assert count == 3

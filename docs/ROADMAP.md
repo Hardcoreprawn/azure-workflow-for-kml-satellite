@@ -25,6 +25,36 @@ Use the board for day-to-day prioritisation. Issues are labelled:
 
 ---
 
+## Working agreements
+
+**WIP limit — Copilot agent PRs: max 3 open.** No more than 3 open Copilot
+agent PRs (drafts + ready) at any time. Finish work before starting more:
+promote to ready and merge, or close, before the autopilot assigns new issues.
+
+- Enforced by the backlog autopilot queue cap
+  (`AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS=3`, fallback default `3` in
+  [scripts/backlog_autopilot.py](../scripts/backlog_autopilot.py) and
+  [.github/workflows/backlog-autopilot.yml](../.github/workflows/backlog-autopilot.yml)).
+- Scope is agent PRs only — Dependabot and human PRs are not counted.
+- When the cap is hit, drain first: a coding-agent draft whose Watchdog says
+  `READY_TO_PROMOTE` is actionable — `gh pr ready <n>` then review/merge; close
+  dead or superseded drafts. Do not raise the cap to unblock; clear the queue.
+
+**Definition of Done (agent PRs).** A PR is *finished* only when it links a
+closing issue (`Closes #NNN`), adds tests for any new behaviour, is green on
+`make check`, is marked ready (not draft), and reports its Watchdog status.
+Anything short of this is *started, not finished*. See
+[.github/copilot-instructions.md](../.github/copilot-instructions.md)
+"Delivery Workflow".
+
+**Completion SLA — 5 days.** An agent PR that stays `BLOCKED` or stale (no
+progress) for more than 5 days is closed and its linked issue re-queued, so the
+queue keeps moving instead of accreting half-done work. Enforced by the PR
+Watchdog stale-close path (opt-in via `AUTOPILOT_WATCHDOG_STALE_CLOSE`; off until
+the maintainer enables it).
+
+---
+
 ## Direction
 
 **EUDR compliance is the product.** Conservation monitoring is mothballed
