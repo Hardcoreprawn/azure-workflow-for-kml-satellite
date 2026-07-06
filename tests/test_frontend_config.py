@@ -758,22 +758,17 @@ class TestQuotaExhaustedBackendSignal:
     def test_submission_quota_exhausted_includes_flag(self):
         """submission.py quota-exhausted 403 must include quota_exhausted in the body."""
         src = (
-            Path(__file__).resolve().parent.parent
-            / "blueprints"
-            / "pipeline"
-            / "submission.py"
+            Path(__file__).resolve().parent.parent / "blueprints" / "pipeline" / "submission.py"
         ).read_text()
-        assert 'quota_exhausted' in src, (
+        assert "quota_exhausted" in src, (
             "blueprints/pipeline/submission.py must set quota_exhausted in the 403 "
             "response body for QuotaExhaustedError"
         )
 
     def test_upload_quota_exhausted_includes_flag(self):
         """upload.py quota-exhausted 403 must include quota_exhausted in the body."""
-        src = (
-            Path(__file__).resolve().parent.parent / "blueprints" / "upload.py"
-        ).read_text()
-        assert 'quota_exhausted' in src, (
+        src = (Path(__file__).resolve().parent.parent / "blueprints" / "upload.py").read_text()
+        assert "quota_exhausted" in src, (
             "blueprints/upload.py must set quota_exhausted in the 403 "
             "response body for QuotaExhaustedError"
         )
