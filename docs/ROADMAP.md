@@ -25,6 +25,23 @@ Use the board for day-to-day prioritisation. Issues are labelled:
 
 ---
 
+## Working agreements
+
+**WIP limit — Copilot agent PRs: max 3 open.** No more than 3 open Copilot
+agent PRs (drafts + ready) at any time. Finish work before starting more:
+promote to ready and merge, or close, before the autopilot assigns new issues.
+
+- Enforced by the backlog autopilot queue cap
+  (`AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS=3`, fallback default `3` in
+  [scripts/backlog_autopilot.py](../scripts/backlog_autopilot.py) and
+  [.github/workflows/backlog-autopilot.yml](../.github/workflows/backlog-autopilot.yml)).
+- Scope is agent PRs only — Dependabot and human PRs are not counted.
+- When the cap is hit, drain first: a coding-agent draft whose Watchdog says
+  `READY_TO_PROMOTE` is actionable — `gh pr ready <n>` then review/merge; close
+  dead or superseded drafts. Do not raise the cap to unblock; clear the queue.
+
+---
+
 ## Direction
 
 **EUDR compliance is the product.** Conservation monitoring is mothballed
