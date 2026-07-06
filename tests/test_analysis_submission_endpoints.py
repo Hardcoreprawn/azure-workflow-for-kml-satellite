@@ -245,6 +245,39 @@ class TestAnalysisSubmissionRoutes:
         assert mock_reserve.call_args.kwargs["parcel_count"] == 3
         assert mock_reserve.call_args.kwargs["instance_id"] == submission_id
 
+    def test_eudr_submit_does_not_use_legacy_quota_writers(self):
+        """Direct submit path should charge only org-pooled reserve_run for EUDR."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req(
+            "/api/analysis/submit",
+            {"kml_content": "<kml></kml>", "eudr_mode": True, "parcel_count": 2},
+        )
+
+        mock_reserve = MagicMock(return_value={"reserved_parcels": 1})
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch(
+                "blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"}
+            ),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
+            patch(
+                "blueprints.pipeline.submission.get_effective_subscription",
+                return_value={"tier": "free", "status": "none"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+            patch("treesight.security.quota.consume_quota") as mock_consume_quota,
+            patch("treesight.security.eudr_billing.consume_eudr_trial") as mock_consume_trial,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 202
+        assert mock_reserve.call_count == 1
+        assert mock_reserve.call_args.kwargs["is_eudr"] is True
+        assert mock_reserve.call_args.kwargs["parcel_count"] == 2
+        mock_consume_trial.assert_not_called()
+        mock_consume_quota.assert_not_called()
+
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response
 
