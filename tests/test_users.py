@@ -185,6 +185,64 @@ class TestLookupUserByEmail:
 
             assert lookup_user_by_email("a@b.com") is None
 
+    def test_prefers_billing_enabled_record_when_duplicates_exist(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "new-id",
+                        "user_id": "new-id",
+                        "email": "a@b.com",
+                        "billing_allowed": False,
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "legacy-id",
+                        "user_id": "legacy-id",
+                        "email": "a@b.com",
+                        "billing_allowed": True,
+                        "last_seen": "2026-06-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "legacy-id"
+
+    def test_prefers_used_quota_record_when_billing_flags_equal(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "new-id",
+                        "user_id": "new-id",
+                        "email": "a@b.com",
+                        "quota": {"used": 0},
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "legacy-id",
+                        "user_id": "legacy-id",
+                        "email": "a@b.com",
+                        "quota": {"used": 2},
+                        "last_seen": "2026-06-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "legacy-id"
+
 
 class TestListUsers:
     def test_returns_users(self):

@@ -215,6 +215,34 @@ class TestCheckAuth:
         assert claims["oid"] == "object-id"
         assert user_id == "tenant-id:object-id"
 
+    def test_remaps_user_id_to_existing_email_match(self):
+        """When auth subject changes, reuse existing user record keyed by email."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "Authorization": "Bearer valid.jwt.token",
+        }
+
+        with (
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("treesight.security.users.lookup_user_by_email") as lookup,
+        ):
+            verify.return_value = {
+                "tid": "tenant-id",
+                "oid": "new-object-id",
+                "ver": "2.0",
+                "preferred_username": "j.brewster@outlook.com",
+            }
+            lookup.return_value = {
+                "id": "legacy-user-id",
+                "user_id": "legacy-user-id",
+                "email": "j.brewster@outlook.com",
+            }
+            _claims, user_id = check_auth(mock_req)
+
+        assert user_id == "legacy-user-id"
+
     def test_rejects_invalid_bearer_token(self):
         """check_auth rejects invalid bearer JWT with a user-safe message (#709)."""
         from blueprints._helpers import check_auth
@@ -314,6 +342,39 @@ class TestRequireAuth:
         body = json.loads(resp.get_body())
         assert body["user"] == "tenant-id:object-id"
         assert body["subject"] is None
+
+    def test_maps_to_existing_user_id_when_email_matches(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse(json.dumps({"user": user_id}), mimetype="application/json")
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {"Authorization": "Bearer valid.jwt.token"}
+
+        with (
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("treesight.security.users.lookup_user_by_email") as lookup,
+        ):
+            verify.return_value = {
+                "tid": "tenant-id",
+                "oid": "new-object-id",
+                "ver": "2.0",
+                "preferred_username": "j.brewster@outlook.com",
+            }
+            lookup.return_value = {
+                "id": "legacy-user-id",
+                "user_id": "legacy-user-id",
+                "email": "j.brewster@outlook.com",
+            }
+            resp = my_endpoint(mock_req)
+
+        body = json.loads(resp.get_body())
+        assert body["user"] == "legacy-user-id"
 
     def test_rejects_invalid_bearer_token(self):
         from blueprints._helpers import require_auth

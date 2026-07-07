@@ -35,11 +35,15 @@ def _make_req(
     params: dict[str, str] | None = None,
     route_params: dict[str, str] | None = None,
     principal_user_id: str | None = "test-user",
+    principal_user_details: str = "user@example.com",
 ) -> func.HttpRequest:
     """Build an authenticated HttpRequest for upload blueprint."""
     h: dict[str, str] = {"Origin": TEST_ORIGIN}
     if principal_user_id:
-        h["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(user_id=principal_user_id)
+        h["X-MS-CLIENT-PRINCIPAL"] = encode_test_principal(
+            user_id=principal_user_id,
+            user_details=principal_user_details,
+        )
 
     raw_body = b""
     if body is not None:
@@ -258,6 +262,38 @@ class TestUploadToken:
         self.mock_reserve_run.assert_called_once()
         call_kwargs = self.mock_reserve_run.call_args.kwargs
         assert call_kwargs["is_eudr"] is False  # Default: not EUDR mode
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_reuses_existing_user_id_when_email_matches_legacy_record(self, mock_bsc, mock_gen_sas):
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req(
+            "/api/upload/token",
+            method="POST",
+            principal_user_id="new-auth-id",
+            principal_user_details="j.brewster@outlook.com",
+        )
+        with (
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch(
+                "treesight.security.users.lookup_user_by_email",
+                return_value={
+                    "id": "legacy-user-id",
+                    "user_id": "legacy-user-id",
+                    "email": "j.brewster@outlook.com",
+                },
+            ),
+        ):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        self.mock_reserve_run.assert_called_once()
+        call_kwargs = self.mock_reserve_run.call_args.kwargs
+        assert call_kwargs["user_id"] == "legacy-user-id"
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")

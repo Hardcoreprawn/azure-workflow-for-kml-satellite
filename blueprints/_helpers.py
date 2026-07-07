@@ -128,7 +128,12 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
             principal = parse_client_principal(principal_header)
             uid = get_user_id(principal)
             if uid:
-                return {"oid": uid, "ver": "2.0", "auth_path": "test_principal"}
+                return {
+                    "oid": uid,
+                    "ver": "2.0",
+                    "auth_path": "test_principal",
+                    "userDetails": principal.get("userDetails", ""),
+                }
 
     auth_header = req.headers.get("Authorization", "")
     bearer = parse_bearer_token(auth_header)
@@ -136,6 +141,50 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
         return verify_bearer_token(bearer)
 
     return None
+
+
+def _claim_email(claims: dict[str, Any]) -> str:
+    """Extract an email-like identifier from verified auth claims."""
+    for key in ("email", "preferred_username", "upn", "userDetails"):
+        value = claims.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    emails = claims.get("emails")
+    if isinstance(emails, list):
+        for value in emails:
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return ""
+
+
+def _resolve_effective_user_id(user_id: str, claims: dict[str, Any]) -> str:
+    """Resolve user identity to an existing Cosmos user record when possible."""
+    if not user_id or user_id == "anonymous":
+        return user_id
+
+    email = _claim_email(claims)
+    if not email:
+        return user_id
+
+    try:
+        from treesight.security.users import lookup_user_by_email
+
+        matched = lookup_user_by_email(email)
+    except Exception:
+        logger.debug("email identity lookup failed for user=%s", user_id, exc_info=True)
+        return user_id
+
+    if not isinstance(matched, dict):
+        return user_id
+
+    resolved_user_id = str(matched.get("user_id") or matched.get("id") or "").strip()
+    if resolved_user_id and resolved_user_id != user_id:
+        logger.info("auth user_id remapped via email match")
+        return resolved_user_id
+
+    return user_id
 
 
 def require_auth(fn):
@@ -164,6 +213,7 @@ def require_auth(fn):
 
         if claims:
             uid = get_user_id_from_bearer_claims(claims)
+            uid = _resolve_effective_user_id(uid, claims)
             logger.info("auth_path=bearer")
             resp = fn(req, auth_claims=claims, user_id=uid)
             _track_req(req, resp, uid, _t0)
@@ -193,6 +243,7 @@ def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     claims = _resolve_bearer_claims(req)
     if claims:
         uid = get_user_id_from_bearer_claims(claims)
+        uid = _resolve_effective_user_id(uid, claims)
         logger.info("auth_path=bearer")
         return claims, uid
 

@@ -179,7 +179,25 @@ def lookup_user_by_email(email: str) -> dict[str, Any] | None:
             "SELECT * FROM c WHERE LOWER(c.email) = LOWER(@email)",
             parameters=[{"name": "@email", "value": email.strip()}],
         )
-        return results[0] if results else None
+        if not results:
+            return None
+
+        def _sort_key(doc: dict[str, Any]) -> tuple[int, int, int, str]:
+            quota = doc.get("quota")
+            used = 0
+            if isinstance(quota, dict):
+                try:
+                    used = int(quota.get("used", 0))
+                except (TypeError, ValueError):
+                    used = 0
+            return (
+                1 if doc.get("billing_allowed") else 0,
+                1 if used > 0 else 0,
+                1 if doc.get("org_id") else 0,
+                str(doc.get("last_seen", "")),
+            )
+
+        return max(results, key=_sort_key)
     except Exception:
         logger.warning("Email lookup failed for email=%s", email, exc_info=True)
         return None
