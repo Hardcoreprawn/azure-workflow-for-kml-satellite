@@ -280,7 +280,7 @@ class TestUploadToken:
         with (
             patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
             patch(
-                "treesight.security.users.lookup_user_by_email",
+                "blueprints._helpers.lookup_user_by_email",
                 return_value={
                     "id": "legacy-user-id",
                     "user_id": "legacy-user-id",

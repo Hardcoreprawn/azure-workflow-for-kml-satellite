@@ -182,7 +182,10 @@ def lookup_user_by_email(email: str) -> dict[str, Any] | None:
         if not results:
             return None
 
-        def _sort_key(doc: dict[str, Any]) -> tuple[int, int, int, str]:
+        def _user_record_priority_key(doc: dict[str, Any]) -> tuple[int, int, int, str]:
+            # Prefer records likely to carry entitlement/quota state first:
+            # billing_allowed > quota used > org membership > newest last_seen
+            # (ISO 8601 lexical ordering).
             quota = doc.get("quota")
             used = 0
             if isinstance(quota, dict):
@@ -197,7 +200,7 @@ def lookup_user_by_email(email: str) -> dict[str, Any] | None:
                 str(doc.get("last_seen", "")),
             )
 
-        return max(results, key=_sort_key)
+        return max(results, key=_user_record_priority_key)
     except Exception:
         logger.warning("Email lookup failed for email=%s", email, exc_info=True)
         return None

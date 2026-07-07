@@ -226,7 +226,7 @@ class TestCheckAuth:
 
         with (
             patch("blueprints._helpers.verify_bearer_token") as verify,
-            patch("treesight.security.users.lookup_user_by_email") as lookup,
+            patch("blueprints._helpers.lookup_user_by_email") as lookup,
         ):
             verify.return_value = {
                 "tid": "tenant-id",
@@ -358,7 +358,7 @@ class TestRequireAuth:
 
         with (
             patch("blueprints._helpers.verify_bearer_token") as verify,
-            patch("treesight.security.users.lookup_user_by_email") as lookup,
+            patch("blueprints._helpers.lookup_user_by_email") as lookup,
         ):
             verify.return_value = {
                 "tid": "tenant-id",
@@ -458,3 +458,22 @@ class TestCorsHeaders:
             "delete_account_endpoint must not declare OPTIONS — it conflicts with "
             "get_profile_endpoint on route='user'. OPTIONS is handled by the GET handler."
         )
+
+
+class TestClaimEmailExtraction:
+    @pytest.mark.parametrize(
+        ("claims", "expected"),
+        [
+            ({"email": "user@example.com"}, "user@example.com"),
+            ({"preferred_username": "user@example.com"}, "user@example.com"),
+            ({"upn": "user@example.com"}, "user@example.com"),
+            ({"userDetails": "user@example.com"}, "user@example.com"),
+            ({"emails": ["user@example.com"]}, "user@example.com"),
+            ({"email": "not-an-email", "preferred_username": "also-invalid"}, ""),
+            ({"email": "   "}, ""),
+        ],
+    )
+    def test_claim_email_fallbacks(self, claims, expected):
+        from blueprints._helpers import _claim_email
+
+        assert _claim_email(claims) == expected

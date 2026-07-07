@@ -16,6 +16,7 @@ from treesight.security.auth import (
     parse_client_principal,
     verify_bearer_token,
 )
+from treesight.security.users import lookup_user_by_email
 
 logger = logging.getLogger(__name__)
 
@@ -145,16 +146,22 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
 
 def _claim_email(claims: dict[str, Any]) -> str:
     """Extract an email-like identifier from verified auth claims."""
+    # Prefer explicit email claims, then provider-specific username fields,
+    # then SWA legacy userDetails. The `emails` array is a final fallback.
     for key in ("email", "preferred_username", "upn", "userDetails"):
         value = claims.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()
+            candidate = value.strip()
+            if "@" in candidate:
+                return candidate
 
     emails = claims.get("emails")
     if isinstance(emails, list):
         for value in emails:
             if isinstance(value, str) and value.strip():
-                return value.strip()
+                candidate = value.strip()
+                if "@" in candidate:
+                    return candidate
 
     return ""
 
@@ -169,11 +176,13 @@ def _resolve_effective_user_id(user_id: str, claims: dict[str, Any]) -> str:
         return user_id
 
     try:
-        from treesight.security.users import lookup_user_by_email
-
         matched = lookup_user_by_email(email)
     except Exception:
-        logger.debug("email identity lookup failed for user=%s", user_id, exc_info=True)
+        logger.debug(
+            "Failed to lookup existing user record by email; using auth-provided user_id=%s",
+            user_id,
+            exc_info=True,
+        )
         return user_id
 
     if not isinstance(matched, dict):
@@ -181,7 +190,7 @@ def _resolve_effective_user_id(user_id: str, claims: dict[str, Any]) -> str:
 
     resolved_user_id = str(matched.get("user_id") or matched.get("id") or "").strip()
     if resolved_user_id and resolved_user_id != user_id:
-        logger.info("auth user_id remapped via email match")
+        logger.info("auth user_id remapped via email match: %s -> %s", user_id, resolved_user_id)
         return resolved_user_id
 
     return user_id

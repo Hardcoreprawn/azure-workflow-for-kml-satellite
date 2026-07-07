@@ -243,6 +243,91 @@ class TestLookupUserByEmail:
             assert result is not None
             assert result["user_id"] == "legacy-id"
 
+    def test_prefers_org_member_record_when_other_flags_tie(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "new-id",
+                        "user_id": "new-id",
+                        "email": "a@b.com",
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "legacy-id",
+                        "user_id": "legacy-id",
+                        "email": "a@b.com",
+                        "org_id": "org-1",
+                        "last_seen": "2026-06-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "legacy-id"
+
+    def test_prefers_newest_last_seen_when_all_other_flags_tie(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "older-id",
+                        "user_id": "older-id",
+                        "email": "a@b.com",
+                        "last_seen": "2026-06-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "newer-id",
+                        "user_id": "newer-id",
+                        "email": "a@b.com",
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "newer-id"
+
+    @pytest.mark.parametrize("quota_value", [None, "invalid", {"used": "not-a-number"}])
+    def test_handles_malformed_quota_values(self, quota_value):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "older-id",
+                        "user_id": "older-id",
+                        "email": "a@b.com",
+                        "quota": quota_value,
+                        "last_seen": "2026-06-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "newer-id",
+                        "user_id": "newer-id",
+                        "email": "a@b.com",
+                        "quota": {"used": 0},
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "newer-id"
+
 
 class TestListUsers:
     def test_returns_users(self):
