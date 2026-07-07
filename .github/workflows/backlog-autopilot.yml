@@ -53,7 +53,7 @@ jobs:
           VAR_MONTH_SPEND_USED_USD: ${{ vars.AUTOPILOT_MONTH_SPEND_USED_USD || '0' }}
           VAR_MAX_NEW_ASSIGNMENTS: ${{ vars.AUTOPILOT_MAX_NEW_ASSIGNMENTS || '2' }}
           VAR_RESERVE_RATIO: ${{ vars.AUTOPILOT_RESERVE_RATIO || '0.25' }}
-          VAR_MAX_OPEN_AUTOPILOT_PRS: ${{ vars.AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS || '8' }}
+          VAR_MAX_OPEN_AUTOPILOT_PRS: ${{ vars.AUTOPILOT_MAX_OPEN_AUTOPILOT_PRS || '3' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
