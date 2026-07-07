@@ -1,7 +1,7 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html", "/robots.txt", "/sitemap.xml", "/.well-known/*"]
+    "exclude": ["/api-config.json", "/css/*", "/js/*", "/images/*", "/docs/*", "/terms.html", "/privacy.html", "/robots.txt", "/sitemap.xml", "/.well-known/*"]
   },
   "routes": [
     {
