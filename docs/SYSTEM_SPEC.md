@@ -76,6 +76,11 @@ Pipeline Summary
 
 ## 2. Domain Model
 
+> This section covers the geometric / pipeline types. For the full
+> ownership, billing, and persistence model (Organisation, User, Quota
+> Pool, Run, Catalogue, Monitor) across conceptual, logical, and physical
+> layers, see [DATA_MODEL.md](DATA_MODEL.md).
+
 ### 2.1 Feature
 
 A single polygon extracted from a KML file.
