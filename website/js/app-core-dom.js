@@ -44,6 +44,35 @@
     status.setAttribute('data-tone', tone || 'info');
   }
 
+  /**
+   * Show the quota-exhausted state in the analysis status callout.
+   *
+   * Renders "You are out of runs." alongside an "Upgrade plan" CTA button
+   * that calls *onUpgrade* when clicked.  Calling setAnalysisStatus()
+   * afterwards will replace this content (textContent assignment clears
+   * all child nodes).
+   *
+   * @param {Function} [onUpgrade] - called when the user clicks the CTA
+   */
+  function showQuotaExhaustedStatus(onUpgrade) {
+    var status = getById('app-analysis-status');
+    if (!status) return;
+    status.hidden = false;
+    status.setAttribute('data-tone', 'error');
+    // Replace any existing content with the quota-exhausted message + CTA
+    while (status.firstChild) { status.removeChild(status.firstChild); }
+    var msgNode = document.createTextNode('You are out of runs. ');
+    status.appendChild(msgNode);
+    if (typeof onUpgrade === 'function') {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'app-quota-upgrade-btn';
+      btn.textContent = 'Upgrade plan';
+      btn.addEventListener('click', onUpgrade);
+      status.appendChild(btn);
+    }
+  }
+
   function setHeroRunSummary(title, note) {
     var titleEl = getById('app-hero-active-run');
     var noteEl = getById('app-hero-active-run-note');
@@ -58,6 +87,7 @@
     bindClick: bindClick,
     bindInput: bindInput,
     setAnalysisStatus: setAnalysisStatus,
+    showQuotaExhaustedStatus: showQuotaExhaustedStatus,
     setHeroRunSummary: setHeroRunSummary,
   };
 })();

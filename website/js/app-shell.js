@@ -351,6 +351,7 @@
       selectAnalysisRun: historyUiModule.selectAnalysisRun,
       loadBillingStatus: billingModule.load,
       loadAnalysisHistory: appRuns.loadHistory,
+      openBillingUpgrade: billingModule.manage,
       loadRunEvidence: evidenceDisplayModule.load,
       showEvidenceSurface: evidenceDisplayModule.showSurface,
       renderAnalysisHistoryList: historyUiModule.renderAnalysisHistoryList,
