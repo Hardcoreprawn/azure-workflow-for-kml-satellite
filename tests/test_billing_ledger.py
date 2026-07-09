@@ -81,7 +81,7 @@ class TestBillingFieldsForSubmission:
     @patch(_COMPUTE_POOL_ALLOWANCE, return_value=10)
     @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": {"runs_reserved": 1}})
     @patch(_GET_SUB)
-    def test_free_user_first_run(self, mock_sub, _mock_org, _mock_allowance):
+    def test_free_user_classification_after_reservation(self, mock_sub, _mock_org, _mock_allowance):
         mock_sub.return_value = {"tier": "free", "status": "none"}
 
         fields = billing_fields_for_submission("u-free")
