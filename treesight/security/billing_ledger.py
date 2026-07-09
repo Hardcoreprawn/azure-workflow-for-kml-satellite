@@ -83,6 +83,12 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
 
     if org:
         usage_raw = org.get("usage")
+        if usage_raw is not None and not isinstance(usage_raw, dict):
+            logger.warning(
+                "Unexpected org usage shape for billing classification user=%s type=%s",
+                _redact(user_id),
+                type(usage_raw).__name__,
+            )
         usage: dict[str, Any] = usage_raw if isinstance(usage_raw, dict) else {}
         used_now = int(usage.get("runs_reserved", 0)) + int(usage.get("runs_completed", 0))
         included_limit = compute_pool_allowance(org)
