@@ -82,7 +82,8 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
     org = get_user_org(user_id)
 
     if org:
-        usage = org.get("usage") if isinstance(org.get("usage"), dict) else {}
+        usage_raw = org.get("usage")
+        usage: dict[str, Any] = usage_raw if isinstance(usage_raw, dict) else {}
         used_now = int(usage.get("runs_reserved", 0)) + int(usage.get("runs_completed", 0))
         included_limit = compute_pool_allowance(org)
     else:
