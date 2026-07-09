@@ -265,7 +265,7 @@ class TestUploadToken:
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
-    def test_reuses_existing_user_id_when_email_matches_legacy_record(self, mock_bsc, mock_gen_sas):
+    def test_does_not_remap_identity_from_test_principal_email(self, mock_bsc, mock_gen_sas):
         from blueprints.upload import upload_token
 
         mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
@@ -286,14 +286,15 @@ class TestUploadToken:
                     "user_id": "legacy-user-id",
                     "email": "j.brewster@outlook.com",
                 },
-            ),
+            ) as lookup,
         ):
             resp = upload_token(req)
 
         assert resp.status_code == 200
         self.mock_reserve_run.assert_called_once()
         call_kwargs = self.mock_reserve_run.call_args.kwargs
-        assert call_kwargs["user_id"] == "legacy-user-id"
+        assert call_kwargs["user_id"] == "new-auth-id"
+        lookup.assert_not_called()
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")

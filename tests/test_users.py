@@ -88,6 +88,18 @@ class TestRecordUserSignIn:
             # Should not raise
             record_user_sign_in("u1", email="a@b.com")
 
+    def test_normalizes_email_before_persisting(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
+            patch("treesight.storage.cosmos.upsert_item") as upsert,
+        ):
+            from treesight.security.users import record_user_sign_in
+
+            record_user_sign_in("u1", email="  A@B.COM  ")
+            doc = upsert.call_args[0][1]
+            assert doc["email"] == "a@b.com"
+
 
 class TestIsBillingAllowed:
     def test_true_when_flag_set(self):
@@ -327,6 +339,33 @@ class TestLookupUserByEmail:
             result = lookup_user_by_email("a@b.com")
             assert result is not None
             assert result["user_id"] == "newer-id"
+
+    def test_uses_stable_user_id_tiebreaker_when_all_priority_fields_match(self):
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "id": "a-id",
+                        "user_id": "a-id",
+                        "email": "a@b.com",
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                    {
+                        "id": "z-id",
+                        "user_id": "z-id",
+                        "email": "a@b.com",
+                        "last_seen": "2026-07-01T00:00:00+00:00",
+                    },
+                ],
+            ),
+        ):
+            from treesight.security.users import lookup_user_by_email
+
+            result = lookup_user_by_email("a@b.com")
+            assert result is not None
+            assert result["user_id"] == "z-id"
 
 
 class TestListUsers:

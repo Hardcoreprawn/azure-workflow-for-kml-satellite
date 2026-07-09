@@ -232,7 +232,8 @@ class TestCheckAuth:
                 "tid": "tenant-id",
                 "oid": "new-object-id",
                 "ver": "2.0",
-                "preferred_username": "j.brewster@outlook.com",
+                "email": "j.brewster@outlook.com",
+                "email_verified": True,
             }
             lookup.return_value = {
                 "id": "legacy-user-id",
@@ -242,6 +243,107 @@ class TestCheckAuth:
             _claims, user_id = check_auth(mock_req)
 
         assert user_id == "legacy-user-id"
+
+    def test_does_not_remap_when_email_is_unverified(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {"Authorization": "Bearer " + "valid.jwt.token"}
+
+        with (
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("blueprints._helpers.lookup_user_by_email") as lookup,
+        ):
+            verify.return_value = {
+                "tid": "tenant-id",
+                "oid": "new-object-id",
+                "ver": "2.0",
+                "email": "j.brewster@outlook.com",
+                "email_verified": False,
+            }
+            lookup.return_value = {"user_id": "legacy-user-id", "email": "j.brewster@outlook.com"}
+
+            _claims, user_id = check_auth(mock_req)
+
+        assert user_id == "tenant-id:new-object-id"
+        lookup.assert_not_called()
+
+    def test_bearer_email_persisted_then_reused_for_remap(self):
+        from blueprints._helpers import check_auth
+        from blueprints.billing import _record_user_profile
+
+        users: dict[tuple[str, str, str], dict] = {}
+
+        def _read_item(container: str, item_id: str, partition_key: str):
+            return users.get((container, item_id, partition_key))
+
+        def _upsert_item(container: str, item: dict):
+            users[(container, item["id"], item["user_id"])] = dict(item)
+            return item
+
+        def _query_items(_container: str, _query: str, parameters: list[dict]):
+            expected = str(parameters[0]["value"]).strip().lower()
+            return [doc for doc in users.values() if str(doc.get("email", "")).lower() == expected]
+
+        mock_req = MagicMock()
+        mock_req.headers = {"Authorization": "Bearer " + "valid.jwt.token"}
+
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.read_item", side_effect=_read_item),
+            patch("treesight.storage.cosmos.upsert_item", side_effect=_upsert_item),
+            patch("treesight.storage.cosmos.query_items", side_effect=_query_items),
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+        ):
+            verify.side_effect = [
+                {
+                    "tid": "tenant-id",
+                    "oid": "old-object-id",
+                    "ver": "2.0",
+                    "email": "J.Brewster@Outlook.com",
+                    "email_verified": True,
+                },
+                {
+                    "tid": "tenant-id",
+                    "oid": "new-object-id",
+                    "ver": "2.0",
+                    "email": "j.brewster@outlook.com",
+                    "email_verified": True,
+                },
+            ]
+            claims_one, user_id_one = check_auth(mock_req)
+            _record_user_profile(user_id_one, claims_one)
+
+            _claims_two, user_id_two = check_auth(mock_req)
+
+        assert user_id_one == "tenant-id:old-object-id"
+        assert user_id_two == "tenant-id:old-object-id"
+
+    def test_logs_warning_when_email_lookup_fails(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {"Authorization": "Bearer " + "valid.jwt.token"}
+
+        with (
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch(
+                "blueprints._helpers.lookup_user_by_email",
+                side_effect=RuntimeError("cosmos unavailable"),
+            ),
+            patch("blueprints._helpers.logger.warning") as warning,
+        ):
+            verify.return_value = {
+                "tid": "tenant-id",
+                "oid": "new-object-id",
+                "ver": "2.0",
+                "email": "j.brewster@outlook.com",
+                "email_verified": True,
+            }
+            _claims, user_id = check_auth(mock_req)
+
+        assert user_id == "tenant-id:new-object-id"
+        warning.assert_called_once()
 
     def test_rejects_invalid_bearer_token(self):
         """check_auth rejects invalid bearer JWT with a user-safe message (#709)."""
@@ -364,7 +466,8 @@ class TestRequireAuth:
                 "tid": "tenant-id",
                 "oid": "new-object-id",
                 "ver": "2.0",
-                "preferred_username": "j.brewster@outlook.com",
+                "email": "j.brewster@outlook.com",
+                "xms_edov": "true",
             }
             lookup.return_value = {
                 "id": "legacy-user-id",
@@ -375,6 +478,53 @@ class TestRequireAuth:
 
         body = json.loads(resp.get_body())
         assert body["user"] == "legacy-user-id"
+
+    def test_does_not_map_when_verified_email_signal_missing(self):
+        from blueprints._helpers import require_auth
+
+        @require_auth
+        def my_endpoint(req, auth_claims=None, user_id=None):
+            import azure.functions as func
+
+            return func.HttpResponse(json.dumps({"user": user_id}), mimetype="application/json")
+
+        mock_req = MagicMock()
+        mock_req.method = "POST"
+        mock_req.headers = {"Authorization": "Bearer " + "valid.jwt.token"}
+
+        with (
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("blueprints._helpers.lookup_user_by_email") as lookup,
+        ):
+            verify.return_value = {
+                "tid": "tenant-id",
+                "oid": "new-object-id",
+                "ver": "2.0",
+                "email": "j.brewster@outlook.com",
+            }
+            lookup.return_value = {"user_id": "legacy-user-id", "email": "j.brewster@outlook.com"}
+            resp = my_endpoint(mock_req)
+
+        body = json.loads(resp.get_body())
+        assert body["user"] == "tenant-id:new-object-id"
+        lookup.assert_not_called()
+
+    def test_skips_email_remap_for_test_principal_auth_path(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="test-principal-user")
+        }
+
+        with (
+            patch.dict("os.environ", {"CANOPEX_TEST_MODE": "1"}),
+            patch("blueprints._helpers.lookup_user_by_email") as lookup,
+        ):
+            _claims, user_id = check_auth(mock_req)
+
+        assert user_id == "test-principal-user"
+        lookup.assert_not_called()
 
     def test_rejects_invalid_bearer_token(self):
         from blueprints._helpers import require_auth
@@ -465,11 +615,13 @@ class TestClaimEmailExtraction:
         ("claims", "expected"),
         [
             ({"email": "user@example.com"}, "user@example.com"),
-            ({"preferred_username": "user@example.com"}, "user@example.com"),
-            ({"upn": "user@example.com"}, "user@example.com"),
-            ({"userDetails": "user@example.com"}, "user@example.com"),
+            ({"email": "User@Example.COM"}, "user@example.com"),
             ({"emails": ["user@example.com"]}, "user@example.com"),
-            ({"email": "not-an-email", "preferred_username": "also-invalid"}, ""),
+            ({"emails": ["  user@example.com  "]}, "user@example.com"),
+            ({"emails": ["  User@Example.COM  "]}, "user@example.com"),
+            ({"preferred_username": "user@example.com"}, ""),
+            ({"upn": "user@example.com"}, ""),
+            ({"userDetails": "user@example.com"}, ""),
             ({"email": "   "}, ""),
         ],
     )
@@ -477,3 +629,21 @@ class TestClaimEmailExtraction:
         from blueprints._helpers import _claim_email
 
         assert _claim_email(claims) == expected
+
+
+class TestVerifiedEmailClaim:
+    @pytest.mark.parametrize(
+        ("claims", "expected"),
+        [
+            ({"email_verified": True}, True),
+            ({"email_verified": "true"}, True),
+            ({"xms_edov": True}, True),
+            ({"xms_edov": "1"}, True),
+            ({"xms_edov": "yes"}, True),
+            ({"email_verified": False, "xms_edov": "false"}, False),
+        ],
+    )
+    def test_verified_email_signals(self, claims, expected):
+        from blueprints._helpers import _is_verified_email_claim
+
+        assert _is_verified_email_claim(claims) is expected

@@ -11,6 +11,7 @@ import os
 import azure.functions as func
 
 from blueprints._helpers import (
+    _claim_email,
     _cors_origin,
     cors_headers,
     error_response,
@@ -477,10 +478,14 @@ def _record_user_profile(user_id: str, auth_claims: dict) -> None:
     try:
         from treesight.security.users import record_user_sign_in
 
+        display_name = auth_claims.get("name", "")
+        if not isinstance(display_name, str) or not display_name.strip():
+            display_name = auth_claims.get("userDetails", "")
+
         record_user_sign_in(
             user_id,
-            email=auth_claims.get("userDetails", ""),
-            display_name=auth_claims.get("userDetails", ""),
+            email=_claim_email(auth_claims),
+            display_name=display_name,
             identity_provider=auth_claims.get("identityProvider", ""),
         )
     except Exception:

@@ -1,5 +1,6 @@
 """Shared helpers for blueprint HTTP endpoints."""
 
+import hashlib
 import json
 import logging
 import os
@@ -145,25 +146,37 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
 
 
 def _claim_email(claims: dict[str, Any]) -> str:
-    """Extract an email-like identifier from verified auth claims."""
-    # Prefer explicit email claims, then provider-specific username fields,
-    # then SWA legacy userDetails. The `emails` array is a final fallback.
-    for key in ("email", "preferred_username", "upn", "userDetails"):
-        value = claims.get(key)
-        if isinstance(value, str) and value.strip():
-            candidate = value.strip()
-            if "@" in candidate:
-                return candidate
+    """Extract email from explicit email claims only."""
+    value = claims.get("email")
+    if isinstance(value, str) and value.strip():
+        candidate = value.strip().lower()
+        if "@" in candidate:
+            return candidate
 
     emails = claims.get("emails")
     if isinstance(emails, list):
         for value in emails:
             if isinstance(value, str) and value.strip():
-                candidate = value.strip()
+                candidate = value.strip().lower()
                 if "@" in candidate:
                     return candidate
 
     return ""
+
+
+def _is_verified_email_claim(claims: dict[str, Any]) -> bool:
+    """Return true when token signals that email is verified by the IdP."""
+    email_verified = claims.get("email_verified")
+    xms_edov = claims.get("xms_edov")
+    return (
+        email_verified is True
+        or (
+            isinstance(email_verified, str)
+            and email_verified.strip().lower() in {"true", "1", "yes"}
+        )
+        or xms_edov is True
+        or (isinstance(xms_edov, str) and xms_edov.strip().lower() in {"true", "1", "yes"})
+    )
 
 
 def _resolve_effective_user_id(user_id: str, claims: dict[str, Any]) -> str:
@@ -171,15 +184,24 @@ def _resolve_effective_user_id(user_id: str, claims: dict[str, Any]) -> str:
     if not user_id or user_id == "anonymous":
         return user_id
 
+    if claims.get("auth_path") == "test_principal":
+        return user_id
+
     email = _claim_email(claims)
     if not email:
+        return user_id
+
+    # CIAM contract: remap is only allowed when token asserts verified email.
+    if not _is_verified_email_claim(claims):
         return user_id
 
     try:
         matched = lookup_user_by_email(email)
     except Exception:
-        logger.debug(
-            "Failed to lookup existing user record by email; using auth-provided user_id=%s",
+        email_hash = hashlib.sha256(email.encode("utf-8")).hexdigest()[:12]
+        logger.warning(
+            "Email remap lookup failed for email_hash=%s; using auth-provided user_id=%s",
+            email_hash,
             user_id,
             exc_info=True,
         )

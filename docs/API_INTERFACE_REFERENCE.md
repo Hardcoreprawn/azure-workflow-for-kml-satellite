@@ -35,6 +35,12 @@ Production API base URL: `https://{productionHost}/api`
 | POST | /api/convert-coordinates | SWA session | 401 | Coordinate conversion |
 | GET | /api/export/{id}/{fmt} | SWA session | 401 | Export artifacts |
 
+### Auth Claim Requirements for Identity Remap
+
+- Identity remap (auth subject drift recovery) uses only explicit email claims (`email`, then `emails[]`).
+- Remap is allowed only when the token includes a verified-email signal (`email_verified` or `xms_edov`).
+- Mutable username claims (`preferred_username`, `upn`) and SWA `userDetails` are not authorization keys.
+
 ## Trigger and Orchestrator Entry Points
 
 - Event Grid trigger: `blob_trigger` (blueprints/pipeline/blob_trigger.py)

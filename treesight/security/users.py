@@ -28,6 +28,11 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _normalize_email(email: str) -> str:
+    """Normalize email for stable lookup/storage."""
+    return email.strip().lower() if isinstance(email, str) else ""
+
+
 def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -> None:
     """Merge quota fields from latest persisted user doc into *doc*.
 
@@ -91,8 +96,9 @@ def record_user_sign_in(
         existing.setdefault("created_at", now)
         existing["last_seen"] = now
 
-        if email:
-            existing["email"] = email
+        normalized_email = _normalize_email(email)
+        if normalized_email:
+            existing["email"] = normalized_email
         if display_name:
             existing["display_name"] = display_name
         if identity_provider:
@@ -182,7 +188,7 @@ def lookup_user_by_email(email: str) -> dict[str, Any] | None:
         if not results:
             return None
 
-        def _user_record_priority_key(doc: dict[str, Any]) -> tuple[int, int, int, str]:
+        def _user_record_priority_key(doc: dict[str, Any]) -> tuple[int, int, int, str, str]:
             # Prefer records likely to carry entitlement/quota state first:
             # billing_allowed > quota used > org membership > newest last_seen
             # (ISO 8601 lexical ordering).
@@ -193,11 +199,13 @@ def lookup_user_by_email(email: str) -> dict[str, Any] | None:
                     used = int(quota.get("used", 0))
                 except (TypeError, ValueError):
                     used = 0
+            stable_user_id = str(doc.get("user_id") or doc.get("id") or "")
             return (
                 1 if doc.get("billing_allowed") else 0,
                 1 if used > 0 else 0,
                 1 if doc.get("org_id") else 0,
                 str(doc.get("last_seen", "")),
+                stable_user_id,
             )
 
         return max(results, key=_user_record_priority_key)
