@@ -417,6 +417,10 @@ class TestUploadToken:
             resp = upload_token(req)
 
         assert resp.status_code == 403
+        body = json.loads(resp.get_body())
+        assert body.get("quota_exhausted") is True, (
+            "quota-exhausted 403 must include quota_exhausted: true for frontend detection"
+        )
 
     @patch("blueprints.upload.get_blob_service_client")
     def test_refunds_quota_on_ticket_failure(self, mock_bsc):

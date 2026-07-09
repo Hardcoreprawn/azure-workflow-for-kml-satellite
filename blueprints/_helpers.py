@@ -82,15 +82,27 @@ def sanitise(value: str) -> str:
 
 
 def error_response(
-    status: int, message: str, *, req: func.HttpRequest | None = None
+    status: int,
+    message: str,
+    *,
+    req: func.HttpRequest | None = None,
+    extra: dict | None = None,
 ) -> func.HttpResponse:
-    """Return a JSON error response with the given status code."""
+    """Return a JSON error response with the given status code.
+
+    *extra* is merged into the JSON body alongside ``"error"`` to allow callers
+    to surface machine-readable signals (e.g. ``quota_exhausted: true``) that
+    frontend clients can act on without brittle message parsing.
+    """
     origin = _cors_origin(req) if req else ""
     headers: dict[str, str] = {}
     if origin:
         headers["Access-Control-Allow-Origin"] = origin
+    body: dict = {"error": message}
+    if extra:
+        body.update(extra)
     return func.HttpResponse(
-        json.dumps({"error": message}),
+        json.dumps(body),
         status_code=status,
         mimetype="application/json",
         headers=headers or None,

@@ -304,7 +304,12 @@ def _reserve_run_or_error(
         return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
     except QuotaExhaustedError as exc:
         logger.info("Organization quota exhausted during reservation org=%s", org_id)
-        return error_response(403, f"Organization parcel quota exhausted. {exc!s}", req=req)
+        return error_response(
+            403,
+            f"Organization parcel quota exhausted. {exc!s}",
+            req=req,
+            extra={"quota_exhausted": True},
+        )
     except OrgNotFoundError:
         logger.warning("Org not found during reservation org=%s", org_id)
         return error_response(503, "Organization not found. Please try again.", req=req)

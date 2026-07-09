@@ -79,6 +79,19 @@
     return typeof g.parseKmlText === 'function' ? g.parseKmlText(text) : text;
   }
 
+  /**
+   * Return true when *err* is a 403 with a machine-readable quota_exhausted
+   * signal from the backend.  This is the only condition that warrants the
+   * "out of runs" UX — all other 403s (permission, member-cap) fall through
+   * to the generic error path so they are not mis-labelled as quota issues.
+   *
+   * @param {Error|null} err - error thrown by apiFetch
+   * @returns {boolean}
+   */
+  function isQuotaExhaustedError(err) {
+    return !!(err && err.status === 403 && err.body && err.body.quota_exhausted === true);
+  }
+
   // ── Public accessors ──────────────────────────────────────────
 
   function getLatestRun() { return latestAnalysisRun; }
@@ -567,6 +580,17 @@
           if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
           return;
         }
+        // Quota exhaustion: surface an explicit "out of runs" message with upgrade CTA.
+        if (isQuotaExhaustedError(tokenFetchErr)) {
+          var coreDom = window.CanopexCoreDom || {};
+          if (typeof coreDom.showQuotaExhaustedStatus === 'function') {
+            coreDom.showQuotaExhaustedStatus(_d.openBillingUpgrade || null);
+          } else if (_d.setAnalysisStatus) {
+            _d.setAnalysisStatus('You are out of runs. Use the Billing button to upgrade your plan.', 'error');
+          }
+          if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+          return;
+        }
         if (_d.setAnalysisStatus) _d.setAnalysisStatus((tokenFetchErr.body && tokenFetchErr.body.error) || 'Could not prepare upload. Please try again.', 'error');
         updateContentSummary(null);
         if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
@@ -611,8 +635,20 @@
         try {
           submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, submissionId);
         } catch (submitFetchErr) {
-          // Keep 401 behavior consistent with the upload-token request above.
+          // 401: apiFetch already called handleApiError which clears the session and
+          // shows the re-login prompt centrally — same as the upload-token path above.
           if (submitFetchErr && submitFetchErr.status === 401) {
+            if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
+            return;
+          }
+          // Quota exhaustion: surface an explicit "out of runs" message with upgrade CTA.
+          if (isQuotaExhaustedError(submitFetchErr)) {
+            var coreDom = window.CanopexCoreDom || {};
+            if (typeof coreDom.showQuotaExhaustedStatus === 'function') {
+              coreDom.showQuotaExhaustedStatus(_d.openBillingUpgrade || null);
+            } else if (_d.setAnalysisStatus) {
+              _d.setAnalysisStatus('You are out of runs. Use the Billing button to upgrade your plan.', 'error');
+            }
             if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
             return;
           }
@@ -680,5 +716,6 @@
     stopAnalysisPolling: stopAnalysisPolling,
     pollAnalysisRun: pollAnalysisRun,
     queueAnalysis: queueAnalysis,
+    isQuotaExhaustedError: isQuotaExhaustedError,
   };
 })();
