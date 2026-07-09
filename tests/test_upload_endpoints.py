@@ -417,6 +417,10 @@ class TestUploadToken:
             resp = upload_token(req)
 
         assert resp.status_code == 403
+        body = json.loads(resp.get_body())
+        assert body.get("quota_exhausted") is True, (
+            "quota-exhausted 403 must include quota_exhausted: true for frontend detection"
+        )
 
     @patch("blueprints.upload.get_blob_service_client")
     def test_refunds_quota_on_ticket_failure(self, mock_bsc):
@@ -714,6 +718,35 @@ class TestUploadTokenSingleGate:
         assert resp.status_code == 200
         self.mock_reserve_run.assert_called_once()
         assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
+
+    @patch("treesight.security.quota.consume_quota")
+    @patch("treesight.security.eudr_billing.consume_eudr_trial")
+    @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
+    def test_eudr_mode_does_not_use_legacy_quota_writers(
+        self, mock_org, mock_consume_trial, mock_consume_quota
+    ):
+        """EUDR upload reservation must be org-pooled and avoid legacy double-debit paths."""
+        from blueprints.upload import upload_token
+
+        req = _make_req(
+            "/api/upload/token",
+            method="POST",
+            body={"eudr_mode": True, "parcel_count": 2},
+        )
+        with (
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+            patch("blueprints.upload.generate_blob_sas", return_value="sv=2024&sig=fakesig"),
+            patch("blueprints.upload.get_blob_service_client") as mock_bsc,
+        ):
+            mock_bsc.return_value.get_user_delegation_key.return_value = MagicMock()
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        self.mock_reserve_run.assert_called_once()
+        assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
+        assert self.mock_reserve_run.call_args.kwargs["parcel_count"] == 2
+        mock_consume_trial.assert_not_called()
+        mock_consume_quota.assert_not_called()
 
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")
