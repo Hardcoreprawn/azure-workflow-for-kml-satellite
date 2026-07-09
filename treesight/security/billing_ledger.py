@@ -69,17 +69,31 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
     run.  Returns a dict suitable for unpacking into the ``RunRecord``
     constructor.
     """
-    from treesight.security.billing import get_effective_subscription, normalize_tier
-    from treesight.security.quota import get_usage
+    from treesight.billing.accounting import compute_pool_allowance
+    from treesight.security.billing import (
+        get_effective_subscription,
+        normalize_tier,
+        plan_capabilities,
+    )
+    from treesight.security.orgs import get_user_org
 
     sub = get_effective_subscription(user_id)
     tier = normalize_tier(sub.get("tier"))
-    usage = get_usage(user_id)
-    # usage["used"] already includes the current run (consume_quota was called first)
-    # so the run *before* this one is used - 1
-    used_before = max(usage["used"] - 1, 0)
+    org = get_user_org(user_id)
 
-    classification = classify_run(tier, used_before, usage["limit"])
+    if org:
+        usage = org.get("usage") if isinstance(org.get("usage"), dict) else {}
+        used_now = int(usage.get("runs_reserved", 0)) + int(usage.get("runs_completed", 0))
+        included_limit = compute_pool_allowance(org)
+    else:
+        used_now = 0
+        included_limit = int(plan_capabilities(tier)["run_limit"])
+
+    # ``reserve_run`` has already debited the current submission, so classify
+    # using the run count immediately before this reservation.
+    used_before = max(used_now - 1, 0)
+
+    classification = classify_run(tier, used_before, included_limit)
 
     return {
         "tier_at_submission": tier,
