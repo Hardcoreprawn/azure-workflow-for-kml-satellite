@@ -77,6 +77,23 @@ class TestOrgPooledQuotaGate:
             assert status_after_fail["refunded"] == 1
             assert status_after_fail["available"] == 5
 
+    def test_reserve_and_finalize_completed_drive_completed_counter(self, _org_store):
+        with patch("treesight.billing.accounting._member_run_allowance", return_value=5):
+            reserve_run(
+                org_id="org-1",
+                user_id="user-1",
+                parcel_count=1,
+                is_eudr=False,
+                instance_id="run-complete",
+            )
+            finalize_run(org_id="org-1", instance_id="run-complete", status="completed")
+
+            status = get_pool_status("org-1")
+            assert status["reserved"] == 0
+            assert status["completed"] == 1
+            assert status["refunded"] == 0
+            assert status["available"] == 4
+
 
 class TestOrgPooledReaders:
     @patch("treesight.billing.accounting.compute_pool_allowance", return_value=50)
@@ -96,6 +113,23 @@ class TestOrgPooledReaders:
         assert fields["tier_at_submission"] == "pro"
         assert fields["billing_type"] == "overage"
         assert fields["overage_unit_price"] == 0.80
+
+    @patch("treesight.billing.accounting.compute_pool_allowance", return_value=50)
+    @patch("treesight.security.orgs.get_user_org")
+    @patch("treesight.security.billing.get_effective_subscription")
+    def test_submission_billing_fields_treat_allowance_boundary_as_included(
+        self, mock_sub, mock_get_org, _mock_allowance
+    ):
+        mock_sub.return_value = {"tier": "pro", "status": "active"}
+        mock_get_org.return_value = {
+            "org_id": "org-1",
+            "usage": {"runs_reserved": 50, "runs_completed": 0},
+            "members": [{"user_id": "user-1", "role": "owner"}],
+        }
+
+        fields = billing_fields_for_submission("user-1")
+        assert fields["billing_type"] == "included"
+        assert fields["overage_unit_price"] is None
 
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
     @patch("treesight.storage.cosmos.read_item", return_value=None)
