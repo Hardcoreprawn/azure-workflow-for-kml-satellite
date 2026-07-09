@@ -86,7 +86,8 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
         malformed_usage = usage_raw is not None and not isinstance(usage_raw, dict)
         if malformed_usage:
             logger.warning(
-                "Unexpected org usage shape for billing classification user=%s type=%s; using zeroed fallback",
+                "Unexpected org usage shape for billing classification "
+                "user=%s type=%s; using zeroed fallback",
                 _redact(user_id),
                 type(usage_raw).__name__,
             )
