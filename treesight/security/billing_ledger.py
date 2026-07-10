@@ -108,6 +108,13 @@ def complete_run_billing(org_id: str, instance_id: str) -> None:
         return
 
     user_id: str = doc.get("user_id", "")
+    if not user_id:
+        logger.error(
+            "Run document missing user_id for billing completion instance=%s org=%s",
+            instance_id,
+            org_id,
+        )
+        return
 
     billing_type = doc.get("billing_type")
     already_charged = doc.get("billing_status") == "charged"
@@ -178,6 +185,13 @@ def fail_run_billing(
         return
 
     user_id: str = doc.get("user_id", "")
+    if not user_id:
+        logger.error(
+            "Run document missing user_id for billing failure instance=%s org=%s",
+            instance_id,
+            org_id,
+        )
+        return
 
     previous_status = doc.get("billing_status")
     if previous_status == "refunded":

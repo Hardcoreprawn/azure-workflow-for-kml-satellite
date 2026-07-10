@@ -12,7 +12,7 @@ from datetime import datetime
 
 import azure.functions as func
 
-from blueprints._helpers import cors_headers, error_response, require_auth
+from blueprints._helpers import cors_headers, error_response, require_auth, resolve_org_id
 from treesight.catalogue.contracts import (
     CatalogueEntryResponse,
     CatalogueListResponse,
@@ -23,7 +23,6 @@ from treesight.catalogue.repository import (
     list_entries_for_aoi,
     list_entries_for_run,
 )
-from treesight.security.orgs import get_user_org
 
 bp = func.Blueprint()
 
@@ -54,16 +53,10 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+# Expose _resolve_org_id as a module-level alias for backwards compatibility
+# and so tests can patch it. Delegates to the shared helper in _helpers.
 def _resolve_org_id(user_id: str, req: func.HttpRequest):
-    """Return (org_id, None) or (None, error_response) for the user."""
-    try:
-        org = get_user_org(user_id)
-    except Exception:
-        logger.exception("Org lookup failed for user=%s", user_id)
-        return None, error_response(503, "Org lookup unavailable", req=req)
-    if not org:
-        return None, error_response(403, "User not in any org", req=req)
-    return str(org.get("org_id", "")), None
+    return resolve_org_id(user_id, req)
 
 
 # ---- GET /api/catalogue ----

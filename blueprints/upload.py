@@ -463,7 +463,7 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
         submission_id=submission_id,
         instance_id=submission_id,
         user_id=user_id,
-        org_id=org_id if isinstance(org_id, str) and org_id else None,
+        org_id=org_id or None,
         submitted_at=submitted_at,
         kml_blob_name=blob_name,
         kml_size_bytes=0,

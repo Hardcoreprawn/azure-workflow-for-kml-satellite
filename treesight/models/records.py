@@ -30,6 +30,9 @@ class RunRecord(BaseModel):
     submission_id: str
     instance_id: str
     user_id: str
+    # org_id is optional for backward compatibility: blob-fallback reads of
+    # pre-D2 run records may not have this field. New submissions always
+    # populate it; use `org_id or ""` when a non-None value is required.
     org_id: str | None = None
     submitted_at: str
     kml_blob_name: str = ""

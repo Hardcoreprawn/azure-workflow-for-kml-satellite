@@ -126,6 +126,24 @@ def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(status_code=204, headers=cors_headers(req))
 
 
+def resolve_org_id(user_id: str, req: func.HttpRequest):
+    """Return (org_id, None) or (None, error_response) for the requesting user.
+
+    Used by catalogue, monitoring, and any other blueprint that needs org-scoped
+    data access (D2 — Organisation owns/partitions data, #313).
+    """
+    from treesight.security.orgs import get_user_org
+
+    try:
+        org = get_user_org(user_id)
+    except Exception:
+        logger.exception("Org lookup failed for user=%s", user_id)
+        return None, error_response(503, "Org lookup unavailable", req=req)
+    if not org:
+        return None, error_response(403, "User not in any org", req=req)
+    return str(org.get("org_id", "")), None
+
+
 def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     """Return verified bearer claims when auth headers are present.
 

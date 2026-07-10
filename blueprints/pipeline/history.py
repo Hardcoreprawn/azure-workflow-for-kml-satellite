@@ -279,7 +279,9 @@ def _fetch_portfolio_submission_records(
     """
     org = get_user_org(user_id)
     if not org:
-        return _fetch_submission_records("", user_id, limit, offset=offset), "user", None, 1
+        # No org configured — fall back to user-scoped query using user_id
+        # as the partition key (pre-D2 layout for users without an org).
+        return _fetch_submission_records(user_id, user_id, limit, offset=offset), "user", None, 1
 
     org_id = str(org.get("org_id", ""))
     members = org.get("members", []) if isinstance(org, dict) else []

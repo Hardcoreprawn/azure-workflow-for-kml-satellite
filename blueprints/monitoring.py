@@ -22,6 +22,7 @@ from blueprints._helpers import (
     cors_preflight,
     error_response,
     require_auth,
+    resolve_org_id,
     sanitise,
 )
 from treesight.security.billing import get_effective_subscription, plan_capabilities
@@ -63,21 +64,11 @@ def _check_monitor_limit(user_id: str, org_id: str) -> str | None:
     return None
 
 
-# --- Timer Trigger: scheduled monitoring check --------------------------
 
-
+# Expose _resolve_org_id as a module-level alias so tests can patch it.
+# Delegates to the shared helper in _helpers.
 def _resolve_org_id(user_id: str, req):
-    """Return (org_id, None) or (None, error_response) for the user."""
-    from treesight.security.orgs import get_user_org
-
-    try:
-        org = get_user_org(user_id)
-    except Exception:
-        logger.exception("Org lookup failed for user=%s", user_id)
-        return None, error_response(503, "Org lookup unavailable", req=req)
-    if not org:
-        return None, error_response(403, "User not in any org", req=req)
-    return str(org.get("org_id", "")), None
+    return resolve_org_id(user_id, req)
 
 
 # --- Timer Trigger: scheduled monitoring check --------------------------
