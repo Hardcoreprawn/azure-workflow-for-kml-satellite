@@ -279,8 +279,9 @@ def _fetch_portfolio_submission_records(
     """
     org = get_user_org(user_id)
     if not org:
-        # No org configured — fall back to user-scoped query using user_id
-        # as the partition key (pre-D2 layout for users without an org).
+        # No org configured — fall back to user-scoped query for users without
+        # org membership (e.g., during initial setup). Note: After D2, all new
+        # production records are org-partitioned.
         return _fetch_submission_records(user_id, user_id, limit, offset=offset), "user", None, 1
 
     org_id = str(org.get("org_id", ""))
@@ -313,7 +314,8 @@ def _fetch_portfolio_submission_records(
                 exc_info=True,
             )
 
-    # Blob fallback: iterate per-member (legacy, pre-D2 path)
+    # Blob fallback: iterate per-member (legacy per-user storage layout,
+    # used when Cosmos unavailable)
     member_ids = [
         str(member.get("user_id", "")).strip()
         for member in members

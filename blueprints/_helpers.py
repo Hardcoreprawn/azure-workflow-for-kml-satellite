@@ -142,7 +142,11 @@ def resolve_org_id(
         logger.exception("Org lookup failed for user=%s", user_id)
         return None, error_response(503, "Org lookup unavailable", req=req)
     if not org:
-        return None, error_response(403, "User not in any org", req=req)
+        return None, error_response(
+            403,
+            "Organisation membership required. Please contact your administrator to be added to an organisation.",
+            req=req,
+        )
     return str(org.get("org_id", "")), None
 
 

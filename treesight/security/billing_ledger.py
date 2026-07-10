@@ -110,7 +110,8 @@ def complete_run_billing(org_id: str, instance_id: str) -> None:
     user_id: str = doc.get("user_id", "")
     if not user_id:
         logger.error(
-            "Run document missing user_id for billing completion instance=%s org=%s",
+            "Critical: Run document missing required user_id field for billing completion "
+            "instance=%s org=%s — billing cannot proceed",
             instance_id,
             org_id,
         )
@@ -187,7 +188,8 @@ def fail_run_billing(
     user_id: str = doc.get("user_id", "")
     if not user_id:
         logger.error(
-            "Run document missing user_id for billing failure instance=%s org=%s",
+            "Critical: Run document missing required user_id field for billing failure "
+            "instance=%s org=%s — refund cannot proceed",
             instance_id,
             org_id,
         )
