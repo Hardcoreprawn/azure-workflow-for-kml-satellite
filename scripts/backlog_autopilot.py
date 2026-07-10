@@ -146,13 +146,17 @@ def select_issues(
 ) -> list[IssueCandidate]:
     # All issue numbers in the open set — used to detect unresolved blockers.
     open_numbers = {issue.number for issue in issues}
+    # Pre-parse blocking refs once per issue to avoid repeated regex scanning.
+    blocking_refs: dict[int, set[int]] = {
+        issue.number: parse_blocking_refs(issue.body) for issue in issues
+    }
 
     def _is_blocked(issue: IssueCandidate) -> bool:
         # Explicit label gate.
         if "blocked" in issue.labels:
             return True
         # Body-convention gate: skip if any referenced blocker is still open.
-        return bool(parse_blocking_refs(issue.body) & open_numbers)
+        return bool(blocking_refs[issue.number] & open_numbers)
 
     eligible = [
         issue

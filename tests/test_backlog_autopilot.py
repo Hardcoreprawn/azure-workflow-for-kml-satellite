@@ -215,6 +215,12 @@ def test_parse_blocking_refs_extracts_depends_on() -> None:
     assert parse_blocking_refs(body) == {789, 10}
 
 
+def test_parse_blocking_refs_mixed_patterns_in_same_body() -> None:
+    # Both phrase variants must be detected when they appear in the same body.
+    body = "This is blocked by #100.\nIt also depends on #200."
+    assert parse_blocking_refs(body) == {100, 200}
+
+
 def test_parse_blocking_refs_case_insensitive() -> None:
     body = "Blocked By #1\nDEPENDS ON #2"
     assert parse_blocking_refs(body) == {1, 2}
