@@ -55,7 +55,9 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 # Expose _resolve_org_id as a module-level alias for backwards compatibility
 # and so tests can patch it. Delegates to the shared helper in _helpers.
-def _resolve_org_id(user_id: str, req: func.HttpRequest):
+def _resolve_org_id(
+    user_id: str, req: func.HttpRequest
+) -> tuple[str | None, func.HttpResponse | None]:
     return resolve_org_id(user_id, req)
 
 

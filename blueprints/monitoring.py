@@ -64,10 +64,11 @@ def _check_monitor_limit(user_id: str, org_id: str) -> str | None:
     return None
 
 
-
 # Expose _resolve_org_id as a module-level alias so tests can patch it.
 # Delegates to the shared helper in _helpers.
-def _resolve_org_id(user_id: str, req):
+def _resolve_org_id(
+    user_id: str, req: func.HttpRequest
+) -> tuple[str | None, func.HttpResponse | None]:
     return resolve_org_id(user_id, req)
 
 

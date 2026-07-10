@@ -182,6 +182,20 @@ class TestCompleteRunBilling:
 
         mock_upsert.assert_not_called()
 
+    @patch(_COSMOS_UPSERT)
+    @patch(_COSMOS_READ)
+    def test_handles_missing_user_id_in_document(self, mock_read, mock_upsert):
+        """When user_id is absent from the run doc, log error and return early."""
+        mock_read.return_value = {
+            "id": "inst-no-uid",
+            "billing_type": "included",
+            "billing_status": "pending",
+        }
+
+        complete_run_billing("org-1", "inst-no-uid")
+
+        mock_upsert.assert_not_called()
+
     @patch("treesight.security.billing_ledger._report_overage")
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
@@ -346,6 +360,20 @@ class TestFailRunBilling:
         mock_read.return_value = None
 
         fail_run_billing("org-1", "inst-missing")
+
+        mock_upsert.assert_not_called()
+
+    @patch(_COSMOS_UPSERT)
+    @patch(_COSMOS_READ)
+    def test_handles_missing_user_id_in_document(self, mock_read, mock_upsert):
+        """When user_id is absent from the run doc, log error and return early."""
+        mock_read.return_value = {
+            "id": "inst-no-uid",
+            "billing_type": "included",
+            "billing_status": "pending",
+        }
+
+        fail_run_billing("org-1", "inst-no-uid")
 
         mock_upsert.assert_not_called()
 

@@ -126,7 +126,9 @@ def cors_preflight(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(status_code=204, headers=cors_headers(req))
 
 
-def resolve_org_id(user_id: str, req: func.HttpRequest):
+def resolve_org_id(
+    user_id: str, req: func.HttpRequest
+) -> tuple[str | None, func.HttpResponse | None]:
     """Return (org_id, None) or (None, error_response) for the requesting user.
 
     Used by catalogue, monitoring, and any other blueprint that needs org-scoped
