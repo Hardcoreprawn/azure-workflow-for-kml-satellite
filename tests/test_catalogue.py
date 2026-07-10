@@ -37,6 +37,7 @@ def _make_entry(**overrides) -> CatalogueEntry:
     """Build a minimal CatalogueEntry with sensible defaults."""
     defaults = {
         "id": "run-1:farm-alpha",
+        "org_id": "org-1",
         "user_id": "user-42",
         "run_id": "run-1",
         "aoi_name": "Farm Alpha",
@@ -57,9 +58,9 @@ def _make_entry(**overrides) -> CatalogueEntry:
         "change_loss_pct": 2.1,
         "change_gain_pct": 5.3,
         "change_mean_delta": 0.03,
-        "imagery_blob_path": "submissions/user-42/run-1/imagery.tif",
-        "metadata_blob_path": "submissions/user-42/run-1/meta.json",
-        "enrichment_manifest_path": "submissions/user-42/run-1/manifest.json",
+        "imagery_blob_path": "submissions/org-1/user-42/run-1/imagery.tif",
+        "metadata_blob_path": "submissions/org-1/user-42/run-1/meta.json",
+        "enrichment_manifest_path": "submissions/org-1/user-42/run-1/manifest.json",
         "created_at": _NOW,
         "updated_at": _NOW,
     }
@@ -96,7 +97,7 @@ def _make_request(
 
 class TestCatalogueEntry:
     def test_create_minimal(self):
-        entry = CatalogueEntry(id="r1:aoi", user_id="u1", run_id="r1", aoi_name="aoi")
+        entry = CatalogueEntry(id="r1:aoi", org_id="org-1", user_id="u1", run_id="r1", aoi_name="aoi")
         assert entry.status == "pending"
         assert entry.centroid == []
         assert entry.ndvi_mean is None
@@ -105,6 +106,7 @@ class TestCatalogueEntry:
         entry = _make_entry()
         doc = entry.to_cosmos()
         assert doc["id"] == "run-1:farm-alpha"
+        assert doc["org_id"] == "org-1"
         assert doc["user_id"] == "user-42"
         assert doc["aoi_name"] == "Farm Alpha"
         assert isinstance(doc["submitted_at"], str)
@@ -119,6 +121,7 @@ class TestCatalogueEntry:
 
         roundtripped = CatalogueEntry.from_cosmos(doc)
         assert roundtripped.id == entry.id
+        assert roundtripped.org_id == entry.org_id
         assert roundtripped.user_id == entry.user_id
         assert roundtripped.aoi_name == entry.aoi_name
 
@@ -224,6 +227,7 @@ class TestRecordAcquisition:
         from treesight.catalogue.repository import record_acquisition
 
         entry = record_acquisition(
+            "org-1",
             "user-1",
             "run-1",
             "Farm Alpha",
@@ -231,6 +235,7 @@ class TestRecordAcquisition:
             status="completed",
         )
         assert entry.id == "run-1:farm-alpha"
+        assert entry.org_id == "org-1"
         assert entry.user_id == "user-1"
         assert entry.run_id == "run-1"
         assert entry.aoi_name == "Farm Alpha"
@@ -244,7 +249,7 @@ class TestRecordAcquisition:
     def test_sets_timestamps(self, mock_upsert, mock_read):
         from treesight.catalogue.repository import record_acquisition
 
-        entry = record_acquisition("u1", "r1", "AOI")
+        entry = record_acquisition("org-1", "u1", "r1", "AOI")
         assert entry.created_at is not None
         assert entry.updated_at is not None
 
@@ -257,10 +262,10 @@ class TestGetEntry:
 
         from treesight.catalogue.repository import get_entry
 
-        result = get_entry("run-1:farm-alpha", "user-42")
+        result = get_entry("run-1:farm-alpha", "org-1")
         assert result is not None
         assert result.id == "run-1:farm-alpha"
-        mock_read.assert_called_once_with("catalogue", "run-1:farm-alpha", "user-42")
+        mock_read.assert_called_once_with("catalogue", "run-1:farm-alpha", "org-1")
 
     @patch("treesight.storage.cosmos.read_item")
     def test_returns_none_when_missing(self, mock_read):
@@ -268,7 +273,7 @@ class TestGetEntry:
 
         from treesight.catalogue.repository import get_entry
 
-        assert get_entry("missing", "u1") is None
+        assert get_entry("missing", "org-1") is None
 
 
 class TestListEntries:
@@ -282,7 +287,7 @@ class TestListEntries:
 
         from treesight.catalogue.repository import list_entries
 
-        entries, total = list_entries("user-42")
+        entries, total = list_entries("org-1")
         assert total == 5
         assert len(entries) == 1
         assert entries[0].id == "run-1:farm-alpha"
@@ -297,7 +302,7 @@ class TestListEntries:
         from treesight.catalogue.repository import list_entries
 
         list_entries(
-            "u1",
+            "org-1",
             aoi_name="farm",
             status="completed",
             provider="planetary-computer",
@@ -318,10 +323,10 @@ class TestListEntriesForRun:
 
         from treesight.catalogue.repository import list_entries_for_run
 
-        list_entries_for_run("u1", "r1")
+        list_entries_for_run("org-1", "r1")
         args = mock_query.call_args
         assert "@rid" in args[0][1]
-        assert args[1]["partition_key"] == "u1"
+        assert args[1]["partition_key"] == "org-1"
 
 
 class TestListEntriesForAoi:
@@ -331,7 +336,7 @@ class TestListEntriesForAoi:
 
         from treesight.catalogue.repository import list_entries_for_aoi
 
-        list_entries_for_aoi("u1", "Farm Alpha")
+        list_entries_for_aoi("org-1", "Farm Alpha")
         args = mock_query.call_args
         assert "@aoi" in args[0][1]
 
@@ -342,8 +347,9 @@ class TestListEntriesForAoi:
 
 
 class TestCatalogueListEndpoint:
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries")
-    def test_returns_200(self, mock_list):
+    def test_returns_200(self, mock_list, mock_org):
         entry = _make_entry()
         mock_list.return_value = ([entry], 1)
 
@@ -357,8 +363,9 @@ class TestCatalogueListEndpoint:
         assert len(body["entries"]) == 1
         assert body["entries"][0]["aoiName"] == "Farm Alpha"
 
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries")
-    def test_pagination_params(self, mock_list):
+    def test_pagination_params(self, mock_list, mock_org):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -371,8 +378,9 @@ class TestCatalogueListEndpoint:
         assert call_kwargs[1]["offset"] == 5
         assert call_kwargs[1]["sort"] == "asc"
 
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries")
-    def test_limit_clamped(self, mock_list):
+    def test_limit_clamped(self, mock_list, mock_org):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -396,8 +404,9 @@ class TestCatalogueListEndpoint:
         resp = catalogue_list(req)
         assert resp.status_code == 401
 
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries")
-    def test_cors_header(self, mock_list):
+    def test_cors_header(self, mock_list, mock_org):
         mock_list.return_value = ([], 0)
 
         from blueprints.catalogue import catalogue_list
@@ -408,8 +417,9 @@ class TestCatalogueListEndpoint:
 
 
 class TestCatalogueDetailEndpoint:
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.get_entry")
-    def test_returns_200(self, mock_get):
+    def test_returns_200(self, mock_get, mock_org):
         mock_get.return_value = _make_entry()
 
         from blueprints.catalogue import catalogue_detail
@@ -423,8 +433,9 @@ class TestCatalogueDetailEndpoint:
         body = json.loads(resp.get_body())
         assert body["id"] == "run-1:farm-alpha"
 
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.get_entry")
-    def test_returns_404(self, mock_get):
+    def test_returns_404(self, mock_get, mock_org):
         mock_get.return_value = None
 
         from blueprints.catalogue import catalogue_detail
@@ -438,8 +449,9 @@ class TestCatalogueDetailEndpoint:
 
 
 class TestCatalogueByRunEndpoint:
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries_for_run")
-    def test_returns_200(self, mock_list):
+    def test_returns_200(self, mock_list, mock_org):
         mock_list.return_value = [_make_entry()]
 
         from blueprints.catalogue import catalogue_by_run
@@ -455,8 +467,9 @@ class TestCatalogueByRunEndpoint:
 
 
 class TestCatalogueByAoiEndpoint:
+    @patch("blueprints.catalogue._resolve_org_id", return_value=("org-1", None))
     @patch("blueprints.catalogue.list_entries_for_aoi")
-    def test_returns_200(self, mock_list):
+    def test_returns_200(self, mock_list, mock_org):
         mock_list.return_value = [_make_entry()]
 
         from blueprints.catalogue import catalogue_by_aoi

@@ -7,7 +7,7 @@ Each document represents a single AOI within a single pipeline run,
 capturing the acquisition metadata, NDVI stats, and enrichment results
 so that users can query historical analyses per AOI over time.
 
-Container: ``catalogue``  |  Partition key: ``/user_id``
+Container: ``catalogue``  |  Partition key: ``/org_id``
 """
 
 from __future__ import annotations
@@ -22,11 +22,13 @@ class CatalogueEntry(BaseModel):
     """A single per-AOI acquisition record stored in Cosmos DB.
 
     The ``id`` is ``{run_id}:{aoi_name_slug}`` to ensure uniqueness
-    within a user's partition while allowing multiple AOIs per run.
+    within an org's partition while allowing multiple AOIs per run.
+    Partitioned by ``/org_id`` (D2 — organisation owns catalogue, #313).
     """
 
     # --- Identity ---
     id: str
+    org_id: str
     user_id: str
     run_id: str
     aoi_name: str

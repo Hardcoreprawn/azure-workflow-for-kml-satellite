@@ -23,6 +23,7 @@ from treesight.catalogue.repository import (
     list_entries_for_aoi,
     list_entries_for_run,
 )
+from treesight.security.orgs import get_user_org
 
 bp = func.Blueprint()
 
@@ -53,6 +54,18 @@ def _parse_iso(value: str | None) -> datetime | None:
         return None
 
 
+def _resolve_org_id(user_id: str, req: func.HttpRequest):
+    """Return (org_id, None) or (None, error_response) for the user."""
+    try:
+        org = get_user_org(user_id)
+    except Exception:
+        logger.exception("Org lookup failed for user=%s", user_id)
+        return None, error_response(503, "Org lookup unavailable", req=req)
+    if not org:
+        return None, error_response(403, "User not in any org", req=req)
+    return str(org.get("org_id", "")), None
+
+
 # ---- GET /api/catalogue ----
 
 
@@ -69,8 +82,12 @@ def catalogue_list(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     if sort not in ("asc", "desc"):
         sort = "desc"
 
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
     entries, total = list_entries(
-        user_id,
+        org_id,
         aoi_name=params.get("aoiName"),
         status=params.get("status"),
         date_from=_parse_iso(params.get("dateFrom")),
@@ -115,7 +132,11 @@ def catalogue_detail(
     if not entry_id:
         return error_response(400, "Missing entryId", req=req)
 
-    entry = get_entry(entry_id, user_id)
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
+    entry = get_entry(entry_id, org_id)
     if entry is None:
         return error_response(404, "Catalogue entry not found", req=req)
 
@@ -146,7 +167,11 @@ def catalogue_by_run(
     if not run_id:
         return error_response(400, "Missing runId", req=req)
 
-    entries = list_entries_for_run(user_id, run_id)
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
+    entries = list_entries_for_run(org_id, run_id)
 
     body = CatalogueListResponse(
         entries=[CatalogueEntryResponse.from_model(e) for e in entries],
@@ -182,8 +207,12 @@ def catalogue_by_aoi(
     if not aoi_name:
         return error_response(400, "Missing aoiName", req=req)
 
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
     limit = min(_parse_int(req.params.get("limit"), 20), _MAX_LIMIT)
-    entries = list_entries_for_aoi(user_id, aoi_name, limit=limit)
+    entries = list_entries_for_aoi(org_id, aoi_name, limit=limit)
 
     body = CatalogueListResponse(
         entries=[CatalogueEntryResponse.from_model(e) for e in entries],

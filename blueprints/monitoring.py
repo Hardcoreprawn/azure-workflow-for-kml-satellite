@@ -50,17 +50,34 @@ def _check_monitoring_access(user_id: str) -> str | None:
     return None
 
 
-def _check_monitor_limit(user_id: str) -> str | None:
-    """Return an error message if the user has hit their monitor limit."""
+def _check_monitor_limit(user_id: str, org_id: str) -> str | None:
+    """Return an error message if the org has hit its monitor limit."""
     from treesight.monitoring import list_monitors
 
     sub = get_effective_subscription(user_id)
     tier = sub.get("tier", "free")
     limit = _MAX_MONITORS_BY_TIER.get(tier, 0)
-    active = [m for m in list_monitors(user_id) if m.enabled]
+    active = [m for m in list_monitors(org_id) if m.enabled]
     if len(active) >= limit:
         return f"Monitor limit reached ({limit} for {tier} plan)"
     return None
+
+
+# --- Timer Trigger: scheduled monitoring check --------------------------
+
+
+def _resolve_org_id(user_id: str, req):
+    """Return (org_id, None) or (None, error_response) for the user."""
+    from treesight.security.orgs import get_user_org
+
+    try:
+        org = get_user_org(user_id)
+    except Exception:
+        logger.exception("Org lookup failed for user=%s", user_id)
+        return None, error_response(503, "Org lookup unavailable", req=req)
+    if not org:
+        return None, error_response(403, "User not in any org", req=req)
+    return str(org.get("org_id", "")), None
 
 
 # --- Timer Trigger: scheduled monitoring check --------------------------
@@ -199,13 +216,17 @@ def _process_monitor(monitor: Any) -> None:
 def list_monitors_endpoint(
     req: func.HttpRequest, *, auth_claims: dict, user_id: str
 ) -> func.HttpResponse:
-    """GET /api/monitoring — list the user's monitors."""
+    """GET /api/monitoring — list the org's monitors."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
     from treesight.monitoring import list_monitors
 
-    monitors = list_monitors(user_id)
+    monitors = list_monitors(org_id)
     payload = [m.model_dump(mode="json") for m in monitors]
     return func.HttpResponse(
         json.dumps({"monitors": payload, "count": len(payload)}),
@@ -227,7 +248,11 @@ def create_monitor_endpoint(
     if err:
         return error_response(403, err, req=req)
 
-    err = _check_monitor_limit(user_id)
+    org_id, org_err = _resolve_org_id(user_id, req)
+    if org_err:
+        return org_err
+
+    err = _check_monitor_limit(user_id, org_id)
     if err:
         return error_response(403, err, req=req)
 
@@ -269,6 +294,7 @@ def create_monitor_endpoint(
     from treesight.monitoring import create_monitor
 
     monitor = create_monitor(
+        org_id=org_id,
         user_id=user_id,
         aoi_name=aoi_name,
         aoi_geometry=aoi_geometry,
@@ -366,9 +392,13 @@ def monitor_detail_endpoint(
     if not monitor_id:
         return error_response(400, "monitor_id is required", req=req)
 
+    org_id, err = _resolve_org_id(user_id, req)
+    if err:
+        return err
+
     from treesight.monitoring import delete_monitor, get_monitor, update_monitor
 
-    monitor = get_monitor(monitor_id, user_id)
+    monitor = get_monitor(monitor_id, org_id)
     if not monitor:
         return error_response(404, "Monitor not found", req=req)
 
@@ -381,7 +411,7 @@ def monitor_detail_endpoint(
         )
 
     if req.method == "DELETE":
-        ok = delete_monitor(monitor_id, user_id)
+        ok = delete_monitor(monitor_id, org_id)
         if not ok:
             return error_response(500, "Failed to delete monitor", req=req)
         return func.HttpResponse(

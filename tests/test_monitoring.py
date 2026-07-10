@@ -52,11 +52,9 @@ def _mock_cosmos():
         for k, v in store.items():
             if not k.startswith(f"{container}:"):
                 continue
-            # simple filter by user_id if present in params
-            if parameters:
-                uid = next((p["value"] for p in parameters if p["name"] == "@uid"), None)
-                if uid and v.get("user_id") != uid:
-                    continue
+            # filter by org_id partition_key if provided
+            if partition_key and v.get("org_id") and v.get("org_id") != partition_key:
+                continue
             results.append(v)
         return results
 
@@ -99,7 +97,7 @@ class TestMonitorRecord:
     def test_create_with_defaults(self):
         from treesight.models.monitor import MonitorRecord
 
-        m = MonitorRecord(id="m1", user_id="u1", aoi_name="Forest A")
+        m = MonitorRecord(id="m1", org_id="org-1", user_id="u1", aoi_name="Forest A")
         assert m.enabled is True
         assert m.cadence_days == 30
         assert m.alert_thresholds.loss_pct == 5.0
@@ -110,6 +108,7 @@ class TestMonitorRecord:
         now = datetime.now(UTC)
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="Forest A",
             created_at=now,
@@ -118,6 +117,7 @@ class TestMonitorRecord:
         doc = m.to_cosmos()
         assert isinstance(doc, dict)
         assert doc["id"] == "m1"
+        assert doc["org_id"] == "org-1"
         assert doc["aoi_name"] == "Forest A"
         # datetime serialised as ISO string
         assert isinstance(doc["created_at"], str)
@@ -127,6 +127,7 @@ class TestMonitorRecord:
 
         m = MonitorRecord(
             id="m2",
+            org_id="org-1",
             user_id="u1",
             aoi_name="Block B",
             alert_thresholds=AlertThresholds(loss_pct=10.0, ndvi_mean_drop=0.2),
@@ -146,12 +147,14 @@ class TestMonitoringCRUD:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="Test AOI",
             aoi_geometry=_SAMPLE_GEOMETRY,
             cadence_days=30,
             alert_email="user@example.com",
         )
+        assert m.org_id == "org-1"
         assert m.user_id == "user-1"
         assert m.aoi_name == "Test AOI"
         assert m.enabled is True
@@ -163,11 +166,12 @@ class TestMonitoringCRUD:
         from treesight.monitoring import create_monitor, get_monitor
 
         created = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="AOI X",
             aoi_geometry=_SAMPLE_GEOMETRY,
         )
-        fetched = get_monitor(created.id, "user-1")
+        fetched = get_monitor(created.id, "org-1")
         assert fetched is not None
         assert fetched.id == created.id
         assert fetched.aoi_name == "AOI X"
@@ -175,53 +179,56 @@ class TestMonitoringCRUD:
     def test_get_nonexistent_monitor(self, _mock_cosmos):
         from treesight.monitoring import get_monitor
 
-        assert get_monitor("nonexistent", "user-1") is None
+        assert get_monitor("nonexistent", "org-1") is None
 
     def test_list_monitors(self, _mock_cosmos):
         from treesight.monitoring import create_monitor, list_monitors
 
-        create_monitor(user_id="user-1", aoi_name="AOI A", aoi_geometry=_SAMPLE_GEOMETRY)
-        create_monitor(user_id="user-1", aoi_name="AOI B", aoi_geometry=_SAMPLE_GEOMETRY)
-        create_monitor(user_id="user-2", aoi_name="AOI C", aoi_geometry=_SAMPLE_GEOMETRY)
+        create_monitor(org_id="org-1", user_id="user-1", aoi_name="AOI A", aoi_geometry=_SAMPLE_GEOMETRY)
+        create_monitor(org_id="org-1", user_id="user-2", aoi_name="AOI B", aoi_geometry=_SAMPLE_GEOMETRY)
+        create_monitor(org_id="org-2", user_id="user-3", aoi_name="AOI C", aoi_geometry=_SAMPLE_GEOMETRY)
 
-        monitors = list_monitors("user-1")
-        assert len(monitors) == 2
-        names = {m.aoi_name for m in monitors}
+        monitors_org1 = list_monitors("org-1")
+        assert len(monitors_org1) == 2
+        names = {m.aoi_name for m in monitors_org1}
         assert names == {"AOI A", "AOI B"}
 
     def test_disable_monitor(self, _mock_cosmos):
         from treesight.monitoring import create_monitor, disable_monitor, get_monitor
 
         created = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="AOI D",
             aoi_geometry=_SAMPLE_GEOMETRY,
         )
-        assert disable_monitor(created.id, "user-1") is True
-        fetched = get_monitor(created.id, "user-1")
+        assert disable_monitor(created.id, "org-1") is True
+        fetched = get_monitor(created.id, "org-1")
         assert fetched is not None
         assert fetched.enabled is False
 
     def test_disable_nonexistent_monitor(self, _mock_cosmos):
         from treesight.monitoring import disable_monitor
 
-        assert disable_monitor("nonexistent", "user-1") is False
+        assert disable_monitor("nonexistent", "org-1") is False
 
     def test_delete_monitor(self, _mock_cosmos):
         from treesight.monitoring import create_monitor, delete_monitor, get_monitor
 
         created = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="AOI E",
             aoi_geometry=_SAMPLE_GEOMETRY,
         )
-        assert delete_monitor(created.id, "user-1") is True
-        assert get_monitor(created.id, "user-1") is None
+        assert delete_monitor(created.id, "org-1") is True
+        assert get_monitor(created.id, "org-1") is None
 
     def test_advance_schedule(self, _mock_cosmos):
         from treesight.monitoring import advance_schedule, create_monitor
 
         created = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="AOI F",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -238,6 +245,7 @@ class TestMonitoringCRUD:
 
         # Create a monitor with next_check_at in the past
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="AOI Past Due",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -263,7 +271,7 @@ class TestAlertEvaluation:
         from treesight.models.monitor import MonitorRecord
         from treesight.monitoring import evaluate_alert
 
-        m = MonitorRecord(id="m1", user_id="u1", aoi_name="AOI")
+        m = MonitorRecord(id="m1", org_id="org-1", user_id="u1", aoi_name="AOI")
         assert evaluate_alert(m, None) is None
 
     def test_below_threshold_no_alert(self):
@@ -272,6 +280,7 @@ class TestAlertEvaluation:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="AOI",
             alert_thresholds=AlertThresholds(loss_pct=5.0),
@@ -285,6 +294,7 @@ class TestAlertEvaluation:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="AOI",
             alert_thresholds=AlertThresholds(loss_pct=5.0),
@@ -301,6 +311,7 @@ class TestAlertEvaluation:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="AOI",
             alert_thresholds=AlertThresholds(loss_pct=50.0, ndvi_mean_drop=0.1),
@@ -316,6 +327,7 @@ class TestAlertEvaluation:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="AOI",
             alert_thresholds=AlertThresholds(loss_pct=5.0, gain_pct=10.0, ndvi_mean_drop=0.05),
@@ -331,6 +343,7 @@ class TestAlertEvaluation:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="AOI",
             alert_thresholds=AlertThresholds(loss_pct=50.0, gain_pct=5.0),
@@ -352,7 +365,7 @@ class TestAlertSending:
         from treesight.models.monitor import MonitorRecord
         from treesight.monitoring import send_monitoring_alert
 
-        m = MonitorRecord(id="m1", user_id="u1", aoi_name="AOI", alert_email="")
+        m = MonitorRecord(id="m1", org_id="org-1", user_id="u1", aoi_name="AOI", alert_email="")
         alert = {"breaches": ["Loss 8%"], "loss_pct": 8.0, "gain_pct": 0.0, "mean_delta": -0.05}
         assert send_monitoring_alert(m, alert) is False
 
@@ -362,6 +375,7 @@ class TestAlertSending:
 
         m = MonitorRecord(
             id="m1",
+            org_id="org-1",
             user_id="u1",
             aoi_name="Forest Block A",
             alert_email="user@test.com",
@@ -393,8 +407,9 @@ class TestMonitoringEndpoints:
     def test_list_monitors_empty(self, _mock_cosmos, _mock_auth):
         from blueprints.monitoring import monitoring_endpoint
 
-        req = make_test_request("/api/monitoring", method="GET")
-        resp = monitoring_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="GET")
+            resp = monitoring_endpoint(req)
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["count"] == 0
@@ -408,8 +423,9 @@ class TestMonitoringEndpoints:
             "aoi_geometry": _SAMPLE_GEOMETRY,
             "cadence_days": 30,
         }
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
         assert resp.status_code == 201
         data = json.loads(resp.get_body())
         assert data["aoi_name"] == "Test Forest"
@@ -420,16 +436,18 @@ class TestMonitoringEndpoints:
         from blueprints.monitoring import monitoring_endpoint
 
         body = {"aoi_geometry": _SAMPLE_GEOMETRY}
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_no_geometry(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
         from blueprints.monitoring import monitoring_endpoint
 
         body = {"aoi_name": "Test"}
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_invalid_cadence(self, _mock_cosmos, _mock_auth, _mock_pro_subscription):
@@ -440,16 +458,20 @@ class TestMonitoringEndpoints:
             "aoi_geometry": _SAMPLE_GEOMETRY,
             "cadence_days": 0,
         }
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
         assert resp.status_code == 400
 
     def test_create_monitor_free_tier_rejected(self, _mock_cosmos, _mock_auth):
         from blueprints.monitoring import monitoring_endpoint
 
-        with patch(
-            "blueprints.monitoring.get_effective_subscription",
-            return_value={"tier": "free", "status": "active"},
+        with (
+            patch(
+                "blueprints.monitoring.get_effective_subscription",
+                return_value={"tier": "free", "status": "active"},
+            ),
+            patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)),
         ):
             body = {
                 "aoi_name": "Test",
@@ -467,24 +489,25 @@ class TestMonitoringEndpoints:
             "aoi_name": "Detail Test",
             "aoi_geometry": _SAMPLE_GEOMETRY,
         }
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
-        data = json.loads(resp.get_body())
-        monitor_id = data["id"]
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
+            data = json.loads(resp.get_body())
+            monitor_id = data["id"]
 
-        # Get detail
-        req2 = func.HttpRequest(
-            method="GET",
-            url=f"/api/monitoring/{monitor_id}",
-            headers={
-                "Origin": TEST_ORIGIN,
-                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
-            },
-            params={},
-            route_params={"monitor_id": monitor_id},
-            body=b"",
-        )
-        resp2 = monitor_detail_endpoint(req2)
+            # Get detail
+            req2 = func.HttpRequest(
+                method="GET",
+                url=f"/api/monitoring/{monitor_id}",
+                headers={
+                    "Origin": TEST_ORIGIN,
+                    "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
+                },
+                params={},
+                route_params={"monitor_id": monitor_id},
+                body=b"",
+            )
+            resp2 = monitor_detail_endpoint(req2)
         assert resp2.status_code == 200
         detail = json.loads(resp2.get_body())
         assert detail["aoi_name"] == "Detail Test"
@@ -494,26 +517,27 @@ class TestMonitoringEndpoints:
 
         # Create
         body = {"aoi_name": "Patch Test", "aoi_geometry": _SAMPLE_GEOMETRY}
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
-        data = json.loads(resp.get_body())
-        monitor_id = data["id"]
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
+            data = json.loads(resp.get_body())
+            monitor_id = data["id"]
 
-        # Patch
-        patch_body = json.dumps({"cadence_days": 14, "enabled": False}).encode()
-        req2 = func.HttpRequest(
-            method="PATCH",
-            url=f"/api/monitoring/{monitor_id}",
-            headers={
-                "Origin": TEST_ORIGIN,
-                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
-                "Content-Type": "application/json",
-            },
-            params={},
-            route_params={"monitor_id": monitor_id},
-            body=patch_body,
-        )
-        resp2 = monitor_detail_endpoint(req2)
+            # Patch
+            patch_body = json.dumps({"cadence_days": 14, "enabled": False}).encode()
+            req2 = func.HttpRequest(
+                method="PATCH",
+                url=f"/api/monitoring/{monitor_id}",
+                headers={
+                    "Origin": TEST_ORIGIN,
+                    "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
+                    "Content-Type": "application/json",
+                },
+                params={},
+                route_params={"monitor_id": monitor_id},
+                body=patch_body,
+            )
+            resp2 = monitor_detail_endpoint(req2)
         assert resp2.status_code == 200
         updated = json.loads(resp2.get_body())
         assert updated["cadence_days"] == 14
@@ -524,42 +548,44 @@ class TestMonitoringEndpoints:
 
         # Create
         body = {"aoi_name": "Delete Test", "aoi_geometry": _SAMPLE_GEOMETRY}
-        req = make_test_request("/api/monitoring", method="POST", body=body)
-        resp = monitoring_endpoint(req)
-        data = json.loads(resp.get_body())
-        monitor_id = data["id"]
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = make_test_request("/api/monitoring", method="POST", body=body)
+            resp = monitoring_endpoint(req)
+            data = json.loads(resp.get_body())
+            monitor_id = data["id"]
 
-        # Delete
-        req2 = func.HttpRequest(
-            method="DELETE",
-            url=f"/api/monitoring/{monitor_id}",
-            headers={
-                "Origin": TEST_ORIGIN,
-                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
-            },
-            params={},
-            route_params={"monitor_id": monitor_id},
-            body=b"",
-        )
-        resp2 = monitor_detail_endpoint(req2)
+            # Delete
+            req2 = func.HttpRequest(
+                method="DELETE",
+                url=f"/api/monitoring/{monitor_id}",
+                headers={
+                    "Origin": TEST_ORIGIN,
+                    "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
+                },
+                params={},
+                route_params={"monitor_id": monitor_id},
+                body=b"",
+            )
+            resp2 = monitor_detail_endpoint(req2)
         assert resp2.status_code == 200
         assert json.loads(resp2.get_body())["deleted"] is True
 
     def test_get_nonexistent_monitor_404(self, _mock_cosmos, _mock_auth):
         from blueprints.monitoring import monitor_detail_endpoint
 
-        req = func.HttpRequest(
-            method="GET",
-            url="/api/monitoring/nonexistent",
-            headers={
-                "Origin": TEST_ORIGIN,
-                "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
-            },
-            params={},
-            route_params={"monitor_id": "nonexistent"},
-            body=b"",
-        )
-        resp = monitor_detail_endpoint(req)
+        with patch("blueprints.monitoring._resolve_org_id", return_value=("org-1", None)):
+            req = func.HttpRequest(
+                method="GET",
+                url="/api/monitoring/nonexistent",
+                headers={
+                    "Origin": TEST_ORIGIN,
+                    "X-MS-CLIENT-PRINCIPAL": encode_test_principal(),
+                },
+                params={},
+                route_params={"monitor_id": "nonexistent"},
+                body=b"",
+            )
+            resp = monitor_detail_endpoint(req)
         assert resp.status_code == 404
 
 
@@ -588,6 +614,7 @@ class TestMonitoringScheduler:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="No Centroid",
             aoi_geometry={"centroid": [0.0, 0.0]},
@@ -604,6 +631,7 @@ class TestMonitoringScheduler:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="Enrichment Test",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -639,6 +667,7 @@ class TestMonitoringScheduler:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="Latest Change Test",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -692,6 +721,7 @@ class TestMonitoringScheduler:
 
         last_run = datetime(2026, 3, 1, 12, 0, 0, tzinfo=UTC)
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="Delta Test",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -724,6 +754,7 @@ class TestMonitoringScheduler:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="First Run Test",
             aoi_geometry=_SAMPLE_GEOMETRY,
@@ -754,6 +785,7 @@ class TestMonitoringScheduler:
         from treesight.monitoring import create_monitor
 
         m = create_monitor(
+            org_id="org-1",
             user_id="user-1",
             aoi_name="Baseline Store Test",
             aoi_geometry=_SAMPLE_GEOMETRY,

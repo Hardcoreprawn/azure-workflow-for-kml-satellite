@@ -130,7 +130,7 @@ class TestCompleteRunBilling:
             "billing_status": "pending",
         }
 
-        complete_run_billing("u1", "inst-1")
+        complete_run_billing("org-1", "inst-1")
 
         mock_upsert.assert_called_once()
         doc = mock_upsert.call_args[0][1]
@@ -147,7 +147,7 @@ class TestCompleteRunBilling:
             "payment_ref": None,
         }
 
-        complete_run_billing("u1", "inst-1")
+        complete_run_billing("org-1", "inst-1")
 
         mock_upsert.assert_not_called()
 
@@ -166,7 +166,7 @@ class TestCompleteRunBilling:
         # Simulate _report_overage setting payment_ref (provider succeeded)
         mock_report.side_effect = lambda uid, iid, d: d.__setitem__("payment_ref", "ur_123")
 
-        complete_run_billing("u1", "inst-2")
+        complete_run_billing("org-1", "inst-2")
 
         mock_report.assert_called_once_with("u1", "inst-2", doc)
         mock_upsert.assert_called_once()
@@ -178,7 +178,7 @@ class TestCompleteRunBilling:
     def test_handles_missing_document(self, mock_read, mock_upsert):
         mock_read.return_value = None
 
-        complete_run_billing("u1", "inst-missing")
+        complete_run_billing("org-1", "inst-missing")
 
         mock_upsert.assert_not_called()
 
@@ -198,7 +198,7 @@ class TestCompleteRunBilling:
         mock_report.side_effect = lambda uid, iid, d: None
 
         with pytest.raises(RuntimeError, match="Overage billing not confirmed"):
-            complete_run_billing("u1", "inst-fail")
+            complete_run_billing("org-1", "inst-fail")
 
         mock_report.assert_called_once()
         mock_upsert.assert_not_called()
@@ -222,7 +222,7 @@ class TestFailRunBilling:
             "estimated_cost_pence": 123.4,
         }
 
-        fail_run_billing("u1", "inst-2", reason="manual_refund")
+        fail_run_billing("org-1", "inst-2", reason="manual_refund")
 
         mock_upsert.assert_called_once()
         doc = mock_upsert.call_args[0][1]
@@ -241,7 +241,7 @@ class TestFailRunBilling:
             "billing_status": "pending",
         }
 
-        fail_run_billing("u1", "inst-3", reason="manual_refund")
+        fail_run_billing("org-1", "inst-3", reason="manual_refund")
 
         mock_upsert.assert_called_once()
         doc = mock_upsert.call_args[0][1]
@@ -259,7 +259,7 @@ class TestFailRunBilling:
             "billing_status": "pending",
         }
 
-        fail_run_billing("u1", "inst-1", reason="pipeline_failure")
+        fail_run_billing("org-1", "inst-1", reason="pipeline_failure")
 
         mock_upsert.assert_called_once()
         doc = mock_upsert.call_args[0][1]
@@ -276,7 +276,7 @@ class TestFailRunBilling:
             "billing_status": "refunded",
         }
 
-        fail_run_billing("u1", "inst-1")
+        fail_run_billing("org-1", "inst-1")
 
         mock_upsert.assert_not_called()
 
@@ -296,7 +296,7 @@ class TestFailRunBilling:
         snapshots = []
         mock_upsert.side_effect = lambda coll, doc: snapshots.append(dict(doc))
 
-        fail_run_billing("u1", "inst-3", reason="timeout")
+        fail_run_billing("org-1", "inst-3", reason="timeout")
 
         assert len(snapshots) == 2
         assert snapshots[0]["billing_status"] == "credit_pending"
@@ -315,7 +315,7 @@ class TestFailRunBilling:
             "billing_status": "pending",
         }
 
-        fail_run_billing("u1", "inst-4", reason="pipeline_failure")
+        fail_run_billing("org-1", "inst-4", reason="pipeline_failure")
 
         mock_upsert.assert_called_once()
         mock_credit.assert_not_called()
@@ -335,7 +335,7 @@ class TestFailRunBilling:
         mock_credit.side_effect = lambda uid, iid, d, r: None
 
         with pytest.raises(RuntimeError, match="Overage credit not confirmed"):
-            fail_run_billing("u1", "inst-5", reason="pipeline_failure")
+            fail_run_billing("org-1", "inst-5", reason="pipeline_failure")
 
         interim_doc = mock_upsert.call_args_list[0][0][1]
         assert interim_doc["billing_status"] == "credit_pending"
@@ -345,7 +345,7 @@ class TestFailRunBilling:
     def test_handles_missing_document(self, mock_read, mock_upsert):
         mock_read.return_value = None
 
-        fail_run_billing("u1", "inst-missing")
+        fail_run_billing("org-1", "inst-missing")
 
         mock_upsert.assert_not_called()
 
@@ -379,7 +379,7 @@ class TestOverageProviderIntegration:
         mock_provider.report_usage.return_value = "ur_123"
         mock_provider_fn.return_value = mock_provider
 
-        complete_run_billing("u1", "inst-over")
+        complete_run_billing("org-1", "inst-over")
 
         mock_provider.report_usage.assert_called_once_with(
             user_id="u1",
@@ -415,7 +415,7 @@ class TestOverageProviderIntegration:
         mock_provider.credit_usage.return_value = "cr_456"
         mock_provider_fn.return_value = mock_provider
 
-        fail_run_billing("u1", "inst-credit", reason="timeout")
+        fail_run_billing("org-1", "inst-credit", reason="timeout")
 
         mock_provider.credit_usage.assert_called_once_with(
             user_id="u1",

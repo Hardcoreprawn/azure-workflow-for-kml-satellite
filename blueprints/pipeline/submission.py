@@ -394,6 +394,7 @@ async def _submit_analysis_request(
             submission_id=submission_id,
             instance_id=submission_id,
             user_id=user_id,
+            org_id=org_id if isinstance(org_id, str) and org_id else None,
             submitted_at=datetime.now(UTC).isoformat(),
             kml_blob_name=f"{blob_prefix.strip('/') or 'analysis'}/{submission_id}.kml",
             kml_size_bytes=len(body.get("kml_content", "").encode("utf-8"))

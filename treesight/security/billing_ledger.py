@@ -89,21 +89,25 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
     }
 
 
-def complete_run_billing(user_id: str, instance_id: str) -> None:
+def complete_run_billing(org_id: str, instance_id: str) -> None:
     """Mark a run as successfully completed in the billing ledger.
 
     For overage runs, reports usage to the configured ``PaymentProvider``.
+    Uses ``org_id`` as the Cosmos partition key (D2 — #313).
+    ``user_id`` is read from the run document for billing provider calls.
     """
     from treesight.storage.cosmos import read_item, upsert_item
 
-    doc = read_item("runs", instance_id, user_id)
+    doc = read_item("runs", instance_id, org_id)
     if not doc:
         logger.warning(
-            "No run document found for billing completion instance=%s user=%s",
+            "No run document found for billing completion instance=%s org=%s",
             instance_id,
-            _redact(user_id),
+            org_id,
         )
         return
+
+    user_id: str = doc.get("user_id", "")
 
     billing_type = doc.get("billing_type")
     already_charged = doc.get("billing_status") == "charged"
@@ -129,7 +133,7 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
     # Inline billing-type sanitisation — only literal strings reach the
     # logger.  CodeQL cannot trace taint through equality checks, so this
     # avoids the false-positive py/clear-text-logging-sensitive-data alert
-    # that fires when the tainted ``billing_type`` (fetched via user_id)
+    # that fires when the tainted ``billing_type`` (fetched via org_id)
     # is passed through a function call.
     if billing_type == "overage":
         logged_type = "overage"
@@ -151,7 +155,7 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
 
 
 def fail_run_billing(
-    user_id: str,
+    org_id: str,
     instance_id: str,
     *,
     reason: str = "pipeline_failure",
@@ -159,17 +163,21 @@ def fail_run_billing(
     """Mark a run as failed/refunded in the billing ledger.
 
     For overage runs that were already reported, credits the payment provider.
+    Uses ``org_id`` as the Cosmos partition key (D2 — #313).
+    ``user_id`` is read from the run document for billing provider calls.
     """
     from treesight.storage.cosmos import read_item, upsert_item
 
-    doc = read_item("runs", instance_id, user_id)
+    doc = read_item("runs", instance_id, org_id)
     if not doc:
         logger.warning(
-            "No run document found for billing failure instance=%s user=%s",
+            "No run document found for billing failure instance=%s org=%s",
             instance_id,
-            _redact(user_id),
+            org_id,
         )
         return
+
+    user_id: str = doc.get("user_id", "")
 
     previous_status = doc.get("billing_status")
     if previous_status == "refunded":

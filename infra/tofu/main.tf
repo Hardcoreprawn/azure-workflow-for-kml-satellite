@@ -525,13 +525,15 @@ resource "azurerm_cosmosdb_sql_container" "runs" {
   resource_group_name = azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main[0].name
   database_name       = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths = ["/user_id"]
+  partition_key_paths = ["/org_id"]
   default_ttl         = -1 # per-item TTL enabled (set ttl field on docs to expire)
 
+  # D2 (org-partitioned): partition key changed from /user_id to /org_id (#313).
   # Queries served:
-  #   R1: SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC (LIMIT)
+  #   R1: SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC (LIMIT) — within org partition
+  #   R2: SELECT * FROM c ORDER BY c.submitted_at DESC (LIMIT) — all org runs (portfolio)
   #   R5: ... AND c.status = @status ORDER BY c.submitted_at DESC
-  # Partition key (/user_id) is always auto-indexed — do not re-include it.
+  # Partition key (/org_id) is always auto-indexed — do not re-include it.
   indexing_policy {
     indexing_mode = "consistent"
 
@@ -618,11 +620,12 @@ resource "azurerm_cosmosdb_sql_container" "monitors" {
   resource_group_name = azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main[0].name
   database_name       = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths = ["/user_id"]
+  partition_key_paths = ["/org_id"]
 
+  # D2 (org-partitioned): partition key changed from /user_id to /org_id (#313).
   # Queries served:
-  #   M1: Point read by (monitor_id, user_id) — single monitor detail
-  #   M2: SELECT * WHERE user_id = @uid ORDER BY created_at DESC — user's monitors
+  #   M1: Point read by (monitor_id, org_id) — single monitor detail
+  #   M2: SELECT * WHERE org_id = @oid ORDER BY created_at DESC — org monitors
   #   M3: SELECT * WHERE enabled = true AND next_check_at <= @now — scheduler (cross-partition)
   indexing_policy {
     indexing_mode = "consistent"
@@ -662,10 +665,11 @@ resource "azurerm_cosmosdb_sql_container" "catalogue" {
   resource_group_name = azurerm_resource_group.main.name
   account_name        = azurerm_cosmosdb_account.main[0].name
   database_name       = azurerm_cosmosdb_sql_database.main[0].name
-  partition_key_paths = ["/user_id"]
+  partition_key_paths = ["/org_id"]
 
+  # D2 (org-partitioned): partition key changed from /user_id to /org_id (#313).
   # Queries served:
-  #   C1: SELECT * FROM c ORDER BY c.submitted_at DESC (paginated, partition_key scopes)
+  #   C1: SELECT * FROM c ORDER BY c.submitted_at DESC (paginated, partition_key scopes to org)
   #   C2: ... AND c.aoi_name = @aoi ORDER BY c.submitted_at DESC
   #   C3: ... AND c.status = @status ORDER BY c.submitted_at DESC
   #   C4: ... AND c.run_id = @rid ORDER BY c.aoi_name ASC

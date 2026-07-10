@@ -3,6 +3,8 @@
 All operations work with ``CatalogueEntry`` data models.
 The API layer converts to/from contracts; this layer never
 imports anything from ``contracts.py``.
+
+Partition key: ``/org_id`` (D2 — organisation owns catalogue, #313).
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ def _make_id(run_id: str, aoi_name: str) -> str:
 
 
 def record_acquisition(
+    org_id: str,
     user_id: str,
     run_id: str,
     aoi_name: str,
@@ -68,11 +71,12 @@ def record_acquisition(
     doc_id = _make_id(run_id, aoi_name)
 
     # Preserve created_at if the entry already exists (upsert semantics)
-    existing = get_entry(doc_id, user_id)
+    existing = get_entry(doc_id, org_id)
     created_ts = existing.created_at if existing else now
 
     entry = CatalogueEntry(
         id=doc_id,
+        org_id=org_id,
         user_id=user_id,
         run_id=run_id,
         aoi_name=aoi_name,
@@ -102,8 +106,9 @@ def record_acquisition(
 
     upsert_item(CATALOGUE_CONTAINER, entry.to_cosmos())
     logger.info(
-        "Catalogue entry recorded id=%s user=%s aoi=%s run=%s",
+        "Catalogue entry recorded id=%s org=%s user=%s aoi=%s run=%s",
         entry.id,
+        org_id,
         user_id,
         aoi_name,
         run_id,
@@ -125,18 +130,18 @@ def update_entry(entry: CatalogueEntry) -> CatalogueEntry:
 # ---------------------------------------------------------------------------
 
 
-def get_entry(entry_id: str, user_id: str) -> CatalogueEntry | None:
-    """Read a single catalogue entry by id and partition key."""
+def get_entry(entry_id: str, org_id: str) -> CatalogueEntry | None:
+    """Read a single catalogue entry by id and org partition key."""
     from treesight.storage.cosmos import read_item
 
-    doc = read_item(CATALOGUE_CONTAINER, entry_id, user_id)
+    doc = read_item(CATALOGUE_CONTAINER, entry_id, org_id)
     if not doc:
         return None
     return CatalogueEntry.from_cosmos(doc)
 
 
 def list_entries(
-    user_id: str,
+    org_id: str,
     *,
     aoi_name: str | None = None,
     status: str | None = None,
@@ -147,13 +152,13 @@ def list_entries(
     offset: int = 0,
     sort: str = "desc",
 ) -> tuple[list[CatalogueEntry], int]:
-    """Query catalogue entries with optional filters.
+    """Query catalogue entries for an org with optional filters.
 
     Returns ``(entries, total_count)``.
     """
     from treesight.storage.cosmos import query_items
 
-    # Build query dynamically — partition_key scopes to user_id already
+    # Build query dynamically — partition_key scopes to org_id already
     conditions: list[str] = []
     params: list[dict[str, Any]] = []
 
@@ -186,7 +191,7 @@ def list_entries(
         CATALOGUE_CONTAINER,
         count_query,
         parameters=params,
-        partition_key=user_id,
+        partition_key=org_id,
     )
     total: int = int(count_result[0]) if count_result else 0  # type: ignore[arg-type]  # SELECT VALUE returns raw int
 
@@ -206,7 +211,7 @@ def list_entries(
         CATALOGUE_CONTAINER,
         data_query,
         parameters=data_params,
-        partition_key=user_id,
+        partition_key=org_id,
     )
 
     entries = [CatalogueEntry.from_cosmos(doc) for doc in docs]
@@ -214,7 +219,7 @@ def list_entries(
 
 
 def list_entries_for_run(
-    user_id: str,
+    org_id: str,
     run_id: str,
 ) -> list[CatalogueEntry]:
     """List all catalogue entries for a specific pipeline run."""
@@ -226,13 +231,13 @@ def list_entries_for_run(
         parameters=[
             {"name": "@rid", "value": run_id},
         ],
-        partition_key=user_id,
+        partition_key=org_id,
     )
     return [CatalogueEntry.from_cosmos(doc) for doc in docs]
 
 
 def list_entries_for_aoi(
-    user_id: str,
+    org_id: str,
     aoi_name: str,
     *,
     limit: int = 20,
@@ -247,6 +252,6 @@ def list_entries_for_aoi(
             {"name": "@aoi", "value": aoi_name},
             {"name": "@lim", "value": limit},
         ],
-        partition_key=user_id,
+        partition_key=org_id,
     )
     return [CatalogueEntry.from_cosmos(doc) for doc in docs]

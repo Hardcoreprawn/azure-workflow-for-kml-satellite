@@ -206,10 +206,14 @@ def _parse_history_offset(raw_offset: str) -> int:
 
 
 def _fetch_submission_records(
-    user_id: str, limit: int, *, offset: int = 0, max_results: int = 100
+    org_id: str, user_id: str, limit: int, *, offset: int = 0, max_results: int = 100
 ) -> list:
     # TODO: paginated Cosmos query — blob fallback is O(n) over all blobs
-    """Retrieve submission records from Cosmos (preferred) or blob storage."""
+    """Retrieve submission records from Cosmos (preferred) or blob storage.
+
+    Uses ``org_id`` as the Cosmos partition key (D2 — #313) and filters
+    by ``user_id`` within the org partition for user-scoped queries.
+    """
     if _cosmos_mod.cosmos_available():
         try:
             from treesight.storage import cosmos
@@ -226,12 +230,13 @@ def _fetch_submission_records(
                     {"name": "@off", "value": offset},
                     {"name": "@lim", "value": limit},
                 ],
-                partition_key=user_id,
+                partition_key=org_id,
             )
         except Exception:
             logger.warning(
-                "Cosmos query failed for user=%s, falling back to blob",
+                "Cosmos query failed for user=%s org=%s, falling back to blob",
                 user_id,
+                org_id,
                 exc_info=True,
             )
 
@@ -269,12 +274,44 @@ def _fetch_portfolio_submission_records(
     """Retrieve history records for the signed-in user's org portfolio.
 
     Falls back to user scope when no org is configured.
+    After D2 (#313), all org runs are in a single org partition so we
+    query directly rather than iterating per-member.
     """
     org = get_user_org(user_id)
     if not org:
-        return _fetch_submission_records(user_id, limit, offset=offset), "user", None, 1
+        return _fetch_submission_records("", user_id, limit, offset=offset), "user", None, 1
 
+    org_id = str(org.get("org_id", ""))
     members = org.get("members", []) if isinstance(org, dict) else []
+    member_count = len(
+        [m for m in members if isinstance(m, dict) and str(m.get("user_id", "")).strip()]
+    ) or 1
+
+    # With org-partitioned runs, a single query over the org partition
+    # returns all members' runs — no per-member fan-out needed.
+    if _cosmos_mod.cosmos_available():
+        try:
+            from treesight.storage import cosmos
+
+            fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
+            records = cosmos.query_items(
+                "runs",
+                "SELECT * FROM c ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim",
+                parameters=[
+                    {"name": "@off", "value": offset},
+                    {"name": "@lim", "value": limit},
+                ],
+                partition_key=org_id,
+            )
+            return records, "org", org_id or None, member_count
+        except Exception:
+            logger.warning(
+                "Cosmos org portfolio query failed org=%s, falling back to per-member",
+                org_id,
+                exc_info=True,
+            )
+
+    # Blob fallback: iterate per-member (legacy, pre-D2 path)
     member_ids = [
         str(member.get("user_id", "")).strip()
         for member in members
@@ -283,7 +320,6 @@ def _fetch_portfolio_submission_records(
     if user_id not in member_ids:
         member_ids.append(user_id)
 
-    # Deduplicate while preserving order.
     seen: set[str] = set()
     deduped_member_ids: list[str] = []
     for member_id in member_ids:
@@ -293,17 +329,17 @@ def _fetch_portfolio_submission_records(
         deduped_member_ids.append(member_id)
 
     fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
-    records: list[dict[str, Any]] = []
+    records_list: list[dict[str, Any]] = []
     for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
-        records.extend(
-            _fetch_submission_records(member_id, fetch_limit, offset=0, max_results=fetch_limit)
+        records_list.extend(
+            _fetch_submission_records(org_id, member_id, fetch_limit, offset=0, max_results=fetch_limit)
         )
 
-    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
+    records_list.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
     return (
-        records[offset : offset + limit],
+        records_list[offset : offset + limit],
         "org",
-        str(org.get("org_id", "")) or None,
+        org_id or None,
         len(deduped_member_ids),
     )
 
@@ -350,7 +386,9 @@ async def _build_analysis_history_response(
             user_id, limit, offset=offset
         )
     else:
-        records = _fetch_submission_records(user_id, limit, offset=offset)
+        user_org = get_user_org(user_id)
+        user_org_id = str(user_org.get("org_id", "")) if user_org else ""
+        records = _fetch_submission_records(user_org_id, user_id, limit, offset=offset)
         resolved_scope = "user"
         org_id = None
         member_count = 1

@@ -336,9 +336,9 @@ All in database `COSMOS_DATABASE_NAME`.
 | `orgs` | `/org_id` | `org_id` | Organisation (+ embedded Memberships, Invites, Quota Pool) | `usage` block is the Quota Pool; `usage_history` capped at 12 periods. Invites share the container. |
 | `users` | `/user_id` | `user_id` | User | Still carries an embedded `quota` (`QuotaState`) — **vestigial**, see §4. Single `org_id`/`org_role` — **see §4**. |
 | `subscriptions` | `/user_id` | `user_id` *or* `{user_id}:emulation` | Subscription | Emulation variant is a local tier override for testing. |
-| `runs` | `/user_id` | `instance_id` | Run | **Partitioned by user, not org** — see §4. |
-| `catalogue` | `/user_id` | `{run_id}:{aoi_name_slug}` | Catalogue Entry | **Partitioned by user, not org** — see §4. |
-| `monitors` | `/user_id` | auto-generated | Monitor | **Partitioned by user, not org** — see §4. |
+| `runs` | `/org_id` | `instance_id` | Run | Organisation owns runs — D2 resolved (#313). |
+| `catalogue` | `/org_id` | `{run_id}:{aoi_name_slug}` | Catalogue Entry | Organisation owns catalogue — D2 resolved (#313). |
+| `monitors` | `/org_id` | auto-generated | Monitor | Organisation owns monitors — D2 resolved (#313). |
 
 **Concurrency:** the Quota Pool (`orgs.usage`) uses ETag optimistic
 concurrency (`read_item_with_etag` / `replace_item_with_etag`) with up to
@@ -392,16 +392,15 @@ code.**
 | # | Intended (domain) | Current (code) | Tracking |
 |---|-------------------|----------------|----------|
 | D1 | **User ⇄ Organisation is many-to-many** (a user belongs to 1+ orgs). | `UserRecord.org_id` / `org_role` are **singular** — a user maps to at most one org. Membership is embedded only on the org side (`OrgRecord.members`). | *Needs an issue — see below.* |
-| D2 | **Organisation owns Runs, Catalogue Entries, and Monitors.** | `runs`, `catalogue`, and `monitors` are all partitioned by `/user_id` — ownership is effectively **per-user**. | *Needs an issue — see below.* |
+| D2 | **Organisation owns Runs, Catalogue Entries, and Monitors.** | ✅ Resolved: `runs`, `catalogue`, and `monitors` now partitioned by `/org_id`. Partition key dropped from `/user_id` and recreated. All repositories and HTTP call sites updated. | Closed by #313. |
 | D3 | **Quota is org-pooled only.** Per-user quota should not exist. | `users` documents still carry an embedded `quota` (`QuotaState`) counter. | Umbrella **#814** (org-pooled accounting *"replaces the divergent per-user `quota`"*). Per-user quota is **vestigial from the first build** and should be removed before launch. |
 | D4 | Enrichment/analysis sub-blocks are well-typed. | `weather_daily`, `ndvi_stats`, `per_aoi_metrics`, `change_detection`, `multi_aoi_summary`, `resource_summary`, `billing` are `list[dict]` / `dict[str, Any]` *(open)*. | Documented here; no schema yet. |
 | D5 | Pipeline stages exchange typed domain objects. | The orchestrator passes **untyped dicts** between activities (e.g. `IngestionResult.aois` is `list[dict]`, not `list[AOI]`). Validation happens at boundaries, not in flight. | Documented here; relevant to the "toward a domain model" goal below. |
 
-> **Action for maintainers:** D3 is tracked under #814. D1 and D2 are
-> structural changes to the ownership model (org-partitioned storage +
-> a real join between users and orgs) and are **not yet tracked by a
-> dedicated issue**. File issues before acting on them; they are
-> pre-launch data-model changes with migration implications.
+> **Action for maintainers:** D3 is tracked under #814. D1 remains a
+> structural change (a real many-to-many user↔org join) and is **not yet tracked
+> by a dedicated issue**. File an issue before acting on it; it is a pre-launch
+> data-model change.
 
 ---
 

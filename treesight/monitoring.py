@@ -3,6 +3,8 @@
 Provides helpers to create, query, and update monitoring subscriptions
 in the ``monitors`` Cosmos container, plus alert evaluation logic that
 compares pipeline enrichment results against user-configured thresholds.
+
+Partition key: ``/org_id`` (D2 — organisation owns monitors, #313).
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ MONITORS_CONTAINER = "monitors"
 
 
 def create_monitor(
+    org_id: str,
     user_id: str,
     aoi_name: str,
     aoi_geometry: dict[str, Any],
@@ -41,6 +44,7 @@ def create_monitor(
     now = datetime.now(UTC)
     monitor = MonitorRecord(
         id=str(uuid.uuid4()),
+        org_id=org_id,
         user_id=user_id,
         aoi_name=aoi_name,
         source_file=source_file,
@@ -55,29 +59,29 @@ def create_monitor(
         updated_at=now,
     )
     upsert_item(MONITORS_CONTAINER, monitor.to_cosmos())
-    logger.info("Monitor created id=%s user=%s aoi=%s", monitor.id, user_id, aoi_name)
+    logger.info("Monitor created id=%s org=%s user=%s aoi=%s", monitor.id, org_id, user_id, aoi_name)
     return monitor
 
 
-def get_monitor(monitor_id: str, user_id: str) -> MonitorRecord | None:
-    """Read a single monitor by id and partition key."""
+def get_monitor(monitor_id: str, org_id: str) -> MonitorRecord | None:
+    """Read a single monitor by id and org partition key."""
     from treesight.storage.cosmos import read_item
 
-    doc = read_item(MONITORS_CONTAINER, monitor_id, user_id)
+    doc = read_item(MONITORS_CONTAINER, monitor_id, org_id)
     if not doc:
         return None
     return MonitorRecord(**{k: v for k, v in doc.items() if not k.startswith("_")})
 
 
-def list_monitors(user_id: str) -> list[MonitorRecord]:
-    """List all monitors for a user."""
+def list_monitors(org_id: str) -> list[MonitorRecord]:
+    """List all monitors for an org."""
     from treesight.storage.cosmos import query_items
 
     docs = query_items(
         MONITORS_CONTAINER,
-        "SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.created_at DESC",
-        parameters=[{"name": "@uid", "value": user_id}],
-        partition_key=user_id,
+        "SELECT * FROM c ORDER BY c.created_at DESC",
+        parameters=[],
+        partition_key=org_id,
     )
     results: list[MonitorRecord] = []
     for doc in docs:
@@ -95,27 +99,27 @@ def update_monitor(monitor: MonitorRecord) -> MonitorRecord:
     return monitor
 
 
-def disable_monitor(monitor_id: str, user_id: str) -> bool:
+def disable_monitor(monitor_id: str, org_id: str) -> bool:
     """Disable a monitor. Returns True if found and disabled."""
-    monitor = get_monitor(monitor_id, user_id)
+    monitor = get_monitor(monitor_id, org_id)
     if not monitor:
         return False
     monitor.enabled = False
     update_monitor(monitor)
-    logger.info("Monitor disabled id=%s user=%s", monitor_id, user_id)
+    logger.info("Monitor disabled id=%s org=%s", monitor_id, org_id)
     return True
 
 
-def delete_monitor(monitor_id: str, user_id: str) -> bool:
+def delete_monitor(monitor_id: str, org_id: str) -> bool:
     """Delete a monitor. Returns True if found and deleted."""
     from treesight.storage.cosmos import delete_item
 
     try:
-        delete_item(MONITORS_CONTAINER, monitor_id, user_id)
-        logger.info("Monitor deleted id=%s user=%s", monitor_id, user_id)
+        delete_item(MONITORS_CONTAINER, monitor_id, org_id)
+        logger.info("Monitor deleted id=%s org=%s", monitor_id, org_id)
         return True
     except Exception:
-        logger.warning("Monitor delete failed id=%s user=%s", monitor_id, user_id, exc_info=True)
+        logger.warning("Monitor delete failed id=%s org=%s", monitor_id, org_id, exc_info=True)
         return False
 
 

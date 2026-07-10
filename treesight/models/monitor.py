@@ -24,10 +24,12 @@ class AlertThresholds(BaseModel):
 class MonitorRecord(BaseModel):
     """Persistent monitoring subscription for a single AOI.
 
-    Stored in the ``monitors`` Cosmos container (partition key ``/user_id``).
+    Stored in the ``monitors`` Cosmos container (partition key ``/org_id``).
+    D2 — organisation owns monitors (#313).
     """
 
     id: str
+    org_id: str
     user_id: str
     aoi_name: str
     source_file: str = ""

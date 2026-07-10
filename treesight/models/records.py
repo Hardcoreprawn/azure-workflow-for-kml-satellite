@@ -22,6 +22,7 @@ class RunRecord(BaseModel):
     """A pipeline run stored in the Cosmos ``runs`` container.
 
     Written at submission time and enriched as the pipeline progresses.
+    Partitioned by ``/org_id`` (D2 — organisation owns runs, #313).
     Existing documents may lack optional fields — all non-core fields
     default to ``None`` so reads never break.
     """
@@ -29,6 +30,7 @@ class RunRecord(BaseModel):
     submission_id: str
     instance_id: str
     user_id: str
+    org_id: str | None = None
     submitted_at: str
     kml_blob_name: str = ""
     kml_size_bytes: int = 0
