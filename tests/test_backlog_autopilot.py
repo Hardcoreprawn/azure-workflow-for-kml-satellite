@@ -9,17 +9,24 @@ from scripts.backlog_autopilot import (
     compute_budget_status,
     count_open_copilot_prs,
     parse_args,
+    parse_blocking_refs,
     select_issues,
 )
 
 
-def _issue(number: int, labels: set[str], assignees: set[str] | None = None) -> IssueCandidate:
+def _issue(
+    number: int,
+    labels: set[str],
+    assignees: set[str] | None = None,
+    body: str = "",
+) -> IssueCandidate:
     return IssueCandidate(
         number=number,
         title=f"Issue {number}",
         labels=labels,
         assignees=assignees or set(),
         url=f"https://example.invalid/{number}",
+        body=body,
     )
 
 
@@ -191,3 +198,104 @@ def test_count_open_copilot_prs_counts_drafts_and_ready_agent_prs(monkeypatch) -
     # 2 Copilot PRs (draft + ready) + 1 [WIP]-titled PR = 3; the two other
     # human/bot PRs are excluded.
     assert count == 3
+
+
+# ---------------------------------------------------------------------------
+# parse_blocking_refs
+# ---------------------------------------------------------------------------
+
+
+def test_parse_blocking_refs_extracts_blocked_by() -> None:
+    body = "This issue is blocked by #123 and blocked by #456."
+    assert parse_blocking_refs(body) == {123, 456}
+
+
+def test_parse_blocking_refs_extracts_depends_on() -> None:
+    body = "depends on #789\nAlso depends on #10."
+    assert parse_blocking_refs(body) == {789, 10}
+
+
+def test_parse_blocking_refs_case_insensitive() -> None:
+    body = "Blocked By #1\nDEPENDS ON #2"
+    assert parse_blocking_refs(body) == {1, 2}
+
+
+def test_parse_blocking_refs_empty_body() -> None:
+    assert parse_blocking_refs("") == set()
+
+
+def test_parse_blocking_refs_no_matches() -> None:
+    assert parse_blocking_refs("This is a normal issue body with no blockers.") == set()
+
+
+# ---------------------------------------------------------------------------
+# select_issues — dependency / blocked-label gates
+# ---------------------------------------------------------------------------
+
+
+def test_select_issues_skips_blocked_label() -> None:
+    # An issue carrying the `blocked` label must never be auto-assigned,
+    # regardless of its MoSCoW tier.
+    issues = [
+        _issue(1, {"moscow:must", "blocked"}),
+        _issue(2, {"moscow:should"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [2]
+
+
+def test_select_issues_skips_when_blocker_is_open() -> None:
+    # Issue #2 depends on #1, and #1 is still open — #2 must be skipped.
+    issues = [
+        _issue(1, {"moscow:must"}),
+        _issue(2, {"moscow:must"}, body="depends on #1"),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [1]
+
+
+def test_select_issues_eligible_when_blocker_is_closed() -> None:
+    # Issue #2 references blocker #1 in its body, but #1 is NOT in the open
+    # issues list (i.e. it has been closed).  #2 must become eligible.
+    issues = [
+        _issue(2, {"moscow:must"}, body="blocked by #1"),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [2]
+
+
+def test_select_issues_skips_blocked_by_in_body_when_blocker_open() -> None:
+    # Verify the "blocked by" body convention (as opposed to "depends on").
+    issues = [
+        _issue(10, {"moscow:must"}),
+        _issue(20, {"moscow:should"}, body="blocked by #10"),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [10]
+
+
+def test_select_issues_multiple_blockers_all_must_close() -> None:
+    # Issue #3 is blocked by both #1 and #2.  While either is open it stays
+    # ineligible; once only #1 is open it remains blocked.
+    issues_both_open = [
+        _issue(1, {"moscow:must"}),
+        _issue(2, {"moscow:must"}),
+        _issue(3, {"moscow:must"}, body="depends on #1\ndepends on #2"),
+    ]
+    selected = select_issues(issues_both_open, max_new_assignments=5)
+    assert 3 not in [i.number for i in selected]
+
+    # One blocker still open — still blocked.
+    issues_one_open = [
+        _issue(1, {"moscow:must"}),
+        _issue(3, {"moscow:must"}, body="depends on #1\ndepends on #2"),
+    ]
+    selected = select_issues(issues_one_open, max_new_assignments=5)
+    assert 3 not in [i.number for i in selected]
+
+    # Both closed — now eligible.
+    issues_none_open = [
+        _issue(3, {"moscow:must"}, body="depends on #1\ndepends on #2"),
+    ]
+    selected = select_issues(issues_none_open, max_new_assignments=5)
+    assert [i.number for i in selected] == [3]
