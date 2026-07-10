@@ -9,17 +9,24 @@ from scripts.backlog_autopilot import (
     compute_budget_status,
     count_open_copilot_prs,
     parse_args,
+    parse_blocking_refs,
     select_issues,
 )
 
 
-def _issue(number: int, labels: set[str], assignees: set[str] | None = None) -> IssueCandidate:
+def _issue(
+    number: int,
+    labels: set[str],
+    assignees: set[str] | None = None,
+    body: str = "",
+) -> IssueCandidate:
     return IssueCandidate(
         number=number,
         title=f"Issue {number}",
         labels=labels,
         assignees=assignees or set(),
         url=f"https://example.invalid/{number}",
+        body=body,
     )
 
 
@@ -63,6 +70,42 @@ def test_select_issues_excludes_no_autopilot_label() -> None:
     # `no-autopilot` gates approval-gated / human-design work out of the fleet.
     issues = [
         _issue(1, {"moscow:must", "no-autopilot"}),
+        _issue(2, {"moscow:should"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [2]
+
+
+def test_parse_blocking_refs_reads_blocked_by_and_depends_on() -> None:
+    body = "Foo.\nBlocked by #686.\nAlso depends on #700.\nsee #5 for context."
+    assert parse_blocking_refs(body) == {686, 700}
+
+
+def test_parse_blocking_refs_empty_when_no_dependency() -> None:
+    assert parse_blocking_refs("Just a plain issue mentioning #5.") == set()
+
+
+def test_select_issues_skips_issue_blocked_by_open_issue() -> None:
+    # #10 depends on #9, and #9 is still open in this snapshot -> hold #10 back.
+    issues = [
+        _issue(9, {"moscow:must"}),
+        _issue(10, {"moscow:must"}, body="Depends on #9."),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [9]
+
+
+def test_select_issues_assigns_when_blocker_is_closed() -> None:
+    # #9 is absent from the snapshot (closed) -> #10's dependency is met.
+    issues = [_issue(10, {"moscow:must"}, body="Blocked by #9.")]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [10]
+
+
+def test_select_issues_excludes_blocked_label() -> None:
+    # `blocked` gates an issue whose prerequisite is not yet done.
+    issues = [
+        _issue(1, {"moscow:must", "blocked"}),
         _issue(2, {"moscow:should"}),
     ]
     selected = select_issues(issues, max_new_assignments=5)

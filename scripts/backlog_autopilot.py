@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -35,6 +36,7 @@ class IssueCandidate:
     labels: set[str]
     assignees: set[str]
     url: str
+    body: str = ""
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,8 @@ def compute_budget_status(
 #   no-autopilot — manual gate for work that needs human design/approval
 #                  (infra, OpenTofu, CI/CD, workflows) or can't be validated
 #                  autonomously right now
-_AUTOPILOT_EXCLUDED_LABELS = frozenset({"epic", "no-autopilot"})
+#   blocked      — a prerequisite is not yet done; do not start out of order
+_AUTOPILOT_EXCLUDED_LABELS = frozenset({"epic", "no-autopilot", "blocked"})
 
 
 def issue_priority_score(labels: set[str]) -> int:
@@ -115,13 +118,38 @@ def issue_priority_score(labels: set[str]) -> int:
     return score
 
 
+_BLOCKING_RE = re.compile(r"(?:blocked[\s-]*by|depends[\s-]*on)\s*:?\s*#(\d+)", re.IGNORECASE)
+
+
+def parse_blocking_refs(body: str) -> set[int]:
+    """Return the issue numbers this issue declares itself blocked by.
+
+    Recognises the repo convention ``blocked by #N`` and ``depends on #N``
+    (case-insensitive) in an issue body. If any referenced issue is still
+    open, the issue is held back from auto-assignment so agents drain the
+    backlog in dependency order instead of grabbing blocked work.
+    """
+    if not body:
+        return set()
+    return {int(match) for match in _BLOCKING_RE.findall(body)}
+
+
 def select_issues(
     issues: list[IssueCandidate],
     *,
     max_new_assignments: int,
 ) -> list[IssueCandidate]:
+    # An issue is held back if it declares a dependency on another issue that
+    # is still open (present in this open-issue snapshot). Self-clearing: once
+    # the blocker closes it drops out of ``open_numbers`` and the dependent
+    # issue becomes eligible with no manual intervention.
+    open_numbers = {issue.number for issue in issues}
     eligible = [
-        issue for issue in issues if issue_priority_score(issue.labels) > 0 and not issue.assignees
+        issue
+        for issue in issues
+        if issue_priority_score(issue.labels) > 0
+        and not issue.assignees
+        and not (parse_blocking_refs(issue.body) & open_numbers)
     ]
     ordered = sorted(
         eligible,
@@ -232,6 +260,7 @@ def load_open_issues(*, token: str, owner: str, repo: str) -> list[IssueCandidat
                 labels=labels,
                 assignees=assignees,
                 url=str(issue.get("html_url", "")),
+                body=str(issue.get("body") or ""),
             )
         )
     return out
