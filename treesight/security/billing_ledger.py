@@ -99,7 +99,10 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
         included_limit = int(plan_capabilities(tier)["run_limit"])
 
     # ``reserve_run`` has already debited the current submission, so classify
-    # using the run count immediately before this reservation.
+    # using the run count immediately before this reservation. The ``-1``
+    # assumes a single-parcel debit; multi-parcel submissions that would
+    # straddle the allowance are hard-rejected by ``reserve_run`` before they
+    # reach here, so a successful reservation is always within the pool.
     used_before = max(used_now - 1, 0)
 
     classification = classify_run(tier, used_before, included_limit)

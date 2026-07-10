@@ -1,5 +1,6 @@
 """Tests for treesight.security.billing_ledger — run-level billing (#589)."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -113,6 +114,33 @@ class TestBillingFieldsForSubmission:
 
         assert fields["billing_type"] == "overage"
         assert fields["overage_unit_price"] == 0.80
+
+    @patch(_GET_USER_ORG, return_value=None)
+    @patch(_GET_SUB)
+    def test_org_less_user_classifies_against_plan_limit(self, mock_sub, _mock_org):
+        """No org → usage is zero and the limit comes from the plan, not a pool."""
+        mock_sub.return_value = {"tier": "pro", "status": "active"}
+
+        fields = billing_fields_for_submission("u-orgless")
+
+        assert fields["tier_at_submission"] == "pro"
+        assert fields["billing_type"] == "included"
+        assert fields["billing_status"] == "pending"
+
+    @patch(_COMPUTE_POOL_ALLOWANCE, return_value=50)
+    @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": [1, 2, 3]})
+    @patch(_GET_SUB)
+    def test_malformed_usage_falls_back_to_zeroed(
+        self, mock_sub, _mock_org, _mock_allowance, caplog
+    ):
+        """Non-dict ``usage`` must not crash — zeroed fallback plus a warning."""
+        mock_sub.return_value = {"tier": "pro", "status": "active"}
+
+        with caplog.at_level(logging.WARNING):
+            fields = billing_fields_for_submission("u-bad-usage")
+
+        assert fields["billing_type"] == "included"
+        assert any("Unexpected org usage shape" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
