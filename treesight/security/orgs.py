@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
 
 logger = logging.getLogger(__name__)
+ReadItemFn = Callable[[str, str, str], dict[str, Any] | None]
 
 # Invite validity window
 INVITE_TTL_DAYS = 7
@@ -163,25 +165,92 @@ def get_user_org(user_id: str) -> dict[str, Any] | None:
     during org creation).  Falls back to a membership query on the orgs
     container and repairs the user doc so the fast path works next time.
     """
+    return resolve_active_org_for_user(user_id)
+
+
+def resolve_active_org_for_user(
+    user_id: str,
+    *,
+    requested_org_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve the active org for *user_id* from membership data.
+
+    Membership on org documents is authoritative. Legacy ``users.org_id`` is
+    used only as a compatibility fallback while old user docs still exist.
+    """
     # Read user directly to avoid a circular import with users.py.
     from treesight.storage.cosmos import read_item
 
-    user = read_item("users", user_id, user_id)
-    if user and user.get("org_id"):
-        org = get_org(user["org_id"])
+    requested = (requested_org_id or "").strip()
+    orgs = _list_user_memberships(user_id)
+    if orgs:
+        selected = _select_membership_org(user_id, orgs, requested, read_item)
+        if not selected:
+            return None
+        org_id = str(selected.get("org_id", "")).strip()
+        if not org_id:
+            return None
+        org = get_org(org_id)
         if org:
-            return org
+            _set_user_org(user_id, org_id, str(selected.get("org_role", "member")))
+        return org
+    return _resolve_legacy_user_org(user_id, requested, read_item)
 
-    # Slow-path recovery: user doc missing org_id or org doc missing.
-    # The org's members array is the authoritative source of membership.
-    orgs = list_orgs_for_user(user_id)
-    if not orgs:
+
+def _list_user_memberships(user_id: str) -> list[dict[str, Any]]:
+    try:
+        return list_orgs_for_user(user_id)
+    except Exception:
+        logger.warning("Failed to list org memberships for user=%s", user_id, exc_info=True)
+        return []
+
+
+def _select_membership_org(
+    user_id: str,
+    orgs: list[dict[str, Any]],
+    requested_org_id: str,
+    read_item: ReadItemFn,
+) -> dict[str, Any] | None:
+    if requested_org_id:
+        selected = next((o for o in orgs if o.get("org_id") == requested_org_id), None)
+        if selected is None:
+            return None
+        return selected
+
+    try:
+        user = read_item("users", user_id, user_id) or {}
+    except Exception:
+        logger.warning("Failed to read legacy org preference for user=%s", user_id, exc_info=True)
+        user = {}
+    preferred_org_id = str(user.get("org_id", "")).strip()
+    if preferred_org_id:
+        selected = next((o for o in orgs if o.get("org_id") == preferred_org_id), None)
+        if selected is not None:
+            return selected
+
+    # ``created_at`` is written via datetime.isoformat() in create_org, so
+    # lexical ordering matches chronological ordering for deterministic picks.
+    return sorted(
+        orgs,
+        key=lambda o: (str(o.get("created_at", "")), str(o.get("org_id", ""))),
+    )[0]
+
+
+def _resolve_legacy_user_org(
+    user_id: str, requested_org_id: str, read_item: ReadItemFn
+) -> dict[str, Any] | None:
+    """Compatibility fallback for legacy users documents that only have org_id."""
+    try:
+        user = read_item("users", user_id, user_id) or {}
+    except Exception:
+        logger.warning("Failed to read legacy org for user=%s", user_id, exc_info=True)
         return None
-    org = get_org(orgs[0]["org_id"])
-    if org:
-        # Best-effort repair so the fast path works on subsequent calls.
-        _set_user_org(user_id, org["org_id"], orgs[0].get("org_role", "owner"))
-    return org
+    legacy_org_id = str(user.get("org_id", "")).strip()
+    if not legacy_org_id:
+        return None
+    if requested_org_id and requested_org_id != legacy_org_id:
+        return None
+    return get_org(legacy_org_id)
 
 
 # ── Member management ────────────────────────────────────────

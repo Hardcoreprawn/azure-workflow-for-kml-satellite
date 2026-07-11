@@ -103,6 +103,30 @@ class TestUploadToken:
         assert data["expiresMinutes"] > 0
         assert data["maxBytes"] == 10_485_760
 
+    def test_rejects_unavailable_requested_org_selector(self):
+        from blueprints.upload import upload_token
+
+        req = func.HttpRequest(
+            method="POST",
+            url="/api/upload/token",
+            headers={"Origin": TEST_ORIGIN, "Authorization": "******"},
+            params={"org_id": "org-unknown"},
+            route_params={},
+            body=b"{}",
+        )
+
+        with (
+            patch("blueprints._helpers.parse_bearer_token", return_value="valid.jwt.token"),
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("blueprints._helpers._resolve_active_org", return_value=None),
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"),
+        ):
+            verify.return_value = {"tid": "tenant-id", "oid": "object-id", "ver": "2.0"}
+            resp = upload_token(req)
+
+        assert resp.status_code == 403
+        self.mock_get_user_org.assert_not_called()
+
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
     def test_writes_ticket_blob(self, mock_bsc, mock_gen_sas):

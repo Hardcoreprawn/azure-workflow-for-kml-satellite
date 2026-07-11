@@ -84,6 +84,23 @@ class TestAnalysisSubmissionRoutes:
         assert 'route="analysis/submit"' in source
         assert 'route="demo-process"' not in source
 
+    def test_analysis_submit_rejects_unavailable_requested_org(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req("/api/analysis/submit", params={"org_id": "org-unavailable"})
+
+        with (
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", None),
+            ),
+            patch("blueprints.pipeline.submission.reserve_run") as reserve_run,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 403
+        reserve_run.assert_not_called()
+
     def test_analysis_submit_uses_analysis_prefix(self):
         from blueprints.pipeline.submission import _submit_analysis_request
 

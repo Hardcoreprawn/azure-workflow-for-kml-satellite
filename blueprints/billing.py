@@ -586,17 +586,24 @@ def billing_interest(
 )
 @require_auth
 def billing_pool_status(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
+    req: func.HttpRequest,
+    *,
+    auth_claims: dict,
+    user_id: str,
+    active_org: dict | None = None,
 ) -> func.HttpResponse:
     """GET /api/billing/pool-status — org-scoped run pool for dashboard."""
     if req.method == "OPTIONS":
         return func.HttpResponse(status_code=200, headers=cors_headers(req))
 
     from treesight.billing.accounting import OrgNotFoundError, get_pool_status
-    from treesight.security.orgs import get_user_org
 
     try:
-        org = get_user_org(user_id)
+        org = active_org
+        if not org:
+            from treesight.security.orgs import get_user_org
+
+            org = get_user_org(user_id)
         if not org:
             # Anonymous/no-org user has no pool.
             return func.HttpResponse(
