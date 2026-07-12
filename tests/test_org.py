@@ -675,6 +675,80 @@ class TestListOrgsForUser:
         assert result[0]["org_id"] == org["org_id"]
 
 
+class TestResolveActiveOrgForUser:
+    def test_prefers_requested_org_id_when_user_is_member(self):
+        from treesight.security.orgs import create_org, resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            org_a = create_org("user-1", org_id="org-a", name="Org A")
+            org_b = create_org("user-1", org_id="org-b", name="Org B")
+
+            selected = resolve_active_org_for_user("user-1", requested_org_id="org-b")
+
+        assert selected is not None
+        assert selected["org_id"] == org_b["org_id"]
+        assert selected["org_id"] != org_a["org_id"]
+
+    def test_legacy_user_doc_org_id_fallback_when_membership_query_empty(self):
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["users:user-1"] = {"id": "user-1", "user_id": "user-1", "org_id": "org-legacy"}
+        store["orgs:org-legacy"] = {
+            "id": "org-legacy",
+            "org_id": "org-legacy",
+            "doc_type": "org",
+            "name": "Legacy Org",
+            "members": [],
+            "billing": {},
+        }
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            selected = resolve_active_org_for_user("user-1")
+
+        assert selected is not None
+        assert selected["org_id"] == "org-legacy"
+
+    def test_returns_none_when_requested_org_is_not_a_membership(self):
+        """A requested org the user is not a member of must never resolve."""
+        from treesight.security.orgs import create_org, resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            create_org("user-1", org_id="org-a", name="Org A")
+
+            selected = resolve_active_org_for_user("user-1", requested_org_id="org-not-mine")
+
+        assert selected is None
+
+    def test_legacy_fallback_rejects_requested_org_that_differs(self):
+        """Legacy fallback must reject a requested org that isn't the user's own."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["users:user-1"] = {"id": "user-1", "user_id": "user-1", "org_id": "org-legacy"}
+        store["orgs:org-legacy"] = {
+            "id": "org-legacy",
+            "org_id": "org-legacy",
+            "doc_type": "org",
+            "name": "Legacy Org",
+            "members": [],
+            "billing": {},
+        }
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            selected = resolve_active_org_for_user("user-1", requested_org_id="org-other")
+
+        assert selected is None
+
+
 class TestOrgInviteListEndpoint:
     """S1 + Q2 — GET /api/org/invites is owner-only."""
 
