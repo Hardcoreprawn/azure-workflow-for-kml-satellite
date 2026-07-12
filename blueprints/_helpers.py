@@ -259,13 +259,15 @@ def require_auth(fn):
 @overload
 def check_auth(
     req: func.HttpRequest, *, include_active_org: Literal[False] = False
-) -> tuple[dict, str]: ...
+) -> tuple[dict, str]:
+    """Overload: returns (claims, user_id) when active org is not requested."""
 
 
 @overload
 def check_auth(
     req: func.HttpRequest, *, include_active_org: Literal[True]
-) -> tuple[dict, str, dict[str, Any] | None]: ...
+) -> tuple[dict, str, dict[str, Any] | None]:
+    """Overload: returns (claims, user_id, active_org) when requested."""
 
 
 def check_auth(
