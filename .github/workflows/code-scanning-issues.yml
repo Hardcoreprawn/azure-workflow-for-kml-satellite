@@ -1,0 +1,63 @@
+name: Code Scanning Issue Sync
+
+# Mirror open GitHub Code Scanning alerts (Trivy, Semgrep, pip-audit, CodeQL)
+# into tracked GitHub issues so security findings enter the backlog and get
+# triaged like any other work — just like CVEs. The sync is idempotent and
+# closes tracking issues automatically once their alert is fixed or dismissed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run only (report the plan, create/close nothing)"
+        required: false
+        default: "false"
+      severity:
+        description: "Comma-separated severities to include (empty = all)"
+        required: false
+        default: ""
+  schedule:
+    # Daily at 08:00 UTC (after the weekly security scans have refreshed alerts).
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read # read Code Scanning alerts
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync alerts to issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync Code Scanning alerts to issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # github.repository ("owner/repo") is populated on every trigger,
+          # including schedule, where github.event.repository is not reliable.
+          REPOSITORY: ${{ github.repository }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          INPUT_SEVERITY: ${{ github.event.inputs.severity || '' }}
+        run: |
+          REPOSITORY_OWNER="${REPOSITORY%%/*}"
+          REPOSITORY_NAME="${REPOSITORY#*/}"
+          ARGS=(--owner "$REPOSITORY_OWNER" --repo "$REPOSITORY_NAME")
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          if [ -n "$INPUT_SEVERITY" ]; then
+            ARGS+=(--severity "$INPUT_SEVERITY")
+          fi
+          python scripts/code_scanning_issues.py "${ARGS[@]}"
