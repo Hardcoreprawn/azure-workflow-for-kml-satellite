@@ -231,7 +231,7 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 - `run_enrichment`
 - `submit_batch_fulfilment`
 - `poll_batch_fulfilment`
-- `release_quota`
+- `finalize_run_failed` (refund path for failed reservations)
 - `write_metadata`
 
 ## Project Structure

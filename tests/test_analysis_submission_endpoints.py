@@ -266,7 +266,6 @@ class TestAnalysisSubmissionRoutes:
                 return_value={"tier": "free", "status": "none"},
             ),
             patch("treesight.storage.client.BlobStorageClient"),
-            patch("treesight.security.quota.consume_quota") as mock_consume_quota,
             patch("treesight.security.eudr_billing.consume_eudr_trial") as mock_consume_trial,
         ):
             resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
@@ -276,7 +275,6 @@ class TestAnalysisSubmissionRoutes:
         assert mock_reserve.call_args.kwargs["is_eudr"] is True
         assert mock_reserve.call_args.kwargs["parcel_count"] == 2
         mock_consume_trial.assert_not_called()
-        mock_consume_quota.assert_not_called()
 
     def test_orchestrator_status_allows_anonymous_access(self):
         from blueprints.pipeline.diagnostics import _build_orchestrator_status_response

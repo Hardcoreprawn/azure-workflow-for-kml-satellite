@@ -59,7 +59,6 @@ Durable activity functions are defined in blueprints/pipeline/activities.py.
 | run_enrichment | EnrichmentInput | EnrichmentOutput |
 | submit_batch_fulfilment | BatchInput | BatchOutput |
 | poll_batch_fulfilment | BatchPollInput | BatchPollOutput |
-| release_quota | QuotaInput | QuotaOutput |
 | write_metadata | WriteMetadataInput | WriteMetadataOutput |
 
 ## ImageryProvider Contract
