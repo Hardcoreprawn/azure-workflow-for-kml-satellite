@@ -7,7 +7,7 @@ that Infracost uses for usage-based cost estimation.
 
 Prerequisites (one-time)::
 
-    pip install azure-identity azure-monitor-query azure-mgmt-monitor azure-mgmt-storage
+    uv pip install azure-identity azure-monitor-query azure-mgmt-monitor azure-mgmt-storage
 
 Usage::
 
@@ -40,7 +40,7 @@ except ImportError as exc:
     print(
         f"Missing Azure SDK package: {exc}\n"
         "Install with:\n"
-        "  pip install azure-identity azure-monitor-query "
+        "  uv pip install azure-identity azure-monitor-query "
         "azure-mgmt-resource",
         file=sys.stderr,
     )

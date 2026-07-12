@@ -28,7 +28,7 @@ try:
     from rich.table import Table
     from rich.text import Text
 except ImportError:
-    print("ERROR: 'rich' is required.  pip install rich")
+    print("ERROR: 'rich' is required.  uv pip install rich")
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
