@@ -488,6 +488,27 @@ class TestCspAppInsights:
             f"Found inline event handler(s) in app/index.html that CSP will block: {matches}"
         )
 
+    def test_no_inline_executable_scripts_in_eudr_html(self):
+        """CSP without unsafe-inline in script-src blocks inline executable scripts."""
+        html = (ROOT / "website" / "eudr" / "index.html").read_text()
+        script_blocks = re.findall(
+            r"<script\b(?![^>]*\bsrc=)([^>]*)>(.*?)</script>",
+            html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        disallowed_inline = []
+        for attrs, content in script_blocks:
+            attrs_lower = attrs.lower()
+            if 'type="application/json"' in attrs_lower or "type='application/json'" in attrs_lower:
+                continue
+            if content.strip():
+                disallowed_inline.append(attrs.strip() or "<script>")
+
+        assert not disallowed_inline, (
+            "Found inline executable <script> blocks in eudr/index.html that CSP will block: "
+            f"{disallowed_inline}"
+        )
+
     def test_connect_src_covers_cdn_domains_for_source_maps(self, csp):
         """CDN domains in script-src/style-src must also appear in connect-src.
 

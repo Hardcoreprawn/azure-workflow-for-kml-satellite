@@ -823,6 +823,12 @@ class TestEudrUsageConsistency:
             "eudr/index.html should use CanopexApiClient directly, not window.apiFetch"
         )
 
+    def test_eudr_subscription_modal_logic_loaded_from_external_script(self, eudr_index_html):
+        """EUDR page must load subscription modal logic via external JS (CSP-safe)."""
+        assert "/js/app-eudr-subscribe-modal.js" in eudr_index_html, (
+            "eudr/index.html must load app-eudr-subscribe-modal.js instead of inline script"
+        )
+
     def test_app_eudr_updates_hero_parcels_and_unavailable_state(self, app_eudr_js):
         """EUDR module should set hero parcel pill and clear loading state on errors."""
         assert "eudr-parcels-used" in app_eudr_js, (
