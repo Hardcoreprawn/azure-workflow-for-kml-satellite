@@ -2,7 +2,7 @@
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean \
 	_free-ports _free-func-port _free-web-ports \
-	sast scan scan-iac scan-fs scan-image
+	sast scan scan-iac scan-fs scan-image lint-actions
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -147,6 +147,33 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff check --fix .
 
 check: lint test ## Full local gate (lint + test) — identical to CI
+
+# ───────────────────── GitHub Actions linting (actionlint) ─────────────────────
+# Single source of truth for actionlint — local (pre-commit) and CI run this
+# exact target, so the pinned version and the shellcheck rule suppressions live
+# in one place and cannot drift. Mirrors the SEMGREP/TRIVY pattern. See #1080.
+#
+# actionlint feeds each `run:` script to shellcheck via stdin, so a repo-root
+# .shellcheckrc is NOT honoured — the suppressions must be passed via
+# SHELLCHECK_OPTS (verified). Keep them here, the only place:
+#   SC2129 style-only (individual redirects vs a block); not a bug.
+#   SC2016 false positive for our jq programs, which use single quotes so
+#          `$var` refers to jq variables, not the shell.
+ACTIONLINT_VERSION ?= 1.7.11
+ACTIONLINT_DIR := $(HOME)/.cache/actionlint/$(ACTIONLINT_VERSION)
+ACTIONLINT_BIN := $(ACTIONLINT_DIR)/actionlint
+ACTIONLINT_SHELLCHECK_OPTS ?= -e SC2129 -e SC2016
+
+lint-actions: ## Lint GitHub Actions workflows with pinned actionlint (canonical — CI runs this)
+	@if [ ! -x "$(ACTIONLINT_BIN)" ]; then \
+		echo "Installing actionlint $(ACTIONLINT_VERSION)…"; \
+		mkdir -p "$(ACTIONLINT_DIR)"; \
+		script="$$(mktemp)"; \
+		curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v$(ACTIONLINT_VERSION)/scripts/download-actionlint.bash" -o "$$script"; \
+		bash "$$script" "$(ACTIONLINT_VERSION)" "$(ACTIONLINT_DIR)"; \
+		rm -f "$$script"; \
+	fi
+	SHELLCHECK_OPTS="$(ACTIONLINT_SHELLCHECK_OPTS)" "$(ACTIONLINT_BIN)" -color
 
 # ───────────────────── Static analysis (Semgrep) ─────────────────────
 # Single source of truth for Semgrep — local and CI run this exact command.

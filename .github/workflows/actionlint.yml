@@ -9,8 +9,9 @@
 #   got no validation. See #995 / epic #1004.
 #
 #   Runs on every PR (no path filter) so it can be a required check
-#   without needing a docs-stub. Pinned to the same version as the
-#   pre-commit hook (.pre-commit-config.yaml) so local == CI.
+#   without needing a docs-stub. Invokes `make lint-actions` — the same
+#   command developers run locally via pre-commit — so the pinned version
+#   and shellcheck suppressions (both in the Makefile) stay local == CI. #1080.
 # ─────────────────────────────────────────────────────────────
 name: Actionlint
 
@@ -33,24 +34,12 @@ jobs:
   actionlint:
     name: Actionlint
     runs-on: ubuntu-latest
-    env:
-      # Keep in lockstep with the actionlint pre-commit hook rev.
-      ACTIONLINT_VERSION: "1.7.11"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install actionlint
-        run: |
-          bash <(curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash") "${ACTIONLINT_VERSION}"
-
-      - name: Run actionlint
-        # shellcheck is pre-installed on ubuntu runners; actionlint runs it on
-        # `run:` scripts automatically. Scope shellcheck to genuine problems:
-        #  - SC2129 is pure style (group redirects); not a bug.
-        #  - SC2016 is a false positive for our jq programs, which legitimately
-        #    use single quotes so `$var` refers to jq variables, not shell.
-        # Real shellcheck errors/warnings still gate. Broader shellcheck
-        # cleanup is tracked separately (see the CI-assurance issue).
-        env:
-          SHELLCHECK_OPTS: "-e SC2129 -e SC2016"
-        run: ./actionlint -color
+      # Single route: `make lint-actions` is the same command developers run
+      # locally (via pre-commit). The pinned actionlint version and shellcheck
+      # suppressions both live in the Makefile, so local == CI and nothing can
+      # drift. See #1080.
+      - name: Lint workflows (make lint-actions)
+        run: make lint-actions
