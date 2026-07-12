@@ -174,6 +174,10 @@ def main() -> None:
 
     for name, val in zip(secret_names, secret_values, strict=True):
         kv_client.set_secret(name, val)
+    # Report stored secrets by name only, in a separate loop so the secret
+    # values never share a scope with a print/log sink (avoids CodeQL
+    # py/clear-text-logging-sensitive-data false positive — #2746).
+    for name in secret_names:
         print(f"  ✓ {name}")
 
     print("\n=== Done ===")
