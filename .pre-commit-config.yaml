@@ -87,15 +87,18 @@ repos:
 
   # ---------------------------------------------------------------------------
   # GitHub Actions — workflow linting
-  # Uses actionlint (Go binary, auto-installed by pre-commit).
-  # Catches invalid workflow syntax, unknown action inputs, type errors
-  # in expressions, incorrect glob patterns, and more.
-  # https://github.com/rhysd/actionlint
+  # Single route: runs `make lint-actions`, the same command CI runs. The pinned
+  # actionlint version and shellcheck suppressions both live in the Makefile, so
+  # local == CI and neither can drift. See #1080.
   # ---------------------------------------------------------------------------
-  - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.11
+  - repo: local
     hooks:
       - id: actionlint
+        name: actionlint (make lint-actions)
+        entry: make lint-actions
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.ya?ml$
 
   # ---------------------------------------------------------------------------
   # Markdown

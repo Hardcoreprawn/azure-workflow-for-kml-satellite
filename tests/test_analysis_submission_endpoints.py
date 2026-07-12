@@ -84,6 +84,23 @@ class TestAnalysisSubmissionRoutes:
         assert 'route="analysis/submit"' in source
         assert 'route="demo-process"' not in source
 
+    def test_analysis_submit_rejects_unavailable_requested_org(self):
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        req = _make_req("/api/analysis/submit", params={"org_id": "org-unavailable"})
+
+        with (
+            patch(
+                "blueprints.pipeline.submission.check_auth",
+                return_value=({}, "user-123", None),
+            ),
+            patch("blueprints.pipeline.submission.reserve_run") as reserve_run,
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 403
+        reserve_run.assert_not_called()
+
     def test_analysis_submit_uses_analysis_prefix(self):
         from blueprints.pipeline.submission import _submit_analysis_request
 
@@ -660,6 +677,35 @@ class TestAnalysisSubmissionRoutes:
         assert resp.status_code == 202
         data = json.loads(resp.get_body())
         assert data["instance_id"] == prior_id
+        mock_reserve.assert_not_called()
+
+    def test_prior_submission_id_rejects_mismatched_org_selector(self):
+        """A prior ticket must not honour an org selector that isn't its own org."""
+        from blueprints.pipeline.submission import _submit_analysis_request
+
+        prior_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        req = _make_req(
+            "/api/analysis/submit",
+            {
+                "kml_content": "<kml></kml>",
+                "prior_submission_id": prior_id,
+            },
+            params={"org_id": "org-other"},
+        )
+
+        mock_reserve = MagicMock()
+        with (
+            patch("blueprints.pipeline.submission.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.submission.reserve_run", mock_reserve),
+            patch(
+                "blueprints.pipeline.submission._load_prior_ticket_for_user",
+                return_value={"org_id": "org-123"},
+            ),
+            patch("treesight.storage.client.BlobStorageClient"),
+        ):
+            resp = asyncio.run(_submit_analysis_request(req, blob_prefix="analysis"))
+
+        assert resp.status_code == 403
         mock_reserve.assert_not_called()
 
     def test_invalid_prior_submission_id_still_consumes_quota(self):

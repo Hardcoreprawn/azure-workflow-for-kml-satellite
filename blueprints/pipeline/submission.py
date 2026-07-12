@@ -12,7 +12,13 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from blueprints._helpers import (
+    _requested_org_id,
+    check_auth,
+    cors_headers,
+    cors_preflight,
+    error_response,
+)
 from treesight.billing.accounting import (
     MemberCapExceededError,
     OrgNotFoundError,
@@ -38,6 +44,17 @@ def _finalize_run_on_failure(org_id: str, instance_id: str) -> None:
         finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
     except Exception:
         logger.exception("Failed to finalize run for org=%s instance=%s", org_id, instance_id)
+
+
+def _normalize_auth_result(
+    auth_result: tuple[dict, str] | tuple[dict, str, dict[str, Any] | None],
+) -> tuple[dict, str, dict[str, Any] | None]:
+    """Normalise auth tuple shape for test mocks that still return 2 values."""
+    if len(auth_result) == 3:
+        claims, user_id, active_org = auth_result
+        return claims, user_id, active_org
+    claims, user_id = auth_result
+    return claims, user_id, None
 
 
 _PRIOR_SUBMISSION_ID_RE = __import__("re").compile(
@@ -235,6 +252,7 @@ def _resolve_quota(
     req: func.HttpRequest,
     *,
     prior_ticket: dict[str, Any] | None = None,
+    active_org: dict[str, Any] | None = None,
 ) -> tuple[bool, str, func.HttpResponse | None]:
     """Reserve run via org-pooled accounting unless prior upload-token already reserved it.
 
@@ -249,16 +267,32 @@ def _resolve_quota(
             _redact(user_id),
         )
         org_id = prior_ticket.get("org_id", "")
-        return True, org_id if isinstance(org_id, str) else "", None
+        org_id = org_id if isinstance(org_id, str) else ""
+        # A supplied org selector must match the ticket's org — never silently
+        # ignore a mismatched selector on the prior-ticket path.
+        requested_org_id = _requested_org_id(req) or ""
+        if requested_org_id and requested_org_id != org_id:
+            return (
+                False,
+                "",
+                error_response(403, "Selected organisation is not accessible", req=req),
+            )
+        return True, org_id, None
 
-    try:
-        user_org = get_user_org(user_id)
-        if not user_org:
-            return False, "", error_response(403, "User not in any org", req=req)
-        org_id = user_org.get("org_id", "")
-    except Exception:
-        logger.exception("Org lookup failed for user=%s", _redact(user_id))
-        return False, "", error_response(503, "Org lookup unavailable", req=req)
+    requested_org_id = _requested_org_id(req) or ""
+    if requested_org_id and not active_org:
+        return False, "", error_response(403, "Selected organisation is not accessible", req=req)
+
+    user_org = active_org
+    if not user_org:
+        try:
+            user_org = get_user_org(user_id)
+        except Exception:
+            logger.exception("Org lookup failed for user=%s", _redact(user_id))
+            return False, "", error_response(503, "Org lookup unavailable", req=req)
+    if not user_org:
+        return False, "", error_response(403, "User not in any org", req=req)
+    org_id = user_org.get("org_id", "")
 
     if not isinstance(org_id, str) or not org_id:
         return False, "", error_response(403, "User not in any org", req=req)
@@ -301,9 +335,10 @@ async def _submit_analysis_request(
 ) -> func.HttpResponse:
     """Validate, persist, and enqueue a signed-in KML analysis submission."""
     try:
-        _claims, user_id = check_auth(req)
+        auth_result = check_auth(req, include_active_org=True)
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
+    _claims, user_id, active_org = _normalize_auth_result(auth_result)
 
     # Reject new submissions when the concurrency cap is reached (#759).
     if at_concurrency_cap():
@@ -342,6 +377,7 @@ async def _submit_analysis_request(
         submission_id,
         req,
         prior_ticket=prior_ticket,
+        active_org=active_org,
     )
     if quota_err:
         return quota_err

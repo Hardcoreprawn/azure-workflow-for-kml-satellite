@@ -108,12 +108,12 @@ portfolio-level risk visibility.
 | PR | Summary |
 |----|---------|
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
+| #1089 | chore(harness): migrate remaining `pip` usages to `uv`/`uvx` — `detect-secrets` (security.yml) and infracost metrics collection now run via `uv`; script/runtime prereq hints updated (ADR 0005 execution model, epic #1082, closes #1084). |
+| #1088 | docs: ADR 0005 — consolidate onto a single containerised dev + CI path; standardise on `uv` (execution-context rule, dev image extends `treesight-base` consumed by digest, lock-vs-image guard). Delivery tracked by epic #1082 (closes #1083). |
 | #1059 | feat(billing): retire legacy per-user quota — org pool (`reserve_run`/`finalize_run`) is the sole accounting unit; billing-status + free/overage readers migrated to org usage; `quota.py` deleted (D3, closes #1055). |
 | #1068 | fix(autopilot): dependency-aware, no-duplicate dispatch — skip issues that are `blocked`, declare an open `blocked by`/`depends on`, or already have an open linked PR; add issue template capturing dependencies/persona/acceptance (closes #1067). |
 | #1058 | docs: canonical data model — conceptual/logical/physical layers + D1–D5 divergence register in `docs/DATA_MODEL.md`, cross-linked from SYSTEM_SPEC (closes #1056). |
 | #1072 | chore(security): renew expired `.trivyignore` AZU/AVD suppressions to 2026-08-11 (unblock the repo-wide Expiry Check, closes #1071); #1063 cleared a CodeQL clear-text-logging false positive in `_setup_stripe.py`. |
-| #1045 | feat(watchdog): "Ralph Wiggum" completion loop — `@copilot`-nudge blocked agent PRs toward the Definition of Done (opt-in `AUTOPILOT_WATCHDOG_RALPH`, attempt-capped, dedup by unmet-items signature; nudge posted via PAT so the agent actually wakes). Closes #1044. |
-| #1043 | fix(watchdog): resurrect auto-promote — the PR Watchdog was FORBIDDEN promoting drafts with the default `GITHUB_TOKEN` (failing every scheduled run); now promotes via `AUTOPILOT_USER_TOKEN` with per-PR error isolation. Adds opt-in stale-close (5-day completion SLA, default off) + report-only diff-cover changed-lines coverage in CI. Closes #1041. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
 ---

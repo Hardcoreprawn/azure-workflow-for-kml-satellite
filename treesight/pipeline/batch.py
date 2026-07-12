@@ -67,7 +67,7 @@ def submit_batch_job(
         )
     except ImportError as exc:
         raise RuntimeError(
-            "azure-batch SDK not installed.  Install it with: pip install azure-batch"
+            "azure-batch SDK not installed.  Install it with: uv pip install azure-batch"
         ) from exc
 
     cfg = _get_batch_config()

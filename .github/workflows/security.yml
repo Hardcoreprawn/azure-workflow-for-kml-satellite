@@ -257,15 +257,16 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Install detect-secrets
-        run: pip install 'detect-secrets==1.5.0'
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          enable-cache: true
 
       - name: Scan for secrets
         run: |
           # Snapshot current results for comparison (ignore generated_at)
           python3 -c "import json; print(json.dumps(json.load(open('.secrets.baseline'))['results'], sort_keys=True))" > /tmp/before.json
 
-          detect-secrets scan \
+          uvx 'detect-secrets==1.5.0' scan \
             --baseline .secrets.baseline \
             --exclude-files '\.lock$' \
             --exclude-files 'uv\.lock$' \
