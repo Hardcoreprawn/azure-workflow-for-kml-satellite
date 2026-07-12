@@ -7,7 +7,7 @@ that Infracost uses for usage-based cost estimation.
 
 Prerequisites (one-time)::
 
-    uv pip install azure-identity azure-monitor-query azure-mgmt-monitor azure-mgmt-storage
+    uv pip install azure-identity azure-monitor-query azure-mgmt-resource
 
 Usage::
 
