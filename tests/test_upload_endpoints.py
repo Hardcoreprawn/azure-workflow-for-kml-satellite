@@ -743,12 +743,9 @@ class TestUploadTokenSingleGate:
         self.mock_reserve_run.assert_called_once()
         assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
 
-    @patch("treesight.security.quota.consume_quota")
     @patch("treesight.security.eudr_billing.consume_eudr_trial")
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
-    def test_eudr_mode_does_not_use_legacy_quota_writers(
-        self, mock_org, mock_consume_trial, mock_consume_quota
-    ):
+    def test_eudr_mode_does_not_use_legacy_quota_writers(self, mock_org, mock_consume_trial):
         """EUDR upload reservation must be org-pooled and avoid legacy double-debit paths."""
         from blueprints.upload import upload_token
 
@@ -770,7 +767,6 @@ class TestUploadTokenSingleGate:
         assert self.mock_reserve_run.call_args.kwargs["is_eudr"] is True
         assert self.mock_reserve_run.call_args.kwargs["parcel_count"] == 2
         mock_consume_trial.assert_not_called()
-        mock_consume_quota.assert_not_called()
 
     @patch("blueprints.upload.get_user_org", return_value={"org_id": "org-1", "name": "Test Org"})
     @patch("blueprints.upload.generate_blob_sas")

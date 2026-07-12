@@ -58,6 +58,7 @@ def _tier_emulation_allowed(user_id: str = "") -> bool:
 
 
 def _billing_status_payload(user_id: str) -> dict:
+    from treesight.billing.accounting import get_pool_status
     from treesight.security.billing import (
         get_effective_subscription,
         get_subscription,
@@ -66,29 +67,37 @@ def _billing_status_payload(user_id: str) -> dict:
         supported_tiers,
     )
     from treesight.security.feature_gate import GATED_PRICE_LABELS, billing_allowed
-    from treesight.security.quota import get_usage
+    from treesight.security.orgs import get_user_org
 
     try:
         subscription = get_subscription(user_id)
         effective = get_effective_subscription(user_id)
         emulation = get_subscription_emulation(user_id)
         capabilities = plan_capabilities(effective.get("tier"))
-        usage = get_usage(user_id)
+        org = get_user_org(user_id)
+        if org:
+            pool = get_pool_status(org["org_id"])
+            runs_used = int(pool.get("reserved", 0)) + int(pool.get("completed", 0))
+            runs_remaining = int(pool.get("available", 0))
+        else:
+            runs_used = 0
+            runs_remaining = int(capabilities["run_limit"])
     except Exception:
         logger.exception("Storage error building billing status for user=%s", user_id)
         subscription = {"tier": "free", "status": "none"}
         effective = {"tier": "free", "status": "none"}
         emulation = None
         capabilities = plan_capabilities("free")
-        usage = {"used": 0, "limit": capabilities["run_limit"]}
+        runs_used = 0
+        runs_remaining = int(capabilities["run_limit"])
 
     gated = not billing_allowed(user_id)
 
     payload = {
         "tier": effective.get("tier", "free"),
         "status": effective.get("status", "none"),
-        "runs_remaining": max(usage["limit"] - usage["used"], 0),
-        "runs_used": usage["used"],
+        "runs_remaining": max(runs_remaining, 0),
+        "runs_used": runs_used,
         "billing_configured": _stripe_configured(),
         "billing_gated": gated,
         "tier_source": "emulated" if effective.get("emulated") else "billing",

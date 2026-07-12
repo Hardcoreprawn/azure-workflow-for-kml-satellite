@@ -12,7 +12,7 @@ A user document looks like::
         "billing_allowed": true,
         "first_seen": "2026-04-13T18:00:00+00:00",
         "last_seen": "2026-04-13T19:30:00+00:00",
-        "quota": { ... }       # managed by quota.py
+        "quota": { ... }       # legacy per-user counter (retired; read-compat only)
     }
 
 The ``billing_allowed`` flag replaces the static env-var allow-list;

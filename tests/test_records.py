@@ -5,7 +5,6 @@ from __future__ import annotations
 from treesight.models.records import (
     EnrichmentManifest,
     FramePlanEntry,
-    QuotaState,
     RunRecord,
     SubscriptionRecord,
     UserRecord,
@@ -137,7 +136,6 @@ class TestUserRecord:
     def test_minimal_construction(self):
         u = UserRecord(user_id="u1")
         assert u.billing_allowed is False
-        assert u.quota is None
 
     def test_full_construction(self):
         u = UserRecord(
@@ -149,21 +147,17 @@ class TestUserRecord:
             first_seen="2026-04-15T00:00:00Z",
             last_seen="2026-04-15T12:00:00Z",
             assigned_tier="pro",
-            quota=QuotaState(runs_used=3, period_start="2026-04-01"),
         )
         assert u.billing_allowed is True
-        assert u.quota is not None
-        assert u.quota.runs_used == 3
 
     def test_round_trip(self):
         u = UserRecord(
             user_id="u1",
             email="test@example.com",
-            quota=QuotaState(runs_used=1),
         )
         d = u.model_dump()
         u2 = UserRecord.model_validate(d)
-        assert u2.quota.runs_used == 1
+        assert u2.email == "test@example.com"
 
     def test_extra_fields_allowed(self):
         u = UserRecord(user_id="u1", unknown_field="ok")
@@ -183,6 +177,10 @@ class TestUserRecord:
         }
         u = UserRecord.model_validate(doc)
         assert u.display_name == "James Brewster"
+
+    def test_legacy_quota_field_is_accepted_as_extra(self):
+        u = UserRecord.model_validate({"user_id": "u1", "quota": {"used": 3, "runs": []}})
+        assert u.model_extra["quota"] == {"used": 3, "runs": []}
 
 
 # ---------------------------------------------------------------------------

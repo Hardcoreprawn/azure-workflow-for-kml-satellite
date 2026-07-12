@@ -1,5 +1,6 @@
 """Tests for treesight.security.billing_ledger — run-level billing (#589)."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +16,8 @@ from treesight.security.billing_ledger import (
 _COSMOS_READ = "treesight.storage.cosmos.read_item"
 _COSMOS_UPSERT = "treesight.storage.cosmos.upsert_item"
 _GET_SUB = "treesight.security.billing.get_effective_subscription"
-_GET_USAGE = "treesight.security.quota.get_usage"
+_GET_USER_ORG = "treesight.security.orgs.get_user_org"
+_COMPUTE_POOL_ALLOWANCE = "treesight.billing.accounting.compute_pool_allowance"
 _GET_PROVIDER = "treesight.security.payment_provider.get_payment_provider"
 
 
@@ -77,11 +79,11 @@ class TestClassifyRun:
 
 
 class TestBillingFieldsForSubmission:
-    @patch(_GET_USAGE)
+    @patch(_COMPUTE_POOL_ALLOWANCE, return_value=10)
+    @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": {"runs_reserved": 1}})
     @patch(_GET_SUB)
-    def test_free_user_first_run(self, mock_sub, mock_usage):
+    def test_free_user_classification_after_reservation(self, mock_sub, _mock_org, _mock_allowance):
         mock_sub.return_value = {"tier": "free", "status": "none"}
-        mock_usage.return_value = {"used": 1, "limit": 10}  # 1 because consume was called
 
         fields = billing_fields_for_submission("u-free")
 
@@ -90,11 +92,11 @@ class TestBillingFieldsForSubmission:
         assert fields["overage_unit_price"] is None
         assert fields["billing_status"] == "pending"
 
-    @patch(_GET_USAGE)
+    @patch(_COMPUTE_POOL_ALLOWANCE, return_value=50)
+    @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": {"runs_reserved": 10}})
     @patch(_GET_SUB)
-    def test_pro_included_run(self, mock_sub, mock_usage):
+    def test_pro_included_run(self, mock_sub, _mock_org, _mock_allowance):
         mock_sub.return_value = {"tier": "pro", "status": "active"}
-        mock_usage.return_value = {"used": 10, "limit": 50}
 
         fields = billing_fields_for_submission("u-pro")
 
@@ -102,16 +104,43 @@ class TestBillingFieldsForSubmission:
         assert fields["billing_type"] == "included"
         assert fields["billing_status"] == "pending"
 
-    @patch(_GET_USAGE)
+    @patch(_COMPUTE_POOL_ALLOWANCE, return_value=50)
+    @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": {"runs_reserved": 51}})
     @patch(_GET_SUB)
-    def test_pro_overage_run(self, mock_sub, mock_usage):
+    def test_pro_overage_run(self, mock_sub, _mock_org, _mock_allowance):
         mock_sub.return_value = {"tier": "pro", "status": "active"}
-        mock_usage.return_value = {"used": 51, "limit": 50}  # 51 — overage
 
         fields = billing_fields_for_submission("u-pro-over")
 
         assert fields["billing_type"] == "overage"
         assert fields["overage_unit_price"] == 0.80
+
+    @patch(_GET_USER_ORG, return_value=None)
+    @patch(_GET_SUB)
+    def test_org_less_user_classifies_against_plan_limit(self, mock_sub, _mock_org):
+        """No org → usage is zero and the limit comes from the plan, not a pool."""
+        mock_sub.return_value = {"tier": "pro", "status": "active"}
+
+        fields = billing_fields_for_submission("u-orgless")
+
+        assert fields["tier_at_submission"] == "pro"
+        assert fields["billing_type"] == "included"
+        assert fields["billing_status"] == "pending"
+
+    @patch(_COMPUTE_POOL_ALLOWANCE, return_value=50)
+    @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": [1, 2, 3]})
+    @patch(_GET_SUB)
+    def test_malformed_usage_falls_back_to_zeroed(
+        self, mock_sub, _mock_org, _mock_allowance, caplog
+    ):
+        """Non-dict ``usage`` must not crash — zeroed fallback plus a warning."""
+        mock_sub.return_value = {"tier": "pro", "status": "active"}
+
+        with caplog.at_level(logging.WARNING):
+            fields = billing_fields_for_submission("u-bad-usage")
+
+        assert fields["billing_type"] == "included"
+        assert any("Unexpected org usage shape" in r.message for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
