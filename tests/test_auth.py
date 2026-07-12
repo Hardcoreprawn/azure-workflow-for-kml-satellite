@@ -229,6 +229,40 @@ class TestCheckAuth:
             with pytest.raises(ValueError, match="Invalid bearer token"):
                 check_auth(mock_req)
 
+    def test_returns_active_org_when_requested(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {}
+        mock_req.params = {"org_id": "org-b"}
+
+        with (
+            patch("blueprints._helpers.parse_bearer_token", return_value="valid.jwt.token"),
+            patch("blueprints._helpers.verify_bearer_token") as verify,
+            patch("treesight.security.orgs.resolve_active_org_for_user") as resolve_org,
+        ):
+            verify.return_value = {"tid": "tenant-id", "oid": "object-id", "ver": "2.0"}
+            resolve_org.return_value = {"org_id": "org-b"}
+            claims, user_id, active_org = check_auth(mock_req, include_active_org=True)
+
+        assert claims["oid"] == "object-id"
+        assert user_id == "tenant-id:object-id"
+        assert active_org == {"org_id": "org-b"}
+        resolve_org.assert_called_once_with("tenant-id:object-id", requested_org_id="org-b")
+
+    def test_rejects_test_principal_when_auth_required(self):
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="forged-user"),
+        }
+        mock_req.params = {}
+
+        with patch.dict("os.environ", {"CANOPEX_TEST_MODE": "1", "REQUIRE_AUTH": "1"}):
+            with pytest.raises(ValueError, match="Authentication required"):
+                check_auth(mock_req)
+
 
 # ---------------------------------------------------------------------------
 # require_auth decorator

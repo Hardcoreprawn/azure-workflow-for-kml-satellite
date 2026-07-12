@@ -1,11 +1,13 @@
 """Shared helpers for blueprint HTTP endpoints."""
 
+import inspect
 import json
 import logging
 import os
 import re
+from collections.abc import Mapping
 from functools import wraps
-from typing import Any
+from typing import Any, Literal, overload
 
 import azure.functions as func
 
@@ -134,7 +136,11 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     CANOPEX_TEST_MODE is explicitly enabled.
     """
 
-    if os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes"):
+    require_auth_enabled = os.environ.get("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
+    if (
+        os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes")
+        and not require_auth_enabled
+    ):
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if principal_header:
             principal = parse_client_principal(principal_header)
@@ -150,6 +156,44 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     return None
 
 
+def _requested_org_id(req: func.HttpRequest) -> str | None:
+    """Extract an optional org selector from query params or headers."""
+    query_params = getattr(req, "params", None)
+    requested = (
+        str(query_params.get("org_id", "")).strip() if isinstance(query_params, Mapping) else ""
+    )
+    if requested:
+        return requested
+    for header_name in ("X-Canopex-Org-Id", "X-Org-Id"):
+        candidate = str(req.headers.get(header_name, "")).strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _resolve_active_org(req: func.HttpRequest, user_id: str) -> dict[str, Any] | None:
+    """Resolve the caller's active organisation once at the auth boundary."""
+    from treesight.security.orgs import resolve_active_org_for_user
+
+    return resolve_active_org_for_user(user_id, requested_org_id=_requested_org_id(req))
+
+
+def _invoke_endpoint_with_auth(
+    fn: Any,
+    req: func.HttpRequest,
+    *,
+    auth_claims: dict[str, Any],
+    user_id: str,
+    active_org: dict[str, Any] | None,
+    accepts_active_org: bool,
+) -> func.HttpResponse:
+    """Invoke a require_auth-wrapped endpoint with compatible kwargs."""
+    kwargs: dict[str, Any] = {"auth_claims": auth_claims, "user_id": user_id}
+    if accepts_active_org:
+        kwargs["active_org"] = active_org
+    return fn(req, **kwargs)
+
+
 def require_auth(fn):
     """Decorator that validates bearer JWT auth on the request.
 
@@ -160,6 +204,8 @@ def require_auth(fn):
         auth_claims  — verified bearer JWT claims
         user_id      — stable user identifier (<tid>:<oid>)
     """
+
+    accepts_active_org = "active_org" in inspect.signature(fn).parameters
 
     @wraps(fn)
     def wrapper(req: func.HttpRequest) -> func.HttpResponse:
@@ -177,12 +223,27 @@ def require_auth(fn):
         if claims:
             uid = get_user_id_from_bearer_claims(claims)
             logger.info("auth_path=bearer")
-            resp = fn(req, auth_claims=claims, user_id=uid)
+            active_org = _resolve_active_org(req, uid)
+            resp = _invoke_endpoint_with_auth(
+                fn,
+                req,
+                auth_claims=claims,
+                user_id=uid,
+                active_org=active_org,
+                accepts_active_org=accepts_active_org,
+            )
             _track_req(req, resp, uid, _t0)
             return resp
 
         if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
-            resp = fn(req, auth_claims={}, user_id="anonymous")
+            resp = _invoke_endpoint_with_auth(
+                fn,
+                req,
+                auth_claims={},
+                user_id="anonymous",
+                active_org=None,
+                accepts_active_org=accepts_active_org,
+            )
             _track_req(req, resp, "anonymous", _t0)
             return resp
         return error_response(401, "Authentication required", req=req)
@@ -195,7 +256,25 @@ def require_auth(fn):
     return wrapper
 
 
-def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
+@overload
+def check_auth(
+    req: func.HttpRequest, *, include_active_org: Literal[False] = False
+) -> tuple[dict, str]:
+    """Overload: returns (claims, user_id) when active org is not requested."""
+
+
+@overload
+def check_auth(
+    req: func.HttpRequest, *, include_active_org: Literal[True]
+) -> tuple[dict, str, dict[str, Any] | None]:
+    """Overload: returns (claims, user_id, active_org) when requested."""
+
+
+def check_auth(
+    req: func.HttpRequest,
+    *,
+    include_active_org: bool = False,
+) -> tuple[dict, str] | tuple[dict, str, dict[str, Any] | None]:
     """Parse bearer JWT, return (claims, user_id).
 
     Returns ({}, "anonymous") when no principal header is present and
@@ -206,9 +285,13 @@ def check_auth(req: func.HttpRequest) -> tuple[dict, str]:
     if claims:
         uid = get_user_id_from_bearer_claims(claims)
         logger.info("auth_path=bearer")
+        if include_active_org:
+            return claims, uid, _resolve_active_org(req, uid)
         return claims, uid
 
     if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
+        if include_active_org:
+            return {}, "anonymous", None
         return {}, "anonymous"
     raise ValueError("Authentication required")
 

@@ -35,7 +35,7 @@ from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
 from treesight.storage.client import get_blob_service_client
 
-from ._helpers import cors_headers, error_response, require_auth
+from ._helpers import _requested_org_id, cors_headers, error_response, require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -334,9 +334,38 @@ def _requested_parcel_count(body: dict, *, default: int = 1) -> int:
     return 0
 
 
+def _resolve_user_org_from_auth(
+    req: func.HttpRequest,
+    user_id: str,
+    active_org: dict | None,
+) -> tuple[dict | None, func.HttpResponse | None]:
+    requested_org_id = _requested_org_id(req) or ""
+    if requested_org_id and not active_org:
+        return None, error_response(403, "Selected organisation is not accessible", req=req)
+
+    try:
+        return active_org or get_user_org(user_id), None
+    except Exception:
+        logger.exception(
+            "Failed to resolve org for run reservation",
+            extra={"user_id": _redact(user_id)},
+        )
+        return None, error_response(
+            503,
+            "Unable to reserve runs right now. Please retry shortly.",
+            req=req,
+        )
+
+
 @bp.route(route="upload/token", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
-def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
+def upload_token(
+    req: func.HttpRequest,
+    *,
+    auth_claims: dict,
+    user_id: str,
+    active_org: dict | None = None,
+) -> func.HttpResponse:
     """Mint a write-only SAS URL for direct-to-blob KML upload."""
     if not user_id:
         return error_response(401, "Missing user identity", req=req)
@@ -354,16 +383,9 @@ def upload_token(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> f
     is_eudr = body.get("eudr_mode") is True
 
     # ── Org-pooled run accounting (reserve_run) ────────────────────
-    try:
-        user_org = get_user_org(user_id)
-    except Exception:
-        logger.exception(
-            "Failed to resolve org for run reservation",
-            extra={"user_id": _redact(user_id)},
-        )
-        return error_response(
-            503, "Unable to reserve runs right now. Please retry shortly.", req=req
-        )
+    user_org, org_resolution_err = _resolve_user_org_from_auth(req, user_id, active_org)
+    if org_resolution_err:
+        return org_resolution_err
 
     if not user_org:
         # Auto-create a personal org so existing users aren't blocked.
