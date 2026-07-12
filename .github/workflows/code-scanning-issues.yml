@@ -35,6 +35,7 @@ jobs:
       - name: Sync code scanning issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
           INPUT_SEVERITY: ${{ github.event.inputs.severity || '' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
@@ -46,7 +47,13 @@ jobs:
             --label code-scanning-alert
           )
 
-          if [ "$INPUT_DRY_RUN" = "true" ]; then
+          # Scheduled runs execute live by default; manual dispatch defaults to dry-run.
+          DRY_RUN_MODE="false"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            DRY_RUN_MODE="${INPUT_DRY_RUN:-true}"
+          fi
+
+          if [ "$DRY_RUN_MODE" = "true" ]; then
             ARGS+=(--dry-run)
           fi
 

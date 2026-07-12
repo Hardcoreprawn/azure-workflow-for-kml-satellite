@@ -9,6 +9,11 @@ from typing import Any
 from urllib import error, parse, request
 
 MARKER_RE = re.compile(r"<!--\s*code-scanning-alert:(\d+)\s*-->", re.IGNORECASE)
+# Pagination safety cap: 100 pages × 100 items/page = at most 10,000 records.
+# This prevents accidental infinite pagination loops if the API behaves unexpectedly.
+ITEMS_PER_PAGE = 100
+MAX_PAGES = 100
+REQUEST_TIMEOUT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -137,7 +142,7 @@ def _github_rest(
 
     req = request.Request(url=url, data=payload, method=method, headers=headers)
     try:
-        with request.urlopen(req, timeout=30) as resp:
+        with request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             data = resp.read()
             return json.loads(data.decode("utf-8")) if data else None
     except error.HTTPError as exc:
@@ -147,18 +152,32 @@ def _github_rest(
 
 def _fetch_paginated(*, token: str, path: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        separator = "&" if "?" in path else "?"
-        page_path = f"{path}{separator}per_page=100&page={page}"
+    # range(...) bounds execution to at most MAX_PAGES iterations.
+    for page in range(1, MAX_PAGES + 1):
+        page_path = _path_with_query(
+            path=path,
+            params={"per_page": str(ITEMS_PER_PAGE), "page": str(page)},
+        )
         batch = _github_rest(token=token, method="GET", path=page_path)
         if not isinstance(batch, list) or not batch:
             break
         results.extend(item for item in batch if isinstance(item, dict))
-        if len(batch) < 100:
+        if len(batch) < ITEMS_PER_PAGE:
             break
-        page += 1
     return results
+
+
+def _path_with_query(*, path: str, params: dict[str, str]) -> str:
+    split = parse.urlsplit(path)
+    query_pairs = _merge_query_params(split.query, params)
+    query = parse.urlencode(query_pairs)
+    return parse.urlunsplit((split.scheme, split.netloc, split.path, query, split.fragment))
+
+
+def _merge_query_params(existing_query: str, params: dict[str, str]) -> dict[str, str]:
+    query_pairs = dict(parse.parse_qsl(existing_query, keep_blank_values=True))
+    query_pairs.update(params)
+    return query_pairs
 
 
 def _parse_alert(entry: dict[str, Any]) -> CodeScanningAlert | None:
@@ -167,23 +186,18 @@ def _parse_alert(entry: dict[str, Any]) -> CodeScanningAlert | None:
         return None
 
     rule = entry.get("rule")
-    rule_id = (
-        str((rule or {}).get("id") or "unknown-rule") if isinstance(rule, dict) else "unknown-rule"
-    )
-    rule_description = str((rule or {}).get("description") or "") if isinstance(rule, dict) else ""
+    rule_id = "unknown-rule"
+    rule_description = ""
+    if isinstance(rule, dict):
+        rule_id = str(rule.get("id") or "unknown-rule")
+        rule_description = str(rule.get("description") or "")
 
     tool = entry.get("tool")
-    tool_name = (
-        str((tool or {}).get("name") or "unknown-tool")
-        if isinstance(tool, dict)
-        else "unknown-tool"
-    )
+    tool_name = "unknown-tool"
+    if isinstance(tool, dict):
+        tool_name = str(tool.get("name") or "unknown-tool")
 
-    severity = str(
-        (entry.get("rule") or {}).get("severity")
-        or entry.get("rule_security_severity_level")
-        or "unknown"
-    ).lower()
+    severity = _extract_severity(entry=entry, rule=rule if isinstance(rule, dict) else None)
 
     html_url = str(entry.get("html_url") or "")
     return CodeScanningAlert(
@@ -196,12 +210,20 @@ def _parse_alert(entry: dict[str, Any]) -> CodeScanningAlert | None:
     )
 
 
+def _extract_severity(*, entry: dict[str, Any], rule: dict[str, Any] | None) -> str:
+    if rule and rule.get("severity"):
+        return str(rule.get("severity")).lower()
+    if entry.get("rule_security_severity_level"):
+        return str(entry.get("rule_security_severity_level")).lower()
+    return "unknown"
+
+
 def fetch_open_alerts(
     *, token: str, owner: str, repo: str, severity: str | None = None
 ) -> tuple[CodeScanningAlert, ...]:
     query = f"/repos/{owner}/{repo}/code-scanning/alerts?state=open"
     if severity:
-        query = f"{query}&severity={parse.quote(severity)}"
+        query = _path_with_query(path=query, params={"severity": severity})
     raw_alerts = _fetch_paginated(token=token, path=query)
 
     parsed_alerts: list[CodeScanningAlert] = []
@@ -224,31 +246,33 @@ def fetch_tracked_issues(
 
     tracked: list[TrackedIssue] = []
     for issue in raw_issues:
-        if issue.get("pull_request"):
-            continue
-        number = issue.get("number")
-        if not isinstance(number, int):
-            continue
-
-        labels = issue.get("labels", [])
-        label_names = tuple(
-            sorted(
-                str(item.get("name"))
-                for item in labels
-                if isinstance(item, dict) and item.get("name")
-            )
-        )
-        tracked.append(
-            TrackedIssue(
-                number=number,
-                state=str(issue.get("state") or "open"),
-                title=str(issue.get("title") or ""),
-                body=str(issue.get("body") or ""),
-                labels=label_names,
-            )
-        )
+        parsed = _parse_tracked_issue(issue)
+        if parsed is not None:
+            tracked.append(parsed)
 
     return tuple(tracked)
+
+
+def _parse_tracked_issue(issue: dict[str, Any]) -> TrackedIssue | None:
+    if issue.get("pull_request"):
+        return None
+    number = issue.get("number")
+    if not isinstance(number, int):
+        return None
+
+    labels = issue.get("labels", [])
+    label_names = tuple(
+        sorted(
+            str(item.get("name")) for item in labels if isinstance(item, dict) and item.get("name")
+        )
+    )
+    return TrackedIssue(
+        number=number,
+        state=str(issue.get("state") or "open"),
+        title=str(issue.get("title") or ""),
+        body=str(issue.get("body") or ""),
+        labels=label_names,
+    )
 
 
 def _create_issue(*, token: str, owner: str, repo: str, spec: IssueSpec, dry_run: bool) -> None:
