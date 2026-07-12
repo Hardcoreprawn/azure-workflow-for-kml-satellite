@@ -45,11 +45,14 @@ jobs:
       - name: Sync Code Scanning alerts to issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
-          REPOSITORY_NAME: ${{ github.event.repository.name }}
+          # github.repository ("owner/repo") is populated on every trigger,
+          # including schedule, where github.event.repository is not reliable.
+          REPOSITORY: ${{ github.repository }}
           INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           INPUT_SEVERITY: ${{ github.event.inputs.severity || '' }}
         run: |
+          REPOSITORY_OWNER="${REPOSITORY%%/*}"
+          REPOSITORY_NAME="${REPOSITORY#*/}"
           ARGS=(--owner "$REPOSITORY_OWNER" --repo "$REPOSITORY_NAME")
           if [ "$INPUT_DRY_RUN" = "true" ]; then
             ARGS+=(--dry-run)
