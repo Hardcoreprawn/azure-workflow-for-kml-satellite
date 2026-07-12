@@ -111,7 +111,7 @@ dedicated compute. Not currently active — deferred until proven necessary.
    - Ingestion: `parse_kml` → `prepare_aoi` → `store_aoi_claims`
    - Acquisition: `acquire_imagery` → `poll_order` → `download_imagery`
    - Fulfilment: `post_process_imagery` → `submit_batch_fulfilment`
-   - Enrichment: `run_enrichment` → `write_metadata` → `release_quota`
+   - Enrichment: `run_enrichment` → `write_metadata` → `finalize_run_failed` (when refunding failed reservations)
 2. Results written to Blob Storage output paths
 3. Status updates written to Cosmos DB
 

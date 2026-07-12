@@ -97,20 +97,6 @@ class SubscriptionRecord(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-# ---------------------------------------------------------------------------
-# UserRecord — ``users`` container
-# ---------------------------------------------------------------------------
-
-
-class QuotaState(BaseModel):
-    """Embedded quota tracking within a user document."""
-
-    runs_used: int = 0
-    period_start: str | None = None
-
-    model_config = ConfigDict(extra="allow")
-
-
 class UserRecord(BaseModel):
     """A user profile stored in the Cosmos ``users`` container.
 
@@ -129,7 +115,6 @@ class UserRecord(BaseModel):
     created_at: str | None = None
     org_id: str | None = None
     org_role: str | None = None
-    quota: QuotaState | None = None
 
     model_config = ConfigDict(extra="allow")
 

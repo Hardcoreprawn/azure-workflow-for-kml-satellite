@@ -193,7 +193,7 @@ Config: `.github/workflows/deploy.yml`
    - Ingestion: parse_kml, load_offloaded_features, prepare_aoi, store_aoi_claims
    - Acquisition: load_aoi_claim, acquire_imagery/acquire_composite, poll_order, download_imagery
    - Fulfilment: post_process_imagery, submit_batch_fulfilment, poll_batch_fulfilment
-   - Enrichment: run_enrichment, write_metadata, release_quota
+   - Enrichment: run_enrichment, write_metadata, finalize_run_failed (refund path)
 7. Metadata and imagery artifacts are written to output blob paths.
 8. Frontend polls `GET /api/upload/status/{id}` on orchestrator host for progress.
 
