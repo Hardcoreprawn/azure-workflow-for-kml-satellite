@@ -24,7 +24,7 @@ AVD-AZU-0061 # exp:2026-08-11 false positive — attribute already set
 # AZU-0045: Defender plan tier intentionally set to Free for non-used services
 # to keep costs controlled in this subscription. Active services are explicitly
 # pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
-AZU-0045 # exp:2026-07-16 accepted cost posture — unused Defender plans intentionally Free
+AZU-0045 # exp:2026-08-11 accepted cost posture — unused Defender plans Free; active plans ARE Standard in defender.tf (#850)
 
 # Policy: do not suppress container CVEs in this file.
 # Container image gates run with --severity CRITICAL,HIGH --ignore-unfixed and
