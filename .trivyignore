@@ -5,26 +5,26 @@
 # AZU-0012 / AZU-0013 are tied to strict network ACL posture for Storage/Key Vault.
 # The low-cost dev setup currently keeps public endpoints enabled to avoid private
 # endpoint + private DNS recurring costs. Revisit when approved for paid hardening.
-AZU-0012 # exp:2026-07-09 Storage network ACL — accepted dev risk
-AZU-0013 # exp:2026-07-09 Key Vault network ACL — accepted dev risk
+AZU-0012 # exp:2026-08-11 Storage network ACL — accepted dev risk
+AZU-0013 # exp:2026-08-11 Key Vault network ACL — accepted dev risk
 # AZU-0022 removed — Cosmos public network is now env-scoped via cosmos_public_network_access
 
 # AVD-AZU-0016: Trivy cannot resolve variable references. purge_protection_enabled
 # defaults to true via var.enable_key_vault_purge_protection.
-AVD-AZU-0016 # exp:2026-07-09 false positive — variable defaults to true
+AVD-AZU-0016 # exp:2026-08-11 false positive — variable defaults to true
 
 # AVD-AZU-0057: Classic Storage Analytics logging superseded by
 # azurerm_monitor_diagnostic_setting.storage_blob (modern Log Analytics).
-AVD-AZU-0057 # exp:2026-07-09 false positive — using modern diagnostic settings
+AVD-AZU-0057 # exp:2026-08-11 false positive — using modern diagnostic settings
 
 # AVD-AZU-0061: False positive — infrastructure_encryption_enabled = true is set
 # on the storage account resource. Trivy's dual-pass config scanner misses it.
-AVD-AZU-0061 # exp:2026-07-09 false positive — attribute already set
+AVD-AZU-0061 # exp:2026-08-11 false positive — attribute already set
 
 # AZU-0045: Defender plan tier intentionally set to Free for non-used services
 # to keep costs controlled in this subscription. Active services are explicitly
 # pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
-AZU-0045 # exp:2026-07-16 accepted cost posture — unused Defender plans intentionally Free
+AZU-0045 # exp:2026-08-11 accepted cost posture — unused Defender plans Free; active plans ARE Standard in defender.tf (#850)
 
 # Policy: do not suppress container CVEs in this file.
 # Container image gates run with --severity CRITICAL,HIGH --ignore-unfixed and
