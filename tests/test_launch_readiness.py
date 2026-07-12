@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 import typing
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -491,22 +492,50 @@ class TestCspAppInsights:
     def test_no_inline_executable_scripts_in_eudr_html(self):
         """CSP without unsafe-inline in script-src blocks inline executable scripts."""
         html = (ROOT / "website" / "eudr" / "index.html").read_text()
-        script_blocks = re.findall(
-            r"<script\b(?![^>]*\bsrc=)([^>]*)>(.*?)</script>",
-            html,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        disallowed_inline = []
-        for attrs, content in script_blocks:
-            attrs_lower = attrs.lower()
-            if 'type="application/json"' in attrs_lower or "type='application/json'" in attrs_lower:
-                continue
-            if content.strip():
-                disallowed_inline.append(attrs.strip() or "<script>")
 
-        assert not disallowed_inline, (
+        class _InlineScriptParser(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.disallowed_inline = []
+                self._disallowed_candidate = False
+                self._candidate_has_code = False
+                self._candidate_attrs = "<script>"
+
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() != "script":
+                    return
+                attr_map = {
+                    (name or "").lower(): (value or "").strip().lower() for name, value in attrs
+                }
+                has_src = bool(attr_map.get("src"))
+                is_json_data_tag = attr_map.get("type") == "application/json"
+                self._disallowed_candidate = not has_src and not is_json_data_tag
+                self._candidate_has_code = False
+                attrs_text = " ".join(
+                    f'{name}="{value}"' if value is not None else str(name) for name, value in attrs
+                ).strip()
+                self._candidate_attrs = (
+                    f"<script {attrs_text}>".strip() if attrs_text else "<script>"
+                )
+
+            def handle_data(self, data):
+                if self._disallowed_candidate and data.strip():
+                    self._candidate_has_code = True
+
+            def handle_endtag(self, tag):
+                if tag.lower() != "script":
+                    return
+                if self._disallowed_candidate and self._candidate_has_code:
+                    self.disallowed_inline.append(self._candidate_attrs)
+                self._disallowed_candidate = False
+                self._candidate_has_code = False
+
+        parser = _InlineScriptParser()
+        parser.feed(html)
+
+        assert not parser.disallowed_inline, (
             "Found inline executable <script> blocks in eudr/index.html that CSP will block: "
-            f"{disallowed_inline}"
+            f"{parser.disallowed_inline}"
         )
 
     def test_connect_src_covers_cdn_domains_for_source_maps(self, csp):
