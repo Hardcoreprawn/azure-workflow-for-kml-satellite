@@ -1,0 +1,7 @@
+# Issue template configuration.
+# blank_issues_enabled: false routes all UI-created issues through the Work item
+# template so the critical fields (dependencies, persona/JTBD, acceptance) are
+# never skipped. Note: issues created via the API / gh CLI / Copilot agent do
+# NOT use this template — those paths must include the same info by convention
+# (see .github/copilot-instructions.md "Backlog Hygiene").
+blank_issues_enabled: false
