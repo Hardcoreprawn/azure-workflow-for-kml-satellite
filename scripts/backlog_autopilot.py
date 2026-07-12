@@ -134,21 +134,44 @@ def parse_blocking_refs(body: str) -> set[int]:
     return {int(match) for match in _BLOCKING_RE.findall(body)}
 
 
+_CLOSING_RE = re.compile(
+    r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\b\s*:?\s*#(\d+)", re.IGNORECASE
+)
+
+
+def parse_closing_refs(body: str) -> set[int]:
+    """Return issue numbers a PR body declares it will close.
+
+    Recognises GitHub's closing keywords (``closes`` / ``fixes`` / ``resolves``
+    and their tenses) followed by ``#N``. Used to skip auto-assigning an issue
+    that already has an open PR against it, so the autopilot never re-dispatches
+    work that is already in progress.
+    """
+    if not body:
+        return set()
+    return {int(match) for match in _CLOSING_RE.findall(body)}
+
+
 def select_issues(
     issues: list[IssueCandidate],
     *,
     max_new_assignments: int,
+    issues_with_open_prs: set[int] | None = None,
 ) -> list[IssueCandidate]:
     # An issue is held back if it declares a dependency on another issue that
     # is still open (present in this open-issue snapshot). Self-clearing: once
     # the blocker closes it drops out of ``open_numbers`` and the dependent
-    # issue becomes eligible with no manual intervention.
+    # issue becomes eligible with no manual intervention. It is also held back
+    # if an open PR already links it (``Closes #N``) so the autopilot never
+    # re-dispatches work already in progress.
     open_numbers = {issue.number for issue in issues}
+    in_progress = issues_with_open_prs or set()
     eligible = [
         issue
         for issue in issues
         if issue_priority_score(issue.labels) > 0
         and not issue.assignees
+        and issue.number not in in_progress
         and not (parse_blocking_refs(issue.body) & open_numbers)
     ]
     ordered = sorted(
@@ -276,6 +299,19 @@ def count_open_copilot_prs(*, token: str, owner: str, repo: str) -> int:
         if login == "Copilot" or title.startswith("[WIP]"):
             count += 1
     return count
+
+
+def load_open_pr_linked_issues(*, token: str, owner: str, repo: str) -> set[int]:
+    """Return issue numbers referenced by an open PR's closing keywords.
+
+    An issue already targeted by an open PR (``Closes #N``) is in progress;
+    the autopilot must not re-dispatch it to another agent.
+    """
+    pulls = _fetch_paginated(token, f"/repos/{owner}/{repo}/pulls?state=open")
+    linked: set[int] = set()
+    for pr in pulls:
+        linked |= parse_closing_refs(str(pr.get("body") or ""))
+    return linked
 
 
 def assign_issue_to_copilot(*, token: str, owner: str, repo: str, issue_number: int) -> None:
@@ -408,7 +444,12 @@ def main() -> int:
         return 0
 
     issues = load_open_issues(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
-    targets = select_issues(issues, max_new_assignments=cfg.max_new_assignments)
+    in_progress = load_open_pr_linked_issues(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
+    targets = select_issues(
+        issues,
+        max_new_assignments=cfg.max_new_assignments,
+        issues_with_open_prs=in_progress,
+    )
 
     if not targets:
         print("no eligible issues found")

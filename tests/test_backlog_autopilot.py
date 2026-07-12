@@ -10,6 +10,7 @@ from scripts.backlog_autopilot import (
     count_open_copilot_prs,
     parse_args,
     parse_blocking_refs,
+    parse_closing_refs,
     select_issues,
 )
 
@@ -110,6 +111,18 @@ def test_select_issues_excludes_blocked_label() -> None:
     ]
     selected = select_issues(issues, max_new_assignments=5)
     assert [issue.number for issue in selected] == [2]
+
+
+def test_parse_closing_refs_reads_closing_keywords() -> None:
+    body = "Work.\nCloses #1055\nfixes #7\nresolved #9\nsee #3 for context."
+    assert parse_closing_refs(body) == {1055, 7, 9}
+
+
+def test_select_issues_skips_issue_with_open_linked_pr() -> None:
+    # #5 already has an open PR (Closes #5) -> do not re-dispatch it; #6 is free.
+    issues = [_issue(5, {"moscow:must"}), _issue(6, {"moscow:must"})]
+    selected = select_issues(issues, max_new_assignments=5, issues_with_open_prs={5})
+    assert [issue.number for issue in selected] == [6]
 
 
 def test_select_issues_security_floats_to_top_within_tier() -> None:
