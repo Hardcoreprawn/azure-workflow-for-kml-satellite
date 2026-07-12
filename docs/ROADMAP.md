@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-06-13
+Last updated: 2026-07-12
 
 ---
 
@@ -107,13 +107,13 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
+| #1059 | feat(billing): retire legacy per-user quota — org pool (`reserve_run`/`finalize_run`) is the sole accounting unit; billing-status + free/overage readers migrated to org usage; `quota.py` deleted (D3, closes #1055). |
+| #1068 | fix(autopilot): dependency-aware, no-duplicate dispatch — skip issues that are `blocked`, declare an open `blocked by`/`depends on`, or already have an open linked PR; add issue template capturing dependencies/persona/acceptance (closes #1067). |
+| #1058 | docs: canonical data model — conceptual/logical/physical layers + D1–D5 divergence register in `docs/DATA_MODEL.md`, cross-linked from SYSTEM_SPEC (closes #1056). |
+| #1072 | chore(security): renew expired `.trivyignore` AZU/AVD suppressions to 2026-08-11 (unblock the repo-wide Expiry Check, closes #1071); #1063 cleared a CodeQL clear-text-logging false positive in `_setup_stripe.py`. |
 | #1045 | feat(watchdog): "Ralph Wiggum" completion loop — `@copilot`-nudge blocked agent PRs toward the Definition of Done (opt-in `AUTOPILOT_WATCHDOG_RALPH`, attempt-capped, dedup by unmet-items signature; nudge posted via PAT so the agent actually wakes). Closes #1044. |
 | #1043 | fix(watchdog): resurrect auto-promote — the PR Watchdog was FORBIDDEN promoting drafts with the default `GITHUB_TOKEN` (failing every scheduled run); now promotes via `AUTOPILOT_USER_TOKEN` with per-PR error isolation. Adds opt-in stale-close (5-day completion SLA, default off) + report-only diff-cover changed-lines coverage in CI. Closes #1041. |
-| #1039 | chore(autopilot): WIP limit = 3 open Copilot agent PRs (queue cap 8→3, live var set) + agent Definition of Done, drain-first rule, and completion SLA. Closes #1038. |
-| #1023 | ci: run the integration suite against Azurite in CI — starts Azurite via `docker run` with `--blobHost 0.0.0.0` (service containers can't override the command); 14 integration tests now actually execute (were silently skipping). Closes #1022. |
-| #895 | feat: EUDR content cluster — supplier guide, data sources, FAQ, glossary + sitemap SEO entries (closes #617). |
-| #874 | fix(pipeline): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)) — prevent activity timeout at 50+ AOIs with ThreadPoolExecutor fan-out, capped concurrency, per-AOI failure isolation, and ordering-preservation tests. |
-| #873 | chore: board-based prioritisation + pipeline regression guards — ROADMAP.md + copilot-instructions updated to use GitHub Project board for day-to-day ordering; `store_claims_batch` treats empty `feature_name` same as `None` (index-based fallback key); `_build_order_lookups` skips orders with no `order_id`; new edge-case tests in `test_geo.py`, `test_ingestion.py`, `test_pipeline.py`; duplicate-name KML fixture added. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
 ---

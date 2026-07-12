@@ -220,6 +220,30 @@ class TestBillingPortal:
 
 class TestBillingStatus:
     @patch("treesight.storage.cosmos.read_item", return_value=None)
+    @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
+    @patch(
+        "treesight.billing.accounting.get_pool_status",
+        return_value={
+            "org_id": "org-1",
+            "allowance": 25,
+            "reserved": 4,
+            "completed": 9,
+            "available": 12,
+        },
+    )
+    def test_status_uses_org_pool_counters(self, _mock_pool, _mock_org, _mock_read):
+        from blueprints.billing import billing_status
+
+        req = func.HttpRequest(
+            method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b""
+        )
+        resp = billing_status(req)
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["runs_used"] == 13
+        assert data["runs_remaining"] == 12
+
+    @patch("treesight.storage.cosmos.read_item", return_value=None)
     def test_free_user_status(self, _mock_read):
         from blueprints.billing import billing_status
 
