@@ -160,10 +160,9 @@ def update_org_name(org_id: str, name: str) -> dict[str, Any]:
 def get_user_org(user_id: str) -> dict[str, Any] | None:
     """Return the org the user belongs to, or None.
 
-    Fast path: user doc carries ``org_id`` — single read, O(1).
-    Slow path: user doc missing ``org_id`` (e.g. ``_set_user_org`` failed
-    during org creation).  Falls back to a membership query on the orgs
-    container and repairs the user doc so the fast path works next time.
+    Membership on the orgs container is authoritative.  Resolution is
+    read-only in steady state; ``users.org_id`` is backfilled only when it is
+    missing or stale (see ``resolve_active_org_for_user``).
     """
     return resolve_active_org_for_user(user_id)
 
@@ -191,10 +190,35 @@ def resolve_active_org_for_user(
         if not org_id:
             return None
         org = get_org(org_id)
-        if org:
-            _set_user_org(user_id, org_id, str(selected.get("org_role", "member")))
+        if org and not requested:
+            # Self-heal the legacy ``users.org_id`` pointer only for the
+            # default (non-requested) resolution, and only when it actually
+            # changed.  This avoids a Cosmos write on every authenticated read
+            # and stops a transient per-request org selector from becoming the
+            # durable default (multi-tab stickiness).
+            _repair_user_org_if_changed(
+                user_id, org_id, str(selected.get("org_role", "member")), read_item
+            )
         return org
     return _resolve_legacy_user_org(user_id, requested, read_item)
+
+
+def _repair_user_org_if_changed(
+    user_id: str, org_id: str, role: str, read_item: ReadItemFn
+) -> None:
+    """Backfill ``users.org_id`` only when it differs from the resolved org.
+
+    Keeps the auth-boundary resolution read-only in steady state; the write
+    fires only when the stored pointer is missing or stale.
+    """
+    try:
+        user = read_item("users", user_id, user_id) or {}
+    except Exception:
+        logger.warning("Failed to read user org pointer for user=%s", user_id, exc_info=True)
+        return
+    if str(user.get("org_id", "")).strip() == org_id and str(user.get("org_role", "")) == role:
+        return
+    _set_user_org(user_id, org_id, role)
 
 
 def _list_user_memberships(user_id: str) -> list[dict[str, Any]]:

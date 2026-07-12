@@ -267,7 +267,17 @@ def _resolve_quota(
             _redact(user_id),
         )
         org_id = prior_ticket.get("org_id", "")
-        return True, org_id if isinstance(org_id, str) else "", None
+        org_id = org_id if isinstance(org_id, str) else ""
+        # A supplied org selector must match the ticket's org — never silently
+        # ignore a mismatched selector on the prior-ticket path.
+        requested_org_id = _requested_org_id(req) or ""
+        if requested_org_id and requested_org_id != org_id:
+            return (
+                False,
+                "",
+                error_response(403, "Selected organisation is not accessible", req=req),
+            )
+        return True, org_id, None
 
     requested_org_id = _requested_org_id(req) or ""
     if requested_org_id and not active_org:
