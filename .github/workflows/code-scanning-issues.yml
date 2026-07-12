@@ -1,0 +1,57 @@
+name: Code Scanning Issue Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run only (no issue create/close)"
+        required: false
+        default: "true"
+      severity:
+        description: "Optional severity filter (critical|high|medium|low)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+jobs:
+  sync-alerts:
+    name: Mirror open alerts into issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync code scanning issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_DRY_RUN: ${{ github.event.inputs.dry_run || '' }}
+          INPUT_SEVERITY: ${{ github.event.inputs.severity || '' }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          ARGS=(
+            --owner "$REPOSITORY_OWNER"
+            --repo "$REPOSITORY_NAME"
+            --label code-scanning-alert
+          )
+
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+
+          if [ -n "$INPUT_SEVERITY" ]; then
+            ARGS+=(--severity "$INPUT_SEVERITY")
+          fi
+
+          python scripts/code_scanning_issues.py "${ARGS[@]}"
