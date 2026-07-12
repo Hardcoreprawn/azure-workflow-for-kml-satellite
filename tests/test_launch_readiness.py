@@ -1455,19 +1455,45 @@ class TestCIFeedbackHygiene:
             )
 
     def test_actionlint_gates_workflows_in_ci(self):
-        """Workflow YAML must be validated in CI (not just local pre-commit),
-        pinned to the same actionlint version as the hook so local == CI. #995."""
+        """Workflow YAML is linted through a single route — `make lint-actions` —
+        used by both CI and the local pre-commit hook, so the actionlint version
+        and shellcheck rule suppressions (both in the Makefile) cannot drift.
+        #995, #1080."""
         assert ACTIONLINT_YML.exists(), "actionlint.yml CI workflow must exist"
         wf = ACTIONLINT_YML.read_text()
-        assert "download-actionlint" in wf and "./actionlint" in wf, (
-            "actionlint.yml must install and run actionlint"
+        # CI must invoke the canonical make target, not an inline binary run.
+        assert "make lint-actions" in wf, (
+            "actionlint.yml must run `make lint-actions` (single route shared with local)"
         )
+        assert "SHELLCHECK_OPTS" not in wf, (
+            "shellcheck rules must live in .shellcheckrc, not inline in the workflow"
+        )
+
+        # The pinned version, target, and shellcheck rule suppressions all live
+        # in the Makefile as the single source of truth (matching the
+        # SEMGREP_VERSION / TRIVY_VERSION pattern). actionlint feeds scripts to
+        # shellcheck via stdin, so a repo-root .shellcheckrc is not honoured —
+        # the suppressions must ride on SHELLCHECK_OPTS from the make target.
+        makefile = MAKEFILE.read_text()
+        assert "lint-actions:" in makefile, (
+            "Makefile must define the canonical 'lint-actions' target"
+        )
+        assert re.search(r"ACTIONLINT_VERSION \?= [0-9.]+", makefile), (
+            "Makefile must pin ACTIONLINT_VERSION as the single source of truth"
+        )
+        assert "SC2129" in makefile and "SC2016" in makefile, (
+            "Makefile lint-actions must carry the shellcheck suppressions "
+            "(single source shared by CI and local pre-commit)"
+        )
+
+        # Local pre-commit must route through the same make target, not pin its
+        # own separate actionlint version.
         pc = (ROOT / ".pre-commit-config.yaml").read_text()
-        pc_ver = re.search(r"rhysd/actionlint\s*\n\s*rev:\s*v([0-9.]+)", pc)
-        ci_ver = re.search(r'ACTIONLINT_VERSION:\s*"([0-9.]+)"', wf)
-        assert pc_ver and ci_ver and pc_ver.group(1) == ci_ver.group(1), (
-            "actionlint CI version must match the pre-commit hook rev "
-            f"(pre-commit={pc_ver and pc_ver.group(1)}, ci={ci_ver and ci_ver.group(1)})"
+        assert "make lint-actions" in pc, (
+            "pre-commit actionlint hook must run `make lint-actions` so local == CI"
+        )
+        assert "rhysd/actionlint" not in pc, (
+            "pre-commit must not pin a separate actionlint version; use make lint-actions"
         )
 
 
