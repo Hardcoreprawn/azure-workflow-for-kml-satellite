@@ -112,18 +112,27 @@ class TestHostInAllowlist:
 
 
 class TestProxyDomainAllowlist:
-    """SSRF-prevention tests for the CORS proxy domain check.
+    """SSRF-prevention regression tests for external-API host allowlisting.
 
-    The proxy endpoint in blueprints/demo.py validates target URLs via
-    ``_is_domain_allowed`` before fetching.  These tests verify that
-    common bypass techniques are rejected.
+    The former CORS proxy endpoint (retired in #922) validated target URLs
+    against a domain allowlist via ``host_in_allowlist``.  The endpoint is
+    gone, but the underlying host-matching primitive is still used across
+    the codebase, so these documented bypass cases stay guarded here.
     """
 
-    @staticmethod
-    def _check(domain: str) -> bool:
-        from blueprints.demo import _is_domain_allowed
+    # Mirrors the former proxy allowlist (blueprints/demo.py, retired in #922).
+    _ALLOWED = frozenset(
+        {
+            "environment.data.gov.uk",
+            "waterdata.usgs.gov",
+            "firms.modaps.eosdis.nasa.gov",
+            "api.open-meteo.com",
+        }
+    )
 
-        return _is_domain_allowed(domain)
+    @classmethod
+    def _check(cls, domain: str) -> bool:
+        return host_in_allowlist(domain, cls._ALLOWED)
 
     def test_allowed_domain_passes(self):
         assert self._check("environment.data.gov.uk")
@@ -156,7 +165,5 @@ class TestProxyDomainAllowlist:
         assert not self._check("169.254.169.254")
 
     def test_all_allowed_domains_accepted(self):
-        from blueprints.demo import PROXY_ALLOWED_DOMAINS
-
-        for domain in PROXY_ALLOWED_DOMAINS:
+        for domain in self._ALLOWED:
             assert self._check(domain), f"{domain} should be allowed"

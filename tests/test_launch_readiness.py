@@ -1909,7 +1909,6 @@ class TestEndpointAuthAudit:
         "internal-smoke",
         "billing/webhook",
         "contact-form",
-        "demo-artifacts",
         # UUID-gated bearer pattern
         "orchestrator/{instance_id}",
         "timelapse-data/{instance_id}",
@@ -1919,10 +1918,6 @@ class TestEndpointAuthAudit:
         "ops/users",
         "ops/users/lookup",
         "ops/users/{user_id}/role",
-        # Demo valet tokens — function-level auth key, not user-facing
-        "demo-valet-tokens",
-        # CORS proxy — rate-limited, no user data
-        "proxy",
     }
 
     def test_every_endpoint_is_auth_protected_or_explicitly_exempt(self):
@@ -1988,14 +1983,28 @@ class TestEndpointAuthAudit:
             + "\nAdd auth or list in _EXEMPT_ROUTES with rationale."
         )
 
-    def test_proxy_endpoint_is_rate_limited(self):
-        """The CORS proxy must use proxy_limiter.is_allowed() to prevent abuse."""
-        src = (ROOT / "blueprints" / "demo.py").read_text()
-        assert "proxy_limiter" in src, (
-            "demo.py must import proxy_limiter from treesight.security.rate_limit"
+    def test_retired_demo_routes_are_absent(self):
+        """The demo valet/artifact/proxy surface was retired (#922).
+
+        Guards against a regression that re-introduces the anonymous CORS
+        proxy or demo valet endpoints. No blueprint may register these routes.
+        """
+        bp_dir = ROOT / "blueprints"
+        retired = {"proxy", "demo-artifacts", "demo-valet-tokens"}
+        offenders = []
+
+        for py_file in sorted(bp_dir.rglob("*.py")):
+            src = py_file.read_text()
+            for route in retired:
+                if f'route="{route}"' in src:
+                    offenders.append(f"{py_file.relative_to(ROOT)}: route='{route}'")
+
+        assert not offenders, (
+            "Retired demo/proxy routes must not be registered (#922):\n"
+            + "\n".join(f"  - {o}" for o in offenders)
         )
-        assert "proxy_limiter.is_allowed" in src, (
-            "demo.py proxy endpoint must call proxy_limiter.is_allowed() to rate-limit requests"
+        assert not (bp_dir / "demo.py").exists(), (
+            "blueprints/demo.py was retired in #922 and must not be reintroduced"
         )
 
 

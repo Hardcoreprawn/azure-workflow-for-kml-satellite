@@ -25,8 +25,6 @@ Production API base URL: `https://{productionHost}/api`
 | POST | /api/billing/checkout | SWA session | 401 | Stripe checkout |
 | POST | /api/billing/portal | anonymous | — | Stripe portal redirect |
 | POST | /api/billing/webhook | anonymous | — | Stripe webhook |
-| GET | /api/demo-artifacts | anonymous | 400 (no params) | Demo artifact listing |
-| GET | /api/proxy | anonymous | — | Tile proxy |
 | POST | /api/contact-form | anonymous | — | Contact form |
 | GET | /api/orchestrator/{id} | anonymous | 200/404 | Durable diagnostics |
 | GET | /api/analysis/history | SWA session | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |

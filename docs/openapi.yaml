@@ -12,8 +12,6 @@ info:
     Most endpoints require CIAM bearer-token authentication.
     Clients obtain a JWT and send `Authorization: Bearer <token>` on API requests.
 
-    Demo artifact downloads use short-lived **valet tokens** instead of auth sessions.
-
     Health and contract endpoints are unauthenticated.
 
     ## Rate Limits
@@ -25,7 +23,6 @@ info:
     |---------------|-------------|--------------------------------|
     | Contact form  | 5 / 60 s   | `/api/contact-form`            |
     | Pipeline poll | 30 / 60 s  | `/api/orchestrator/{id}`       |
-    | CORS proxy    | 60 / 60 s  | `/api/proxy`                   |
 
     ## Pipeline Quota (Free Tier)
 
@@ -57,8 +54,6 @@ servers:
 tags:
   - name: health
     description: Health and readiness probes
-  - name: demo
-    description: Demo pipeline submission and artifact retrieval
   - name: pipeline
     description: Pipeline orchestration and status
   - name: analysis
@@ -234,89 +229,6 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: Upstream storage or orchestration startup is temporarily unavailable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /demo-valet-tokens:
-    post:
-      operationId: demoValetTokens
-      summary: Generate valet tokens for artifact download
-      description: |
-        Creates short-lived HMAC-signed tokens that grant access
-        to specific pipeline output artifacts.  Requires function-level
-        authentication (Azure Functions host key).
-      tags: [demo]
-      security:
-        - functionKey: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                submission_id:
-                  type: string
-                artifact_paths:
-                  type: array
-                  items:
-                    type: string
-              required: [submission_id, artifact_paths]
-      responses:
-        "200":
-          description: Valet tokens generated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  tokens:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        artifact_path:
-                          type: string
-                        token:
-                          type: string
-                        expires_at:
-                          type: string
-                          format: date-time
-                required: [tokens]
-        "400":
-          $ref: "#/components/responses/BadRequest"
-
-  /demo-artifacts:
-    get:
-      operationId: demoArtifacts
-      summary: Download a pipeline artifact using a valet token
-      description: |
-        Retrieves a specific artifact (imagery, GeoJSON, etc.) using a
-        short-lived valet token.  No JWT required.
-      tags: [demo]
-      security:
-        - valetToken: []
-      parameters:
-        - name: token
-          in: query
-          required: true
-          schema:
-            type: string
-          description: HMAC-signed valet token
-      responses:
-        "200":
-          description: Artifact content
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "403":
-          description: Token invalid, expired, or replay detected
           content:
             application/json:
               schema:
@@ -589,47 +501,6 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "429":
           $ref: "#/components/responses/TooManyRequests"
-
-  # ── Proxy ─────────────────────────────────────────────────
-  /proxy:
-    get:
-      operationId: corsProxy
-      summary: CORS proxy for third-party APIs
-      description: |
-        Proxies GET requests to allowed third-party APIs (e.g. Open-Meteo,
-        FIRMS fire data) to work around browser CORS restrictions.
-        Response size capped at 5 MiB.
-      tags: [demo]
-      security: []
-      parameters:
-        - name: url
-          in: query
-          required: true
-          schema:
-            type: string
-            format: uri
-          description: Target URL to proxy (must match allowlist)
-      responses:
-        "200":
-          description: Proxied response
-          content:
-            application/json:
-              schema:
-                type: object
-        "400":
-          description: URL not on allowlist
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "502":
-          description: Upstream error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
 
   # ── Monitoring ──────────────────────────────────────────────
   /monitoring:
@@ -1302,11 +1173,6 @@ components:
       in: header
       name: x-functions-key
       description: Azure Functions host key
-    valetToken:
-      type: apiKey
-      in: query
-      name: token
-      description: Short-lived HMAC-signed valet token
 
   parameters:
     instanceId:
