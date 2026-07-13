@@ -51,6 +51,13 @@ updates:
       - "ci"
     commit-message:
       prefix: "ci"
+    groups:
+      # Keep the coupled CodeQL action steps (init/autobuild/analyze/upload-sarif)
+      # in a single PR. Bumping them individually desyncs the versions and fails
+      # CodeQL with "Loaded a configuration file for version X, but running Y".
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # Docker base images
   - package-ecosystem: "docker"
