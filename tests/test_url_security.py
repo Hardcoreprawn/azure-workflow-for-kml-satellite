@@ -116,8 +116,8 @@ class TestProxyDomainAllowlist:
 
     The former CORS proxy endpoint (retired in #922) validated target URLs
     against a domain allowlist via ``host_in_allowlist``.  The endpoint is
-    gone, but the underlying host-matching primitive is still used across
-    the codebase, so these documented bypass cases stay guarded here.
+    gone, but ``host_in_allowlist`` remains the shared host-matching
+    primitive, so these documented bypass cases stay guarded against it.
     """
 
     # Mirrors the former proxy allowlist (blueprints/demo.py, retired in #922).

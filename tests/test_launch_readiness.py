@@ -1996,7 +1996,7 @@ class TestEndpointAuthAudit:
         for py_file in sorted(bp_dir.rglob("*.py")):
             src = py_file.read_text()
             for route in retired:
-                if f'route="{route}"' in src:
+                if re.search(rf"""route\s*=\s*["']{re.escape(route)}["']""", src):
                     offenders.append(f"{py_file.relative_to(ROOT)}: route='{route}'")
 
         assert not offenders, (

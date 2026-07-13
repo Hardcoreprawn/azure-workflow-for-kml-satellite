@@ -241,7 +241,6 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 │   ├── billing.py               Stripe Checkout, webhooks, customer portal
 │   ├── catalogue.py             User analysis catalogue
 │   ├── contact.py               Contact form endpoint
-│   ├── demo.py                  Demo valet token + artifact download
 │   ├── eudr.py                  Coordinate conversion endpoint
 │   ├── export.py                GeoJSON, CSV, PDF export
 │   ├── health.py                Liveness + readiness probes
