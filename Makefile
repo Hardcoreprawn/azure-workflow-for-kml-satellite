@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
-	test-upload test test-int lint fmt check smoke clean \
+	test-upload test test-int lint fmt check smoke clean prune-branches \
 	_free-ports _free-func-port _free-web-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions
 
@@ -260,3 +260,13 @@ smoke: ## POST to /api/health/deep and exit non-zero if not healthy
 clean: dev-down ## Stop Azurite and remove data volume
 	docker volume rm kml-satellites_azurite-data 2>/dev/null || true
 	@echo "Cleaned up."
+
+prune-branches: ## Delete local branches whose upstream was deleted (merged/closed PRs)
+	@git fetch --prune
+	@gone=$$(git for-each-ref --format='%(refname:short) %(upstream:track)' refs/heads \
+		| awk '$$2=="[gone]"{print $$1}'); \
+	if [ -z "$$gone" ]; then \
+		echo "No stale branches to prune."; \
+	else \
+		echo "$$gone" | xargs -r git branch -D; \
+	fi
