@@ -326,6 +326,25 @@ class TestAuthConfig:
             "canopex-auth.js must call loginRedirect for the MSAL login flow"
         )
 
+    def test_msal_module_supports_signup_prompt_create(self):
+        """Shared CIAM module must expose an explicit sign-up redirect path."""
+        js = APP_CIAM_JS.read_text()
+        assert "function signup()" in js, (
+            "canopex-auth.js must define signup() for first-visit account creation"
+        )
+        assert "prompt: 'create'" in js, (
+            "canopex-auth.js signup() must pass prompt:create to open account-creation flow"
+        )
+
+    def test_landing_wires_create_account_button(self, landing_js):
+        """Landing UI must wire a dedicated create-account CTA to CIAM signup."""
+        assert "auth-signup-btn" in landing_js, (
+            "landing.js must reference #auth-signup-btn for first-visit create-account CTA"
+        )
+        assert "ciamAuth.signup" in landing_js, (
+            "landing.js create-account CTA must call CanopexCiam.signup()"
+        )
+
     def test_msal_module_marks_redirect_triggered_token_errors(self):
         """getToken must signal redirect-in-progress.
 
@@ -484,6 +503,15 @@ class TestAuthConfig:
         assert landing_script in index_html, "index.html must include landing.js script with defer"
         assert index_html.index(api_script) < index_html.index(landing_script), (
             "index.html must load canopex-api-client.js before landing.js"
+        )
+
+    def test_landing_nav_includes_create_account_cta(self, index_html):
+        """Landing nav must expose a distinct create-account action for first-time users."""
+        assert 'id="auth-signup-btn"' in index_html, (
+            "/index.html nav auth area must include a dedicated create-account button"
+        )
+        assert ">Create Account<" in index_html, (
+            "/index.html create-account button must have explicit copy for first-time users"
         )
 
     def test_app_entry_loads_shared_api_client_before_app_shell(self, app_index_html):
