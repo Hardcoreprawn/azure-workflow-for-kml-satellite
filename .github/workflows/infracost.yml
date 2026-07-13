@@ -148,7 +148,7 @@ jobs:
       # ── Infracost ──────────────────────────────────────────
       - name: Setup Infracost
         if: steps.azure_login.outcome == 'success'
-        uses: infracost/actions/setup@9accc4137ae3f13ede9182e0afa2bed39a23c4c0 # v4
+        uses: infracost/actions/setup@fb736a8f219195d6efdca58682069b16fe1bc280 # v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
