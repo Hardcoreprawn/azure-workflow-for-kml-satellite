@@ -108,6 +108,7 @@ portfolio-level risk visibility.
 | PR | Summary |
 |----|---------|
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
+| #893 | chore(recovery): verify EUDR per-parcel metered Stripe billing recovery from `feat/eudr-metered-billing` — confirmed work already incorporated via PR #657; current codebase is an evolved superset with org-pooled accounting, graduated overage tiers, and emulated-subscription support (closes #893). |
 | #1093 | chore: add `make prune-branches` for local branch hygiene — deletes local branches whose upstream is `[gone]` after PR merges (closes #1092). |
 | #1075 | fix(web): eliminate CSP-blocked inline script on `/eudr/` — subscribe-modal + billing-bridge logic moved to first-party `website/js/app-eudr-subscribe-modal.js`; regression guards against reintroducing inline executable script (closes #773). |
 | #1089 | chore(harness): migrate remaining `pip` usages to `uv`/`uvx` — `detect-secrets` (security.yml) and infracost metrics collection now run via `uv`; script/runtime prereq hints updated (ADR 0005 execution model, epic #1082, closes #1084). |
