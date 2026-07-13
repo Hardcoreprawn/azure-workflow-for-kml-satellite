@@ -107,7 +107,7 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
-| #1108 | chore(harness): finish linked-issue enforcement — registered the `check-issue-link` job (from `require-linked-issue.yml`) as a required status check on `main`, completing the gate whose workflow + PR template already shipped; backfill was a no-op (only open PR already linked) (closes #945). |
+| #1109 | chore(harness): finish linked-issue enforcement — registered the `check-issue-link` job (from `require-linked-issue.yml`) as a required status check on `main`, completing the gate whose workflow + PR template already shipped; backfill was a no-op (only open PR already linked) (closes #945). |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | #893 | chore(recovery): verify EUDR per-parcel metered Stripe billing recovery from `feat/eudr-metered-billing` — confirmed work already incorporated via PR #657; current codebase is an evolved superset with org-pooled accounting, graduated overage tiers, and emulated-subscription support (closes #893). |
 | #1093 | chore: add `make prune-branches` for local branch hygiene — deletes local branches whose upstream is `[gone]` after PR merges (closes #1092). |
