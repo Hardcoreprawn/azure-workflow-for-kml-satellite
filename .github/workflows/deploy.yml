@@ -114,7 +114,7 @@ jobs:
       image_uri: ${{ steps.resolve.outputs.image_uri || steps.meta.outputs.image_uri }}
       orch_image_uri: ${{ steps.resolve-orch.outputs.orch_image_uri || steps.orch-meta.outputs.orch_image_uri }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
       # ── Guard: prd must promote an existing image ──────────
       - name: Require image_tag for production
@@ -323,7 +323,7 @@ jobs:
       ciam_page_config: ${{ steps.ciam-page-config.outputs.json }}
       storage_account_name: ${{ steps.storage-account.outputs.name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -1296,7 +1296,7 @@ jobs:
     needs: deploy-infra
     environment: ${{ github.event.inputs.environment || 'dev' }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
       - name: Azure Login (OIDC)
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
