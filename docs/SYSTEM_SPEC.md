@@ -491,66 +491,6 @@ All endpoints return JSON unless otherwise specified.
 }
 ```
 
-### 4.7 Valet Token System
-
-Secure, time-limited access tokens for demo artifact downloads.
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| POST | `/api/demo-valet-tokens` | FUNCTION key | Mints valet tokens for a submission |
-| GET | `/api/demo-artifacts` | anonymous | Downloads an artifact using a valet token |
-
-#### Token Minting (`POST /api/demo-valet-tokens`)
-
-**Request body:**
-
-```json
-{
-    "submission_id": "string (required)",
-    "recipient_email": "string (required)"
-}
-```
-
-**Token structure:** `{base64url_payload}.{base64url_hmac_sha256_signature}`
-
-**Token claims:**
-
-```json
-{
-    "submission_id": "string",
-    "submission_blob_name": "string",
-    "artifact_path": "string",
-    "recipient_hash": "sha256(lowercase(email))",
-    "exp": unix_timestamp,
-    "nonce": "uuid4_hex",
-    "max_uses": 3,
-    "output_container": "string"
-}
-```
-
-**Token parameters (from environment):**
-
-- `DEMO_VALET_TOKEN_SECRET`: HMAC-SHA256 secret (required)
-- `DEMO_VALET_TOKEN_TTL_SECONDS`: token lifetime (default 86400 = 24h)
-- `DEMO_VALET_TOKEN_MAX_USES`: replay limit (default 3)
-
-#### Token Verification
-
-1. Split on `.` → payload + signature
-2. HMAC-SHA256 verify signature against payload using secret
-3. Decode payload → JSON claims
-4. Check `exp` > current time
-5. Check replay count < `max_uses`
-
-#### Artifact Download (`GET /api/demo-artifacts?token=...`)
-
-1. Verify token
-2. Extract `artifact_path` from claims
-3. Stream blob from storage to response
-4. Content-Type derived from file extension (default `application/octet-stream`)
-
----
-
 ## 5. Imagery Provider Abstraction
 
 ### 5.1 Provider Interface

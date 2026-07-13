@@ -103,8 +103,6 @@ RATE_LIMIT_FORM_MAX = 5
 RATE_LIMIT_FORM_WINDOW = 60
 RATE_LIMIT_PIPELINE_MAX = 30
 RATE_LIMIT_PIPELINE_WINDOW = 60
-RATE_LIMIT_PROXY_MAX = 60
-RATE_LIMIT_PROXY_WINDOW = 60
 
 # --- EUDR (EU Deforestation Regulation) ---
 # Article 2 cutoff date: land must have been forest on 31 Dec 2020.

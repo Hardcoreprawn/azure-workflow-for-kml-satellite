@@ -200,9 +200,6 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 | GET\|POST | `/api/monitoring` | AOI monitoring (list / create) | 200 | 401 |
 | GET\|PATCH\|DELETE | `/api/monitoring/{monitor_id}` | Monitor CRUD | 200 | 401 / 404 |
 | GET\|POST\|PATCH | `/api/org` | Organisation CRUD | 200 | 401 |
-| GET | `/api/demo-artifacts` | Demo artifact listing | 200 | 400 |
-| POST | `/api/demo-valet-tokens` | Mint demo valet token (Function auth) | 200 | 401 |
-| GET | `/api/proxy` | Tile proxy | 200 | — |
 | POST | `/api/contact-form` | Contact form submission | 200 | 400 |
 | GET | `/api/ops/dashboard` | Ops dashboard (admin) | 200 | 403 |
 
@@ -244,7 +241,6 @@ Test coverage: [test_deploy_workflow.py](tests/unit/test_deploy_workflow.py)
 │   ├── billing.py               Stripe Checkout, webhooks, customer portal
 │   ├── catalogue.py             User analysis catalogue
 │   ├── contact.py               Contact form endpoint
-│   ├── demo.py                  Demo valet token + artifact download
 │   ├── eudr.py                  Coordinate conversion endpoint
 │   ├── export.py                GeoJSON, CSV, PDF export
 │   ├── health.py                Liveness + readiness probes

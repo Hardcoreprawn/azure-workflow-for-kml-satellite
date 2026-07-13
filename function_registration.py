@@ -30,7 +30,6 @@ def _compute_blueprints() -> tuple[Any, ...]:
     from blueprints.billing import bp as billing_bp
     from blueprints.catalogue import bp as catalogue_bp
     from blueprints.contact import bp as contact_bp
-    from blueprints.demo import bp as demo_bp
     from blueprints.eudr import bp as eudr_bp
     from blueprints.export import bp as export_bp
     from blueprints.health import bp as health_bp
@@ -44,7 +43,6 @@ def _compute_blueprints() -> tuple[Any, ...]:
         health_bp,
         billing_bp,
         contact_bp,
-        demo_bp,
         eudr_bp,
         analysis_bp,
         catalogue_bp,
