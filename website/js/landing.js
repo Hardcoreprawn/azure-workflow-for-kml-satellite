@@ -55,18 +55,28 @@
     ciamAuth.login();
   }
 
+  function signup() {
+    if (typeof ciamAuth.signup === 'function') {
+      ciamAuth.signup();
+      return;
+    }
+    ciamAuth.login();
+  }
+
   function logout() {
     ciamAuth.logout();
   }
 
   function updateAuthUI() {
     const loginBtn = document.getElementById('auth-login-btn');
+    const signupBtn = document.getElementById('auth-signup-btn');
     const logoutBtn = document.getElementById('auth-logout-btn');
     const userSpan = document.getElementById('auth-user');
     const dashLink = document.getElementById('auth-dashboard-link');
 
     if (!authEnabled()) {
       if (loginBtn) loginBtn.style.display = 'none';
+      if (signupBtn) signupBtn.style.display = 'none';
       if (logoutBtn) logoutBtn.style.display = 'none';
       if (userSpan) userSpan.style.display = 'none';
       if (dashLink) dashLink.style.display = 'none';
@@ -78,11 +88,13 @@
       if (userSpan) userSpan.textContent = name;
       if (userSpan) userSpan.style.display = 'inline';
       if (loginBtn) loginBtn.style.display = 'none';
+      if (signupBtn) signupBtn.style.display = 'none';
       if (logoutBtn) logoutBtn.style.display = 'inline';
       if (dashLink) dashLink.style.display = 'inline';
     } else {
       if (userSpan) userSpan.style.display = 'none';
       if (loginBtn) loginBtn.style.display = 'inline';
+      if (signupBtn) signupBtn.style.display = 'inline';
       if (logoutBtn) logoutBtn.style.display = 'none';
       if (dashLink) dashLink.style.display = 'none';
     }
@@ -316,9 +328,11 @@
   /* --- Auth event listeners --- */
   document.addEventListener('DOMContentLoaded', function() {
     const loginBtn = document.getElementById('auth-login-btn');
+    const signupBtn = document.getElementById('auth-signup-btn');
     const logoutBtn = document.getElementById('auth-logout-btn');
 
     if (loginBtn) loginBtn.addEventListener('click', login);
+    if (signupBtn) signupBtn.addEventListener('click', signup);
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
     initFAQ();

@@ -22,7 +22,8 @@
  *   ensureMsalReady()          — Promise<PublicClientApplication|null>
  *   getAccount()               — cached MSAL AccountInfo or null
  *   getCurrentUser()           — normalised {userId,name,identityProvider} or null
- *   login()                    — start loginRedirect
+ *   login()                    — start loginRedirect (sign-in)
+ *   signup()                   — start loginRedirect with prompt=create
  *   logout(opts)               — start logoutRedirect (opts.onBeforeLogout cb)
  *   getToken()                 — Promise<string> CIAM access token (throws
  *                                CanopexAuthRedirectError if redirect started)
@@ -242,6 +243,20 @@
     });
   }
 
+  function signup() {
+    return ensureMsalReady().then(function (app) {
+      if (!app) return null;
+      return app.loginRedirect({
+        scopes: buildApiScopes(getCiamConfig()),
+        prompt: 'create',
+      });
+    }).catch(function (err) {
+      console.error('[CanopexCiam] signup loginRedirect failed:', err);
+      reportAuthFailure('signupLoginRedirect', err);
+      return null;
+    });
+  }
+
   function logout(opts) {
     var options = opts || {};
     return ensureMsalReady().then(function (app) {
@@ -356,6 +371,7 @@
     getAccount: getAccount,
     getCurrentUser: getCurrentUser,
     login: login,
+    signup: signup,
     logout: logout,
     getToken: getToken,
     reauthInPlace: reauthInPlace,
