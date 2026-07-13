@@ -244,6 +244,10 @@
   }
 
   function signup() {
+    if (!authEnabled()) {
+      console.warn('[CanopexCiam] signup skipped: auth is not enabled');
+      return Promise.resolve(null);
+    }
     return ensureMsalReady().then(function (app) {
       if (!app) return null;
       return app.loginRedirect({
