@@ -1,0 +1,144 @@
+# ─────────────────────────────────────────────────────────────
+# Dev Image — Build, test, scan, and publish treesight-dev
+#
+# The containerised dev + CI environment (ADR 0005, epic #1082). Extends
+# treesight-base with the locked dependency layer, the treesight_rs PyO3
+# extension, and the gate tools (ruff, pyright, pytest). Developers consume
+# it via .devcontainer; CI gate jobs (#1086) will consume the SAME image by
+# digest.
+#
+# Rebuilds when the dependency lock, the dev Dockerfile, the Rust extension,
+# or the devcontainer definition changes — and daily, shortly after the base
+# image, to inherit its security updates.
+#
+# Flow:
+#   1. Build Dockerfile.dev (labels the image with the uv.lock digest)
+#   2. Smoke test (treesight_rs imports; ruff/pyright/pytest present)
+#   3. Size gate
+#   4. Trivy scan (advisory + SARIF — this is a dev/CI tool image, not a
+#      deployed runtime; findings are visible in Code Scanning)
+#   5. Push to GHCR with :latest + :YYYYMMDD-<sha> tags
+# ─────────────────────────────────────────────────────────────
+name: Dev Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile.dev"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "rust/**"
+      - ".devcontainer/**"
+      - ".dockerignore"
+      - ".github/image-config.env"
+      - ".github/workflows/dev-image.yml"
+  schedule:
+    # Daily 06:00 UTC — one hour after base-image.yml (05:00) so a fresh
+    # treesight-base (Debian security fixes) is inherited within ~24 h.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write # push to GHCR
+  security-events: write # upload Trivy SARIF
+
+jobs:
+  build-test-push:
+    name: Build, Test & Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+
+      # Authenticate before any pull/push so the base image (treesight-base on
+      # GHCR) is fetched authenticated, avoiding anonymous-pull rate limits.
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tags
+        id: meta
+        run: |
+          source .github/image-config.env
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE_NAME="ghcr.io/${OWNER}/${DEV_IMAGE_REPO}"
+          BASE_IMAGE="ghcr.io/${OWNER}/${BASE_IMAGE_REPO}:latest"
+          DATE_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
+          UVLOCK_SHA="$(sha256sum uv.lock | awk '{print $1}')"
+          echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
+          echo "image_dated=${IMAGE_NAME}:${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "uvlock_sha=${UVLOCK_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build dev image
+        run: |
+          docker build \
+            -f Dockerfile.dev \
+            --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
+            --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
+            -t "${{ steps.meta.outputs.image_latest }}" \
+            -t "${{ steps.meta.outputs.image_dated }}" \
+            .
+
+      # ── Smoke test: gate tools + Rust extension are usable ─
+      - name: Smoke test dev image
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" -w /workspace \
+            "${{ steps.meta.outputs.image_latest }}" \
+            bash -c '
+              set -euo pipefail
+              python -c "import treesight_rs; assert hasattr(treesight_rs, \"compute_ndvi_array\")"
+              ruff --version
+              pyright --version
+              python -m pytest --version
+            '
+
+      # ── Size gate ──────────────────────────────────────────
+      - name: Check image size
+        run: |
+          SIZE_MB=$(docker image inspect "${{ steps.meta.outputs.image_latest }}" \
+            --format '{{ .Size }}' | awk '{printf "%.0f", $1/1024/1024}')
+          echo "Image size: ${SIZE_MB} MB"
+          # Base (~1 GB) + locked deps (~1 GB, GDAL/rasterio/pyproj/shapely) +
+          # node/uv. Fail past 2900 MB — a jump usually means the Rust toolchain
+          # leaked out of the builder stage.
+          if [ "$SIZE_MB" -gt 2900 ]; then
+            echo "::error::Dev image is ${SIZE_MB} MB — exceeds 2900 MB limit. Check Dockerfile.dev multi-stage boundary."
+            exit 1
+          fi
+
+      # ── Security scan (advisory + SARIF) ───────────────────
+      - name: Trivy container scan
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: image
+          image: ${{ steps.meta.outputs.image_latest }}
+          image-exit: "0"
+          format: sarif
+          output: trivy-dev.sarif
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
+        with:
+          sarif_file: trivy-dev.sarif
+          category: trivy-dev-image
+
+      # ── Push to GHCR ───────────────────────────────────────
+      - name: Push dev image
+        run: |
+          docker push "${{ steps.meta.outputs.image_latest }}"
+          docker push "${{ steps.meta.outputs.image_dated }}"
+          {
+            echo "### Dev Image Published :package:"
+            echo ""
+            echo "- \`${{ steps.meta.outputs.image_latest }}\`"
+            echo "- \`${{ steps.meta.outputs.image_dated }}\`"
+            echo "- uv.lock sha256: \`${{ steps.meta.outputs.uvlock_sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
