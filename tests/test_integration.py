@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from _azurite import AZURITE_CONN_STR, CONTAINERS
+from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR, CONTAINERS
 
 pytestmark = pytest.mark.integration
 
@@ -148,7 +148,7 @@ class TestIngestionE2E:
         )
 
         event = BlobEvent(
-            blob_url="http://127.0.0.1:10000/devstoreaccount1/kml-input/e2e/sample.kml",
+            blob_url=f"{AZURITE_BLOB_BASE}/kml-input/e2e/sample.kml",
             container_name="kml-input",
             blob_name="e2e/sample.kml",
             content_length=len(kml_bytes),
@@ -178,7 +178,7 @@ class TestIngestionE2E:
         storage.upload_bytes("kml-input", "e2e/farm.kml", kml_bytes)
 
         event = BlobEvent(
-            blob_url="http://127.0.0.1:10000/devstoreaccount1/kml-input/e2e/farm.kml",
+            blob_url=f"{AZURITE_BLOB_BASE}/kml-input/e2e/farm.kml",
             container_name="kml-input",
             blob_name="e2e/farm.kml",
             content_length=len(kml_bytes),

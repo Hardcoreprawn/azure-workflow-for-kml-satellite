@@ -55,6 +55,7 @@ PREVIEW_SITE_YML = ROOT / ".github" / "workflows" / "preview-site.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 MAKEFILE = ROOT / "Makefile"
+COMPOSE_YML = ROOT / "docker-compose.yml"
 DEPENDABOT_YML = ROOT / ".github" / "dependabot.yml"
 TRIVY_SCAN_ACTION = ROOT / ".github" / "actions" / "trivy-scan" / "action.yml"
 SWA_CONFIG = WEBSITE / "staticwebapp.config.json"
@@ -1485,12 +1486,81 @@ class TestCIFeedbackHygiene:
         )
 
     def test_uv_setup_enables_cache(self):
+        # Any workflow that still provisions uv per-job must enable caching to
+        # avoid re-resolving the environment on every run. The CI gate jobs no
+        # longer use setup-uv at all — they run inside the prebuilt dev image
+        # (see test_ci_gate_jobs_run_in_dev_image) — so this only bites the
+        # workflows that genuinely still call setup-uv.
         for wf in (CI_YML, SECURITY_YML):
             text = wf.read_text()
-            assert "astral-sh/setup-uv" in text and "enable-cache: true" in text, (
+            if "astral-sh/setup-uv" not in text:
+                continue
+            assert "enable-cache: true" in text, (
                 f"{wf.name} setup-uv steps must enable caching to avoid re-resolving "
                 "the environment on every job"
             )
+
+    def test_ci_gate_jobs_run_in_dev_image(self):
+        """The lint/test/integration gates run *inside* the published dev image
+        by digest (deps baked in) rather than provisioning uv per job, so
+        `local == CI` is the same image. Only image build/publish stays on the
+        bare runner. See #1086 / ADR 0005."""
+        workflow = yaml.safe_load(CI_YML.read_text())
+        jobs = workflow["jobs"]
+        assert "resolve-image" in jobs, (
+            "ci.yml must define a resolve-image job that pins the dev image digest"
+        )
+        # lint/test run directly as container jobs (job container == dev image).
+        for job_id in ("lint", "test"):
+            job = jobs[job_id]
+            needs = job.get("needs")
+            needs = [needs] if isinstance(needs, str) else (needs or [])
+            assert "resolve-image" in needs, (
+                f"{job_id} must depend on resolve-image for the pinned digest"
+            )
+            container = job.get("container") or {}
+            assert "needs.resolve-image.outputs.image" in str(container.get("image", "")), (
+                f"{job_id} must run inside the resolved dev image (by digest)"
+            )
+            steps_text = yaml.dump(job.get("steps"))
+            assert "astral-sh/setup-uv" not in steps_text, (
+                f"{job_id} must not provision uv — deps are baked into the dev image"
+            )
+        # integration drives docker compose on the bare runner because Azurite
+        # needs --skipApiVersionCheck (impossible via a GitHub `services:`
+        # container), but it still executes the suite INSIDE the resolved dev
+        # image via the ci-gate compose service. See #1086.
+        integ = jobs["integration"]
+        needs = integ.get("needs")
+        needs = [needs] if isinstance(needs, str) else (needs or [])
+        assert "resolve-image" in needs, (
+            "integration must depend on resolve-image for the pinned digest"
+        )
+        integ_text = yaml.dump(integ)
+        assert "needs.resolve-image.outputs.image" in integ_text, (
+            "integration must run the gate inside the resolved dev image "
+            "(passed to the ci-gate service via CI_GATE_IMAGE)"
+        )
+        assert "docker compose" in integ_text and "ci-gate" in integ_text, (
+            "integration must drive the azurite + ci-gate compose services "
+            "(Azurite needs --skipApiVersionCheck, unavailable to a services: container)"
+        )
+        assert "astral-sh/setup-uv" not in integ_text, (
+            "integration must not provision uv — deps are baked into the dev image"
+        )
+
+    def test_compose_azurite_skips_api_version_check(self):
+        """The azurite service must keep --skipApiVersionCheck (and --loose):
+        the installed azure-storage SDK negotiates an API version newer than
+        Azurite ships, so without the skip every request is rejected and the
+        integration suite (local and CI) fails to reach storage. See #1086."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        azurite = compose["services"]["azurite"]
+        command = azurite.get("command", "")
+        assert "--skipApiVersionCheck" in command, (
+            "docker-compose azurite must pass --skipApiVersionCheck so the SDK's "
+            "API version is accepted (else all storage calls 400/403)"
+        )
 
     def test_pr_workflows_run_on_ready_for_review(self):
         """Promoting a draft must trigger CI — so pull_request needs the

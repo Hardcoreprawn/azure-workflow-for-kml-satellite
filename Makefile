@@ -2,7 +2,7 @@
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean prune-branches \
 	_free-ports _free-func-port _free-web-ports \
-	sast scan scan-iac scan-fs scan-image lint-actions build-rust
+	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -150,6 +150,9 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff check --fix .
 
 check: lint test ## Full local gate (lint + test) — identical to CI
+
+ci-local: ## Run the gates inside the dev container image, exactly as CI does (#1086)
+	bash scripts/ci_local.sh $(GATE)
 
 # ───────────────────── GitHub Actions linting (actionlint) ─────────────────────
 # Single source of truth for actionlint — local (pre-commit) and CI run this

@@ -31,37 +31,108 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
-  lint:
-    name: Lint
+  # Resolve the published dev image to an immutable digest and check whether the
+  # repo's uv.lock still matches the deps baked into it. Gate jobs then run
+  # *inside* that exact digest, so `local == CI` is provably the same image.
+  # Only image build/publish stays on the bare runner. See ADR 0005 / #1086.
+  resolve-image:
+    name: Resolve dev image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+      stale: ${{ steps.resolve.outputs.stale }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          enable-cache: true
-      - run: uv sync --all-extras
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve digest + staleness
+        id: resolve
+        run: |
+          source .github/image-config.env
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/${DEV_IMAGE_REPO}:latest"
+          if ! docker pull "${IMAGE}"; then
+            echo "::error::dev image ${IMAGE} not found on GHCR — publish it via the Dev Image workflow (#1085) before CI can consume it."
+            exit 1
+          fi
+          DIGEST_REF=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}")
+          echo "image=${DIGEST_REF}" >> "$GITHUB_OUTPUT"
+          # Staleness is advisory: a PR that changes uv.lock legitimately runs
+          # before the image is rebuilt on merge. Report it and let gate jobs
+          # `uv sync` the delta rather than deadlocking dependency PRs.
+          if python3 scripts/check_dev_image_staleness.py --image "${IMAGE}"; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            LOCK_NOTE="fresh — deps served straight from the image"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            LOCK_NOTE="stale vs uv.lock — gate jobs will \`uv sync\` the delta"
+          fi
+          {
+            echo "### Dev image"
+            echo ""
+            echo "- Digest: \`${DIGEST_REF}\`"
+            echo "- Lock check: ${LOCK_NOTE}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    name: Lint
+    needs: resolve-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    env:
+      # Deps are baked into the dev image; `uv run` must not try to re-sync.
+      UV_NO_SYNC: "1"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - name: Sync dependency delta (only if image is stale)
+        if: needs.resolve-image.outputs.stale == 'true'
+        run: uv sync --all-extras
       # Canonical lint lives in the Makefile (single source of truth shared
       # with local `make lint` / `make check`). See issue #962.
       - run: make lint
 
   test:
     name: Test
+    needs: resolve-image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     env:
       AzureWebJobsStorage: "UseDevelopmentStorage=true"
       DEMO_VALET_TOKEN_SECRET: "ci-test-secret"  # pragma: allowlist secret
       CIAM_AUTHORITY: "https://canopex.ciamlogin.com"
       CIAM_TENANT_ID: "ci-test-tenant"
       CIAM_API_AUDIENCE: "api://ci-test-audience"
+      # Deps are baked into the dev image; `uv run` must not try to re-sync.
+      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
         with:
           # Full history so diff-cover can find the merge-base with the base branch.
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
-        with:
-          enable-cache: true
-      - run: uv sync --all-extras
+      - name: Sync dependency delta (only if image is stale)
+        if: needs.resolve-image.outputs.stale == 'true'
+        run: uv sync --all-extras
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
       # Changed-lines test coverage — REPORT-ONLY for now (never fails the build).
@@ -94,35 +165,46 @@ jobs:
 
   integration:
     name: Integration (Azurite)
+    needs: resolve-image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     # Runs the @pytest.mark.integration suite against a real Azurite instance.
-    # Without a live Azurite the suite silently skips (see #1022) — this job
-    # starts one so the tests actually execute.
-    env:
-      AzureWebJobsStorage: "UseDevelopmentStorage=true"
+    # Azurite needs --skipApiVersionCheck/--loose (the installed azure-storage
+    # SDK negotiates an API version newer than Azurite ships, so every request
+    # is otherwise rejected), which a GitHub `services:` container cannot pass
+    # (no command override). So instead of a container job we drive docker
+    # compose on the bare runner: the maintained `azurite` service carries the
+    # correct flags + healthcheck, and the `ci-gate` service runs make test-int
+    # INSIDE the resolved dev image on the same network — the exact same path as
+    # local `make ci-local`. See #1086.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
-      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
-          enable-cache: true
-      # Azurite must be started as a docker-run step, NOT a `services:` container:
-      # a service container cannot override the image command, and Azurite binds
-      # to 127.0.0.1 by default (unreachable via the published port). We need
-      # --blobHost/--queueHost/--tableHost 0.0.0.0 (+ --loose/--skipApiVersionCheck)
-      # to match docker-compose.yml — the proven-working local config.
-      - name: Start Azurite
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # ci-gate runs inside the exact resolved dev image (by digest); the
+      # azurite dependency is brought up healthy first via depends_on.
+      - name: Integration tests (Azurite via docker compose)
+        env:
+          CI_GATE_IMAGE: ${{ needs.resolve-image.outputs.image }}
+          STALE: ${{ needs.resolve-image.outputs.stale }}
         run: |
-          docker run -d --name azurite \
-            -p 10000:10000 -p 10001:10001 -p 10002:10002 \
-            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
-            azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 \
-            --loose --skipApiVersionCheck
-      # Deps + tests run via `make` so the exact same commands work locally
-      # and in CI (single source of truth). `make test-int` waits for Azurite
-      # and creates the pipeline containers before the suite collects.
-      - run: make setup
-      - name: Integration tests (make test-int)
-        run: make test-int
+          if [ "${STALE}" = "true" ]; then
+            # Image deps lag uv.lock (dependency PR before rebuild) — sync the
+            # delta inside the gate first, mirroring the lint/test jobs.
+            docker compose --profile ci run --rm ci-gate \
+              sh -c "uv sync --all-extras && make test-int"
+          else
+            docker compose --profile ci run --rm ci-gate make test-int
+          fi
+      - name: Tear down compose
+        if: always()
+        run: docker compose --profile ci down -v --remove-orphans
 
   build:
     name: Build Docker image
