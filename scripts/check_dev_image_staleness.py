@@ -60,7 +60,10 @@ def staleness_reason(repo_digest: str, image_label: str | None) -> str | None:
     current ``uv.lock`` digest.
     """
     if image_label is None:
-        return f"image has no {LABEL_KEY} label (built without the uv.lock digest)"
+        return (
+            f"image has no {LABEL_KEY} label "
+            "(image not pulled, or built without the uv.lock digest)"
+        )
     if image_label != repo_digest:
         return (
             "uv.lock has changed since the dev image was built "
@@ -71,13 +74,21 @@ def staleness_reason(repo_digest: str, image_label: str | None) -> str | None:
 
 
 def read_image_label(image_ref: str, label_key: str = LABEL_KEY) -> str | None:
-    """Inspect a local/pulled image and return its label value, or ``None``."""
-    result = subprocess.run(
-        ["docker", "image", "inspect", image_ref],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    """Inspect a local/pulled image and return its label value, or ``None``.
+
+    Returns ``None`` when Docker is unavailable, the image is not present, or
+    the label is absent — all "cannot confirm freshness" cases.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image_ref],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        # docker binary not on PATH — cannot determine freshness.
+        return None
     if result.returncode != 0:
         return None
     return parse_image_label(result.stdout, label_key)

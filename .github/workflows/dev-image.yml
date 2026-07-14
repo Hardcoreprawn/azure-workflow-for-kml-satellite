@@ -30,6 +30,8 @@ on:
       - "uv.lock"
       - "rust/**"
       - ".devcontainer/**"
+      - ".dockerignore"
+      - ".github/image-config.env"
       - ".github/workflows/dev-image.yml"
   schedule:
     # Daily 06:00 UTC — one hour after base-image.yml (05:00) so a fresh
@@ -49,22 +51,35 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
 
+      # Authenticate before any pull/push so the base image (treesight-base on
+      # GHCR) is fetched authenticated, avoiding anonymous-pull rate limits.
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set image tags
         id: meta
         run: |
           source .github/image-config.env
-          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${DEV_IMAGE_REPO}"
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE_NAME="ghcr.io/${OWNER}/${DEV_IMAGE_REPO}"
+          BASE_IMAGE="ghcr.io/${OWNER}/${BASE_IMAGE_REPO}:latest"
           DATE_TAG="$(date -u +%Y%m%d)-${GITHUB_SHA::8}"
           UVLOCK_SHA="$(sha256sum uv.lock | awk '{print $1}')"
           echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
           echo "image_dated=${IMAGE_NAME}:${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "uvlock_sha=${UVLOCK_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build dev image
         run: |
           docker build \
             -f Dockerfile.dev \
+            --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
             --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
             -t "${{ steps.meta.outputs.image_latest }}" \
             -t "${{ steps.meta.outputs.image_dated }}" \
@@ -82,8 +97,6 @@ jobs:
               ruff --version
               pyright --version
               python -m pytest --version
-              python scripts/check_dev_image_staleness.py \
-                --image "${{ steps.meta.outputs.image_latest }}" --lock uv.lock || true
             '
 
       # ── Size gate ──────────────────────────────────────────
@@ -118,13 +131,6 @@ jobs:
           category: trivy-dev-image
 
       # ── Push to GHCR ───────────────────────────────────────
-      - name: Log in to GHCR
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Push dev image
         run: |
           docker push "${{ steps.meta.outputs.image_latest }}"
