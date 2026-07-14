@@ -1485,11 +1485,44 @@ class TestCIFeedbackHygiene:
         )
 
     def test_uv_setup_enables_cache(self):
+        # Any workflow that still provisions uv per-job must enable caching to
+        # avoid re-resolving the environment on every run. The CI gate jobs no
+        # longer use setup-uv at all — they run inside the prebuilt dev image
+        # (see test_ci_gate_jobs_run_in_dev_image) — so this only bites the
+        # workflows that genuinely still call setup-uv.
         for wf in (CI_YML, SECURITY_YML):
             text = wf.read_text()
-            assert "astral-sh/setup-uv" in text and "enable-cache: true" in text, (
+            if "astral-sh/setup-uv" not in text:
+                continue
+            assert "enable-cache: true" in text, (
                 f"{wf.name} setup-uv steps must enable caching to avoid re-resolving "
                 "the environment on every job"
+            )
+
+    def test_ci_gate_jobs_run_in_dev_image(self):
+        """The lint/test/integration gates run *inside* the published dev image
+        by digest (deps baked in) rather than provisioning uv per job, so
+        `local == CI` is the same image. Only image build/publish stays on the
+        bare runner. See #1086 / ADR 0005."""
+        workflow = yaml.safe_load(CI_YML.read_text())
+        jobs = workflow["jobs"]
+        assert "resolve-image" in jobs, (
+            "ci.yml must define a resolve-image job that pins the dev image digest"
+        )
+        for job_id in ("lint", "test", "integration"):
+            job = jobs[job_id]
+            needs = job.get("needs")
+            needs = [needs] if isinstance(needs, str) else (needs or [])
+            assert "resolve-image" in needs, (
+                f"{job_id} must depend on resolve-image for the pinned digest"
+            )
+            container = job.get("container") or {}
+            assert "needs.resolve-image.outputs.image" in str(container.get("image", "")), (
+                f"{job_id} must run inside the resolved dev image (by digest)"
+            )
+            steps_text = yaml.dump(job.get("steps"))
+            assert "astral-sh/setup-uv" not in steps_text, (
+                f"{job_id} must not provision uv — deps are baked into the dev image"
             )
 
     def test_pr_workflows_run_on_ready_for_review(self):
