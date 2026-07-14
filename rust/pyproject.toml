@@ -1,0 +1,28 @@
+# Packaging metadata for the treesight_rs PyO3 extension.
+#
+# maturin drives cargo to build the extension and produces a proper
+# Python-importable module (correctly named + ABI-tagged) or a wheel.
+# Because the build backend is maturin, any PEP 517 frontend (uv/pip)
+# can build and install treesight_rs like a normal dependency — so it
+# rides the same uv/lockfile rails as the rest of the toolchain rather
+# than needing a bespoke "compile the .so and copy it in" step.
+#
+# Version is inherited from rust/Cargo.toml (single source of truth).
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "treesight-rs"
+description = "PyO3 acceleration for Canopex raster operations (NDVI, change detection, SCL resample)"
+requires-python = ">=3.11"
+dynamic = ["version"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+# Import name exposed to Python (matches the #[pymodule] in src/lib.rs).
+module-name = "treesight_rs"
+manifest-path = "Cargo.toml"

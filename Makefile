@@ -2,7 +2,7 @@
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
 	test-upload test test-int lint fmt check smoke clean prune-branches \
 	_free-ports _free-func-port _free-web-ports \
-	sast scan scan-iac scan-fs scan-image lint-actions
+	sast scan scan-iac scan-fs scan-image lint-actions build-rust
 
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
@@ -126,6 +126,9 @@ dev-rebuild: _free-ports ## Rebuild and restart all services
 	docker compose up --build -d --force-recreate
 
 # ───────────────────── Testing ─────────────────────
+
+build-rust: ## Build + install the treesight_rs PyO3 extension into the active venv (needs a Rust toolchain; baked into the dev image)
+	uv pip install --force-reinstall ./rust
 
 test-upload: ## Upload sample KML and trigger pipeline
 	uv run python scripts/simulate_upload.py

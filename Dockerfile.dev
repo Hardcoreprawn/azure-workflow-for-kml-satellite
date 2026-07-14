@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────
+# Canopex Dev Image  (ADR 0005 — single containerised dev + CI path)
+#
+# Extends treesight-base with the full locked dependency layer, the
+# treesight_rs PyO3 extension, and the quality-gate tools (ruff,
+# pyright, pytest). Developers consume it via .devcontainer; CI gate
+# jobs (#1086) consume the SAME image by digest.
+#
+# Multi-stage: the Rust toolchain (~1 GB) compiles the treesight_rs
+# wheel in a throwaway builder, and only the wheel ships in the final
+# image — keeping the runtime image lean.
+#
+# Native-library parity (GDAL/Fiona/rasterio + treesight_rs) comes from
+# the locked dependency layer, not the Functions host.
+# ─────────────────────────────────────────────────────────────
+ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
+
+# ── Stage 1: build the treesight_rs wheel ───────────────────
+FROM ${BASE_IMAGE} AS rust-build
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH=/opt/cargo/bin:$PATH
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain stable
+COPY rust/ /build/rust/
+RUN uv build --wheel --out-dir /wheels /build/rust
+
+# ── Stage 2: runtime dev image ──────────────────────────────
+FROM ${BASE_IMAGE}
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+
+# Digest of the uv.lock this image was built from. The publish workflow sets
+# it; a stale image (lock changed but image not rebuilt) is detected by
+# scripts/check_dev_image_staleness.py comparing this label to the repo lock.
+ARG UVLOCK_SHA=""
+LABEL org.canopex.uvlock-sha256="${UVLOCK_SHA}"
+
+# nodejs is pyright's language-server runtime; git for devcontainer use.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends nodejs git; \
+    rm -rf /var/lib/apt/lists/*
+
+# Project environment lives OUTSIDE the workspace so a devcontainer / CI
+# bind-mount of the repo does not clobber the baked environment.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    VIRTUAL_ENV=/opt/venv \
+    UV_LINK_MODE=copy \
+    PATH=/opt/venv/bin:$PATH
+
+WORKDIR /workspace
+
+# Locked dependency layer (deps only; the project is importable from the
+# mounted workspace via pytest pythonpath = ["."], see pyproject.toml).
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --all-extras --no-install-project
+
+# Install the pre-built treesight_rs wheel from the builder stage.
+COPY --from=rust-build /wheels/ /tmp/wheels/
+RUN uv pip install --python /opt/venv /tmp/wheels/*.whl && rm -rf /tmp/wheels
+
+CMD ["bash"]

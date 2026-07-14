@@ -1,0 +1,21 @@
+{
+  "name": "Canopex Dev",
+  "image": "ghcr.io/hardcoreprawn/treesight-dev:latest",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.terminal.activateEnvironment": false
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "rust-lang.rust-analyzer"
+      ]
+    }
+  }
+}
