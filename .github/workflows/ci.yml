@@ -171,40 +171,40 @@ jobs:
       contents: read
       packages: read
     # Runs the @pytest.mark.integration suite against a real Azurite instance.
-    # Without a live Azurite the suite silently skips (see #1022) — the service
-    # below starts one so the tests actually execute.
-    container:
-      image: ${{ needs.resolve-image.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    # Azurite runs as a `services:` container (no docker-in-docker). The job
-    # container reaches it by the network alias `azurite`, so the scripts/tests
-    # target that host instead of loopback via AZURITE_BLOB_HOST (wired through
-    # _azurite.py). The azurite:3.35.0 default CMD already binds 0.0.0.0
-    # (verified), so no command override is needed. See #1086.
-    services:
-      azurite:
-        image: mcr.microsoft.com/azure-storage/azurite:3.35.0
-        ports:
-          - 10000:10000
-          - 10001:10001
-          - 10002:10002
-    env:
-      AzureWebJobsStorage: "UseDevelopmentStorage=true"
-      AZURITE_BLOB_HOST: azurite
-      # Deps are baked into the dev image; `uv run` must not try to re-sync.
-      UV_NO_SYNC: "1"
+    # Azurite needs --skipApiVersionCheck/--loose (the installed azure-storage
+    # SDK negotiates an API version newer than Azurite ships, so every request
+    # is otherwise rejected), which a GitHub `services:` container cannot pass
+    # (no command override). So instead of a container job we drive docker
+    # compose on the bare runner: the maintained `azurite` service carries the
+    # correct flags + healthcheck, and the `ci-gate` service runs make test-int
+    # INSIDE the resolved dev image on the same network — the exact same path as
+    # local `make ci-local`. See #1086.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
-      - name: Sync dependency delta (only if image is stale)
-        if: needs.resolve-image.outputs.stale == 'true'
-        run: uv sync --all-extras
-      # Tests run via `make` so the exact same command works locally and in CI
-      # (single source of truth). `make test-int` waits for Azurite and creates
-      # the pipeline containers before the suite collects.
-      - name: Integration tests (make test-int)
-        run: make test-int
+      - name: Log in to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # ci-gate runs inside the exact resolved dev image (by digest); the
+      # azurite dependency is brought up healthy first via depends_on.
+      - name: Integration tests (Azurite via docker compose)
+        env:
+          CI_GATE_IMAGE: ${{ needs.resolve-image.outputs.image }}
+          STALE: ${{ needs.resolve-image.outputs.stale }}
+        run: |
+          if [ "${STALE}" = "true" ]; then
+            # Image deps lag uv.lock (dependency PR before rebuild) — sync the
+            # delta inside the gate first, mirroring the lint/test jobs.
+            docker compose --profile ci run --rm ci-gate \
+              sh -c "uv sync --all-extras && make test-int"
+          else
+            docker compose --profile ci run --rm ci-gate make test-int
+          fi
+      - name: Tear down compose
+        if: always()
+        run: docker compose --profile ci down -v --remove-orphans
 
   build:
     name: Build Docker image

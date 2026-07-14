@@ -35,6 +35,27 @@ services:
     command: ["python", "init_storage_docker.py"]
     restart: "no"
 
+  # One-off gate runner used by `make ci-local` / scripts/ci_local.sh (#1086).
+  # Runs the integration suite inside the published dev image against the
+  # azurite service above, reusing its --skipApiVersionCheck/--loose config and
+  # healthcheck-gated ordering. Guarded by the `ci` profile so it never starts
+  # with a normal `docker compose up`. The image tag is overridable so the same
+  # service can target treesight-dev:local (freshly built) or a pulled digest.
+  ci-gate:
+    image: ${CI_GATE_IMAGE:-treesight-dev:local}
+    profiles: ["ci"]
+    depends_on:
+      azurite:
+        condition: service_healthy
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    environment:
+      UV_NO_SYNC: "1"
+      AZURITE_BLOB_HOST: azurite
+      AzureWebJobsStorage: "UseDevelopmentStorage=true"  # pragma: allowlist secret
+    command: ["make", "test-int"]
+
   func:
     build: .
     container_name: canopex-func
