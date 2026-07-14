@@ -3,7 +3,7 @@
 #
 # The containerised dev + CI environment (ADR 0005, epic #1082). Extends
 # treesight-base with the locked dependency layer, the treesight_rs PyO3
-# extension, and the gate tools (ruff, pyright, pytest). Developers consume
+# extension, and the gate tools (ruff, pyright, pytest, make). Developers consume
 # it via .devcontainer; CI gate jobs (#1086) will consume the SAME image by
 # digest.
 #
@@ -13,7 +13,7 @@
 #
 # Flow:
 #   1. Build Dockerfile.dev (labels the image with the uv.lock digest)
-#   2. Smoke test (treesight_rs imports; ruff/pyright/pytest present)
+#   2. Smoke test (treesight_rs imports; ruff/pyright/pytest/make present)
 #   3. Size gate
 #   4. Trivy scan (advisory + SARIF — this is a dev/CI tool image, not a
 #      deployed runtime; findings are visible in Code Scanning)
@@ -97,6 +97,7 @@ jobs:
               ruff --version
               pyright --version
               python -m pytest --version
+              make --version
             '
 
       # ── Size gate ──────────────────────────────────────────

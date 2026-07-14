@@ -45,10 +45,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
 ARG UVLOCK_SHA=""
 LABEL org.canopex.uvlock-sha256="${UVLOCK_SHA}"
 
-# nodejs is pyright's language-server runtime; git for devcontainer use.
+# nodejs is pyright's language-server runtime; git for devcontainer use;
+# make is the canonical entrypoint for the quality gates (make lint/test/
+# test-int) run both locally and by CI (#1086).
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends nodejs git; \
+    apt-get install -y --no-install-recommends nodejs git make; \
     rm -rf /var/lib/apt/lists/*
 
 # Project environment lives OUTSIDE the workspace so a devcontainer / CI
