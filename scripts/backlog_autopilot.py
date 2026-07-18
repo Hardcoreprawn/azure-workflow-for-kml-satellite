@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -50,6 +51,7 @@ class Config:
     reserve_ratio: float
     max_new_assignments: int
     max_open_autopilot_prs: int
+    allow_idle_fallback: bool
 
 
 def _days_in_month(today: date) -> int:
@@ -118,6 +120,32 @@ def issue_priority_score(labels: set[str]) -> int:
     return score
 
 
+def fallback_priority_score(labels: set[str]) -> int:
+    """Score an issue for the idle-fallback tier (next-most-valuable work).
+
+    This tier is only consulted when no ``moscow:must`` / ``moscow:should``
+    issue is eligible, so the fleet does not sit idle with budget available.
+    It relaxes exactly one MoSCoW rung — ``moscow:could`` — and keeps every
+    other safety gate intact: the excluded labels (``epic`` / ``no-autopilot``
+    / ``blocked``) still score 0, and ``moscow:wont`` and untagged issues stay
+    ineligible (``wont`` is an explicit do-not-do; untagged work is unrated and
+    must not be picked up autonomously). Security and ``priority:*`` refine
+    ordering within the tier exactly as in the primary scorer.
+    """
+    if labels & _AUTOPILOT_EXCLUDED_LABELS:
+        return 0
+    if "moscow:could" not in labels:
+        return 0
+    score = 500
+    if "security" in labels:
+        score += 500
+    if "priority:now" in labels:
+        score += 100
+    elif "priority:next" in labels:
+        score += 50
+    return score
+
+
 _BLOCKING_RE = re.compile(r"(?:blocked[\s-]*by|depends[\s-]*on)\s*:?\s*#(\d+)", re.IGNORECASE)
 
 
@@ -157,6 +185,7 @@ def select_issues(
     *,
     max_new_assignments: int,
     issues_with_open_prs: set[int] | None = None,
+    allow_idle_fallback: bool = True,
 ) -> list[IssueCandidate]:
     # An issue is held back if it declares a dependency on another issue that
     # is still open (present in this open-issue snapshot). Self-clearing: once
@@ -166,23 +195,56 @@ def select_issues(
     # re-dispatches work already in progress.
     open_numbers = {issue.number for issue in issues}
     in_progress = issues_with_open_prs or set()
+
+    primary = _rank_eligible(
+        issues,
+        scorer=issue_priority_score,
+        in_progress=in_progress,
+        open_numbers=open_numbers,
+        limit=max_new_assignments,
+    )
+    if primary or not allow_idle_fallback:
+        return primary
+
+    # Idle fallback: no Must/Should work is dispatchable, so relax to the next
+    # most valuable tier (Could) rather than leave the fleet idle. All other
+    # gates (excluded labels, assignment, in-progress, dependency blocks) still
+    # apply via the shared ranker.
+    return _rank_eligible(
+        issues,
+        scorer=fallback_priority_score,
+        in_progress=in_progress,
+        open_numbers=open_numbers,
+        limit=max_new_assignments,
+    )
+
+
+def _rank_eligible(
+    issues: list[IssueCandidate],
+    *,
+    scorer: Callable[[set[str]], int],
+    in_progress: set[int],
+    open_numbers: set[int],
+    limit: int,
+) -> list[IssueCandidate]:
     eligible = [
         issue
         for issue in issues
-        if issue_priority_score(issue.labels) > 0
+        if scorer(issue.labels) > 0
         and not issue.assignees
         and issue.number not in in_progress
         and not (parse_blocking_refs(issue.body) & open_numbers)
     ]
     ordered = sorted(
         eligible,
-        # MoSCoW tier DESC (must > should), then OLDEST issue first within a
-        # tier (lower number sorts ahead under reverse=True via the negation)
-        # so agents drain the backlog bottom-up instead of grabbing the newest.
-        key=lambda issue: (issue_priority_score(issue.labels), -issue.number),
+        # Score DESC (higher tier / security / priority first), then OLDEST
+        # issue first within a score band (lower number sorts ahead under
+        # reverse=True via the negation) so agents drain the backlog bottom-up
+        # instead of grabbing the newest.
+        key=lambda issue: (scorer(issue.labels), -issue.number),
         reverse=True,
     )
-    return ordered[:max_new_assignments]
+    return ordered[:limit]
 
 
 def _github_api(
@@ -399,6 +461,10 @@ def parse_args() -> argparse.Namespace:
     # agent work gets finished before more is started. See docs/ROADMAP.md
     # "Working agreements".
     parser.add_argument("--max-open-autopilot-prs", type=int, default=3)
+    # Idle fallback: when no Must/Should work is dispatchable, relax to the
+    # next most valuable tier (Could) so the fleet does not sit idle with
+    # budget available. Pass --no-idle-fallback to keep the strict behaviour.
+    parser.add_argument("--no-idle-fallback", action="store_true")
     parser.add_argument("--today", default="")
     return parser.parse_args()
 
@@ -420,6 +486,7 @@ def main() -> int:
         reserve_ratio=float(args.reserve_ratio),
         max_new_assignments=int(args.max_new_assignments),
         max_open_autopilot_prs=int(args.max_open_autopilot_prs),
+        allow_idle_fallback=not bool(args.no_idle_fallback),
     )
 
     budget = compute_budget_status(
@@ -449,13 +516,19 @@ def main() -> int:
         issues,
         max_new_assignments=cfg.max_new_assignments,
         issues_with_open_prs=in_progress,
+        allow_idle_fallback=cfg.allow_idle_fallback,
     )
 
     if not targets:
         print("no eligible issues found")
         return 0
 
-    print("selected issues:")
+    tier = (
+        "primary (Must/Should)"
+        if issue_priority_score(targets[0].labels) > 0
+        else "fallback (Could)"
+    )
+    print(f"selected issues [{tier} tier]:")
     for target in targets:
         print(f"- #{target.number} {target.title} ({target.url})")
 

@@ -8,6 +8,7 @@ from scripts.backlog_autopilot import (
     assign_issue_to_copilot,
     compute_budget_status,
     count_open_copilot_prs,
+    fallback_priority_score,
     parse_args,
     parse_blocking_refs,
     parse_closing_refs,
@@ -154,6 +155,103 @@ def test_select_issues_skips_assigned_issues() -> None:
     ]
     selected = select_issues(issues, max_new_assignments=2)
     assert [issue.number for issue in selected] == [11]
+
+
+def test_select_issues_falls_back_to_could_when_no_must_or_should() -> None:
+    # Idle fallback: when nothing in the Must/Should tier is dispatchable, the
+    # autopilot relaxes to the next most valuable tier (Could) rather than idle.
+    issues = [
+        _issue(1, {"moscow:could"}),
+        _issue(2, {"moscow:could"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=1)
+    # Oldest Could first, consistent with primary-tier ordering.
+    assert [issue.number for issue in selected] == [1]
+
+
+def test_select_issues_does_not_use_fallback_when_primary_available() -> None:
+    # Could work must never be picked while Must/Should work is dispatchable.
+    issues = [
+        _issue(1, {"moscow:could"}),
+        _issue(2, {"moscow:should"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert [issue.number for issue in selected] == [2]
+
+
+def test_select_issues_fallback_disabled_returns_empty() -> None:
+    # With the fallback gate off, an all-Could backlog yields nothing.
+    issues = [_issue(1, {"moscow:could"})]
+    selected = select_issues(issues, max_new_assignments=5, allow_idle_fallback=False)
+    assert selected == []
+
+
+def test_select_issues_fallback_still_excludes_wont_untagged_and_gated() -> None:
+    # The fallback tier relaxes exactly one rung (Could). Won't, untagged, and
+    # excluded-label work stay ineligible even when nothing else is available.
+    issues = [
+        _issue(1, {"moscow:wont"}),
+        _issue(2, set()),  # untagged
+        _issue(3, {"moscow:could", "no-autopilot"}),
+        _issue(4, {"moscow:could", "epic"}),
+        _issue(5, {"moscow:could", "blocked"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    assert selected == []
+
+
+def test_select_issues_fallback_respects_assignment_and_dependency_blocks() -> None:
+    # Fallback Could work is still skipped when assigned or blocked by an open
+    # issue, exactly like the primary tier.
+    issues = [
+        _issue(10, {"moscow:could"}, {"someone"}),
+        _issue(11, {"moscow:could"}, body="Blocked by #12."),
+        _issue(12, {"moscow:could"}),
+    ]
+    selected = select_issues(issues, max_new_assignments=5)
+    # #10 assigned, #11 blocked by open #12 -> only #12 is dispatchable.
+    assert [issue.number for issue in selected] == [12]
+
+
+def test_fallback_priority_score_ranks_could_and_gates_others() -> None:
+    assert fallback_priority_score({"moscow:could"}) > 0
+    # Security and priority hints refine ordering within the Could tier.
+    assert fallback_priority_score({"moscow:could", "security"}) > fallback_priority_score(
+        {"moscow:could"}
+    )
+    assert fallback_priority_score({"moscow:could", "priority:now"}) > fallback_priority_score(
+        {"moscow:could"}
+    )
+    # Non-Could and gated labels score 0.
+    assert fallback_priority_score({"moscow:should"}) == 0
+    assert fallback_priority_score({"moscow:wont"}) == 0
+    assert fallback_priority_score(set()) == 0
+    assert fallback_priority_score({"moscow:could", "no-autopilot"}) == 0
+
+
+def test_no_idle_fallback_flag_defaults_to_enabled() -> None:
+    # The idle fallback is on by default; --no-idle-fallback opts out.
+    argv = [
+        "backlog_autopilot",
+        "--owner",
+        "o",
+        "--repo",
+        "r",
+        "--monthly-budget-usd",
+        "200",
+        "--month-spend-used-usd",
+        "0",
+    ]
+    import sys
+
+    original = sys.argv
+    try:
+        sys.argv = argv
+        assert parse_args().no_idle_fallback is False
+        sys.argv = [*argv, "--no-idle-fallback"]
+        assert parse_args().no_idle_fallback is True
+    finally:
+        sys.argv = original
 
 
 def test_assign_issue_to_copilot_adds_actor_id(monkeypatch) -> None:
