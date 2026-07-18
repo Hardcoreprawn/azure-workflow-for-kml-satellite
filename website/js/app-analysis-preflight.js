@@ -182,27 +182,118 @@
 
   // ── Cost estimator for EUDR preflight ────────────────────────
 
+  function formatCurrencyGbp(amount) {
+    var fixed = Math.max(Number(amount) || 0, 0).toFixed(2);
+    if (fixed.endsWith('.00')) return '£' + fixed.slice(0, -3);
+    return '£' + fixed;
+  }
+
+  function resolveQuotaRemaining(billing) {
+    if (!billing) return null;
+    if (billing.quota_remaining != null) return Math.max(Number(billing.quota_remaining) || 0, 0);
+    if (billing.runs_remaining != null) return Math.max(Number(billing.runs_remaining) || 0, 0);
+    if (billing.trial_remaining != null) return Math.max(Number(billing.trial_remaining) || 0, 0);
+    return null;
+  }
+
+  function resolvePlanTier(billing) {
+    if (!billing) return '';
+    var tier = billing.plan || billing.tier || '';
+    if (typeof tier !== 'string') return '';
+    return tier.trim().toLowerCase();
+  }
+
+  function resolveOverageRate(billing, planTier) {
+    if (billing && billing.overage_rate != null) {
+      return Number(billing.overage_rate);
+    }
+    if (billing && billing.capabilities && billing.capabilities.overage_rate != null) {
+      return Number(billing.capabilities.overage_rate);
+    }
+    if (planTier === 'starter') return 1.50;
+    if (planTier === 'pro') return 0.80;
+    if (planTier === 'team') return 0.50;
+    if (planTier === 'eudr_pro') return 3.00;
+    return null;
+  }
+
+  function eudrTierRateForUsage(periodParcelsUsed) {
+    if (periodParcelsUsed >= 500) return 1.80;
+    if (periodParcelsUsed >= 100) return 2.50;
+    return 3.00;
+  }
+
+  function estimateTieredEudrOverage(overageParcels, periodParcelsUsedBeforeRun, includedBeforeRun) {
+    var overageTotal = 0;
+    var usageForFirstOverageParcel = Math.max(periodParcelsUsedBeforeRun, 0) + Math.max(includedBeforeRun, 0);
+    var firstRate = null;
+    var singleRate = true;
+
+    for (var idx = 0; idx < overageParcels; idx += 1) {
+      var rate = eudrTierRateForUsage(usageForFirstOverageParcel + idx);
+      if (firstRate == null) firstRate = rate;
+      if (rate !== firstRate) singleRate = false;
+      overageTotal += rate;
+    }
+
+    var labelRate = singleRate ? firstRate : (overageTotal / overageParcels);
+    var multiplierSuffix = singleRate ? '/parcel' : ' avg/parcel';
+    return {
+      total: overageTotal,
+      rateLabel: formatCurrencyGbp(labelRate) + multiplierSuffix,
+    };
+  }
+
   function computeEudrCostEstimate(parcelCount) {
     var activeProfile = _getActiveProfile ? _getActiveProfile() : {};
-    var eudrModule = window.CanopexEudr || {};
-    if (typeof eudrModule.computeCostEstimate === 'function') {
-      return eudrModule.computeCostEstimate(parcelCount, activeProfile);
+    if (!activeProfile.enableParcelCostEstimate || !parcelCount) return null;
+    var billing = _getLatestBillingStatus ? _getLatestBillingStatus() : null;
+    if (!billing) return null;
+
+    var planTier = resolvePlanTier(billing);
+    var quotaRemaining = resolveQuotaRemaining(billing);
+    if (quotaRemaining == null) return null;
+
+    if (parcelCount <= quotaRemaining) {
+      return 'Included in your plan (' + (quotaRemaining - parcelCount) + ' remaining after this run)';
     }
-    if (!activeProfile.enableParcelCostEstimate || !parcelCount) return '—';
-    var billing = typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null;
-    if (!billing) return '—';
-    if (!billing.subscribed) {
-      var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
-      if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' free assessment' + (remaining !== 1 ? 's' : '') + ' left';
-      return 'Subscribe to continue';
+
+    var overageParcels = parcelCount - quotaRemaining;
+    if ((planTier === 'free' || planTier === 'demo' || !planTier) && quotaRemaining <= 0) {
+      return 'This run requires a paid subscription';
     }
-    var used = billing.period_parcels_used || 0;
-    var included = billing.included_parcels || 10;
-    var remainingIncluded = Math.max(included - used, 0);
-    var overageParcels = Math.max(parcelCount - remainingIncluded, 0);
-    if (overageParcels === 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
-    var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
-    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + (overageParcels * rate).toFixed(2);
+
+    var overageRate = resolveOverageRate(billing, planTier);
+    if (overageRate == null || Number.isNaN(overageRate)) {
+      return 'This run requires a paid subscription';
+    }
+
+    var estimate = {
+      total: overageParcels * overageRate,
+      rateLabel: formatCurrencyGbp(overageRate) + '/parcel',
+    };
+    if (planTier === 'eudr_pro' && billing.period_parcels_used != null) {
+      estimate = estimateTieredEudrOverage(
+        overageParcels,
+        Number(billing.period_parcels_used) || 0,
+        quotaRemaining
+      );
+    }
+
+    return formatCurrencyGbp(estimate.total) + ' estimated overage (' + overageParcels + ' × ' + estimate.rateLabel + ')';
+  }
+
+  function renderPreflightCost(estimateText) {
+    var costEl = document.getElementById('app-preflight-cost');
+    if (!costEl) return;
+    var costWrap = costEl.parentElement;
+    if (!estimateText) {
+      costEl.textContent = '';
+      if (costWrap) costWrap.hidden = true;
+      return;
+    }
+    if (costWrap) costWrap.hidden = false;
+    costEl.textContent = estimateText;
   }
 
   // ── Input tab switching (KML / CSV) ──────────────────────────
@@ -294,7 +385,6 @@
     var aoisEl = document.getElementById('app-preflight-aois');
     var spreadEl = document.getElementById('app-preflight-spread');
     var quotaEl = document.getElementById('app-preflight-quota');
-    var costEl = document.getElementById('app-preflight-cost');
     if (!headlineEl || !modeEl || !summaryEl || !featuresEl || !aoisEl || !spreadEl || !quotaEl) return null;
 
     var activeProfile = _getActiveProfile ? _getActiveProfile() : {};
@@ -311,7 +401,7 @@
       aoisEl.textContent = '0';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      if (costEl) costEl.textContent = '—';
+      renderPreflightCost(null);
       renderPreflightWarnings([{ tone: 'info', text: 'Preflight will show warnings here after you paste or upload KML.' }]);
       renderPreflightMap(null);
       var submitBtn = document.getElementById('app-analysis-submit-btn');
@@ -329,7 +419,7 @@
       aoisEl.textContent = '—';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      if (costEl) costEl.textContent = '—';
+      renderPreflightCost(null);
       renderPreflightWarnings([{ tone: 'error', text: preflight.error }]);
       renderPreflightMap(null);
       return preflight;
@@ -342,7 +432,7 @@
     aoisEl.textContent = String(preflight.aoiCount);
     spreadEl.textContent = formatDistance(preflight.maxSpreadKm);
     quotaEl.textContent = preflight.quotaImpact;
-    if (costEl) costEl.textContent = computeEudrCostEstimate(preflight.aoiCount);
+    renderPreflightCost(computeEudrCostEstimate(preflight.aoiCount));
     renderPreflightWarnings(preflight.warnings);
     renderPreflightMap(preflight.polygons);
     var submitBtn = document.getElementById('app-analysis-submit-btn');
