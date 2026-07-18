@@ -599,17 +599,22 @@
   </div>
 </div>
 
-<!-- Override reason modal (#672) -->
+<!-- Override reason modal (#672, updated #866 — assessment note + review) -->
 <div class="app-override-backdrop" id="app-override-backdrop" hidden>
   <div class="app-override-modal" role="dialog" aria-modal="true" aria-labelledby="app-override-modal-title">
-    <h3 id="app-override-modal-title">Override determination</h3>
-    <p class="app-override-modal-hint">Record a reason why this parcel should be marked compliant despite the algorithmic flag. This creates an immutable audit trail.</p>
+    <h3 id="app-override-modal-title">Add assessment note</h3>
+    <p class="app-override-modal-hint">Record your local knowledge about this parcel. The note and your identity will appear in the exported audit PDF so the decision is traceable.</p>
     <div class="app-override-original" id="app-override-original"></div>
-    <label class="app-override-label" for="app-override-reason-input">Reason <span class="app-override-required">(min 20 characters)</span></label>
-    <textarea class="app-override-reason-input" id="app-override-reason-input" rows="4" maxlength="500" placeholder="Explain why the algorithmic determination is incorrect for this parcel&#x2026;" aria-label="Override reason"></textarea>
-    <div class="app-override-charcount" id="app-override-charcount">0 / 500</div>
+    <label class="app-override-label" for="app-override-reason-input">Assessment note <span class="app-override-required">(required)</span></label>
+    <textarea class="app-override-reason-input" id="app-override-reason-input" rows="4" maxlength="1000" placeholder="e.g. Seasonal clearing — farmer confirmed replanting schedule — documentation held on file&#x2026;" aria-label="Assessment note"></textarea>
+    <div class="app-override-charcount" id="app-override-charcount">0 / 1000</div>
+    <label class="app-override-compliant-label">
+      <input type="checkbox" id="app-override-mark-compliant">
+      Mark as compliant with explanation <span class="app-override-required">(requires note ≥ 20 characters)</span>
+    </label>
+    <div id="app-evidence-review-note" class="app-evidence-review-existing" hidden></div>
     <div class="app-override-actions">
-      <button class="btn btn-primary" id="app-override-confirm-btn" type="button" disabled>Confirm override</button>
+      <button class="btn btn-primary" id="app-override-confirm-btn" type="button" disabled>Save assessment</button>
       <button class="btn btn-secondary" id="app-override-cancel-btn" type="button">Cancel</button>
     </div>
     <div class="app-override-error" id="app-override-error" hidden></div>

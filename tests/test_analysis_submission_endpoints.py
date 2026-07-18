@@ -1900,6 +1900,247 @@ class TestAnnotationEndpoints:
 # ---------------------------------------------------------------------------
 
 
+class TestParcelReviewEndpoints:
+    """Endpoint-level tests for GET/POST /api/analysis/{instance_id}[/parcel/{idx}]/review."""
+
+    def _make_post_req(self, instance_id: str, aoi_index: int, body: dict) -> func.HttpRequest:
+        import json as _json
+
+        return func.HttpRequest(
+            method="POST",
+            url=f"/api/analysis/{instance_id}/parcel/{aoi_index}/review",
+            headers={
+                "Origin": TEST_LOCAL_ORIGIN,
+                "Authorization": "******",
+                "Content-Type": "application/json",
+            },
+            params={},
+            route_params={"instance_id": instance_id, "aoi_index": str(aoi_index)},
+            body=_json.dumps(body).encode(),
+        )
+
+    def _make_get_req(self, instance_id: str) -> func.HttpRequest:
+        return func.HttpRequest(
+            method="GET",
+            url=f"/api/analysis/{instance_id}/review",
+            headers={"Origin": TEST_LOCAL_ORIGIN, "Authorization": "******"},
+            params={},
+            route_params={"instance_id": instance_id},
+            body=b"",
+        )
+
+    def test_review_requires_auth(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = func.HttpRequest(
+            method="POST",
+            url="/api/analysis/inst-abc/parcel/0/review",
+            headers={"Origin": TEST_LOCAL_ORIGIN},
+            params={},
+            route_params={"instance_id": "inst-abc", "aoi_index": "0"},
+            body=b'{"override": true, "note": "long enough explanation here for the test"}',
+        )
+        with patch(
+            "blueprints.pipeline.annotations.check_auth",
+            side_effect=ValueError("Unauthorized"),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 401
+
+    def test_review_rejects_non_integer_aoi_index(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = func.HttpRequest(
+            method="POST",
+            url="/api/analysis/inst-abc/parcel/abc/review",
+            headers={
+                "Origin": TEST_LOCAL_ORIGIN,
+                "Authorization": "******",
+                "Content-Type": "application/json",
+            },
+            params={},
+            route_params={"instance_id": "inst-abc", "aoi_index": "abc"},
+            body=b'{"override": false, "note": "valid note text here"}',
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"integer" in resp.get_body()
+
+    def test_review_requires_note(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req("inst-abc", 0, {"override": False, "note": ""})
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+
+    def test_review_override_requires_min_length_note(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req("inst-abc", 0, {"override": True, "note": "too short"})
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"20 characters" in resp.get_body()
+
+    def test_review_saves_with_audit_fields(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        note = "Seasonal clearing — farmer confirmed replanting schedule on record."
+        req = self._make_post_req("inst-abc", 2, {"override": True, "note": note})
+        with (
+            patch(
+                "blueprints.pipeline.annotations.check_auth",
+                return_value=({}, "reviewer@org.com"),
+            ),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            resp = analysis_parcel_review(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["saved"] is True
+        assert data["aoi_index"] == 2
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        review = upserted["parcel_reviews"]["2"]
+        assert review["override"] is True
+        assert review["note"] == note
+        assert review["reviewed_by"] == "reviewer@org.com"
+        assert "reviewed_at" in review
+
+    def test_review_informational_note_without_override(self):
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        note = "Short note."
+        req = self._make_post_req("inst-abc", 0, {"override": False, "note": note})
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            resp = analysis_parcel_review(req)
+
+        assert resp.status_code == 200
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        review = upserted["parcel_reviews"]["0"]
+        assert review["override"] is False
+        assert review["note"] == note
+
+    def test_review_list_requires_auth(self):
+        from blueprints.pipeline.annotations import analysis_review_list
+
+        req = func.HttpRequest(
+            method="GET",
+            url="/api/analysis/inst-abc/review",
+            headers={"Origin": TEST_LOCAL_ORIGIN},
+            params={},
+            route_params={"instance_id": "inst-abc"},
+            body=b"",
+        )
+        with patch(
+            "blueprints.pipeline.annotations.check_auth",
+            side_effect=ValueError("Unauthorized"),
+        ):
+            resp = analysis_review_list(req)
+        assert resp.status_code == 401
+
+    def test_review_list_returns_empty_when_no_reviews(self):
+        from blueprints.pipeline.annotations import analysis_review_list
+
+        req = self._make_get_req("inst-abc")
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(_FAKE_RUN),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+        ):
+            resp = analysis_review_list(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["instance_id"] == "inst-abc"
+        assert data["reviews"] == {}
+
+    def test_review_list_returns_saved_reviews(self):
+        from blueprints.pipeline.annotations import analysis_review_list
+
+        run_with_reviews = dict(_FAKE_RUN)
+        run_with_reviews["parcel_reviews"] = {
+            "1": {
+                "override": True,
+                "note": "Seasonal clearing confirmed",
+                "reviewed_by": "user-123",
+                "reviewed_at": "2026-05-21T10:00:00Z",
+            }
+        }
+        req = self._make_get_req("inst-abc")
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=run_with_reviews,
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+        ):
+            resp = analysis_review_list(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["reviews"]["1"]["override"] is True
+        assert data["reviews"]["1"]["reviewed_by"] == "user-123"
+
+
+# ---------------------------------------------------------------------------
+# timelapse-analysis-save ownership check (issue #696)
+# ---------------------------------------------------------------------------
+
+
 class TestTimelapseAnalysisSave:
     """Regression tests for the run ownership gate on POST /api/timelapse-analysis-save."""
 
