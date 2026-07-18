@@ -1145,7 +1145,7 @@ def _render_parcel_review_section(pdf: Any, review: "dict[str, Any] | None") -> 
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(180, 100, 0)
     label = (
-        "Human-reviewed -- compliance accepted with explanation"
+        "Human-reviewed \u2014 compliance accepted with explanation"
         if review.get("override")
         else "Human review note attached"
     )
@@ -1542,9 +1542,9 @@ async def export_data(
     headers = cors_headers(req)
 
     # Fetch the run record for annotation-enriched exports (best-effort; non-fatal).
-    _run_record: dict[str, Any] | None = None
+    run_record: dict[str, Any] | None = None
     if fmt in {"eudr-csv", "eudr-pdf"}:
-        _run_record = _fetch_run_record_for_export(instance_id)
+        run_record = _fetch_run_record_for_export(instance_id)
 
     if fmt == "geojson":
         geojson = _build_geojson(manifest)
@@ -1591,7 +1591,7 @@ async def export_data(
         )
 
     if fmt == "eudr-csv":
-        csv_body = _build_eudr_csv(manifest, run_record=_run_record)
+        csv_body = _build_eudr_csv(manifest, run_record=run_record)
         headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.csv"'
         return func.HttpResponse(
             csv_body,
@@ -1601,8 +1601,8 @@ async def export_data(
         )
 
     if fmt == "eudr-pdf":
-        _parcel_reviews = (_run_record.get("parcel_reviews") or {}) if _run_record else None
-        pdf_bytes = build_eudr_audit_pdf(manifest, instance_id, parcel_reviews=_parcel_reviews)
+        parcel_reviews = (run_record.get("parcel_reviews") or {}) if run_record else None
+        pdf_bytes = build_eudr_audit_pdf(manifest, instance_id, parcel_reviews=parcel_reviews)
         headers["Content-Disposition"] = (
             f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
         )

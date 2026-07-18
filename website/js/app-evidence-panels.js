@@ -49,6 +49,10 @@
   var currentOverrideParcelKey = null;
   var currentOverrideAoiData   = null;
 
+  /* ---- review constants (must match backend _MIN_REVIEW_NOTE_LENGTH) ---- */
+
+  var MIN_REVIEW_NOTE_LENGTH = 20;
+
   /* ---- parcel key helper ---- */
 
   function parcelKeyForIndex(idx) {
@@ -220,7 +224,9 @@
     // Show existing review note in the modal original field when reopening
     var reviewNoteEl = document.getElementById('app-evidence-review-note');
     if (reviewNoteEl) {
-      reviewNoteEl.textContent = review && review.note ? review.note : '';
+      var existingNote = review && review.note ? review.note : '';
+      reviewNoteEl.textContent = existingNote;
+      reviewNoteEl.hidden = !existingNote;
     }
   }
 
@@ -281,9 +287,9 @@
     var note       = reasonInput.value.trim();
     var doOverride = overrideChk ? overrideChk.checked : false;
     if (!note) return;
-    if (doOverride && note.length < 20) {
+    if (doOverride && note.length < MIN_REVIEW_NOTE_LENGTH) {
       if (errorEl) {
-        errorEl.textContent = 'Note must be at least 20 characters when marking as reviewed.';
+        errorEl.textContent = 'Note must be at least ' + MIN_REVIEW_NOTE_LENGTH + ' characters when marking as reviewed.';
         errorEl.hidden = false;
       }
       return;
