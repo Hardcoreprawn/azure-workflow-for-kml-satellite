@@ -30,6 +30,17 @@
   var _getLatestBillingStatus = null;
   var _getWorkspaceRoleConfig = null;
   var _onPreflightUpdate = null;
+  var PLAN_OVERAGE_RATE_GBP = {
+    starter: 1.50,
+    pro: 0.80,
+    team: 0.50,
+    eudr_pro: 3.00,
+  };
+  var EUDR_TIERED_RATE_GBP = {
+    base: 3.00,
+    threshold100: 2.50,
+    threshold500: 1.80,
+  };
 
   // Module-local Leaflet map instance for the preflight thumbnail.
   var preflightMap = null;
@@ -190,6 +201,10 @@
 
   function resolveQuotaRemaining(billing) {
     if (!billing) return null;
+    // Billing payloads vary by endpoint/profile:
+    // - quota_remaining (new parcel-quota payloads)
+    // - runs_remaining (general billing/status payload)
+    // - trial_remaining (legacy EUDR billing payload)
     if (billing.quota_remaining != null) return Math.max(Number(billing.quota_remaining) || 0, 0);
     if (billing.runs_remaining != null) return Math.max(Number(billing.runs_remaining) || 0, 0);
     if (billing.trial_remaining != null) return Math.max(Number(billing.trial_remaining) || 0, 0);
@@ -210,31 +225,48 @@
     if (billing && billing.capabilities && billing.capabilities.overage_rate != null) {
       return Number(billing.capabilities.overage_rate);
     }
-    if (planTier === 'starter') return 1.50;
-    if (planTier === 'pro') return 0.80;
-    if (planTier === 'team') return 0.50;
-    if (planTier === 'eudr_pro') return 3.00;
+    if (Object.prototype.hasOwnProperty.call(PLAN_OVERAGE_RATE_GBP, planTier)) {
+      return PLAN_OVERAGE_RATE_GBP[planTier];
+    }
     return null;
   }
 
   function eudrTierRateForUsage(periodParcelsUsed) {
-    if (periodParcelsUsed >= 500) return 1.80;
-    if (periodParcelsUsed >= 100) return 2.50;
-    return 3.00;
+    if (periodParcelsUsed >= 500) return EUDR_TIERED_RATE_GBP.threshold500;
+    if (periodParcelsUsed >= 100) return EUDR_TIERED_RATE_GBP.threshold100;
+    return EUDR_TIERED_RATE_GBP.base;
+  }
+
+  function isFreeTier(planTier) {
+    return planTier === 'free' || planTier === 'demo' || !planTier;
   }
 
   function estimateTieredEudrOverage(overageParcels, periodParcelsUsedBeforeRun, includedBeforeRun) {
-    var overageTotal = 0;
-    var usageForFirstOverageParcel = Math.max(periodParcelsUsedBeforeRun, 0) + Math.max(includedBeforeRun, 0);
-    var firstRate = null;
-    var singleRate = true;
-
-    for (var idx = 0; idx < overageParcels; idx += 1) {
-      var rate = eudrTierRateForUsage(usageForFirstOverageParcel + idx);
-      if (firstRate == null) firstRate = rate;
-      if (rate !== firstRate) singleRate = false;
-      overageTotal += rate;
+    if (overageParcels <= 0) {
+      return {
+        total: 0,
+        rateLabel: '',
+      };
     }
+
+    var periodUsageBeforeOverage = Math.max(periodParcelsUsedBeforeRun, 0) + Math.max(includedBeforeRun, 0);
+    // Base band: parcels billed while cumulative period usage is below 100.
+    // Mid band: parcels billed while cumulative usage is 100–499.
+    // Top band: parcels billed once cumulative usage reaches 500+.
+    // ``periodUsageBeforeOverage`` reflects usage before the first overage parcel.
+    // ``overageParcels`` is then split across these contiguous rate bands.
+    var baseBandCount = Math.max(Math.min(100 - periodUsageBeforeOverage, overageParcels), 0);
+    var midBandStart = periodUsageBeforeOverage + baseBandCount;
+    var midBandCount = Math.max(Math.min(500 - midBandStart, overageParcels - baseBandCount), 0);
+    var topBandCount = Math.max(overageParcels - baseBandCount - midBandCount, 0);
+
+    var overageTotal = (baseBandCount * EUDR_TIERED_RATE_GBP.base)
+      + (midBandCount * EUDR_TIERED_RATE_GBP.threshold100)
+      + (topBandCount * EUDR_TIERED_RATE_GBP.threshold500);
+
+    var firstRate = eudrTierRateForUsage(periodUsageBeforeOverage);
+    var lastRate = eudrTierRateForUsage(periodUsageBeforeOverage + overageParcels - 1);
+    var singleRate = firstRate === lastRate;
 
     var labelRate = singleRate ? firstRate : (overageTotal / overageParcels);
     var multiplierSuffix = singleRate ? '/parcel' : ' avg/parcel';
@@ -259,12 +291,14 @@
     }
 
     var overageParcels = parcelCount - quotaRemaining;
-    if ((planTier === 'free' || planTier === 'demo' || !planTier) && quotaRemaining <= 0) {
+    // Missing plan tier is treated as free-tier semantics.
+    var freeTierWithoutQuota = isFreeTier(planTier) && quotaRemaining <= 0;
+    if (freeTierWithoutQuota) {
       return 'This run requires a paid subscription';
     }
 
     var overageRate = resolveOverageRate(billing, planTier);
-    if (overageRate == null || Number.isNaN(overageRate)) {
+    if (overageRate == null) {
       return 'This run requires a paid subscription';
     }
 
