@@ -91,9 +91,19 @@ Current temporary exceptions:
 - `AVD-AZU-0057` (Storage Analytics logging — superseded by `azurerm_monitor_diagnostic_setting`)
 - `AVD-AZU-0061` (Infrastructure encryption — already enabled; Trivy false positive)
 
-Container CVE suppressions are **not allowed** in `.trivyignore`.
-HIGH/CRITICAL container findings must be fixed at source; `.trivyignore` is
-reserved for infra policy exceptions (`AZU-*`/`AVD-*`) only.
+HIGH/CRITICAL container findings must be fixed at source when the repository
+controls or can directly upgrade the affected component. A temporary container
+CVE exception is allowed only when all of the following are true:
+
+- the vulnerable component is vendored by an upstream runtime and cannot be
+  upgraded independently in this repository;
+- a fresh no-cache image build and unsuppressed scan prove the finding remains
+  after consuming the newest supported upstream artifact;
+- the entry links a tracking issue, records the upstream owner and rationale,
+  and expires within 30 days.
+
+All other container findings remain blocking. The reconciler removes an
+exception automatically when a patched upstream artifact becomes available.
 
 ### Build-time auto-reconciliation
 
