@@ -198,14 +198,37 @@
     overrideEl.hidden = !(isNonCompliant || override || review);
 
     if (review && review.override) {
-      // New review-layer override: amber "Reviewed" badge
+      // New review-layer override: amber "Reviewed" badge.
+      // Both edit and revert controls remain reachable so the reviewer can
+      // update or withdraw the assessment.
       if (badgeEl) {
         badgeEl.hidden      = false;
         badgeEl.className   = 'app-evidence-override-badge reviewed';
         badgeEl.textContent = '\u26A0\uFE0F Reviewed \u2014 compliant with explanation';
       }
-      if (overrideBtn) overrideBtn.hidden = true;
-      if (revertBtn)   revertBtn.hidden   = true;
+      if (overrideBtn) {
+        overrideBtn.hidden      = false;
+        overrideBtn.textContent = 'Edit assessment';
+      }
+      if (revertBtn) {
+        revertBtn.hidden      = false;
+        revertBtn.textContent = 'Revert to algorithmic';
+      }
+    } else if (review) {
+      // Review note attached but no override — show badge and allow editing.
+      if (badgeEl) {
+        badgeEl.hidden      = false;
+        badgeEl.className   = 'app-evidence-override-badge reviewed';
+        badgeEl.textContent = '\u{1F4DD} Review note attached';
+      }
+      if (overrideBtn) {
+        overrideBtn.hidden      = false;
+        overrideBtn.textContent = 'Edit assessment';
+      }
+      if (revertBtn) {
+        revertBtn.hidden      = false;
+        revertBtn.textContent = 'Revert to algorithmic';
+      }
     } else if (override) {
       // Legacy parcel_overrides badge
       if (badgeEl) {
@@ -217,7 +240,10 @@
       if (revertBtn)   revertBtn.hidden   = false;
     } else {
       if (badgeEl)     badgeEl.hidden     = true;
-      if (overrideBtn) overrideBtn.hidden = !isNonCompliant;
+      if (overrideBtn) {
+        overrideBtn.hidden      = !isNonCompliant;
+        overrideBtn.textContent = 'Override determination';
+      }
       if (revertBtn)   revertBtn.hidden   = true;
     }
 
@@ -342,24 +368,45 @@
     var revertBtn = document.getElementById('app-evidence-override-revert-btn');
     if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
 
+    // When an active review exists (review layer, #866), revert via the review
+    // endpoint so the audit history is updated.  Only fall back to the legacy
+    // parcel_overrides endpoint when there is no active review.
+    var manifest  = _getManifest ? _getManifest() : null;
+    var hasReview = manifest && manifest.parcel_reviews &&
+                    manifest.parcel_reviews[currentOverrideParcelKey];
+
     try {
       if (_getApiReady) await _getApiReady();
-      var res = await _apiFetch('/api/analysis/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: instanceId,
-          parcel_key: currentOverrideParcelKey,
-          reason: '',
-          revert: true,
-        }),
-      });
-      if (res.ok) {
-        var manifest = _getManifest ? _getManifest() : null;
-        if (manifest && manifest.parcel_overrides) {
-          delete manifest.parcel_overrides[currentOverrideParcelKey];
+      if (hasReview) {
+        var url = '/api/analysis/' + instanceId + '/parcel/' + currentOverrideParcelKey + '/review';
+        var res = await _apiFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'revert' }),
+        });
+        if (res.ok) {
+          if (manifest && manifest.parcel_reviews) {
+            delete manifest.parcel_reviews[currentOverrideParcelKey];
+          }
+          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
         }
-        renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+      } else {
+        var legacyRes = await _apiFetch('/api/analysis/override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instance_id: instanceId,
+            parcel_key: currentOverrideParcelKey,
+            reason: '',
+            revert: true,
+          }),
+        });
+        if (legacyRes.ok) {
+          if (manifest && manifest.parcel_overrides) {
+            delete manifest.parcel_overrides[currentOverrideParcelKey];
+          }
+          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+        }
       }
     } catch (e) {
       console.warn('Override revert error:', e);

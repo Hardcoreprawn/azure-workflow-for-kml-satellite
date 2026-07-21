@@ -1133,37 +1133,74 @@ def _audit_methodology(pdf: Any) -> None:
     pdf.ln(2)
 
 
-def _render_parcel_review_section(pdf: Any, review: "dict[str, Any] | None") -> None:
+def _render_parcel_review_section(
+    pdf: Any,
+    review: "dict[str, Any] | None",
+    history: "list[dict[str, Any]] | None" = None,
+) -> None:
     """Append the human-review audit trail block to a PDF parcel section.
 
-    Called only when a reviewer has submitted an assessment note.  The block is
-    rendered in amber so it stands out visually from the algorithmic findings.
+    When ``history`` is provided and contains more than one revision the full
+    audit history is rendered in chronological order so the PDF shows every
+    decision, not just the most recent one.  The block is rendered in amber so
+    it stands out visually from the algorithmic findings.
     """
-    if not review or not review.get("note"):
+    revisions: list[dict] = list(history) if history else []
+    # Fall back to the latest-state record when no detailed history is stored.
+    if not revisions and review and review.get("note"):
+        revisions = [{"action": "save", **review}]
+
+    if not revisions:
         return
+
     pdf.ln(2)
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_text_color(180, 100, 0)
-    label = (
-        "Human-reviewed \u2014 compliance accepted with explanation"
-        if review.get("override")
-        else "Human review note attached"
-    )
-    pdf.cell(0, 6, label, new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 9)
-    pdf.set_text_color(0, 0, 0)
-    pdf.multi_cell(0, 5, _safe_text(f"Note: {review['note']}"))
-    reviewed_by = review.get("reviewed_by", "")
-    reviewed_at = review.get("reviewed_at", "")
-    if reviewed_by or reviewed_at:
-        at_str = reviewed_at[:19] if reviewed_at else ""
-        pdf.cell(
-            0,
-            5,
-            f"Reviewer: {reviewed_by}  |  Reviewed at: {at_str}",
-            new_x="LMARGIN",
-            new_y="NEXT",
+    if len(revisions) == 1:
+        single = revisions[0]
+        label = (
+            "Human-reviewed \u2014 compliance accepted with explanation"
+            if single.get("override")
+            else "Human review note attached"
         )
+        pdf.cell(0, 6, _safe_text(label), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(0, 0, 0)
+        note = single.get("note", "")
+        if note:
+            pdf.multi_cell(0, 5, _safe_text(f"Note: {note}"))
+        reviewed_by = single.get("reviewed_by", "")
+        reviewed_at = single.get("reviewed_at", "")
+        if reviewed_by or reviewed_at:
+            at_str = reviewed_at[:19] if reviewed_at else ""
+            pdf.cell(
+                0,
+                5,
+                f"Reviewer: {reviewed_by}  |  Reviewed at: {at_str}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+    else:
+        pdf.cell(
+            0, 6, "Human review audit history (all revisions)", new_x="LMARGIN", new_y="NEXT"
+        )
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(0, 0, 0)
+        for i, rev in enumerate(revisions, start=1):
+            action = rev.get("action", "save")
+            reviewed_by = rev.get("reviewed_by", "")
+            reviewed_at = rev.get("reviewed_at", "")
+            at_str = reviewed_at[:19] if reviewed_at else ""
+            if action == "revert":
+                summary = f"Revision {i}: Reverted to algorithmic — {reviewed_by} at {at_str}"
+            elif rev.get("override"):
+                summary = f"Revision {i}: Compliant with explanation — {reviewed_by} at {at_str}"
+            else:
+                summary = f"Revision {i}: Note attached — {reviewed_by} at {at_str}"
+            pdf.cell(0, 5, _safe_text(summary), new_x="LMARGIN", new_y="NEXT")
+            note = rev.get("note", "")
+            if note:
+                pdf.multi_cell(0, 4, _safe_text(f"    Note: {note}"))
 
 
 def _audit_single_parcel(
@@ -1171,12 +1208,14 @@ def _audit_single_parcel(
     aoi: dict[str, Any],
     section_num: str,
     review: dict[str, Any] | None = None,
+    review_history: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write a single parcel's assessment in the audit report.
 
-    When ``review`` is provided and contains a human override (``override=True``),
-    a clearly-labelled "Human-reviewed" section is appended so the PDF is
-    legally defensible in an audit.
+    When ``review_history`` is provided the full audit history is rendered so
+    every revision is visible in the PDF.  When only ``review`` is available the
+    latest-state record is shown as a single-revision block.  When neither is
+    present no review section is emitted.
     """
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(
@@ -1297,7 +1336,7 @@ def _audit_single_parcel(
             pdf.cell(0, 4, f"    {scene}", new_x="LMARGIN", new_y="NEXT")
 
     # Human review audit trail — printed only when a reviewer submitted an assessment
-    _render_parcel_review_section(pdf, review)
+    _render_parcel_review_section(pdf, review, history=review_history)
 
     pdf.ln(4)
 
@@ -1306,6 +1345,7 @@ def _audit_per_parcel(
     pdf: Any,
     per_aoi: list[dict[str, Any]],
     parcel_reviews: dict[str, Any] | None = None,
+    parcel_review_history: dict[str, Any] | None = None,
 ) -> None:
     """Write detailed per-parcel assessment sections."""
     pdf.set_text_color(0, 0, 0)
@@ -1337,7 +1377,8 @@ def _audit_per_parcel(
             continue
 
         review = (parcel_reviews or {}).get(str(idx))
-        _audit_single_parcel(pdf, aoi, section_num, review=review)
+        history = (parcel_review_history or {}).get(str(idx))
+        _audit_single_parcel(pdf, aoi, section_num, review=review, review_history=history)
 
 
 def _audit_appendix(
@@ -1439,6 +1480,7 @@ def build_eudr_audit_pdf(
     manifest: dict[str, Any],
     instance_id: str = "",
     parcel_reviews: dict[str, Any] | None = None,
+    parcel_review_history: dict[str, Any] | None = None,
 ) -> bytes:
     """Build an audit-grade EUDR evidence PDF report (#587).
 
@@ -1446,9 +1488,10 @@ def build_eudr_audit_pdf(
     methodology, per-parcel assessment, post-2020 NDVI appendix, and
     legal disclaimer.
 
-    When ``parcel_reviews`` is provided (keyed by string AOI index), each
-    parcel section in the PDF includes the human-review audit trail for any
-    parcels that received a reviewer note or override.
+    When ``parcel_review_history`` is provided (keyed by string AOI index),
+    each parcel section renders the full immutable revision history so auditors
+    can see every decision, not just the most recent one.  ``parcel_reviews``
+    is used as a fallback when history is absent (backward-compatible).
     """
     from fpdf import FPDF
 
@@ -1470,7 +1513,12 @@ def build_eudr_audit_pdf(
     per_aoi = manifest.get("per_aoi_enrichment", [])
     if per_aoi:
         pdf.add_page()
-        _audit_per_parcel(pdf, per_aoi, parcel_reviews=parcel_reviews)
+        _audit_per_parcel(
+            pdf,
+            per_aoi,
+            parcel_reviews=parcel_reviews,
+            parcel_review_history=parcel_review_history,
+        )
 
     # 5. Appendix: post-2020 NDVI timeseries
     _audit_appendix(pdf, manifest)
@@ -1602,7 +1650,15 @@ async def export_data(
 
     if fmt == "eudr-pdf":
         parcel_reviews = (run_record.get("parcel_reviews") or {}) if run_record else None
-        pdf_bytes = build_eudr_audit_pdf(manifest, instance_id, parcel_reviews=parcel_reviews)
+        parcel_review_history = (
+            (run_record.get("parcel_review_history") or {}) if run_record else None
+        )
+        pdf_bytes = build_eudr_audit_pdf(
+            manifest,
+            instance_id,
+            parcel_reviews=parcel_reviews,
+            parcel_review_history=parcel_review_history,
+        )
         headers["Content-Disposition"] = (
             f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
         )

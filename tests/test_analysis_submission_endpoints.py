@@ -2135,6 +2135,264 @@ class TestParcelReviewEndpoints:
         assert data["reviews"]["1"]["override"] is True
         assert data["reviews"]["1"]["reviewed_by"] == "user-123"
 
+    # --- audit history (append-only) ----------------------------------------
+
+    def _patch_standard_guards(self):
+        from unittest.mock import patch
+
+        return (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        )
+
+    def test_second_save_preserves_first_revision(self):
+        """A second save must append to history, not overwrite the first revision."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        first_note = "Seasonal clearing — farmer confirmed on file, first review."
+        second_note = "Updated: additional documentation received confirming no deforestation."
+        run = dict(_FAKE_RUN)
+
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                side_effect=lambda _: dict(run),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            # First save — captured via upsert_item side_effect so state carries over
+            def capture_upsert(_, record):
+                run.update(record)
+
+            mock_cosmos.upsert_item.side_effect = capture_upsert
+
+            req1 = self._make_post_req("inst-abc", 1, {"override": True, "note": first_note})
+            resp1 = analysis_parcel_review(req1)
+            assert resp1.status_code == 200
+
+            req2 = self._make_post_req("inst-abc", 1, {"override": True, "note": second_note})
+            resp2 = analysis_parcel_review(req2)
+            assert resp2.status_code == 200
+
+        history = run["parcel_review_history"]["1"]
+        assert len(history) == 2, "both revisions must be in history"
+        assert history[0]["note"] == first_note
+        assert history[1]["note"] == second_note
+        # Latest-state lookup reflects second save
+        assert run["parcel_reviews"]["1"]["note"] == second_note
+
+    def test_revert_preserves_all_prior_revisions(self):
+        """Revert must append a revision to history and clear latest state."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        note = "Seasonal clearing — farmer confirmed, compliant."
+        run = dict(_FAKE_RUN)
+        run["parcel_reviews"] = {
+            "0": {"override": True, "note": note, "reviewed_by": "reviewer@org.com", "reviewed_at": "2026-05-21T10:00:00Z"}
+        }
+        run["parcel_review_history"] = {
+            "0": [{"action": "save", "override": True, "note": note, "reviewed_by": "reviewer@org.com", "reviewed_at": "2026-05-21T10:00:00Z"}]
+        }
+
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=dict(run),
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+            patch("blueprints.pipeline.annotations.cosmos") as mock_cosmos,
+        ):
+            req = self._make_post_req("inst-abc", 0, {"action": "revert"})
+            resp = analysis_parcel_review(req)
+
+        assert resp.status_code == 200
+        body = json.loads(resp.get_body())
+        assert body["action"] == "revert"
+        assert body["revision_count"] == 2
+
+        upserted = mock_cosmos.upsert_item.call_args[0][1]
+        history = upserted["parcel_review_history"]["0"]
+        assert len(history) == 2
+        assert history[0]["action"] == "save"   # original revision preserved
+        assert history[1]["action"] == "revert"  # revert appended
+        # Latest-state cleared
+        assert "0" not in upserted.get("parcel_reviews", {})
+
+    def test_rejects_string_override(self):
+        """String 'true' is not a JSON boolean and must be rejected."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req(
+            "inst-abc", 0,
+            {"override": "true", "note": "Seasonal clearing confirmed by farmer visit."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"boolean" in resp.get_body()
+
+    def test_rejects_string_false_override(self):
+        """String 'false' must be rejected — bool('false') == True would be wrong."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req(
+            "inst-abc", 0,
+            {"override": "false", "note": "Some note here."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"boolean" in resp.get_body()
+
+    def test_rejects_numeric_override(self):
+        """Numeric 1 is not a JSON boolean and must be rejected."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req(
+            "inst-abc", 0,
+            {"override": 1, "note": "Seasonal clearing confirmed."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"boolean" in resp.get_body()
+
+    def test_rejects_null_override(self):
+        """null override is not a JSON boolean and must be rejected."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = self._make_post_req(
+            "inst-abc", 0,
+            {"override": None, "note": "Some note here."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"boolean" in resp.get_body()
+
+    def test_rejects_negative_aoi_index(self):
+        """aoi_index < 0 must be rejected before any DB lookup."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        req = func.HttpRequest(
+            method="POST",
+            url="/api/analysis/inst-abc/parcel/-1/review",
+            headers={"Origin": TEST_LOCAL_ORIGIN, "Authorization": "******"},
+            params={},
+            route_params={"instance_id": "inst-abc", "aoi_index": "-1"},
+            body=b'{"override": false, "note": "valid note text here"}',
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+
+    def test_rejects_aoi_index_equal_to_count(self):
+        """aoi_index == aoi_count is out of range (zero-based) and must be rejected."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        run = {**_FAKE_RUN, "aoi_count": 3}  # valid indexes 0, 1, 2
+        req = self._make_post_req(
+            "inst-abc", 3,
+            {"override": False, "note": "Some note about this parcel."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=run,
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"out of range" in resp.get_body()
+
+    def test_rejects_very_large_aoi_index(self):
+        """A very large aoi_index must be rejected when aoi_count is known."""
+        from blueprints.pipeline.annotations import analysis_parcel_review
+
+        run = {**_FAKE_RUN, "aoi_count": 5}
+        req = self._make_post_req(
+            "inst-abc", 999,
+            {"override": False, "note": "Note for a non-existent parcel."},
+        )
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=run,
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+        ):
+            resp = analysis_parcel_review(req)
+        assert resp.status_code == 400
+        assert b"out of range" in resp.get_body()
+
+    def test_review_list_returns_history(self):
+        """GET /review should return review_history alongside latest reviews."""
+        from blueprints.pipeline.annotations import analysis_review_list
+
+        run_with_history = dict(_FAKE_RUN)
+        run_with_history["parcel_reviews"] = {
+            "0": {"override": True, "note": "Updated note", "reviewed_by": "user-123", "reviewed_at": "2026-05-22T10:00:00Z"}
+        }
+        run_with_history["parcel_review_history"] = {
+            "0": [
+                {"action": "save", "override": True, "note": "First note", "reviewed_by": "user-123", "reviewed_at": "2026-05-21T10:00:00Z"},
+                {"action": "save", "override": True, "note": "Updated note", "reviewed_by": "user-123", "reviewed_at": "2026-05-22T10:00:00Z"},
+            ]
+        }
+        req = self._make_get_req("inst-abc")
+        with (
+            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
+            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations.get_run_record_by_instance_id",
+                return_value=run_with_history,
+            ),
+            patch("blueprints.pipeline.annotations.assert_run_write_access"),
+        ):
+            resp = analysis_review_list(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert len(data["review_history"]["0"]) == 2
+        assert data["review_history"]["0"][0]["note"] == "First note"
+        assert data["reviews"]["0"]["note"] == "Updated note"
+
 
 # ---------------------------------------------------------------------------
 # timelapse-analysis-save ownership check (issue #696)

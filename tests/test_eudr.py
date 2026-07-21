@@ -666,3 +666,79 @@ class TestPdfExport:
         from blueprints.export import _ALLOWED_FORMATS
 
         assert "pdf" in _ALLOWED_FORMATS
+
+    def test_eudr_audit_pdf_includes_review_history(self):
+        """build_eudr_audit_pdf must render all revisions from parcel_review_history."""
+        from blueprints.export import build_eudr_audit_pdf
+
+        manifest = {
+            "eudr_mode": True,
+            "per_aoi_enrichment": [
+                {
+                    "name": "Test Parcel",
+                    "area_ha": 1.5,
+                    "center": {"lat": 1.0, "lon": 2.0},
+                    "coords": [[1.0, 2.0], [1.1, 2.0], [1.1, 2.1], [1.0, 2.0]],
+                    "determination": {"deforestation_free": False},
+                }
+            ],
+        }
+        parcel_review_history = {
+            "0": [
+                {
+                    "action": "save",
+                    "override": True,
+                    "note": "First review note — farmer confirmed replanting.",
+                    "reviewed_by": "user-a@org.com",
+                    "reviewed_at": "2026-05-21T10:00:00Z",
+                },
+                {
+                    "action": "save",
+                    "override": True,
+                    "note": "Second review note — additional documentation received.",
+                    "reviewed_by": "user-b@org.com",
+                    "reviewed_at": "2026-05-22T09:00:00Z",
+                },
+            ]
+        }
+        pdf_bytes = build_eudr_audit_pdf(
+            manifest,
+            "test-instance",
+            parcel_review_history=parcel_review_history,
+        )
+        assert pdf_bytes[:4] == b"%PDF"
+        # PDF with multi-revision history must be larger than one without.
+        pdf_no_history = build_eudr_audit_pdf(manifest, "test-instance")
+        assert len(pdf_bytes) > len(pdf_no_history), (
+            "PDF with review history must contain more content than one without"
+        )
+
+    def test_eudr_audit_pdf_falls_back_to_latest_state(self):
+        """PDF falls back to parcel_reviews when no history is stored."""
+        from blueprints.export import build_eudr_audit_pdf
+
+        manifest = {
+            "eudr_mode": True,
+            "per_aoi_enrichment": [
+                {
+                    "name": "Test Parcel",
+                    "area_ha": 1.0,
+                    "center": {"lat": 0.0, "lon": 0.0},
+                    "coords": [[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.0]],
+                    "determination": {"deforestation_free": False},
+                }
+            ],
+        }
+        parcel_reviews = {
+            "0": {
+                "override": True,
+                "note": "Legacy review note without history.",
+                "reviewed_by": "user@org.com",
+                "reviewed_at": "2026-05-21T10:00:00Z",
+            }
+        }
+        pdf_bytes = build_eudr_audit_pdf(manifest, "test-legacy", parcel_reviews=parcel_reviews)
+        assert pdf_bytes[:4] == b"%PDF"
+        # PDF with review must be larger than one without.
+        pdf_no_review = build_eudr_audit_pdf(manifest, "test-legacy")
+        assert len(pdf_bytes) > len(pdf_no_review)
