@@ -524,6 +524,9 @@ _SUMMARY_CSV_FIELDS = [
     "overridden",
     "override_reason",
     "note",
+    "reviewer_note",
+    "reviewed_by",
+    "reviewed_at",
 ]
 
 
@@ -540,9 +543,11 @@ def _summary_rows_from_manifest(
 
     parcel_notes: dict[str, str] = {}
     parcel_overrides: dict[str, dict[str, Any]] = {}
+    parcel_reviews: dict[str, dict[str, Any]] = {}
     if run_record:
         parcel_notes = run_record.get("parcel_notes") or {}
         parcel_overrides = run_record.get("parcel_overrides") or {}
+        parcel_reviews = run_record.get("parcel_reviews") or {}
 
     rows = []
     for idx, aoi in enumerate(per_aoi):
@@ -551,6 +556,7 @@ def _summary_rows_from_manifest(
         det = aoi.get("determination", {})
         override = parcel_overrides.get(parcel_key, {})
         overridden = bool(override) and not override.get("reverted")
+        review = parcel_reviews.get(parcel_key, {})
 
         rows.append(
             {
@@ -570,6 +576,9 @@ def _summary_rows_from_manifest(
                 "overridden": "yes" if overridden else "no",
                 "override_reason": override.get("reason", "") if overridden else "",
                 "note": parcel_notes.get(parcel_key, ""),
+                "reviewer_note": review.get("note", ""),
+                "reviewed_by": review.get("reviewed_by", ""),
+                "reviewed_at": review.get("reviewed_at", ""),
             }
         )
     return rows

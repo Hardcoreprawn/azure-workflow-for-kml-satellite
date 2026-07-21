@@ -425,27 +425,39 @@ _EUDR_CSV_FIELDS = [
     "ndvi_observations",
     "change_trajectory",
     "change_comparisons",
+    "reviewer_note",
+    "reviewed_by",
+    "reviewed_at",
 ]
 
 
-def _build_eudr_csv(manifest: dict[str, Any]) -> str:
+def _build_eudr_csv(
+    manifest: dict[str, Any],
+    run_record: dict[str, Any] | None = None,
+) -> str:
     """Build a per-parcel CSV with EUDR deforestation evidence.
 
     One row per AOI from ``per_aoi_enrichment``.  Failed AOIs are included
     with ``determination_status`` = ``error``.
 
     For single-parcel runs (no ``per_aoi_enrichment``), falls back to
-    top-level manifest evidence.
+    top-level manifest evidence.  When ``run_record`` is provided, each row
+    includes the reviewer note, reviewer identity and timestamp from any
+    saved human assessment.
     """
     per_aoi = manifest.get("per_aoi_enrichment", [])
     if not per_aoi:
         per_aoi = _toplevel_as_single_aoi(manifest)
 
+    parcel_reviews: dict[str, dict[str, Any]] = {}
+    if run_record:
+        parcel_reviews = run_record.get("parcel_reviews") or {}
+
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=_EUDR_CSV_FIELDS)
     writer.writeheader()
 
-    for aoi in per_aoi:
+    for idx, aoi in enumerate(per_aoi):
         if "error" in aoi:
             writer.writerow({"parcel_name": aoi.get("name", ""), "determination_status": "error"})
             continue
@@ -458,6 +470,7 @@ def _build_eudr_csv(manifest: dict[str, Any]) -> str:
         ndvi_stats = aoi.get("ndvi_stats", [])
         valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
         cd_summary = aoi.get("change_detection", {}).get("summary", {})
+        review = parcel_reviews.get(str(idx), {})
 
         writer.writerow(
             {
@@ -477,6 +490,9 @@ def _build_eudr_csv(manifest: dict[str, Any]) -> str:
                 "ndvi_observations": len(valid),
                 "change_trajectory": cd_summary.get("trajectory", ""),
                 "change_comparisons": cd_summary.get("comparisons", ""),
+                "reviewer_note": review.get("note", ""),
+                "reviewed_by": review.get("reviewed_by", ""),
+                "reviewed_at": review.get("reviewed_at", ""),
             }
         )
 
@@ -1117,8 +1133,90 @@ def _audit_methodology(pdf: Any) -> None:
     pdf.ln(2)
 
 
-def _audit_single_parcel(pdf: Any, aoi: dict[str, Any], section_num: str) -> None:
-    """Write a single parcel's assessment in the audit report."""
+def _render_parcel_review_section(
+    pdf: Any,
+    review: "dict[str, Any] | None",
+    history: "list[dict[str, Any]] | None" = None,
+) -> None:
+    """Append the human-review audit trail block to a PDF parcel section.
+
+    When ``history`` is provided and contains more than one revision the full
+    audit history is rendered in chronological order so the PDF shows every
+    decision, not just the most recent one.  The block is rendered in amber so
+    it stands out visually from the algorithmic findings.
+    """
+    revisions: list[dict] = list(history) if history else []
+    # Fall back to the latest-state record when no detailed history is stored.
+    if not revisions and review and review.get("note"):
+        revisions = [{"action": "save", **review}]
+
+    if not revisions:
+        return
+
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(180, 100, 0)
+    if len(revisions) == 1:
+        single = revisions[0]
+        label = (
+            "Human-reviewed \u2014 compliance accepted with explanation"
+            if single.get("override")
+            else "Human review note attached"
+        )
+        pdf.cell(0, 6, _safe_text(label), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(0, 0, 0)
+        note = single.get("note", "")
+        if note:
+            pdf.multi_cell(0, 5, _safe_text(f"Note: {note}"))
+        reviewed_by = single.get("reviewed_by", "")
+        reviewed_at = single.get("reviewed_at", "")
+        if reviewed_by or reviewed_at:
+            at_str = reviewed_at[:19] if reviewed_at else ""
+            pdf.cell(
+                0,
+                5,
+                f"Reviewer: {reviewed_by}  |  Reviewed at: {at_str}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+    else:
+        pdf.cell(
+            0, 6, "Human review audit history (all revisions)", new_x="LMARGIN", new_y="NEXT"
+        )
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(0, 0, 0)
+        for i, rev in enumerate(revisions, start=1):
+            action = rev.get("action", "save")
+            reviewed_by = rev.get("reviewed_by", "")
+            reviewed_at = rev.get("reviewed_at", "")
+            at_str = reviewed_at[:19] if reviewed_at else ""
+            if action == "revert":
+                summary = f"Revision {i}: Reverted to algorithmic — {reviewed_by} at {at_str}"
+            elif rev.get("override"):
+                summary = f"Revision {i}: Compliant with explanation — {reviewed_by} at {at_str}"
+            else:
+                summary = f"Revision {i}: Note attached — {reviewed_by} at {at_str}"
+            pdf.cell(0, 5, _safe_text(summary), new_x="LMARGIN", new_y="NEXT")
+            note = rev.get("note", "")
+            if note:
+                pdf.multi_cell(0, 4, _safe_text(f"    Note: {note}"))
+
+
+def _audit_single_parcel(
+    pdf: Any,
+    aoi: dict[str, Any],
+    section_num: str,
+    review: dict[str, Any] | None = None,
+    review_history: list[dict[str, Any]] | None = None,
+) -> None:
+    """Write a single parcel's assessment in the audit report.
+
+    When ``review_history`` is provided the full audit history is rendered so
+    every revision is visible in the PDF.  When only ``review`` is available the
+    latest-state record is shown as a single-revision block.  When neither is
+    present no review section is emitted.
+    """
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(
         0,
@@ -1237,10 +1335,18 @@ def _audit_single_parcel(pdf: Any, aoi: dict[str, Any], section_num: str) -> Non
         for scene in scenes[:10]:
             pdf.cell(0, 4, f"    {scene}", new_x="LMARGIN", new_y="NEXT")
 
+    # Human review audit trail — printed only when a reviewer submitted an assessment
+    _render_parcel_review_section(pdf, review, history=review_history)
+
     pdf.ln(4)
 
 
-def _audit_per_parcel(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
+def _audit_per_parcel(
+    pdf: Any,
+    per_aoi: list[dict[str, Any]],
+    parcel_reviews: dict[str, Any] | None = None,
+    parcel_review_history: dict[str, Any] | None = None,
+) -> None:
     """Write detailed per-parcel assessment sections."""
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Helvetica", "B", 14)
@@ -1270,7 +1376,9 @@ def _audit_per_parcel(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
             pdf.ln(4)
             continue
 
-        _audit_single_parcel(pdf, aoi, section_num)
+        review = (parcel_reviews or {}).get(str(idx))
+        history = (parcel_review_history or {}).get(str(idx))
+        _audit_single_parcel(pdf, aoi, section_num, review=review, review_history=history)
 
 
 def _audit_appendix(
@@ -1368,12 +1476,22 @@ def _audit_disclaimer(pdf: Any) -> None:
     )
 
 
-def build_eudr_audit_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
+def build_eudr_audit_pdf(
+    manifest: dict[str, Any],
+    instance_id: str = "",
+    parcel_reviews: dict[str, Any] | None = None,
+    parcel_review_history: dict[str, Any] | None = None,
+) -> bytes:
     """Build an audit-grade EUDR evidence PDF report (#587).
 
     Structured for compliance officers: cover page, executive summary,
     methodology, per-parcel assessment, post-2020 NDVI appendix, and
     legal disclaimer.
+
+    When ``parcel_review_history`` is provided (keyed by string AOI index),
+    each parcel section renders the full immutable revision history so auditors
+    can see every decision, not just the most recent one.  ``parcel_reviews``
+    is used as a fallback when history is absent (backward-compatible).
     """
     from fpdf import FPDF
 
@@ -1395,7 +1513,12 @@ def build_eudr_audit_pdf(manifest: dict[str, Any], instance_id: str = "") -> byt
     per_aoi = manifest.get("per_aoi_enrichment", [])
     if per_aoi:
         pdf.add_page()
-        _audit_per_parcel(pdf, per_aoi)
+        _audit_per_parcel(
+            pdf,
+            per_aoi,
+            parcel_reviews=parcel_reviews,
+            parcel_review_history=parcel_review_history,
+        )
 
     # 5. Appendix: post-2020 NDVI timeseries
     _audit_appendix(pdf, manifest)
@@ -1404,6 +1527,20 @@ def build_eudr_audit_pdf(manifest: dict[str, Any], instance_id: str = "") -> byt
     _audit_disclaimer(pdf)
 
     return bytes(pdf.output())
+
+
+def _fetch_run_record_for_export(instance_id: str) -> "dict[str, Any] | None":
+    """Fetch the Cosmos run record for annotation-enriched export formats.
+
+    Returns ``None`` on any failure so callers can proceed without review data.
+    """
+    try:
+        from blueprints.pipeline.history import get_run_record_by_instance_id
+
+        return get_run_record_by_instance_id(instance_id)
+    except Exception:
+        logger.warning("export: could not fetch run record for %s", instance_id)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1452,6 +1589,11 @@ async def export_data(
     instance_id = req.route_params.get("instance_id", "")
     headers = cors_headers(req)
 
+    # Fetch the run record for annotation-enriched exports (best-effort; non-fatal).
+    run_record: dict[str, Any] | None = None
+    if fmt in {"eudr-csv", "eudr-pdf"}:
+        run_record = _fetch_run_record_for_export(instance_id)
+
     if fmt == "geojson":
         geojson = _build_geojson(manifest)
         body = json.dumps(geojson, indent=2, default=str)
@@ -1497,7 +1639,7 @@ async def export_data(
         )
 
     if fmt == "eudr-csv":
-        csv_body = _build_eudr_csv(manifest)
+        csv_body = _build_eudr_csv(manifest, run_record=run_record)
         headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.csv"'
         return func.HttpResponse(
             csv_body,
@@ -1507,7 +1649,16 @@ async def export_data(
         )
 
     if fmt == "eudr-pdf":
-        pdf_bytes = build_eudr_audit_pdf(manifest, instance_id)
+        parcel_reviews = (run_record.get("parcel_reviews") or {}) if run_record else None
+        parcel_review_history = (
+            (run_record.get("parcel_review_history") or {}) if run_record else None
+        )
+        pdf_bytes = build_eudr_audit_pdf(
+            manifest,
+            instance_id,
+            parcel_reviews=parcel_reviews,
+            parcel_review_history=parcel_review_history,
+        )
         headers["Content-Disposition"] = (
             f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
         )

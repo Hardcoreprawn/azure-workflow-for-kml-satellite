@@ -49,6 +49,10 @@
   var currentOverrideParcelKey = null;
   var currentOverrideAoiData   = null;
 
+  /* ---- review constants (must match backend _MIN_REVIEW_NOTE_LENGTH) ---- */
+
+  var MIN_REVIEW_NOTE_LENGTH = 20;
+
   /* ---- parcel key helper ---- */
 
   function parcelKeyForIndex(idx) {
@@ -166,7 +170,7 @@
     }
   }
 
-  /* ---- human override determination (#672) ---- */
+  /* ---- human override determination (#672) + human review (#866) ---- */
 
   function renderParcelOverride(parcelKey, aoiData) {
     currentOverrideParcelKey = parcelKey;
@@ -180,27 +184,75 @@
 
     var manifest = _getManifest ? _getManifest() : null;
     var override = null;
+    var review   = null;
     if (manifest && manifest.parcel_overrides) {
       override = manifest.parcel_overrides[parcelKey] || null;
     }
+    if (manifest && manifest.parcel_reviews) {
+      review = manifest.parcel_reviews[parcelKey] || null;
+    }
 
-    var det           = aoiData && aoiData.determination;
+    var det            = aoiData && aoiData.determination;
     var isNonCompliant = det && !det.deforestation_free;
 
-    overrideEl.hidden = !(isNonCompliant || override);
+    overrideEl.hidden = !(isNonCompliant || override || review);
 
-    if (override) {
+    if (review && review.override) {
+      // New review-layer override: amber "Reviewed" badge.
+      // Both edit and revert controls remain reachable so the reviewer can
+      // update or withdraw the assessment.
       if (badgeEl) {
-        badgeEl.hidden    = false;
-        badgeEl.className = 'app-evidence-override-badge';
+        badgeEl.hidden      = false;
+        badgeEl.className   = 'app-evidence-override-badge reviewed';
+        badgeEl.textContent = '\u26A0\uFE0F Reviewed \u2014 compliant with explanation';
+      }
+      if (overrideBtn) {
+        overrideBtn.hidden      = false;
+        overrideBtn.textContent = 'Edit assessment';
+      }
+      if (revertBtn) {
+        revertBtn.hidden      = false;
+        revertBtn.textContent = 'Revert to algorithmic';
+      }
+    } else if (review) {
+      // Review note attached but no override — show badge and allow editing.
+      if (badgeEl) {
+        badgeEl.hidden      = false;
+        badgeEl.className   = 'app-evidence-override-badge reviewed';
+        badgeEl.textContent = '\u{1F4DD} Review note attached';
+      }
+      if (overrideBtn) {
+        overrideBtn.hidden      = false;
+        overrideBtn.textContent = 'Edit assessment';
+      }
+      if (revertBtn) {
+        revertBtn.hidden      = false;
+        revertBtn.textContent = 'Revert to algorithmic';
+      }
+    } else if (override) {
+      // Legacy parcel_overrides badge
+      if (badgeEl) {
+        badgeEl.hidden      = false;
+        badgeEl.className   = 'app-evidence-override-badge';
         badgeEl.textContent = '\u2705 Compliant (overridden)';
       }
       if (overrideBtn) overrideBtn.hidden = true;
       if (revertBtn)   revertBtn.hidden   = false;
     } else {
       if (badgeEl)     badgeEl.hidden     = true;
-      if (overrideBtn) overrideBtn.hidden = !isNonCompliant;
+      if (overrideBtn) {
+        overrideBtn.hidden      = !isNonCompliant;
+        overrideBtn.textContent = 'Override determination';
+      }
       if (revertBtn)   revertBtn.hidden   = true;
+    }
+
+    // Show existing review note in the modal original field when reopening
+    var reviewNoteEl = document.getElementById('app-evidence-review-note');
+    if (reviewNoteEl) {
+      var existingNote = review && review.note ? review.note : '';
+      reviewNoteEl.textContent = existingNote;
+      reviewNoteEl.hidden = !existingNote;
     }
   }
 
@@ -213,9 +265,17 @@
     var originalEl  = document.getElementById('app-override-original');
     if (!backdrop) return;
 
-    if (reasonInput) reasonInput.value = '';
-    if (confirmBtn)  confirmBtn.disabled = true;
-    if (charCount)   charCount.textContent = '0 / 500';
+    // Pre-fill with existing review note if present
+    var manifest = _getManifest ? _getManifest() : null;
+    var existingNote = '';
+    if (manifest && manifest.parcel_reviews && manifest.parcel_reviews[parcelKey]) {
+      existingNote = manifest.parcel_reviews[parcelKey].note || '';
+    }
+
+    if (reasonInput) reasonInput.value = existingNote;
+    var existingLen = existingNote.length;
+    if (charCount)  charCount.textContent  = existingLen + ' / 1000';
+    if (confirmBtn) confirmBtn.disabled    = existingLen < 1;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
       var det    = aoiData && aoiData.determination;
@@ -238,58 +298,64 @@
     var charCount   = document.getElementById('app-override-charcount');
     if (!reasonInput) return;
     var len = reasonInput.value.trim().length;
-    if (charCount)  charCount.textContent  = len + ' / 500';
-    if (confirmBtn) confirmBtn.disabled    = len < 20;
+    if (charCount)  charCount.textContent  = len + ' / 1000';
+    if (confirmBtn) confirmBtn.disabled    = len < 1;
   }
 
   async function confirmOverride() {
-    var reasonInput = document.getElementById('app-override-reason-input');
-    var confirmBtn  = document.getElementById('app-override-confirm-btn');
-    var errorEl     = document.getElementById('app-override-error');
-    var instanceId  = _getInstanceId ? _getInstanceId() : null;
+    var reasonInput  = document.getElementById('app-override-reason-input');
+    var confirmBtn   = document.getElementById('app-override-confirm-btn');
+    var errorEl      = document.getElementById('app-override-error');
+    var overrideChk  = document.getElementById('app-override-mark-compliant');
+    var instanceId   = _getInstanceId ? _getInstanceId() : null;
     if (!reasonInput || !instanceId || currentOverrideParcelKey === null) return;
 
-    var reason = reasonInput.value.trim();
-    if (reason.length < 20) return;
+    var note       = reasonInput.value.trim();
+    var doOverride = overrideChk ? overrideChk.checked : false;
+    if (!note) return;
+    if (doOverride && note.length < MIN_REVIEW_NOTE_LENGTH) {
+      if (errorEl) {
+        errorEl.textContent = 'Note must be at least ' + MIN_REVIEW_NOTE_LENGTH + ' characters when marking as reviewed.';
+        errorEl.hidden = false;
+      }
+      return;
+    }
 
-    var originalText = confirmBtn ? confirmBtn.textContent : 'Confirm override';
+    var originalText = confirmBtn ? confirmBtn.textContent : 'Save assessment';
     if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving\u2026'; }
     if (errorEl)    { errorEl.hidden = true; errorEl.textContent = ''; }
 
     try {
       if (_getApiReady) await _getApiReady();
-      var res = await _apiFetch('/api/analysis/override', {
+      var url = '/api/analysis/' + instanceId + '/parcel/' + currentOverrideParcelKey + '/review';
+      var res = await _apiFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: instanceId,
-          parcel_key: currentOverrideParcelKey,
-          reason: reason,
-          revert: false,
-        }),
+        body: JSON.stringify({ override: doOverride, note: note }),
       });
       if (!res.ok) {
         var err = await res.json().catch(function() { return {}; });
         if (errorEl) {
-          errorEl.textContent = (err && err.message) || 'Failed to save override. Try again.';
+          errorEl.textContent = (err && err.message) || 'Failed to save assessment. Try again.';
           errorEl.hidden = false;
         }
         return;
       }
+      // Update the in-memory manifest so UI reflects the change immediately
       var manifest = _getManifest ? _getManifest() : null;
       if (manifest) {
-        if (!manifest.parcel_overrides) manifest.parcel_overrides = {};
-        manifest.parcel_overrides[currentOverrideParcelKey] = {
-          reason: reason,
-          overridden_at: new Date().toISOString(),
-          override_determination: 'compliant',
+        if (!manifest.parcel_reviews) manifest.parcel_reviews = {};
+        manifest.parcel_reviews[currentOverrideParcelKey] = {
+          override:    doOverride,
+          note:        note,
+          reviewed_at: new Date().toISOString(),
         };
       }
       closeOverrideModal();
       renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
     } catch (e) {
-      if (errorEl) { errorEl.textContent = 'Failed to save override. Try again.'; errorEl.hidden = false; }
-      console.warn('Override save error:', e);
+      if (errorEl) { errorEl.textContent = 'Failed to save assessment. Try again.'; errorEl.hidden = false; }
+      console.warn('Review save error:', e);
     } finally {
       if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = originalText; }
     }
@@ -302,24 +368,45 @@
     var revertBtn = document.getElementById('app-evidence-override-revert-btn');
     if (revertBtn) { revertBtn.disabled = true; revertBtn.textContent = 'Reverting\u2026'; }
 
+    // When an active review exists (review layer, #866), revert via the review
+    // endpoint so the audit history is updated.  Only fall back to the legacy
+    // parcel_overrides endpoint when there is no active review.
+    var manifest  = _getManifest ? _getManifest() : null;
+    var hasReview = manifest && manifest.parcel_reviews &&
+                    manifest.parcel_reviews[currentOverrideParcelKey];
+
     try {
       if (_getApiReady) await _getApiReady();
-      var res = await _apiFetch('/api/analysis/override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instance_id: instanceId,
-          parcel_key: currentOverrideParcelKey,
-          reason: '',
-          revert: true,
-        }),
-      });
-      if (res.ok) {
-        var manifest = _getManifest ? _getManifest() : null;
-        if (manifest && manifest.parcel_overrides) {
-          delete manifest.parcel_overrides[currentOverrideParcelKey];
+      if (hasReview) {
+        var url = '/api/analysis/' + instanceId + '/parcel/' + currentOverrideParcelKey + '/review';
+        var res = await _apiFetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'revert' }),
+        });
+        if (res.ok) {
+          if (manifest && manifest.parcel_reviews) {
+            delete manifest.parcel_reviews[currentOverrideParcelKey];
+          }
+          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
         }
-        renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+      } else {
+        var legacyRes = await _apiFetch('/api/analysis/override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            instance_id: instanceId,
+            parcel_key: currentOverrideParcelKey,
+            reason: '',
+            revert: true,
+          }),
+        });
+        if (legacyRes.ok) {
+          if (manifest && manifest.parcel_overrides) {
+            delete manifest.parcel_overrides[currentOverrideParcelKey];
+          }
+          renderParcelOverride(currentOverrideParcelKey, currentOverrideAoiData);
+        }
       }
     } catch (e) {
       console.warn('Override revert error:', e);
