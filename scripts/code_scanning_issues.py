@@ -6,13 +6,20 @@ in the backlog and get triaged like any other work, just like CVEs.
 
 The sync is idempotent and reconciling:
 
-* Each issue embeds a hidden marker ``<!-- code-scanning-alert:N -->`` so a
-  re-run never creates a duplicate.
-* When an alert is fixed or dismissed (no longer open), its tracking issue is
+* Alerts are grouped by ``(tool, rule_id)``. Each group maps to exactly one
+  canonical tracking issue that lists all active alert instances and locations.
+* A stable group marker ``<!-- code-scanning-group:TOOL/RULE_ID -->`` identifies
+  the canonical issue. Individual ``<!-- code-scanning-alert:N -->`` markers are
+  also embedded for backward compatibility with older singular trackers.
+* When all alerts in a group are fixed or dismissed, the canonical issue is
   closed automatically.
+* During migration, the oldest open tracking issue for a group is selected as
+  canonical; duplicates are closed as not-planned.
+* A later recurrence of the same ``(tool, rule_id)`` reopens/updates the
+  canonical tracker instead of creating one issue per location.
 
-Pure planning logic (``plan_sync`` / ``build_issue_spec``) is separated from the
-GitHub I/O boundary so it is testable without network access.
+Pure planning logic (``plan_sync`` / ``build_group_issue_spec``) is separated
+from the GitHub I/O boundary so it is testable without network access.
 """
 
 from __future__ import annotations
@@ -20,13 +27,22 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib import error, request
 
 MARKER_PREFIX = "code-scanning-alert:"
+GROUP_MARKER_PREFIX = "code-scanning-group:"
 DEFAULT_LABELS: tuple[str, ...] = ("security", "code-scanning")
 _TITLE_MAX_DESC = 100
+_SEVERITY_ORDER: dict[str, int] = {
+    "critical": 4,
+    "high": 3,
+    "medium": 2,
+    "low": 1,
+    "unspecified": 0,
+}
 
 
 @dataclass(frozen=True)
@@ -43,10 +59,24 @@ class CodeScanningAlert:
 
 
 @dataclass(frozen=True)
+class AlertGroup:
+    """A set of Code Scanning alerts that share the same ``(tool, rule_id)``."""
+
+    tool: str
+    rule_id: str
+    rule_name: str
+    description: str
+    severity: str
+    alerts: tuple[CodeScanningAlert, ...]
+
+
+@dataclass(frozen=True)
 class TrackedIssue:
     number: int
     state: str
-    alert_number: int
+    alert_number: int  # primary alert number for backward compat; 0 when absent
+    group_key: tuple[str, str] | None = None  # (tool, rule_id) from group marker
+    alert_numbers: frozenset[int] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -58,15 +88,20 @@ class IssueSpec:
 
 @dataclass(frozen=True)
 class SyncPlan:
-    to_create: list[CodeScanningAlert]
+    to_create: list[AlertGroup]
+    to_update: list[tuple[TrackedIssue, AlertGroup]]
     to_close: list[TrackedIssue]
+    # Each tuple: (duplicate_issue, canonical_issue, group) for migration comments.
+    to_close_duplicate: list[tuple[TrackedIssue, TrackedIssue, AlertGroup]] = field(
+        default_factory=list
+    )
 
 
 # ── Pure logic ─────────────────────────────────────────────────
 
 
 def parse_alert_marker(body: str) -> int | None:
-    """Extract the alert number embedded in an issue body, or ``None``."""
+    """Extract the first alert number embedded in an issue body, or ``None``."""
     marker = f"<!-- {MARKER_PREFIX}"
     start = body.find(marker)
     if start == -1:
@@ -81,6 +116,48 @@ def parse_alert_marker(body: str) -> int | None:
     return int(raw)
 
 
+def parse_all_alert_markers(body: str) -> frozenset[int]:
+    """Extract all ``<!-- code-scanning-alert:N -->`` numbers from a body."""
+    results: set[int] = set()
+    marker = f"<!-- {MARKER_PREFIX}"
+    pos = 0
+    while True:
+        start = body.find(marker, pos)
+        if start == -1:
+            break
+        start += len(marker)
+        end = body.find(" -->", start)
+        if end == -1:
+            break
+        raw = body[start:end].strip()
+        if raw.isdigit():
+            results.add(int(raw))
+        pos = end + 4
+    return frozenset(results)
+
+
+def parse_group_marker(body: str) -> tuple[str, str] | None:
+    """Extract ``(tool, rule_id)`` from the group marker, or ``None``.
+
+    The marker format is ``<!-- code-scanning-group:TOOL/RULE_ID -->``.
+    The tool and rule_id are split on the *first* slash only, so rule IDs
+    containing slashes (e.g. Semgrep rule paths) are preserved intact.
+    """
+    marker = f"<!-- {GROUP_MARKER_PREFIX}"
+    start = body.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    end = body.find(" -->", start)
+    if end == -1:
+        return None
+    raw = body[start:end].strip()
+    if "/" not in raw:
+        return None
+    tool, _, rule_id = raw.partition("/")
+    return (tool, rule_id) if tool and rule_id else None
+
+
 def _truncate(text: str, limit: int) -> str:
     text = text.strip().replace("\n", " ")
     if len(text) <= limit:
@@ -88,8 +165,45 @@ def _truncate(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip() + "…"
 
 
+def _max_severity(severities: Iterable[str]) -> str:
+    """Return the highest severity label from a collection."""
+    best = "unspecified"
+    best_rank = -1
+    for sev in severities:
+        rank = _SEVERITY_ORDER.get(sev.lower(), 0)
+        if rank > best_rank:
+            best_rank = rank
+            best = sev.lower()
+    return best
+
+
+def group_alerts(alerts: list[CodeScanningAlert]) -> dict[tuple[str, str], AlertGroup]:
+    """Group alerts by ``(tool, rule_id)``, returning a mapping keyed by that pair."""
+    raw: dict[tuple[str, str], list[CodeScanningAlert]] = {}
+    for alert in alerts:
+        key = (alert.tool, alert.rule_id)
+        raw.setdefault(key, []).append(alert)
+
+    result: dict[tuple[str, str], AlertGroup] = {}
+    for key, items in raw.items():
+        first = min(items, key=lambda a: a.number)
+        result[key] = AlertGroup(
+            tool=key[0],
+            rule_id=key[1],
+            rule_name=first.rule_name,
+            description=first.description,
+            severity=_max_severity(a.severity for a in items),
+            alerts=tuple(sorted(items, key=lambda a: a.number)),
+        )
+    return result
+
+
 def build_issue_spec(alert: CodeScanningAlert, *, labels: list[str]) -> IssueSpec:
-    """Render a stable, deduplicable tracking issue for a code scanning alert."""
+    """Render a stable tracking issue for a single code scanning alert.
+
+    Kept for backward compatibility. Prefer ``build_group_issue_spec`` for
+    new code paths.
+    """
     short_desc = _truncate(alert.description or alert.rule_name or alert.rule_id, _TITLE_MAX_DESC)
     title = f"[security] {alert.tool} {alert.rule_id}: {short_desc} (alert #{alert.number})"
     body = (
@@ -109,26 +223,116 @@ def build_issue_spec(alert: CodeScanningAlert, *, labels: list[str]) -> IssueSpe
     return IssueSpec(title=title, body=body, labels=list(labels))
 
 
+def build_group_issue_spec(group: AlertGroup, *, labels: list[str]) -> IssueSpec:
+    """Render a canonical tracking issue for a ``(tool, rule_id)`` alert group.
+
+    The body embeds:
+    * A stable group marker for canonical identity across runs.
+    * Individual alert markers (``<!-- code-scanning-alert:N -->``) for
+      backward compatibility with tooling that reads singular markers.
+    * A human-readable list of every active alert instance and location.
+    """
+    short_desc = _truncate(group.description or group.rule_name or group.rule_id, _TITLE_MAX_DESC)
+    title = f"[security] {group.tool} {group.rule_id}: {short_desc}"
+
+    group_marker = f"<!-- {GROUP_MARKER_PREFIX}{group.tool}/{group.rule_id} -->"
+    alert_markers = "\n".join(f"<!-- {MARKER_PREFIX}{a.number} -->" for a in group.alerts)
+    alert_lines = "\n".join(
+        f"- Alert [#{a.number}]({a.html_url}) — `{a.location}` (severity: {a.severity})"
+        for a in group.alerts
+    )
+
+    body = (
+        f"{group_marker}\n"
+        f"{alert_markers}\n"
+        "Automated tracking issue for open GitHub Code Scanning alerts.\n\n"
+        f"- **Tool:** {group.tool}\n"
+        f"- **Rule:** `{group.rule_id}` — {group.rule_name}\n"
+        f"- **Severity:** {group.severity or 'unspecified'}\n\n"
+        "## Open Alert Instances\n\n"
+        f"{alert_lines}\n\n"
+        f"{group.description}\n\n"
+        "---\n"
+        "This issue is managed by the Code Scanning issue sync. It is closed "
+        "automatically once all alerts in this group are fixed or dismissed. "
+        "Do not edit the marker comments above."
+    )
+    return IssueSpec(title=title, body=body, labels=list(labels))
+
+
 def plan_sync(
     *,
     open_alerts: list[CodeScanningAlert],
     tracked_issues: list[TrackedIssue],
 ) -> SyncPlan:
-    """Decide which issues to create and which to close.
+    """Decide which group issues to create, update, and close.
 
-    * Create a tracking issue for every open alert without an *open* issue.
-    * Close every *open* tracking issue whose alert is no longer open.
+    Grouping key: ``(tool, rule_id)``.
+
+    * **Create** a canonical issue for every group that has no open tracker.
+    * **Update** the canonical (oldest-by-issue-number) tracker for every group
+      that already has an open tracker, reflecting the current alert instances.
+    * **Close duplicates** — any non-canonical open trackers for the same group
+      (migration path from the previous one-issue-per-alert design).
+    * **Close** open trackers whose entire alert group is no longer open.
+
+    Legacy trackers (singular ``<!-- code-scanning-alert:N -->`` markers, no
+    group marker) are reconciled by looking up their alert number in the current
+    open-alert set to infer the group key.
     """
-    open_tracked_numbers = {issue.alert_number for issue in tracked_issues if issue.state == "open"}
-    open_alert_numbers = {alert.number for alert in open_alerts}
+    open_groups = group_alerts(open_alerts)
+    alert_to_group: dict[int, tuple[str, str]] = {
+        a.number: (grp.tool, grp.rule_id) for grp in open_groups.values() for a in grp.alerts
+    }
 
-    to_create = [alert for alert in open_alerts if alert.number not in open_tracked_numbers]
-    to_close = [
-        issue
-        for issue in tracked_issues
-        if issue.state == "open" and issue.alert_number not in open_alert_numbers
-    ]
-    return SyncPlan(to_create=to_create, to_close=to_close)
+    group_to_trackers: dict[tuple[str, str], list[TrackedIssue]] = {}
+    resolved_tracked: list[TrackedIssue] = []
+
+    for ti in tracked_issues:
+        if ti.state != "open":
+            continue
+
+        key: tuple[str, str] | None = ti.group_key
+
+        if key is None:
+            # Legacy tracker: infer group from embedded alert numbers.
+            all_nums: frozenset[int] = ti.alert_numbers
+            if ti.alert_number:
+                all_nums = all_nums | {ti.alert_number}
+            for an in sorted(all_nums):
+                if an in alert_to_group:
+                    key = alert_to_group[an]
+                    break
+
+        if key is not None:
+            if key in open_groups:
+                group_to_trackers.setdefault(key, []).append(ti)
+            else:
+                resolved_tracked.append(ti)
+        else:
+            resolved_tracked.append(ti)
+
+    to_create: list[AlertGroup] = []
+    to_update: list[tuple[TrackedIssue, AlertGroup]] = []
+    to_close_duplicate: list[tuple[TrackedIssue, TrackedIssue, AlertGroup]] = []
+
+    for key, grp in open_groups.items():
+        trackers = group_to_trackers.get(key, [])
+        if not trackers:
+            to_create.append(grp)
+        else:
+            canonical = min(trackers, key=lambda t: t.number)
+            to_update.append((canonical, grp))
+            for ti in trackers:
+                if ti is not canonical:
+                    to_close_duplicate.append((ti, canonical, grp))
+
+    return SyncPlan(
+        to_create=to_create,
+        to_update=to_update,
+        to_close=resolved_tracked,
+        to_close_duplicate=to_close_duplicate,
+    )
 
 
 def filter_alerts_by_severity(
@@ -247,14 +451,20 @@ def load_tracked_issues(*, token: str, owner: str, repo: str, label: str) -> lis
     for issue in raw:
         if "pull_request" in issue:
             continue
-        alert_number = parse_alert_marker(str(issue.get("body") or ""))
-        if alert_number is None:
+        body = str(issue.get("body") or "")
+        group_key = parse_group_marker(body)
+        alert_numbers = parse_all_alert_markers(body)
+        # Accept issues that have at least one recognised marker (group or singular alert).
+        if group_key is None and not alert_numbers:
             continue
+        primary = min(alert_numbers) if alert_numbers else 0
         tracked.append(
             TrackedIssue(
                 number=int(issue["number"]),
                 state=str(issue.get("state", "open")),
-                alert_number=alert_number,
+                alert_number=primary,
+                group_key=group_key,
+                alert_numbers=alert_numbers,
             )
         )
     return tracked
@@ -270,6 +480,16 @@ def create_issue(*, token: str, owner: str, repo: str, spec: IssueSpec) -> int:
     return int(result["number"]) if isinstance(result, dict) else 0
 
 
+def update_issue(*, token: str, owner: str, repo: str, issue_number: int, spec: IssueSpec) -> None:
+    """Update the title and body of an existing tracking issue."""
+    _github_api(
+        token=token,
+        method="PATCH",
+        path=f"/repos/{owner}/{repo}/issues/{issue_number}",
+        body={"title": spec.title, "body": spec.body},
+    )
+
+
 def close_issue(*, token: str, owner: str, repo: str, issue_number: int, comment: str) -> None:
     _github_api(
         token=token,
@@ -282,6 +502,36 @@ def close_issue(*, token: str, owner: str, repo: str, issue_number: int, comment
         method="PATCH",
         path=f"/repos/{owner}/{repo}/issues/{issue_number}",
         body={"state": "closed", "state_reason": "completed"},
+    )
+
+
+def close_issue_as_duplicate(
+    *,
+    token: str,
+    owner: str,
+    repo: str,
+    issue_number: int,
+    canonical_issue_number: int,
+    group: AlertGroup,
+) -> None:
+    """Close a non-canonical tracking issue that has been superseded by a group tracker."""
+    _github_api(
+        token=token,
+        method="POST",
+        path=f"/repos/{owner}/{repo}/issues/{issue_number}/comments",
+        body={
+            "body": (
+                f"This tracking issue is a duplicate of the canonical group tracker "
+                f"#{canonical_issue_number} for `{group.tool}` rule `{group.rule_id}`. "
+                "Closing as not-planned (duplicate) during migration to grouped tracking."
+            )
+        },
+    )
+    _github_api(
+        token=token,
+        method="PATCH",
+        path=f"/repos/{owner}/{repo}/issues/{issue_number}",
+        body={"state": "closed", "state_reason": "not_planned"},
     )
 
 
@@ -321,21 +571,72 @@ def main() -> int:
 
     print(
         f"code-scanning sync: open_alerts={len(alerts)} tracked={len(tracked)} "
-        f"to_create={len(plan.to_create)} to_close={len(plan.to_close)}"
+        f"open_groups={len(plan.to_create) + len(plan.to_update)} "
+        f"to_create={len(plan.to_create)} to_update={len(plan.to_update)} "
+        f"to_close={len(plan.to_close)} to_close_duplicate={len(plan.to_close_duplicate)}"
     )
 
     if args.dry_run:
-        for alert in plan.to_create:
-            print(f"- would create: alert #{alert.number} {alert.tool} {alert.rule_id}")
+        for grp in plan.to_create:
+            alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
+            print(
+                f"- would create: {grp.tool} {grp.rule_id} "
+                f"({len(grp.alerts)} instance(s): {alert_nums})"
+            )
+        for canonical, grp in plan.to_update:
+            alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
+            print(
+                f"- would update: issue #{canonical.number} for {grp.tool} {grp.rule_id} "
+                f"({len(grp.alerts)} instance(s): {alert_nums})"
+            )
         for issue in plan.to_close:
-            print(f"- would close: issue #{issue.number} (alert #{issue.alert_number} resolved)")
+            print(f"- would close: issue #{issue.number} (all alerts in group resolved)")
+        for issue in plan.to_close_duplicate:
+            print(
+                f"- would close-duplicate: issue #{issue[0].number} "
+                f"(superseded by canonical group tracker #{issue[1].number} "
+                f"for {issue[2].tool} {issue[2].rule_id})"
+            )
         print("dry-run enabled; no issue changes were performed")
         return 0
 
-    for alert in plan.to_create:
-        spec = build_issue_spec(alert, labels=labels)
+    for grp in plan.to_create:
+        spec = build_group_issue_spec(grp, labels=labels)
         number = create_issue(token=token, owner=args.owner, repo=args.repo, spec=spec)
-        print(f"created issue #{number} for alert #{alert.number}")
+        alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
+        print(
+            f"created issue #{number} for {grp.tool} {grp.rule_id} "
+            f"({len(grp.alerts)} instance(s): {alert_nums})"
+        )
+
+    for canonical, grp in plan.to_update:
+        spec = build_group_issue_spec(grp, labels=labels)
+        update_issue(
+            token=token,
+            owner=args.owner,
+            repo=args.repo,
+            issue_number=canonical.number,
+            spec=spec,
+        )
+        alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
+        print(
+            f"updated issue #{canonical.number} for {grp.tool} {grp.rule_id} "
+            f"({len(grp.alerts)} instance(s): {alert_nums})"
+        )
+
+    for dup, canonical, grp in plan.to_close_duplicate:
+        close_issue_as_duplicate(
+            token=token,
+            owner=args.owner,
+            repo=args.repo,
+            issue_number=dup.number,
+            canonical_issue_number=canonical.number,
+            group=grp,
+        )
+        print(
+            f"closed duplicate issue #{dup.number} "
+            f"(canonical: #{canonical.number} for {grp.tool} {grp.rule_id})"
+        )
 
     for issue in plan.to_close:
         close_issue(
@@ -344,11 +645,11 @@ def main() -> int:
             repo=args.repo,
             issue_number=issue.number,
             comment=(
-                f"Code Scanning alert #{issue.alert_number} is no longer open "
+                "All Code Scanning alerts in this group are no longer open "
                 "(fixed or dismissed); closing this tracking issue automatically."
             ),
         )
-        print(f"closed issue #{issue.number} (alert #{issue.alert_number} resolved)")
+        print(f"closed issue #{issue.number} (group fully resolved)")
 
     return 0
 
