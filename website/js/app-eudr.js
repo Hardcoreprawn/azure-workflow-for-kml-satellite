@@ -158,6 +158,49 @@
     }
   }
 
+  function formatCurrencyGbp(amount) {
+    var fixed = Math.max(Number(amount) || 0, 0).toFixed(2);
+    if (fixed.endsWith('.00')) return '£' + fixed.slice(0, -3);
+    return '£' + fixed;
+  }
+
+  function eudrTierRateForUsage(periodParcelsUsed) {
+    if (periodParcelsUsed >= 500) return 1.80;
+    if (periodParcelsUsed >= 100) return 2.50;
+    return 3.00;
+  }
+
+  function estimateTieredEudrOverage(overageParcels, periodUsageBeforeOverage) {
+    if (overageParcels <= 0) {
+      return {
+        total: 0,
+        rateLabel: '',
+      };
+    }
+    var baseBandCount = Math.max(Math.min(100 - periodUsageBeforeOverage, overageParcels), 0);
+    var midBandStart = periodUsageBeforeOverage + baseBandCount;
+    var midBandCount = Math.max(Math.min(500 - midBandStart, overageParcels - baseBandCount), 0);
+    var topBandCount = Math.max(overageParcels - baseBandCount - midBandCount, 0);
+    var overageTotal = (baseBandCount * 3.00)
+      + (midBandCount * 2.50)
+      + (topBandCount * 1.80);
+
+    var firstRate = eudrTierRateForUsage(periodUsageBeforeOverage);
+    var lastRate = eudrTierRateForUsage(periodUsageBeforeOverage + overageParcels - 1);
+    var singleRate = firstRate === lastRate;
+    if (singleRate) {
+      return {
+        total: overageTotal,
+        rateLabel: formatCurrencyGbp(firstRate) + '/parcel',
+      };
+    }
+
+    return {
+      total: overageTotal,
+      rateLabel: formatCurrencyGbp(overageTotal / overageParcels) + ' avg/parcel',
+    };
+  }
+
   /**
    * Compute a human-readable cost/quota label for a pending EUDR submission.
    *
@@ -169,9 +212,9 @@
    * @param {object} profile - active app profile (from CanopexAppProfiles.resolveActiveProfile())
    * @returns {string}
    */
-  function computeCostEstimate(parcelCount, profile) {
+  function computeCostEstimate(parcelCount, profile, billingSnapshot) {
     if (!profile || !profile.enableParcelCostEstimate || !parcelCount) return '—';
-    var billing = typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null;
+    var billing = billingSnapshot || (typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null);
     if (!billing) return '—';
 
     if (!billing.subscribed) {
@@ -184,16 +227,17 @@
     }
 
     // Pro subscriber — estimate only the incremental overage caused by this submission.
-    var used = billing.period_parcels_used || 0;
-    var included = billing.included_parcels || 10;
+    var used = Math.max(Number(billing.period_parcels_used) || 0, 0);
+    var included = Math.max(Number(billing.included_parcels) || 0, 0);
     var remainingIncluded = Math.max(included - used, 0);
-    var overageParcels = Math.max(parcelCount - remainingIncluded, 0);
-    if (overageParcels === 0) {
-      return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
+    if (parcelCount <= remainingIncluded) {
+      return 'Included in your plan (' + (remainingIncluded - parcelCount) + ' remaining after this run)';
     }
-    var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
-    var cost = (overageParcels * rate).toFixed(2);
-    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + cost;
+
+    var overageParcels = parcelCount - remainingIncluded;
+    var periodUsageBeforeOverage = Math.max(used, included);
+    var estimate = estimateTieredEudrOverage(overageParcels, periodUsageBeforeOverage);
+    return formatCurrencyGbp(estimate.total) + ' estimated overage (' + overageParcels + ' × ' + estimate.rateLabel + ')';
   }
 
   window.CanopexEudr = {

@@ -30,17 +30,7 @@
   var _getLatestBillingStatus = null;
   var _getWorkspaceRoleConfig = null;
   var _onPreflightUpdate = null;
-  var PLAN_OVERAGE_RATE_GBP = {
-    starter: 1.50,
-    pro: 0.80,
-    team: 0.50,
-    eudr_pro: 3.00,
-  };
-  var EUDR_TIERED_RATE_GBP = {
-    base: 3.00,
-    threshold100: 2.50,
-    threshold500: 1.80,
-  };
+  var _computeEudrCostEstimate = null;
 
   // Module-local Leaflet map instance for the preflight thumbnail.
   var preflightMap = null;
@@ -53,6 +43,7 @@
     _getLatestBillingStatus = deps.getLatestBillingStatus;
     _getWorkspaceRoleConfig = deps.getWorkspaceRoleConfig;
     _onPreflightUpdate = deps.onPreflightUpdate;
+    _computeEudrCostEstimate = deps.computeEudrCostEstimate;
   }
 
   // ── Preflight warning builder ─────────────────────────────────
@@ -193,128 +184,12 @@
 
   // ── Cost estimator for EUDR preflight ────────────────────────
 
-  function formatCurrencyGbp(amount) {
-    var fixed = Math.max(Number(amount) || 0, 0).toFixed(2);
-    if (fixed.endsWith('.00')) return '£' + fixed.slice(0, -3);
-    return '£' + fixed;
-  }
-
-  function resolveQuotaRemaining(billing) {
-    if (!billing) return null;
-    // Billing payloads vary by endpoint/profile:
-    // - quota_remaining (new parcel-quota payloads)
-    // - runs_remaining (general billing/status payload)
-    // - trial_remaining (legacy EUDR billing payload)
-    if (billing.quota_remaining != null) return Math.max(Number(billing.quota_remaining) || 0, 0);
-    if (billing.runs_remaining != null) return Math.max(Number(billing.runs_remaining) || 0, 0);
-    if (billing.trial_remaining != null) return Math.max(Number(billing.trial_remaining) || 0, 0);
-    return null;
-  }
-
-  function resolvePlanTier(billing) {
-    if (!billing) return '';
-    var tier = billing.plan || billing.tier || '';
-    if (typeof tier !== 'string') return '';
-    return tier.trim().toLowerCase();
-  }
-
-  function resolveOverageRate(billing, planTier) {
-    if (billing && billing.overage_rate != null) {
-      return Number(billing.overage_rate);
-    }
-    if (billing && billing.capabilities && billing.capabilities.overage_rate != null) {
-      return Number(billing.capabilities.overage_rate);
-    }
-    if (Object.prototype.hasOwnProperty.call(PLAN_OVERAGE_RATE_GBP, planTier)) {
-      return PLAN_OVERAGE_RATE_GBP[planTier];
-    }
-    return null;
-  }
-
-  function eudrTierRateForUsage(periodParcelsUsed) {
-    if (periodParcelsUsed >= 500) return EUDR_TIERED_RATE_GBP.threshold500;
-    if (periodParcelsUsed >= 100) return EUDR_TIERED_RATE_GBP.threshold100;
-    return EUDR_TIERED_RATE_GBP.base;
-  }
-
-  function isFreeTier(planTier) {
-    return planTier === 'free' || planTier === 'demo' || !planTier;
-  }
-
-  function estimateTieredEudrOverage(overageParcels, periodParcelsUsedBeforeRun, includedBeforeRun) {
-    if (overageParcels <= 0) {
-      return {
-        total: 0,
-        rateLabel: '',
-      };
-    }
-
-    var periodUsageBeforeOverage = Math.max(periodParcelsUsedBeforeRun, 0) + Math.max(includedBeforeRun, 0);
-    // Base band: parcels billed while cumulative period usage is below 100.
-    // Mid band: parcels billed while cumulative usage is 100–499.
-    // Top band: parcels billed once cumulative usage reaches 500+.
-    // ``periodUsageBeforeOverage`` reflects usage before the first overage parcel.
-    // ``overageParcels`` is then split across these contiguous rate bands.
-    var baseBandCount = Math.max(Math.min(100 - periodUsageBeforeOverage, overageParcels), 0);
-    var midBandStart = periodUsageBeforeOverage + baseBandCount;
-    var midBandCount = Math.max(Math.min(500 - midBandStart, overageParcels - baseBandCount), 0);
-    var topBandCount = Math.max(overageParcels - baseBandCount - midBandCount, 0);
-
-    var overageTotal = (baseBandCount * EUDR_TIERED_RATE_GBP.base)
-      + (midBandCount * EUDR_TIERED_RATE_GBP.threshold100)
-      + (topBandCount * EUDR_TIERED_RATE_GBP.threshold500);
-
-    var firstRate = eudrTierRateForUsage(periodUsageBeforeOverage);
-    var lastRate = eudrTierRateForUsage(periodUsageBeforeOverage + overageParcels - 1);
-    var singleRate = firstRate === lastRate;
-
-    var labelRate = singleRate ? firstRate : (overageTotal / overageParcels);
-    var multiplierSuffix = singleRate ? '/parcel' : ' avg/parcel';
-    return {
-      total: overageTotal,
-      rateLabel: formatCurrencyGbp(labelRate) + multiplierSuffix,
-    };
-  }
-
   function computeEudrCostEstimate(parcelCount) {
     var activeProfile = _getActiveProfile ? _getActiveProfile() : {};
-    if (!activeProfile.enableParcelCostEstimate || !parcelCount) return null;
-    var billing = _getLatestBillingStatus ? _getLatestBillingStatus() : null;
-    if (!billing) return null;
-
-    var planTier = resolvePlanTier(billing);
-    var quotaRemaining = resolveQuotaRemaining(billing);
-    if (quotaRemaining == null) return null;
-
-    if (parcelCount <= quotaRemaining) {
-      return 'Included in your plan (' + (quotaRemaining - parcelCount) + ' remaining after this run)';
-    }
-
-    var overageParcels = parcelCount - quotaRemaining;
-    // Missing plan tier is treated as free-tier semantics.
-    var freeTierWithoutQuota = isFreeTier(planTier) && quotaRemaining <= 0;
-    if (freeTierWithoutQuota) {
-      return 'This run requires a paid subscription';
-    }
-
-    var overageRate = resolveOverageRate(billing, planTier);
-    if (overageRate == null) {
-      return 'This run requires a paid subscription';
-    }
-
-    var estimate = {
-      total: overageParcels * overageRate,
-      rateLabel: formatCurrencyGbp(overageRate) + '/parcel',
-    };
-    if (planTier === 'eudr_pro' && billing.period_parcels_used != null) {
-      estimate = estimateTieredEudrOverage(
-        overageParcels,
-        Number(billing.period_parcels_used) || 0,
-        quotaRemaining
-      );
-    }
-
-    return formatCurrencyGbp(estimate.total) + ' estimated overage (' + overageParcels + ' × ' + estimate.rateLabel + ')';
+    if (!activeProfile.enableParcelCostEstimate || !parcelCount || !_computeEudrCostEstimate) return null;
+    var estimateText = _computeEudrCostEstimate(parcelCount, activeProfile);
+    if (!estimateText || estimateText === '—') return null;
+    return estimateText;
   }
 
   function renderPreflightCost(estimateText) {
