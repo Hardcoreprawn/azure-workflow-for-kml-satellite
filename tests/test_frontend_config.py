@@ -793,9 +793,9 @@ class TestQuotaExhaustedBackendSignal:
         """error_response must accept an extra dict that is merged into the JSON body."""
         import inspect
 
-        from blueprints._helpers import error_response
+        import blueprints._helpers as helpers_mod
 
-        sig = inspect.signature(error_response)
+        sig = inspect.signature(helpers_mod.error_response)
         assert "extra" in sig.parameters, (
             "_helpers.error_response must accept an 'extra' keyword argument "
             "so callers can add machine-readable fields (e.g. quota_exhausted: true)"
