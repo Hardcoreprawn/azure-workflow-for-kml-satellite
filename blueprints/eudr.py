@@ -243,8 +243,8 @@ def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
 def _eudr_usage_payload(user_id: str) -> dict:
     from treesight.constants import EUDR_INCLUDED_PARCELS
     from treesight.security.eudr_billing import (
+        eudr_graduated_overage_gbp,
         eudr_next_tier,
-        eudr_unit_price_gbp,
         get_eudr_billing_status,
     )
     from treesight.security.orgs import get_user_org
@@ -255,7 +255,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
 
     period_used = int(billing.get("period_parcels_used", 0) or 0)
     included = int(billing.get("included_parcels", EUDR_INCLUDED_PARCELS) or EUDR_INCLUDED_PARCELS)
-    overage = max(period_used - included, 0)
+    overage_parcels = max(period_used - included, 0)
 
     # Tier break guidance for graduated EUDR rates.
     next_threshold, next_rate = eudr_next_tier(period_used)
@@ -287,14 +287,17 @@ def _eudr_usage_payload(user_id: str) -> dict:
         for key in month_keys
     ]
 
-    unit_price_gbp = eudr_unit_price_gbp(period_used)
-    estimated_spend_gbp = round((overage * unit_price_gbp), 2)
+    # Use graduated tiered calculation so parcels 11–100 are charged at £3,
+    # 101–500 at £2.50, and 501+ at £1.80.  Applying the current marginal rate
+    # to all overage parcels would understate charges for orgs that crossed a
+    # tier boundary within the period.
+    estimated_spend_gbp = eudr_graduated_overage_gbp(period_used, included)
 
     return {
         "current": {
             "periodParcelsUsed": period_used,
             "includedParcels": included,
-            "overageParcels": overage,
+            "overageParcels": overage_parcels,
             "estimatedSpendGbp": estimated_spend_gbp,
             "nextTierThreshold": next_threshold,
             "nextTierRateGbp": next_rate,

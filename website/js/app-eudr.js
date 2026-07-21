@@ -207,9 +207,16 @@
    * Returns '—' when:
    *   - the active profile does not enable parcel cost estimates
    *   - billing data is not yet loaded
+   *   - billing data is unavailable or lacks required fields
    *
    * @param {number} parcelCount - number of parcels the user intends to submit
    * @param {object} profile - active app profile (from CanopexAppProfiles.resolveActiveProfile())
+   * @param {object|null} [billingSnapshot] - optional EUDR billing snapshot from /api/eudr/billing.
+   *   Falls back to window.eudrBillingData() when not supplied. Expected fields:
+   *   - subscribed {boolean}
+   *   - period_parcels_used {number}
+   *   - included_parcels {number}
+   *   - trial_remaining {number} (unsubscribed path only)
    * @returns {string}
    */
   function computeCostEstimate(parcelCount, profile, billingSnapshot) {

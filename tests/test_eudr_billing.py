@@ -128,6 +128,56 @@ class TestEudrNextTier:
         assert eudr_next_tier(10_000) == (None, None)
 
 
+class TestEudrGraduatedOverage:
+    """Graduated overage computation splits charges across tier boundaries."""
+
+    def test_no_overage_returns_zero(self):
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(10, 10) == 0.0
+        assert eudr_graduated_overage_gbp(5, 10) == 0.0
+
+    def test_all_in_base_band(self):
+        # 47 used, 10 included → 37 overage, all below threshold 100 → 37 × £3 = £111
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(47, 10) == 111.0
+
+    def test_crosses_100_threshold(self):
+        # 120 used, 10 included → 110 overage: 90 × £3 (11-100) + 20 × £2.50 (101-120) = £320
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(120, 10) == 320.0
+
+    def test_already_above_100(self):
+        # 140 used, 10 included → 130 overage; already above 100 so all at £2.50
+        # 90 × £3.00 (11-100) + 40 × £2.50 (101-140) = 270 + 100 = £370
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(140, 10) == 370.0
+
+    def test_crosses_500_threshold(self):
+        # 510 used, 10 included → 500 overage
+        # parcels 11-100 (90 × £3.00) + 101-500 (400 × £2.50) + 501-510 (10 × £1.80)
+        # = 270 + 1000 + 18 = £1288
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(510, 10) == 1288.0
+
+    def test_already_above_500(self):
+        # 520 used, 10 included → 510 overage; 500 parcels above threshold
+        # 90 × £3.00 + 400 × £2.50 + 20 × £1.80 = 270 + 1000 + 36 = £1306
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(520, 10) == 1306.0
+
+    def test_included_edge_exact(self):
+        # Exactly at the included quota — no overage
+        from treesight.security.eudr_billing import eudr_graduated_overage_gbp
+
+        assert eudr_graduated_overage_gbp(10, 10) == 0.0
+
+
 class TestConsumeEudrTrial:
     """Consuming a trial assessment increments the org counter."""
 
@@ -271,6 +321,58 @@ class TestGetEudrBillingStatus:
         status = get_eudr_billing_status("missing")
         assert status["plan"] == "none"
         assert status["subscribed"] is False
+
+    @patch("treesight.billing.accounting.get_pool_status")
+    @patch(_GET_ORG)
+    def test_active_eudr_pro_subscription_sets_subscribed_and_plan(
+        self, mock_get_org, mock_pool
+    ):
+        from treesight.security.eudr_billing import get_eudr_billing_status
+
+        mock_get_org.return_value = {
+            "id": "org-1",
+            "org_id": "org-1",
+            "billing": {
+                "eudr_status": "active",
+                "eudr_tier": "eudr_pro",
+                "stripe_customer_id": "cus_eudr",
+            },
+        }
+        mock_pool.return_value = {
+            "allowance": 10,
+            "available": 5,
+            "completed": 5,
+            "reserved": 0,
+        }
+        status = get_eudr_billing_status("org-1")
+        assert status["plan"] == "eudr_pro"
+        assert status["subscribed"] is True
+        assert status["stripe_customer_id"] == "cus_eudr"
+
+    @patch("treesight.billing.accounting.get_pool_status")
+    @patch(_GET_ORG)
+    def test_canceled_eudr_subscription_returns_subscribed_false(
+        self, mock_get_org, mock_pool
+    ):
+        from treesight.security.eudr_billing import get_eudr_billing_status
+
+        mock_get_org.return_value = {
+            "id": "org-1",
+            "org_id": "org-1",
+            "billing": {
+                "eudr_status": "canceled",
+                "eudr_tier": "eudr_pro",
+            },
+        }
+        mock_pool.return_value = {
+            "allowance": 10,
+            "available": 0,
+            "completed": 10,
+            "reserved": 0,
+        }
+        status = get_eudr_billing_status("org-1")
+        assert status["subscribed"] is False
+        assert status["plan"] == "parcel_pool"
 
 
 # ---------------------------------------------------------------------------
