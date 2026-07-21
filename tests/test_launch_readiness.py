@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 import typing
+from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -1254,18 +1255,34 @@ class TestTrivySignalQuality:
             ".trivyignore must explicitly track current low-cost network ACL exceptions"
         )
 
-    def test_trivy_ignore_has_no_container_cve_suppressions(self):
+    def test_trivy_container_cve_suppressions_are_bounded_upstream_exceptions(self):
         ignore = TRIVY_IGNORE.read_text()
-        non_comment_entries = [
+        cve_entries = [
             line.strip()
             for line in ignore.splitlines()
-            if line.strip() and not line.strip().startswith("#")
+            if line.strip().startswith("CVE-")
         ]
-        cve_entries = [line for line in non_comment_entries if line.startswith("CVE-")]
-        assert cve_entries == [], (
-            ".trivyignore must not contain container CVE suppressions; "
-            "HIGH/CRITICAL container findings must be fixed at source"
-        )
+        allowed = {
+            "CVE-2026-48109": "#1030",
+            "CVE-2026-48506": "#1031",
+        }
+        today = datetime.now(UTC).date()
+
+        for entry in cve_entries:
+            vuln_id = entry.split()[0]
+            assert vuln_id in allowed, (
+                "only explicitly reviewed, upstream-vendored container CVEs may be suppressed"
+            )
+            assert allowed[vuln_id] in entry, "container CVE exceptions must link a tracking issue"
+            assert "upstream Azure Functions bundle" in entry, (
+                "container CVE exceptions must identify the non-upgradeable upstream owner"
+            )
+            expiry_match = re.search(r"\bexp:(\d{4}-\d{2}-\d{2})\b", entry)
+            assert expiry_match, "container CVE exceptions must include exp:YYYY-MM-DD"
+            expiry = datetime.fromisoformat(expiry_match.group(1)).date()
+            assert today <= expiry <= today + timedelta(days=30), (
+                "container CVE exceptions must be active and expire within 30 days"
+            )
 
     def test_security_workflow_checks_trivyignore_expiry(self):
         yml = SECURITY_YML.read_text()
