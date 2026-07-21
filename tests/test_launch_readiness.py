@@ -1258,9 +1258,7 @@ class TestTrivySignalQuality:
     def test_trivy_container_cve_suppressions_are_bounded_upstream_exceptions(self):
         ignore = TRIVY_IGNORE.read_text()
         cve_entries = [
-            line.strip()
-            for line in ignore.splitlines()
-            if line.strip().startswith("CVE-")
+            line.strip() for line in ignore.splitlines() if line.strip().startswith("CVE-")
         ]
         allowed = {
             "CVE-2026-48109": "#1030",
