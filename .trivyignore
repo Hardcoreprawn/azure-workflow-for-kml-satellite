@@ -26,7 +26,10 @@ AVD-AZU-0061 # exp:2026-08-11 false positive — attribute already set
 # pinned in infra/tofu/defender.tf and reviewed in cost/security decisions.
 AZU-0045 # exp:2026-08-11 accepted cost posture — unused Defender plans Free; active plans ARE Standard in defender.tf (#850)
 
-# Policy: do not suppress container CVEs in this file.
-# Container image gates run with --severity CRITICAL,HIGH --ignore-unfixed and
-# must fail on actionable findings. Keep .trivyignore scoped to infra policy
-# exceptions (AZU/AVD entries) only.
+# Container CVEs may only be suppressed when all of these are true:
+# - the component is vendored by an upstream runtime and cannot be upgraded here;
+# - a fresh no-cache image scan proves the finding remains after upstream refresh;
+# - the entry links a tracking issue and expires within 30 days.
+# Actionable first-party or directly upgradeable findings remain blocking.
+CVE-2026-48109 # exp:2026-08-20 upstream Azure Functions bundle 4.35.0; fixed MessagePack bundle unavailable; #1030
+CVE-2026-48506 # exp:2026-08-20 upstream Azure Functions bundle 4.35.0; fixed MessagePack bundle unavailable; #1031
