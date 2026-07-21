@@ -61,6 +61,49 @@ def eudr_next_tier(
     return None, None
 
 
+def eudr_graduated_overage_gbp(period_parcels_used: int, included_parcels: int) -> float:
+    """Compute the graduated overage charge for the current period.
+
+    Splits overage parcels correctly across tier boundaries so that earlier
+    parcels are charged at the higher base rate and later parcels at the
+    discounted tier rates.  This matches the JS ``estimateTieredEudrOverage``
+    behaviour and the EUDR pricing schedule documented in
+    :data:`treesight.constants.EUDR_OVERAGE_TIERS`.
+
+    For example, with 10 included parcels and 120 used:
+    - overage = 110
+    - parcels 11–100 (90 parcels) at £3.00 = £270
+    - parcels 101–120 (20 parcels) at £2.50 = £50
+    - total = £320  (not £275 which would wrongly apply £2.50 to all 110)
+    """
+    overage = max(period_parcels_used - included_parcels, 0)
+    if overage <= 0:
+        return 0.0
+
+    # Overage begins after the included quota is exhausted.
+    cursor = included_parcels
+    remaining = overage
+    total = 0.0
+
+    # Walk the band boundaries: base rate up to the first tier threshold,
+    # then each subsequent tier rate.
+    thresholds: list[tuple[int | None, float]] = [
+        (threshold, rate) for threshold, rate in EUDR_OVERAGE_TIERS
+    ]
+    upper_limits = [t for t, _ in thresholds] + [None]
+    rates = [EUDR_OVERAGE_BASE_RATE_GBP] + [r for _, r in thresholds]
+
+    for upper, rate in zip(upper_limits, rates, strict=False):
+        if remaining <= 0:
+            break
+        band = remaining if upper is None else max(min(upper - cursor, remaining), 0)
+        total += band * rate
+        cursor += band
+        remaining -= band
+
+    return round(total, 2)
+
+
 # ---------------------------------------------------------------------------
 # Free trial
 # ---------------------------------------------------------------------------
@@ -182,9 +225,10 @@ def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[
     period_parcels = int(pool.get("completed", 0) or 0) + int(pool.get("reserved", 0) or 0)
     overage = max(period_parcels - allowance, 0)
 
+    has_active_sub = _has_active_eudr_subscription(billing)
     return {
-        "plan": "parcel_pool",
-        "subscribed": False,
+        "plan": "eudr_pro" if has_active_sub else "parcel_pool",
+        "subscribed": has_active_sub,
         "assessments_used": used,
         "trial_remaining": available,
         "period_parcels_used": period_parcels,
