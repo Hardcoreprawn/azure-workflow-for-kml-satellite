@@ -15,8 +15,8 @@ The sync is idempotent and reconciling:
   closed automatically.
 * During migration, the oldest open tracking issue for a group is selected as
   canonical; duplicates are closed as not-planned.
-* A later recurrence of the same ``(tool, rule_id)`` reopens/updates the
-  canonical tracker instead of creating one issue per location.
+* A later recurrence of the same ``(tool, rule_id)`` creates one new
+  replacement tracker (closed trackers are not reopened).
 
 Pure planning logic (``plan_sync`` / ``build_group_issue_spec``) is separated
 from the GitHub I/O boundary so it is testable without network access.
