@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-07-12
+Last updated: 2026-08-06
 
 ---
 
@@ -107,6 +107,9 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1129 | feat(eudr): human override + per-parcel notes with audit trail — append-only `parcel_review_history` per parcel (reviewer identity, timestamp, decision, note) alongside a `parcel_reviews` latest-state lookup; new org-scoped `GET`/`POST /api/analysis/{instance_id}/parcel/{aoi_index}/review` endpoints; amber "Reviewed — compliant with explanation" badge + edit/revert UI; EUDR audit PDF/CSV exports render the full history (closes #866). |
+| #1128 | feat(ux): billing-aware preflight estimated charge before submission — preflight surfaces the incremental cost (included vs. graduated EUDR overage) as soon as parcel count is known, delegating to the authoritative EUDR billing snapshot; row hides when billing data is unavailable (closes #862). |
+| #1167 | feat: group code-scanning issues by `(tool, rule_id)` — one canonical tracking issue per CVE instead of one per alert number (10 Pillow CVEs across two install paths: 20 issues → 10); legacy per-alert trackers migrated and duplicates closed automatically (closes #1166). |
 | #1113 | ci(gate): run the `lint`/`test`/`integration` gates inside the published `treesight-dev` image pinned by digest — new `resolve-image` job resolves `treesight-dev:latest` to an immutable `@sha256` and reports lock-vs-image staleness; `lint`/`test` are `container:` jobs that drop `setup-uv`/`uv sync` (deps baked in) and only `uv sync` the delta when the image is stale. `integration` is driven by docker compose (a GitHub `services:` container can't pass Azurite's required `--skipApiVersionCheck`): the maintained `azurite` service + a new `ci-gate` service run `make test-int` inside the resolved image. Adds `make ci-local`/`scripts/ci_local.sh` to run the same gates in-container locally. `local == CI` is provably the same image (ADR 0005, epic #1082, closes #1086). |
 | #1116 | fix(dev-image): install `make` in `treesight-dev` + verify it in the smoke test — the containerised CI gate jobs (#1086) invoke `make lint`/`make test`/`make test-int` inside the image, but the image only installed `nodejs git`, so every gate failed with `make: not found`. Prerequisite for #1086/PR #1113: merging this rebuilds `treesight-dev:latest` with `make` before the gate jobs consume it (closes #1114). |
 | #1111 | build(dev): devcontainer + published dev image (`Dockerfile.dev`, `treesight-dev`) — extends `treesight-base` with the locked dependency layer, the `treesight_rs` PyO3 extension (now actually built via a maturin backend + `rust/pyproject.toml`), and the gate tools (ruff/pyright/pytest). Multi-stage keeps the runtime image lean (~2.6 GB; Rust toolchain confined to the builder). Adds `make build-rust`, `.devcontainer/devcontainer.json`, an approval-gated GHCR publish workflow, and a lock-vs-image staleness guard (`scripts/check_dev_image_staleness.py` + tests). Also fixes the discovered defect that `treesight_rs` was never compiled anywhere — prod silently ran the Python fallback (ADR 0005, epic #1082, closes #1085, closes #1110). |
