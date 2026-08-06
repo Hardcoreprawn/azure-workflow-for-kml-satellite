@@ -67,7 +67,7 @@ _free-ports: ## Kill local processes holding dev ports
 # ───────────────────── Azurite (Docker) ─────────────────────
 
 dev-up: ## Start Azurite container
-	docker compose up -d
+	docker compose up -d azurite
 	@echo "Azurite running on localhost:10000 (blob), :10001 (queue), :10002 (table)"
 
 dev-down: _free-ports ## Stop containers and free ports

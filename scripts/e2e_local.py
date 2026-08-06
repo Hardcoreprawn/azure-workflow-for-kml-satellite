@@ -12,7 +12,7 @@ Prerequisite: Azurite must already be up with containers created
 and the trigger/poll/assert flow.
 
 Usage:
-  make test-e2e-local
+  make test-pipeline-local
   # or directly:
   uv run python scripts/e2e_local.py
 """
@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from _azurite import AZURITE_CONN_STR
 from simulate_upload import DEFAULT_CONTAINER, fire_event_grid, upload_kml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -36,13 +37,39 @@ FUNC_HOST_LOG_PATH = REPO_ROOT / ".e2e-local-func-host.log"
 
 _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"})
 
+# Dummy CIAM values so treesight.config.validate_config() doesn't fail
+# function indexing — REQUIRE_AUTH stays unset, so nothing ever verifies
+# these against a real token. Never overrides a real value the caller
+# already set (e.g. a developer's own local.settings.json/env).
+_DUMMY_CIAM_DEFAULTS = {
+    "CIAM_AUTHORITY": "https://ciam.example.com",
+    "CIAM_TENANT_ID": "test-tenant",
+    "CIAM_API_AUDIENCE": "api://test-audience",
+}
+
+
+def build_func_host_env(base_env: dict[str, str]) -> dict[str, str]:
+    """Return the environment for the ``func start`` subprocess.
+
+    Self-contained by design: ``local.settings.json`` is git-ignored, so a
+    fresh CI checkout won't have one — every setting the host needs to pass
+    startup validation and reach the right Azurite must be set here, not
+    assumed to come from a developer's local file.
+    """
+    env = dict(base_env)
+    env["CANOPEX_TEST_MODE"] = "1"
+    for key, value in _DUMMY_CIAM_DEFAULTS.items():
+        env.setdefault(key, value)
+    env.setdefault("AzureWebJobsStorage", AZURITE_CONN_STR)
+    env.setdefault("FUNCTIONS_WORKER_RUNTIME", "python")
+    env.setdefault("AzureWebJobsFeatureFlags", "EnableWorkerIndexing")
+    return env
+
 
 def start_func_host(*, log_path: Path) -> subprocess.Popen:
-    """Start ``func start --python`` in the background with
-    ``CANOPEX_TEST_MODE`` set — the switch that keeps imagery synthetic
-    (see #1215 / treesight/config.py::is_test_mode_enabled)."""
-    env = dict(os.environ)
-    env["CANOPEX_TEST_MODE"] = "1"
+    """Start ``func start --python`` in the background with an env built
+    by ``build_func_host_env`` — see that function for why."""
+    env = build_func_host_env(dict(os.environ))
     log_file = log_path.open("w")
     return subprocess.Popen(
         ["func", "start", "--python"],
@@ -126,15 +153,15 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
         )
 
     output = status_payload.get("output") or {}
-    downloads_succeeded = output.get("downloads_succeeded", 0)
-    if downloads_succeeded < 1:
+    downloads_completed = output.get("downloadsCompleted", 0)
+    if downloads_completed < 1:
         raise AssertionError(
-            f"Expected at least 1 successful download, got {downloads_succeeded}. Summary: {output}"
+            f"Expected at least 1 completed download, got {downloads_completed}. Summary: {output}"
         )
 
-    download_results = output.get("download_results") or []
-    if not any(r.get("blob_path") for r in download_results):
-        raise AssertionError(f"No download_results with a blob_path. Summary: {output}")
+    raw_imagery_paths = (output.get("artifacts") or {}).get("rawImageryPaths") or []
+    if not raw_imagery_paths:
+        raise AssertionError(f"No rawImageryPaths in artifacts. Summary: {output}")
 
 
 def main() -> None:
