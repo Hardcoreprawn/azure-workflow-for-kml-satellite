@@ -324,9 +324,7 @@ class TestGetEudrBillingStatus:
 
     @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
-    def test_active_eudr_pro_subscription_sets_subscribed_and_plan(
-        self, mock_get_org, mock_pool
-    ):
+    def test_active_eudr_pro_subscription_sets_subscribed_and_plan(self, mock_get_org, mock_pool):
         from treesight.security.eudr_billing import get_eudr_billing_status
 
         mock_get_org.return_value = {
@@ -351,9 +349,7 @@ class TestGetEudrBillingStatus:
 
     @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
-    def test_canceled_eudr_subscription_returns_subscribed_false(
-        self, mock_get_org, mock_pool
-    ):
+    def test_canceled_eudr_subscription_returns_subscribed_false(self, mock_get_org, mock_pool):
         from treesight.security.eudr_billing import get_eudr_billing_status
 
         mock_get_org.return_value = {
