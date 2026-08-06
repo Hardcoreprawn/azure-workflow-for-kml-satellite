@@ -89,8 +89,8 @@ def test_parse_group_marker_reads_embedded_key() -> None:
 
 def test_parse_group_marker_preserves_slash_in_rule_id() -> None:
     # Semgrep rule IDs contain slashes; only the first slash is the separator.
-    body = f"<!-- {GROUP_MARKER_PREFIX}Semgrep/python.lang.security.audit.xss -->"
-    assert parse_group_marker(body) == ("Semgrep", "python.lang.security.audit.xss")
+    body = f"<!-- {GROUP_MARKER_PREFIX}Semgrep/python/lang/security/audit.xss -->"
+    assert parse_group_marker(body) == ("Semgrep", "python/lang/security/audit.xss")
 
 
 def test_parse_group_marker_returns_none_when_absent() -> None:
@@ -379,12 +379,53 @@ def test_plan_sync_is_idempotent_after_canonical_group_created() -> None:
     assert len(plan1.to_update) == len(plan2.to_update) == 1
 
 
+def test_plan_sync_skips_update_when_canonical_content_unchanged() -> None:
+    """A canonical tracker whose stored title/body already match the rendered
+    spec for the current alert set must not be scheduled for a no-op PATCH."""
+    alerts = [_alert(1), _alert(2)]
+    group = group_alerts(alerts)[("Trivy", "CVE-2024-0001")]
+    current_spec = build_group_issue_spec(group, labels=[])
+    up_to_date_tracker = TrackedIssue(
+        number=100,
+        state="open",
+        alert_number=1,
+        group_key=("Trivy", "CVE-2024-0001"),
+        alert_numbers=frozenset({1, 2}),
+        title=current_spec.title,
+        body=current_spec.body,
+    )
+
+    plan = plan_sync(open_alerts=alerts, tracked_issues=[up_to_date_tracker])
+
+    assert plan.to_update == []
+    assert plan.to_create == []
+    assert plan.to_close == []
+
+
+def test_plan_sync_updates_when_canonical_content_changed() -> None:
+    """A canonical tracker whose stored body is stale (e.g. a new alert
+    instance appeared) must still be scheduled for update."""
+    alerts = [_alert(1), _alert(2)]
+    stale_tracker = TrackedIssue(
+        number=100,
+        state="open",
+        alert_number=1,
+        group_key=("Trivy", "CVE-2024-0001"),
+        alert_numbers=frozenset({1}),  # stale: alert #2 not yet reflected
+        title="stale title",
+        body="stale body",
+    )
+
+    plan = plan_sync(open_alerts=alerts, tracked_issues=[stale_tracker])
+
+    assert len(plan.to_update) == 1
+    assert plan.to_update[0][0].number == 100
+
+
 # ── dry-run grouping ──────────────────────────────────────────
 
 
-def test_plan_sync_dry_run_groups_creates_not_individual_alerts(
-    capsys: object,
-) -> None:
+def test_plan_sync_dry_run_groups_creates_not_individual_alerts() -> None:
     """Dry-run: 20 Pillow-style alerts (2 locations each for 10 CVEs) yield 10 creates."""
     cves = [f"CVE-2024-{i:04d}" for i in range(10)]
     alerts = [

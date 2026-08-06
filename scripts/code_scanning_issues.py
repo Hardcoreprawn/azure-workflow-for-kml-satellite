@@ -77,6 +77,8 @@ class TrackedIssue:
     alert_number: int  # primary alert number for backward compat; 0 when absent
     group_key: tuple[str, str] | None = None  # (tool, rule_id) from group marker
     alert_numbers: frozenset[int] = field(default_factory=frozenset)
+    title: str = ""
+    body: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,7 @@ def parse_group_marker(body: str) -> tuple[str, str] | None:
     if "/" not in raw:
         return None
     tool, _, rule_id = raw.partition("/")
+    tool, rule_id = tool.strip(), rule_id.strip()
     return (tool, rule_id) if tool and rule_id else None
 
 
@@ -181,7 +184,7 @@ def group_alerts(alerts: list[CodeScanningAlert]) -> dict[tuple[str, str], Alert
     """Group alerts by ``(tool, rule_id)``, returning a mapping keyed by that pair."""
     raw: dict[tuple[str, str], list[CodeScanningAlert]] = {}
     for alert in alerts:
-        key = (alert.tool, alert.rule_id)
+        key = (alert.tool.strip(), alert.rule_id.strip())
         raw.setdefault(key, []).append(alert)
 
     result: dict[tuple[str, str], AlertGroup] = {}
@@ -322,7 +325,9 @@ def plan_sync(
             to_create.append(grp)
         else:
             canonical = min(trackers, key=lambda t: t.number)
-            to_update.append((canonical, grp))
+            spec = build_group_issue_spec(grp, labels=[])
+            if spec.title != canonical.title or spec.body != canonical.body:
+                to_update.append((canonical, grp))
             for ti in trackers:
                 if ti is not canonical:
                     to_close_duplicate.append((ti, canonical, grp))
@@ -465,6 +470,8 @@ def load_tracked_issues(*, token: str, owner: str, repo: str, label: str) -> lis
                 alert_number=primary,
                 group_key=group_key,
                 alert_numbers=alert_numbers,
+                title=str(issue.get("title") or ""),
+                body=body,
             )
         )
     return tracked
@@ -639,15 +646,22 @@ def main() -> int:
         )
 
     for issue in plan.to_close:
+        if issue.group_key is not None:
+            comment = (
+                "All Code Scanning alerts in this group are no longer open "
+                "(fixed or dismissed); closing this tracking issue automatically."
+            )
+        else:
+            comment = (
+                f"Code Scanning alert #{issue.alert_number} is no longer open "
+                "(fixed or dismissed); closing this tracking issue automatically."
+            )
         close_issue(
             token=token,
             owner=args.owner,
             repo=args.repo,
             issue_number=issue.number,
-            comment=(
-                "All Code Scanning alerts in this group are no longer open "
-                "(fixed or dismissed); closing this tracking issue automatically."
-            ),
+            comment=comment,
         )
         print(f"closed issue #{issue.number} (group fully resolved)")
 
