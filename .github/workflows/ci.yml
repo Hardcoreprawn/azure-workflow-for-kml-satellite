@@ -45,7 +45,7 @@ jobs:
       image: ${{ steps.resolve.outputs.image }}
       stale: ${{ steps.resolve.outputs.stale }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - name: Log in to GHCR
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
@@ -97,7 +97,7 @@ jobs:
       # Deps are baked into the dev image; `uv run` must not try to re-sync.
       UV_NO_SYNC: "1"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - name: Sync dependency delta (only if image is stale)
         if: needs.resolve-image.outputs.stale == 'true'
         run: uv sync --all-extras
@@ -126,7 +126,7 @@ jobs:
       # Deps are baked into the dev image; `uv run` must not try to re-sync.
       UV_NO_SYNC: "1"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           # Full history so diff-cover can find the merge-base with the base branch.
           fetch-depth: 0
@@ -180,7 +180,7 @@ jobs:
     # INSIDE the resolved dev image on the same network — the exact same path as
     # local `make ci-local`. See #1086.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - name: Log in to GHCR
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
@@ -215,7 +215,7 @@ jobs:
       contents: read
       packages: read         # pull base image from GHCR
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       - name: Log in to GHCR (pull base image)
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
