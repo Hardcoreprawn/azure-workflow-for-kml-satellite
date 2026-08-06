@@ -30,6 +30,7 @@
   var _getLatestBillingStatus = null;
   var _getWorkspaceRoleConfig = null;
   var _onPreflightUpdate = null;
+  var _computeEudrCostEstimate = null;
 
   // Module-local Leaflet map instance for the preflight thumbnail.
   var preflightMap = null;
@@ -42,6 +43,7 @@
     _getLatestBillingStatus = deps.getLatestBillingStatus;
     _getWorkspaceRoleConfig = deps.getWorkspaceRoleConfig;
     _onPreflightUpdate = deps.onPreflightUpdate;
+    _computeEudrCostEstimate = deps.computeEudrCostEstimate;
   }
 
   // ── Preflight warning builder ─────────────────────────────────
@@ -184,25 +186,23 @@
 
   function computeEudrCostEstimate(parcelCount) {
     var activeProfile = _getActiveProfile ? _getActiveProfile() : {};
-    var eudrModule = window.CanopexEudr || {};
-    if (typeof eudrModule.computeCostEstimate === 'function') {
-      return eudrModule.computeCostEstimate(parcelCount, activeProfile);
+    if (!activeProfile.enableParcelCostEstimate || !parcelCount || !_computeEudrCostEstimate) return null;
+    var estimateText = _computeEudrCostEstimate(parcelCount, activeProfile);
+    if (!estimateText || estimateText === '—') return null;
+    return estimateText;
+  }
+
+  function renderPreflightCost(estimateText) {
+    var costEl = document.getElementById('app-preflight-cost');
+    if (!costEl) return;
+    var costWrap = costEl.parentElement;
+    if (!estimateText) {
+      costEl.textContent = '';
+      if (costWrap) costWrap.hidden = true;
+      return;
     }
-    if (!activeProfile.enableParcelCostEstimate || !parcelCount) return '—';
-    var billing = typeof window.eudrBillingData === 'function' ? window.eudrBillingData() : null;
-    if (!billing) return '—';
-    if (!billing.subscribed) {
-      var remaining = billing.trial_remaining != null ? billing.trial_remaining : 0;
-      if (remaining > 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' · ' + remaining + ' free assessment' + (remaining !== 1 ? 's' : '') + ' left';
-      return 'Subscribe to continue';
-    }
-    var used = billing.period_parcels_used || 0;
-    var included = billing.included_parcels || 10;
-    var remainingIncluded = Math.max(included - used, 0);
-    var overageParcels = Math.max(parcelCount - remainingIncluded, 0);
-    if (overageParcels === 0) return parcelCount + ' parcel' + (parcelCount !== 1 ? 's' : '') + ' included';
-    var rate = overageParcels >= 500 ? 1.80 : overageParcels >= 100 ? 2.50 : 3.00;
-    return overageParcels + ' overage × £' + rate.toFixed(2) + ' = £' + (overageParcels * rate).toFixed(2);
+    if (costWrap) costWrap.hidden = false;
+    costEl.textContent = estimateText;
   }
 
   // ── Input tab switching (KML / CSV) ──────────────────────────
@@ -294,7 +294,6 @@
     var aoisEl = document.getElementById('app-preflight-aois');
     var spreadEl = document.getElementById('app-preflight-spread');
     var quotaEl = document.getElementById('app-preflight-quota');
-    var costEl = document.getElementById('app-preflight-cost');
     if (!headlineEl || !modeEl || !summaryEl || !featuresEl || !aoisEl || !spreadEl || !quotaEl) return null;
 
     var activeProfile = _getActiveProfile ? _getActiveProfile() : {};
@@ -311,7 +310,7 @@
       aoisEl.textContent = '0';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      if (costEl) costEl.textContent = '—';
+      renderPreflightCost(null);
       renderPreflightWarnings([{ tone: 'info', text: 'Preflight will show warnings here after you paste or upload KML.' }]);
       renderPreflightMap(null);
       var submitBtn = document.getElementById('app-analysis-submit-btn');
@@ -329,7 +328,7 @@
       aoisEl.textContent = '—';
       spreadEl.textContent = '—';
       quotaEl.textContent = '—';
-      if (costEl) costEl.textContent = '—';
+      renderPreflightCost(null);
       renderPreflightWarnings([{ tone: 'error', text: preflight.error }]);
       renderPreflightMap(null);
       return preflight;
@@ -342,7 +341,7 @@
     aoisEl.textContent = String(preflight.aoiCount);
     spreadEl.textContent = formatDistance(preflight.maxSpreadKm);
     quotaEl.textContent = preflight.quotaImpact;
-    if (costEl) costEl.textContent = computeEudrCostEstimate(preflight.aoiCount);
+    renderPreflightCost(computeEudrCostEstimate(preflight.aoiCount));
     renderPreflightWarnings(preflight.warnings);
     renderPreflightMap(preflight.polygons);
     var submitBtn = document.getElementById('app-analysis-submit-btn');

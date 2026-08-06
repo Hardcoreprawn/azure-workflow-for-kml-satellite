@@ -183,8 +183,10 @@ class TestEudrUsagePayload:
         from blueprints.eudr import _eudr_usage_payload
 
         payload = _eudr_usage_payload("test-user")
-        # 120 used with 10 included => 110 overage parcels at £2.50 each.
-        assert payload["current"]["estimatedSpendGbp"] == 275.0
+        # 120 used with 10 included => 110 overage parcels:
+        # parcels 11–100 (90 × £3.00 = £270) + parcels 101–120 (20 × £2.50 = £50) = £320.
+        # Applying the marginal rate (£2.50) to all 110 overage parcels would wrongly give £275.
+        assert payload["current"]["estimatedSpendGbp"] == 320.0
 
 
 # ---------------------------------------------------------------------------

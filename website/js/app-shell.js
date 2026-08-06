@@ -284,6 +284,7 @@
     getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },
     getActiveProfile: function () { return activeProfile; },
     getLatestBillingStatus: billingModule.getStatus,
+    computeEudrCostEstimate: eudrModule.computeCostEstimate,
     getWorkspaceRoleConfig: workspaceModule.currentRoleConfig,
     onPreflightUpdate: runtimeModule.setAnalysisDraftSummary,
   });
