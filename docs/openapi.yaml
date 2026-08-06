@@ -981,6 +981,137 @@ paths:
         "404":
           description: Run not found
 
+  /analysis/{instance_id}/review:
+    get:
+      operationId: analysisReviewList
+      summary: List all parcel reviews for a run
+      description: |
+        Returns the latest-state review for every reviewed parcel plus the full
+        append-only revision history.  Both structures are keyed by string AOI
+        index (e.g. `"0"`, `"1"`).
+
+        The caller must be the run owner or an org member.
+      tags: [analysis]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: instance_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reviews retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  instance_id:
+                    type: string
+                  reviews:
+                    type: object
+                    description: Latest-state review keyed by string AOI index
+                    additionalProperties:
+                      $ref: "#/components/schemas/ParcelReview"
+                  review_history:
+                    type: object
+                    description: Append-only revision lists keyed by string AOI index
+                    additionalProperties:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/ParcelReviewRevision"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Forbidden — caller is not the owner or an org member
+        "404":
+          description: Run not found
+
+  /analysis/{instance_id}/parcel/{aoi_index}/review:
+    post:
+      operationId: analysisParcelReview
+      summary: Save or revert a human review on a specific parcel
+      description: |
+        Saves an assessment note against a specific parcel identified by zero-based
+        `aoi_index`.  Every call appends an immutable revision to
+        `parcel_review_history` so no prior decision is ever silently destroyed.
+
+        **`override` must be an explicit JSON boolean** — string values such as
+        `"true"` or `"false"` are rejected with 400 to prevent coercion errors.
+
+        When `override: true` the note must be at least 20 characters.
+
+        Set `action: "revert"` to restore the algorithmic determination.  A revert
+        revision is appended to the history and the latest-state entry is cleared.
+        No `note` or `override` is required for a revert.
+
+        The caller must be the run owner or an org member.
+        `aoi_index` must be a non-negative integer within the run's parcel count.
+      tags: [analysis]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: instance_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: aoi_index
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                override:
+                  type: boolean
+                  description: Must be an explicit JSON boolean. Required unless action is "revert".
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                  description: Required unless action is "revert". Must be ≥ 20 chars when override is true.
+                action:
+                  type: string
+                  enum: [save, revert]
+                  default: save
+                  description: '"revert" clears the current review and appends a revert revision to history.'
+      responses:
+        "200":
+          description: Review saved or reverted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved: {type: boolean}
+                  aoi_index: {type: integer}
+                  instance_id: {type: string}
+                  action:
+                    type: string
+                    enum: [save, revert]
+                  revision_count:
+                    type: integer
+                    description: Total revisions in history for this parcel after this write
+        "400":
+          description: |
+            Validation failure — possible causes: override is not a JSON boolean;
+            note is missing or too short/long; aoi_index is negative or out of range.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Forbidden — caller is not the owner or an org member
+        "404":
+          description: Run not found
+
   /analysis/history:
     get:
       operationId: analysisHistory
@@ -1184,6 +1315,41 @@ components:
       description: Durable Functions orchestration instance ID
 
   schemas:
+    ParcelReview:
+      type: object
+      description: Latest-state human review for a single parcel
+      properties:
+        override:
+          type: boolean
+          description: true when the reviewer accepted this parcel as compliant
+        note:
+          type: string
+        reviewed_by:
+          type: string
+          description: Authenticated user identity of the reviewer
+        reviewed_at:
+          type: string
+          format: date-time
+      required: [override, note, reviewed_by, reviewed_at]
+
+    ParcelReviewRevision:
+      type: object
+      description: A single immutable revision in the parcel audit history
+      properties:
+        action:
+          type: string
+          enum: [save, revert]
+        override:
+          type: boolean
+        note:
+          type: string
+        reviewed_by:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+      required: [action, override, note, reviewed_by, reviewed_at]
+
     Error:
       type: object
       properties:

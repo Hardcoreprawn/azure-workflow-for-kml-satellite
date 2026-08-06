@@ -691,6 +691,14 @@ class TestBuildEudrCsv:
         assert len(rows) == 1
         assert rows[0]["determination_status"] == "deforestation_free"
 
+    def test_malformed_parcel_reviews_do_not_crash(self, eudr_manifest):
+        """A corrupted (non-dict) parcel_reviews value on the run record must not 500."""
+        result = _build_eudr_csv(eudr_manifest, run_record={"parcel_reviews": ["not", "a", "dict"]})
+        reader = csv.DictReader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 3
+        assert rows[0]["reviewer_note"] == ""
+
 
 class TestBuildPdfEudrPerParcel:
     """EUDR per-parcel sections in PDF (#582)."""

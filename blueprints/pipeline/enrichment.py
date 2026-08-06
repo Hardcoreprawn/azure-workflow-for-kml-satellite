@@ -71,6 +71,10 @@ async def timelapse_data(
                 sanitized_manifest["parcel_notes"] = run_record["parcel_notes"]
             if run_record.get("parcel_overrides"):
                 sanitized_manifest["parcel_overrides"] = run_record["parcel_overrides"]
+            if run_record.get("parcel_reviews"):
+                sanitized_manifest["parcel_reviews"] = run_record["parcel_reviews"]
+            if run_record.get("parcel_review_history"):
+                sanitized_manifest["parcel_review_history"] = run_record["parcel_review_history"]
     except Exception:
         logger.warning("Could not merge annotation data into manifest for run %s", instance_id)
 

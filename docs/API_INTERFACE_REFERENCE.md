@@ -30,6 +30,8 @@ Production API base URL: `https://{productionHost}/api`
 | GET | /api/analysis/history | SWA session | 401 | Analysis history (`scope=user` default, `scope=org` for portfolio summary) |
 | POST | /api/analysis/notes | SWA session | 401/403/404 | Save/delete a parcel note on a run (owner or org member only) |
 | POST | /api/analysis/override | SWA session | 401/403/404 | Record or revert a human determination override (reason required, min 20 chars) |
+| GET | /api/analysis/{id}/review | SWA session | 401/403/404 | List all parcel reviews for a run; returns `reviews` (latest state) and `review_history` (append-only audit log) |
+| POST | /api/analysis/{id}/parcel/{aoi_index}/review | SWA session | 401/403/404 | Save or revert a human parcel review. `override` must be a JSON boolean. `action:"revert"` appends a revert revision without erasing history. Every save appends to `parcel_review_history` |
 | POST | /api/convert-coordinates | SWA session | 401 | Coordinate conversion |
 | GET | /api/export/{id}/{fmt} | SWA session | 401 | Export artifacts |
 

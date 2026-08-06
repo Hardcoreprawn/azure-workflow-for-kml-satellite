@@ -174,6 +174,12 @@
         if (d.onOverrideReasonInput) d.onOverrideReasonInput();
       });
     }
+    var overrideMarkCompliant = document.getElementById('app-override-mark-compliant');
+    if (overrideMarkCompliant) {
+      overrideMarkCompliant.addEventListener('change', function () {
+        if (d.onOverrideReasonInput) d.onOverrideReasonInput();
+      });
+    }
 
     // Portfolio summary export (#674)
     bindClick('app-summary-export-btn', function () {

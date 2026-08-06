@@ -527,6 +527,9 @@ _SUMMARY_CSV_FIELDS = [
     "overridden",
     "override_reason",
     "note",
+    "reviewer_note",
+    "reviewed_by",
+    "reviewed_at",
 ]
 
 
@@ -543,17 +546,25 @@ def _summary_rows_from_manifest(
 
     parcel_notes: dict[str, str] = {}
     parcel_overrides: dict[str, dict[str, Any]] = {}
+    parcel_reviews: dict[str, dict[str, Any]] = {}
     if run_record:
-        parcel_notes = run_record.get("parcel_notes") or {}
-        parcel_overrides = run_record.get("parcel_overrides") or {}
+        raw_notes = run_record.get("parcel_notes")
+        raw_overrides = run_record.get("parcel_overrides")
+        raw_reviews = run_record.get("parcel_reviews")
+        parcel_notes = raw_notes if isinstance(raw_notes, dict) else {}
+        parcel_overrides = raw_overrides if isinstance(raw_overrides, dict) else {}
+        parcel_reviews = raw_reviews if isinstance(raw_reviews, dict) else {}
 
     rows = []
     for idx, aoi in enumerate(per_aoi):
         parcel_key = str(idx)
         center = aoi.get("center", {})
         det = aoi.get("determination", {})
-        override = parcel_overrides.get(parcel_key, {})
+        raw_override = parcel_overrides.get(parcel_key, {})
+        override = raw_override if isinstance(raw_override, dict) else {}
         overridden = bool(override) and not override.get("reverted")
+        raw_review = parcel_reviews.get(parcel_key, {})
+        review = raw_review if isinstance(raw_review, dict) else {}
 
         rows.append(
             {
@@ -573,6 +584,9 @@ def _summary_rows_from_manifest(
                 "overridden": "yes" if overridden else "no",
                 "override_reason": override.get("reason", "") if overridden else "",
                 "note": parcel_notes.get(parcel_key, ""),
+                "reviewer_note": review.get("note", ""),
+                "reviewed_by": review.get("reviewed_by", ""),
+                "reviewed_at": review.get("reviewed_at", ""),
             }
         )
     return rows
