@@ -28,6 +28,9 @@ Thumbs.db
 
 # Docker / Azurite
 azurite-data/
+
+# Local pipeline e2e gate (#1215)
+.e2e-local-func-host.log
 .azurite/
 
 # Rust build artifacts

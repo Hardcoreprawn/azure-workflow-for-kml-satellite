@@ -6,7 +6,7 @@ using a stub provider and mock ``BlobStorageClient``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -113,6 +113,46 @@ def _ready_outcome(
 # ---------------------------------------------------------------------------
 # download_imagery
 # ---------------------------------------------------------------------------
+
+
+class TestFetchFunctionsLiveHostStubGating:
+    """CANOPEX_TEST_MODE must make the low-level byte-fetchers return
+    synthetic GeoTIFF bytes without ever touching the network — the second
+    seam #1215's local/CI e2e gate depends on (the first is the provider
+    registry — see tests/test_providers.py::TestLiveHostStubGating).
+    """
+
+    # .invalid is a reserved TLD (RFC 2606) — guaranteed never to resolve.
+    _BOGUS_URL = "https://stub-e2e-gate.invalid/does-not-exist.tif"
+    _BBOX: ClassVar[list[float]] = [36.79, -1.32, 36.82, -1.29]
+
+    def test_fetch_asset_bytes_returns_stub_when_test_mode_enabled(self, monkeypatch):
+        from treesight.pipeline.fulfilment import fetch_asset_bytes
+
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        data = fetch_asset_bytes(self._BOGUS_URL)
+        assert len(data) > 0
+
+    def test_cog_windowed_read_returns_stub_when_test_mode_enabled(self, monkeypatch):
+        from treesight.pipeline.fulfilment import cog_windowed_read
+
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        data = cog_windowed_read(self._BOGUS_URL, self._BBOX)
+        assert len(data) > 0
+
+    def test_fetch_asset_bytes_hits_real_network_when_test_mode_disabled(self, monkeypatch):
+        from treesight.pipeline.fulfilment import fetch_asset_bytes
+
+        monkeypatch.delenv("CANOPEX_TEST_MODE", raising=False)
+        with pytest.raises(Exception):  # noqa: B017 — proving the real path ran, not its type
+            fetch_asset_bytes(self._BOGUS_URL)
+
+    def test_cog_windowed_read_hits_real_network_when_test_mode_disabled(self, monkeypatch):
+        from treesight.pipeline.fulfilment import cog_windowed_read
+
+        monkeypatch.delenv("CANOPEX_TEST_MODE", raising=False)
+        with pytest.raises(Exception):  # noqa: B017 — proving the real path ran, not its type
+            cog_windowed_read(self._BOGUS_URL, self._BBOX)
 
 
 class TestDownloadImagery:

@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
-	test-upload test test-int lint fmt check smoke clean prune-branches \
+	test-upload test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
 	_free-ports _free-func-port _free-web-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -139,6 +139,10 @@ test: ## Run unit tests (canonical — CI runs this exact command)
 test-int: ## Run integration tests against a running Azurite (creates containers first)
 	uv run python scripts/init_storage.py
 	uv run pytest tests/test_integration.py -v
+
+test-pipeline-local: dev-init ## Unattended local/CI pipeline e2e gate — no live Azure environment required (#1215)
+	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
+	uv run python scripts/e2e_local.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
