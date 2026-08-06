@@ -431,6 +431,11 @@ _EUDR_CSV_FIELDS = [
 ]
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Return *value* if it's a dict, otherwise {} — guards against malformed Cosmos data."""
+    return value if isinstance(value, dict) else {}
+
+
 def _build_eudr_csv(
     manifest: dict[str, Any],
     run_record: dict[str, Any] | None = None,
@@ -451,7 +456,7 @@ def _build_eudr_csv(
 
     parcel_reviews: dict[str, dict[str, Any]] = {}
     if run_record:
-        parcel_reviews = run_record.get("parcel_reviews") or {}
+        parcel_reviews = _as_dict(run_record.get("parcel_reviews"))
 
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=_EUDR_CSV_FIELDS)
@@ -470,7 +475,7 @@ def _build_eudr_csv(
         ndvi_stats = aoi.get("ndvi_stats", [])
         valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
         cd_summary = aoi.get("change_detection", {}).get("summary", {})
-        review = parcel_reviews.get(str(idx), {})
+        review = _as_dict(parcel_reviews.get(str(idx)))
 
         writer.writerow(
             {
@@ -1145,9 +1150,9 @@ def _render_parcel_review_section(
     decision, not just the most recent one.  The block is rendered in amber so
     it stands out visually from the algorithmic findings.
     """
-    revisions: list[dict] = list(history) if history else []
+    revisions: list[dict] = list(history) if isinstance(history, list) else []
     # Fall back to the latest-state record when no detailed history is stored.
-    if not revisions and review and review.get("note"):
+    if not revisions and isinstance(review, dict) and review.get("note"):
         revisions = [{"action": "save", **review}]
 
     if not revisions:
@@ -1176,14 +1181,12 @@ def _render_parcel_review_section(
             pdf.cell(
                 0,
                 5,
-                f"Reviewer: {reviewed_by}  |  Reviewed at: {at_str}",
+                _safe_text(f"Reviewer: {reviewed_by}  |  Reviewed at: {at_str}"),
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
     else:
-        pdf.cell(
-            0, 6, "Human review audit history (all revisions)", new_x="LMARGIN", new_y="NEXT"
-        )
+        pdf.cell(0, 6, "Human review audit history (all revisions)", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Helvetica", "", 9)
         pdf.set_text_color(0, 0, 0)
         for i, rev in enumerate(revisions, start=1):
@@ -1376,8 +1379,8 @@ def _audit_per_parcel(
             pdf.ln(4)
             continue
 
-        review = (parcel_reviews or {}).get(str(idx))
-        history = (parcel_review_history or {}).get(str(idx))
+        review = _as_dict(parcel_reviews).get(str(idx))
+        history = _as_dict(parcel_review_history).get(str(idx))
         _audit_single_parcel(pdf, aoi, section_num, review=review, review_history=history)
 
 
@@ -1649,9 +1652,9 @@ async def export_data(
         )
 
     if fmt == "eudr-pdf":
-        parcel_reviews = (run_record.get("parcel_reviews") or {}) if run_record else None
+        parcel_reviews = _as_dict(run_record.get("parcel_reviews")) if run_record else None
         parcel_review_history = (
-            (run_record.get("parcel_review_history") or {}) if run_record else None
+            _as_dict(run_record.get("parcel_review_history")) if run_record else None
         )
         pdf_bytes = build_eudr_audit_pdf(
             manifest,

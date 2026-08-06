@@ -344,7 +344,31 @@ def _parse_review_body(
         )
     override: bool = raw_override
 
-    note = str(body.get("note", "")).strip()
+    raw_note = body.get("note", "")
+    if not isinstance(raw_note, str):
+        return (
+            False,
+            "",
+            "save",
+            error_response(400, "note must be a JSON string", req=req),
+        )
+
+    stripped_note = raw_note.strip()
+    if len(stripped_note) > _MAX_REVIEW_NOTE_LENGTH:
+        return (
+            False,
+            "",
+            "save",
+            error_response(
+                400,
+                f"Note exceeds {_MAX_REVIEW_NOTE_LENGTH} characters",
+                req=req,
+            ),
+        )
+
+    # Sanitise before length validation so the checks below reflect what is
+    # actually stored (stripped control/zero-width characters don't count).
+    note = _sanitise_text(stripped_note, _MAX_REVIEW_NOTE_LENGTH)
 
     if override and len(note) < _MIN_REVIEW_NOTE_LENGTH:
         return (
@@ -360,19 +384,8 @@ def _parse_review_body(
         )
     if not note:
         return False, "", "save", error_response(400, "Note is required", req=req)
-    if len(note) > _MAX_REVIEW_NOTE_LENGTH:
-        return (
-            False,
-            "",
-            "save",
-            error_response(
-                400,
-                f"Note exceeds {_MAX_REVIEW_NOTE_LENGTH} characters",
-                req=req,
-            ),
-        )
 
-    return override, _sanitise_text(note, _MAX_REVIEW_NOTE_LENGTH), "save", None
+    return override, note, "save", None
 
 
 def _validate_aoi_index(

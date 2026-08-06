@@ -2141,9 +2141,13 @@ class TestParcelReviewEndpoints:
         from unittest.mock import patch
 
         return (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch(
+                "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
+            ),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         )
 
     def test_second_save_preserves_first_revision(self):
@@ -2155,9 +2159,13 @@ class TestParcelReviewEndpoints:
         run = dict(_FAKE_RUN)
 
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch(
+                "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
+            ),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
             patch(
                 "blueprints.pipeline.annotations.get_run_record_by_instance_id",
                 side_effect=lambda _: dict(run),
@@ -2193,16 +2201,33 @@ class TestParcelReviewEndpoints:
         note = "Seasonal clearing — farmer confirmed, compliant."
         run = dict(_FAKE_RUN)
         run["parcel_reviews"] = {
-            "0": {"override": True, "note": note, "reviewed_by": "reviewer@org.com", "reviewed_at": "2026-05-21T10:00:00Z"}
+            "0": {
+                "override": True,
+                "note": note,
+                "reviewed_by": "reviewer@org.com",
+                "reviewed_at": "2026-05-21T10:00:00Z",
+            }
         }
         run["parcel_review_history"] = {
-            "0": [{"action": "save", "override": True, "note": note, "reviewed_by": "reviewer@org.com", "reviewed_at": "2026-05-21T10:00:00Z"}]
+            "0": [
+                {
+                    "action": "save",
+                    "override": True,
+                    "note": note,
+                    "reviewed_by": "reviewer@org.com",
+                    "reviewed_at": "2026-05-21T10:00:00Z",
+                }
+            ]
         }
 
         with (
-            patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")),
+            patch(
+                "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
+            ),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
             patch(
                 "blueprints.pipeline.annotations.get_run_record_by_instance_id",
                 return_value=dict(run),
@@ -2221,7 +2246,7 @@ class TestParcelReviewEndpoints:
         upserted = mock_cosmos.upsert_item.call_args[0][1]
         history = upserted["parcel_review_history"]["0"]
         assert len(history) == 2
-        assert history[0]["action"] == "save"   # original revision preserved
+        assert history[0]["action"] == "save"  # original revision preserved
         assert history[1]["action"] == "revert"  # revert appended
         # Latest-state cleared
         assert "0" not in upserted.get("parcel_reviews", {})
@@ -2231,13 +2256,16 @@ class TestParcelReviewEndpoints:
         from blueprints.pipeline.annotations import analysis_parcel_review
 
         req = self._make_post_req(
-            "inst-abc", 0,
+            "inst-abc",
+            0,
             {"override": "true", "note": "Seasonal clearing confirmed by farmer visit."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         ):
             resp = analysis_parcel_review(req)
         assert resp.status_code == 400
@@ -2248,13 +2276,16 @@ class TestParcelReviewEndpoints:
         from blueprints.pipeline.annotations import analysis_parcel_review
 
         req = self._make_post_req(
-            "inst-abc", 0,
+            "inst-abc",
+            0,
             {"override": "false", "note": "Some note here."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         ):
             resp = analysis_parcel_review(req)
         assert resp.status_code == 400
@@ -2265,13 +2296,16 @@ class TestParcelReviewEndpoints:
         from blueprints.pipeline.annotations import analysis_parcel_review
 
         req = self._make_post_req(
-            "inst-abc", 0,
+            "inst-abc",
+            0,
             {"override": 1, "note": "Seasonal clearing confirmed."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         ):
             resp = analysis_parcel_review(req)
         assert resp.status_code == 400
@@ -2282,13 +2316,16 @@ class TestParcelReviewEndpoints:
         from blueprints.pipeline.annotations import analysis_parcel_review
 
         req = self._make_post_req(
-            "inst-abc", 0,
+            "inst-abc",
+            0,
             {"override": None, "note": "Some note here."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         ):
             resp = analysis_parcel_review(req)
         assert resp.status_code == 400
@@ -2309,7 +2346,9 @@ class TestParcelReviewEndpoints:
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
         ):
             resp = analysis_parcel_review(req)
         assert resp.status_code == 400
@@ -2320,13 +2359,16 @@ class TestParcelReviewEndpoints:
 
         run = {**_FAKE_RUN, "aoi_count": 3}  # valid indexes 0, 1, 2
         req = self._make_post_req(
-            "inst-abc", 3,
+            "inst-abc",
+            3,
             {"override": False, "note": "Some note about this parcel."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
             patch(
                 "blueprints.pipeline.annotations.get_run_record_by_instance_id",
                 return_value=run,
@@ -2343,13 +2385,16 @@ class TestParcelReviewEndpoints:
 
         run = {**_FAKE_RUN, "aoi_count": 5}
         req = self._make_post_req(
-            "inst-abc", 999,
+            "inst-abc",
+            999,
             {"override": False, "note": "Note for a non-existent parcel."},
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
             patch(
                 "blueprints.pipeline.annotations.get_run_record_by_instance_id",
                 return_value=run,
@@ -2366,19 +2411,38 @@ class TestParcelReviewEndpoints:
 
         run_with_history = dict(_FAKE_RUN)
         run_with_history["parcel_reviews"] = {
-            "0": {"override": True, "note": "Updated note", "reviewed_by": "user-123", "reviewed_at": "2026-05-22T10:00:00Z"}
+            "0": {
+                "override": True,
+                "note": "Updated note",
+                "reviewed_by": "user-123",
+                "reviewed_at": "2026-05-22T10:00:00Z",
+            }
         }
         run_with_history["parcel_review_history"] = {
             "0": [
-                {"action": "save", "override": True, "note": "First note", "reviewed_by": "user-123", "reviewed_at": "2026-05-21T10:00:00Z"},
-                {"action": "save", "override": True, "note": "Updated note", "reviewed_by": "user-123", "reviewed_at": "2026-05-22T10:00:00Z"},
+                {
+                    "action": "save",
+                    "override": True,
+                    "note": "First note",
+                    "reviewed_by": "user-123",
+                    "reviewed_at": "2026-05-21T10:00:00Z",
+                },
+                {
+                    "action": "save",
+                    "override": True,
+                    "note": "Updated note",
+                    "reviewed_by": "user-123",
+                    "reviewed_at": "2026-05-22T10:00:00Z",
+                },
             ]
         }
         req = self._make_get_req("inst-abc")
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
             patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
-            patch("blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True),
+            patch(
+                "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
+            ),
             patch(
                 "blueprints.pipeline.annotations.get_run_record_by_instance_id",
                 return_value=run_with_history,

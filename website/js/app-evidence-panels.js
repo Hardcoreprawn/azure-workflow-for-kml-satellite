@@ -263,19 +263,24 @@
     var charCount   = document.getElementById('app-override-charcount');
     var errorEl     = document.getElementById('app-override-error');
     var originalEl  = document.getElementById('app-override-original');
+    var overrideChk = document.getElementById('app-override-mark-compliant');
     if (!backdrop) return;
 
     // Pre-fill with existing review note if present
     var manifest = _getManifest ? _getManifest() : null;
     var existingNote = '';
+    var existingOverride = false;
     if (manifest && manifest.parcel_reviews && manifest.parcel_reviews[parcelKey]) {
       existingNote = manifest.parcel_reviews[parcelKey].note || '';
+      existingOverride = !!manifest.parcel_reviews[parcelKey].override;
     }
 
     if (reasonInput) reasonInput.value = existingNote;
+    if (overrideChk) overrideChk.checked = existingOverride;
     var existingLen = existingNote.length;
+    var minRequired = existingOverride ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = existingLen + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = existingLen < 1;
+    if (confirmBtn) confirmBtn.disabled    = existingLen < minRequired;
     if (errorEl)     { errorEl.hidden = true; errorEl.textContent = ''; }
     if (originalEl) {
       var det    = aoiData && aoiData.determination;
@@ -296,10 +301,12 @@
     var reasonInput = document.getElementById('app-override-reason-input');
     var confirmBtn  = document.getElementById('app-override-confirm-btn');
     var charCount   = document.getElementById('app-override-charcount');
+    var overrideChk = document.getElementById('app-override-mark-compliant');
     if (!reasonInput) return;
     var len = reasonInput.value.trim().length;
+    var minRequired = (overrideChk && overrideChk.checked) ? MIN_REVIEW_NOTE_LENGTH : 1;
     if (charCount)  charCount.textContent  = len + ' / 1000';
-    if (confirmBtn) confirmBtn.disabled    = len < 1;
+    if (confirmBtn) confirmBtn.disabled    = len < minRequired;
   }
 
   async function confirmOverride() {

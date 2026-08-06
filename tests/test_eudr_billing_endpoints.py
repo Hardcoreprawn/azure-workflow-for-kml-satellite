@@ -510,6 +510,34 @@ class TestSummaryRowsFromManifest:
         rows = _summary_rows_from_manifest("run-r", "2026-01-01T00:00:00Z", manifest, run_record)
         assert rows[0]["overridden"] == "no"
 
+    def test_malformed_annotation_fields_do_not_crash(self):
+        """Cosmos data corruption (wrong type stored) must degrade gracefully, not 500."""
+        from blueprints.eudr import _summary_rows_from_manifest
+
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "P",
+                    "area_ha": 1.0,
+                    "center": {},
+                    "determination": {
+                        "deforestation_free": False,
+                        "confidence": "low",
+                        "flags": [],
+                    },
+                }
+            ]
+        }
+        run_record = {
+            "parcel_notes": ["not", "a", "dict"],
+            "parcel_overrides": "not a dict either",
+            "parcel_reviews": ["also", "wrong"],
+        }
+        rows = _summary_rows_from_manifest("run-m", "2026-01-01T00:00:00Z", manifest, run_record)
+        assert rows[0]["overridden"] == "no"
+        assert rows[0]["note"] == ""
+        assert rows[0]["reviewer_note"] == ""
+
 
 class TestEudrSummaryExport:
     """GET /api/eudr/summary-export — aggregated org CSV."""

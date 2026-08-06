@@ -545,18 +545,23 @@ def _summary_rows_from_manifest(
     parcel_overrides: dict[str, dict[str, Any]] = {}
     parcel_reviews: dict[str, dict[str, Any]] = {}
     if run_record:
-        parcel_notes = run_record.get("parcel_notes") or {}
-        parcel_overrides = run_record.get("parcel_overrides") or {}
-        parcel_reviews = run_record.get("parcel_reviews") or {}
+        raw_notes = run_record.get("parcel_notes")
+        raw_overrides = run_record.get("parcel_overrides")
+        raw_reviews = run_record.get("parcel_reviews")
+        parcel_notes = raw_notes if isinstance(raw_notes, dict) else {}
+        parcel_overrides = raw_overrides if isinstance(raw_overrides, dict) else {}
+        parcel_reviews = raw_reviews if isinstance(raw_reviews, dict) else {}
 
     rows = []
     for idx, aoi in enumerate(per_aoi):
         parcel_key = str(idx)
         center = aoi.get("center", {})
         det = aoi.get("determination", {})
-        override = parcel_overrides.get(parcel_key, {})
+        raw_override = parcel_overrides.get(parcel_key, {})
+        override = raw_override if isinstance(raw_override, dict) else {}
         overridden = bool(override) and not override.get("reverted")
-        review = parcel_reviews.get(parcel_key, {})
+        raw_review = parcel_reviews.get(parcel_key, {})
+        review = raw_review if isinstance(raw_review, dict) else {}
 
         rows.append(
             {

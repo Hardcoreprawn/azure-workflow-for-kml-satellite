@@ -713,6 +713,59 @@ class TestPdfExport:
             "PDF with review history must contain more content than one without"
         )
 
+    def test_render_parcel_review_section_renders_every_revision(self):
+        """_render_parcel_review_section must route every history revision into the PDF,
+        not just the latest-state record."""
+        from blueprints.export import _render_parcel_review_section
+
+        class _FakePdf:
+            """Records every text write so we can assert on rendered content."""
+
+            def __init__(self):
+                self.texts: list[str] = []
+
+            def ln(self, *_args, **_kwargs):
+                pass
+
+            def set_font(self, *_args, **_kwargs):
+                pass
+
+            def set_text_color(self, *_args, **_kwargs):
+                pass
+
+            def cell(self, _w, _h, text="", **_kwargs):
+                self.texts.append(text)
+
+            def multi_cell(self, _w, _h, text="", **_kwargs):
+                self.texts.append(text)
+
+        history = [
+            {
+                "action": "save",
+                "override": True,
+                "note": "First review note — farmer confirmed replanting.",
+                "reviewed_by": "user-a@org.com",
+                "reviewed_at": "2026-05-21T10:00:00Z",
+            },
+            {
+                "action": "save",
+                "override": True,
+                "note": "Second review note — additional documentation received.",
+                "reviewed_by": "user-b@org.com",
+                "reviewed_at": "2026-05-22T09:00:00Z",
+            },
+        ]
+        pdf = _FakePdf()
+        _render_parcel_review_section(pdf, review=None, history=history)
+
+        rendered = "\n".join(pdf.texts)
+        assert "First review note" in rendered
+        assert "Second review note" in rendered
+        assert "user-a@org.com" in rendered
+        assert "user-b@org.com" in rendered
+        assert "Revision 1" in rendered
+        assert "Revision 2" in rendered
+
     def test_eudr_audit_pdf_falls_back_to_latest_state(self):
         """PDF falls back to parcel_reviews when no history is stored."""
         from blueprints.export import build_eudr_audit_pdf
@@ -742,3 +795,27 @@ class TestPdfExport:
         # PDF with review must be larger than one without.
         pdf_no_review = build_eudr_audit_pdf(manifest, "test-legacy")
         assert len(pdf_bytes) > len(pdf_no_review)
+
+    def test_eudr_audit_pdf_malformed_reviews_do_not_crash(self):
+        """Corrupted (non-dict) parcel_reviews/parcel_review_history must not 500 the export."""
+        from blueprints.export import build_eudr_audit_pdf
+
+        manifest = {
+            "eudr_mode": True,
+            "per_aoi_enrichment": [
+                {
+                    "name": "Test Parcel",
+                    "area_ha": 1.0,
+                    "center": {"lat": 0.0, "lon": 0.0},
+                    "coords": [[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.0]],
+                    "determination": {"deforestation_free": False},
+                }
+            ],
+        }
+        pdf_bytes = build_eudr_audit_pdf(
+            manifest,
+            "test-malformed",
+            parcel_reviews=["not", "a", "dict"],
+            parcel_review_history="also wrong",
+        )
+        assert pdf_bytes[:4] == b"%PDF"
