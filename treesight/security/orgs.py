@@ -171,11 +171,19 @@ def resolve_active_org_for_user(
     user_id: str,
     *,
     requested_org_id: str | None = None,
+    verified_email: str = "",
 ) -> dict[str, Any] | None:
     """Resolve the active org for *user_id* from membership data.
 
     Membership on org documents is authoritative. Legacy ``users.org_id`` is
     used only as a compatibility fallback while old user docs still exist.
+
+    When *verified_email* is supplied (extracted from a cryptographically-
+    verified bearer JWT) and no membership is found by user_id, the function
+    attempts to heal the membership by adding *user_id* to an existing org
+    whose member list already contains *verified_email*.  This recovers
+    sessions where a CIAM identity provider issued a new ``oid`` for the same
+    user (e.g. LocalAccount → MicrosoftAccount federation).
     """
     # Read user directly to avoid a circular import with users.py.
     from treesight.storage.cosmos import read_item
@@ -200,6 +208,16 @@ def resolve_active_org_for_user(
                 user_id, org_id, str(selected.get("org_role", "member")), read_item
             )
         return org
+
+    # No membership found by user_id.  Try email-based healing when a verified
+    # email is available (bearer JWT only — never from anonymous/user-supplied
+    # input) and no specific org was requested (healing should only apply to
+    # the default resolution path).
+    if verified_email and not requested:
+        healed = _heal_membership_from_verified_email(user_id, verified_email)
+        if healed:
+            return healed
+
     return _resolve_legacy_user_org(user_id, requested, read_item)
 
 
@@ -227,6 +245,112 @@ def _list_user_memberships(user_id: str) -> list[dict[str, Any]]:
     except Exception:
         logger.warning("Failed to list org memberships for user=%s", user_id, exc_info=True)
         return []
+
+
+def _heal_membership_from_verified_email(
+    user_id: str, verified_email: str
+) -> dict[str, Any] | None:
+    """Add *user_id* to an existing org when a member with *verified_email* exists.
+
+    This handles the case where a user's CIAM identity subject (``oid``) changes
+    between sign-ins — e.g. after a LocalAccount → federated MicrosoftAccount
+    merge — causing their *user_id* (``tid:oid``) to differ from the one stored
+    in the org's members array.  The fix adds the new *user_id* to that org as
+    an additional member with the same role as the original member so both
+    identities are valid going forward.
+
+    Safety: *verified_email* must originate from a cryptographically-verified
+    bearer JWT claim.  It must never be set from user-supplied request input.
+    """
+    if not user_id or not verified_email or "@" not in verified_email:
+        return None
+
+    from treesight.storage.cosmos import query_items
+
+    try:
+        results = query_items(
+            "orgs",
+            "SELECT c.org_id, c.name, c.created_at, c.members"
+            ' FROM c WHERE c.doc_type = \'org\''
+            ' AND ARRAY_CONTAINS(c.members, {"email": @email}, true)',
+            parameters=[{"name": "@email", "value": verified_email.lower().strip()}],
+        )
+    except Exception:
+        logger.warning(
+            "Email-based org lookup failed for user=%s email=%s",
+            user_id,
+            verified_email,
+            exc_info=True,
+        )
+        return None
+
+    if not results:
+        return None
+
+    # Sort deterministically: oldest org first (same tie-breaking as _select_membership_org).
+    candidates = sorted(
+        results,
+        key=lambda o: (str(o.get("created_at", "")), str(o.get("org_id", ""))),
+    )
+
+    for candidate in candidates:
+        members = candidate.get("members", [])
+        email_lower = verified_email.strip().lower()
+
+        # Check if user_id is already a member of this specific org.
+        existing_uid_member = next(
+            (m for m in members if m.get("user_id") == user_id), None
+        )
+        if existing_uid_member is not None:
+            # Only shortcut if the email on that membership matches the verified
+            # email — this guards against returning an unrelated org that happens
+            # to contain user_id under a different email address.
+            uid_email = str(existing_uid_member.get("email", "")).strip().lower()
+            if uid_email == email_lower:
+                return get_org(str(candidate.get("org_id", "")))
+            # user_id is a member but under a different email — skip this candidate.
+            continue
+
+        # Find the existing member entry to inherit their role.
+        existing_member = next(
+            (
+                m
+                for m in members
+                if isinstance(m.get("email"), str)
+                and m["email"].strip().lower() == verified_email.strip().lower()
+            ),
+            None,
+        )
+        if existing_member is None:
+            continue
+
+        org_id = str(candidate.get("org_id", "")).strip()
+        if not org_id:
+            continue
+
+        role = str(existing_member.get("role", "member"))
+        try:
+            org = add_member(org_id, user_id, email=verified_email, role=role)
+            logger.info(
+                "Membership healed via verified email org=%s user=%s role=%s",
+                org_id,
+                user_id,
+                role,
+            )
+            return org
+        except ValueError:
+            # add_member raises ValueError if already a member (race) — re-read.
+            return get_org(org_id)
+        except Exception:
+            logger.warning(
+                "Failed to heal membership org=%s user=%s",
+                org_id,
+                user_id,
+                exc_info=True,
+            )
+            continue
+
+    return None
 
 
 def _select_membership_org(
