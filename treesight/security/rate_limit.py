@@ -42,11 +42,11 @@ class RateLimiterProtocol(Protocol):
 
     def is_allowed(self, key: str) -> bool:
         """Return True if the request is within the rate limit, False otherwise."""
-        ...
+        raise NotImplementedError
 
     def reset(self) -> None:
         """Clear all rate limit state (for testing)."""
-        ...
+        raise NotImplementedError
 
 
 class RateLimiter:
@@ -169,9 +169,7 @@ class TableRateLimiter:
 
         for _ in range(_MAX_RETRIES):
             try:
-                entity = self._table.get_entity(
-                    partition_key=partition_key, row_key=row_key
-                )
+                entity = self._table.get_entity(partition_key=partition_key, row_key=row_key)
                 window_end = entity.get("window_end")
                 count = int(entity.get("count", 0))
 
@@ -236,9 +234,7 @@ class TableRateLimiter:
     def reset(self) -> None:
         """Delete all rate-limit entries for this limiter (for testing)."""
         try:
-            entities = self._table.query_entities(
-                f"PartitionKey eq '{self._name}'"
-            )
+            entities = self._table.query_entities(f"PartitionKey eq '{self._name}'")
             for entity in entities:
                 self._table.delete_entity(
                     partition_key=entity["PartitionKey"],
@@ -282,6 +278,21 @@ def set_demo_limiter(limiter: RateLimiterProtocol) -> None:
     demo_limiter = limiter
 
 
+def get_form_limiter() -> RateLimiterProtocol:
+    """Return the current form rate limiter. Do not cache the result across calls."""
+    return form_limiter
+
+
+def get_pipeline_limiter() -> RateLimiterProtocol:
+    """Return the current pipeline rate limiter. Do not cache the result across calls."""
+    return pipeline_limiter
+
+
+def get_demo_limiter() -> RateLimiterProtocol:
+    """Return the current demo rate limiter. Do not cache the result across calls."""
+    return demo_limiter
+
+
 def wire_rate_limiters(
     connection_string: str | None = None,
     *,
@@ -309,9 +320,7 @@ def wire_rate_limiters(
         TableRateLimiter(RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW, "form", **kwargs)
     )
     set_pipeline_limiter(
-        TableRateLimiter(
-            RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW, "pipeline", **kwargs
-        )
+        TableRateLimiter(RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW, "pipeline", **kwargs)
     )
     set_demo_limiter(
         TableRateLimiter(RATE_LIMIT_DEMO_MAX, RATE_LIMIT_DEMO_WINDOW, "demo", **kwargs)

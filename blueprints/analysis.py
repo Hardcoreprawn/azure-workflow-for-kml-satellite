@@ -17,7 +17,7 @@ import azure.functions as func
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
 from treesight.ai import generate_analysis
 from treesight.constants import EUDR_CUTOFF_DATE
-from treesight.security.rate_limit import get_client_ip, pipeline_limiter
+from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -60,7 +60,7 @@ def _run_analysis(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
-    if rate_limit and not pipeline_limiter.is_allowed(get_client_ip(req)):
+    if rate_limit and not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(
             429, "Too many requests \u2014 please wait before trying again", req=req
         )

@@ -19,7 +19,7 @@ import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
-from treesight.security.rate_limit import get_client_ip, pipeline_limiter
+from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 bp = func.Blueprint()
 
@@ -85,7 +85,7 @@ def _validate_convert_request(
 
     Returns (validated_plots, doc_name, buffer_m) or error response.
     """
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+    if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     try:
