@@ -107,13 +107,12 @@ def _is_noise(message: ConsoleMessage) -> bool:
 
     Local dev has no CIAM client id configured, so MSAL logs a benign
     warning on every auth-gated page and any endpoint call it attempts
-    fails with 401; CDN integrity/SRI checks also log noise unrelated to
-    app code.
+    fails with 401.
     """
     if message.type != "error":
         return True
     text = message.text
-    return "clientId" in text or "unpkg.com" in text or "401" in text
+    return "clientId" in text or "401" in text
 
 
 def run_page_journey(page: Page, base_url: str, journey: PageJourney) -> PageResult:

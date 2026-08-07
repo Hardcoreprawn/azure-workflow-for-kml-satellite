@@ -37,10 +37,6 @@ class TestIsNoise:
         message = _FakeConsoleMessage("error", "MSAL clientId is empty")
         assert _is_noise(message) is True
 
-    def test_unpkg_error_is_noise(self):
-        message = _FakeConsoleMessage("error", "Failed to load https://unpkg.com/leaflet")
-        assert _is_noise(message) is True
-
     def test_401_error_is_noise(self):
         """REQUIRE_AUTH/CIAM are both unset in local dev, so protected
         endpoints legitimately 401 for every page load; that's expected
