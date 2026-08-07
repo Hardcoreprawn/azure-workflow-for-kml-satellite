@@ -87,6 +87,29 @@ def get_user_id_from_bearer_claims(claims: dict[str, Any]) -> str:
     return ""
 
 
+def get_email_from_bearer_claims(claims: dict[str, Any]) -> str:
+    """Extract the verified email address from bearer JWT claims.
+
+    Checks the standard CIAM/Entra External ID claim locations in order of
+    preference.  Returns an empty string when no valid email is present.
+
+    This value comes from a cryptographically-verified JWT issued by the
+    trusted CIAM authority, so it is safe to use as an identity anchor for
+    org membership healing.
+    """
+    for key in ("preferred_username", "email", "upn"):
+        candidate = claims.get(key)
+        if isinstance(candidate, str) and "@" in candidate:
+            return candidate.strip().lower()
+    # CIAM v2.0 tokens can include an ``emails`` array.
+    emails = claims.get("emails")
+    if isinstance(emails, list):
+        for item in emails:
+            if isinstance(item, str) and "@" in item:
+                return item.strip().lower()
+    return ""
+
+
 def verify_bearer_token(token: str) -> dict[str, Any]:
     """Verify CIAM bearer JWT and return decoded claims."""
     if not CIAM_AUTHORITY or not CIAM_TENANT_ID or not CIAM_API_AUDIENCE:

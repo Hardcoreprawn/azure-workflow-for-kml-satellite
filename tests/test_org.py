@@ -58,8 +58,9 @@ def _mock_cosmos():  # noqa: C901
             if "c.status = 'pending'" in query_str and val.get("status") != "pending":
                 matches = False
 
-            # WHERE LOWER(c.email) = LOWER(@email)
-            if "@email" in params:
+            # WHERE LOWER(c.email) = LOWER(@email)  (top-level invite/org email)
+            is_member_email_query = "m IN c.members" in query_str and "m.email" in query_str
+            if "@email" in params and not is_member_email_query:
                 val_email = val.get("email", "").lower()
                 param_email = params["@email"].lower()
                 if val_email != param_email:
@@ -69,6 +70,16 @@ def _mock_cosmos():  # noqa: C901
             if "@user_id" in params and "ARRAY_CONTAINS(c.members" in query_str:
                 members = val.get("members", [])
                 if not any(m.get("user_id") == params["@user_id"] for m in members):
+                    matches = False
+
+            # EXISTS(SELECT VALUE m FROM m IN c.members WHERE LOWER(m.email) = @email)
+            if "@email" in params and is_member_email_query:
+                members = val.get("members", [])
+                param_email = params["@email"].lower().strip()
+                if not any(
+                    isinstance(m.get("email"), str) and m["email"].strip().lower() == param_email
+                    for m in members
+                ):
                     matches = False
 
             if matches:
@@ -815,3 +826,190 @@ class TestOrgInviteListEndpoint:
         resp = org_invites_list(req)
 
         assert resp.status_code == 404
+
+
+class TestMembershipHealingFromVerifiedEmail:
+    """resolve_active_org_for_user heals membership when auth subject changes.
+
+    Covers the D1 acceptance signal: a user whose CIAM oid changes (e.g. after
+    LocalAccount → MicrosoftAccount federation) must retain access to their
+    org's account/upload state via their verified email address.
+    """
+
+    def _org_with_member(self, org_id: str, user_id: str, email: str, role: str = "owner") -> dict:
+        return {
+            "id": org_id,
+            "org_id": org_id,
+            "doc_type": "org",
+            "name": "Test Org",
+            "created_by": user_id,
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "members": [
+                {
+                    "user_id": user_id,
+                    "email": email,
+                    "role": role,
+                    "joined_at": "2026-01-01T00:00:00+00:00",
+                }
+            ],
+            "billing": {},
+        }
+
+    def test_heals_membership_when_email_matches_existing_member(self):
+        """New user_id with matching verified email is added to existing org."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+
+        # Old identity has an org with their email.
+        store["orgs:personal-old-uid"] = self._org_with_member(
+            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
+        )
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = resolve_active_org_for_user(
+                "new-uid",
+                verified_email="j.brewster@outlook.com",
+            )
+
+        assert result is not None
+        assert result["org_id"] == "personal-old-uid"
+
+        # new-uid should now be a member of the org.
+        org_doc = store.get("orgs:personal-old-uid")
+        assert org_doc is not None
+        member_ids = [m["user_id"] for m in org_doc.get("members", [])]
+        assert "new-uid" in member_ids, "new user_id should be added to org members"
+
+    def test_inherited_role_matches_original_member(self):
+        """New user_id inherits the same role as the matching email member."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["orgs:personal-old-uid"] = self._org_with_member(
+            "personal-old-uid", "old-uid", "j.brewster@outlook.com", role="owner"
+        )
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            resolve_active_org_for_user(
+                "new-uid",
+                verified_email="j.brewster@outlook.com",
+            )
+
+        org_doc = store.get("orgs:personal-old-uid")
+        new_member = next(
+            (m for m in org_doc.get("members", []) if m["user_id"] == "new-uid"), None
+        )
+        assert new_member is not None
+        assert new_member["role"] == "owner"
+
+    def test_no_healing_without_verified_email(self):
+        """Without verified_email, no healing occurs — returns None."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["orgs:personal-old-uid"] = self._org_with_member(
+            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
+        )
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = resolve_active_org_for_user("new-uid")
+
+        assert result is None
+
+    def test_no_healing_when_requested_org_id_is_set(self):
+        """Email healing only applies to the default (non-requested) resolution."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["orgs:personal-old-uid"] = self._org_with_member(
+            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
+        )
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = resolve_active_org_for_user(
+                "new-uid",
+                requested_org_id="personal-old-uid",
+                verified_email="j.brewster@outlook.com",
+            )
+
+        # requested_org_id is set, so healing should not occur.
+        assert result is None
+
+    def test_already_member_returns_org_without_duplicate(self):
+        """If new_uid is already a member, returns org without adding a duplicate."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        org_doc = self._org_with_member("personal-old-uid", "old-uid", "j.brewster@outlook.com")
+        # Pre-add new-uid as a member.
+        org_doc["members"].append(
+            {
+                "user_id": "new-uid",
+                "email": "j.brewster@outlook.com",
+                "role": "owner",
+                "joined_at": "2026-02-01T00:00:00+00:00",
+            }
+        )
+        store["orgs:personal-old-uid"] = org_doc
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = resolve_active_org_for_user(
+                "new-uid",
+                verified_email="j.brewster@outlook.com",
+            )
+
+        assert result is not None
+        assert result["org_id"] == "personal-old-uid"
+
+    def test_healing_case_insensitive_email(self):
+        """Email comparison is case-insensitive."""
+        from treesight.security.orgs import resolve_active_org_for_user
+
+        store, upsert, read, delete, query = _mock_cosmos()
+        store["orgs:personal-old-uid"] = self._org_with_member(
+            "personal-old-uid", "old-uid", "J.Brewster@Outlook.COM"
+        )
+
+        with ExitStack() as stack:
+            _apply_patches(stack, store, upsert, read, delete, query)
+            result = resolve_active_org_for_user(
+                "new-uid",
+                verified_email="j.brewster@outlook.com",
+            )
+
+        assert result is not None
+        assert result["org_id"] == "personal-old-uid"
+
+
+class TestGetEmailFromBearerClaims:
+    """get_email_from_bearer_claims extracts verified email from JWT payload."""
+
+    def _get_email(self, claims: dict) -> str:
+        from treesight.security.auth import get_email_from_bearer_claims
+
+        return get_email_from_bearer_claims(claims)
+
+    def test_preferred_username(self):
+        assert self._get_email({"preferred_username": "user@example.com"}) == "user@example.com"
+
+    def test_email_claim(self):
+        assert self._get_email({"email": "USER@Example.COM"}) == "user@example.com"
+
+    def test_emails_array(self):
+        assert self._get_email({"emails": ["alice@test.com"]}) == "alice@test.com"
+
+    def test_returns_empty_when_no_email(self):
+        assert self._get_email({"tid": "t1", "oid": "o1"}) == ""
+
+    def test_returns_empty_when_value_has_no_at_sign(self):
+        assert self._get_email({"preferred_username": "notanemail"}) == ""
+
+    def test_prefers_preferred_username_over_email(self):
+        claims = {"preferred_username": "first@example.com", "email": "second@example.com"}
+        assert self._get_email(claims) == "first@example.com"

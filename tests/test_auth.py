@@ -248,7 +248,9 @@ class TestCheckAuth:
         assert claims["oid"] == "object-id"
         assert user_id == "tenant-id:object-id"
         assert active_org == {"org_id": "org-b"}
-        resolve_org.assert_called_once_with("tenant-id:object-id", requested_org_id="org-b")
+        resolve_org.assert_called_once_with(
+            "tenant-id:object-id", requested_org_id="org-b", verified_email=""
+        )
 
     def test_rejects_test_principal_when_auth_required(self):
         from blueprints._helpers import check_auth

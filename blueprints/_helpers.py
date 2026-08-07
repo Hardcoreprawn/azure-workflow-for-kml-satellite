@@ -171,11 +171,21 @@ def _requested_org_id(req: func.HttpRequest) -> str | None:
     return None
 
 
-def _resolve_active_org(req: func.HttpRequest, user_id: str) -> dict[str, Any] | None:
+def _resolve_active_org(
+    req: func.HttpRequest,
+    user_id: str,
+    claims: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """Resolve the caller's active organisation once at the auth boundary."""
+    from treesight.security.auth import get_email_from_bearer_claims
     from treesight.security.orgs import resolve_active_org_for_user
 
-    return resolve_active_org_for_user(user_id, requested_org_id=_requested_org_id(req))
+    verified_email = get_email_from_bearer_claims(claims) if claims else ""
+    return resolve_active_org_for_user(
+        user_id,
+        requested_org_id=_requested_org_id(req),
+        verified_email=verified_email,
+    )
 
 
 def _invoke_endpoint_with_auth(
@@ -223,7 +233,7 @@ def require_auth(fn):
         if claims:
             uid = get_user_id_from_bearer_claims(claims)
             logger.info("auth_path=bearer")
-            active_org = _resolve_active_org(req, uid)
+            active_org = _resolve_active_org(req, uid, claims)
             resp = _invoke_endpoint_with_auth(
                 fn,
                 req,
@@ -286,7 +296,7 @@ def check_auth(
         uid = get_user_id_from_bearer_claims(claims)
         logger.info("auth_path=bearer")
         if include_active_org:
-            return claims, uid, _resolve_active_org(req, uid)
+            return claims, uid, _resolve_active_org(req, uid, claims)
         return claims, uid
 
     if os.environ.get("REQUIRE_AUTH", "").lower() not in ("true", "1", "yes"):
