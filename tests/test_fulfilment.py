@@ -144,14 +144,42 @@ class TestFetchFunctionsLiveHostStubGating:
         from treesight.pipeline.fulfilment import fetch_asset_bytes
 
         monkeypatch.delenv("CANOPEX_TEST_MODE", raising=False)
-        with pytest.raises(Exception):  # noqa: B017 — proving the real path ran, not its type
+
+        import httpx
+
+        class _BoomClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def stream(self, *args, **kwargs):
+                raise RuntimeError("real fetch path executed")
+
+        monkeypatch.setattr(httpx, "Client", _BoomClient)
+        with pytest.raises(RuntimeError, match="real fetch path executed"):
             fetch_asset_bytes(self._BOGUS_URL)
 
     def test_cog_windowed_read_hits_real_network_when_test_mode_disabled(self, monkeypatch):
         from treesight.pipeline.fulfilment import cog_windowed_read
 
         monkeypatch.delenv("CANOPEX_TEST_MODE", raising=False)
-        with pytest.raises(Exception):  # noqa: B017 — proving the real path ran, not its type
+
+        import rasterio
+
+        class _BoomOpen:
+            def __enter__(self):
+                raise RuntimeError("real cog path executed")
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        monkeypatch.setattr(rasterio, "open", lambda *args, **kwargs: _BoomOpen())
+        with pytest.raises(RuntimeError, match="real cog path executed"):
             cog_windowed_read(self._BOGUS_URL, self._BBOX)
 
 
