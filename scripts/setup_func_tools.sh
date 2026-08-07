@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # Install Azure Functions Core Tools v4 on Ubuntu/WSL.
+#
+# Only needed for the local/CI pipeline e2e gate (`make test-pipeline-local`,
+# #1215/#1218), which runs a real `func start` host on the bare runner/host
+# by design (ADR 0005 amendment) — not for interactive dev, which runs
+# entirely in docker-compose (`make dev-all`, #1087).
 # Run once: ./scripts/setup_func_tools.sh
 
 set -euo pipefail

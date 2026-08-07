@@ -203,7 +203,7 @@ def main() -> None:
     print("[1/3] Checking func host...")
     if not check_func_host():
         print("  ERROR: Function host not reachable at localhost:7071")
-        print("  Start it with: make dev-func")
+        print("  Start it with: make dev-all")
         sys.exit(1)
     print("  Function host is running.")
 

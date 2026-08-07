@@ -16,7 +16,7 @@ applyTo: "**"
 | Lint | `make lint` → `ruff check` |
 | Format | `make fmt` → `ruff format` |
 | Lint + test | `make check` |
-| Start local stack | `make dev-init` then `make dev-func` + `make dev-web` in separate terminals |
+| Start local stack | `make dev-all` (Azurite + containerised func host + website, single path) |
 | Upload sample KML | `make test-upload` |
 
 ## Project Layout
@@ -61,7 +61,7 @@ tests/                   # ~1200 tests across 52 files
 - Python 3.12, managed by `uv`, config in `pyproject.toml`
 - Rust crate built via `maturin` (PyO3), consumed as `treesight_rs` Python module
 - Azurite for local blob/table storage (`make dev-up`)
-- Azure Functions Core Tools for local function host (`func start`)
+- Containerised Functions host via docker-compose (`make dev-all`) — no host-installed `func start` path (ADR 0005)
 
 ## Test Conventions
 

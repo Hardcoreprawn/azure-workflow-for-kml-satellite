@@ -1,0 +1,25 @@
+# Dev-only override — auto-merged by `docker compose` from the same
+# directory as docker-compose.yml, no `-f` flag needed. Not used by CI
+# (ci.yml / ci_local.sh never start the `func` service).
+#
+# Bind-mounts the two application source directories into the `func`
+# container so day-to-day code changes take effect without a rebuild: the
+# Functions host's own file watcher (see DOTNET_USE_POLLING_FILE_WATCHER in
+# docker-compose.yml, required for change notifications to work over a bind
+# mount) detects the change and reloads the Python worker.
+#
+# Deliberately directory-only, not per-file, mirroring `web`'s
+# `./website` mount rather than its single-file `dev_server.py` mount:
+# bind-mounting individual root files (function_app.py, host.json) is a
+# documented Docker Desktop/WSL2 bind-mount fragility (fails outright with
+# "not a directory" on some hosts) — confirmed while validating this
+# override. function_app.py/function_registration.py/host.json change far
+# less often than treesight/blueprints during routine feature work; when
+# they do change, `make dev-rebuild` picks it up. (#1087)
+services:
+  func:
+    volumes:
+      - ./treesight:/home/site/wwwroot/treesight:ro
+      - ./blueprints:/home/site/wwwroot/blueprints:ro
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"

@@ -343,9 +343,8 @@ References:
 ### Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) (package manager — installs Python 3.12 automatically)
-- GDAL system libraries (`gdal-bin`, `libgdal-dev`) — Linux only; uv handles Python
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local)
-- Docker (for building the custom container)
+- Docker + Docker Compose (the app stack — func host, website, Azurite — runs entirely in containers; see ADR 0005)
+- GDAL system libraries (`gdal-bin`, `libgdal-dev`) — Linux only, needed for lint/test outside a container; uv handles the rest
 
 ### Local Development
 
@@ -360,9 +359,6 @@ uv sync --all-extras
 # Install pre-commit hooks
 uv run pre-commit install
 
-# Copy local settings template
-cp local.settings.json.template local.settings.json
-
 # Run all quality checks manually
 uv run ruff check .
 uv run ruff format --check .
@@ -373,18 +369,19 @@ uv run pytest tests/unit -v
 uv run pre-commit run --all-files
 ```
 
-For the full local product surface, run the Functions host and the website proxy
-in separate terminals so `/api/*` stays same-origin and SWA auth works locally:
+For the full local product surface (website + Functions host + Azurite, same
+containerised execution model as production), run the single docker-compose
+stack:
 
 ```bash
-# Terminal 1
-make dev-func
-
-# Terminal 2
-make dev-web
+make dev-all
 ```
 
-Then open `http://localhost:4280`.
+Then open `http://localhost:4280`. Code changes under `treesight/` and
+`blueprints/` hot-reload in the running `func` container (bind-mounted; no
+rebuild needed). Changing `function_app.py`, `function_registration.py`,
+dependencies (`pyproject.toml`/`uv.lock`), or Dockerfiles needs a rebuild:
+`make dev-rebuild`. Tail logs with `make dev-logs`.
 
 ### Pre-commit Hooks
 
@@ -406,11 +403,15 @@ The following hooks run automatically on every `git commit`:
 
 To bypass hooks for exceptional cases: `git commit --no-verify`
 
-### Running with Azure Functions Core Tools
+### Running the app stack
 
 ```bash
-func start
+make dev-all
 ```
+
+This starts Azurite, the containerised Functions host, and the website dev
+server together (see ADR 0005). There is no host-installed `func start` path
+for interactive dev — Docker is a hard prerequisite.
 
 ### Authentication
 
@@ -425,7 +426,8 @@ the full OAuth flow server-side.
 
 Local auth testing:
 
-- Use the SWA CLI or `uv run python scripts/dev_server.py --port 4280 --func-port 7071`.
+- Use the SWA CLI, or `make dev-all` (the website dev server already proxies
+  `/api/*` to the containerised func host).
 - Auth is optional in local dev — unauthenticated requests pass through as anonymous.
 
 ### Load Testing Baseline (#320)

@@ -30,19 +30,17 @@ website/
 
 ## Local Development
 
-No build step required. For full local behavior, run the proxy dev server from
-the repository root so `/api/*` stays same-origin and SWA auth uses the
-registered localhost redirect URI:
+No build step required. For full local behavior (website + Functions host +
+Azurite, same containerised execution model as production), run the single
+docker-compose stack from the repository root:
 
 ```bash
-# In one terminal
-func start
-
-# In another terminal, from the repo root
-uv run python scripts/dev_server.py --port 4280 --func-port 7071
+make dev-all
 ```
 
-Then open `http://localhost:4280` in your browser.
+Then open `http://localhost:4280` in your browser. `/api/*` stays same-origin
+(proxied to the containerised func host) so SWA auth uses the registered
+localhost redirect URI.
 
 For static-only layout work, any simple HTTP server is still fine:
 
