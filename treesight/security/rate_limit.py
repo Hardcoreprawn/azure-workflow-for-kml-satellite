@@ -112,6 +112,13 @@ class TableRateLimiter:
         *,
         table_service_client: TableServiceClient | None = None,
     ) -> None:
+        import re
+
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", limiter_name):
+            raise ValueError(
+                f"limiter_name must contain only alphanumeric characters, hyphens, "
+                f"and underscores; got: {limiter_name!r}"
+            )
         if table_service_client is not None:
             self._service = table_service_client
         elif connection_string:
@@ -264,6 +271,42 @@ def set_demo_limiter(limiter: RateLimiterProtocol) -> None:
     """Replace the module-level demo rate limiter (called at app startup)."""
     global demo_limiter
     demo_limiter = limiter
+
+
+def wire_rate_limiters(
+    connection_string: str | None = None,
+    *,
+    table_service_client: TableServiceClient | None = None,
+) -> None:
+    """Wire up distributed Table-backed rate limiters at app startup.
+
+    Replaces the default in-memory singletons with ``TableRateLimiter``
+    instances backed by Azure Table Storage.  Pass either *connection_string*
+    (for ``AzureWebJobsStorage``) or a pre-built *table_service_client*
+    (for managed-identity deployments).
+
+    Called from ``function_app.py`` and ``function_app_orch.py`` once the
+    storage connection is available.
+    """
+    kwargs: dict = {}
+    if table_service_client is not None:
+        kwargs["table_service_client"] = table_service_client
+    elif connection_string:
+        kwargs["connection_string"] = connection_string
+    else:
+        raise ValueError("Either connection_string or table_service_client is required")
+
+    set_form_limiter(
+        TableRateLimiter(RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW, "form", **kwargs)
+    )
+    set_pipeline_limiter(
+        TableRateLimiter(
+            RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW, "pipeline", **kwargs
+        )
+    )
+    set_demo_limiter(
+        TableRateLimiter(RATE_LIMIT_DEMO_MAX, RATE_LIMIT_DEMO_WINDOW, "demo", **kwargs)
+    )
 
 
 def get_client_ip(req) -> str:

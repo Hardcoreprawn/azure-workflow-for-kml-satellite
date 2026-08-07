@@ -195,6 +195,16 @@ class TestTableRateLimiter:
                 limiter_name="test",
             )
 
+    def test_rejects_unsafe_limiter_name(self):
+        tsc = MagicMock()
+        with pytest.raises(ValueError, match="limiter_name must contain only"):
+            TableRateLimiter(
+                max_requests=5,
+                window_seconds=60,
+                limiter_name="bad name'injection",
+                table_service_client=tsc,
+            )
+
     def test_separate_limiter_names_are_independent(self):
         from azure.core.exceptions import ResourceNotFoundError
 
