@@ -34,6 +34,7 @@ on:
     paths:
       - 'docs/**'
       - '**/*.md'
+  merge_group:
 
 permissions:
   contents: read
