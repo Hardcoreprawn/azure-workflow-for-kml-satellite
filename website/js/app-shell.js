@@ -263,6 +263,7 @@
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
     getAccount: runtimeModule.getAccount,
+    authEnabled: authEnabled,
   });
 
   initModule(evidencePanelsModule, {

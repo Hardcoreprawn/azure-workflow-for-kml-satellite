@@ -322,6 +322,19 @@ class TestGetEudrBillingStatus:
         assert status["plan"] == "none"
         assert status["subscribed"] is False
 
+    @patch(_GET_ORG)
+    def test_empty_org_id_returns_empty_without_hitting_storage(self, mock_get_org):
+        """Callers pass "" when the caller has no org (e.g. anonymous local
+        dev users, #1260). Querying storage for an org_id that's known to
+        be empty is always wasted work, and crashes in environments where
+        storage isn't configured at all (COSMOS_ENDPOINT unset)."""
+        from treesight.security.eudr_billing import get_eudr_billing_status
+
+        status = get_eudr_billing_status("")
+        assert status["plan"] == "none"
+        assert status["subscribed"] is False
+        mock_get_org.assert_not_called()
+
     @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
     def test_active_eudr_pro_subscription_sets_subscribed_and_plan(self, mock_get_org, mock_pool):

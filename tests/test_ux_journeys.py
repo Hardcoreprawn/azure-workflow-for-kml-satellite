@@ -16,6 +16,7 @@ from scripts.ux_journeys import (
     API_CHECKS,
     AUTH_GATE_MARKERS,
     PAGE_JOURNEYS,
+    PERSONA_JOURNEYS,
     ApiCheck,
     _is_noise,
     print_report,
@@ -117,6 +118,29 @@ class TestJourneyDefinitions:
         assert "/account/" in paths, "account/settings app not covered"
 
 
+class TestPersonaJourneyDefinitions:
+    """See docs/USER_JOURNEYS.md — one golden-path journey per persona."""
+
+    def test_every_entry_path_is_absolute(self):
+        for journey in PERSONA_JOURNEYS:
+            assert journey.entry_path.startswith("/"), journey.persona
+
+    def test_every_submission_anchor_is_a_fragment(self):
+        for journey in PERSONA_JOURNEYS:
+            assert journey.submission_anchor.startswith("#"), journey.persona
+
+    def test_covers_conservation_agriculture_and_eudr_personas(self):
+        personas = {journey.persona for journey in PERSONA_JOURNEYS}
+        assert "Conservation analyst" in personas
+        assert "Agricultural advisor" in personas
+        assert "ESG / EUDR compliance officer" in personas
+
+    def test_eudr_persona_uses_the_eudr_app(self):
+        eudr_journeys = [j for j in PERSONA_JOURNEYS if j.entry_path == "/eudr/"]
+        assert eudr_journeys, "expected at least one journey entering via /eudr/"
+        assert all("PARCELS" in j.usage_widget_labels for j in eudr_journeys)
+
+
 class TestPrintReport:
     def test_returns_true_when_everything_passed(self, capsys: pytest.CaptureFixture[str]):
         api_result = run_api_check(
@@ -125,7 +149,7 @@ class TestPrintReport:
             "http://web",
             ApiCheck("ok", "GET", "/api/health", 200),
         )
-        assert print_report([], [api_result]) is True
+        assert print_report([], [], [api_result]) is True
 
     def test_returns_false_when_something_failed(self):
         api_result = run_api_check(
@@ -134,4 +158,4 @@ class TestPrintReport:
             "http://web",
             ApiCheck("broken", "GET", "/api/health", 200),
         )
-        assert print_report([], [api_result]) is False
+        assert print_report([], [], [api_result]) is False

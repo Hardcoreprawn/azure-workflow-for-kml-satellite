@@ -216,6 +216,8 @@
     // hero Plan/Runs/Mode placeholders above instead of leaving them stuck
     // on "Loading…" forever (#1255).
     apiReady.then(function () { if (_loadBillingStatus) _loadBillingStatus(); });
+    // Same reasoning for the EUDR page's PARCELS pill (#1260).
+    apiReady.then(function () { if (_loadEudrUsage) _loadEudrUsage(); });
   }
 
   function renderSignedInUI(elements, currentAccount) {

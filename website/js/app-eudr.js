@@ -16,12 +16,14 @@
   var _apiFetch = null;
   var _getApiReady = null;
   var _getAccount = null;
+  var _authEnabled = null;
   var _billingSnapshot = null;
 
   function init(deps) {
     _apiFetch    = deps.apiFetch    || _apiFetch;
     _getApiReady = deps.getApiReady || _getApiReady;
     _getAccount  = deps.getAccount  || _getAccount;
+    _authEnabled = deps.authEnabled || _authEnabled;
     // Keep backward compatibility for existing consumers (e.g. cost estimate).
     window.eudrBillingData = function () { return _billingSnapshot; };
   }
@@ -86,7 +88,13 @@
 
   async function loadUsage() {
     if (_getApiReady) await _getApiReady();
-    if (!_getAccount || !_getAccount()) return;
+    // Only skip when real auth is configured but the user isn't signed in
+    // yet — when auth is disabled (local dev), there's no account either,
+    // but the backend still answers anonymously (same reasoning as the
+    // #1255 billing-status fix), so proceed instead of leaving the hero
+    // PARCELS pill stuck on "Loading usage…" forever (#1260).
+    var authEnabled = _authEnabled ? _authEnabled() : true;
+    if ((!_getAccount || !_getAccount()) && authEnabled) return;
 
     var includedEl     = document.getElementById('app-eudr-usage-included');
     var overageEl      = document.getElementById('app-eudr-usage-overage');
