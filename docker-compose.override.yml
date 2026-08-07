@@ -8,6 +8,13 @@
 # docker-compose.yml, required for change notifications to work over a bind
 # mount) detects the change and reloads the Python worker.
 #
+# ${DEV_WORKSPACE:-.} is set by `make dev-all`/`dev-rebuild` (see
+# scripts/detect_dood_workspace.sh) — resolves the real host path when this
+# runs inside a Docker-outside-of-Docker devcontainer, where "." would
+# otherwise silently mount an empty directory (confirmed while validating
+# this override; the same fix already existed for the CI ci-gate service
+# as CI_GATE_WORKSPACE).
+#
 # Deliberately directory-only, not per-file, mirroring `web`'s
 # `./website` mount rather than its single-file `dev_server.py` mount:
 # bind-mounting individual root files (function_app.py, host.json) is a
@@ -19,7 +26,7 @@
 services:
   func:
     volumes:
-      - ./treesight:/home/site/wwwroot/treesight:ro
-      - ./blueprints:/home/site/wwwroot/blueprints:ro
+      - ${DEV_WORKSPACE:-.}/treesight:/home/site/wwwroot/treesight:ro
+      - ${DEV_WORKSPACE:-.}/blueprints:/home/site/wwwroot/blueprints:ro
     environment:
       PYTHONDONTWRITEBYTECODE: "1"

@@ -51,7 +51,14 @@ dev-init: dev-up ## Start Azurite + create storage containers
 
 # ───────────────────── Full Stack ─────────────────────
 
+# Resolved once per `make` invocation; empty outside a Docker-outside-of-
+# Docker devcontainer, in which case docker-compose.yml/.override.yml fall
+# back to "." (see scripts/detect_dood_workspace.sh).
+DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
+export DEV_WORKSPACE
+
 dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — the single local dev path
+	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
 	docker compose down --remove-orphans 2>/dev/null || true
 	docker compose up --build -d
 	@echo ""

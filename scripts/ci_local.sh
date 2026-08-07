@@ -27,10 +27,8 @@ cd "$(dirname "$0")/.."
 # see — it silently mounts an empty directory instead. Detect it and pass the
 # real host path through CI_GATE_WORKSPACE so docker-compose.yml can use it.
 # Only matters for `integration` (ci-gate) — pipeline-e2e doesn't use ci-gate.
-if [[ -z "${CI_GATE_WORKSPACE:-}" ]] && [[ -f /.dockerenv ]]; then
-  self_id="$(hostname)"
-  host_path="$(docker inspect "${self_id}" \
-    --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"
+if [[ -z "${CI_GATE_WORKSPACE:-}" ]]; then
+  host_path="$(scripts/detect_dood_workspace.sh)"
   if [[ -n "${host_path}" ]]; then
     export CI_GATE_WORKSPACE="${host_path}"
     echo "Detected Docker-outside-of-Docker — using host path ${CI_GATE_WORKSPACE} for the ci-gate bind mount"
