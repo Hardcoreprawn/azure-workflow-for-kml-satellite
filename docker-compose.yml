@@ -62,7 +62,15 @@ services:
     command: ["make", "test-int"]
 
   func:
-    build: .
+    build:
+      context: .
+      # Dockerfile's own default (`treesight-base:latest`, no registry) only
+      # resolves for a caller with a matching local tag already built/pulled
+      # (e.g. CI); a fresh clone has nothing local under that name and hits
+      # Docker Hub instead, which 404s. Pin to the real published image so
+      # `make dev-all` works out of the box for a new dev machine too.
+      args:
+        BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
     container_name: canopex-func
     ports:
       - "7071:80"
@@ -83,14 +91,29 @@ services:
       DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me  # pragma: allowlist secret
       DEMO_VALET_TOKEN_TTL_SECONDS: "86400"
       DEMO_VALET_TOKEN_MAX_USES: "3"
+      # Dummy values so treesight.config.validate_config() doesn't fail
+      # startup (§8.6 requires these set unconditionally). REQUIRE_AUTH
+      # stays unset/false here, so nothing ever verifies these against a
+      # real token — mirrors scripts/e2e_local.py's _DUMMY_CIAM_DEFAULTS.
+      CIAM_AUTHORITY: "https://ciam.example.com"
+      CIAM_TENANT_ID: "local-dev-tenant"
+      CIAM_API_AUDIENCE: "api://local-dev-audience"
       OLLAMA_URL: "http://ollama:11434"
       OLLAMA_MODEL: "mistral"
+      # Host.Startup/Host.Triggers.DurableTask/Function categories at
+      # Information surface worker indexing + Durable Task hub bootstrap
+      # progress (`docker compose logs func`) instead of the near-silent
+      # host.json "Warning" default. Azure.* stays at Warning — at
+      # Information it logs full request/response headers for every single
+      # Azurite call, which is much more noise than signal locally.
+      AzureFunctionsJobHost__logging__logLevel__Default: "Information"
+      AzureFunctionsJobHost__logging__logLevel__Azure: "Warning"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/api/health', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 18
+      start_period: 60s
 
   web:
     image: python:3.12-slim
@@ -101,8 +124,12 @@ services:
       func:
         condition: service_healthy
     volumes:
-      - ./website:/app/website:ro
-      - ./scripts/dev_server.py:/app/scripts/dev_server.py:ro
+      # ${DEV_WORKSPACE:-.} is set by `make dev-all`/`dev-rebuild` (see
+      # scripts/detect_dood_workspace.sh) — resolves the real host path when
+      # this runs inside a Docker-outside-of-Docker devcontainer, where "."
+      # would otherwise mount an empty directory.
+      - ${DEV_WORKSPACE:-.}/website:/app/website:ro
+      - ${DEV_WORKSPACE:-.}/scripts/dev_server.py:/app/scripts/dev_server.py:ro
     working_dir: /app
     command: >-
       python scripts/dev_server.py --port 4280 --func-host func --func-port 80
@@ -127,7 +154,9 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # ollama/ollama's image ships no curl/wget; the `ollama` CLI itself
+      # queries the local server and exits non-zero if it's unreachable.
+      test: ["CMD", "ollama", "list"]
       interval: 10s
       timeout: 5s
       retries: 5
