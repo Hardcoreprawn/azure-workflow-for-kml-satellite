@@ -47,8 +47,13 @@ services:
     depends_on:
       azurite:
         condition: service_healthy
+    # CI_GATE_WORKSPACE overrides the bind-mount source when docker compose
+    # itself is invoked from inside a Docker-outside-of-Docker devcontainer:
+    # `.` there resolves to this container's own filesystem view, which is
+    # meaningless to the real Docker Desktop daemon running the sibling
+    # containers (see scripts/ci_local.sh's auto-detection).
     volumes:
-      - .:/workspace
+      - ${CI_GATE_WORKSPACE:-.}:/workspace
     working_dir: /workspace
     environment:
       UV_NO_SYNC: "1"

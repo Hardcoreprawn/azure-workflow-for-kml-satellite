@@ -206,6 +206,55 @@ jobs:
         if: always()
         run: docker compose --profile ci down -v --remove-orphans
 
+  # Local/CI pipeline e2e gate (#1215/#1218): proves the real pipeline (parse
+  # -> trigger -> orchestrate -> acquire -> fulfil -> enrich -> artifact)
+  # against Azurite with a real `func start` host, no live Azure environment
+  # and no calls to a real third-party imagery provider (CANOPEX_TEST_MODE).
+  #
+  # Deliberately NOT run inside the dev container image (ADR 0005 amendment,
+  # 2026-08-06): the Durable Task Framework's storage provider hard-resolves
+  # the well-known Azurite account name to 127.0.0.1, ignoring
+  # AzureWebJobsStorage's actual endpoint host — only correct when Azurite is
+  # reachable at the caller's own localhost, which is true for a bare runner
+  # (Azurite's ports are published straight to it) and false for a sibling
+  # container. treesight_rs (Rust extension) is optional with a pure-Python
+  # fallback, so no Rust toolchain is needed on the runner either.
+  pipeline-e2e:
+    name: Pipeline e2e (local gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Install Python dependencies
+        run: uv sync --all-extras
+
+      - name: Install Azure Functions Core Tools
+        run: bash scripts/setup_func_tools.sh
+
+      - name: Start Azurite
+        run: docker compose up -d azurite
+
+      - name: Wait for Azurite
+        run: uv run python scripts/init_storage.py
+
+      - name: Run pipeline e2e gate
+        run: make test-pipeline-local
+
+      - name: Show func host log on failure
+        if: failure()
+        run: cat .e2e-local-func-host.log || true
+
+      - name: Tear down Azurite
+        if: always()
+        run: docker compose down -v --remove-orphans
+
   build:
     name: Build Docker image
     runs-on: ubuntu-latest

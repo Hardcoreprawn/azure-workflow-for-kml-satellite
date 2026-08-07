@@ -12,6 +12,15 @@
 #
 # Native-library parity (GDAL/Fiona/rasterio + treesight_rs) comes from
 # the locked dependency layer, not the Functions host.
+#
+# Build targets:
+#   dev           — default. What devcontainers and lint/test/integration
+#                   CI jobs use. `docker build` with no --target builds this
+#                   (it is NOT the last stage in the file — see below).
+#   pipeline-e2e  — dev + Azure Functions Core Tools (~1.3 GB). Only the
+#                   local/CI pipeline e2e gate (#1215/#1218) needs this, so
+#                   it's a separate, explicitly-targeted stage rather than
+#                   bloating every other job/devcontainer.
 # ─────────────────────────────────────────────────────────────
 ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
 
@@ -36,7 +45,7 @@ COPY rust/ /build/rust/
 RUN uv build --wheel --out-dir /wheels /build/rust
 
 # ── Stage 2: runtime dev image ──────────────────────────────
-FROM ${BASE_IMAGE}
+FROM ${BASE_IMAGE} AS dev
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
 
 # Digest of the uv.lock this image was built from. The publish workflow sets
@@ -74,3 +83,29 @@ COPY --from=rust-build /wheels/ /tmp/wheels/
 RUN uv pip install --python /opt/venv /tmp/wheels/*.whl && rm -rf /tmp/wheels
 
 CMD ["bash"]
+
+# ── Stage 3: pipeline-e2e variant (adds Azure Functions Core Tools) ─────
+# `func` is ~1.3 GB installed — far too big to add to the `dev` stage that
+# every lint/test/integration job and every devcontainer pulls. This stage
+# extends `dev` so ONLY the local/CI pipeline e2e gate (make
+# test-pipeline-local, #1215/#1218) pays that weight, kept in lockstep with
+# `dev` by dev-image.yml building both from this one Dockerfile on the same
+# triggers/schedule — one image-update job, not two to maintain. The base is
+# Debian (bookworm), not Ubuntu, so this uses the Debian apt repo, not the
+# Ubuntu one scripts/setup_func_tools.sh assumes.
+FROM dev AS pipeline-e2e
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends gnupg curl; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /etc/apt/keyrings/microsoft.gpg; \
+    chmod go+r /etc/apt/keyrings/microsoft.gpg; \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
+        > /etc/apt/sources.list.d/microsoft-prod.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends azure-functions-core-tools-4; \
+    apt-get purge -y --auto-remove gnupg curl; \
+    rm -rf /var/lib/apt/lists/*
+
+# ── Stage 4: default target (keeps `dev` as the implicit final stage) ───────
+FROM dev AS final

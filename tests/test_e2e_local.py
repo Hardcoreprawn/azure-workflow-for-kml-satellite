@@ -12,7 +12,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from scripts.e2e_local import assert_pipeline_succeeded, build_func_host_env, stop_func_host
+from scripts.e2e_local import (
+    REPO_ROOT,
+    assert_pipeline_succeeded,
+    build_func_host_env,
+    stop_func_host,
+)
 
 
 class TestBuildFuncHostEnv:
@@ -29,6 +34,22 @@ class TestBuildFuncHostEnv:
     def test_preserves_a_real_ciam_value_if_already_set(self):
         env = build_func_host_env({"CIAM_TENANT_ID": "real-tenant"})
         assert env["CIAM_TENANT_ID"] == "real-tenant"
+
+    def test_always_pins_script_root_to_repo_root(self):
+        """Dockerfile.base sets AzureWebJobsScriptRoot=/home/site/wwwroot for
+        the production container convention; func start trusts it over the
+        actual working directory, so any image inheriting it makes func
+        silently look for function_app.py in the wrong place. This must be
+        overridden unconditionally, never a setdefault."""
+        env = build_func_host_env({"AzureWebJobsScriptRoot": "/home/site/wwwroot"})
+        assert env["AzureWebJobsScriptRoot"] == str(REPO_ROOT)
+
+    def test_forces_filesystem_secrets_storage(self):
+        """The Functions host's blob-backed secrets repository resolves
+        devstoreaccount1 straight to 127.0.0.1, ignoring AzureWebJobsStorage's
+        actual endpoint — breaks whenever Azurite isn't on localhost."""
+        env = build_func_host_env({})
+        assert env["AzureWebJobsSecretStorageType"] == "files"  # pragma: allowlist secret
 
     def test_fills_in_azure_web_jobs_storage_when_missing(self):
         env = build_func_host_env({})
