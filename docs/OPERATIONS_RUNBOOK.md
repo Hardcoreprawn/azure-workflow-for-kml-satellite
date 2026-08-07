@@ -40,10 +40,9 @@ job in `.github/workflows/deploy.yml`:
 
 Local validation loop (no Azure):
 
-1. `make dev-init` — start Azurite + create storage containers.
-2. `make dev-all` — starts the containerised Functions host + website together (single path, ADR 0005).
-3. `make test` for the suite; `make smoke` for host health.
-4. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
+1. `make dev-all` — starts Azurite, creates storage containers (`init-storage`), and starts the containerised Functions host + website together (single path, ADR 0005).
+2. `make test` for the suite; `make smoke` for host health.
+3. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
 
 When the reset lands and you are ready to deploy again: set `DEPLOY_PAUSED=false`,
 remove the prd freeze guard, then follow the standard deploy steps below.
