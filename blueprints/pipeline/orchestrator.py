@@ -33,6 +33,7 @@ from treesight.constants import (
 )
 from treesight.pipeline.contracts import (
     ensure_list_of_dicts,
+    ensure_nonempty_str_field,
     ensure_parse_kml_output,
 )
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
@@ -122,14 +123,8 @@ def _phase_ingestion(
         required_item_keys=("ref", "key"),
     )
     for index, ref in enumerate(aoi_refs):
-        if not isinstance(ref["ref"], str) or not ref["ref"]:
-            raise TypeError(
-                f"store_aoi_claims activity output item {index} key 'ref' must be non-empty str, got {type(ref['ref']).__name__}"
-            )
-        if not isinstance(ref["key"], str) or not ref["key"]:
-            raise TypeError(
-                f"store_aoi_claims activity output item {index} key 'key' must be non-empty str, got {type(ref['key']).__name__}"
-            )
+        ensure_nonempty_str_field(ref["ref"], name="store_aoi_claims", field="ref", index=index)
+        ensure_nonempty_str_field(ref["key"], name="store_aoi_claims", field="key", index=index)
     # Fan-out: write metadata (activities retrieve AOI from claim check)
     meta_tasks = [
         context.call_activity(

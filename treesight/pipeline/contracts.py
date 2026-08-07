@@ -3,6 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 
+def ensure_nonempty_str_field(
+    value: Any, *, name: str, field: str, index: int | None = None
+) -> str:
+    """Validate a single field value is a non-empty str; raise TypeError otherwise."""
+    if isinstance(value, str) and value:
+        return value
+    where = f"item {index} " if index is not None else ""
+    got = type(value).__name__
+    raise TypeError(f"{name} activity output {where}key '{field}' must be non-empty str, got {got}")
+
+
 def ensure_dict_with_keys(
     value: Any, *, name: str, required: tuple[str, ...] | list[str]
 ) -> dict[str, Any]:
@@ -50,9 +61,6 @@ def ensure_parse_kml_output(value: Any) -> list[dict[str, Any]] | dict[str, Any]
         return ensure_list_of_dicts(value, name="parse_kml")
     if isinstance(value, dict):
         out = ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
-        if not isinstance(out["ref"], str) or not out["ref"]:
-            raise TypeError(
-                f"parse_kml activity output key 'ref' must be non-empty str, got {type(out['ref']).__name__}"
-            )
+        ensure_nonempty_str_field(out["ref"], name="parse_kml", field="ref")
         return out
     raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref")

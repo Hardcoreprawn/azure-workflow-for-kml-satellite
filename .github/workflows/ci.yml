@@ -219,9 +219,14 @@ jobs:
   # (Azurite's ports are published straight to it) and false for a sibling
   # container. treesight_rs (Rust extension) is optional with a pure-Python
   # fallback, so no Rust toolchain is needed on the runner either.
+  #
+  # Gated on lint/test passing first: this job takes minutes (real func host
+  # + Azurite + Durable orchestration), so don't burn that time on a change
+  # that a fast lint/unit-test failure would already have caught.
   pipeline-e2e:
     name: Pipeline e2e (local gate)
     runs-on: ubuntu-latest
+    needs: [lint, test]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
