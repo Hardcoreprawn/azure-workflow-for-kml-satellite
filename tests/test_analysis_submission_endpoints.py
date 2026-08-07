@@ -316,9 +316,7 @@ class TestAnalysisSubmissionRoutes:
             body=b"",
         )
 
-        with patch(
-            "blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True
-        ):
+        with patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True):
             resp = asyncio.run(_build_orchestrator_status_response(req, client))
 
         assert resp.status_code == 200
@@ -352,9 +350,7 @@ class TestAnalysisSubmissionRoutes:
             body=b"",
         )
 
-        with patch(
-            "blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True
-        ):
+        with patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True):
             resp = asyncio.run(_build_orchestrator_status_response(req, client))
 
         assert resp.status_code == 200
@@ -393,7 +389,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             mock_storage_cls.return_value.list_blobs.return_value = [
@@ -474,7 +470,7 @@ class TestAnalysisSubmissionRoutes:
 
         with (
             patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.diagnostics.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
         ):
             mock_storage_cls.return_value.list_blobs.return_value = [
@@ -1757,7 +1753,7 @@ class TestAnnotationEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1789,7 +1785,7 @@ class TestAnnotationEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "stranger-999")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1815,7 +1811,7 @@ class TestAnnotationEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1835,7 +1831,7 @@ class TestAnnotationEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1875,7 +1871,7 @@ class TestAnnotationEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1964,7 +1960,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1979,7 +1975,7 @@ class TestParcelReviewEndpoints:
         req = self._make_post_req("inst-abc", 0, {"override": False, "note": ""})
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -1993,7 +1989,7 @@ class TestParcelReviewEndpoints:
         req = self._make_post_req("inst-abc", 0, {"override": True, "note": "too short"})
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2012,7 +2008,7 @@ class TestParcelReviewEndpoints:
                 "blueprints.pipeline.annotations.check_auth",
                 return_value=({}, "reviewer@org.com"),
             ),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2043,7 +2039,7 @@ class TestParcelReviewEndpoints:
         req = self._make_post_req("inst-abc", 0, {"override": False, "note": note})
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2086,7 +2082,7 @@ class TestParcelReviewEndpoints:
         req = self._make_get_req("inst-abc")
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2118,7 +2114,7 @@ class TestParcelReviewEndpoints:
         req = self._make_get_req("inst-abc")
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2144,7 +2140,7 @@ class TestParcelReviewEndpoints:
             patch(
                 "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
             ),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2162,7 +2158,7 @@ class TestParcelReviewEndpoints:
             patch(
                 "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
             ),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2224,7 +2220,7 @@ class TestParcelReviewEndpoints:
             patch(
                 "blueprints.pipeline.annotations.check_auth", return_value=({}, "reviewer@org.com")
             ),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2262,7 +2258,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2282,7 +2278,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2302,7 +2298,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2322,7 +2318,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2345,7 +2341,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2365,7 +2361,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2391,7 +2387,7 @@ class TestParcelReviewEndpoints:
         )
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),
@@ -2439,7 +2435,7 @@ class TestParcelReviewEndpoints:
         req = self._make_get_req("inst-abc")
         with (
             patch("blueprints.pipeline.annotations.check_auth", return_value=({}, "user-123")),
-            patch("blueprints.pipeline.annotations.pipeline_limiter.is_allowed", return_value=True),
+            patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
             patch(
                 "blueprints.pipeline.annotations._cosmos_mod.cosmos_available", return_value=True
             ),

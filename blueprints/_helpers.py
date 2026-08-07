@@ -322,10 +322,10 @@ def submit_contact(
 
     from treesight.constants import PIPELINE_PAYLOADS_CONTAINER
     from treesight.email import send_contact_notification
-    from treesight.security.rate_limit import form_limiter, get_client_ip
+    from treesight.security.rate_limit import get_client_ip, get_form_limiter
     from treesight.storage.client import BlobStorageClient
 
-    if not form_limiter.is_allowed(get_client_ip(req)):
+    if not get_form_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Rate limit exceeded \u2014 try again later", req=req)
 
     if not isinstance(body, dict):

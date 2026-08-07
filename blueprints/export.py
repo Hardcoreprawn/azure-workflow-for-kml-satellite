@@ -20,7 +20,7 @@ from blueprints._helpers import (
     fetch_enrichment_manifest,
 )
 from treesight.constants import EUDR_CUTOFF_DATE
-from treesight.security.rate_limit import get_client_ip, pipeline_limiter
+from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
@@ -1573,7 +1573,7 @@ async def export_data(
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+    if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Too many requests — please wait before trying again", req=req)
 
     fmt = (req.route_params.get("format") or "").lower()

@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
-from treesight.security.rate_limit import get_client_ip, pipeline_limiter
+from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 from treesight.storage import cosmos
 from treesight.storage import cosmos as _cosmos_mod
 
@@ -61,7 +61,7 @@ def _check_standard_guards(
     if user_id == "anonymous":
         return "", error_response(401, "Authentication required", req=req)
 
-    if not pipeline_limiter.is_allowed(get_client_ip(req)):
+    if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return "", error_response(429, "Rate limit exceeded — try again later", req=req)
 
     if not _cosmos_mod.cosmos_available():

@@ -54,5 +54,33 @@ elif STORAGE_ACCOUNT_NAME:
             exc_info=True,
         )
 
+# Wire up distributed rate limiters (#252)
+if STORAGE_CONNECTION_STRING:
+    try:
+        from treesight.security.rate_limit import wire_rate_limiters
+
+        wire_rate_limiters(connection_string=STORAGE_CONNECTION_STRING)
+    except Exception:
+        logger.warning(
+            "Could not initialise Table rate limiters; falling back to in-memory",
+            exc_info=True,
+        )
+elif STORAGE_ACCOUNT_NAME:
+    try:
+        from azure.data.tables import TableServiceClient
+        from azure.identity import DefaultAzureCredential
+
+        from treesight.security.rate_limit import wire_rate_limiters
+
+        table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
+        wire_rate_limiters(
+            table_service_client=TableServiceClient(table_url, credential=DefaultAzureCredential())
+        )
+    except Exception:
+        logger.warning(
+            "Could not initialise Table rate limiters via MI; falling back to in-memory",
+            exc_info=True,
+        )
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 _register_blueprints(app)
