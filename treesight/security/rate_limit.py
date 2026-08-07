@@ -216,6 +216,14 @@ class TableRateLimiter:
             except ResourceModifiedError:
                 # ETag mismatch — another instance updated concurrently — retry.
                 continue
+            except AzureError:
+                logger.warning(
+                    "rate_limit: Azure Table error for key=%s limiter=%s; failing open",
+                    key,
+                    self._name,
+                    exc_info=True,
+                )
+                return True
 
         # All retries exhausted — fail open to keep the service available.
         logger.warning(
