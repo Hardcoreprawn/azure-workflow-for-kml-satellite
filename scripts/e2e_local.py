@@ -165,6 +165,11 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
 
 
 def main() -> None:
+    # Avoid proxy env vars breaking localhost httpx calls in CI/dev shells.
+    for var in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SOCKS_PROXY"):
+        os.environ.pop(var, None)
+        os.environ.pop(var.lower(), None)
+
     proc = start_func_host(log_path=FUNC_HOST_LOG_PATH)
     try:
         print("[1/4] Waiting for func host to become ready...")
