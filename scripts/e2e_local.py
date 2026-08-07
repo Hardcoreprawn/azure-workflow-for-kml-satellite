@@ -102,8 +102,8 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
             resp = httpx.get(f"{FUNC_BASE}/api/health", timeout=5.0)
             if resp.status_code == 200:
                 return
-        except httpx.TransportError:
-            pass
+        except httpx.TransportError as exc:
+            print(f"  ... health check transport error on attempt {attempt}: {exc}")
         print(f"  ... waiting for func host (attempt {attempt})")
         time.sleep(interval)
     raise TimeoutError(f"func host did not become ready within {timeout}s")
