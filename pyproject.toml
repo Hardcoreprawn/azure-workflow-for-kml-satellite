@@ -42,6 +42,9 @@ infracost = [
     "azure-monitor-query>=1.4.0,<3",
     "azure-mgmt-resource>=23.0.0",
 ]
+ux = [
+    "playwright>=1.48.0",
+]
 
 [build-system]
 requires = ["hatchling"]
