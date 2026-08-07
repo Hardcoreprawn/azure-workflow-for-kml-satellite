@@ -7,9 +7,10 @@ against Azurite and a real ``func start`` host process, with
 provider (see ``treesight/providers/stub.py``). No live Azure environment
 required.
 
-Prerequisite: Azurite must already be up with containers created
-(``make dev-init``) — this script only manages the func host lifecycle
-and the trigger/poll/assert flow.
+Prerequisite: Azurite must already be up and reachable (``make dev-up``, or
+a sibling ``azurite`` service in CI) — this script only creates containers
+if missing, then manages the func host lifecycle and trigger/poll/assert
+flow.
 
 Usage:
   make test-pipeline-local
@@ -58,11 +59,27 @@ def build_func_host_env(base_env: dict[str, str]) -> dict[str, str]:
     """
     env = dict(base_env)
     env["CANOPEX_TEST_MODE"] = "1"
+    # Dockerfile.base sets this for the *production* container convention
+    # (/home/site/wwwroot). func start trusts it over the actual working
+    # directory, so in any image that inherits it, func silently looks for
+    # function_app.py in the wrong place. Always pin it to the real repo
+    # root for this gate — never a setdefault, this ambient value is never
+    # correct here.
+    env["AzureWebJobsScriptRoot"] = str(REPO_ROOT)
     for key, value in _DUMMY_CIAM_DEFAULTS.items():
         env.setdefault(key, value)
     env.setdefault("AzureWebJobsStorage", AZURITE_CONN_STR)
     env.setdefault("FUNCTIONS_WORKER_RUNTIME", "python")
     env.setdefault("AzureWebJobsFeatureFlags", "EnableWorkerIndexing")
+    # The Functions HOST (not the Python worker) manages its host-key
+    # "secrets" via a separate blob-storage-backed repository by default,
+    # which resolves the well-known devstoreaccount1 name straight to
+    # 127.0.0.1 regardless of what AzureWebJobsStorage's actual endpoints
+    # say — breaking whenever Azurite isn't reachable at localhost (e.g. a
+    # sibling container reached by service name/host.docker.internal).
+    # Filesystem-backed secrets need no storage account at all and are
+    # fine for this throwaway local/CI host.
+    env.setdefault("AzureWebJobsSecretStorageType", "files")
     return env
 
 
@@ -71,13 +88,17 @@ def start_func_host(*, log_path: Path) -> subprocess.Popen:
     by ``build_func_host_env`` — see that function for why."""
     env = build_func_host_env(dict(os.environ))
     log_file = log_path.open("w")
-    return subprocess.Popen(
-        ["func", "start", "--python"],
-        cwd=REPO_ROOT,
-        env=env,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-    )
+    try:
+        return subprocess.Popen(
+            ["func", "start", "--python"],
+            cwd=REPO_ROOT,
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    finally:
+        # The child keeps its own copy of the FD; avoid leaking it in the parent.
+        log_file.close()
 
 
 def stop_func_host(proc: subprocess.Popen, *, grace_seconds: float = 10.0) -> None:

@@ -140,8 +140,9 @@ test-int: ## Run integration tests against a running Azurite (creates containers
 	uv run python scripts/init_storage.py
 	uv run pytest tests/test_integration.py -v
 
-test-pipeline-local: dev-init ## Unattended local/CI pipeline e2e gate — no live Azure environment required (#1215)
+test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running Azurite — no live Azure environment required (#1215)
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
+	uv run python scripts/init_storage.py
 	uv run python scripts/e2e_local.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
