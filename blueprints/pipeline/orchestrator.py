@@ -121,7 +121,15 @@ def _phase_ingestion(
         name="store_aoi_claims",
         required_item_keys=("ref", "key"),
     )
-
+    for index, ref in enumerate(aoi_refs):
+        if not isinstance(ref["ref"], str) or not ref["ref"]:
+            raise TypeError(
+                f"store_aoi_claims activity output item {index} key 'ref' must be non-empty str, got {type(ref['ref']).__name__}"
+            )
+        if not isinstance(ref["key"], str) or not ref["key"]:
+            raise TypeError(
+                f"store_aoi_claims activity output item {index} key 'key' must be non-empty str, got {type(ref['key']).__name__}"
+            )
     # Fan-out: write metadata (activities retrieve AOI from claim check)
     meta_tasks = [
         context.call_activity(
