@@ -169,15 +169,13 @@ class TestTableRateLimiter:
             "window_end": _future_window_end(),
             "etag": "abc",
         }
-        # First call raises conflict; second succeeds.
-        limiter._table.get_entity.side_effect = [
-            ResourceModifiedError(),
-            entity_ok,
-        ]
-        limiter._table.update_entity = MagicMock()
+        # First update conflicts; second succeeds.
+        limiter._table.get_entity.side_effect = [dict(entity_ok), dict(entity_ok)]
+        limiter._table.update_entity = MagicMock(side_effect=[ResourceModifiedError(), None])
 
         assert limiter.is_allowed("10.0.0.1") is True
-
+        assert limiter._table.get_entity.call_count == 2
+        assert limiter._table.update_entity.call_count == 2
     def test_fails_open_after_all_retries_exhausted(self):
         from azure.core.exceptions import ResourceModifiedError
 
