@@ -81,10 +81,16 @@
     const dashLink = document.getElementById('auth-dashboard-link');
 
     if (!authEnabled()) {
+      // No CIAM client id configured (local dev) — bypass the gate like
+      // /eudr/, /app/, and /account/ do, instead of hiding the whole
+      // auth area (#1256 follow-up: keep the home page nav consistent).
       setAuthButtonsVisibility(loginBtn, signupBtn, false);
       if (logoutBtn) logoutBtn.style.display = 'none';
-      if (userSpan) userSpan.style.display = 'none';
-      if (dashLink) dashLink.style.display = 'none';
+      if (userSpan) {
+        userSpan.textContent = 'Local dev';
+        userSpan.style.display = 'inline';
+      }
+      if (dashLink) dashLink.style.display = 'inline';
       return;
     }
 
