@@ -6,7 +6,7 @@ loss or key collisions.
 
 Requires:
 - Azurite running on localhost (``make dev-up``)
-- Local Functions host running on port 7071 (``make dev-func``)
+- Functions host running on port 7071 (``make dev-all``)
 
 Run with::
 
@@ -67,7 +67,7 @@ skip_no_azurite = pytest.mark.skipif(
 
 skip_no_func_host = pytest.mark.skipif(
     not _func_host_reachable(),
-    reason="Functions host not running — start with: make dev-func",
+    reason="Functions host not running — start with: make dev-all",
 )
 
 

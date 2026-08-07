@@ -1,7 +1,7 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-func dev-web dev-start dev-all dev-logs dev-rebuild \
+       dev-all dev-logs dev-rebuild \
 	test-upload test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
-	_free-ports _free-func-port _free-web-ports \
+	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
 SHELL  := /bin/bash
@@ -15,15 +15,8 @@ help: ## Show this help
 
 # ───────────────────── Setup ─────────────────────
 
-setup: ## Install Python deps + Azure Functions Core Tools
+setup: ## Install Python deps (Docker required for the app stack — see dev-init/dev-all)
 	uv sync --all-extras
-	@echo ""
-	@if command -v func &>/dev/null; then \
-		echo "func tools: $$(func --version)"; \
-	else \
-		echo "Azure Functions Core Tools not found."; \
-		echo "  Install with: bash scripts/setup_func_tools.sh"; \
-	fi
 
 # ───────────────────── Port cleanup ─────────────────────
 
@@ -33,26 +26,6 @@ DEV_WEB_LEGACY_PORT := 1111
 DEV_STORAGE_PORTS := 10000 10001 10002
 DEV_WEB_PORTS := $(DEV_WEB_PORT) $(DEV_WEB_LEGACY_PORT)
 DEV_PORTS := $(DEV_FUNC_PORT) $(DEV_WEB_PORTS) $(DEV_STORAGE_PORTS)
-
-_free-func-port: ## Kill local processes holding the Functions port
-	@for p in $(DEV_FUNC_PORT); do \
-		pids=$$(fuser $$p/tcp 2>/dev/null); \
-		if [ -n "$$pids" ]; then \
-			echo "Killing pid(s) $$pids on port $$p"; \
-			fuser -k $$p/tcp 2>/dev/null || true; \
-		fi; \
-	done
-	@sleep 1
-
-_free-web-ports: ## Kill local processes holding the website dev ports
-	@for p in $(DEV_WEB_PORTS); do \
-		pids=$$(fuser $$p/tcp 2>/dev/null); \
-		if [ -n "$$pids" ]; then \
-			echo "Killing pid(s) $$pids on port $$p"; \
-			fuser -k $$p/tcp 2>/dev/null || true; \
-		fi; \
-	done
-	@sleep 1
 
 _free-ports: ## Kill local processes holding dev ports
 	@for p in $(DEV_PORTS); do \
@@ -76,34 +49,9 @@ dev-down: _free-ports ## Stop containers and free ports
 dev-init: dev-up ## Start Azurite + create storage containers
 	uv run python scripts/init_storage.py
 
-# ───────────────────── Function Host ─────────────────────
-
-dev-func: _free-func-port ## Start Azure Functions host (port 7071)
-	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
-	func start --python
-
-# ───────────────────── Website ─────────────────────
-
-dev-web: _free-web-ports ## Start website dev server with API proxy (port 4280)
-	uv run python scripts/dev_server.py
-
 # ───────────────────── Full Stack ─────────────────────
 
-dev-start: dev-init ## Print instructions to start all services
-	@echo ""
-	@echo "╔══════════════════════════════════════════════╗"
-	@echo "║  Azurite is running. Start these in          ║"
-	@echo "║  separate terminals:                         ║"
-	@echo "║                                              ║"
-	@echo "║  Terminal 1:  make dev-func                  ║"
-	@echo "║  Terminal 2:  make dev-web                   ║"
-	@echo "║                                              ║"
-	@echo "║  Then test:   make test-upload               ║"
-	@echo "║  Website:     http://localhost:4280           ║"
-	@echo "║  Functions:   http://localhost:7071/api/health║"
-	@echo "╚══════════════════════════════════════════════╝"
-
-dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web)
+dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — the single local dev path
 	docker compose down --remove-orphans 2>/dev/null || true
 	docker compose up --build -d
 	@echo ""

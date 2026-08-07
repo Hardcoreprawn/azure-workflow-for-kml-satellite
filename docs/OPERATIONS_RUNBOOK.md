@@ -41,7 +41,7 @@ job in `.github/workflows/deploy.yml`:
 Local validation loop (no Azure):
 
 1. `make dev-init` — start Azurite + create storage containers.
-2. `make dev-func` (terminal 1) and `make dev-web` (terminal 2), or `make dev-all`.
+2. `make dev-all` — starts the containerised Functions host + website together (single path, ADR 0005).
 3. `make test` for the suite; `make smoke` for host health.
 4. Exercise the pipeline end-to-end against Azurite with `make test-upload`.
 
@@ -163,8 +163,7 @@ described in issue #872.
 Prerequisites:
 
 ```sh
-make dev-up    # Start Azurite
-make dev-func  # Start local Functions host (separate terminal)
+make dev-all   # Start Azurite + containerised Functions host + website
 ```
 
 Run:
