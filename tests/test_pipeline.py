@@ -1373,6 +1373,54 @@ class TestOffloadedFeaturesPath:
         assert "load_offloaded_features" in activity_names
 
 
+class TestOrchestratorActivityOutputContracts:
+    """Verify ingestion fails fast on malformed activity outputs."""
+
+    def test_phase_ingestion_rejects_non_list_non_dict_parse_output(self):
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        ctx.call_activity.return_value = "sentinel"
+
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-3", {})
+        gen.send(None)  # first yield: parse_kml
+
+        with pytest.raises(
+            TypeError,
+            match=r"parse_kml activity output must be list\[dict\] or dict with required keys: ref",
+        ):
+            gen.send("malformed")
+
+    def test_phase_ingestion_rejects_claim_refs_without_ref_key(self):
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        from blueprints.pipeline.orchestrator import _phase_ingestion
+
+        ctx = MagicMock()
+        ctx.call_activity.return_value = "sentinel"
+        ctx.task_all.return_value = "task_all_sentinel"
+
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-4", {})
+        gen.send(None)  # yield parse_kml activity call
+        gen.send(
+            [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
+        )  # resolve parse_kml; yield prepare_aoi fan-out
+        gen.send(
+            [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        )  # resolve prepare_aoi; yield store_aoi_claims
+
+        with pytest.raises(
+            ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"
+        ):
+            gen.send([{"key": "farm"}])  # resolve store_aoi_claims
+
+
 # ---------------------------------------------------------------------------
 # Phase customStatus reporting — each phase sets status authoritatively (#943)
 # ---------------------------------------------------------------------------
