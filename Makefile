@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -87,6 +87,11 @@ build-rust: ## Build + install the treesight_rs PyO3 extension into the active v
 
 test-upload: ## Upload sample KML and trigger pipeline
 	uv run python scripts/simulate_upload.py
+
+ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and the API auth boundary (needs make dev-all running + uv sync --extra ux)
+	@uv run python -c "import playwright" 2>/dev/null || { echo "ERROR: playwright not installed. Run: uv sync --extra ux"; exit 1; }
+	uv run playwright install chromium --with-deps 2>/dev/null || uv run playwright install chromium
+	uv run python scripts/ux_journeys.py
 
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml

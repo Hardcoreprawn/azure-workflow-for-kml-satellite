@@ -18,6 +18,7 @@ applyTo: "**"
 | Lint + test | `make check` |
 | Start local stack | `make dev-all` (Azurite + containerised func host + website, single path) |
 | Upload sample KML | `make test-upload` |
+| UX smoke test (host site, EUDR/conservation/account apps, API auth boundary) | `make ux-smoke` (needs `make dev-all` running + `uv sync --extra ux` once) |
 
 ## Project Layout
 
