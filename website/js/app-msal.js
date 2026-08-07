@@ -211,6 +211,11 @@
     }
     if (elements.emulationCard) elements.emulationCard.hidden = true;
     apiReady.then(function () { if (_loadAnalysisHistory) _loadAnalysisHistory(); });
+    // Backend is permissive when auth is disabled (synthesises an anonymous
+    // identity), so billing/status still answers — load it to replace the
+    // hero Plan/Runs/Mode placeholders above instead of leaving them stuck
+    // on "Loading…" forever (#1255).
+    apiReady.then(function () { if (_loadBillingStatus) _loadBillingStatus(); });
   }
 
   function renderSignedInUI(elements, currentAccount) {

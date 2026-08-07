@@ -20,6 +20,7 @@ WEBSITE = Path(__file__).resolve().parent.parent / "website"
 INDEX_HTML = WEBSITE / "index.html"
 APP_INDEX_HTML = WEBSITE / "app" / "index.html"
 EUDR_INDEX_HTML = WEBSITE / "eudr" / "index.html"
+ACCOUNT_INDEX_HTML = WEBSITE / "account" / "index.html"
 LANDING_JS = WEBSITE / "js" / "landing.js"
 APP_SHELL_JS = WEBSITE / "js" / "app-shell.js"
 APP_RUNS_JS = WEBSITE / "js" / "app-runs.js"
@@ -426,6 +427,62 @@ class TestAuthConfig:
         assert "renderLocalDevUI" in js, "app-msal.js must factor local-dev UI rendering"
         assert "renderSignedInUI" in js, "app-msal.js must factor signed-in UI rendering"
         assert "renderSignedOutUI" in js, "app-msal.js must factor signed-out UI rendering"
+
+    def test_local_dev_ui_loads_billing_status(self):
+        """renderLocalDevUI must trigger the billing fetch (#1255).
+
+        The backend answers anonymously when REQUIRE_AUTH/CIAM are unset, so
+        without this call the hero Plan/Runs/Mode cards are stuck on their
+        static "Loading…" placeholder forever in local dev.
+        """
+        js = APP_MSAL_JS.read_text()
+        local_dev_fn = js.split("function renderLocalDevUI")[1].split("function renderSignedInUI")[
+            0
+        ]
+        assert "_loadBillingStatus" in local_dev_fn, (
+            "renderLocalDevUI must call _loadBillingStatus so the hero cards populate"
+        )
+
+    def test_billing_module_proceeds_without_account_when_auth_disabled(self):
+        """app-billing.js's load() must not silently no-op in local dev (#1255).
+
+        Skip only when real auth is configured but the user is signed out —
+        mirrors the existing pattern in app-runs.js's loadHistory.
+        """
+        js = APP_BILLING_JS.read_text()
+        assert "_authEnabled" in js, "app-billing.js must accept an authEnabled dependency"
+        assert "&& authEnabled) return" in js, (
+            "app-billing.js load() must only skip when authEnabled is true (real auth, signed out)"
+        )
+
+    def test_account_page_does_not_capture_ciam_before_it_loads(self):
+        """account/index.html must not freeze `ciam` at parse time (#1256).
+
+        canopex-auth.js loads with `defer`, so it hasn't set
+        window.CanopexCiam yet when this page's own inline (non-deferred)
+        script block is parsed. Capturing `window.CanopexCiam || {}` at that
+        point permanently freezes `ciam` at `{}`, silently breaking every
+        auth check on the page (getAccount/onAccountChange never work).
+        """
+        html = ACCOUNT_INDEX_HTML.read_text()
+        assert "var ciam = {};" in html, (
+            "account/index.html must start with an empty ciam placeholder, not "
+            "window.CanopexCiam || {} (which would freeze it before canopex-auth.js, "
+            "loaded with defer, has run)"
+        )
+        assert "ciam = window.CanopexCiam || {};" in html, (
+            "account/index.html must (re)resolve ciam inside init(), after deferred scripts run"
+        )
+
+    def test_account_page_bypasses_auth_gate_in_local_dev(self):
+        """account/index.html must not permanently gate local dev behind
+        sign-in (#1256) — mirrors the bypass already used on /eudr/ and
+        /app/ (website/js/app-msal.js renderLocalDevUI).
+        """
+        html = ACCOUNT_INDEX_HTML.read_text()
+        assert "ciam.authEnabled === 'function' && !ciam.authEnabled()" in html, (
+            "account/index.html's updateAuthUI must check authEnabled() before gating"
+        )
 
     def test_landing_msal_script_is_pinned_and_has_sri(self, index_html):
         """Landing MSAL script must use an exact version and SRI."""

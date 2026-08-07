@@ -102,12 +102,12 @@ class TestJourneyDefinitions:
             assert check.path.startswith("/"), check.name
 
     def test_auth_gate_markers_cover_both_observed_local_dev_states(self):
-        # /account/ shows a real sign-in gate; /eudr/ and /app/ auto-bypass
-        # to a "Local developer" notice when no CIAM client id is
-        # configured (website/js/app-msal.js renderLocalDevUI). Both are
-        # valid signed-out states this script must accept.
+        # A real deployment with CIAM configured shows a genuine sign-in
+        # gate; local dev (no CIAM client id) auto-bypasses to a
+        # "Local dev"/"Local developer" notice on every app, including
+        # /account/ (fixed in #1256). Both are valid signed-out states.
         assert any("Sign In" in marker for marker in AUTH_GATE_MARKERS)
-        assert any("Local developer" in marker for marker in AUTH_GATE_MARKERS)
+        assert any("Local dev" in marker for marker in AUTH_GATE_MARKERS)
 
     def test_covers_every_app_surface(self):
         paths = {journey.path for journey in PAGE_JOURNEYS}

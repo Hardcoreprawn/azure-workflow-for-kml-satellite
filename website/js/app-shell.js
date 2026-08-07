@@ -248,6 +248,7 @@
     apiFetch: apiFetch,
     getApiReady: function () { return apiDiscoveryReady; },
     getAccount: runtimeModule.getAccount,
+    authEnabled: authEnabled,
     login: login,
     readCache: runtimeModule.readCache,
     writeCache: runtimeModule.writeCache,
