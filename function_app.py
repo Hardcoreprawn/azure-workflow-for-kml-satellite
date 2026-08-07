@@ -74,9 +74,7 @@ elif STORAGE_ACCOUNT_NAME:
 
         table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
         wire_rate_limiters(
-            table_service_client=TableServiceClient(
-                table_url, credential=DefaultAzureCredential()
-            )
+            table_service_client=TableServiceClient(table_url, credential=DefaultAzureCredential())
         )
     except Exception:
         logger.warning(
