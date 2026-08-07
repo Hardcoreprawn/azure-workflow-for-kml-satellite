@@ -1391,7 +1391,7 @@ class TestOrchestratorActivityOutputContracts:
 
         with pytest.raises(
             TypeError,
-            match=r"parse_kml activity output must be list\[dict\] or dict with keys \[ref\]",
+            match=r"parse_kml activity output must be list\[dict\] or dict with required keys: ref",
         ):
             gen.send("malformed")
 
@@ -1407,16 +1407,18 @@ class TestOrchestratorActivityOutputContracts:
         ctx.task_all.return_value = "task_all_sentinel"
 
         gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-4", {})
-        gen.send(None)  # parse_kml
+        gen.send(None)  # yield parse_kml activity call
         gen.send(
             [{"feature_name": "farm", "exterior_coords": [[36.8, -1.3]]}]
-        )  # prepare_aoi fan-out
-        gen.send([{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}])  # store claims
+        )  # resolve parse_kml; yield prepare_aoi fan-out
+        gen.send(
+            [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
+        )  # resolve prepare_aoi; yield store_aoi_claims
 
         with pytest.raises(
             ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"
         ):
-            gen.send([{"key": "farm"}])
+            gen.send([{"key": "farm"}])  # resolve store_aoi_claims
 
 
 # ---------------------------------------------------------------------------

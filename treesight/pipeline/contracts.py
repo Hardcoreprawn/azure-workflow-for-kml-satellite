@@ -50,4 +50,4 @@ def ensure_parse_kml_output(value: Any) -> list[dict[str, Any]] | dict[str, Any]
         return ensure_list_of_dicts(value, name="parse_kml")
     if isinstance(value, dict):
         return ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
-    raise TypeError("parse_kml activity output must be list[dict] or dict with keys [ref]")
+    raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref")
