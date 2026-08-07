@@ -56,6 +56,31 @@ of pinned-version mechanisms.
 This gives a decision *test* rather than a hand-maintained bucket list: "does
 this job build an image? No → it runs in the container."
 
+#### Amendment (2026-08-06, #1215/#1218)
+
+The underlying goal of this ADR is **reproducibility** — that a developer, CI,
+and an auditor all get the same result from the same inputs. Running inside
+the published dev container image is the *default mechanism* for that, not
+the goal itself. A second, irreducible exception to the execution-context
+rule exists where container-in-container nesting breaks *correctness*, not
+just speed:
+
+- **Local/CI pipeline e2e gate** (`make test-pipeline-local`, #1216/#1218) runs
+  the Azure Functions host (`func start`) directly on the bare runner rather
+  than inside a `container:`/`ci-gate`-style sibling container. Reason: the
+  Durable Task Framework's storage provider hard-resolves the well-known
+  Azurite account name (`devstoreaccount1`) to `127.0.0.1`, ignoring
+  `AzureWebJobsStorage`'s actual configured endpoint host. That resolution is
+  only correct when Azurite's published ports are reachable at the *caller's
+  own* localhost — true for a bare runner (or a plain devcontainer shell),
+  false for a sibling container reached by service name or
+  `host.docker.internal`. This is a functional incompatibility, not a speed
+  trade-off, so it doesn't fall under "speed is not a justification."
+  Reproducibility is preserved the same way Option 2 originally proposed:
+  the pinned `uv.lock` plus a single `make` target any developer or CI job
+  runs identically — just without an intervening container boundary for this
+  one process.
+
 ### What runs where
 
 | Concern | Execution context | Rationale |
@@ -64,6 +89,7 @@ this job build an image? No → it runs in the container."
 | Unit tests | Dev container image | Same image as gates |
 | Integration tests | Dev container image + Azurite as a `services:` entry | Native GHA — no docker-in-docker |
 | e2e / smoke | Dev container image + published app image + Azurite as `services:` | The thing under test is a service container, not a host compose stack |
+| Local/CI pipeline e2e gate (`make test-pipeline-local`) | **Bare runner** (func host) + Azurite as `services:`/compose | Exception, see amendment above — Durable Task's storage provider requires Azurite at the caller's actual localhost |
 | App runtime (interactive dev) | `docker compose` (func + web + azurite) | Parity with prod Container Apps |
 | **Image build / publish** (base → dev → app) | **Bare runner (buildx)** | The one irreducible exception — building an image is a host operation |
 

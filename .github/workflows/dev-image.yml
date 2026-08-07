@@ -72,6 +72,8 @@ jobs:
           echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_latest=${IMAGE_NAME}:latest" >> "$GITHUB_OUTPUT"
           echo "image_dated=${IMAGE_NAME}:${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_e2e_latest=${IMAGE_NAME}:pipeline-e2e-latest" >> "$GITHUB_OUTPUT"
+          echo "image_e2e_dated=${IMAGE_NAME}:pipeline-e2e-${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "uvlock_sha=${UVLOCK_SHA}" >> "$GITHUB_OUTPUT"
 
@@ -79,10 +81,26 @@ jobs:
         run: |
           docker build \
             -f Dockerfile.dev \
+            --target dev \
             --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
             --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
             -t "${{ steps.meta.outputs.image_latest }}" \
             -t "${{ steps.meta.outputs.image_dated }}" \
+            .
+
+      # pipeline-e2e extends `dev` with Azure Functions Core Tools (~1.3 GB) —
+      # kept out of the `dev` tag on purpose so lint/test/integration jobs and
+      # devcontainers don't pay that weight. Built in the SAME job/triggers as
+      # `dev` so there's one image-update process to maintain, not two.
+      - name: Build pipeline-e2e image
+        run: |
+          docker build \
+            -f Dockerfile.dev \
+            --target pipeline-e2e \
+            --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
+            --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
+            -t "${{ steps.meta.outputs.image_e2e_latest }}" \
+            -t "${{ steps.meta.outputs.image_e2e_dated }}" \
             .
 
       # ── Smoke test: gate tools + Rust extension are usable ─
@@ -100,7 +118,18 @@ jobs:
               make --version
             '
 
-      # ── Size gate ──────────────────────────────────────────
+      - name: Smoke test pipeline-e2e image
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" -w /workspace \
+            "${{ steps.meta.outputs.image_e2e_latest }}" \
+            bash -c '
+              set -euo pipefail
+              make --version
+              func --version
+            '
+
+      # ── Size gate ──────────────────────────────
       - name: Check image size
         run: |
           SIZE_MB=$(docker image inspect "${{ steps.meta.outputs.image_latest }}" \
@@ -111,6 +140,17 @@ jobs:
           # leaked out of the builder stage.
           if [ "$SIZE_MB" -gt 2900 ]; then
             echo "::error::Dev image is ${SIZE_MB} MB — exceeds 2900 MB limit. Check Dockerfile.dev multi-stage boundary."
+            exit 1
+          fi
+
+      - name: Check pipeline-e2e image size
+        run: |
+          SIZE_MB=$(docker image inspect "${{ steps.meta.outputs.image_e2e_latest }}" \
+            --format '{{ .Size }}' | awk '{printf "%.0f", $1/1024/1024}')
+          echo "pipeline-e2e image size: ${SIZE_MB} MB"
+          # dev budget (2900 MB) + Azure Functions Core Tools (~1.3 GB) + buffer.
+          if [ "$SIZE_MB" -gt 4400 ]; then
+            echo "::error::pipeline-e2e image is ${SIZE_MB} MB — exceeds 4400 MB limit."
             exit 1
           fi
 
@@ -131,15 +171,35 @@ jobs:
           sarif_file: trivy-dev.sarif
           category: trivy-dev-image
 
+      - name: Trivy container scan (pipeline-e2e)
+        uses: ./.github/actions/trivy-scan
+        with:
+          scan: image
+          image: ${{ steps.meta.outputs.image_e2e_latest }}
+          image-exit: "0"
+          format: sarif
+          output: trivy-dev-e2e.sarif
+
+      - name: Upload Trivy SARIF (pipeline-e2e)
+        if: always()
+        uses: github/codeql-action/upload-sarif@7188fc363630916deb702c7fdcf4e481b751f97a # v4.37.1
+        with:
+          sarif_file: trivy-dev-e2e.sarif
+          category: trivy-dev-pipeline-e2e-image
+
       # ── Push to GHCR ───────────────────────────────────────
       - name: Push dev image
         run: |
           docker push "${{ steps.meta.outputs.image_latest }}"
           docker push "${{ steps.meta.outputs.image_dated }}"
+          docker push "${{ steps.meta.outputs.image_e2e_latest }}"
+          docker push "${{ steps.meta.outputs.image_e2e_dated }}"
           {
             echo "### Dev Image Published :package:"
             echo ""
             echo "- \`${{ steps.meta.outputs.image_latest }}\`"
             echo "- \`${{ steps.meta.outputs.image_dated }}\`"
+            echo "- \`${{ steps.meta.outputs.image_e2e_latest }}\`"
+            echo "- \`${{ steps.meta.outputs.image_e2e_dated }}\`"
             echo "- uv.lock sha256: \`${{ steps.meta.outputs.uvlock_sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

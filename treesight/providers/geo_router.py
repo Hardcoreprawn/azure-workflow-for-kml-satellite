@@ -112,7 +112,24 @@ class GeoRoutingProvider(ImageryProvider):
         config = config or {}
         self._stub_mode = bool(config.get("stub_mode", False))
         self._pc_config: ProviderConfig = dict(config)
-        self._provider_class: type[ImageryProvider] | None = None
+        self._provider_class: type[ImageryProvider] | None = self._default_provider_class()
+
+    def _default_provider_class(self) -> type[ImageryProvider] | None:
+        """Default underlying provider class, or ``None`` to defer to
+        ``PlanetaryComputerProvider`` at construction time in ``_make_pc``.
+
+        Returns the synthetic-data stub when ``CANOPEX_TEST_MODE`` is set —
+        this is what lets a live ``func start`` host run pipeline logic
+        without reaching the real Planetary Computer API (#1215). Always
+        overridable via ``set_provider_class()``.
+        """
+        from treesight.config import is_test_mode_enabled
+
+        if is_test_mode_enabled():
+            from treesight.providers.stub import StubPlanetaryComputerProvider
+
+            return StubPlanetaryComputerProvider
+        return None
 
     def set_provider_class(self, cls: type[ImageryProvider]) -> None:
         """Override the underlying provider class (used by test infrastructure)."""
