@@ -176,6 +176,7 @@ class TestTableRateLimiter:
         assert limiter.is_allowed("10.0.0.1") is True
         assert limiter._table.get_entity.call_count == 2
         assert limiter._table.update_entity.call_count == 2
+
     def test_fails_open_after_all_retries_exhausted(self):
         from azure.core.exceptions import ResourceModifiedError
 
