@@ -65,5 +65,104 @@ elif STORAGE_ACCOUNT_NAME:
             exc_info=True,
         )
 
+# Wire up distributed rate limiters (#252)
+if STORAGE_CONNECTION_STRING:
+    try:
+        from treesight.constants import (
+            RATE_LIMIT_DEMO_MAX,
+            RATE_LIMIT_DEMO_WINDOW,
+            RATE_LIMIT_FORM_MAX,
+            RATE_LIMIT_FORM_WINDOW,
+            RATE_LIMIT_PIPELINE_MAX,
+            RATE_LIMIT_PIPELINE_WINDOW,
+        )
+        from treesight.security import (
+            TableRateLimiter,
+            set_demo_limiter,
+            set_form_limiter,
+            set_pipeline_limiter,
+        )
+
+        set_form_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_FORM_MAX,
+                RATE_LIMIT_FORM_WINDOW,
+                "form",
+                connection_string=STORAGE_CONNECTION_STRING,
+            )
+        )
+        set_pipeline_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_PIPELINE_MAX,
+                RATE_LIMIT_PIPELINE_WINDOW,
+                "pipeline",
+                connection_string=STORAGE_CONNECTION_STRING,
+            )
+        )
+        set_demo_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_DEMO_MAX,
+                RATE_LIMIT_DEMO_WINDOW,
+                "demo",
+                connection_string=STORAGE_CONNECTION_STRING,
+            )
+        )
+    except Exception:
+        logger.warning(
+            "Could not initialise Table rate limiters; falling back to in-memory",
+            exc_info=True,
+        )
+elif STORAGE_ACCOUNT_NAME:
+    try:
+        from azure.data.tables import TableServiceClient
+        from azure.identity import DefaultAzureCredential
+
+        from treesight.constants import (
+            RATE_LIMIT_DEMO_MAX,
+            RATE_LIMIT_DEMO_WINDOW,
+            RATE_LIMIT_FORM_MAX,
+            RATE_LIMIT_FORM_WINDOW,
+            RATE_LIMIT_PIPELINE_MAX,
+            RATE_LIMIT_PIPELINE_WINDOW,
+        )
+        from treesight.security import (
+            TableRateLimiter,
+            set_demo_limiter,
+            set_form_limiter,
+            set_pipeline_limiter,
+        )
+
+        table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
+        tsc = TableServiceClient(table_url, credential=DefaultAzureCredential())
+        set_form_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_FORM_MAX,
+                RATE_LIMIT_FORM_WINDOW,
+                "form",
+                table_service_client=tsc,
+            )
+        )
+        set_pipeline_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_PIPELINE_MAX,
+                RATE_LIMIT_PIPELINE_WINDOW,
+                "pipeline",
+                table_service_client=tsc,
+            )
+        )
+        set_demo_limiter(
+            TableRateLimiter(
+                RATE_LIMIT_DEMO_MAX,
+                RATE_LIMIT_DEMO_WINDOW,
+                "demo",
+                table_service_client=tsc,
+            )
+        )
+    except Exception:
+        logger.warning(
+            "Could not initialise Table rate limiters via MI; falling back to in-memory",
+            exc_info=True,
+        )
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 _register_blueprints(app)
