@@ -49,5 +49,10 @@ def ensure_parse_kml_output(value: Any) -> list[dict[str, Any]] | dict[str, Any]
     if isinstance(value, list):
         return ensure_list_of_dicts(value, name="parse_kml")
     if isinstance(value, dict):
-        return ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
+        out = ensure_dict_with_keys(value, name="parse_kml", required=("ref",))
+        if not isinstance(out["ref"], str) or not out["ref"]:
+            raise TypeError(
+                f"parse_kml activity output key 'ref' must be non-empty str, got {type(out['ref']).__name__}"
+            )
+        return out
     raise TypeError("parse_kml activity output must be list[dict] or dict with required keys: ref")
