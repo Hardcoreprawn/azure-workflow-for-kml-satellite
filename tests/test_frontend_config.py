@@ -1101,3 +1101,68 @@ class TestEudrEntryPoint:
         assert 'id="app-portfolio-summary"' in content
         assert 'id="app-portfolio-active-runs"' in content
         assert 'id="app-portfolio-completed-runs"' in content
+
+
+# One nav model everywhere, so wayfinding doesn't reset page to page (#1256
+# follow-up): every page carries the same three core links in the same
+# order, and the signed-in identity label is always a link to /account/.
+NAV_CORE_LINKS: tuple[tuple[str, str], ...] = (
+    ("Due Diligence", "/eudr/"),
+    ("Conservation", "/app/"),
+    ("Docs", "/docs/"),
+)
+
+NAV_PAGES: tuple[Path, ...] = (
+    INDEX_HTML,
+    EUDR_INDEX_HTML,
+    APP_INDEX_HTML,
+    ACCOUNT_INDEX_HTML,
+    WEBSITE / "docs" / "index.html",
+    WEBSITE / "docs" / "eudr-methodology.html",
+    WEBSITE / "docs" / "eudr-faq.html",
+    WEBSITE / "docs" / "eudr-glossary.html",
+    WEBSITE / "docs" / "eudr-data-sources.html",
+    WEBSITE / "docs" / "eudr-supplier-guide.html",
+    WEBSITE / "docs" / "getting-started.html",
+    WEBSITE / "docs" / "kml-guide.html",
+    WEBSITE / "docs" / "managing-assessments.html",
+    WEBSITE / "docs" / "understanding-evidence.html",
+    WEBSITE / "terms.html",
+    WEBSITE / "privacy.html",
+)
+
+
+class TestNavigationModel:
+    """Every page shares one nav model — see website/README.md."""
+
+    @pytest.mark.parametrize("page_path", NAV_PAGES, ids=lambda p: str(p.relative_to(WEBSITE)))
+    def test_core_nav_links_present_in_order(self, page_path):
+        html = page_path.read_text()
+        positions = []
+        for label, href in NAV_CORE_LINKS:
+            pattern = rf'<a href="{re.escape(href)}"[^>]*>{re.escape(label)}</a>'
+            match = re.search(pattern, html)
+            assert match, f"{page_path.name}: missing nav link {label!r} -> {href}"
+            positions.append(match.start())
+        assert positions == sorted(positions), (
+            f"{page_path.name}: nav links must appear in the canonical order "
+            f"{[label for label, _ in NAV_CORE_LINKS]}"
+        )
+
+    @pytest.mark.parametrize("page_path", NAV_PAGES, ids=lambda p: str(p.relative_to(WEBSITE)))
+    def test_no_same_page_marketing_anchors_in_nav(self, page_path):
+        """Nav must not mix in home-page-only anchors like #how-it-works/#faq —
+        that's what made the menu look different on every page."""
+        html = page_path.read_text()
+        nav_html = html.split("</nav>", 1)[0]
+        assert "#how-it-works" not in nav_html, f"{page_path.name}: stale #how-it-works nav link"
+        assert "#faq" not in nav_html, f"{page_path.name}: stale #faq nav link"
+
+    def test_signed_in_identity_links_to_account(self):
+        """Clicking your name/status anywhere must reach /account/ (#1256)."""
+        for page_path in (INDEX_HTML, EUDR_INDEX_HTML, APP_INDEX_HTML, ACCOUNT_INDEX_HTML):
+            html = page_path.read_text()
+            assert '<a class="auth-user" id="auth-user" href="/account/"' in html, (
+                f"{page_path.name}: #auth-user must be a real link to /account/, "
+                "not an inert span, so signed-in users can always find Account Settings"
+            )

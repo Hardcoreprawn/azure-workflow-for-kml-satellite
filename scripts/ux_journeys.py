@@ -71,7 +71,7 @@ class ApiResult:
 
 
 PAGE_JOURNEYS: tuple[PageJourney, ...] = (
-    PageJourney("Marketing home", "/", "Canopex", ("How It Works", "Pricing")),
+    PageJourney("Marketing home", "/", "Canopex", ("Due Diligence", "Pricing")),
     PageJourney("Docs hub", "/docs/", "Documentation"),
     PageJourney("EUDR methodology", "/docs/eudr-methodology.html", "EUDR"),
     PageJourney("Terms of service", "/terms.html", "Terms"),

@@ -2,6 +2,31 @@
 
 Minimal marketing landing page for Canopex. Deployed to Azure Static Web Apps.
 
+## Navigation Model
+
+Every page (marketing home, EUDR app, Conservation app, Account, docs,
+terms, privacy) shares one nav bar, in this exact order, so wayfinding
+never resets from page to page:
+
+1. **Due Diligence** → `/eudr/`
+2. **Conservation** → `/app/`
+3. **Docs** → `/docs/`
+
+The marketing home page (`/`) may append one extra item after these three
+(currently `Pricing` → `#pricing`) for pre-signup discovery. No other page
+adds same-page marketing anchors (`#how-it-works`, `#faq`, etc.) to its nav
+— those only make sense on the page that has the section.
+
+The auth area (`#status-badge`, `#auth-user`, sign in/out) is identical
+everywhere. When signed in (or in local dev, where auth is disabled),
+`#auth-user` is always a real link to `/account/` — never inert text —
+so Account Settings is always one click away.
+
+`tests/test_frontend_config.py::TestNavigationModel` enforces this
+model. Adding a page or editing a nav block that breaks the order, adds a
+stray marketing anchor, or turns `#auth-user` back into a plain `<span>`
+will fail that test.
+
 ## Structure
 
 ```text
