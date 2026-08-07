@@ -27,7 +27,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR
+from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR, azurite_blob_reachable
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -48,12 +48,7 @@ pytestmark = pytest.mark.integration
 
 def _azurite_reachable() -> bool:
     """Return True if Azurite is listening on the well-known local port."""
-    try:
-        client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
-        client.get_account_information()
-    except Exception:
-        return False
-    return True
+    return azurite_blob_reachable()
 
 
 def _func_host_reachable() -> bool:

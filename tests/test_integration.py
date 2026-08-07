@@ -11,27 +11,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR, CONTAINERS
+from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR, CONTAINERS, azurite_blob_reachable
 
 pytestmark = pytest.mark.integration
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
-
-def _azurite_reachable() -> bool:
-    """Return ``True`` if Azurite is listening on the expected port."""
-    try:
-        from azure.storage.blob import BlobServiceClient
-
-        client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
-        client.get_account_information()
-    except Exception:
-        return False
-    return True
-
-
 skip_no_azurite = pytest.mark.skipif(
-    not _azurite_reachable(),
+    not azurite_blob_reachable(),
     reason="Azurite not running (start with: make dev-up)",
 )
 

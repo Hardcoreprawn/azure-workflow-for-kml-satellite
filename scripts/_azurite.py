@@ -7,6 +7,7 @@ Imported by ``init_storage.py``, ``simulate_upload.py``, and integration tests.
 from __future__ import annotations
 
 import os
+import socket
 from typing import Final
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "AZURITE_QUEUE_PORT",
     "AZURITE_TABLE_PORT",
     "CONTAINERS",
+    "azurite_blob_reachable",
 ]
 
 AZURITE_ACCOUNT_NAME: Final[str] = "devstoreaccount1"
@@ -52,3 +54,23 @@ CONTAINERS: Final[list[str]] = [
     "kml-output",
     "pipeline-payloads",
 ]
+
+
+def azurite_blob_reachable(
+    *, host: str = AZURITE_BLOB_HOST, port: int = AZURITE_BLOB_PORT, timeout: float = 0.5
+) -> bool:
+    """Fast, retry-free check for whether Azurite's blob endpoint is listening.
+
+    Deliberately a raw TCP connect, not an Azure SDK client call: SDK clients
+    apply their default retry policy (multiple attempts with exponential
+    backoff) on a connection failure, which turns a simple "is anything
+    listening" probe into tens of seconds of retried sleeps. Callers that use
+    this to gate a ``pytest.mark.skipif`` evaluate it at collection time —
+    for every invocation, even when the tests it guards are deselected — so
+    it must stay bounded and fast regardless of whether Azurite is running.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
