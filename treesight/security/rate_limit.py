@@ -155,6 +155,7 @@ class TableRateLimiter:
 
         from azure.core import MatchConditions
         from azure.core.exceptions import (
+            AzureError,
             ResourceExistsError,
             ResourceModifiedError,
             ResourceNotFoundError,
