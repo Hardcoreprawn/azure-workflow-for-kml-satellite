@@ -58,8 +58,9 @@ def _mock_cosmos():  # noqa: C901
             if "c.status = 'pending'" in query_str and val.get("status") != "pending":
                 matches = False
 
-            # WHERE LOWER(c.email) = LOWER(@email)
-            if "@email" in params and "ARRAY_CONTAINS(c.members" not in query_str:
+            # WHERE LOWER(c.email) = LOWER(@email)  (top-level invite/org email)
+            is_member_email_query = "m IN c.members" in query_str and "m.email" in query_str
+            if "@email" in params and not is_member_email_query:
                 val_email = val.get("email", "").lower()
                 param_email = params["@email"].lower()
                 if val_email != param_email:
@@ -71,13 +72,12 @@ def _mock_cosmos():  # noqa: C901
                 if not any(m.get("user_id") == params["@user_id"] for m in members):
                     matches = False
 
-            # ARRAY_CONTAINS(c.members, {"email": @email}, true)
-            if "@email" in params and "ARRAY_CONTAINS(c.members" in query_str:
+            # EXISTS(SELECT VALUE m FROM m IN c.members WHERE LOWER(m.email) = @email)
+            if "@email" in params and is_member_email_query:
                 members = val.get("members", [])
                 param_email = params["@email"].lower().strip()
                 if not any(
-                    isinstance(m.get("email"), str)
-                    and m["email"].strip().lower() == param_email
+                    isinstance(m.get("email"), str) and m["email"].strip().lower() == param_email
                     for m in members
                 ):
                     matches = False
@@ -945,9 +945,7 @@ class TestMembershipHealingFromVerifiedEmail:
         from treesight.security.orgs import resolve_active_org_for_user
 
         store, upsert, read, delete, query = _mock_cosmos()
-        org_doc = self._org_with_member(
-            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
-        )
+        org_doc = self._org_with_member("personal-old-uid", "old-uid", "j.brewster@outlook.com")
         # Pre-add new-uid as a member.
         org_doc["members"].append(
             {

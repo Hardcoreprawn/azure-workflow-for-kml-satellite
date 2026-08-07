@@ -267,13 +267,19 @@ def _heal_membership_from_verified_email(
 
     from treesight.storage.cosmos import query_items
 
+    email_lower = verified_email.strip().lower()
+
+    # Member emails are stored as-written (create_org/add_member do not
+    # normalize casing), so matching must be done via LOWER() rather than
+    # ARRAY_CONTAINS's case-sensitive equality — otherwise healing silently
+    # fails whenever stored casing differs from the verified JWT email.
     try:
         results = query_items(
             "orgs",
             "SELECT c.org_id, c.name, c.created_at, c.members"
-            ' FROM c WHERE c.doc_type = \'org\''
-            ' AND ARRAY_CONTAINS(c.members, {"email": @email}, true)',
-            parameters=[{"name": "@email", "value": verified_email.lower().strip()}],
+            " FROM c WHERE c.doc_type = 'org'"
+            " AND EXISTS(SELECT VALUE m FROM m IN c.members WHERE LOWER(m.email) = @email)",
+            parameters=[{"name": "@email", "value": email_lower}],
         )
     except Exception:
         logger.warning(
@@ -295,12 +301,9 @@ def _heal_membership_from_verified_email(
 
     for candidate in candidates:
         members = candidate.get("members", [])
-        email_lower = verified_email.strip().lower()
 
         # Check if user_id is already a member of this specific org.
-        existing_uid_member = next(
-            (m for m in members if m.get("user_id") == user_id), None
-        )
+        existing_uid_member = next((m for m in members if m.get("user_id") == user_id), None)
         if existing_uid_member is not None:
             # Only shortcut if the email on that membership matches the verified
             # email — this guards against returning an unrelated org that happens
@@ -316,8 +319,7 @@ def _heal_membership_from_verified_email(
             (
                 m
                 for m in members
-                if isinstance(m.get("email"), str)
-                and m["email"].strip().lower() == verified_email.strip().lower()
+                if isinstance(m.get("email"), str) and m["email"].strip().lower() == email_lower
             ),
             None,
         )
