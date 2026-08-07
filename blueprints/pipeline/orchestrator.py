@@ -31,6 +31,10 @@ from treesight.constants import (
     LONG_RETRY_MAX_ATTEMPTS,
     MAX_POLL_ITERATIONS,
 )
+from treesight.pipeline.contracts import (
+    ensure_list_of_dicts,
+    ensure_parse_kml_output,
+)
 from treesight.pipeline.orchestrator import build_pipeline_summary, derive_project_context
 
 from . import bp
@@ -68,15 +72,15 @@ def _phase_ingestion(
     blob_name = inp.get("blob_name", "")
 
     context.set_custom_status({"phase": "ingestion", "step": "parsing_kml"})
-    features = cast("Any", (yield context.call_activity("parse_kml", inp)))
+    features = ensure_parse_kml_output((yield context.call_activity("parse_kml", inp)))
 
     if isinstance(features, list):
-        feature_list = cast("list[dict[str, Any]]", features)
+        feature_list = features
         offloaded = False
     else:
-        loaded = cast(
-            "list[dict[str, Any]]",
+        loaded = ensure_list_of_dicts(
             (yield context.call_activity("load_offloaded_features", features)),
+            name="load_offloaded_features",
         )
         feature_list = loaded
         offloaded = True
@@ -94,7 +98,7 @@ def _phase_ingestion(
         context.call_activity("prepare_aoi", {"feature": f, "buffer_m": inp.get("buffer_m")})
         for f in feature_list
     ]
-    aois = cast("list[dict[str, Any]]", (yield context.task_all(aoi_tasks)))
+    aois = ensure_list_of_dicts((yield context.task_all(aoi_tasks)), name="prepare_aoi")
 
     # Claim-check: extract enrichment coords before offloading AOIs
     all_coords = _collect_enrichment_coords(aois)
@@ -107,14 +111,15 @@ def _phase_ingestion(
 
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs
     context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
-    aoi_refs = cast(
-        "list[dict[str, str]]",
+    aoi_refs = ensure_list_of_dicts(
         (
             yield context.call_activity(
                 "store_aoi_claims",
                 {"instance_id": instance_id, "aois": aois},
             )
         ),
+        name="store_aoi_claims",
+        required_item_keys=("ref", "key"),
     )
 
     # Fan-out: write metadata (activities retrieve AOI from claim check)
@@ -133,9 +138,9 @@ def _phase_ingestion(
         )
         for ref in aoi_refs
     ]
-    metadata_results = cast(
-        "list[dict[str, Any]]",
+    metadata_results = ensure_list_of_dicts(
         (yield context.task_all(meta_tasks)),
+        name="write_metadata",
     )
 
     return {

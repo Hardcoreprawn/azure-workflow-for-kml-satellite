@@ -395,7 +395,7 @@ code.**
 | D2 | **Organisation owns Runs, Catalogue Entries, and Monitors.** | `runs`, `catalogue`, and `monitors` are all partitioned by `/user_id` — ownership is effectively **per-user**. | *Needs an issue — see below.* |
 | D3 | **Quota is org-pooled only.** Per-user quota should not exist. | `users` documents still carry an embedded `quota` (`QuotaState`) counter. | Umbrella **#814** (org-pooled accounting *"replaces the divergent per-user `quota`"*). Per-user quota is **vestigial from the first build** and should be removed before launch. |
 | D4 | Enrichment/analysis sub-blocks are well-typed. | `weather_daily`, `ndvi_stats`, `per_aoi_metrics`, `change_detection`, `multi_aoi_summary`, `resource_summary`, `billing` are `list[dict]` / `dict[str, Any]` *(open)*. | Documented here; no schema yet. |
-| D5 | Pipeline stages exchange typed domain objects. | The orchestrator passes **untyped dicts** between activities (e.g. `IngestionResult.aois` is `list[dict]`, not `list[AOI]`). Validation happens at boundaries, not in flight. | Documented here; relevant to the "toward a domain model" goal below. |
+| D5 | Pipeline stages exchange typed domain objects. | The orchestrator still passes dict payloads between activities, but ingestion now validates activity output seams explicitly via `treesight.pipeline.contracts` (`ensure_parse_kml_output`, `ensure_list_of_dicts`). | Slice **#795** (lightweight boundary contracts) under epic **#1057**; continue migrating remaining seams. |
 
 > **Action for maintainers:** D3 is tracked under #814. D1 and D2 are
 > structural changes to the ownership model (org-partitioned storage +
@@ -416,9 +416,11 @@ that direction:
   "whose data is this?" branching into one boundary.
 - **Delete the vestigial per-user quota (D3).** One quota concept
   (org-pooled) means one place to reason about limits.
-- **Type the pipeline seams (D5).** Passing `AOI` / `ImageryOutcome`
-  objects (or validating dicts at each activity entry/exit) removes the
-  implicit-shape guessing that makes the pipeline hard to hold in the head.
+- **Type the pipeline seams (D5).** Current pattern: validate activity
+  outputs at the orchestrator boundary with the lightweight helpers in
+  `treesight.pipeline.contracts`; this gives clear failures without a broad
+  Pydantic migration. Passing first-class `AOI` / `ImageryOutcome` objects
+  remains the longer-term direction.
 - **Give the *(open)* bags schemas (D4)** as their contents stabilise.
 
 Each of these is additive and can land as an independent slice. None
