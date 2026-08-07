@@ -1148,7 +1148,7 @@ class TestTrivySignalQuality:
     def test_deploy_trivy_image_ignores_unfixed(self):
         makefile = MAKEFILE.read_text()
         scan_image_cmd = (
-            '"$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) '
+            '"$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) $(_TRIVY_SKIP) '
             "--severity CRITICAL,HIGH --ignore-unfixed"
         )
         assert "scan-image:" in makefile and scan_image_cmd in makefile, (

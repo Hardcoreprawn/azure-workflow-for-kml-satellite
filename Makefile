@@ -229,9 +229,11 @@ TRIVY_OUTPUT ?=
 TRIVY_IGNOREFILE ?= .trivyignore
 TRIVY_IMAGE_EXIT ?= 1
 TRIVY_SCANNERS ?=
+TRIVY_SKIP_DIRS ?=
 _TRIVY_OUT = $(if $(TRIVY_OUTPUT),--output $(TRIVY_OUTPUT),)
 _TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)
 _TRIVY_SCAN = $(if $(TRIVY_SCANNERS),--scanners $(TRIVY_SCANNERS),)
+_TRIVY_SKIP = $(foreach d,$(TRIVY_SKIP_DIRS),--skip-dirs $(d))
 
 # Resolve a Trivy at exactly $(TRIVY_VERSION); install the pinned build into
 # .tools/ when the one on PATH differs. Sets shell var $$T to the binary.
@@ -251,8 +253,8 @@ scan-iac: ## Trivy IaC/config scan (infra/tofu) — advisory
 scan-fs: ## Trivy filesystem scan (deps + Dockerfiles, vulns only) — blocks on fixable CRITICAL/HIGH
 	@$(_trivy); "$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
 
-scan-image: ## Trivy image scan (set IMAGE=...; TRIVY_IMAGE_EXIT=0 for advisory) — blocks on fixable CRITICAL/HIGH
-	@$(_trivy); "$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) --severity CRITICAL,HIGH --ignore-unfixed --exit-code $(TRIVY_IMAGE_EXIT) --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
+scan-image: ## Trivy image scan (set IMAGE=...; TRIVY_IMAGE_EXIT=0 for advisory; TRIVY_SKIP_DIRS="a b" to exclude bundled tool dirs) — blocks on fixable CRITICAL/HIGH
+	@$(_trivy); "$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) $(_TRIVY_SKIP) --severity CRITICAL,HIGH --ignore-unfixed --exit-code $(TRIVY_IMAGE_EXIT) --format $(TRIVY_FORMAT) $(_TRIVY_OUT)
 
 scan: scan-iac scan-fs ## Run repo Trivy scans (IaC + filesystem)
 

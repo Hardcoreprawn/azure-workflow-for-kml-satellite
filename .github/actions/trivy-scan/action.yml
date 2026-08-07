@@ -33,6 +33,10 @@ inputs:
     description: "Comma-separated Trivy scanners (e.g. vuln). Empty = Trivy default."
     required: false
     default: ""
+  skip-dirs:
+    description: "Space-separated in-image directories to exclude from image scans (e.g. bundled dev/CI tool paths never present in the deployed runtime)."
+    required: false
+    default: ""
   trivy-version:
     description: "Trivy binary version (pinned; keep in sync with Makefile TRIVY_VERSION)."
     required: false
@@ -61,6 +65,7 @@ runs:
         TRIVY_IGNOREFILE: ${{ inputs.ignorefile }}
         TRIVY_IMAGE_EXIT: ${{ inputs.image-exit }}
         TRIVY_SCANNERS: ${{ inputs.scanners }}
+        TRIVY_SKIP_DIRS: ${{ inputs.skip-dirs }}
       run: |
         make "scan-${SCAN}" \
           IMAGE="${IMAGE}" \
@@ -68,4 +73,5 @@ runs:
           TRIVY_OUTPUT="${TRIVY_OUTPUT}" \
           TRIVY_IGNOREFILE="${TRIVY_IGNOREFILE}" \
           TRIVY_IMAGE_EXIT="${TRIVY_IMAGE_EXIT}" \
-          TRIVY_SCANNERS="${TRIVY_SCANNERS}"
+          TRIVY_SCANNERS="${TRIVY_SCANNERS}" \
+          TRIVY_SKIP_DIRS="${TRIVY_SKIP_DIRS}"

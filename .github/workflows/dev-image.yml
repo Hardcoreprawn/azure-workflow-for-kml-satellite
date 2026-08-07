@@ -179,6 +179,13 @@ jobs:
           image-exit: "0"
           format: sarif
           output: trivy-dev-e2e.sarif
+          # azure-functions-core-tools-4 bundles multi-language worker runtimes
+          # (in-proc .NET, PowerShell) this Python-only app never invokes
+          # (func start --python only). Their CVEs aren't reachable attack
+          # surface here — scope the scan to skip that unused bundle rather
+          # than growing an ever-larger per-CVE .trivyignore for code we don't
+          # execute. See #1215/#1219 (why Core Tools is installed at all).
+          skip-dirs: usr/lib/azure-functions-core-tools-4
 
       - name: Upload Trivy SARIF (pipeline-e2e)
         if: always()
