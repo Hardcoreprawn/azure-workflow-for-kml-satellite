@@ -252,6 +252,13 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
     bytes
         A GeoTIFF containing only the windowed pixels.
     """
+    from treesight.config import is_test_mode_enabled
+
+    if is_test_mode_enabled():
+        from treesight.providers.stub import get_stub_geotiff
+
+        return get_stub_geotiff()
+
     log_phase("fulfilment", "cog_read_start", url=url[:120])
 
     with rasterio.open(url) as src:
@@ -349,6 +356,13 @@ def _reproject_bytes(tiff_bytes: bytes, target_crs: str) -> bytes:
 
 def fetch_asset_bytes(url: str) -> bytes:
     """Full-file download fallback for non-COG assets."""
+    from treesight.config import is_test_mode_enabled
+
+    if is_test_mode_enabled():
+        from treesight.providers.stub import get_stub_geotiff
+
+        return get_stub_geotiff()
+
     import httpx
 
     log_phase("fulfilment", "fetch_start", url=url[:120])
