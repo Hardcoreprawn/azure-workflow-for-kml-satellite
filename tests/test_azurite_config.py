@@ -50,3 +50,40 @@ def test_blob_host_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "BlobEndpoint=http://azurite:10000/devstoreaccount1" in mod.AZURITE_CONN_STR
     assert "QueueEndpoint=http://azurite:10001/devstoreaccount1" in mod.AZURITE_CONN_STR
     assert "TableEndpoint=http://azurite:10002/devstoreaccount1" in mod.AZURITE_CONN_STR
+
+
+def _unused_local_port() -> int:
+    """Bind then immediately release a port so nothing is listening on it."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def test_azurite_blob_reachable_returns_false_quickly_when_nothing_listening() -> None:
+    """Must not retry/backoff like the Azure SDK client does — bounded and fast."""
+    import time
+
+    import _azurite
+
+    closed_port = _unused_local_port()
+    start = time.monotonic()
+    result = _azurite.azurite_blob_reachable(host="127.0.0.1", port=closed_port, timeout=0.2)
+    elapsed = time.monotonic() - start
+
+    assert result is False
+    assert elapsed < 1.0, f"reachability probe took {elapsed:.2f}s — should fail fast, not retry"
+
+
+def test_azurite_blob_reachable_returns_true_when_listening() -> None:
+    import socket
+
+    import _azurite
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+
+        assert _azurite.azurite_blob_reachable(host="127.0.0.1", port=port, timeout=0.5) is True
