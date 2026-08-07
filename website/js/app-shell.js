@@ -335,6 +335,7 @@
       apiFetch: apiFetch,
       getApiReady: function () { return apiDiscoveryReady; },
       getAccount: runtimeModule.getAccount,
+      authEnabled: authEnabled,
       login: login,
       getActiveProfile: function () { return activeProfile; },
       getWorkspaceRole: function () { return workspaceModule.getRole ? workspaceModule.getRole() : 'conservation'; },

@@ -121,6 +121,16 @@ doc covers.
   reach Account Settings from the product, and the EUDR PARCELS usage
   pill stuck on "Loading usage…" because the local-dev bypass path
   never fetched it (all fixed).
+- **#1263** — "Confirm & Queue" silently did nothing in local dev.
+  `queueAnalysis()` redirected to `login()` whenever there was no
+  signed-in account, and `login()` silently no-ops when CIAM isn't
+  configured — so the button never fired a request at all (fixed, same
+  `authEnabled()`-aware guard pattern). Following that fix through
+  surfaced a second, deeper, **unfixed** gap: `/api/upload/token` can't
+  mint a SAS against Azurite at all (it requires Azure AD user
+  delegation, which Azurite doesn't support), so a real KML submission
+  through the browser still fails locally — tracked separately in
+  #1263, not resolved by this doc's journeys.
 
 Each of these was a case of the same underlying pattern: a widget or
 guard written for the "real signed-in user" case that silently broke

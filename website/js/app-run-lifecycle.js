@@ -500,7 +500,14 @@
 
   async function queueAnalysis() {
     var currentAccount = _d.getAccount ? _d.getAccount() : null;
-    if (!currentAccount) {
+    // Only redirect to login when real auth is configured but the user
+    // isn't signed in — when auth is disabled (local dev), there's no
+    // account either, but the backend still answers anonymously (same
+    // reasoning as the #1255/#1260 fixes), so proceed with the submission
+    // instead of silently no-op'ing on a login() call that does nothing
+    // when MSAL isn't configured.
+    var authEnabled = _d.authEnabled ? _d.authEnabled() : true;
+    if (!currentAccount && authEnabled) {
       if (_d.login) _d.login();
       return;
     }

@@ -1166,3 +1166,24 @@ class TestNavigationModel:
                 f"{page_path.name}: #auth-user must be a real link to /account/, "
                 "not an inert span, so signed-in users can always find Account Settings"
             )
+
+
+class TestQueueAnalysisAuthBypass:
+    """ "Confirm & Queue" must work in local dev, not silently no-op (#1263)."""
+
+    def test_queue_analysis_only_redirects_to_login_when_auth_enabled(self, app_run_lifecycle_js):
+        assert "_d.authEnabled ? _d.authEnabled() : true" in app_run_lifecycle_js, (
+            "queueAnalysis() must check authEnabled() before redirecting to login() — "
+            "login() silently no-ops when CIAM isn't configured (local dev), so gating "
+            "purely on getAccount() blocks the submit button from ever doing anything"
+        )
+        assert "if (!currentAccount && authEnabled)" in app_run_lifecycle_js, (
+            "queueAnalysis() must only bail out to login() when auth is both disabled-account "
+            "AND actually enabled"
+        )
+
+    def test_run_lifecycle_module_receives_auth_enabled_dep(self, app_shell_js):
+        assert "authEnabled: authEnabled," in app_shell_js, (
+            "app-shell.js must wire the authEnabled dep into runLifecycleModule.init "
+            "so queueAnalysis() can check it"
+        )
