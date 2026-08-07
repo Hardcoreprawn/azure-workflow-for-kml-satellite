@@ -196,6 +196,20 @@ def get_eudr_billing_status(org_id: str, *, user_id: str | None = None) -> dict[
     from treesight.billing.accounting import OrgNotFoundError, get_pool_status
     from treesight.security.orgs import get_org
 
+    if not org_id:
+        # No org to look up (e.g. an anonymous caller with no org
+        # membership) — an empty id can never resolve to a real org, so
+        # skip the storage round-trip rather than querying for it (#1260).
+        return {
+            "plan": "none",
+            "subscribed": False,
+            "assessments_used": 0,
+            "trial_remaining": 0,
+            "period_parcels_used": 0,
+            "included_parcels": EUDR_INCLUDED_PARCELS,
+            "overage_parcels": 0,
+        }
+
     org = get_org(org_id)
     if not org:
         return {
