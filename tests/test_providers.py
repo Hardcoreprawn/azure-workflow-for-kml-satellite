@@ -122,6 +122,35 @@ class TestProviderRegistry:
         assert p.name == "geo_routing"
 
 
+class TestLiveHostStubGating:
+    """CANOPEX_TEST_MODE lets a real `func start` process run the pipeline
+    without reaching the real Planetary Computer API — the seam #1215's
+    local/CI e2e gate depends on. This must be an environment-variable
+    check only, never reachable via request/event payload data.
+    """
+
+    def test_geo_routing_defaults_to_stub_when_test_mode_enabled(self, monkeypatch, sample_aoi):
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        provider = GeoRoutingProvider()
+        results = provider.search(sample_aoi, ImageryFilters())
+        assert results[0].extra.get("stub") is True
+
+    def test_geo_routing_defaults_to_real_when_test_mode_disabled(self, monkeypatch):
+        monkeypatch.delenv("CANOPEX_TEST_MODE", raising=False)
+        provider = GeoRoutingProvider()
+        pc = provider._make_pc(["sentinel-2-l2a"])
+        assert type(pc) is PlanetaryComputerProvider
+
+    def test_explicit_provider_class_override_wins_over_test_mode(self, monkeypatch):
+        """An explicit set_provider_class() call must still win regardless
+        of CANOPEX_TEST_MODE — the default only fills in when unset."""
+        monkeypatch.setenv("CANOPEX_TEST_MODE", "1")
+        provider = GeoRoutingProvider()
+        provider.set_provider_class(PlanetaryComputerProvider)
+        pc = provider._make_pc(["sentinel-2-l2a"])
+        assert type(pc) is PlanetaryComputerProvider
+
+
 # ---------------------------------------------------------------------------
 # Helpers — AOI factories for specific regions
 # ---------------------------------------------------------------------------

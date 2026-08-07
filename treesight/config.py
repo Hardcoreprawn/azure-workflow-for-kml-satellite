@@ -97,6 +97,24 @@ DEMO_VALET_TOKEN_MAX_USES = _env_int("DEMO_VALET_TOKEN_MAX_USES", 3)
 # header with a valid bearer token.
 REQUIRE_AUTH = _env_bool("REQUIRE_AUTH", False)
 
+
+def is_test_mode_enabled() -> bool:
+    """True when CANOPEX_TEST_MODE is set.
+
+    Deliberately a function, not a module-level constant like the values
+    above: the flag can change within a single process during tests
+    (``monkeypatch.setenv``/``delenv``), so it must be re-read on every
+    call rather than frozen at import time.
+
+    Gates swapping in synthetic imagery so a live host process (``func
+    start`` in CI/local dev) can run pipeline logic without reaching a
+    real third-party provider. This must only ever be an operator-set
+    environment variable — never derived from request or event payload
+    data, which is untrusted.
+    """
+    return _env_bool("CANOPEX_TEST_MODE", False)
+
+
 # CIAM-native bearer JWT config (#709).
 CIAM_AUTHORITY = _env("CIAM_AUTHORITY")
 CIAM_TENANT_ID = _env("CIAM_TENANT_ID")
