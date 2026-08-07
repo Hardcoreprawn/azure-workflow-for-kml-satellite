@@ -4,9 +4,9 @@ Covers the marketing/host site, the EUDR app, the conservation app, the
 account/settings app, and the auth boundary on protected API routes.
 Signed-out journeys only — there's no way to complete a real CIAM login
 against a local dev stack. Auth-gated pages are checked for a clean
-signed-out state, which locally is either a real "sign in" prompt
-(/account/) or the app's local-dev auth bypass notice (/eudr/, /app/) —
-see AUTH_GATE_MARKERS.
+signed-out state, which locally is the app's auth bypass notice on every
+app (see AUTH_GATE_MARKERS) — a real deployment with CIAM configured
+would show a genuine sign-in gate instead.
 
 Prerequisite: the stack must already be running (``make dev-all``).
 
@@ -81,12 +81,17 @@ PAGE_JOURNEYS: tuple[PageJourney, ...] = (
     PageJourney("Account settings, signed out", "/account/", "Account", auth_gated=True),
 )
 
-# Verified against a real local run (2026-08-07): /eudr/ and /app/ auto-bypass
-# to a "Local developer" dashboard when no CIAM client id is configured
-# (see website/js/app-msal.js renderLocalDevUI), while /account/ still shows
-# a genuine "Authentication Required" sign-in gate. Both are legitimate,
-# non-broken states for a local dev stack — accept either.
-AUTH_GATE_MARKERS: tuple[str, ...] = ("Sign In", "Sign in", "Local developer", "Auth is disabled")
+# Verified against a real local run: /eudr/, /app/, and /account/ all
+# auto-bypass to a local-dev notice when no CIAM client id is configured
+# (see website/js/app-msal.js renderLocalDevUI and the account page's own
+# updateAuthUI — fixed to match in #1256). A real deployment with CIAM
+# configured would instead show a genuine sign-in gate — accept either.
+AUTH_GATE_MARKERS: tuple[str, ...] = (
+    "Sign In",
+    "Sign in",
+    "Local dev",  # covers both "Local dev" (nav badge) and "Local developer" (account name)
+    "Auth is disabled",
+)
 
 API_CHECKS: tuple[ApiCheck, ...] = (
     ApiCheck("Functions health", "GET", "/api/health", 200),

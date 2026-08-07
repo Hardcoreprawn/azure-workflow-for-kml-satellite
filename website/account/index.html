@@ -406,7 +406,7 @@
       <div id="org-content">
         <p style="color: var(--c-muted);">Loading organization information…</p>
       </div>
-      
+
       <!-- Organization details -->
       <div id="org-details" style="display: none; margin-bottom: 32px;">
         <div style="background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;">
@@ -492,7 +492,12 @@
 (function() {
   'use strict';
 
-  var ciam = window.CanopexCiam || {};
+  // NOT `window.CanopexCiam || {}` here: canopex-auth.js loads with `defer`,
+  // so it hasn't run yet when this inline (non-deferred) script block is
+  // parsed — capturing it now would permanently freeze `ciam` at `{}` and
+  // silently break every auth check on this page (#1256). Re-resolved in
+  // init(), which only runs at DOMContentLoaded, after deferred scripts.
+  var ciam = {};
   var apiClient = null;
 
   // Initialize API client with token provider
@@ -569,6 +574,21 @@
     var guardLoginBtn = document.getElementById('auth-guard-login-btn');
 
     function updateAuthUI() {
+      // Local dev has no CIAM client id configured — bypass the gate like
+      // the other apps do (website/js/app-msal.js renderLocalDevUI) instead
+      // of permanently blocking the whole page behind a sign-in wall (#1256).
+      // Uses auth-user (not status-badge) for the persistent indicator —
+      // status-badge is also driven by the API client's connectivity
+      // prober (canopex-api-client.js), which overwrites it with
+      // "Online"/"Offline" shortly after this runs.
+      if (typeof ciam.authEnabled === 'function' && !ciam.authEnabled()) {
+        authUser.style.display = 'inline';
+        authUser.textContent = 'Local dev';
+        loginBtn.style.display = 'none';
+        logoutBtn.style.display = 'none';
+        hideAuthGuard();
+        return;
+      }
       var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
       if (account) {
         statusBadge.style.display = 'none';
@@ -808,6 +828,10 @@
       try {
         // Get current user ID
         var ciam = window.CanopexCiam || {};
+        if (typeof ciam.authEnabled === 'function' && !ciam.authEnabled()) {
+          orgContent.innerHTML = '<p style="color: var(--c-muted);">Organization management requires a signed-in CIAM identity, which local dev does not have (auth is disabled in this environment).</p>';
+          return;
+        }
         var account = typeof ciam.getAccount === 'function' ? ciam.getAccount() : null;
         if (!account || !account.homeAccountId) {
           orgContent.innerHTML = '<p style="color: var(--c-red);">Not authenticated. Please sign in.</p>';
@@ -839,7 +863,7 @@
         orgContent.style.display = 'none';
         document.getElementById('org-name').textContent = currentOrg.name || 'Organization';
         document.getElementById('org-member-count').textContent = currentOrg.members ? currentOrg.members.length : 0;
-        
+
         var owner = currentOrg.members ? currentOrg.members.find(function(m) { return m.role === 'owner'; }) : null;
         document.getElementById('org-owner-name').textContent = owner ? (owner.display_name || owner.email) : 'Unknown';
 
@@ -912,7 +936,7 @@
         var resp = await apiClient.fetch('/api/org/invites', { method: 'GET' });
         var data = await resp.json();
         var invites = data.invites || [];
-        
+
         invitesList.innerHTML = '';
         if (invites.length === 0) {
           invitesList.innerHTML = '<p style="color: var(--c-muted);">No pending invitations.</p>';
@@ -1030,6 +1054,7 @@
   }
 
   function init() {
+    ciam = window.CanopexCiam || {};
     apiClient = initApiClient();
     if (!apiClient) {
       console.error('[account-app] Failed to initialize API client');

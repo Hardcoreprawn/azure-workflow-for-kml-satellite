@@ -28,6 +28,7 @@
   var _clearCacheKey = null;
   var _onStatusChange = null;
   var _onLoadError = null;
+  var _authEnabled = null;
 
   var _latestBillingStatus = null;
 
@@ -44,6 +45,7 @@
     _clearCacheKey = deps.clearCacheKey;
     _onStatusChange = deps.onStatusChange || function () {};
     _onLoadError = deps.onLoadError || function () {};
+    _authEnabled = deps.authEnabled;
   }
 
   function getStatus() {
@@ -180,7 +182,11 @@
   async function load() {
     var apiReady = _getApiReady ? _getApiReady() : null;
     if (apiReady) await apiReady;
-    if (_getAccount && !_getAccount()) return;
+    // Only skip when real auth is configured but the user isn't signed in
+    // yet — when auth is disabled (local dev), there's no account either,
+    // but the backend still answers anonymously (#1255), so proceed.
+    var authEnabled = _authEnabled ? _authEnabled() : true;
+    if (_getAccount && !_getAccount() && authEnabled) return;
 
     // Render cached billing data instantly while fetching fresh data
     var cached = _readCache && _readCache('billing');
