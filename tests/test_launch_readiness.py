@@ -1790,6 +1790,34 @@ class TestCIFeedbackHygiene:
         )
 
 
+class TestDiffCoverRequiredGate:
+    """Changed-lines coverage is a required, blocking gate (closes #1042)."""
+
+    def test_diff_cover_step_does_not_suppress_failures(self):
+        """The step must not swallow a below-threshold diff-cover exit code —
+        `|| true` (or similar) would silently defeat the required gate."""
+        ci = CI_YML.read_text()
+        assert "--fail-under 80" in ci, "diff-cover must enforce --fail-under 80"
+        # Isolate the diff-cover invocation line itself, not the whole file,
+        # since other steps legitimately use `|| true` (e.g. best-effort fetch).
+        diff_cover_line = next(line for line in ci.splitlines() if "uv run diff-cover" in line)
+        assert "|| true" not in diff_cover_line, (
+            "the diff-cover invocation must not be suffixed with `|| true` — "
+            "that would make the 'required gate' report-only again"
+        )
+
+    def test_diff_cover_step_sets_safe_directory(self):
+        """The Test job runs in a container (different UID than the checkout),
+        so git refuses to touch the repo ('dubious ownership') unless marked
+        safe — diff-cover shells out to git and crashes without this."""
+        ci = CI_YML.read_text()
+        assert "safe.directory" in ci, (
+            "the changed-lines coverage step must configure "
+            "`git config --global --add safe.directory` before invoking "
+            "diff-cover, or every PR fails with a dubious-ownership crash"
+        )
+
+
 class TestInfracostCostGate:
     """Verify Infracost CI gate is properly configured."""
 
