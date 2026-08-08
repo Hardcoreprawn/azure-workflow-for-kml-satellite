@@ -336,20 +336,14 @@ def test_e2e_suppressed_cve_visible_in_raw_absent_from_filtered_kept_by_reconcil
 
     # 1. Raw scan contains the suppressed CVE.
     raw_ids = present_ids_from_scans([raw_scan])
-    assert suppressed_cve in raw_ids, (
-        "raw (unsuppressed) scan must include the suppressed CVE"
-    )
+    assert suppressed_cve in raw_ids, "raw (unsuppressed) scan must include the suppressed CVE"
 
     # 2. Filtered scan (applying .trivyignore) removes it.
     suppressed = suppressed_ids(ignore_text)
     filtered = filter_scan(raw_scan, suppressed)
     filtered_ids = present_ids_from_scans([filtered])
-    assert suppressed_cve not in filtered_ids, (
-        "filtered scan must omit the suppressed CVE"
-    )
-    assert other_cve in filtered_ids, (
-        "filtered scan must keep non-suppressed CVEs"
-    )
+    assert suppressed_cve not in filtered_ids, "filtered scan must omit the suppressed CVE"
+    assert other_cve in filtered_ids, "filtered scan must keep non-suppressed CVEs"
 
     # 3. Reconciler reads the raw scan and keeps/renews the still-present entry.
     result = reconcile(ignore_text, present_ids=raw_ids, today=TODAY)
@@ -361,9 +355,7 @@ def test_e2e_suppressed_cve_visible_in_raw_absent_from_filtered_kept_by_reconcil
     )
 
     # 4. Gate: raw scan has an unsuppressed CVE (other_cve) → gate must fail.
-    rc = main(
-        ["--scan", str(raw_path), "--ignore-file", str(ignore_path), "--gate"]
-    )
+    rc = main(["--scan", str(raw_path), "--ignore-file", str(ignore_path), "--gate"])
     assert rc == 1, "gate must block on the unsuppressed CVE in the raw scan"
 
 
