@@ -1329,6 +1329,59 @@ class TestTrivySignalQuality:
             "security.yml expiry check must warn for entries expiring within 14 days"
         )
 
+    def test_action_has_disable_ignore_input(self):
+        """The composite action must expose disable-ignore to avoid the empty-string
+        default-override bug in GitHub Actions composite actions.
+
+        Regression guard: passing ignorefile: "" does not reliably override the
+        default (.trivyignore) so the 'no suppressions' scan still consumed the
+        ignore file (issue #1169). The explicit disable-ignore boolean is the
+        unambiguous sentinel that the composite action's shell step can check.
+        """
+        action = TRIVY_SCAN_ACTION.read_text()
+        assert "disable-ignore:" in action, (
+            "composite action must have a disable-ignore input "
+            "(empty ignorefile: '' is unreliable in composite actions)"
+        )
+        assert "TRIVY_DISABLE_IGNORE" in action, (
+            "composite action must pass disable-ignore via TRIVY_DISABLE_IGNORE env var"
+        )
+        assert 'TRIVY_IGNOREFILE=""' in action, (
+            "composite action must explicitly clear TRIVY_IGNOREFILE when disable-ignore is true"
+        )
+
+    def test_base_image_no_suppression_scan_uses_disable_ignore(self):
+        """The no-suppression scan in base-image.yml must use disable-ignore: 'true'
+        rather than ignorefile: '' to guarantee the scan is truly unsuppressed.
+
+        Regression guard for issue #1169: ignorefile: '' was silently falling back
+        to .trivyignore in the composite action, causing the reconciler to believe
+        all CVEs were resolved when they were actually still present.
+        """
+        yml = BASE_IMAGE_YML.read_text()
+        assert 'disable-ignore: "true"' in yml or "disable-ignore: 'true'" in yml, (
+            "base-image.yml no-suppression scan must use disable-ignore: 'true' "
+            "not ignorefile: '' (empty string is not reliable in composite actions)"
+        )
+        assert 'ignorefile: ""' not in yml and "ignorefile: ''" not in yml, (
+            "base-image.yml must not pass ignorefile: '' — use disable-ignore: 'true'"
+        )
+
+    def test_makefile_no_ignorefile_flag_when_trivy_ignorefile_empty(self):
+        """When TRIVY_IGNOREFILE is empty, _TRIVY_IGN must expand to nothing.
+
+        Regression guard: the Makefile's conditional expansion must produce an
+        empty string (no --ignorefile flag) when TRIVY_IGNOREFILE is explicitly
+        set to the empty string on the command line.
+        """
+        makefile = MAKEFILE.read_text()
+        assert (
+            "_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)" in makefile
+        ), (
+            "Makefile _TRIVY_IGN must use $(if ...) to conditionally include "
+            "--ignorefile only when TRIVY_IGNOREFILE is non-empty"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 13. Container runtime prerequisites

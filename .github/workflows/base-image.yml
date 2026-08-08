@@ -85,7 +85,7 @@ jobs:
         with:
           scan: image
           image: ${{ steps.meta.outputs.image_latest }}
-          ignorefile: ""
+          disable-ignore: "true"
           image-exit: "0"
           format: json
           output: trivy-noignore.json
