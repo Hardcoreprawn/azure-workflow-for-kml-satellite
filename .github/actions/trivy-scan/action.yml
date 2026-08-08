@@ -22,11 +22,11 @@ inputs:
     required: false
     default: ""
   ignorefile:
-    description: "Trivy ignore file path. Use disable-ignore: 'true' to suppress all CVE filtering instead of passing an empty string here (empty strings are not reliably handled by composite actions)."
+    description: "Trivy ignore file path. To run an unsuppressed scan, use disable-ignore: 'true' instead of passing an empty string here (empty strings are not reliably handled by composite actions)."
     required: false
     default: ".trivyignore"
   disable-ignore:
-    description: "Set to 'true' to run without any --ignorefile flag (raw, unsuppressed scan). Overrides ignorefile."
+    description: "Set to 'true' to disable .trivyignore filtering and run an unsuppressed scan (no --ignorefile flag). Overrides ignorefile."
     required: false
     default: "false"
   image-exit:
