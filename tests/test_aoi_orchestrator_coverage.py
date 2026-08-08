@@ -28,11 +28,7 @@ def _make_gen_stub(return_val):
     return _stub
 
 
-def _make_acq_result(
-    orders: list | None = None,
-    poll_results: list | None = None,
-) -> dict:
-    orders = orders or []
+def _make_acq_result(poll_results: list | None = None) -> dict:
     poll_results = poll_results or []
     ready = [r for r in poll_results if r.get("state") == "ready"]
     return {
@@ -153,16 +149,17 @@ class TestAoiAcquire:
 
         gen = _aoi_acquire(ctx, {"composite_search": False}, aoi_ref)
         gen.send(None)  # start, yields the call_activity_with_retry task
-        try:
-            gen.send(single_order)  # send back acquisition result
-        except StopIteration as exc:
-            result = exc.value
-        else:
+        result = None
+        # Drive the generator to completion, feeding each yield the next mocked
+        # result. A plain loop (vs. nested try/except) can't leave `result`
+        # unassigned if the generator ever needs an extra step to finish.
+        for next_value in (single_order, []):
             try:
-                gen.send([])  # send back poll results
+                gen.send(next_value)
             except StopIteration as exc:
                 result = exc.value
-
+                break
+        assert result is not None, "generator did not complete within the expected steps"
         assert "acquisition" in result
 
     def test_filters_orders_without_order_id(self):
@@ -230,15 +227,13 @@ class TestAoiAcquire:
         gen = _aoi_acquire(ctx, {}, aoi_ref)
         gen.send(None)
         result = None
-        try:
-            gen.send(orders)
-        except StopIteration as exc:
-            result = exc.value
-        else:
+        for next_value in (orders, [{"state": "ready", "order_id": "ord-1"}]):
             try:
-                gen.send([{"state": "ready", "order_id": "ord-1"}])
+                gen.send(next_value)
             except StopIteration as exc:
                 result = exc.value
+                break
+        assert result is not None, "generator did not complete within the expected steps"
 
         assert "ready" in result
         assert "asset_urls" in result
