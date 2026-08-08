@@ -257,7 +257,9 @@ def cog_windowed_read(url: str, bbox: list[float]) -> bytes:
     if is_test_mode_enabled():
         from treesight.providers.stub import get_stub_geotiff
 
-        return get_stub_geotiff()
+        # Pass bbox so the synthetic raster covers this AOI's actual extent,
+        # not a hardcoded constant (fix for multi-AOI corpus accuracy, #1222).
+        return get_stub_geotiff(bbox)
 
     log_phase("fulfilment", "cog_read_start", url=url[:120])
 

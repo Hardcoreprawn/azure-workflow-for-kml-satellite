@@ -1,0 +1,7 @@
+{
+  "_comment": "Deterministic baseline for offline corpus runner (#1222). Integer counts are exact-match; no tolerance band needed for stub output. Regenerate with: uv run python scripts/corpus_runner.py --update-baseline",
+  "fixture": "multi_polygon.kml",
+  "aoi_count": 2,
+  "expected_downloads_completed": 2,
+  "expected_raw_imagery_path_count": 2
+}

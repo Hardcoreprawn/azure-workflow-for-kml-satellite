@@ -1,0 +1,8 @@
+{
+  "_comment": "Deterministic baseline for offline corpus runner (#1222). Integer counts are exact-match; no tolerance band needed for stub output. Regenerate with: uv run python scripts/corpus_runner.py --update-baseline",
+  "_note": "File contains 56 placemarks despite the '55' in its name — the extra geometry is a bounding polygon. aoi_count:56 is correct.",
+  "fixture": "global_monitoring_55.kml",
+  "aoi_count": 56,
+  "expected_downloads_completed": 56,
+  "expected_raw_imagery_path_count": 56
+}
