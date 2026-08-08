@@ -74,3 +74,26 @@ def test_fire_event_grid_raises_on_rejected_webhook(monkeypatch: pytest.MonkeyPa
             content_length=123,
             container="kml-input",
         )
+
+
+def test_fire_event_grid_honours_func_base_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A caller running against a sibling container (e.g. the dev Event Grid
+    relay service, #1269 follow-up) needs to target the func service by
+    container name, not the localhost default."""
+    captured: dict[str, object] = {}
+
+    def _fake_post(url: str, **kwargs: object) -> _DummyResponse:
+        captured["url"] = url
+        return _DummyResponse(202, "accepted")
+
+    monkeypatch.setattr(simulate_upload.httpx, "post", _fake_post)
+
+    simulate_upload.fire_event_grid(
+        blob_url="http://azurite:10000/devstoreaccount1/kml-input/file.kml",
+        blob_name="file.kml",
+        content_length=123,
+        container="kml-input",
+        func_base="http://func:80",
+    )
+
+    assert captured["url"] == "http://func:80/runtime/webhooks/eventgrid"

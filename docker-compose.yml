@@ -161,6 +161,35 @@ services:
       retries: 18
       start_period: 60s
 
+  # Azurite has no real Event Grid, so blob uploads made directly via a SAS
+  # URL (blueprints/upload.py's upload_token flow, i.e. every real browser
+  # submission) never reach blueprints/pipeline/blob_trigger.py — nothing
+  # ever calls its webhook. This relay does what a real Event Grid
+  # subscription would: watch kml-input for new uploads and fire the
+  # matching synthetic event (#1273; see scripts/dev_event_grid_relay.py
+  # for why this is the documented mechanism, not a workaround).
+  event-grid-relay:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: canopex-event-grid-relay
+    depends_on:
+      azurite:
+        condition: service_healthy
+      func:
+        condition: service_healthy
+    volumes:
+      - ${DEV_WORKSPACE:-.}/scripts:/app/scripts:ro
+    working_dir: /app/scripts
+    environment:
+      AZURITE_BLOB_HOST: azurite
+      # Container stdout has no TTY, so Python fully block-buffers by
+      # default — logs would only appear once the buffer filled or the
+      # process exited, making `docker compose logs` look silent/broken.
+      PYTHONUNBUFFERED: "1"
+    command: >-
+      sh -c "uv pip install --system -q azure-storage-blob httpx &&
+      python dev_event_grid_relay.py --func-base http://func:80"
+    restart: unless-stopped
+
   web:
     image: python:3.12-slim
     container_name: canopex-web

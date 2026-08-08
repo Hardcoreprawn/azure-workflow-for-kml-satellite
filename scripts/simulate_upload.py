@@ -59,6 +59,7 @@ def fire_event_grid(
     function_name: str = DEFAULT_EVENT_GRID_FUNCTION_NAME,
     function_key: str | None = None,
     strict: bool = True,
+    func_base: str = FUNC_BASE,
 ) -> str:
     """Send a mock Event Grid BlobCreated event to the local func host."""
     event_id = str(uuid.uuid4())
@@ -88,7 +89,11 @@ def fire_event_grid(
         }
     ]
 
-    endpoint = httpx.URL(FUNC_BASE).join("/runtime/webhooks/eventgrid")
+    # Plain string join, not httpx.URL(...).join(...): the URL helper
+    # silently drops a default-for-scheme port (e.g. ":80") when
+    # normalising, which would misrepresent (though not break) the
+    # displayed/compared endpoint for func_base values like "http://func:80".
+    endpoint = f"{func_base.rstrip('/')}/runtime/webhooks/eventgrid"
     query_params: dict[str, str] = {"functionName": function_name}
     if function_key:
         query_params["code"] = function_key
