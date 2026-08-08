@@ -110,6 +110,11 @@ def _phase_ingestion(
         a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois
     }
 
+    # Extract centroids for pipeline telemetry spread calculation (#400)
+    aoi_centroids: list[list[float]] = [
+        a["centroid"] for a in aois if a.get("centroid") and len(a["centroid"]) == 2
+    ]
+
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs
     context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
     aoi_refs = ensure_list_of_dicts(
@@ -159,6 +164,7 @@ def _phase_ingestion(
         "all_coords": all_coords,
         "per_aoi_coords": per_aoi_coords,
         "aoi_area_by_name": aoi_area_by_name,
+        "aoi_centroids": aoi_centroids,
     }
 
 
@@ -609,6 +615,38 @@ def _safe_finalize_run(
         )
 
 
+def _safe_write_pipeline_stats(
+    context: df.DurableOrchestrationContext,
+    inp: dict[str, Any],
+    ing: dict[str, Any],
+    acq_s: dict[str, Any],
+    ful_s: dict[str, Any],
+    enrichment: dict[str, Any],
+    instance_id: str,
+) -> Generator[Any, Any, None]:
+    """Write per-run telemetry to Cosmos — best-effort, never blocks the result (#400)."""
+    retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=1,
+    )
+    payload: dict[str, Any] = {
+        "instance_id": instance_id,
+        "user_id": inp.get("user_id", ""),
+        "tier": inp.get("tier", ""),
+        "aoi_count": ing["ingestion"].get("aoi_count", 0),
+        "aoi_area_by_name": ing.get("aoi_area_by_name", {}),
+        "aoi_centroids": ing.get("aoi_centroids", []),
+        "image_count": acq_s.get("ready_count", 0),
+        "batch_used": bool(ful_s.get("batch_submitted", 0)),
+        "enrichment": enrichment,
+        "status": "completed",
+    }
+    try:
+        yield context.call_activity_with_retry("write_pipeline_stats", retry, payload)
+    except Exception:
+        logger.warning("Failed to write pipeline stats (non-fatal) instance=%s", instance_id)
+
+
 # ---------------------------------------------------------------------------
 # Progressive delivery — sub-orchestrator fan-out (#585)
 # ---------------------------------------------------------------------------
@@ -735,6 +773,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         context.set_custom_status({"phase": "completed", "step": "done"})
         if user_id and tier != "demo" and inp.get("org_id"):
             yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
+        yield from _safe_write_pipeline_stats(
+            context, inp, ing, acq_s, ful_s, enrichment, instance_id
+        )
         return summary
     except Exception:
         if user_id and tier != "demo" and inp.get("org_id"):
