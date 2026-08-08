@@ -147,7 +147,7 @@ jobs:
           # The container runs as a different UID than the checkout, so git
           # refuses to operate on the repo ("dubious ownership") without this.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" || true
+          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           uv run diff-cover coverage.xml \
             --compare-branch "origin/${BASE_REF}" \
             --fail-under 80 \
