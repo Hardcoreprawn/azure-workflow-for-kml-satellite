@@ -1606,6 +1606,25 @@ class TestCIFeedbackHygiene:
             "API version is accepted (else all storage calls 400/403)"
         )
 
+    def test_compose_event_grid_relay_configured(self):
+        """Azurite has no real Event Grid -- without this relay, a real
+        browser upload's blob never reaches blob_trigger.py's webhook and
+        the orchestrator never starts (#1273)."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        services = compose["services"]
+        assert "event-grid-relay" in services, (
+            "docker-compose.yml must define an event-grid-relay service"
+        )
+        relay = services["event-grid-relay"]
+        depends_on = relay.get("depends_on", {})
+        assert depends_on.get("func", {}).get("condition") == "service_healthy", (
+            "event-grid-relay must wait for func to be healthy before starting"
+        )
+        assert relay.get("environment", {}).get("PYTHONUNBUFFERED") == "1", (
+            "without this, container stdout is fully block-buffered (no TTY) "
+            "and `docker compose logs` appears silent"
+        )
+
     def test_pr_workflows_run_on_ready_for_review(self):
         """Promoting a draft must trigger CI — so pull_request needs the
         ready_for_review type (otherwise a promoted draft runs nothing). #1003."""
