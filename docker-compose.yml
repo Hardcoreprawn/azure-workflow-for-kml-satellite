@@ -28,12 +28,47 @@ services:
       azurite:
         condition: service_healthy
     volumes:
-      - ./scripts/init_storage_docker.py:/app/init_storage_docker.py:ro
+      # ${DEV_WORKSPACE:-.} resolves the real host path under DooD (see
+      # scripts/detect_dood_workspace.sh) -- a plain "." here silently
+      # bind-mounts an empty file when this runs inside a devcontainer,
+      # which crashes with "can't find '__main__' module" (discovered
+      # investigating #1269).
+      - ${DEV_WORKSPACE:-.}/scripts/init_storage_docker.py:/app/init_storage_docker.py:ro
     working_dir: /app
     environment:
       AZURITE_BLOB_HOST: azurite
     command: ["python", "init_storage_docker.py"]
     restart: "no"
+
+  # Cosmos DB Emulator (NoSQL API) for org/user/run persistence (#1269).
+  # The emulator has no managed-identity backend at all, only a well-known
+  # master key (see COSMOS_KEY on the func service below) -- real
+  # deployments never set that key (infra/tofu/main.tf), so this is a
+  # local-dev-only auth path (treesight/storage/cosmos.py's _get_client()).
+  cosmos:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest
+    container_name: canopex-cosmos
+    ports:
+      - "8081:8081"  # NoSQL gateway
+    environment:
+      ENABLE_EXPLORER: "false"
+      ENABLE_INIT_DATA: "true"
+      # Without this, the emulator's endpoint-discovery response tells the
+      # SDK to reconnect via 127.0.0.1, which is meaningless from inside
+      # another container (func) on the compose network — requests then
+      # fail with "Connection refused". Must match this service's name.
+      GATEWAY_PUBLIC_ENDPOINT: "cosmos"
+    volumes:
+      # ${DEV_WORKSPACE:-.} resolves the real host path under DooD (see
+      # the web service below / scripts/detect_dood_workspace.sh).
+      - ${DEV_WORKSPACE:-.}/scripts/cosmos_init:/init:ro
+    healthcheck:
+      # https://learn.microsoft.com/azure/cosmos-db/emulator-linux#health-probe
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
 
   # One-off gate runner used by `make ci-local` / scripts/ci_local.sh (#1086).
   # Runs the integration suite inside the published dev image against the
@@ -77,6 +112,8 @@ services:
     depends_on:
       azurite:
         condition: service_healthy
+      cosmos:
+        condition: service_healthy
     environment:
       AzureWebJobsStorage: >-  # pragma: allowlist secret
         DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
@@ -100,6 +137,15 @@ services:
       CIAM_API_AUDIENCE: "api://local-dev-audience"
       OLLAMA_URL: "http://ollama:11434"
       OLLAMA_MODEL: "mistral"
+      # Cosmos DB Emulator (#1269) -- well-known, publicly-documented
+      # account key (https://learn.microsoft.com/azure/cosmos-db/emulator),
+      # the same for every Cosmos emulator instance everywhere. Never used
+      # in a real deployment: treesight/storage/cosmos.py only takes this
+      # path when COSMOS_KEY is explicitly set, and infra/tofu/main.tf
+      # never sets it there.
+      COSMOS_ENDPOINT: "http://cosmos:8081"
+      COSMOS_DATABASE_NAME: "treesight"
+      COSMOS_KEY: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="  # pragma: allowlist secret
       # Host.Startup/Host.Triggers.DurableTask/Function categories at
       # Information surface worker indexing + Durable Task hub bootstrap
       # progress (`docker compose logs func`) instead of the near-silent

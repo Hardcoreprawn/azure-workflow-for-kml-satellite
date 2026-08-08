@@ -143,6 +143,11 @@ STRIPE_PRICE_ID_EUDR_METERED_EUR = _env("STRIPE_PRICE_ID_EUDR_METERED_EUR")
 # Auth via Managed Identity (DefaultAzureCredential) — no key needed.
 COSMOS_ENDPOINT = _env("COSMOS_ENDPOINT")
 COSMOS_DATABASE_NAME = _env("COSMOS_DATABASE_NAME", "treesight")
+# Local dev / Cosmos DB Emulator only (#1269) — the emulator has no
+# managed-identity backend at all, only a master key. Real deployments
+# (infra/tofu/main.tf) never set this, so production always uses
+# DefaultAzureCredential above.
+COSMOS_KEY = _env("COSMOS_KEY")
 
 # Feature gating — restrict billing to named users while Stripe is in test mode.
 # Comma-separated user IDs (sub/oid claims) that may use real billing.
