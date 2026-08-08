@@ -8,16 +8,10 @@ import json
 
 import pytest
 
-from blueprints.export import (
-    _build_bulk_csv,
-    _build_csv,
-    _build_eudr_csv,
-    _build_eudr_geojson,
-    _build_geojson,
-    _build_pdf,
-    _pdf_scene_provenance_section,
-    build_eudr_audit_pdf,
-)
+from blueprints.export.audit_pdf import build_eudr_audit_pdf
+from blueprints.export.csv import _build_bulk_csv, _build_csv, _build_eudr_csv
+from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
+from blueprints.export.pdf import _build_pdf, _pdf_scene_provenance_section
 
 
 @pytest.fixture()
