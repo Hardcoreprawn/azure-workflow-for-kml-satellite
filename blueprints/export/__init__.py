@@ -1,7 +1,7 @@
-"""Data export endpoints — GeoJSON and CSV download (M4 §4.6).
+"""Data export endpoints — GeoJSON, CSV, and PDF download (M4 §4.6).
 
 NOTE: Do NOT add ``from __future__ import annotations`` to blueprint modules.
-See blueprints/pipeline.py module docstring for details.
+See blueprints/pipeline/__init__.py module docstring for details.
 """
 
 import json
