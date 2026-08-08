@@ -28,7 +28,7 @@ from treesight.billing.accounting import (
     QuotaExhaustedError,
     reserve_run,
 )
-from treesight.config import STORAGE_ACCOUNT_NAME
+from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.orgs import create_org, get_user_org
 from treesight.security.redact import redact_user_id as _redact
@@ -136,6 +136,18 @@ def _mint_sas_url(
 ) -> tuple[str | None, str | None]:
     """Generate a write-only SAS URL. Returns (sas_url, error_msg).
 
+    Two SAS strategies, matching how get_blob_service_client() (treesight/
+    storage/client.py) picked the client in the first place:
+
+    - STORAGE_ACCOUNT_NAME set (real Azure, managed identity): user
+      delegation SAS via Azure AD -- the only kind that identity path
+      supports.
+    - Otherwise (STORAGE_CONNECTION_STRING -- Azurite, local dev): an
+      account-key SAS. Azurite doesn't support user delegation SAS at all
+      (#1263), so this is the only kind that works there; it's equally
+      valid against a real storage account authenticated via connection
+      string.
+
     The ``content_type`` value is embedded in the SAS token as a response-header
     override (``rsct``).  It controls the ``Content-Type`` header returned when
     the blob is *downloaded* via the SAS URL, but does **not** automatically set
@@ -146,6 +158,21 @@ def _mint_sas_url(
     """
     now = datetime.datetime.now(datetime.UTC)
     expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
+
+    if not STORAGE_ACCOUNT_NAME:
+        sas_token = generate_blob_sas(
+            account_name=blob_service.account_name,
+            account_key=blob_service.credential.account_key,
+            container_name=DEFAULT_INPUT_CONTAINER,
+            blob_name=blob_name,
+            permission=BlobSasPermissions(create=True, write=True),
+            expiry=expiry,
+            content_type=content_type,
+        )
+        sas_url = (
+            f"{blob_service.url.rstrip('/')}/{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
+        )
+        return sas_url, None
 
     delegation_key = blob_service.get_user_delegation_key(
         key_start_time=now,
@@ -370,8 +397,8 @@ def upload_token(
     if not user_id:
         return error_response(401, "Missing user identity", req=req)
 
-    if not STORAGE_ACCOUNT_NAME:
-        logger.error("Storage account not configured for SAS generation")
+    if not STORAGE_ACCOUNT_NAME and not STORAGE_CONNECTION_STRING:
+        logger.error("Storage is not configured for SAS generation")
         return error_response(503, "Service not configured", req=req)
 
     # Parse request body early — needed for EUDR entitlement check.

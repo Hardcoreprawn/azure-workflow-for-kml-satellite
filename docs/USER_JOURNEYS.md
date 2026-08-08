@@ -121,16 +121,23 @@ doc covers.
   reach Account Settings from the product, and the EUDR PARCELS usage
   pill stuck on "Loading usage…" because the local-dev bypass path
   never fetched it (all fixed).
-- **#1263** — "Confirm & Queue" silently did nothing in local dev.
-  `queueAnalysis()` redirected to `login()` whenever there was no
-  signed-in account, and `login()` silently no-ops when CIAM isn't
-  configured — so the button never fired a request at all (fixed, same
-  `authEnabled()`-aware guard pattern). Following that fix through
-  surfaced a second, deeper, **unfixed** gap: `/api/upload/token` can't
-  mint a SAS against Azurite at all (it requires Azure AD user
-  delegation, which Azurite doesn't support), so a real KML submission
-  through the browser still fails locally — tracked separately in
-  #1263, not resolved by this doc's journeys.
+- **"Confirm & Queue" silently did nothing** — `queueAnalysis()`
+  redirected to `login()` whenever there was no signed-in account, and
+  `login()` silently no-ops when CIAM isn't configured — so the button
+  never fired a request at all (fixed, same `authEnabled()`-aware guard
+  pattern). Following that fix through surfaced two deeper gaps:
+  - **#1263** — `/api/upload/token` couldn't mint a SAS against Azurite
+    at all (it required Azure AD user delegation, which Azurite doesn't
+    support). Fixed: `_mint_sas_url()` now mints an account-key SAS when
+    `STORAGE_ACCOUNT_NAME` isn't set (Azurite/connection-string mode),
+    matching the same dual-path pattern `get_blob_service_client()`
+    already used to build the client in the first place.
+  - **#1269** — fixing #1263 revealed that `make dev-all` has **no
+    Cosmos DB emulator at all**, so org auto-creation (a hard
+    prerequisite for a first-time user's submission) still crashes with
+    `RuntimeError: COSMOS_ENDPOINT is not configured`. This is
+    unresolved — filed separately, a real end-to-end browser submission
+    still cannot complete locally until it's fixed.
 
 Each of these was a case of the same underlying pattern: a widget or
 guard written for the "real signed-in user" case that silently broke
