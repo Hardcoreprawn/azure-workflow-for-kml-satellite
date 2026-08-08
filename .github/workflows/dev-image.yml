@@ -76,6 +76,8 @@ jobs:
           echo "image_e2e_dated=${IMAGE_NAME}:pipeline-e2e-${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "base_image=${BASE_IMAGE}" >> "$GITHUB_OUTPUT"
           echo "uvlock_sha=${UVLOCK_SHA}" >> "$GITHUB_OUTPUT"
+          BUILD_INPUTS_SHA="$(python3 scripts/check_dev_image_staleness.py --print-build-digest --dockerfile Dockerfile.dev)"
+          echo "build_inputs_sha=${BUILD_INPUTS_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build dev image
         run: |
@@ -84,6 +86,7 @@ jobs:
             --target dev \
             --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
             --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
+            --build-arg BUILD_INPUTS_SHA="${{ steps.meta.outputs.build_inputs_sha }}" \
             -t "${{ steps.meta.outputs.image_latest }}" \
             -t "${{ steps.meta.outputs.image_dated }}" \
             .
@@ -99,6 +102,7 @@ jobs:
             --target pipeline-e2e \
             --build-arg BASE_IMAGE="${{ steps.meta.outputs.base_image }}" \
             --build-arg UVLOCK_SHA="${{ steps.meta.outputs.uvlock_sha }}" \
+            --build-arg BUILD_INPUTS_SHA="${{ steps.meta.outputs.build_inputs_sha }}" \
             -t "${{ steps.meta.outputs.image_e2e_latest }}" \
             -t "${{ steps.meta.outputs.image_e2e_dated }}" \
             .
@@ -209,4 +213,5 @@ jobs:
             echo "- \`${{ steps.meta.outputs.image_e2e_latest }}\`"
             echo "- \`${{ steps.meta.outputs.image_e2e_dated }}\`"
             echo "- uv.lock sha256: \`${{ steps.meta.outputs.uvlock_sha }}\`"
+            echo "- build-inputs sha256: \`${{ steps.meta.outputs.build_inputs_sha }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
