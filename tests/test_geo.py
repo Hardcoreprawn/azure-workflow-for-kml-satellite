@@ -98,10 +98,18 @@ class TestCentroid:
         import ast
         import pathlib
 
-        runner_path = pathlib.Path(__file__).parents[1] / "treesight" / "pipeline" / "enrichment" / "runner.py"
+        runner_path = (
+            pathlib.Path(__file__).parents[1]
+            / "treesight"
+            / "pipeline"
+            / "enrichment"
+            / "runner.py"
+        )
         tree = ast.parse(runner_path.read_text())
         centroid_defs = [
-            node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and "centroid" in node.name
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and "centroid" in node.name
         ]
         assert centroid_defs == [], (
             f"Found local centroid definition(s) in runner.py: "
