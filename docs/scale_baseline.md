@@ -1,4 +1,4 @@
-# Scale Baseline: 200+ AOI KMZ Processing
+# Scale Baseline: 200+ AOI KML Processing
 
 **Issue**: [#437 — End-to-end validation: prove 200+ AOI KMZ processing at scale](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/437)
 **Stage**: Stage 2 exit criterion

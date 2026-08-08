@@ -1,7 +1,10 @@
-"""Scale gate: prove 200+ AOI KMZ processing without OOM, timeout, or dropped events.
+"""Scale gate: prove 200+ AOI KML processing without OOM, timeout, or dropped events.
 
 This test file implements the Stage 2 exit criterion from issue #437:
 "200+ concurrent AOIs process reliably without OOM or timeout".
+
+Note: this exercises KML input specifically (``parse_kml_lxml`` on raw KML
+bytes) -- KMZ unzip handling is covered by the parser test suite, not here.
 
 Test structure
 --------------
@@ -29,16 +32,15 @@ from __future__ import annotations
 import statistics
 import time
 import typing
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from treesight.geo import prepare_aoi
 from treesight.parsers.lxml_parser import parse_kml_lxml
+from treesight.pipeline.enrichment.mosaic import _coords_to_bbox
 from treesight.pipeline.enrichment.runner import run_enrichment
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
 _EXPECTED_AOI_COUNT = 200
 # Generous wall-clock ceiling — CI machines are slow; the target is «no runaway growth».
 _MAX_PARSE_SECONDS = 15.0
@@ -68,11 +70,14 @@ def _make_stub_enrich(timings: list[float]):
 
     def _stub(entry: dict, **kwargs) -> dict:
         t0 = time.perf_counter()
-        # No-op: just return a minimal result dict identical to the real structure.
+        coords = entry.get("coords", [])
+        # No-op: mirror production's _coords_to_bbox() shape (closed 5-point
+        # ring), not an arbitrary coords[:4] slice, so a structural bug in
+        # real bbox handling wouldn't be masked by a differently-shaped stub.
         result = {
             "name": entry.get("name", ""),
-            "coords": entry.get("coords", []),
-            "bbox": entry.get("coords", [])[:4],
+            "coords": coords,
+            "bbox": _coords_to_bbox(coords) if coords else [],
             "area_ha": entry.get("area_ha", 0.0),
         }
         timings.append(time.perf_counter() - t0)
@@ -312,6 +317,11 @@ class TestEnrichmentFanOut200:
             )
         wall_elapsed = time.perf_counter() - wall_start
 
+        assert len(timings) == _EXPECTED_AOI_COUNT, (
+            f"Timing capture mismatch: recorded {len(timings)} timings "
+            f"for {_EXPECTED_AOI_COUNT} AOIs -- percentiles below would be meaningless"
+        )
+
         p50 = _percentile(timings, 50)
         p95 = _percentile(timings, 95)
         p99 = _percentile(timings, 99)
@@ -379,9 +389,11 @@ class TestEnrichmentFanOut200:
 
 @pytest.mark.integration
 class TestPipelineSmokeMonster:
-    """Full end-to-end smoke gate using the 200-AOI monster KMZ.
+    """Connectivity guard for the 200-AOI monster KML integration run.
 
-    Skipped automatically unless Azurite and the local Functions host are running.
+    Only proves Azurite and the local Functions host are reachable -- it does
+    not upload the monster file or assert pipeline outputs. Skipped
+    automatically unless both dependencies are running.
 
     Run with::
 
@@ -411,7 +423,7 @@ class TestPipelineSmokeMonster:
             return False
 
     def test_skipped_when_dependencies_absent(self) -> None:
-        """Guard: if neither Azurite nor the Functions host is up, skip rather than fail."""
+        """Guard: skip rather than fail if either Azurite or the Functions host is down."""
         if not self._azurite_reachable() or not self._func_host_reachable():
             pytest.skip("Azurite or Functions host not running — start with: make dev-all")
 
