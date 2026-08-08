@@ -8,6 +8,11 @@ applyTo: "**"
 `main` is the deployable branch. It must always work. Every merge is a
 potential deployment. These rules prevent regressions.
 
+See `docs/adr/0006-ai-agent-governance-verify-dont-trust.md` for the failure
+pattern these rules exist to close off (gates that don't gate, silent
+duplication, stale backlog state, unverified agent PRs) and why "looks done"
+is never sufficient on its own.
+
 ## Before opening a PR
 
 1. **Run the full test suite locally.** `make test` must pass with zero
