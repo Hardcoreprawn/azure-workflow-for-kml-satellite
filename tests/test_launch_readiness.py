@@ -355,6 +355,35 @@ class TestPreviewSiteGracefulDegradation:
         )
 
 
+class TestClosePreviewGracefulDegradation:
+    """Ensure Close Preview cannot register as a failing check when there was
+    never a preview environment to tear down (#1265).
+
+    deploy-preview skips (or best-effort-fails) when the token is absent or
+    the deploy itself errors — either way, close-preview then tries to
+    delete an environment that was never created, and the SWA API
+    correctly rejects that with "No matching static site found". That's an
+    expected no-op, not a real failure, and shouldn't paint the PR red.
+    """
+
+    @pytest.fixture()
+    def close_steps(self) -> list[dict]:
+        """Return the steps list from the close-preview job."""
+        workflow = yaml.safe_load(PREVIEW_SITE_YML.read_text())
+        return workflow["jobs"]["close-preview"]["steps"]
+
+    def test_close_step_has_continue_on_error(self, close_steps):
+        step = next((s for s in close_steps if "Tear down" in (s.get("name") or "")), None)
+        assert step is not None, (
+            "preview-site.yml must contain a 'Tear down staging environment' step"
+        )
+        assert step.get("continue-on-error") is True, (
+            "The 'Tear down staging environment' step must set continue-on-error: "
+            "true so tearing down a preview that was never deployed doesn't fail "
+            "the job"
+        )
+
+
 # ---------------------------------------------------------------------------
 # 5b. Host logging cost controls
 # ---------------------------------------------------------------------------
