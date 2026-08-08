@@ -390,30 +390,29 @@ class TestAnalysisSubmissionRoutes:
         with (
             patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
-            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch(
+                "treesight.storage.cosmos.query_items",
+                return_value=[
+                    {
+                        "submission_id": "done-run",
+                        "instance_id": "done-run",
+                        "user_id": "user-123",
+                        "submitted_at": "2026-03-28T18:00:00+00:00",
+                        "submission_prefix": "analysis",
+                        "status": "submitted",
+                    },
+                    {
+                        "submission_id": "stale-run",
+                        "instance_id": "stale-run",
+                        "user_id": "user-123",
+                        "submitted_at": "2026-03-28T19:07:20+00:00",
+                        "submission_prefix": "analysis",
+                        "status": "submitted",
+                    },
+                ],
+            ),
         ):
-            mock_storage_cls.return_value.list_blobs.return_value = [
-                "analysis-submissions/user-123/done-run.json",
-                "analysis-submissions/user-123/stale-run.json",
-            ]
-            mock_storage_cls.return_value.download_json.side_effect = [
-                {
-                    "submission_id": "done-run",
-                    "instance_id": "done-run",
-                    "user_id": "user-123",
-                    "submitted_at": "2026-03-28T18:00:00+00:00",
-                    "submission_prefix": "analysis",
-                    "status": "submitted",
-                },
-                {
-                    "submission_id": "stale-run",
-                    "instance_id": "stale-run",
-                    "user_id": "user-123",
-                    "submitted_at": "2026-03-28T19:07:20+00:00",
-                    "submission_prefix": "analysis",
-                    "status": "submitted",
-                },
-            ]
             resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
 
         assert resp.status_code == 200
@@ -468,56 +467,49 @@ class TestAnalysisSubmissionRoutes:
             params={"limit": "2"},
         )
 
+        cosmos_records = [
+            {
+                "submission_id": "active-run",
+                "instance_id": "active-run",
+                "user_id": "user-123",
+                "submitted_at": "2026-03-28T19:07:20+00:00",
+                "kml_blob_name": "analysis/active-run.kml",
+                "kml_size_bytes": 240,
+                "submission_prefix": "analysis",
+                "feature_count": 50,
+                "aoi_count": 50,
+                "processing_mode": "May batch",
+                "provider_name": "planetary_computer",
+                "max_spread_km": 126.4,
+                "status": "submitted",
+            },
+            {
+                "submission_id": "done-run",
+                "instance_id": "done-run",
+                "user_id": "user-123",
+                "submitted_at": "2026-03-28T18:00:00+00:00",
+                "kml_blob_name": "analysis/done-run.kml",
+                "kml_size_bytes": 120,
+                "submission_prefix": "analysis",
+                "feature_count": 3,
+                "aoi_count": 3,
+                "processing_mode": "Single run",
+                "provider_name": "planetary_computer",
+                "status": "submitted",
+            },
+        ]
+
         with (
             patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-123")),
             patch("treesight.security.rate_limit.pipeline_limiter.is_allowed", return_value=True),
-            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.query_items", return_value=cosmos_records),
         ):
-            mock_storage_cls.return_value.list_blobs.return_value = [
-                "analysis-submissions/user-123/done-run.json",
-                "analysis-submissions/user-123/active-run.json",
-            ]
-            mock_storage_cls.return_value.download_json.side_effect = [
-                {
-                    "submission_id": "done-run",
-                    "instance_id": "done-run",
-                    "user_id": "user-123",
-                    "submitted_at": "2026-03-28T18:00:00+00:00",
-                    "kml_blob_name": "analysis/done-run.kml",
-                    "kml_size_bytes": 120,
-                    "submission_prefix": "analysis",
-                    "feature_count": 3,
-                    "aoi_count": 3,
-                    "processing_mode": "Single run",
-                    "provider_name": "planetary_computer",
-                    "status": "submitted",
-                },
-                {
-                    "submission_id": "active-run",
-                    "instance_id": "active-run",
-                    "user_id": "user-123",
-                    "submitted_at": "2026-03-28T19:07:20+00:00",
-                    "kml_blob_name": "analysis/active-run.kml",
-                    "kml_size_bytes": 240,
-                    "submission_prefix": "analysis",
-                    "feature_count": 50,
-                    "aoi_count": 50,
-                    "processing_mode": "May batch",
-                    "provider_name": "planetary_computer",
-                    "max_spread_km": 126.4,
-                    "status": "submitted",
-                },
-            ]
-
             resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
 
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
 
-        mock_storage_cls.return_value.list_blobs.assert_called_once_with(
-            PIPELINE_PAYLOADS_CONTAINER,
-            prefix="analysis-submissions/user-123/",
-        )
         assert [run["instanceId"] for run in data["runs"]] == ["active-run", "done-run"]
         assert data["activeRun"]["instanceId"] == "active-run"
         assert data["activeRun"]["runtimeStatus"] == "Running"
@@ -563,37 +555,37 @@ class TestAnalysisSubmissionRoutes:
             params={"limit": "6", "scope": "org"},
         )
 
-        def _list_blobs(_container: str, *, prefix: str):
-            if prefix.endswith("user-123/"):
-                return [f"{prefix}member-a-run.json"]
-            if prefix.endswith("member-b/"):
-                return [f"{prefix}member-b-run.json"]
+        def _cosmos_query(_container: str, _query: str, parameters=None, partition_key=None):
+            if partition_key == "user-123":
+                return [
+                    {
+                        "submission_id": "member-a-run",
+                        "instance_id": "member-a-run",
+                        "user_id": "user-123",
+                        "submitted_at": "2026-04-10T11:00:00+00:00",
+                        "aoi_count": 5,
+                        "provider_name": "planetary_computer",
+                        "status": "submitted",
+                    }
+                ]
+            if partition_key == "member-b":
+                return [
+                    {
+                        "submission_id": "member-b-run",
+                        "instance_id": "member-b-run",
+                        "user_id": "member-b",
+                        "submitted_at": "2026-04-10T09:00:00+00:00",
+                        "aoi_count": 2,
+                        "provider_name": "planetary_computer",
+                        "status": "submitted",
+                    }
+                ]
             return []
-
-        def _download_json(_container: str, blob_name: str):
-            if blob_name.endswith("member-a-run.json"):
-                return {
-                    "submission_id": "member-a-run",
-                    "instance_id": "member-a-run",
-                    "user_id": "user-123",
-                    "submitted_at": "2026-04-10T11:00:00+00:00",
-                    "aoi_count": 5,
-                    "provider_name": "planetary_computer",
-                    "status": "submitted",
-                }
-            return {
-                "submission_id": "member-b-run",
-                "instance_id": "member-b-run",
-                "user_id": "member-b",
-                "submitted_at": "2026-04-10T09:00:00+00:00",
-                "aoi_count": 2,
-                "provider_name": "planetary_computer",
-                "status": "submitted",
-            }
 
         with (
             patch("blueprints.pipeline.history.get_user_org") as mock_get_org,
-            patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls,
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.query_items", side_effect=_cosmos_query),
         ):
             mock_get_org.return_value = {
                 "org_id": "org-1",
@@ -602,8 +594,6 @@ class TestAnalysisSubmissionRoutes:
                     {"user_id": "member-b", "role": "member"},
                 ],
             }
-            mock_storage_cls.return_value.list_blobs.side_effect = _list_blobs
-            mock_storage_cls.return_value.download_json.side_effect = _download_json
 
             resp = asyncio.run(_build_analysis_history_response(req, client, "user-123"))
 
@@ -1403,35 +1393,21 @@ class TestFetchSubmissionRecordsCosmos:
         assert args[0] == "runs"
         assert kwargs["partition_key"] == "u1"
 
-    def test_falls_back_to_blob_when_cosmos_not_available(self):
+    def test_returns_empty_when_cosmos_not_available(self):
         from blueprints.pipeline.history import _fetch_submission_records
 
-        with (
-            patch("treesight.storage.cosmos.cosmos_available", return_value=False),
-            patch("treesight.storage.client.BlobStorageClient") as mock_cls,
-        ):
-            mock_cls.return_value.list_blobs.return_value = [
-                "analysis-submissions/u1/s1.json",
-            ]
-            mock_cls.return_value.download_json.return_value = {
-                "submission_id": "s1",
-                "user_id": "u1",
-                "submitted_at": "2026-04-01T12:00:00Z",
-            }
+        with patch("treesight.storage.cosmos.cosmos_available", return_value=False):
             result = _fetch_submission_records("u1", 8)
 
-        assert len(result) == 1
-        assert result[0]["submission_id"] == "s1"
+        assert result == []
 
-    def test_falls_back_to_blob_on_cosmos_error(self):
+    def test_returns_empty_on_cosmos_error(self):
         from blueprints.pipeline.history import _fetch_submission_records
 
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch("treesight.storage.cosmos.query_items", side_effect=RuntimeError("boom")),
-            patch("treesight.storage.client.BlobStorageClient") as mock_cls,
         ):
-            mock_cls.return_value.list_blobs.return_value = []
             result = _fetch_submission_records("u1", 8)
 
         assert result == []
