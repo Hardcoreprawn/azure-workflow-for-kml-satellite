@@ -110,6 +110,16 @@ def _phase_ingestion(
         a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois
     }
 
+    # Extract centroids for pipeline telemetry spread calculation (#400).
+    # [0.0, 0.0] is treesight.geo._centroid's placeholder for a missing/empty
+    # polygon (see blueprints/monitoring.py's identical check) -- including it
+    # would wildly inflate max_spread_km with a fake distance to Null Island.
+    aoi_centroids: list[list[float]] = [
+        a["centroid"]
+        for a in aois
+        if a.get("centroid") and len(a["centroid"]) == 2 and a["centroid"] != [0.0, 0.0]
+    ]
+
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs
     context.set_custom_status({"phase": "ingestion", "step": "storing_claims", "aois": len(aois)})
     aoi_refs = ensure_list_of_dicts(
@@ -159,6 +169,7 @@ def _phase_ingestion(
         "all_coords": all_coords,
         "per_aoi_coords": per_aoi_coords,
         "aoi_area_by_name": aoi_area_by_name,
+        "aoi_centroids": aoi_centroids,
     }
 
 
@@ -609,6 +620,40 @@ def _safe_finalize_run(
         )
 
 
+def _safe_write_pipeline_stats(
+    context: df.DurableOrchestrationContext,
+    inp: dict[str, Any],
+    ing: dict[str, Any],
+    acq_s: dict[str, Any],
+    ful_s: dict[str, Any],
+    enrichment: dict[str, Any],
+    instance_id: str,
+    started_at: str | None = None,
+) -> Generator[Any, Any, None]:
+    """Write per-run telemetry to Cosmos — best-effort, never blocks the result (#400)."""
+    retry = df.RetryOptions(
+        first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
+        max_number_of_attempts=2,  # one retry, as documented
+    )
+    payload: dict[str, Any] = {
+        "instance_id": instance_id,
+        "user_id": inp.get("user_id", ""),
+        "tier": inp.get("tier", ""),
+        "aoi_count": ing["ingestion"].get("aoi_count", 0),
+        "aoi_area_by_name": ing.get("aoi_area_by_name", {}),
+        "aoi_centroids": ing.get("aoi_centroids", []),
+        "image_count": acq_s.get("ready_count", 0),
+        "batch_used": bool(ful_s.get("batch_submitted", 0)),
+        "enrichment": enrichment,
+        "started_at": started_at,
+        "status": "completed",
+    }
+    try:
+        yield context.call_activity_with_retry("write_pipeline_stats", retry, payload)
+    except Exception:
+        logger.exception("Failed to write pipeline stats (non-fatal) instance=%s", instance_id)
+
+
 # ---------------------------------------------------------------------------
 # Progressive delivery — sub-orchestrator fan-out (#585)
 # ---------------------------------------------------------------------------
@@ -712,6 +757,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     instance_id, ctx = context.instance_id, derive_project_context(inp.get("blob_name", ""))
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
+    started_at = context.current_utc_datetime.isoformat()
     try:
         ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
         acq_s, ful_s = yield from _dispatch_acq_ful(context, inp, ctx, ing, instance_id)
@@ -735,6 +781,9 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         context.set_custom_status({"phase": "completed", "step": "done"})
         if user_id and tier != "demo" and inp.get("org_id"):
             yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
+        yield from _safe_write_pipeline_stats(
+            context, inp, ing, acq_s, ful_s, enrichment, instance_id, started_at
+        )
         return summary
     except Exception:
         if user_id and tier != "demo" and inp.get("org_id"):

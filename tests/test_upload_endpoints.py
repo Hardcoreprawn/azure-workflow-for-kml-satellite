@@ -220,10 +220,37 @@ class TestUploadToken:
         from blueprints.upload import upload_token
 
         req = _make_req("/api/upload/token", method="POST")
-        with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", ""):
+        with (
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", ""),
+            patch("blueprints.upload.STORAGE_CONNECTION_STRING", ""),
+        ):
             resp = upload_token(req)
 
         assert resp.status_code == 503
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.get_blob_service_client")
+    def test_proceeds_when_only_connection_string_configured(self, mock_bsc, mock_gen_sas):
+        """Azurite/local dev has no STORAGE_ACCOUNT_NAME (no managed identity),
+        only a connection string -- must not 503 (#1263)."""
+        from blueprints.upload import upload_token
+
+        mock_bsc.return_value.credential.account_key = "fakekey"  # pragma: allowlist secret
+        mock_bsc.return_value.account_name = "devstoreaccount1"
+        mock_bsc.return_value.url = "http://127.0.0.1:10000/devstoreaccount1/"
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+
+        req = _make_req("/api/upload/token", method="POST")
+        with (
+            patch("blueprints.upload.STORAGE_ACCOUNT_NAME", ""),
+            patch("blueprints.upload.STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true"),
+        ):
+            resp = upload_token(req)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.get_body())
+        assert data["sasUrl"].startswith("http://127.0.0.1:10000/devstoreaccount1/")
+        mock_bsc.return_value.get_user_delegation_key.assert_not_called()
 
     @patch("blueprints.upload.generate_blob_sas")
     @patch("blueprints.upload.get_blob_service_client")
@@ -658,6 +685,62 @@ class TestUploadToken:
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
         assert data["blobName"].endswith(".kmz")
+
+
+# ===================================================================
+# _mint_sas_url — dual SAS strategy (managed identity vs connection string)
+# ===================================================================
+
+
+class TestMintSasUrl:
+    """SAS minting must work whether storage is backed by managed identity
+    (real Azure) or a connection string (Azurite/local dev, #1263) --
+    Azurite doesn't support user delegation SAS at all.
+    """
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "")
+    def test_uses_account_key_sas_when_no_storage_account_name(self, mock_gen_sas):
+        from blueprints.upload import _mint_sas_url
+
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+        blob_service = MagicMock()
+        blob_service.credential.account_key = "fakekey"  # pragma: allowlist secret
+        blob_service.account_name = "devstoreaccount1"
+        blob_service.url = "http://127.0.0.1:10000/devstoreaccount1/"
+
+        sas_url, err = _mint_sas_url(blob_service, "analysis/abc.kml", "abc")
+
+        assert err is None
+        assert sas_url == (
+            "http://127.0.0.1:10000/devstoreaccount1/kml-input/analysis/abc.kml?sv=2024&sig=fakesig"
+        )
+        blob_service.get_user_delegation_key.assert_not_called()
+        _, kwargs = mock_gen_sas.call_args
+        assert kwargs["account_key"] == "fakekey"  # pragma: allowlist secret
+        assert kwargs["account_name"] == "devstoreaccount1"
+        assert "user_delegation_key" not in kwargs
+
+    @patch("blueprints.upload.generate_blob_sas")
+    @patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage")
+    def test_uses_user_delegation_sas_when_storage_account_name_set(self, mock_gen_sas):
+        from blueprints.upload import _mint_sas_url
+
+        mock_gen_sas.return_value = "sv=2024&sig=fakesig"
+        blob_service = MagicMock()
+        blob_service.get_user_delegation_key.return_value = MagicMock()
+
+        sas_url, err = _mint_sas_url(blob_service, "analysis/abc.kml", "abc")
+
+        assert err is None
+        assert sas_url == (
+            "https://teststorage.blob.core.windows.net/kml-input/analysis/abc.kml"
+            "?sv=2024&sig=fakesig"
+        )
+        blob_service.get_user_delegation_key.assert_called_once()
+        _, kwargs = mock_gen_sas.call_args
+        assert kwargs["account_name"] == "teststorage"
+        assert "account_key" not in kwargs
 
 
 # ===================================================================

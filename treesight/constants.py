@@ -67,6 +67,10 @@ API_CONTRACT_VERSION = "2026-03-15.1"
 # --- Storage containers ---
 DEFAULT_INPUT_CONTAINER = "kml-input"
 DEFAULT_OUTPUT_CONTAINER = "kml-output"
+
+# --- Cosmos DB container names ---
+COSMOS_CONTAINER_RUNS = "runs"
+COSMOS_CONTAINER_PIPELINE_STATS = "pipeline_stats"
 PIPELINE_PAYLOADS_CONTAINER = "pipeline-payloads"
 
 # --- Geodesy ---

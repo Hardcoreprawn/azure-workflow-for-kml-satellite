@@ -355,6 +355,35 @@ class TestPreviewSiteGracefulDegradation:
         )
 
 
+class TestClosePreviewGracefulDegradation:
+    """Ensure Close Preview cannot register as a failing check when there was
+    never a preview environment to tear down (#1265).
+
+    deploy-preview skips (or best-effort-fails) when the token is absent or
+    the deploy itself errors — either way, close-preview then tries to
+    delete an environment that was never created, and the SWA API
+    correctly rejects that with "No matching static site found". That's an
+    expected no-op, not a real failure, and shouldn't paint the PR red.
+    """
+
+    @pytest.fixture()
+    def close_steps(self) -> list[dict]:
+        """Return the steps list from the close-preview job."""
+        workflow = yaml.safe_load(PREVIEW_SITE_YML.read_text())
+        return workflow["jobs"]["close-preview"]["steps"]
+
+    def test_close_step_has_continue_on_error(self, close_steps):
+        step = next((s for s in close_steps if "Tear down" in (s.get("name") or "")), None)
+        assert step is not None, (
+            "preview-site.yml must contain a 'Tear down staging environment' step"
+        )
+        assert step.get("continue-on-error") is True, (
+            "The 'Tear down staging environment' step must set continue-on-error: "
+            "true so tearing down a preview that was never deployed doesn't fail "
+            "the job"
+        )
+
+
 # ---------------------------------------------------------------------------
 # 5b. Host logging cost controls
 # ---------------------------------------------------------------------------
@@ -1576,6 +1605,82 @@ class TestCIFeedbackHygiene:
             "docker-compose azurite must pass --skipApiVersionCheck so the SDK's "
             "API version is accepted (else all storage calls 400/403)"
         )
+
+    def test_compose_event_grid_relay_configured(self):
+        """Azurite has no real Event Grid -- without this relay, a real
+        browser upload's blob never reaches blob_trigger.py's webhook and
+        the orchestrator never starts (#1273)."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        services = compose["services"]
+        assert "event-grid-relay" in services, (
+            "docker-compose.yml must define an event-grid-relay service"
+        )
+        relay = services["event-grid-relay"]
+        depends_on = relay.get("depends_on", {})
+        assert depends_on.get("func", {}).get("condition") == "service_healthy", (
+            "event-grid-relay must wait for func to be healthy before starting"
+        )
+        assert relay.get("environment", {}).get("PYTHONUNBUFFERED") == "1", (
+            "without this, container stdout is fully block-buffered (no TTY) "
+            "and `docker compose logs` appears silent"
+        )
+
+    def test_compose_repo_bind_mounts_use_dev_workspace(self):
+        """Every service that bind-mounts a file/dir from this repo must use
+        ${DEV_WORKSPACE:-.}, not a bare '.' or './' — under Docker-outside-
+        of-Docker (this devcontainer), '.' resolves against the sandbox's
+        own filesystem view, not the real host path Docker actually mounts
+        from, silently mounting an empty file/dir. init-storage crashed
+        with "can't find '__main__' module" from exactly this for 14+ hours
+        before being caught (discovered investigating #1269)."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        violations = [
+            f"{name}: {volume}"
+            for name, service in compose["services"].items()
+            for volume in service.get("volumes", [])
+            if isinstance(volume, str)
+            and (volume.split(":", 1)[0] == "." or volume.split(":", 1)[0].startswith("./"))
+        ]
+        assert not violations, (
+            "these services bind-mount a bare '.'/'./' path instead of "
+            f"${{DEV_WORKSPACE:-.}}, which breaks under DooD: {violations}"
+        )
+
+    def test_compose_cosmos_emulator_configured(self):
+        """Local dev needs a working org/user/billing persistence layer — the
+        Cosmos DB Emulator, wired into func with a healthcheck gate (#1269)."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        services = compose["services"]
+        assert "cosmos" in services, "docker-compose.yml must define a cosmos service"
+        cosmos = services["cosmos"]
+        assert "azure-cosmos-emulator" in cosmos.get("image", ""), (
+            "cosmos service must use the Azure Cosmos DB Emulator image"
+        )
+        assert "healthcheck" in cosmos, "cosmos service must define a healthcheck"
+
+        func = services["func"]
+        depends_on = func.get("depends_on", {})
+        assert "cosmos" in depends_on, "func must depend_on the cosmos service"
+        assert depends_on["cosmos"].get("condition") == "service_healthy", (
+            "func must wait for cosmos to be healthy before starting"
+        )
+
+        env = func.get("environment", {})
+        assert env.get("COSMOS_ENDPOINT") == "http://cosmos:8081", (
+            "func's COSMOS_ENDPOINT must point at the cosmos service"
+        )
+        assert env.get("COSMOS_KEY"), (
+            "func must set COSMOS_KEY for the emulator (it has no managed-identity backend)"
+        )
+
+    def test_cosmos_key_never_referenced_in_production_infra(self):
+        """COSMOS_KEY must stay a local-dev-only concept — a real deployment
+        that ever set it would silently bypass managed identity."""
+        for tf_file in INFRA.rglob("*.tf"):
+            assert "COSMOS_KEY" not in tf_file.read_text(), (
+                f"{tf_file.name} must never reference COSMOS_KEY — production always "
+                "uses DefaultAzureCredential (managed identity)"
+            )
 
     def test_pr_workflows_run_on_ready_for_review(self):
         """Promoting a draft must trigger CI — so pull_request needs the
