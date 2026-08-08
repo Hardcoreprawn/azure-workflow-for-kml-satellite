@@ -103,10 +103,8 @@ def build_stats_document(
     duration_s: float | None = None
     if started_at and completed_at:
         try:
-            from datetime import datetime as _dt
-
-            t0 = _dt.fromisoformat(started_at)
-            t1 = _dt.fromisoformat(completed_at)
+            t0 = datetime.fromisoformat(started_at)
+            t1 = datetime.fromisoformat(completed_at)
             duration_s = round((t1 - t0).total_seconds(), 1)
         except Exception:
             logger.warning("Could not compute pipeline duration", exc_info=True)

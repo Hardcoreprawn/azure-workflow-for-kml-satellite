@@ -623,6 +623,7 @@ def _safe_write_pipeline_stats(
     ful_s: dict[str, Any],
     enrichment: dict[str, Any],
     instance_id: str,
+    started_at: str | None = None,
 ) -> Generator[Any, Any, None]:
     """Write per-run telemetry to Cosmos — best-effort, never blocks the result (#400)."""
     retry = df.RetryOptions(
@@ -639,6 +640,7 @@ def _safe_write_pipeline_stats(
         "image_count": acq_s.get("ready_count", 0),
         "batch_used": bool(ful_s.get("batch_submitted", 0)),
         "enrichment": enrichment,
+        "started_at": started_at,
         "status": "completed",
     }
     try:
@@ -750,6 +752,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
     instance_id, ctx = context.instance_id, derive_project_context(inp.get("blob_name", ""))
     user_id, tier = inp.get("user_id", ""), inp.get("tier", "")
     output_container = inp.get("output_container", DEFAULT_OUTPUT_CONTAINER)
+    started_at = context.current_utc_datetime.isoformat()
     try:
         ing = yield from _phase_ingestion(context, inp, instance_id, ctx)
         acq_s, ful_s = yield from _dispatch_acq_ful(context, inp, ctx, ing, instance_id)
@@ -774,7 +777,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         if user_id and tier != "demo" and inp.get("org_id"):
             yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
         yield from _safe_write_pipeline_stats(
-            context, inp, ing, acq_s, ful_s, enrichment, instance_id
+            context, inp, ing, acq_s, ful_s, enrichment, instance_id, started_at
         )
         return summary
     except Exception:
