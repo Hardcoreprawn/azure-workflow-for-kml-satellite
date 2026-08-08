@@ -1,9 +1,12 @@
 """Cosmos DB for NoSQL persistence layer (§6 storage).
 
-Authentication: Uses DefaultAzureCredential (Managed Identity in Azure,
-developer credentials locally). No keys are stored or transmitted.
-The Function App's system-assigned MI is granted the Cosmos DB Built-in
-Data Contributor role via OpenTofu.
+Authentication: Uses DefaultAzureCredential (Managed Identity) in every
+real deployment — no keys are stored or transmitted there. The Function
+App's system-assigned MI is granted the Cosmos DB Built-in Data
+Contributor role via OpenTofu. Local dev against the Cosmos DB Emulator
+(#1269) is the one exception: the emulator has no managed-identity
+backend at all, so it uses a master key (``COSMOS_KEY``) instead — see
+``_get_client()``.
 """
 
 from __future__ import annotations
@@ -40,7 +43,14 @@ _credential: DefaultAzureCredential | None = None
 
 
 def _get_client() -> CosmosClient:
-    """Lazily initialise a singleton CosmosClient with AAD auth."""
+    """Lazily initialise a singleton CosmosClient.
+
+    Uses a master key (``COSMOS_KEY``) when one is configured — local dev
+    against the Cosmos DB Emulator only, which has no managed-identity
+    backend at all (#1269). Real deployments never set ``COSMOS_KEY``
+    (see ``infra/tofu/main.tf``), so production always falls through to
+    ``DefaultAzureCredential`` below.
+    """
     global _client, _credential
     if _client is None:
         with _lock:
@@ -48,8 +58,11 @@ def _get_client() -> CosmosClient:
                 endpoint = config.COSMOS_ENDPOINT
                 if not endpoint:
                     raise RuntimeError("COSMOS_ENDPOINT is not configured")
-                _credential = DefaultAzureCredential()
-                _client = CosmosClient(endpoint, credential=_credential)
+                if config.COSMOS_KEY:
+                    _client = CosmosClient(endpoint, credential=config.COSMOS_KEY)
+                else:
+                    _credential = DefaultAzureCredential()
+                    _client = CosmosClient(endpoint, credential=_credential)
     return _client
 
 
