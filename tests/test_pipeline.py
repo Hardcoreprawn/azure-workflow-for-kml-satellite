@@ -1423,7 +1423,7 @@ class TestOrchestratorActivityOutputContracts:
 
 class TestPhaseIngestionCentroidTelemetry:
     """aoi_centroids feeds pipeline_stats max_spread_km (#400) — a
-    treesight.geo._centroid placeholder for a missing polygon must not be
+    treesight.geo.centroid placeholder for a missing polygon must not be
     mistaken for a real location (see blueprints/monitoring.py's identical
     [0.0, 0.0] check)."""
 

@@ -14,10 +14,11 @@ from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
     DEFAULT_ENRICHMENT_CONCURRENCY,
     DEFAULT_HTTP_TIMEOUT_SECONDS,
-    EARTH_RADIUS_KM,
     EUDR_CUTOFF_DATE,
     MULTI_REGION_THRESHOLD_KM,
 )
+from treesight.geo import centroid as _geo_centroid
+from treesight.geo import haversine_km as _geo_haversine_km
 from treesight.log import log_phase
 from treesight.pipeline.enrichment.aoi_metrics import (
     compute_aoi_metrics,
@@ -582,37 +583,20 @@ def _is_multi_region(per_aoi_coords: list[dict]) -> bool:
     span continents and are geographically meaningless.  Each AOI's data is
     still produced via the per-AOI fan-out.
     """
-    import math
-
     if len(per_aoi_coords) < 2:
         return False
-
-    def _centroid(coords: list[list[float]]) -> tuple[float, float]:
-        # Drop the closing point of a ring polygon (coords[0] == coords[-1])
-        # to avoid double-weighting that vertex in the centroid calculation.
-        pts = coords[:-1] if len(coords) > 1 and coords[0] == coords[-1] else coords
-        lons = [c[0] for c in pts]
-        lats = [c[1] for c in pts]
-        return sum(lons) / len(lons), sum(lats) / len(lats)
-
-    def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-        phi1, phi2 = math.radians(lat1), math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlam = math.radians(lon2 - lon1)
-        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-        return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
     centroids = []
     for entry in per_aoi_coords:
         coords = entry.get("coords")
         if coords:
-            centroids.append(_centroid(coords))
+            centroids.append(_geo_centroid(coords))
 
     for i in range(len(centroids)):
         for j in range(i + 1, len(centroids)):
             lon1, lat1 = centroids[i]
             lon2, lat2 = centroids[j]
-            if _haversine_km(lon1, lat1, lon2, lat2) > MULTI_REGION_THRESHOLD_KM:
+            if _geo_haversine_km(lon1, lat1, lon2, lat2) > MULTI_REGION_THRESHOLD_KM:
                 return True
     return False
 

@@ -6,9 +6,9 @@ import pytest
 
 from treesight.geo import (
     _buffer_bbox,
-    _centroid,
     _compute_bbox,
     _geodesic_area_and_perimeter,
+    centroid,
     cluster_aois,
     prepare_aoi,
 )
@@ -79,9 +79,42 @@ class TestGeodesicArea:
 class TestCentroid:
     def test_rectangle_centroid(self):
         coords = [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]
-        c = _centroid(coords)
+        c = centroid(coords)
         assert c[0] == pytest.approx(5.0, abs=0.5)
         assert c[1] == pytest.approx(5.0, abs=0.5)
+
+    def test_returns_lon_lat_list(self):
+        """centroid() must return [lon, lat] — canonical project coordinate order."""
+        coords = [[1.0, 2.0], [3.0, 4.0], [5.0, 2.0], [1.0, 2.0]]
+        result = centroid(coords)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        # lon == mean of c[0]; lat == mean of c[1]
+        assert result[0] == pytest.approx(3.0)
+        assert result[1] == pytest.approx(8 / 3)
+
+    def test_single_implementation_exists(self):
+        """Regression: exactly one centroid implementation; no duplicate in enrichment runner."""
+        import ast
+        import pathlib
+
+        runner_path = (
+            pathlib.Path(__file__).parents[1]
+            / "treesight"
+            / "pipeline"
+            / "enrichment"
+            / "runner.py"
+        )
+        tree = ast.parse(runner_path.read_text())
+        centroid_defs = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name in ("centroid", "_centroid")
+        ]
+        assert centroid_defs == [], (
+            f"Found local centroid definition(s) in runner.py: "
+            f"{[n.name for n in centroid_defs]}. Use treesight.geo.centroid instead."
+        )
 
 
 class TestPrepareAOI:

@@ -111,7 +111,7 @@ def _phase_ingestion(
     }
 
     # Extract centroids for pipeline telemetry spread calculation (#400).
-    # [0.0, 0.0] is treesight.geo._centroid's placeholder for a missing/empty
+    # [0.0, 0.0] is treesight.geo.centroid's placeholder for a missing/empty
     # polygon (see blueprints/monitoring.py's identical check) -- including it
     # would wildly inflate max_spread_km with a fake distance to Null Island.
     aoi_centroids: list[list[float]] = [
