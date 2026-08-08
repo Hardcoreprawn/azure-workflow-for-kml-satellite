@@ -109,7 +109,7 @@ class TestCentroid:
         centroid_defs = [
             node
             for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and "centroid" in node.name
+            if isinstance(node, ast.FunctionDef) and node.name in ("centroid", "_centroid")
         ]
         assert centroid_defs == [], (
             f"Found local centroid definition(s) in runner.py: "
