@@ -3,12 +3,18 @@
 The polling loop itself talks to real Azurite/func over the network and is
 exercised for real by `make dev-all`, not something worth mocking here —
 only the decision logic (which blobs to relay, what's new) is unit-tested.
+The one exception is TestRelayForeverSeedsExistingBlobs, which proves the
+startup-replay regression with a fully faked BlobServiceClient.
 """
 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
+import pytest
+
+import scripts.dev_event_grid_relay as dev_event_grid_relay
 from scripts.dev_event_grid_relay import _extract_eventgrid_key, _is_relayable_blob, _new_blobs
 
 
@@ -72,3 +78,78 @@ class TestExtractEventgridKey:
 
     def test_returns_none_for_missing_system_keys(self):
         assert _extract_eventgrid_key(json.dumps({})) is None
+
+    def test_returns_none_when_payload_is_not_a_dict(self):
+        assert _extract_eventgrid_key(json.dumps(["not", "a", "dict"])) is None
+
+    def test_returns_none_when_system_keys_is_not_a_list(self):
+        assert _extract_eventgrid_key(json.dumps({"systemKeys": "oops"})) is None
+
+    def test_skips_non_dict_entries_in_system_keys(self):
+        host_json = json.dumps(
+            {"systemKeys": ["oops", {"name": "eventgrid_extension", "value": "eg-key"}]}
+        )
+        assert _extract_eventgrid_key(host_json) == "eg-key"
+
+
+class _FakeContainerClient:
+    """Fake Azurite container client whose list_blobs() result changes per call."""
+
+    def __init__(self, snapshots: list[set[str]]):
+        self._snapshots = snapshots
+        self._calls = 0
+
+    def list_blobs(self):
+        index = min(self._calls, len(self._snapshots) - 1)
+        self._calls += 1
+        return [SimpleNamespace(name=name) for name in self._snapshots[index]]
+
+    def get_blob_client(self, _name):
+        return SimpleNamespace(get_blob_properties=lambda: SimpleNamespace(size=1))
+
+
+class _FakeBlobServiceClient:
+    def __init__(self, container_client):
+        self._container_client = container_client
+
+    def get_container_client(self, _name):
+        return self._container_client
+
+
+class _StopRelayError(Exception):
+    """Raised from a patched time.sleep to break relay_forever's infinite loop."""
+
+
+class TestRelayForeverSeedsExistingBlobs:
+    """A relay restart must not replay blobs that were already there — only
+    genuinely new uploads (arriving after the relay starts watching) fire."""
+
+    def test_does_not_replay_blob_present_before_startup(self, monkeypatch):
+        # "old.kml" is already in the container when the relay starts polling;
+        # "new.kml" only appears on the first poll after startup.
+        container_client = _FakeContainerClient([{"old.kml"}, {"old.kml", "new.kml"}])
+        fake_client = _FakeBlobServiceClient(container_client)
+        monkeypatch.setattr(
+            dev_event_grid_relay.BlobServiceClient,
+            "from_connection_string",
+            lambda _conn_str: fake_client,
+        )
+        monkeypatch.setattr(
+            dev_event_grid_relay, "_fetch_eventgrid_key", lambda _client: "test-key"
+        )
+        relayed: list[str] = []
+        monkeypatch.setattr(
+            dev_event_grid_relay,
+            "fire_event_grid",
+            lambda **kwargs: relayed.append(kwargs["blob_name"]),
+        )
+
+        def _fake_sleep(_seconds):
+            raise _StopRelayError
+
+        monkeypatch.setattr(dev_event_grid_relay.time, "sleep", _fake_sleep)
+
+        with pytest.raises(_StopRelayError):
+            dev_event_grid_relay.relay_forever(poll_interval=0)
+
+        assert relayed == ["new.kml"]

@@ -61,7 +61,14 @@ def _extract_eventgrid_key(host_json_text: str) -> str | None:
         payload = json.loads(host_json_text)
     except (json.JSONDecodeError, TypeError):
         return None
-    for key in payload.get("systemKeys", []):
+    if not isinstance(payload, dict):
+        return None
+    system_keys = payload.get("systemKeys", [])
+    if not isinstance(system_keys, list):
+        return None
+    for key in system_keys:
+        if not isinstance(key, dict):
+            continue
         if key.get("name") == _EVENTGRID_KEY_NAME:
             value = key.get("value")
             return value if isinstance(value, str) else None
@@ -122,7 +129,12 @@ def relay_forever(
             "without one (events will likely be rejected with 401)"
         )
 
-    seen: set[str] = set()
+    # Seed with what's already there so a relay restart doesn't replay every
+    # historical upload as if it were new -- only genuinely new blobs relay.
+    try:
+        seen: set[str] = {blob.name for blob in container_client.list_blobs()}
+    except Exception:
+        seen = set()
     print(f"Watching Azurite container '{container}' for new KML/KMZ uploads...")
     print(f"Relaying to {func_base} as Event Grid function '{function_name}'.")
 
