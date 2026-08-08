@@ -200,18 +200,25 @@ jobs:
 
       # ── Push to GHCR ───────────────────────────────────────
       - name: Push dev image
+        env:
+          IMAGE_LATEST: ${{ steps.meta.outputs.image_latest }}
+          IMAGE_DATED: ${{ steps.meta.outputs.image_dated }}
+          IMAGE_E2E_LATEST: ${{ steps.meta.outputs.image_e2e_latest }}
+          IMAGE_E2E_DATED: ${{ steps.meta.outputs.image_e2e_dated }}
+          UVLOCK_SHA: ${{ steps.meta.outputs.uvlock_sha }}
+          BUILD_INPUTS_SHA: ${{ steps.meta.outputs.build_inputs_sha }}
         run: |
-          docker push "${{ steps.meta.outputs.image_latest }}"
-          docker push "${{ steps.meta.outputs.image_dated }}"
-          docker push "${{ steps.meta.outputs.image_e2e_latest }}"
-          docker push "${{ steps.meta.outputs.image_e2e_dated }}"
+          docker push "$IMAGE_LATEST"
+          docker push "$IMAGE_DATED"
+          docker push "$IMAGE_E2E_LATEST"
+          docker push "$IMAGE_E2E_DATED"
           {
             echo "### Dev Image Published :package:"
             echo ""
-            echo "- \`${{ steps.meta.outputs.image_latest }}\`"
-            echo "- \`${{ steps.meta.outputs.image_dated }}\`"
-            echo "- \`${{ steps.meta.outputs.image_e2e_latest }}\`"
-            echo "- \`${{ steps.meta.outputs.image_e2e_dated }}\`"
-            echo "- uv.lock sha256: \`${{ steps.meta.outputs.uvlock_sha }}\`"
-            echo "- build-inputs sha256: \`${{ steps.meta.outputs.build_inputs_sha }}\`"
+            echo "- \`$IMAGE_LATEST\`"
+            echo "- \`$IMAGE_DATED\`"
+            echo "- \`$IMAGE_E2E_LATEST\`"
+            echo "- \`$IMAGE_E2E_DATED\`"
+            echo "- uv.lock sha256: \`$UVLOCK_SHA\`"
+            echo "- build-inputs sha256: \`$BUILD_INPUTS_SHA\`"
           } >> "$GITHUB_STEP_SUMMARY"
