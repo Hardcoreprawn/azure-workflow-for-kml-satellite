@@ -211,7 +211,7 @@ def run_fixture(
     baseline = _load_baseline(fixture)
     if baseline is None:
         print(
-            f"  WARN: no baseline found at {BASELINES_DIR / fixture.stem}.json — "
+            f"  WARN: no baseline found at {BASELINES_DIR / f'{fixture.stem}.json'} — "
             "run with --update-baseline to record one.",
             file=sys.stderr,
         )

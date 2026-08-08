@@ -73,6 +73,8 @@ class TestMakeStubGeotiffAOIAware:
         with _open_geotiff(tiff) as src:
             bounds = src.bounds
         assert abs(bounds.left - _POLYGON_WITH_HOLE_BBOX[0]) < 1e-6
+        assert abs(bounds.bottom - _POLYGON_WITH_HOLE_BBOX[1]) < 1e-6
+        assert abs(bounds.right - _POLYGON_WITH_HOLE_BBOX[2]) < 1e-6
         assert abs(bounds.top - _POLYGON_WITH_HOLE_BBOX[3]) < 1e-6
 
     def test_huge_extent_bbox_sets_spatial_extent(self):
