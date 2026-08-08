@@ -15,41 +15,40 @@ from types import SimpleNamespace
 import pytest
 
 import scripts.dev_event_grid_relay as dev_event_grid_relay
-from scripts.dev_event_grid_relay import _extract_eventgrid_key, _is_relayable_blob, _new_blobs
 
 
 class TestIsRelayableBlob:
     def test_kml_upload_is_relayable(self):
-        assert _is_relayable_blob("analysis/abc123.kml") is True
+        assert dev_event_grid_relay._is_relayable_blob("analysis/abc123.kml") is True
 
     def test_kmz_upload_is_relayable(self):
-        assert _is_relayable_blob("analysis/abc123.KMZ") is True
+        assert dev_event_grid_relay._is_relayable_blob("analysis/abc123.KMZ") is True
 
     def test_ticket_metadata_blob_is_not_relayable(self):
         """blueprints/upload.py's _write_ticket_and_mint_sas writes a JSON
         ticket to .tickets/{id}.json in the same container as the KML —
         that must never be sent to blob_trigger as if it were an upload."""
-        assert _is_relayable_blob(".tickets/abc123.json") is False
+        assert dev_event_grid_relay._is_relayable_blob(".tickets/abc123.json") is False
 
     def test_unrelated_extension_is_not_relayable(self):
-        assert _is_relayable_blob("analysis/readme.txt") is False
+        assert dev_event_grid_relay._is_relayable_blob("analysis/readme.txt") is False
 
 
 class TestNewBlobs:
     def test_returns_blobs_not_previously_seen(self):
         seen = {"a.kml"}
         current = {"a.kml", "b.kml"}
-        assert _new_blobs(seen, current) == ["b.kml"]
+        assert dev_event_grid_relay._new_blobs(seen, current) == ["b.kml"]
 
     def test_returns_empty_when_nothing_new(self):
         seen = {"a.kml"}
         current = {"a.kml"}
-        assert _new_blobs(seen, current) == []
+        assert dev_event_grid_relay._new_blobs(seen, current) == []
 
     def test_returns_sorted_order_for_multiple_new_blobs(self):
         seen: set[str] = set()
         current = {"c.kml", "a.kml", "b.kml"}
-        assert _new_blobs(seen, current) == ["a.kml", "b.kml", "c.kml"]
+        assert dev_event_grid_relay._new_blobs(seen, current) == ["a.kml", "b.kml", "c.kml"]
 
 
 class TestExtractEventgridKey:
@@ -67,29 +66,31 @@ class TestExtractEventgridKey:
                 ]
             }
         )
-        assert _extract_eventgrid_key(host_json) == "eg-key"
+        assert dev_event_grid_relay._extract_eventgrid_key(host_json) == "eg-key"
 
     def test_returns_none_when_key_absent(self):
         host_json = json.dumps({"systemKeys": [{"name": "durabletask_extension", "value": "x"}]})
-        assert _extract_eventgrid_key(host_json) is None
+        assert dev_event_grid_relay._extract_eventgrid_key(host_json) is None
 
     def test_returns_none_for_invalid_json(self):
-        assert _extract_eventgrid_key("not json") is None
+        assert dev_event_grid_relay._extract_eventgrid_key("not json") is None
 
     def test_returns_none_for_missing_system_keys(self):
-        assert _extract_eventgrid_key(json.dumps({})) is None
+        assert dev_event_grid_relay._extract_eventgrid_key(json.dumps({})) is None
 
     def test_returns_none_when_payload_is_not_a_dict(self):
-        assert _extract_eventgrid_key(json.dumps(["not", "a", "dict"])) is None
+        assert dev_event_grid_relay._extract_eventgrid_key(json.dumps(["not", "a", "dict"])) is None
 
     def test_returns_none_when_system_keys_is_not_a_list(self):
-        assert _extract_eventgrid_key(json.dumps({"systemKeys": "oops"})) is None
+        assert (
+            dev_event_grid_relay._extract_eventgrid_key(json.dumps({"systemKeys": "oops"})) is None
+        )
 
     def test_skips_non_dict_entries_in_system_keys(self):
         host_json = json.dumps(
             {"systemKeys": ["oops", {"name": "eventgrid_extension", "value": "eg-key"}]}
         )
-        assert _extract_eventgrid_key(host_json) == "eg-key"
+        assert dev_event_grid_relay._extract_eventgrid_key(host_json) == "eg-key"
 
 
 class _FakeContainerClient:
