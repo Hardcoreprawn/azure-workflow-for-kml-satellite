@@ -80,6 +80,7 @@ def _make_ful_result(
 def _get_pipeline_user_fn():
     """Extract the raw generator function from the @orchestration_trigger decorator."""
     from blueprints.pipeline.aoi_orchestrator import aoi_pipeline
+
     # The decorator wraps the user function; recover it via the closure.
     handle = aoi_pipeline._function._func
     return handle.__closure__[0].cell_contents

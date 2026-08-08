@@ -207,14 +207,16 @@ class TestWriteMetadata:
             patch("blueprints.pipeline.activities._load_aoi", return_value=aoi_mock),
             patch("treesight.pipeline.ingestion.write_metadata", return_value=expected),
         ):
-            result = write_metadata({
-                "aoi": _make_aoi_dict(),
-                "processing_id": "proc-1",
-                "timestamp": "2024-06-01T00:00:00Z",
-                "source_file": "test.kml",
-                "output_container": "output",
-                "input_container": "",
-            })
+            result = write_metadata(
+                {
+                    "aoi": _make_aoi_dict(),
+                    "processing_id": "proc-1",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "source_file": "test.kml",
+                    "output_container": "output",
+                    "input_container": "",
+                }
+            )
 
         assert result == expected
 
@@ -231,14 +233,16 @@ class TestWriteMetadata:
             storage_inst = mock_storage.return_value
             storage_inst.download_bytes.side_effect = RuntimeError("Network error")
 
-            result = write_metadata({
-                "aoi": _make_aoi_dict(),
-                "processing_id": "proc-1",
-                "timestamp": "2024-06-01T00:00:00Z",
-                "source_file": "test.kml",
-                "output_container": "output",
-                "input_container": "kml-input",
-            })
+            result = write_metadata(
+                {
+                    "aoi": _make_aoi_dict(),
+                    "processing_id": "proc-1",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "source_file": "test.kml",
+                    "output_container": "output",
+                    "input_container": "kml-input",
+                }
+            )
 
         assert result == {"ok": True}
 
@@ -258,10 +262,12 @@ class TestStoreAoiClaims:
             patch("treesight.storage.offload.PayloadOffloader") as mock_offloader,
         ):
             mock_offloader.return_value.store_claims_batch.return_value = expected
-            result = store_aoi_claims({
-                "instance_id": "inst-1",
-                "aois": [_make_aoi_dict()],
-            })
+            result = store_aoi_claims(
+                {
+                    "instance_id": "inst-1",
+                    "aois": [_make_aoi_dict()],
+                }
+            )
 
         assert result == expected
 
@@ -329,10 +335,12 @@ class TestAcquireImagery:
             mock_load.return_value = MagicMock()
             mock_get_prov.return_value = MagicMock()
 
-            result = acquire_imagery({
-                "aoi": _make_aoi_dict(),
-                "imagery_filters": {"max_cloud_cover_pct": 10.0},
-            })
+            result = acquire_imagery(
+                {
+                    "aoi": _make_aoi_dict(),
+                    "imagery_filters": {"max_cloud_cover_pct": 10.0},
+                }
+            )
 
         assert result == mock_result
 
@@ -350,10 +358,12 @@ class TestAcquireComposite:
         ):
             mock_load.return_value = MagicMock()
             mock_get_prov.return_value = MagicMock()
-            result = acquire_composite({
-                "aoi": _make_aoi_dict(),
-                "temporal_count": 3,
-            })
+            result = acquire_composite(
+                {
+                    "aoi": _make_aoi_dict(),
+                    "temporal_count": 3,
+                }
+            )
 
         assert result == mock_result
 
@@ -375,11 +385,13 @@ class TestPollOrder:
             patch("treesight.pipeline.acquisition.poll_order", return_value=outcome_mock),
         ):
             mock_get_prov.return_value = MagicMock()
-            result = poll_order({
-                "order_id": "ord-1",
-                "scene_id": "sc-1",
-                "aoi_feature_name": "Block A",
-            })
+            result = poll_order(
+                {
+                    "order_id": "ord-1",
+                    "scene_id": "sc-1",
+                    "aoi_feature_name": "Block A",
+                }
+            )
 
         assert result["state"] == "ready"
 
@@ -396,10 +408,12 @@ class TestPollOrder:
             ) as mock_poll,
         ):
             mock_get_prov.return_value = MagicMock()
-            poll_order({
-                "order_id": "ord-2",
-                "overrides": {"poll_interval_seconds": 10, "poll_timeout_seconds": 600},
-            })
+            poll_order(
+                {
+                    "order_id": "ord-2",
+                    "overrides": {"poll_interval_seconds": 10, "poll_timeout_seconds": 600},
+                }
+            )
 
         call_kwargs = mock_poll.call_args.kwargs
         assert call_kwargs["poll_interval"] == 10
@@ -424,13 +438,15 @@ class TestDownloadImagery:
             ),
         ):
             mock_get_prov.return_value = MagicMock()
-            result = download_imagery({
-                "outcome": {"order_id": "ord-1"},
-                "aoi_bbox": [36.78, -1.32, 36.82, -1.28],
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-                "output_container": "output",
-            })
+            result = download_imagery(
+                {
+                    "outcome": {"order_id": "ord-1"},
+                    "aoi_bbox": [36.78, -1.32, 36.82, -1.28],
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "output_container": "output",
+                }
+            )
 
         assert result["state"] == "completed"
 
@@ -450,13 +466,15 @@ class TestDownloadImagery:
             ),
         ):
             mock_get_prov.return_value = MagicMock()
-            result = download_imagery({
-                "outcome": {"order_id": "ord-1"},
-                "aoi_ref": "claims/inst/0.json",
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-                "output_container": "output",
-            })
+            result = download_imagery(
+                {
+                    "outcome": {"order_id": "ord-1"},
+                    "aoi_ref": "claims/inst/0.json",
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "output_container": "output",
+                }
+            )
 
         assert result["state"] == "completed"
 
@@ -481,13 +499,15 @@ class TestPostProcessImagery:
                 return_value=expected,
             ),
         ):
-            result = post_process_imagery({
-                "aoi": _make_aoi_dict(),
-                "download_result": {"blob_path": "imagery/raw/ord.tif"},
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-                "output_container": "output",
-            })
+            result = post_process_imagery(
+                {
+                    "aoi": _make_aoi_dict(),
+                    "download_result": {"blob_path": "imagery/raw/ord.tif"},
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                    "output_container": "output",
+                }
+            )
 
         assert result["clipped"] is True
 
@@ -506,11 +526,13 @@ class TestRunEnrichment:
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.pipeline.enrichment.run_enrichment", return_value=expected),
         ):
-            result = run_enrichment({
-                "coords": [[36.8, -1.3]],
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-            })
+            result = run_enrichment(
+                {
+                    "coords": [[36.8, -1.3]],
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
 
         assert result == expected
 
@@ -540,10 +562,12 @@ class TestEnrichDataSources:
                 return_value={"weather": {}},
             ) as mock_ds,
         ):
-            result = enrich_data_sources({
-                "coords": [[36.8, -1.3]],
-                "eudr_mode": False,
-            })
+            result = enrich_data_sources(
+                {
+                    "coords": [[36.8, -1.3]],
+                    "eudr_mode": False,
+                }
+            )
 
         mock_ds.assert_called_once()
         assert "weather" in result
@@ -563,11 +587,13 @@ class TestEnrichImagery:
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.pipeline.enrichment.enrich_imagery", return_value=expected),
         ):
-            result = enrich_imagery({
-                "coords": [[36.8, -1.3]],
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-            })
+            result = enrich_imagery(
+                {
+                    "coords": [[36.8, -1.3]],
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
 
         assert result == expected
 
@@ -589,11 +615,13 @@ class TestEnrichSingleAoi:
                 return_value=expected,
             ),
         ):
-            result = enrich_single_aoi({
-                "aoi_entry": {"name": "Block A", "coords": [[36.8, -1.3]]},
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-            })
+            result = enrich_single_aoi(
+                {
+                    "aoi_entry": {"name": "Block A", "coords": [[36.8, -1.3]]},
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
 
         assert result == expected
 
@@ -612,12 +640,14 @@ class TestEnrichFinalize:
             patch("treesight.storage.client.BlobStorageClient"),
             patch("treesight.pipeline.enrichment.enrich_finalize", return_value=expected),
         ):
-            result = enrich_finalize({
-                "data_sources": {},
-                "imagery": {},
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-            })
+            result = enrich_finalize(
+                {
+                    "data_sources": {},
+                    "imagery": {},
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
 
         assert result == expected
 
@@ -633,13 +663,15 @@ class TestBatchActivities:
 
         expected = {"job_id": "job-1", "task_id": "task-1"}
         with patch("treesight.pipeline.batch.submit_batch_job", return_value=expected):
-            result = submit_batch_fulfilment({
-                "outcome": {"order_id": "ord-1", "aoi_feature_name": "Block A"},
-                "asset_url": "https://storage/img.tif",
-                "output_container": "output",
-                "project_name": "farm",
-                "timestamp": "2024-06-01T00:00:00Z",
-            })
+            result = submit_batch_fulfilment(
+                {
+                    "outcome": {"order_id": "ord-1", "aoi_feature_name": "Block A"},
+                    "asset_url": "https://storage/img.tif",
+                    "output_container": "output",
+                    "project_name": "farm",
+                    "timestamp": "2024-06-01T00:00:00Z",
+                }
+            )
 
         assert result == expected
 
@@ -662,9 +694,7 @@ class TestBillingActivities:
     def test_complete_billing(self):
         from blueprints.pipeline.activities import complete_billing
 
-        with patch(
-            "treesight.security.billing_ledger.complete_run_billing"
-        ) as mock_fn:
+        with patch("treesight.security.billing_ledger.complete_run_billing") as mock_fn:
             result = complete_billing({"user_id": "u1", "instance_id": "inst-1"})
 
         mock_fn.assert_called_once_with("u1", "inst-1")
@@ -673,9 +703,7 @@ class TestBillingActivities:
     def test_fail_billing_default_reason(self):
         from blueprints.pipeline.activities import fail_billing
 
-        with patch(
-            "treesight.security.billing_ledger.fail_run_billing"
-        ) as mock_fn:
+        with patch("treesight.security.billing_ledger.fail_run_billing") as mock_fn:
             result = fail_billing({"user_id": "u1", "instance_id": "inst-1"})
 
         mock_fn.assert_called_once_with("u1", "inst-1", reason="pipeline_failure")
@@ -684,14 +712,14 @@ class TestBillingActivities:
     def test_fail_billing_custom_reason(self):
         from blueprints.pipeline.activities import fail_billing
 
-        with patch(
-            "treesight.security.billing_ledger.fail_run_billing"
-        ) as mock_fn:
-            result = fail_billing({
-                "user_id": "u1",
-                "instance_id": "inst-1",
-                "reason": "timeout",
-            })
+        with patch("treesight.security.billing_ledger.fail_run_billing") as mock_fn:
+            result = fail_billing(
+                {
+                    "user_id": "u1",
+                    "instance_id": "inst-1",
+                    "reason": "timeout",
+                }
+            )
 
         mock_fn.assert_called_once_with("u1", "inst-1", reason="timeout")
         assert result == {"refunded": True}
@@ -765,14 +793,16 @@ class TestWritePipelineStats:
             patch("treesight.pipeline.telemetry.build_stats_document", return_value=doc),
             patch("treesight.storage.cosmos.upsert_item"),
         ):
-            result = write_pipeline_stats({
-                "instance_id": "inst-1",
-                "aoi_count": 2,
-                "user_id": "u1",
-                "tier": "pro",
-                "aoi_area_by_name": {},
-                "aoi_centroids": [],
-            })
+            result = write_pipeline_stats(
+                {
+                    "instance_id": "inst-1",
+                    "aoi_count": 2,
+                    "user_id": "u1",
+                    "tier": "pro",
+                    "aoi_area_by_name": {},
+                    "aoi_centroids": [],
+                }
+            )
 
         assert result == {"written": True, "instance_id": "inst-1"}
 

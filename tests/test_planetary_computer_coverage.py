@@ -514,8 +514,7 @@ class TestCompositeSearch:
         aoi = _make_aoi()
 
         s2_items = [
-            _make_stac_item(item_id=f"s2-{i}", collection_id="sentinel-2-l2a")
-            for i in range(10)
+            _make_stac_item(item_id=f"s2-{i}", collection_id="sentinel-2-l2a") for i in range(10)
         ]
 
         catalog = MagicMock()
