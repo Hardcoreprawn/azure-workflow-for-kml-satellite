@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts.check_dev_image_staleness import (
     LABEL_KEY,
     LABEL_KEY_BUILD,
@@ -271,3 +273,18 @@ def test_main_stale_with_warn_returns_zero(tmp_path, monkeypatch):
         lambda *_a, **_k: None,
     )
     assert main(["--image", "x:latest", "--lock", lock_path, "--warn"]) == 0
+
+
+def test_main_missing_dockerfile_fails_fast(tmp_path, monkeypatch):
+    """A missing --dockerfile must be a hard error, not a silent skip of the
+    build-inputs freshness check (which would otherwise report 'in sync' for
+    a check that was never actually evaluated)."""
+    lock_path, _ = _write_lock(tmp_path)
+    monkeypatch.setattr(
+        "scripts.check_dev_image_staleness.read_image_label",
+        lambda *_a, **_k: "a" * 64,
+    )
+    missing = tmp_path / "does-not-exist" / "Dockerfile.dev"
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--image", "x:latest", "--lock", lock_path, "--dockerfile", str(missing)])
+    assert exc_info.value.code == 2

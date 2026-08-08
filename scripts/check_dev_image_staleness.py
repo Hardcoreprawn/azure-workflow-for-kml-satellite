@@ -178,10 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--image is required unless --print-build-digest is set")
 
     repo_lock_digest = uv_lock_digest(args.lock)
-    repo_build_digest: str | None = None
     dockerfile_path = Path(args.dockerfile)
-    if dockerfile_path.exists():
-        repo_build_digest = build_inputs_digest(dockerfile_path)
+    if not dockerfile_path.exists():
+        parser.error(
+            f"--dockerfile {dockerfile_path} does not exist — cannot compute the "
+            "build-inputs digest, so the freshness of Dockerfile.dev/pyproject.toml/"
+            "rust/ cannot be verified. Failing fast instead of silently skipping "
+            "that check and reporting 'in sync'."
+        )
+    repo_build_digest = build_inputs_digest(dockerfile_path)
 
     image_lock_label = read_image_label(args.image, LABEL_KEY)
     image_build_label = read_image_label(args.image, LABEL_KEY_BUILD)
