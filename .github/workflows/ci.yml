@@ -151,7 +151,11 @@ jobs:
           # The container runs as a different UID than the checkout, so git
           # refuses to operate on the repo ("dubious ownership") without this.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          # No --depth here: the checkout step already fetches full history
+          # for HEAD (fetch-depth: 0), so a shallow base-ref fetch can leave
+          # no common ancestor in reach once main has advanced past the PR's
+          # branch point, and diff-cover fails with "no merge base".
+          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           uv run diff-cover coverage.xml \
             --compare-branch "origin/${BASE_REF}" \
             --fail-under 80 \
