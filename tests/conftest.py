@@ -101,6 +101,12 @@ def five_polygons_kml_bytes() -> bytes:
 
 
 @pytest.fixture()
+def monster_kml_bytes() -> bytes:
+    """KML with 200 polygons — scale gate for 200+ AOI processing (issue #437)."""
+    return (FIXTURES_DIR / "monster_200.kml").read_bytes()
+
+
+@pytest.fixture()
 def triangle_polygon_kml_bytes() -> bytes:
     """KML with a triangle — minimum valid polygon."""
     return (FIXTURES_DIR / "triangle_polygon.kml").read_bytes()
