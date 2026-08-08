@@ -18,7 +18,7 @@ class TestExtractActual:
     def test_extracts_all_three_fields(self):
         payload = {
             "output": {
-                "ingestion": {"ingestion": {"aoi_count": 3}},
+                "aoiCount": 3,
                 "downloadsCompleted": 3,
                 "artifacts": {"rawImageryPaths": ["a.tif", "b.tif", "c.tif"]},
             }

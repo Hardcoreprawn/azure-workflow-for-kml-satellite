@@ -104,9 +104,8 @@ def _extract_actual(status_payload: dict[str, Any]) -> dict[str, Any]:
     """Pull the deterministic fields the baseline records from a pipeline result."""
     output = status_payload.get("output") or {}
     raw_paths = (output.get("artifacts") or {}).get("rawImageryPaths") or []
-    ingestion = (output.get("ingestion") or {}).get("ingestion") or {}
     return {
-        "aoi_count": ingestion.get("aoi_count", 0),
+        "aoi_count": output.get("aoiCount", 0),
         "downloadsCompleted": output.get("downloadsCompleted", 0),
         "rawImageryPathCount": len(raw_paths),
     }
