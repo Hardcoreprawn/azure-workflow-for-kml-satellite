@@ -330,7 +330,7 @@ def _worst_change(changes: list[dict[str, Any]], key: str) -> dict[str, Any] | N
             "LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys key=%s season=%s"
             " — change entry uses deprecated year_a/year_b keys instead of year_from/year_to."
             " Track removal at"
-            " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/891",
+            " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1299",
             key,
             season,
         )

@@ -1013,3 +1013,65 @@ class TestGetEmailFromBearerClaims:
     def test_prefers_preferred_username_over_email(self):
         claims = {"preferred_username": "first@example.com", "email": "second@example.com"}
         assert self._get_email(claims) == "first@example.com"
+
+
+class TestResolveLegacyUserOrgLogging:
+    """#888/#1296: _resolve_legacy_user_org must log LEGACY_COMPAT_HIT only when
+    it actually resolves a real org via the bare org_id fallback field."""
+
+    def test_logs_hit_when_org_resolved(self, caplog):
+        from treesight.security.orgs import _resolve_legacy_user_org
+
+        def read_item(container, item_id, partition_key):
+            return {"user_id": item_id, "org_id": "org-legacy"}
+
+        with (
+            patch("treesight.security.orgs.get_org", return_value={"org_id": "org-legacy"}),
+            caplog.at_level("WARNING"),
+        ):
+            result = _resolve_legacy_user_org("user-1", "", read_item)
+
+        assert result == {"org_id": "org-legacy"}
+        assert any(
+            "LEGACY_COMPAT_HIT legacy_user_org_resolved" in r.message for r in caplog.records
+        )
+
+    def test_no_hit_when_user_has_no_legacy_org_id(self, caplog):
+        from treesight.security.orgs import _resolve_legacy_user_org
+
+        def read_item(container, item_id, partition_key):
+            return {"user_id": item_id}
+
+        with caplog.at_level("WARNING"):
+            result = _resolve_legacy_user_org("user-1", "", read_item)
+
+        assert result is None
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
+
+    def test_no_hit_when_requested_org_id_mismatches(self, caplog):
+        from treesight.security.orgs import _resolve_legacy_user_org
+
+        def read_item(container, item_id, partition_key):
+            return {"user_id": item_id, "org_id": "org-legacy"}
+
+        with caplog.at_level("WARNING"):
+            result = _resolve_legacy_user_org("user-1", "org-other", read_item)
+
+        assert result is None
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
+
+    def test_no_hit_when_get_org_returns_none(self, caplog):
+        """org_id field present but the org itself no longer exists."""
+        from treesight.security.orgs import _resolve_legacy_user_org
+
+        def read_item(container, item_id, partition_key):
+            return {"user_id": item_id, "org_id": "org-deleted"}
+
+        with (
+            patch("treesight.security.orgs.get_org", return_value=None),
+            caplog.at_level("WARNING"),
+        ):
+            result = _resolve_legacy_user_org("user-1", "", read_item)
+
+        assert result is None
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)

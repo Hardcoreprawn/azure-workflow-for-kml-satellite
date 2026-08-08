@@ -47,7 +47,7 @@ def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -
     # Fires only when the persisted document carries a non-empty quota dict, meaning
     # at least one counter has been written under the old per-user accounting scheme.
     # Safe to remove this shim once logs show zero hits in production.
-    # Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/890
+    # Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298
     if latest_quota:
         logger.warning(
             "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s"

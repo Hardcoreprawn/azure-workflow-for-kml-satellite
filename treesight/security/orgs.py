@@ -405,7 +405,7 @@ def _resolve_legacy_user_org(
         logger.warning(
             "LEGACY_COMPAT_HIT legacy_user_org_resolved user_id=%s org_id=%s"
             " — user document lacks org-membership record; resolved via bare org_id field."
-            " Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/889",
+            " Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1300",
             user_id,
             legacy_org_id,
         )
@@ -761,7 +761,7 @@ def _set_user_org(user_id: str, org_id: str, role: str) -> None:
                     "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s op=set_org"
                     " — legacy per-user quota field is still present on this document."
                     " Track removal at"
-                    " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/890",
+                    " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
                     user_id,
                 )
                 latest_quota: dict = latest_quota_raw
@@ -807,7 +807,7 @@ def _clear_user_org(user_id: str) -> None:
                         "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s op=clear_org"
                         " — legacy per-user quota field is still present on this document."
                         " Track removal at"
-                        " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/890",
+                        " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
                         user_id,
                     )
                     latest_quota: dict = latest_quota_raw

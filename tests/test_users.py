@@ -944,3 +944,55 @@ class TestAccountDeleteEndpoint:
                         _make_account_req(method="DELETE", url="/api/user", bearer="token")
                     )
                     assert resp.status_code == 503
+
+
+class TestPreserveQuotaFieldsLegacyCompatLogging:
+    """#888/#1296: _preserve_quota_fields must log LEGACY_COMPAT_HIT only when
+    the persisted (latest) doc actually carries a non-empty legacy quota dict."""
+
+    def test_logs_hit_when_latest_doc_has_non_empty_quota(self, caplog):
+        from treesight.security.users import _preserve_quota_fields
+
+        doc: dict = {"user_id": "u1"}
+        latest = {"user_id": "u1", "quota": {"used": 3, "runs": ["r1"]}}
+
+        with caplog.at_level("WARNING"):
+            _preserve_quota_fields(doc, latest)
+
+        assert doc["quota"]["used"] == 3
+        assert any(
+            "LEGACY_COMPAT_HIT per_user_quota_preserved" in r.message for r in caplog.records
+        )
+
+    def test_no_hit_when_latest_doc_has_no_quota_field(self, caplog):
+        from treesight.security.users import _preserve_quota_fields
+
+        doc: dict = {"user_id": "u1"}
+        latest = {"user_id": "u1"}
+
+        with caplog.at_level("WARNING"):
+            _preserve_quota_fields(doc, latest)
+
+        assert "quota" not in doc
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
+
+    def test_no_hit_when_latest_doc_has_empty_quota_dict(self, caplog):
+        from treesight.security.users import _preserve_quota_fields
+
+        doc: dict = {"user_id": "u1"}
+        latest = {"user_id": "u1", "quota": {}}
+
+        with caplog.at_level("WARNING"):
+            _preserve_quota_fields(doc, latest)
+
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
+
+    def test_no_hit_when_latest_is_none(self, caplog):
+        from treesight.security.users import _preserve_quota_fields
+
+        doc: dict = {"user_id": "u1"}
+
+        with caplog.at_level("WARNING"):
+            _preserve_quota_fields(doc, None)
+
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
