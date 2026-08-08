@@ -76,6 +76,25 @@ def test_build_inputs_digest_missing_extras_ok(tmp_path):
     assert len(digest) == 64
 
 
+def test_build_inputs_digest_ignores_rust_target(tmp_path):
+    """rust/target/ is Cargo's gitignored build-output dir, not a source
+    input — including it would make the digest vary by build history/machine
+    rather than by recipe, defeating the whole point of a deterministic guard."""
+    df = tmp_path / "Dockerfile.dev"
+    df.write_bytes(b"FROM base\n")
+    rust_dir = tmp_path / "rust"
+    (rust_dir / "src").mkdir(parents=True)
+    (rust_dir / "src" / "lib.rs").write_bytes(b"fn main() {}\n")
+    d1 = build_inputs_digest(df, root=tmp_path)
+
+    build_dir = rust_dir / "target" / "debug"
+    build_dir.mkdir(parents=True)
+    (build_dir / "output.bin").write_bytes(b"compiled artifact bytes")
+    d2 = build_inputs_digest(df, root=tmp_path)
+
+    assert d1 == d2, "adding rust/target/ contents must not change the digest"
+
+
 # ── parse_image_label ──────────────────────────────────────────────────────
 
 
@@ -252,4 +271,3 @@ def test_main_stale_with_warn_returns_zero(tmp_path, monkeypatch):
         lambda *_a, **_k: None,
     )
     assert main(["--image", "x:latest", "--lock", lock_path, "--warn"]) == 0
-

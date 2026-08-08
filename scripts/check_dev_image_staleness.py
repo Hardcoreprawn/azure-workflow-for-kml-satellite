@@ -41,9 +41,13 @@ def uv_lock_digest(lock_path: str | Path) -> str:
 def build_inputs_digest(dockerfile: str | Path, root: str | Path | None = None) -> str:
     """Return a combined SHA-256 digest of the image-recipe build inputs.
 
-    Hashes ``Dockerfile.dev``, ``pyproject.toml``, and every file under
-    ``rust/`` (sorted for determinism).  ``root`` defaults to the directory
-    containing ``dockerfile``; pass it explicitly in tests.
+    Hashes ``Dockerfile.dev``, ``pyproject.toml``, and every source file under
+    ``rust/`` (sorted for determinism), excluding ``rust/target/`` — that's
+    Cargo's gitignored build-output directory, not a source input, and its
+    contents vary by machine/build history rather than by recipe, which would
+    make the digest neither deterministic nor comparable between a fresh CI
+    checkout and a developer's already-built local tree.  ``root`` defaults to
+    the directory containing ``dockerfile``; pass it explicitly in tests.
     """
     dockerfile = Path(dockerfile)
     root_dir = Path(root) if root is not None else dockerfile.parent
@@ -55,14 +59,14 @@ def build_inputs_digest(dockerfile: str | Path, root: str | Path | None = None) 
 
     # Hash each extra path under root_dir.
     for extra in _BUILD_EXTRAS:
-        target = root_dir / extra
-        if not target.exists():
+        extra_path = root_dir / extra
+        if not extra_path.exists():
             continue
-        if target.is_file():
-            h.update(target.read_bytes())
+        if extra_path.is_file():
+            h.update(extra_path.read_bytes())
         else:
-            for path in sorted(target.rglob("*")):
-                if path.is_file():
+            for path in sorted(extra_path.rglob("*")):
+                if path.is_file() and "target" not in path.relative_to(extra_path).parts:
                     h.update(path.read_bytes())
 
     return h.hexdigest()
@@ -109,14 +113,17 @@ def staleness_reason(
             f"(repo={repo_lock_digest[:12]}…, image={image_lock_label[:12]}…) — "
             "the dev-image workflow needs to rebuild/publish"
         )
-    if repo_build_digest is not None and image_build_label is not None:
-        if image_build_label != repo_build_digest:
-            return (
-                "build inputs (Dockerfile.dev / pyproject.toml / rust/) have changed "
-                "since the dev image was built "
-                f"(repo={repo_build_digest[:12]}…, image={image_build_label[:12]}…) — "
-                "the dev-image workflow needs to rebuild/publish"
-            )
+    if (
+        repo_build_digest is not None
+        and image_build_label is not None
+        and image_build_label != repo_build_digest
+    ):
+        return (
+            "build inputs (Dockerfile.dev / pyproject.toml / rust/) have changed "
+            "since the dev image was built "
+            f"(repo={repo_build_digest[:12]}…, image={image_build_label[:12]}…) — "
+            "the dev-image workflow needs to rebuild/publish"
+        )
     return None
 
 
