@@ -1817,6 +1817,22 @@ class TestDiffCoverRequiredGate:
             "diff-cover, or every PR fails with a dubious-ownership crash"
         )
 
+    def test_diff_cover_base_fetch_is_not_shallow(self):
+        """The base-ref fetch must not use --depth — the checkout step already
+        fetches full history for HEAD (fetch-depth: 0), so a shallow base-ref
+        fetch can leave no common ancestor in reach once main has advanced
+        past the PR's branch point, and diff-cover fails with a
+        'no merge base' CommandError on every such PR (found via #1282-1284)."""
+        ci = CI_YML.read_text()
+        fetch_line = next(
+            line for line in ci.splitlines() if "git fetch" in line and "BASE_REF" in line
+        )
+        assert "--depth" not in fetch_line, (
+            "the diff-cover base-ref fetch must not be shallow (--depth=N) — "
+            "this breaks merge-base resolution once main has moved on from "
+            "the PR's branch point"
+        )
+
 
 class TestInfracostCostGate:
     """Verify Infracost CI gate is properly configured."""
