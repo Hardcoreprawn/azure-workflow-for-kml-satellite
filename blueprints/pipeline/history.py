@@ -206,61 +206,42 @@ def _parse_history_offset(raw_offset: str) -> int:
 
 
 def _fetch_submission_records(
-    user_id: str, limit: int, *, offset: int = 0, max_results: int = 100
+    user_id: str, limit: int, *, offset: int = 0
 ) -> list:
-    # TODO: paginated Cosmos query — blob fallback is O(n) over all blobs
-    """Retrieve submission records from Cosmos (preferred) or blob storage."""
-    if _cosmos_mod.cosmos_available():
-        try:
-            from treesight.storage import cosmos
+    """Retrieve submission records from Cosmos using server-side pagination.
 
-            query = (
-                "SELECT * FROM c WHERE c.user_id = @uid"
-                " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
-            )
-            return cosmos.query_items(
-                "runs",
-                query,
-                parameters=[
-                    {"name": "@uid", "value": user_id},
-                    {"name": "@off", "value": offset},
-                    {"name": "@lim", "value": limit},
-                ],
-                partition_key=user_id,
-            )
-        except Exception:
-            logger.warning(
-                "Cosmos query failed for user=%s, falling back to blob",
-                user_id,
-                exc_info=True,
-            )
-
-    from treesight.storage.client import BlobStorageClient
-
-    storage = BlobStorageClient()
-    blob_names = []
-    prefix = _analysis_submission_prefix(user_id)
-
+    Returns an empty list when Cosmos is unavailable or the query fails.
+    Callers should not treat an empty result as definitive without checking
+    ``cosmos_available()`` independently if they need to distinguish
+    "no runs" from "Cosmos unavailable".
+    """
+    if not _cosmos_mod.cosmos_available():
+        logger.warning("Cosmos unavailable — history query skipped for user=%s", user_id)
+        return []
     try:
-        blob_names = storage.list_blobs(PIPELINE_PAYLOADS_CONTAINER, prefix=prefix)
-        if max_results:
-            blob_names = blob_names[:max_results]
+        from treesight.storage import cosmos
+
+        query = (
+            "SELECT * FROM c WHERE c.user_id = @uid"
+            " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
+        )
+        return cosmos.query_items(
+            "runs",
+            query,
+            parameters=[
+                {"name": "@uid", "value": user_id},
+                {"name": "@off", "value": offset},
+                {"name": "@lim", "value": limit},
+            ],
+            partition_key=user_id,
+        )
     except Exception:
-        logger.info("No analysis history found for user=%s prefix=%s", user_id, prefix)
-
-    records: list[dict[str, Any]] = []
-    for blob_name in blob_names:
-        try:
-            record = storage.download_json(PIPELINE_PAYLOADS_CONTAINER, blob_name)
-        except Exception:
-            logger.warning("Skipping unreadable analysis history blob=%s", blob_name)
-            continue
-        if record.get("user_id") != user_id:
-            continue
-        records.append(record)
-
-    records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-    return records[offset : offset + limit]
+        logger.warning(
+            "Cosmos query failed for user=%s",
+            user_id,
+            exc_info=True,
+        )
+        return []
 
 
 def _fetch_portfolio_submission_records(
@@ -296,7 +277,7 @@ def _fetch_portfolio_submission_records(
     records: list[dict[str, Any]] = []
     for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
         records.extend(
-            _fetch_submission_records(member_id, fetch_limit, offset=0, max_results=fetch_limit)
+            _fetch_submission_records(member_id, fetch_limit, offset=0)
         )
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
