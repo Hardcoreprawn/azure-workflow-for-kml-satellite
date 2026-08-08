@@ -235,7 +235,7 @@ def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
 
     all_records: list[dict] = []
     for member_id in _org_member_ids_for_user(user_id):
-        all_records.extend(_fetch_submission_records(member_id, limit, offset=0, max_results=300))
+        all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
     all_records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
     return all_records[:limit]
 

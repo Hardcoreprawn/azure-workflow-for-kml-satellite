@@ -205,9 +205,7 @@ def _parse_history_offset(raw_offset: str) -> int:
     return max(0, min(offset, _MAX_HISTORY_OFFSET))
 
 
-def _fetch_submission_records(
-    user_id: str, limit: int, *, offset: int = 0
-) -> list:
+def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> list:
     """Retrieve submission records from Cosmos using server-side pagination.
 
     Returns an empty list when Cosmos is unavailable or the query fails.
@@ -276,9 +274,7 @@ def _fetch_portfolio_submission_records(
     fetch_limit = max(1, min(_MAX_HISTORY_LIMIT + _MAX_HISTORY_OFFSET, limit + offset + 20))
     records: list[dict[str, Any]] = []
     for member_id in deduped_member_ids[:_MAX_ORG_MEMBERS]:
-        records.extend(
-            _fetch_submission_records(member_id, fetch_limit, offset=0)
-        )
+        records.extend(_fetch_submission_records(member_id, fetch_limit, offset=0))
 
     records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
     return (
