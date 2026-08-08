@@ -21,8 +21,9 @@ def _make_gen_stub(return_val):
     """Return a callable that creates a generator returning *return_val*."""
 
     def _stub(*args, **kwargs):
+        if False:  # pragma: no branch — makes _stub a generator function
+            yield
         return return_val
-        yield  # makes it a generator function
 
     return _stub
 
@@ -404,8 +405,9 @@ class TestAoiPipeline:
 
         def _fake_fulfil(ctx_ctx, pip_inp, proj_ctx, acq, aoi_ref, aoi_area_ha, output_container):
             captured_container.append(output_container)
+            if False:  # pragma: no branch
+                yield
             return _make_ful_result()
-            yield  # generator
 
         acq = _make_acq_result()
         user_fn = _get_pipeline_user_fn()
@@ -435,8 +437,9 @@ class TestAoiPipeline:
 
         def _fake_fulfil(ctx_ctx, pip_inp, proj_ctx, acq, aoi_ref, aoi_area_ha, output_container):
             captured.append(output_container)
+            if False:  # pragma: no branch
+                yield
             return _make_ful_result()
-            yield
 
         acq = _make_acq_result()
         user_fn = _get_pipeline_user_fn()
