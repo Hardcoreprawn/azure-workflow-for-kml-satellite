@@ -24,7 +24,7 @@ def mock_cosmos_env(monkeypatch):
         "treesight.config.COSMOS_ENDPOINT", "https://cosmos-test.documents.azure.com:443/"
     )
     monkeypatch.setattr("treesight.config.COSMOS_DATABASE_NAME", "treesight")
-    # Explicit: no key configured -— real deployments never set COSMOS_KEY
+    # Explicit: no key configured — real deployments never set COSMOS_KEY
     # (see infra/tofu/main.tf), so this is the managed-identity/cloud case.
     monkeypatch.setattr("treesight.config.COSMOS_KEY", "")
 

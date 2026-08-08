@@ -1657,7 +1657,7 @@ class TestCIFeedbackHygiene:
     def test_cosmos_key_never_referenced_in_production_infra(self):
         """COSMOS_KEY must stay a local-dev-only concept — a real deployment
         that ever set it would silently bypass managed identity."""
-        for tf_file in INFRA.glob("*.tf"):
+        for tf_file in INFRA.rglob("*.tf"):
             assert "COSMOS_KEY" not in tf_file.read_text(), (
                 f"{tf_file.name} must never reference COSMOS_KEY — production always "
                 "uses DefaultAzureCredential (managed identity)"
