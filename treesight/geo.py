@@ -18,7 +18,7 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
     bbox = _compute_bbox(exterior)
     buffered_bbox = _buffer_bbox(bbox, buf)
     area_ha, perimeter_km = _geodesic_area_and_perimeter(exterior)
-    centroid = _centroid(exterior)
+    centroid_coords = centroid(exterior)
 
     area_warning = ""
     if area_ha > AOI_MAX_AREA_HA:
@@ -34,7 +34,7 @@ def prepare_aoi(feature: Feature, buffer_m: float | None = None) -> AOI:
         buffered_bbox=buffered_bbox,
         area_ha=area_ha,
         perimeter_km=perimeter_km,
-        centroid=centroid,
+        centroid=centroid_coords,
         buffer_m=buf,
         crs="EPSG:4326",
         metadata=feature.metadata,
@@ -193,7 +193,7 @@ def square_bbox(
     ]
 
 
-def _centroid(coords: list[list[float]]) -> list[float]:
+def centroid(coords: list[list[float]]) -> list[float]:
     """Arithmetic mean of exterior ring vertices.
 
     Note: for concave or complex polygons the result may fall outside
@@ -277,7 +277,7 @@ def cluster_aois(
     centroids: list[list[float] | None] = []
     for aoi in aois:
         coords = aoi.get("coords", [])
-        centroids.append(_centroid(coords) if coords else None)
+        centroids.append(centroid(coords) if coords else None)
 
     # Build edge list of pairs within eps_km
     edges: list[tuple[int, int]] = []
