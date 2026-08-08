@@ -52,7 +52,9 @@ def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -
         logger.warning(
             "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s"
             " — legacy per-user quota field is still present on this document."
-            " Quota accounting was retired in favour of org-level counters (D3).",
+            " Quota accounting was retired in favour of org-level counters (D3)."
+            " Track removal at"
+            " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
             doc.get("user_id") or doc.get("id", "<unknown>"),
         )
     merged_quota = dict(latest_quota)

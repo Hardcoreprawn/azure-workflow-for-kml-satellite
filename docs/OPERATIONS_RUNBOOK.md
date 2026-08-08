@@ -336,9 +336,12 @@ Using Application Insights / Azure Monitor:
 ```kusto
 traces
 | where message startswith "LEGACY_COMPAT_HIT"
-| summarize count() by tostring(message), bin(timestamp, 1d)
+| extend signal = extract(@"LEGACY_COMPAT_HIT (\S+)", 1, message)
+| summarize count() by signal, bin(timestamp, 1d)
 | order by timestamp desc
 ```
 
-A row with count = 0 for a path means the path was not exercised in that day.
-Absence of a row for the most recent N days is the removal-safe signal.
+`summarize count()` only emits a row for (signal, day) combinations that
+actually occurred — it never emits an explicit `count = 0` row. The
+safe-to-remove signal is the **absence** of any row for a given `signal`
+across the most recent N days (suggested: 30), not a row with count = 0.
