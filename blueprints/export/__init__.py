@@ -17,16 +17,10 @@ from blueprints._helpers import (
     error_response,
     fetch_enrichment_manifest,
 )
-from blueprints.export.audit_pdf import (
-    _render_parcel_review_section as _render_parcel_review_section,
-)
 from blueprints.export.audit_pdf import build_eudr_audit_pdf
 from blueprints.export.csv import _as_dict, _build_bulk_csv, _build_csv, _build_eudr_csv
 from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
 from blueprints.export.pdf import _build_pdf
-from blueprints.export.pdf import (
-    _pdf_scene_provenance_section as _pdf_scene_provenance_section,
-)
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 bp = func.Blueprint()
