@@ -210,6 +210,7 @@ def test_main_print_build_digest_outputs_hex(tmp_path, capsys):
     assert out == build_inputs_digest(df, root=tmp_path)
 
 
+def test_main_fresh_returns_zero(tmp_path, monkeypatch, capsys):
     lock_path, lock_digest = _write_lock(tmp_path)
     dockerfile_path = _write_dockerfile(tmp_path)
     expected_build = build_inputs_digest(dockerfile_path, root=tmp_path)
