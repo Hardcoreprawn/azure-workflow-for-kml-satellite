@@ -219,7 +219,7 @@ def _centroid(coords: list[list[float]]) -> list[float]:
 _DEFAULT_CLUSTER_EPS_KM = 25.0
 
 
-def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     """Haversine distance in kilometres between two WGS-84 points."""
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
@@ -289,7 +289,7 @@ def cluster_aois(
             cj = centroids[j]
             if cj is None:
                 continue
-            if _haversine_km(ci[0], ci[1], cj[0], cj[1]) <= eps_km:
+            if haversine_km(ci[0], ci[1], cj[0], cj[1]) <= eps_km:
                 edges.append((i, j))
 
     labels = _union_find_clusters(n, edges)

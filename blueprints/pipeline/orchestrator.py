@@ -110,9 +110,14 @@ def _phase_ingestion(
         a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois
     }
 
-    # Extract centroids for pipeline telemetry spread calculation (#400)
+    # Extract centroids for pipeline telemetry spread calculation (#400).
+    # [0.0, 0.0] is treesight.geo._centroid's placeholder for a missing/empty
+    # polygon (see blueprints/monitoring.py's identical check) -- including it
+    # would wildly inflate max_spread_km with a fake distance to Null Island.
     aoi_centroids: list[list[float]] = [
-        a["centroid"] for a in aois if a.get("centroid") and len(a["centroid"]) == 2
+        a["centroid"]
+        for a in aois
+        if a.get("centroid") and len(a["centroid"]) == 2 and a["centroid"] != [0.0, 0.0]
     ]
 
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs
@@ -628,7 +633,7 @@ def _safe_write_pipeline_stats(
     """Write per-run telemetry to Cosmos — best-effort, never blocks the result (#400)."""
     retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
-        max_number_of_attempts=1,
+        max_number_of_attempts=2,  # one retry, as documented
     )
     payload: dict[str, Any] = {
         "instance_id": instance_id,
@@ -646,7 +651,7 @@ def _safe_write_pipeline_stats(
     try:
         yield context.call_activity_with_retry("write_pipeline_stats", retry, payload)
     except Exception:
-        logger.warning("Failed to write pipeline stats (non-fatal) instance=%s", instance_id)
+        logger.exception("Failed to write pipeline stats (non-fatal) instance=%s", instance_id)
 
 
 # ---------------------------------------------------------------------------

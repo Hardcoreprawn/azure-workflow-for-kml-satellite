@@ -8,24 +8,12 @@ estimator (#399) and general platform analytics.
 from __future__ import annotations
 
 import logging
-import math
 from datetime import UTC, datetime
 from typing import Any
 
+from treesight.geo import haversine_km as _haversine_km
+
 logger = logging.getLogger("treesight.pipeline.telemetry")
-
-
-def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-    """Return the great-circle distance in km between two WGS84 points.
-
-    Coordinates are in **[longitude, latitude]** order (project convention).
-    """
-    r = 6_371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
 
 
 def _max_spread_km(centroids: list[list[float]]) -> float | None:
@@ -129,23 +117,41 @@ def build_stats_document(
     }
 
 
+def _has_enrichment_data(value: Any) -> bool:
+    """True if *value* carries real data.
+
+    List-shaped enrichment results (e.g. ``ndvi_stats``) are pre-sized with
+    ``None`` placeholders for every frame/AOI (see
+    treesight/pipeline/enrichment/runner.py), so a non-empty list is not by
+    itself proof that anything was actually produced -- at least one element
+    must be truthy.
+    """
+    if isinstance(value, list):
+        return any(value)
+    return bool(value)
+
+
+# Maps a telemetry label to the real keys treesight.pipeline.enrichment.runner
+# writes into the enrichment result dict for that data source.
+_ENRICHMENT_SET_CANDIDATES: dict[str, tuple[str, ...]] = {
+    "ndvi": ("ndvi_stats", "ndvi_raster_paths", "ndvi_search_ids"),
+    "weather": ("weather_daily", "weather_monthly"),
+    "mosaic": ("search_ids", "display_collections"),
+    "change_detection": ("change_detection",),
+    "flood": ("flood_events",),
+    "fire": ("fire_hotspots",),
+}
+
+
 def _extract_enrichment_set(enrichment: dict[str, Any]) -> list[str]:
     """Derive the list of enrichment types that ran from the enrichment result."""
-    types: list[str] = []
     manifest = enrichment.get("manifest_path") or enrichment.get("manifest")
-    if manifest:
-        # Infer from keys present in the enrichment result dict.
-        candidates = {
-            "ndvi": ("ndvi",),
-            "weather": ("weather",),
-            "scl": ("scl",),
-            "change_detection": ("change_detection",),
-            "mosaic": ("mosaic",),
-        }
-        for label, keys in candidates.items():
-            if any(enrichment.get(k) for k in keys):
-                types.append(label)
-        # Always record that enrichment ran if manifest is present
-        if not types:
-            types = ["enrichment"]
-    return types
+    if not manifest:
+        return []
+    types = [
+        label
+        for label, keys in _ENRICHMENT_SET_CANDIDATES.items()
+        if any(_has_enrichment_data(enrichment.get(k)) for k in keys)
+    ]
+    # Always record that enrichment ran if manifest is present
+    return types or ["enrichment"]

@@ -533,8 +533,11 @@ def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
 def write_pipeline_stats(payload: _Payload) -> dict[str, Any]:
     """Write per-run telemetry to the ``pipeline_stats`` Cosmos container (#400).
 
-    Fire-and-forget: the orchestrator wraps this call in a best-effort
-    try/except so a Cosmos failure never blocks the pipeline result.
+    Best-effort: the orchestrator already wraps this call in a try/except
+    (a Cosmos failure must never block the pipeline result), but this
+    function also catches its own errors and returns ``{"written": False}``
+    rather than raising, so a malformed payload or transient Cosmos error
+    never surfaces as a Durable activity failure.
     """
     from treesight.constants import COSMOS_CONTAINER_PIPELINE_STATS
     from treesight.pipeline.telemetry import build_stats_document
@@ -544,21 +547,26 @@ def write_pipeline_stats(payload: _Payload) -> dict[str, Any]:
         logger.info("write_pipeline_stats: Cosmos not configured, skipping")
         return {"written": False, "reason": "cosmos_unavailable"}
 
-    doc = build_stats_document(
-        instance_id=payload["instance_id"],
-        user_id=payload.get("user_id", ""),
-        tier=payload.get("tier", ""),
-        aoi_count=payload.get("aoi_count", 0),
-        aoi_area_by_name=payload.get("aoi_area_by_name", {}),
-        aoi_centroids=payload.get("aoi_centroids", []),
-        image_count=payload.get("image_count", 0),
-        batch_used=bool(payload.get("batch_used", False)),
-        enrichment=payload.get("enrichment", {}),
-        started_at=payload.get("started_at"),
-        completed_at=payload.get("completed_at"),
-        status=payload.get("status", "completed"),
-    )
-    _cosmos.upsert_item(COSMOS_CONTAINER_PIPELINE_STATS, doc)
+    try:
+        doc = build_stats_document(
+            instance_id=payload["instance_id"],
+            user_id=payload.get("user_id", ""),
+            tier=payload.get("tier", ""),
+            aoi_count=payload.get("aoi_count", 0),
+            aoi_area_by_name=payload.get("aoi_area_by_name", {}),
+            aoi_centroids=payload.get("aoi_centroids", []),
+            image_count=payload.get("image_count", 0),
+            batch_used=bool(payload.get("batch_used", False)),
+            enrichment=payload.get("enrichment", {}),
+            started_at=payload.get("started_at"),
+            completed_at=payload.get("completed_at"),
+            status=payload.get("status", "completed"),
+        )
+        _cosmos.upsert_item(COSMOS_CONTAINER_PIPELINE_STATS, doc)
+    except Exception:
+        logger.exception("write_pipeline_stats: failed to write stats")
+        return {"written": False, "reason": "error"}
+
     logger.info(
         "write_pipeline_stats: wrote stats for instance=%s aoi_count=%s",
         doc["instance_id"],
