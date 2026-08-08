@@ -641,7 +641,7 @@ class TestPdfExport:
         }
 
     def test_pdf_generation(self, manifest):
-        from blueprints.export import _build_pdf
+        from blueprints.export.pdf import _build_pdf
 
         pdf_bytes = _build_pdf(manifest, "test-instance-123")
         assert isinstance(pdf_bytes, (bytes, bytearray))
@@ -650,14 +650,14 @@ class TestPdfExport:
         assert pdf_bytes[:4] == b"%PDF"
 
     def test_pdf_without_eudr_mode(self, manifest):
-        from blueprints.export import _build_pdf
+        from blueprints.export.pdf import _build_pdf
 
         manifest["eudr_mode"] = False
         pdf_bytes = _build_pdf(manifest, "test-456")
         assert pdf_bytes[:4] == b"%PDF"
 
     def test_pdf_with_empty_manifest(self):
-        from blueprints.export import _build_pdf
+        from blueprints.export.pdf import _build_pdf
 
         pdf_bytes = _build_pdf({}, "empty")
         assert pdf_bytes[:4] == b"%PDF"
@@ -669,7 +669,7 @@ class TestPdfExport:
 
     def test_eudr_audit_pdf_includes_review_history(self):
         """build_eudr_audit_pdf must render all revisions from parcel_review_history."""
-        from blueprints.export import build_eudr_audit_pdf
+        from blueprints.export.audit_pdf import build_eudr_audit_pdf
 
         manifest = {
             "eudr_mode": True,
@@ -716,7 +716,7 @@ class TestPdfExport:
     def test_render_parcel_review_section_renders_every_revision(self):
         """_render_parcel_review_section must route every history revision into the PDF,
         not just the latest-state record."""
-        from blueprints.export import _render_parcel_review_section
+        from blueprints.export.audit_pdf import _render_parcel_review_section
 
         class _FakePdf:
             """Records every text write so we can assert on rendered content."""
@@ -768,7 +768,7 @@ class TestPdfExport:
 
     def test_eudr_audit_pdf_falls_back_to_latest_state(self):
         """PDF falls back to parcel_reviews when no history is stored."""
-        from blueprints.export import build_eudr_audit_pdf
+        from blueprints.export.audit_pdf import build_eudr_audit_pdf
 
         manifest = {
             "eudr_mode": True,
@@ -798,7 +798,7 @@ class TestPdfExport:
 
     def test_eudr_audit_pdf_malformed_reviews_do_not_crash(self):
         """Corrupted (non-dict) parcel_reviews/parcel_review_history must not 500 the export."""
-        from blueprints.export import build_eudr_audit_pdf
+        from blueprints.export.audit_pdf import build_eudr_audit_pdf
 
         manifest = {
             "eudr_mode": True,
