@@ -301,5 +301,71 @@ def test_write_filtered_emits_clean_scan(tmp_path):
     assert present_ids_from_scans([json.loads(out.read_text())]) == {"CVE-2026-1"}
 
 
+# ── e2e fixture: raw scan keeps suppressed CVE; filtered removes it; reconciler
+# renews the still-present exception ─────────────────────────────────────────
+
+
+def test_e2e_suppressed_cve_visible_in_raw_absent_from_filtered_kept_by_reconciler(
+    tmp_path,
+):
+    """Regression guard for issue #1169.
+
+    The 'no suppressions' scan must be truly unsuppressed:
+    - Raw scan (no ignorefile) contains the suppressed CVE.
+    - Filtered scan (after applying .trivyignore via filter_scan) omits it.
+    - Reconciler, reading the raw scan, keeps/renews the exception rather than
+      removing it (because the CVE is still present in the raw image scan).
+
+    This test proves the reconcile pipeline works correctly when the raw scan
+    is genuinely unsuppressed. If the raw scan were filtered (the bug), the
+    reconciler would see an empty CVE set and erroneously remove all entries.
+    """
+    suppressed_cve = "CVE-2026-48109"
+    other_cve = "CVE-2026-99999"
+
+    # Raw scan — produced by Trivy with NO ignorefile (disable-ignore: true).
+    # It includes both CVEs regardless of what .trivyignore says.
+    raw_scan = _scan(suppressed_cve, other_cve)
+    raw_path = tmp_path / "trivy-noignore.json"
+    raw_path.write_text(json.dumps(raw_scan))
+
+    # .trivyignore with a suppression entry for the suppressed CVE.
+    ignore_text = f"{suppressed_cve} # exp:2026-12-01 upstream bundle\n"
+    ignore_path = tmp_path / ".trivyignore"
+    ignore_path.write_text(ignore_text)
+
+    # 1. Raw scan contains the suppressed CVE.
+    raw_ids = present_ids_from_scans([raw_scan])
+    assert suppressed_cve in raw_ids, (
+        "raw (unsuppressed) scan must include the suppressed CVE"
+    )
+
+    # 2. Filtered scan (applying .trivyignore) removes it.
+    suppressed = suppressed_ids(ignore_text)
+    filtered = filter_scan(raw_scan, suppressed)
+    filtered_ids = present_ids_from_scans([filtered])
+    assert suppressed_cve not in filtered_ids, (
+        "filtered scan must omit the suppressed CVE"
+    )
+    assert other_cve in filtered_ids, (
+        "filtered scan must keep non-suppressed CVEs"
+    )
+
+    # 3. Reconciler reads the raw scan and keeps/renews the still-present entry.
+    result = reconcile(ignore_text, present_ids=raw_ids, today=TODAY)
+    assert suppressed_cve in result.text, (
+        "reconciler must keep the suppression when the CVE is still in the raw scan"
+    )
+    assert result.actions[0].kind in ("kept", "renewed"), (
+        "reconciler must keep or renew the entry, not remove it"
+    )
+
+    # 4. Gate: raw scan has an unsuppressed CVE (other_cve) → gate must fail.
+    rc = main(
+        ["--scan", str(raw_path), "--ignore-file", str(ignore_path), "--gate"]
+    )
+    assert rc == 1, "gate must block on the unsuppressed CVE in the raw scan"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

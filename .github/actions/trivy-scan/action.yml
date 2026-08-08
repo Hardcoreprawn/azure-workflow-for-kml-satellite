@@ -22,9 +22,13 @@ inputs:
     required: false
     default: ""
   ignorefile:
-    description: "Trivy ignore file path (empty string disables suppressions)."
+    description: "Trivy ignore file path. Use disable-ignore: 'true' to suppress all CVE filtering instead of passing an empty string here (empty strings are not reliably handled by composite actions)."
     required: false
     default: ".trivyignore"
+  disable-ignore:
+    description: "Set to 'true' to run without any --ignorefile flag (raw, unsuppressed scan). Overrides ignorefile."
+    required: false
+    default: "false"
   image-exit:
     description: "Exit code for image scans on findings (0 = advisory, non-blocking)."
     required: false
@@ -63,10 +67,16 @@ runs:
         TRIVY_FORMAT: ${{ inputs.format }}
         TRIVY_OUTPUT: ${{ inputs.output }}
         TRIVY_IGNOREFILE: ${{ inputs.ignorefile }}
+        TRIVY_DISABLE_IGNORE: ${{ inputs.disable-ignore }}
         TRIVY_IMAGE_EXIT: ${{ inputs.image-exit }}
         TRIVY_SCANNERS: ${{ inputs.scanners }}
         TRIVY_SKIP_DIRS: ${{ inputs.skip-dirs }}
       run: |
+        # When disable-ignore is true, clear the ignorefile so the Makefile
+        # emits no --ignorefile flag regardless of the default.
+        if [ "${TRIVY_DISABLE_IGNORE}" = "true" ]; then
+          TRIVY_IGNOREFILE=""
+        fi
         make "scan-${SCAN}" \
           IMAGE="${IMAGE}" \
           TRIVY_FORMAT="${TRIVY_FORMAT}" \
