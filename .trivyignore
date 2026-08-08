@@ -31,5 +31,3 @@ AZU-0045 # exp:2026-08-11 accepted cost posture — unused Defender plans Free; 
 # - a fresh no-cache image scan proves the finding remains after upstream refresh;
 # - the entry links a tracking issue and expires within 30 days.
 # Actionable first-party or directly upgradeable findings remain blocking.
-CVE-2026-48109 # exp:2026-08-20 upstream Azure Functions bundle 4.35.0; fixed MessagePack bundle unavailable; #1030
-CVE-2026-48506 # exp:2026-08-20 upstream Azure Functions bundle 4.35.0; fixed MessagePack bundle unavailable; #1031
