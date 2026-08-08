@@ -1347,8 +1347,7 @@ class TestTrivySignalQuality:
             "composite action must pass disable-ignore via TRIVY_DISABLE_IGNORE env var"
         )
         assert 'TRIVY_IGNOREFILE=""' in action, (
-            "composite action must explicitly clear TRIVY_IGNOREFILE "
-            "when disable-ignore is true"
+            "composite action must explicitly clear TRIVY_IGNOREFILE when disable-ignore is true"
         )
 
     def test_base_image_no_suppression_scan_uses_disable_ignore(self):
@@ -1376,7 +1375,9 @@ class TestTrivySignalQuality:
         set to the empty string on the command line.
         """
         makefile = MAKEFILE.read_text()
-        assert "_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)" in makefile, (
+        assert (
+            "_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)" in makefile
+        ), (
             "Makefile _TRIVY_IGN must use $(if ...) to conditionally include "
             "--ignorefile only when TRIVY_IGNOREFILE is non-empty"
         )
