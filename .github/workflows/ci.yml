@@ -135,11 +135,11 @@ jobs:
         run: uv sync --all-extras
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
-      # Changed-lines test coverage — REPORT-ONLY for now (never fails the build).
-      # Surfaces whether new/changed Python lines are covered by tests, enforcing
-      # the test-first standing order without blocking existing work. Flip to a
-      # required gate by removing `|| true` and wiring --fail-under. See #1042.
-      - name: Changed-lines coverage (report-only)
+      # Changed-lines test coverage — REQUIRED GATE (closes #1042).
+      # Fails the PR if fewer than 80% of changed Python lines are covered.
+      # Config/docs-only PRs are unaffected: diff-cover only measures changed
+      # Python lines, so a diff with no Python changes always passes.
+      - name: Changed-lines coverage (required gate)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
@@ -148,12 +148,11 @@ jobs:
           uv run diff-cover coverage.xml \
             --compare-branch "origin/${BASE_REF}" \
             --fail-under 80 \
-            --markdown-report diff-cover.md || true
+            --markdown-report diff-cover.md
           {
-            echo "## Changed-lines test coverage (report-only)"
+            echo "## Changed-lines test coverage"
             echo ""
-            echo "Target: 80% of changed Python lines covered. This is informational"
-            echo "until #1042 promotes it to a required gate."
+            echo "Target: 80% of changed Python lines covered."
             echo ""
             cat diff-cover.md 2>/dev/null || echo "_diff-cover produced no report (no changed Python lines)._"
           } >> "$GITHUB_STEP_SUMMARY"
