@@ -24,6 +24,9 @@ def mock_cosmos_env(monkeypatch):
         "treesight.config.COSMOS_ENDPOINT", "https://cosmos-test.documents.azure.com:443/"
     )
     monkeypatch.setattr("treesight.config.COSMOS_DATABASE_NAME", "treesight")
+    # Explicit: no key configured -— real deployments never set COSMOS_KEY
+    # (see infra/tofu/main.tf), so this is the managed-identity/cloud case.
+    monkeypatch.setattr("treesight.config.COSMOS_KEY", "")
 
 
 # --- Client initialisation ---
@@ -58,6 +61,37 @@ class TestGetClient:
         client2 = cosmos._get_client()
         assert client1 is client2
         assert mock_client_cls.call_count == 1
+
+    @patch("treesight.storage.cosmos.CosmosClient")
+    def test_uses_key_credential_when_cosmos_key_set(
+        self, mock_client_cls, mock_cosmos_env, monkeypatch
+    ):
+        """The Cosmos DB Emulator (used by make dev-all, #1269) has no
+        managed-identity backend at all -- it only supports a master key.
+        COSMOS_KEY opts into that, but only ever locally: real deployments
+        (infra/tofu/main.tf) never set it, so production always falls
+        through to DefaultAzureCredential below.
+        """
+        emulator_key = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="  # noqa: E501  # pragma: allowlist secret
+        monkeypatch.setattr("treesight.config.COSMOS_KEY", emulator_key)
+
+        cosmos._get_client()
+
+        mock_client_cls.assert_called_once_with(
+            "https://cosmos-test.documents.azure.com:443/",
+            credential=emulator_key,
+        )
+
+    @patch("treesight.storage.cosmos.DefaultAzureCredential")
+    @patch("treesight.storage.cosmos.CosmosClient")
+    def test_ignores_default_credential_when_cosmos_key_set(
+        self, mock_client_cls, mock_cred_cls, mock_cosmos_env, monkeypatch
+    ):
+        monkeypatch.setattr("treesight.config.COSMOS_KEY", "fake-emulator-key")
+
+        cosmos._get_client()
+
+        mock_cred_cls.assert_not_called()
 
 
 # --- CRUD operations ---
@@ -174,19 +208,19 @@ class TestResetClient:
         assert cosmos._credential is None
 
 
-# --- Security: no key auth ---
+# --- Security: key auth is local/emulator-only ---
 
 
-class TestNoKeyAuth:
-    """Verify the module never uses key-based authentication."""
+class TestKeyAuthNeverDefaultsOn:
+    """COSMOS_KEY must be an explicit opt-in, never inferred."""
 
-    def test_no_cosmos_key_in_config(self):
-        """COSMOS_KEY should not exist as a config attribute."""
+    def test_cosmos_key_defaults_to_empty(self):
+        """Real deployments (infra/tofu/main.tf) never set COSMOS_KEY, so the
+        config default must be falsy -- otherwise DefaultAzureCredential
+        (the cloud/production path) could silently stop being used."""
         import treesight.config as cfg
 
-        assert not hasattr(cfg, "COSMOS_KEY"), (
-            "COSMOS_KEY should be removed — use DefaultAzureCredential instead"
-        )
+        assert not cfg.COSMOS_KEY
 
 
 # --- ETag optimistic-concurrency helpers (issue #814) ---
