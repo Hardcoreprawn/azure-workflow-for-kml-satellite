@@ -58,12 +58,33 @@ _STUB_PROFILES: dict[str, dict[str, object]] = {
 
 _stub_geotiff_cache: bytes | None = None
 
+# Fallback extent used when no AOI bbox is available — covers sample.kml's
+# buffered_bbox [36.79, -1.32, 36.82, -1.29] with a small margin.
+_FALLBACK_BBOX: list[float] = [36.78, -1.33, 36.83, -1.28]
 
-def make_stub_geotiff() -> bytes:
-    """Generate a minimal valid GeoTIFF covering the test AOI area."""
+
+def make_stub_geotiff(bbox: list[float] | None = None) -> bytes:
+    """Generate a minimal valid GeoTIFF sized and positioned from *bbox*.
+
+    Parameters
+    ----------
+    bbox:
+        ``[min_lon, min_lat, max_lon, max_lat]`` in EPSG:4326 derived from
+        the AOI's ``buffered_bbox``.  When ``None`` the fixed fallback extent
+        that covers ``sample.kml`` is used — kept for callers that do not
+        have an AOI in scope (e.g. unit tests that pre-date this fix).
+
+    Returns
+    -------
+    bytes
+        A 50×50 pixel, 3-band EPSG:4326 GeoTIFF whose spatial extent matches
+        *bbox*.  All pixels are set to ``128`` so downstream numeric checks
+        (NDVI, change detection) receive a reproducible, non-zero signal.
+    """
+    resolved = bbox if bbox is not None else _FALLBACK_BBOX
+    min_lon, min_lat, max_lon, max_lat = resolved
     buf = io.BytesIO()
-    # Covers test AOI buffered_bbox [36.79, -1.32, 36.82, -1.29]
-    transform = _tfm(36.78, -1.33, 36.83, -1.28, 50, 50)
+    transform = _tfm(min_lon, min_lat, max_lon, max_lat, 50, 50)
     data = np.ones((3, 50, 50), dtype=np.uint8) * 128
     with rasterio.open(
         buf,
@@ -80,12 +101,20 @@ def make_stub_geotiff() -> bytes:
     return buf.getvalue()
 
 
-def get_stub_geotiff() -> bytes:
-    """Cached stub GeoTIFF bytes (avoids regenerating per call)."""
+def get_stub_geotiff(bbox: list[float] | None = None) -> bytes:
+    """Return stub GeoTIFF bytes sized and positioned from *bbox*.
+
+    When *bbox* is ``None`` a cached fixed-extent GeoTIFF is returned for
+    backward-compatibility with callers that do not have an AOI in scope.
+    When *bbox* is provided a fresh GeoTIFF is generated per-call — no
+    caching, because each AOI has a distinct spatial extent.
+    """
     global _stub_geotiff_cache
-    if _stub_geotiff_cache is None:
-        _stub_geotiff_cache = make_stub_geotiff()
-    return _stub_geotiff_cache
+    if bbox is None:
+        if _stub_geotiff_cache is None:
+            _stub_geotiff_cache = make_stub_geotiff()
+        return _stub_geotiff_cache
+    return make_stub_geotiff(bbox)
 
 
 class StubPlanetaryComputerProvider(PlanetaryComputerProvider):
