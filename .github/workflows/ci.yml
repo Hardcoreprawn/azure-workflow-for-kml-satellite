@@ -100,7 +100,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
       - name: Sync dependency delta (only if image is stale)
         if: needs.resolve-image.outputs.stale == 'true'
-        run: uv sync --all-extras
+        # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
+        # wheel installed separately in Dockerfile.dev via `uv pip install`).
+        run: uv sync --all-extras --inexact
       # Canonical lint lives in the Makefile (single source of truth shared
       # with local `make lint` / `make check`). See issue #962.
       - run: make lint
@@ -132,7 +134,9 @@ jobs:
           fetch-depth: 0
       - name: Sync dependency delta (only if image is stale)
         if: needs.resolve-image.outputs.stale == 'true'
-        run: uv sync --all-extras
+        # --inexact preserves packages not in uv.lock (e.g. the treesight_rs
+        # wheel installed separately in Dockerfile.dev via `uv pip install`).
+        run: uv sync --all-extras --inexact
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
       # Changed-lines test coverage — REPORT-ONLY for now (never fails the build).
@@ -197,8 +201,9 @@ jobs:
           if [ "${STALE}" = "true" ]; then
             # Image deps lag uv.lock (dependency PR before rebuild) — sync the
             # delta inside the gate first, mirroring the lint/test jobs.
+            # --inexact preserves treesight_rs (not in uv.lock).
             docker compose --profile ci run --rm ci-gate \
-              sh -c "uv sync --all-extras && make test-int"
+              sh -c "uv sync --all-extras --inexact && make test-int"
           else
             docker compose --profile ci run --rm ci-gate make test-int
           fi
