@@ -461,7 +461,9 @@ jobs:
           echo "TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_default_hostname.value')" >> "$GITHUB_ENV"
           echo "TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.static_web_app_default_hostname.value')" >> "$GITHUB_ENV"
           echo "TOFU_CUSTOM_DOMAIN=$(echo "$TOFU_OUTPUTS" | jq -r '.custom_domain.value')" >> "$GITHUB_ENV"
-          echo "TOFU_APPINSIGHTS_CONNECTION_STRING=$(echo "$TOFU_OUTPUTS" | jq -r '.appinsights_connection_string.value')" >> "$GITHUB_ENV"
+          APPINSIGHTS_CONNECTION_STRING=$(echo "$TOFU_OUTPUTS" | jq -r '.appinsights_connection_string.value')
+          echo "::add-mask::${APPINSIGHTS_CONNECTION_STRING}"
+          echo "TOFU_APPINSIGHTS_CONNECTION_STRING=${APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_ENV"
           echo "TOFU_STORAGE_ACCOUNT_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.storage_account_name.value')" >> "$GITHUB_ENV"
           echo "TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.event_grid_system_topic_name.value')" >> "$GITHUB_ENV"
           echo "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_cli_maximum_instance_count.value')" >> "$GITHUB_ENV"
@@ -469,10 +471,11 @@ jobs:
           echo "TOFU_FUNCTION_APP_ORCH_MINIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_minimum_instance_count.value')" >> "$GITHUB_ENV"
           echo "TOFU_BROWSER_ALLOWED_ORIGINS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.browser_allowed_origins.value')" >> "$GITHUB_ENV"
           echo "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.function_app_cli_app_settings.value')" >> "$GITHUB_ENV"
+          CIAM_ENV_DELIM="TOFU_CIAM_PAGE_CONFIG_BOUNDARY_$(openssl rand -hex 8)"
           {
-            echo "TOFU_CIAM_PAGE_CONFIG<<EOF"
+            echo "TOFU_CIAM_PAGE_CONFIG<<${CIAM_ENV_DELIM}"
             echo "$TOFU_OUTPUTS" | jq -r '.ciam_page_config.value'
-            echo "EOF"
+            echo "${CIAM_ENV_DELIM}"
           } >> "$GITHUB_ENV"
 
       # Capture current container images so we can rollback if the
@@ -982,6 +985,7 @@ jobs:
         id: appinsights
         working-directory: infra/tofu
         run: |
+          echo "::add-mask::${TOFU_APPINSIGHTS_CONNECTION_STRING}"
           echo "connection_string=${TOFU_APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_OUTPUT"
 
       - name: Export CIAM page config
@@ -990,10 +994,11 @@ jobs:
         run: |
           # Single JSON blob with public CIAM bootstrap values; injected into
           # page HTML by the SWA deploy job. No Key Vault round-trip needed.
+          CIAM_OUTPUT_DELIM="TOFU_CIAM_PAGE_CONFIG_BOUNDARY_$(openssl rand -hex 8)"
           {
-            echo "json<<EOF"
+            echo "json<<${CIAM_OUTPUT_DELIM}"
             printf '%s\n' "${TOFU_CIAM_PAGE_CONFIG}"
-            echo "EOF"
+            echo "${CIAM_OUTPUT_DELIM}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Export storage account name
@@ -1333,6 +1338,7 @@ jobs:
           AI_CONNECTION_STRING: ${{ needs.deploy-infra.outputs.appinsights_connection_string }}
         run: |
           if [ -n "$AI_CONNECTION_STRING" ]; then
+            echo "::add-mask::${AI_CONNECTION_STRING}"
             find website -name '*.html' -exec sed -i \
               's|name="ai-connection-string" content=""|name="ai-connection-string" content="'"$AI_CONNECTION_STRING"'"|' {} +
           fi
