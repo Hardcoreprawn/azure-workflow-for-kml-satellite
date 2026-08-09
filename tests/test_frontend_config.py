@@ -267,7 +267,7 @@ class TestCsp:
         style_match = re.search(r"style-src\s+([^;]+)", csp)
         assert style_match, "CSP missing style-src directive"
         sources = style_match.group(1).split()
-        assert not any("unpkg.com" in src for src in sources), (
+        assert not any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
             "CSP style-src must not reference unpkg.com — Leaflet CSS is now self-hosted "
             "under /vendor/leaflet/leaflet.css"
         )
