@@ -272,15 +272,22 @@ class TestCsp:
             "under /vendor/leaflet/leaflet.css"
         )
 
-    def test_connect_src_no_unpkg(self, swa_config):
-        """CSP connect-src must not reference unpkg.com now that Leaflet is self-hosted."""
+    def test_connect_src_still_covers_unpkg_for_msal(self, swa_config):
+        """connect-src must still allow unpkg.com even though Leaflet is self-hosted.
+
+        script-src still loads @azure/msal-browser from unpkg.com, and per
+        test_connect_src_covers_cdn_domains_for_source_maps, every script-src
+        CDN must also be in connect-src (source-map fetches go through
+        connect-src). Removing it here would only be safe once msal-browser
+        is self-hosted too — not yet the case.
+        """
         csp = swa_config["globalHeaders"]["Content-Security-Policy"]
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
         sources = connect_match.group(1).split()
-        assert not any("unpkg.com" in src for src in sources), (
-            "CSP connect-src must not reference unpkg.com — Leaflet assets are now "
-            "self-hosted under /vendor/leaflet/"
+        assert any("unpkg.com" in src for src in sources), (
+            "CSP connect-src must still allow unpkg.com while msal-browser is "
+            "loaded from there via script-src"
         )
 
     def test_navigation_fallback_excludes_vendor(self, swa_config):
@@ -314,6 +321,40 @@ class TestVendorLeaflet:
         assert (self.VENDOR_DIR / "leaflet.js").is_file(), (
             "vendor/leaflet/leaflet.js is missing — run npm pack leaflet@1.9.4 and copy "
             "dist/leaflet.js into website/vendor/leaflet/"
+        )
+
+    def test_vendor_leaflet_js_map_exists(self):
+        """website/vendor/leaflet/leaflet.js.map must be present.
+
+        Without it, DevTools source-map fetches for leaflet.js 404 (noisy
+        but non-fatal) rather than resolving to readable source.
+        """
+        assert (self.VENDOR_DIR / "leaflet.js.map").is_file(), (
+            "vendor/leaflet/leaflet.js.map is missing — copy dist/leaflet.js.map "
+            "into website/vendor/leaflet/ alongside leaflet.js"
+        )
+
+    @pytest.mark.parametrize(
+        "image_name",
+        [
+            "marker-icon.png",
+            "marker-icon-2x.png",
+            "marker-shadow.png",
+            "layers.png",
+            "layers-2x.png",
+        ],
+    )
+    def test_vendor_leaflet_images_exist(self, image_name):
+        """Every marker/layer image Leaflet's default icon and layer control need must be present.
+
+        leaflet.css references layers.png/layers-2x.png directly via url();
+        leaflet.js constructs the marker-icon*/marker-shadow URLs at runtime
+        for the default marker icon. Missing any of these breaks map markers
+        or the layer-toggle control with no test signal otherwise.
+        """
+        assert (self.VENDOR_DIR / "images" / image_name).is_file(), (
+            f"vendor/leaflet/images/{image_name} is missing — copy dist/images/{image_name} "
+            "into website/vendor/leaflet/images/"
         )
 
     def test_landing_uses_local_leaflet_css(self, index_html):
