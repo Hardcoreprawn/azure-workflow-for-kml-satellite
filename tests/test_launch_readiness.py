@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import typing
 from datetime import UTC, datetime, timedelta
@@ -929,7 +930,14 @@ class TestDeployNoOpDiffGuardLogic:
     programs embedded in deploy.yml and runs them through real jq against
     synthetic fixtures, so a regression in the comparison logic fails a test
     rather than shipping silently to a production deploy.
+
+    Requires the jq binary on PATH — not part of the CI test container
+    image, so these skip there rather than fail; they still run for any
+    contributor with jq installed locally (matches the shutil.which()
+    skip pattern already used in test_preflight_estimator.py for node).
     """
+
+    pytestmark = pytest.mark.skipif(shutil.which("jq") is None, reason="jq binary required")
 
     @pytest.fixture()
     def configure_app_run(self) -> str:
