@@ -346,6 +346,41 @@ class TestVendorLeaflet:
             "/app/index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
         )
 
+    def test_eudr_uses_local_leaflet_css(self, eudr_index_html):
+        """/eudr/ must load Leaflet CSS from /vendor/, not CDN.
+
+        Regression guard: /eudr/index.html was missed in the initial
+        self-hosting pass, and the CSP's style-src no longer allows
+        unpkg.com — leaving it on the CDN would silently break the map
+        on the EUDR evidence-review page.
+        """
+        assert "/vendor/leaflet/leaflet.css" in eudr_index_html, (
+            "/eudr/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in eudr_index_html, (
+            "/eudr/index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_eudr_uses_local_leaflet_js(self, eudr_index_html):
+        """/eudr/ must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in eudr_index_html, (
+            "/eudr/index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
+    def test_no_page_references_leaflet_cdn(self):
+        """No HTML page anywhere under website/ may reference unpkg.com/leaflet.
+
+        Broad regression guard so a future page (or a page added after this
+        test file was last updated) can't silently reintroduce the CDN
+        reference that CSP's style-src no longer allows.
+        """
+        offenders = [
+            str(html_path.relative_to(WEBSITE))
+            for html_path in WEBSITE.rglob("*.html")
+            if "unpkg.com/leaflet" in html_path.read_text()
+        ]
+        assert not offenders, f"unpkg.com/leaflet CDN reference found in: {offenders}"
+
 
 # ---------------------------------------------------------------------------
 # Auth integration — login/logout use SWA routes
