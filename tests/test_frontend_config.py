@@ -261,6 +261,91 @@ class TestCsp:
             "that is substituted with the actual storage hostname at deploy time"
         )
 
+    def test_style_src_no_unpkg(self, swa_config):
+        """CSP style-src must not reference unpkg.com now that Leaflet is self-hosted."""
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        style_match = re.search(r"style-src\s+([^;]+)", csp)
+        assert style_match, "CSP missing style-src directive"
+        sources = style_match.group(1).split()
+        assert not any("unpkg.com" in src for src in sources), (
+            "CSP style-src must not reference unpkg.com — Leaflet CSS is now self-hosted "
+            "under /vendor/leaflet/leaflet.css"
+        )
+
+    def test_connect_src_no_unpkg(self, swa_config):
+        """CSP connect-src must not reference unpkg.com now that Leaflet is self-hosted."""
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
+        assert connect_match, "CSP missing connect-src directive"
+        sources = connect_match.group(1).split()
+        assert not any("unpkg.com" in src for src in sources), (
+            "CSP connect-src must not reference unpkg.com — Leaflet assets are now "
+            "self-hosted under /vendor/leaflet/"
+        )
+
+    def test_navigation_fallback_excludes_vendor(self, swa_config):
+        """navigationFallback exclude list must include /vendor/* so vendor assets are served."""
+        exclude = swa_config["navigationFallback"]["exclude"]
+        assert "/vendor/*" in exclude, (
+            "navigationFallback.exclude must include /vendor/* so self-hosted vendor "
+            "assets (e.g. Leaflet) are served directly rather than rewritten to index.html"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Self-hosted vendor assets
+# ---------------------------------------------------------------------------
+
+
+class TestVendorLeaflet:
+    """Leaflet must be self-hosted under website/vendor/leaflet/ (issue #519)."""
+
+    VENDOR_DIR = WEBSITE / "vendor" / "leaflet"
+
+    def test_vendor_leaflet_css_exists(self):
+        """website/vendor/leaflet/leaflet.css must be present."""
+        assert (self.VENDOR_DIR / "leaflet.css").is_file(), (
+            "vendor/leaflet/leaflet.css is missing — run npm pack leaflet@1.9.4 and copy "
+            "dist/leaflet.css into website/vendor/leaflet/"
+        )
+
+    def test_vendor_leaflet_js_exists(self):
+        """website/vendor/leaflet/leaflet.js must be present."""
+        assert (self.VENDOR_DIR / "leaflet.js").is_file(), (
+            "vendor/leaflet/leaflet.js is missing — run npm pack leaflet@1.9.4 and copy "
+            "dist/leaflet.js into website/vendor/leaflet/"
+        )
+
+    def test_landing_uses_local_leaflet_css(self, index_html):
+        """Landing page must load Leaflet CSS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.css" in index_html, (
+            "index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in index_html, (
+            "index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_landing_uses_local_leaflet_js(self, index_html):
+        """Landing page must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in index_html, (
+            "index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
+    def test_app_uses_local_leaflet_css(self, app_index_html):
+        """/app/ must load Leaflet CSS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.css" in app_index_html, (
+            "/app/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in app_index_html, (
+            "/app/index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_app_uses_local_leaflet_js(self, app_index_html):
+        """/app/ must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in app_index_html, (
+            "/app/index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Auth integration — login/logout use SWA routes
