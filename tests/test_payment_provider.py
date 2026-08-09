@@ -39,6 +39,97 @@ class TestStripeProvider:
     def test_conforms_to_protocol(self):
         assert isinstance(StripeProvider("sk_test_xxx"), PaymentProvider)
 
+    def test_get_stripe_sets_api_key(self, monkeypatch):
+        provider = StripeProvider("sk_test_xxx")
+        fake_stripe = type("FakeStripe", (), {"api_key": ""})()
+        monkeypatch.setitem(__import__("sys").modules, "stripe", fake_stripe)
+
+        returned = provider._get_stripe()
+
+        assert returned is fake_stripe
+        assert fake_stripe.api_key == "sk_test_xxx"
+
+    def test_report_usage_success(self, monkeypatch):
+        provider = StripeProvider("sk_test_xxx")
+
+        class _SubItem:
+            @staticmethod
+            def create_usage_record(*_args, **_kwargs):
+                return type("Record", (), {"id": "ur_123"})()
+
+        fake_stripe = type("FakeStripe", (), {"SubscriptionItem": _SubItem})()
+        monkeypatch.setattr(provider, "_get_stripe", lambda: fake_stripe)
+
+        result = provider.report_usage(
+            user_id="u1",
+            subscription_item_id="si_1",
+            quantity=2,
+            idempotency_key="k1",
+        )
+        assert result == "ur_123"
+
+    def test_report_usage_failure(self, monkeypatch):
+        provider = StripeProvider("sk_test_xxx")
+
+        class _SubItem:
+            @staticmethod
+            def create_usage_record(*_args, **_kwargs):
+                raise RuntimeError("stripe fail")
+
+        fake_stripe = type("FakeStripe", (), {"SubscriptionItem": _SubItem})()
+        monkeypatch.setattr(provider, "_get_stripe", lambda: fake_stripe)
+
+        result = provider.report_usage(
+            user_id="u1",
+            subscription_item_id="si_1",
+            quantity=2,
+            idempotency_key="k1",
+        )
+        assert result is None
+
+    def test_credit_usage_success_and_negative_quantity(self, monkeypatch):
+        provider = StripeProvider("sk_test_xxx")
+        calls = []
+
+        class _SubItem:
+            @staticmethod
+            def create_usage_record(*_args, **kwargs):
+                calls.append(kwargs)
+                return type("Record", (), {"id": "ur_credit"})()
+
+        fake_stripe = type("FakeStripe", (), {"SubscriptionItem": _SubItem})()
+        monkeypatch.setattr(provider, "_get_stripe", lambda: fake_stripe)
+
+        result = provider.credit_usage(
+            user_id="u1",
+            subscription_item_id="si_1",
+            quantity=3,
+            idempotency_key="k2",
+            reason="refund",
+        )
+        assert result == "ur_credit"
+        assert calls[0]["quantity"] == -3
+
+    def test_credit_usage_failure(self, monkeypatch):
+        provider = StripeProvider("sk_test_xxx")
+
+        class _SubItem:
+            @staticmethod
+            def create_usage_record(*_args, **_kwargs):
+                raise RuntimeError("stripe fail")
+
+        fake_stripe = type("FakeStripe", (), {"SubscriptionItem": _SubItem})()
+        monkeypatch.setattr(provider, "_get_stripe", lambda: fake_stripe)
+
+        result = provider.credit_usage(
+            user_id="u1",
+            subscription_item_id="si_1",
+            quantity=3,
+            idempotency_key="k2",
+            reason="refund",
+        )
+        assert result is None
+
 
 class TestProviderFactory:
     def test_returns_null_without_stripe_key(self, monkeypatch):
