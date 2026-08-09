@@ -524,10 +524,28 @@ jobs:
               | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
           )
 
-          az webapp config appsettings set \
+          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${APP_SETTINGS[@]}" | jq -Rnc '
+            [inputs | select(length > 0) | capture("^(?<name>[^=]+)=(?<value>.*)$")]
+            | sort_by(.name)
+          ')
+          CURRENT_SETTINGS_JSON=$(az webapp config appsettings list \
             --name "$FUNC_NAME" \
             --resource-group "$FUNC_RG" \
-            --settings "${APP_SETTINGS[@]}"
+            -o json | jq -c --argjson desired "$DESIRED_SETTINGS_JSON" '
+              (reduce $desired[] as $d ({}; .[$d.name] = true)) as $desired_names
+              | [ .[] | select($desired_names[.name]) | {name: .name, value: (.value | tostring)} ]
+              | sort_by(.name)
+            ')
+
+          if [ "$CURRENT_SETTINGS_JSON" != "$DESIRED_SETTINGS_JSON" ]; then
+            echo "Settings changed — applying update"
+            az webapp config appsettings set \
+              --name "$FUNC_NAME" \
+              --resource-group "$FUNC_RG" \
+              --settings "${APP_SETTINGS[@]}"
+          else
+            echo "Settings unchanged — skipping update"
+          fi
 
           # Keep platform-level CORS in sync via CLI because tofu ignores body
           # updates on the Function App resource while the azapi identity bug exists.
@@ -564,28 +582,46 @@ jobs:
             --argjson ready "$ALWAYS_READY" \
             '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           FUNC_ID=$(az functionapp show --name "$FUNC_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
-          # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
-          for attempt in 1 2 3; do
-            if PATCH_ERROR=$(az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
-              break
-            fi
-            echo "$PATCH_ERROR"
-            if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
-              echo "::error title=Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
-              echo "Recent Microsoft.Web/sites write activity for ${FUNC_NAME}:"
-              az monitor activity-log list --resource-id "$FUNC_ID" --offset 24h --max-events 20 \
-                --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
-                -o table || true
-              echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
-              exit 1
-            fi
-            [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
-            echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
-            sleep 20
-          done
+          CURRENT_SITE=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01")
+          CURRENT_ALLOWED_ORIGINS_JSON=$(echo "$CURRENT_SITE" | jq -c '.properties.siteConfig.cors.allowedOrigins // [] | sort')
+          DESIRED_ALLOWED_ORIGINS_JSON=$(echo "$ALLOWED_ORIGINS_JSON" | jq -c 'sort')
+          CURRENT_SUPPORT_CREDENTIALS=$(echo "$CURRENT_SITE" | jq -r '.properties.siteConfig.cors.supportCredentials // false')
+          CURRENT_MAX_INSTANCES=$(echo "$CURRENT_SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount // empty')
+          CURRENT_ALWAYS_READY=$(echo "$CURRENT_SITE" \
+            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name)')
+          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name)')
+
+          if [ "$CURRENT_ALLOWED_ORIGINS_JSON" != "$DESIRED_ALLOWED_ORIGINS_JSON" ] \
+            || [ "$CURRENT_SUPPORT_CREDENTIALS" != "false" ] \
+            || [ "$CURRENT_MAX_INSTANCES" != "$MAX_INSTANCES" ] \
+            || [ "$CURRENT_ALWAYS_READY" != "$DESIRED_ALWAYS_READY" ]; then
+            echo "CORS/scaling changed — applying PATCH"
+            # Retry with fixed 20s delay: transient ARM 409 can still occur under concurrent platform writes.
+            for attempt in 1 2 3; do
+              if PATCH_ERROR=$(az rest --method PATCH --url "${FUNC_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
+                break
+              fi
+              echo "$PATCH_ERROR"
+              if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
+                echo "::error title=Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
+                echo "Recent Microsoft.Web/sites write activity for ${FUNC_NAME}:"
+                az monitor activity-log list --resource-id "$FUNC_ID" --offset 24h --max-events 20 \
+                  --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
+                  -o table || true
+                echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
+                exit 1
+              fi
+              [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
+              echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+              sleep 20
+            done
+            CURRENT_SITE=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01")
+          else
+            echo "CORS/scaling unchanged — skipping PATCH"
+          fi
 
           # Verify scaling config applied
-          ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
+          ACTUAL=$(echo "$CURRENT_SITE" \
             | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
           echo "Scaling config: $ACTUAL"
 
@@ -671,10 +707,29 @@ jobs:
               | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
           )
 
-          az webapp config appsettings set \
+          ORCH_SETTINGS=("${APP_SETTINGS[@]}" "PIPELINE_ROLE=orchestrator")
+          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${ORCH_SETTINGS[@]}" | jq -Rnc '
+            [inputs | select(length > 0) | capture("^(?<name>[^=]+)=(?<value>.*)$")]
+            | sort_by(.name)
+          ')
+          CURRENT_SETTINGS_JSON=$(az webapp config appsettings list \
             --name "$ORCH_NAME" \
             --resource-group "$FUNC_RG" \
-            --settings "${APP_SETTINGS[@]}" PIPELINE_ROLE=orchestrator
+            -o json | jq -c --argjson desired "$DESIRED_SETTINGS_JSON" '
+              (reduce $desired[] as $d ({}; .[$d.name] = true)) as $desired_names
+              | [ .[] | select($desired_names[.name]) | {name: .name, value: (.value | tostring)} ]
+              | sort_by(.name)
+            ')
+
+          if [ "$CURRENT_SETTINGS_JSON" != "$DESIRED_SETTINGS_JSON" ]; then
+            echo "Orchestrator settings changed — applying update"
+            az webapp config appsettings set \
+              --name "$ORCH_NAME" \
+              --resource-group "$FUNC_RG" \
+              --settings "${ORCH_SETTINGS[@]}"
+          else
+            echo "Orchestrator settings unchanged — skipping update"
+          fi
 
           ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
           if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
@@ -696,24 +751,41 @@ jobs:
             --argjson ready "$ALWAYS_READY" \
             '{properties:{siteConfig:{cors:{allowedOrigins:$origins,supportCredentials:false}},functionAppConfig:{scaleAndConcurrency:{maximumInstanceCount:$max,alwaysReady:$ready}}}}')
           ORCH_ID=$(az functionapp show --name "$ORCH_NAME" --resource-group "$FUNC_RG" --query id -o tsv)
-          for attempt in 1 2 3; do
-            if PATCH_ERROR=$(az rest --method PATCH --url "${ORCH_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
-              break
-            fi
-            echo "$PATCH_ERROR"
-            if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
-              echo "::error title=Orchestrator Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
-              echo "Recent Microsoft.Web/sites write activity for ${ORCH_NAME}:"
-              az monitor activity-log list --resource-id "$ORCH_ID" --offset 24h --max-events 20 \
-                --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
-                -o table || true
-              echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
-              exit 1
-            fi
-            [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
-            echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
-            sleep 20
-          done
+          CURRENT_SITE=$(az rest --method GET --url "${ORCH_ID}?api-version=2024-04-01")
+          CURRENT_ALLOWED_ORIGINS_JSON=$(echo "$CURRENT_SITE" | jq -c '.properties.siteConfig.cors.allowedOrigins // [] | sort')
+          DESIRED_ALLOWED_ORIGINS_JSON=$(echo "$ALLOWED_ORIGINS_JSON" | jq -c 'sort')
+          CURRENT_SUPPORT_CREDENTIALS=$(echo "$CURRENT_SITE" | jq -r '.properties.siteConfig.cors.supportCredentials // false')
+          CURRENT_MAX_INSTANCES=$(echo "$CURRENT_SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount // empty')
+          CURRENT_ALWAYS_READY=$(echo "$CURRENT_SITE" \
+            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name)')
+          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name)')
+
+          if [ "$CURRENT_ALLOWED_ORIGINS_JSON" != "$DESIRED_ALLOWED_ORIGINS_JSON" ] \
+            || [ "$CURRENT_SUPPORT_CREDENTIALS" != "false" ] \
+            || [ "$CURRENT_MAX_INSTANCES" != "$MAX_INSTANCES" ] \
+            || [ "$CURRENT_ALWAYS_READY" != "$DESIRED_ALWAYS_READY" ]; then
+            echo "Orchestrator CORS/scaling changed — applying PATCH"
+            for attempt in 1 2 3; do
+              if PATCH_ERROR=$(az rest --method PATCH --url "${ORCH_ID}?api-version=2024-04-01" --body "$PATCH_BODY" 2>&1); then
+                break
+              fi
+              echo "$PATCH_ERROR"
+              if echo "$PATCH_ERROR" | grep -qi "another operation is in progress"; then
+                echo "::error title=Orchestrator Function App write blocked by stuck ARM operation::Cannot modify this site because another operation is in progress."
+                echo "Recent Microsoft.Web/sites write activity for ${ORCH_NAME}:"
+                az monitor activity-log list --resource-id "$ORCH_ID" --offset 24h --max-events 20 \
+                  --query "[?contains(operationName.value, 'Microsoft.Web/sites/write')].[eventTimestamp,status.value,operationId,correlationId]" \
+                  -o table || true
+                echo "Next actions: retry once from Azure Portal; if lock persists >1h, open Azure Support with the operationId above (table column 3)."
+                exit 1
+              fi
+              [ "$attempt" -lt 3 ] || { echo "❌ PATCH failed after 3 attempts"; exit 1; }
+              echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
+              sleep 20
+            done
+          else
+            echo "Orchestrator CORS/scaling unchanged — skipping PATCH"
+          fi
 
       - name: Verify Function App config contract
         id: verify-config-contract
