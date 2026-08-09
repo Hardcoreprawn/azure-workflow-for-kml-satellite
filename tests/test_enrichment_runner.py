@@ -52,8 +52,8 @@ def _block_network_calls(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestMosaicNdviParallel:
     """Verify _run_mosaic_ndvi_phase parallelization correctness."""
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_results_at_correct_indices(self, mock_mosaic, mock_ndvi):
         """Each frame's result must land at its original index, not arrival order."""
         frames = [
@@ -79,8 +79,8 @@ class TestMosaicNdviParallel:
         # stats should all be populated
         assert all(s is not None for s in stats)
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_mosaic_failure_does_not_abort_others(self, mock_mosaic, mock_ndvi):
         """If one mosaic registration raises, other frames still succeed."""
         frames = [
@@ -108,8 +108,8 @@ class TestMosaicNdviParallel:
         populated = [s for s in results["search_ids"] if s is not None]
         assert len(populated) >= 2
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_ndvi_failure_does_not_abort_others(self, mock_mosaic, mock_ndvi):
         """If one NDVI computation raises, other frames still succeed."""
         frames = [
@@ -138,8 +138,8 @@ class TestMosaicNdviParallel:
         populated = [s for s in stats if s is not None]
         assert len(populated) >= 1
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_naip_frame_registers_both_collections(self, mock_mosaic, mock_ndvi):
         """NAIP frames register both NAIP and sentinel-2-l2a for NDVI."""
         frames = [_make_frame(collection="naip", is_naip=True)]
@@ -159,8 +159,8 @@ class TestMosaicNdviParallel:
         assert results["search_ids"][0] == "sid-naip"
         assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_naip_rgb_falls_back_to_sentinel_when_naip_missing(self, mock_mosaic, mock_ndvi):
         """If NAIP has no RGB mosaic for a frame, Sentinel-2 should be used for display."""
         frames = [_make_frame(collection="naip", is_naip=True)]
@@ -181,8 +181,8 @@ class TestMosaicNdviParallel:
         assert results["display_collections"][0] == "sentinel-2-l2a"
         assert frames[0]["display_collection"] == "sentinel-2-l2a"
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_skips_visual_registration_when_rgb_is_unsuitable(self, mock_mosaic, mock_ndvi):
         """Tiny coarse frames should skip RGB mosaic registration but keep NDVI search."""
         frames = [
@@ -203,8 +203,8 @@ class TestMosaicNdviParallel:
         assert results["search_ids"][0] is None
         assert results["ndvi_search_ids"][0] == "sid-sentinel-2-l2a"
 
-    @patch("treesight.pipeline.enrichment.runner.compute_landsat_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_landsat_unsuitable_rgb_still_registers_s2_ndvi(self, mock_mosaic, mock_landsat_ndvi):
         """Landsat frames with rgb_display_suitable=False must still register an S2 NDVI mosaic.
 
@@ -232,8 +232,8 @@ class TestMosaicNdviParallel:
         mock_mosaic.assert_called_once()
         mock_landsat_ndvi.assert_called_once()
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_frame_plan_records_normalized_provenance(self, mock_mosaic, mock_ndvi):
         """Each frame should carry a normalized provenance bundle for viewer/export use."""
         frames = [_make_frame(collection="sentinel-2-l2a", is_naip=False)]
@@ -256,8 +256,8 @@ class TestMosaicNdviParallel:
         assert provenance["ndvi_scene_id"] == "S2A_123"
         assert provenance["resolution_m"] == 10.0
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_cog_result_with_geotiff_uploads_raster(self, mock_mosaic, mock_ndvi):
         """When compute_ndvi returns geotiff_bytes, the raster is uploaded."""
         frames = [_make_frame(year=2025, season="winter")]
@@ -282,8 +282,8 @@ class TestMosaicNdviParallel:
         assert stats[0] is not None
         assert "geotiff_bytes" not in stats[0]
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_empty_frame_plan_returns_empty(self, mock_mosaic, mock_ndvi):
         """An empty frame plan should return empty lists without error."""
         storage = MagicMock()
@@ -298,9 +298,9 @@ class TestMosaicNdviParallel:
         mock_mosaic.assert_not_called()
         mock_ndvi.assert_not_called()
 
-    @patch("treesight.pipeline.enrichment.runner.fetch_ndvi_stat")
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_fallback_to_tile_when_cog_returns_none(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
         """When compute_ndvi returns None, fall back to tile-based fetch_ndvi_stat."""
         frames = [_make_frame()]
