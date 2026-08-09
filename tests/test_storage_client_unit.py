@@ -39,11 +39,13 @@ class _FakeContainer:
     def __init__(self, *, exists: bool):
         self._exists = exists
         self.created = False
+        self.create_calls = 0
 
     def exists(self):
         return self._exists
 
     def create_container(self):
+        self.create_calls += 1
         self.created = True
 
     def list_blobs(self, *, name_starts_with=None):
@@ -100,22 +102,24 @@ class TestGetBlobServiceClient:
 
 
 class TestBlobStorageClientMethods:
+    def setup_method(self):
+        storage_client.BlobStorageClient._known_containers.clear()
+
     def test_ensure_container_caches_known_container(self):
         fake = _FakeServiceClient()
         client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
         client._client = fake
-        storage_client.BlobStorageClient._known_containers.clear()
 
         client.ensure_container("kml-input")
         client.ensure_container("kml-input")
 
         assert fake.container.created is True
+        assert fake.container.create_calls == 1
 
     def test_upload_bytes_uploads_and_returns_url(self):
         fake = _FakeServiceClient()
         client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
         client._client = fake
-        storage_client.BlobStorageClient._known_containers.clear()
 
         url = client.upload_bytes(
             "kml-input", "analysis/out.json", b"abc", content_type="text/plain"

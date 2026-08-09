@@ -131,6 +131,7 @@ class TestLulcHelpers:
             2022: _Resp({"features": [{"assets": {}}]}),
             2023: _Resp({}, error=RuntimeError("boom")),
         }
+        sample_calls = []
 
         class _YearClient:
             def post(self, _url, json):
@@ -140,13 +141,17 @@ class TestLulcHelpers:
         monkeypatch.setattr(
             eudr,
             "_sample_classification_cog",
-            lambda *_args: {"dominant_class": "Trees", "classes": [{"code": 4, "area_pct": 77.7}]},
+            lambda *_args: (
+                sample_calls.append(_args)
+                or {"dominant_class": "Trees", "classes": [{"code": 4, "area_pct": 77.7}]}
+            ),
         )
 
         result = eudr._fetch_lulc_years(
             _YearClient(), "https://stac", [0, 0, 1, 1], [2021, 2022, 2023]
         )
         assert result == {}
+        assert sample_calls == []
 
 
 class TestAlosQuery:
