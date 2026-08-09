@@ -7,27 +7,27 @@
   'use strict';
 
   function createCallout(type, message) {
-    var helper = (window.CanopexHelpers || {}).createCallout;
+    let helper = (window.CanopexHelpers || {}).createCallout;
     if (typeof helper === 'function') {
       return helper(type, message);
     }
-    var d = document.createElement('div');
+    let d = document.createElement('div');
     d.className = 'callout callout-' + type;
     d.textContent = message;
     return d;
   }
 
   async function loadSavedAnalysis(instanceId, ctx) {
-    var state = ctx.state;
-    var aiBlock = document.getElementById('app-evidence-ai-block');
-    var content = document.getElementById('app-evidence-ai-content');
+    let state = ctx.state;
+    let aiBlock = document.getElementById('app-evidence-ai-block');
+    let content = document.getElementById('app-evidence-ai-content');
     if (!aiBlock || !content) return;
 
     try {
       await (ctx.getApiReady ? ctx.getApiReady() : Promise.resolve());
-      var res = await ctx.apiFetch('/api/timelapse-analysis-load/' + encodeURIComponent(instanceId));
+      let res = await ctx.apiFetch('/api/timelapse-analysis-load/' + encodeURIComponent(instanceId));
       state.analysis = await res.json();
-      var _er = ctx.er();
+      let _er = ctx.er();
       if (state.analysis && (state.analysis.observations || state.analysis.summary)) {
         aiBlock.hidden = false;
         if (typeof _er.renderEvidenceAnalysis === 'function') _er.renderEvidenceAnalysis(state.analysis);
@@ -40,13 +40,13 @@
   }
 
   async function requestAiAnalysis(ctx) {
-    var state = ctx.state;
-    var loading = document.getElementById('app-evidence-ai-loading');
-    var content = document.getElementById('app-evidence-ai-content');
-    var btn = document.getElementById('app-evidence-ai-btn');
+    let state = ctx.state;
+    let loading = document.getElementById('app-evidence-ai-loading');
+    let content = document.getElementById('app-evidence-ai-content');
+    let btn = document.getElementById('app-evidence-ai-btn');
     if (!loading || !content || !state.manifest) return;
 
-    var originalLabel = btn ? btn.textContent : '';
+    let originalLabel = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Analyzing…'; }
     loading.hidden = false;
     content.textContent = '';
@@ -54,14 +54,14 @@
     try {
       await (ctx.getApiReady ? ctx.getApiReady() : Promise.resolve());
 
-      var ndviTimeseries = (state.manifest.ndvi_stats || []).map(function (f, i) {
+      let ndviTimeseries = (state.manifest.ndvi_stats || []).map(function (f, i) {
         if (!f) return null;
-        var fp = (state.manifest.frame_plan || [])[i] || {};
+        let fp = (state.manifest.frame_plan || [])[i] || {};
         return { date: f.datetime || fp.label, mean: f.mean, min: f.min, max: f.max, year: fp.year, season: fp.season };
       }).filter(Boolean);
 
-      var wm = state.manifest.weather_monthly;
-      var weatherTimeseries = [];
+      let wm = state.manifest.weather_monthly;
+      let weatherTimeseries = [];
       if (wm && wm.labels && Array.isArray(wm.labels)) {
         weatherTimeseries = wm.labels.map(function (lbl, i) {
           return { month_index: i, label: lbl, temperature: wm.temp ? wm.temp[i] : null, precipitation: wm.precip ? wm.precip[i] : null };
@@ -72,11 +72,11 @@
         });
       }
 
-      var center = state.manifest.center || state.manifest.coords;
-      var lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
-      var lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
+      let center = state.manifest.center || state.manifest.coords;
+      let lat = Array.isArray(center) ? center[0] : (center && center.lat) || 0;
+      let lon = Array.isArray(center) ? center[1] : (center && center.lon) || 0;
 
-      var body = {
+      let body = {
         context: {
           aoi_name: 'Analysis area',
           latitude: lat,
@@ -89,14 +89,14 @@
         }
       };
 
-      var res = await ctx.apiFetch('/api/timelapse-analysis', {
+      let res = await ctx.apiFetch('/api/timelapse-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
       state.analysis = await res.json();
-      var _er = ctx.er();
+      let _er = ctx.er();
       if (typeof _er.renderEvidenceAnalysis === 'function') _er.renderEvidenceAnalysis(state.analysis);
 
       ctx.apiFetch('/api/timelapse-analysis-save', {
@@ -104,7 +104,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ instance_id: state.instanceId, analysis: state.analysis })
       }).catch(function () {
-        var saveWarn = document.getElementById('app-evidence-ai-content');
+        let saveWarn = document.getElementById('app-evidence-ai-content');
         if (saveWarn) saveWarn.appendChild(createCallout('warning', 'Analysis displayed but could not be saved. It will be lost on reload.'));
       });
     } catch (err) {
@@ -118,7 +118,7 @@
 
   function activeEvidenceContext(state) {
     if (!state.manifest) return null;
-    var perAoi = state.manifest.per_aoi_enrichment || [];
+    let perAoi = state.manifest.per_aoi_enrichment || [];
     if (state.selectedAoi >= 0 && state.selectedAoi < perAoi.length) {
       return perAoi[state.selectedAoi];
     }
@@ -126,14 +126,14 @@
   }
 
   function buildEvidenceNdviTimeseries(source, em) {
-    var _em = em();
+    let _em = em();
     if (typeof _em.buildNdviTimeseries === 'function') {
       return _em.buildNdviTimeseries(source);
     }
     if (!source) return [];
     return (source.ndvi_stats || []).map(function (f, i) {
       if (!f) return null;
-      var fp = (source.frame_plan || [])[i] || {};
+      let fp = (source.frame_plan || [])[i] || {};
       return {
         date: f.datetime || f.date || fp.start || fp.label,
         mean: f.mean,
@@ -146,12 +146,12 @@
   }
 
   function evidenceLatLon(source, em) {
-    var _em = em();
+    let _em = em();
     if (typeof _em.latLon === 'function') {
       return _em.latLon(source);
     }
     if (!source) return { lat: 0, lon: 0 };
-    var center = source.center || source.coords;
+    let center = source.center || source.coords;
     if (Array.isArray(center)) {
       return { lat: center[0] || 0, lon: center[1] || 0 };
     }
@@ -162,10 +162,10 @@
   }
 
   async function requestEudrAssessment(ctx) {
-    var state = ctx.state;
-    var loading = document.getElementById('app-evidence-eudr-loading');
-    var content = document.getElementById('app-evidence-eudr-content');
-    var btn = document.getElementById('app-evidence-eudr-btn');
+    let state = ctx.state;
+    let loading = document.getElementById('app-evidence-eudr-loading');
+    let content = document.getElementById('app-evidence-eudr-content');
+    let btn = document.getElementById('app-evidence-eudr-btn');
     if (!loading || !content || !state.manifest) return;
 
     if (btn) btn.disabled = true;
@@ -175,11 +175,11 @@
     try {
       await (ctx.getApiReady ? ctx.getApiReady() : Promise.resolve());
 
-      var source = activeEvidenceContext(state);
-      var ndviTimeseries = buildEvidenceNdviTimeseries(source, ctx.em);
-      var latLon = evidenceLatLon(source, ctx.em);
+      let source = activeEvidenceContext(state);
+      let ndviTimeseries = buildEvidenceNdviTimeseries(source, ctx.em);
+      let latLon = evidenceLatLon(source, ctx.em);
 
-      var body = {
+      let body = {
         context: {
           aoi_name: source && source.name ? source.name : 'Analysis area',
           latitude: latLon.lat,
@@ -189,23 +189,23 @@
         }
       };
 
-      var res = await ctx.apiFetch('/api/eudr-assessment', {
+      let res = await ctx.apiFetch('/api/eudr-assessment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
 
-      var result = await res.json();
-      var cls = (result.compliant || result.deforestation_free) ? 'compliant' : 'non-compliant';
-      var label = cls === 'compliant' ? '✓ No deforestation detected since Dec 2020' : '⚠ Potential deforestation detected';
+      let result = await res.json();
+      let cls = (result.compliant || result.deforestation_free) ? 'compliant' : 'non-compliant';
+      let label = cls === 'compliant' ? '✓ No deforestation detected since Dec 2020' : '⚠ Potential deforestation detected';
       content.textContent = '';
-      var resultDiv = document.createElement('div');
+      let resultDiv = document.createElement('div');
       resultDiv.className = 'app-evidence-eudr-result ' + cls;
-      var strong = document.createElement('strong');
+      let strong = document.createElement('strong');
       strong.textContent = label;
       resultDiv.appendChild(strong);
       if (result.summary) {
-        var p = document.createElement('p');
+        let p = document.createElement('p');
         p.textContent = result.summary;
         resultDiv.appendChild(p);
       }
