@@ -445,10 +445,7 @@ jobs:
           ARM_USE_OIDC: "true"
         run: tofu apply -auto-approve tfplan
 
-      # Capture current container images so we can rollback if the
-      # new deployment fails readiness checks.
-      - name: Capture current container images
-        id: current-image
+      - name: Capture Tofu outputs
         working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -456,9 +453,37 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
-          FUNC_RG=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_name)
-          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+          TOFU_OUTPUTS=$(tofu output -json)
+          echo "TOFU_RESOURCE_GROUP_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.resource_group_name.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_name.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_ORCH_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_name.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_default_hostname.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_default_hostname.value')" >> "$GITHUB_ENV"
+          echo "TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.static_web_app_default_hostname.value')" >> "$GITHUB_ENV"
+          echo "TOFU_CUSTOM_DOMAIN=$(echo "$TOFU_OUTPUTS" | jq -r '.custom_domain.value')" >> "$GITHUB_ENV"
+          echo "TOFU_APPINSIGHTS_CONNECTION_STRING=$(echo "$TOFU_OUTPUTS" | jq -r '.appinsights_connection_string.value')" >> "$GITHUB_ENV"
+          echo "TOFU_STORAGE_ACCOUNT_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.storage_account_name.value')" >> "$GITHUB_ENV"
+          echo "TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.event_grid_system_topic_name.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_cli_maximum_instance_count.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_CLI_MINIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_cli_minimum_instance_count.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_ORCH_MINIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_minimum_instance_count.value')" >> "$GITHUB_ENV"
+          echo "TOFU_BROWSER_ALLOWED_ORIGINS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.browser_allowed_origins.value')" >> "$GITHUB_ENV"
+          echo "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.function_app_cli_app_settings.value')" >> "$GITHUB_ENV"
+          {
+            echo "TOFU_CIAM_PAGE_CONFIG<<EOF"
+            echo "$TOFU_OUTPUTS" | jq -r '.ciam_page_config.value'
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      # Capture current container images so we can rollback if the
+      # new deployment fails readiness checks.
+      - name: Capture current container images
+        id: current-image
+        working-directory: infra/tofu
+        run: |
+          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_NAME="${TOFU_FUNCTION_APP_NAME}"
+          ORCH_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
 
           CURRENT_COMPUTE_IMAGE=$(az functionapp config container show \
             --name "$FUNC_NAME" \
@@ -481,14 +506,9 @@ jobs:
       - name: Capture current orchestrator container image
         id: current-orch-image
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          FUNC_RG=$(tofu output -raw resource_group_name)
-          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
+          ORCH_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
           CURRENT_IMAGE=$(az functionapp config container show \
             --name "$ORCH_NAME" \
             --resource-group "$FUNC_RG" \
@@ -503,14 +523,9 @@ jobs:
       - name: Configure Function App
         id: configure-app
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          FUNC_RG=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_name)
+          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_NAME="${TOFU_FUNCTION_APP_NAME}"
 
           az functionapp config container set \
             --name "$FUNC_NAME" \
@@ -519,10 +534,7 @@ jobs:
 
           # Keep Terraform as the source of truth for CLI-managed settings while
           # the azapi identity bug still forces body ignore_changes on updates.
-          mapfile -t APP_SETTINGS < <(
-            tofu output -json function_app_cli_app_settings \
-              | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
-          )
+          mapfile -t APP_SETTINGS < <(echo "$TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"')
 
           DESIRED_SETTINGS_JSON=$(printf '%s\n' "${APP_SETTINGS[@]}" | jq -Rnc '
             [inputs | select(length > 0) | capture("^(?<name>[^=]+)=(?<value>.*)$")]
@@ -549,7 +561,7 @@ jobs:
 
           # Keep platform-level CORS in sync via CLI because tofu ignores body
           # updates on the Function App resource while the azapi identity bug exists.
-          ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
+          ALLOWED_ORIGINS_JSON="${TOFU_BROWSER_ALLOWED_ORIGINS_JSON}"
           if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
             echo "❌ Refusing to clear Function App CORS: browser_allowed_origins is empty"
             exit 1
@@ -560,8 +572,8 @@ jobs:
           # ConflictingConcurrentWriteNotAllowed (409). siteConfig.cors is the
           # root-resource equivalent of /config/web — same data path that tofu
           # already uses in the initial body.
-          MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          MIN_INSTANCES=$(tofu output -raw function_app_cli_minimum_instance_count)
+          MAX_INSTANCES="${TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT}"
+          MIN_INSTANCES="${TOFU_FUNCTION_APP_CLI_MINIMUM_INSTANCE_COUNT}"
           if [ "$MIN_INSTANCES" -gt 0 ]; then
             ALWAYS_READY='[{"name":"http","instanceCount":'"${MIN_INSTANCES}"'}]'
           else
@@ -630,7 +642,7 @@ jobs:
           # Microsoft.App/containerApps (not functionAppConfig which is Flex-only).
           # The system-assigned MI has Storage Queue Data Contributor on the storage
           # account so KEDA authenticates keylessly via identity=system (no shared key).
-          STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
+          STORAGE_ACCOUNT="${TOFU_STORAGE_ACCOUNT_NAME}"
           CONTAINER_APP_ID="/subscriptions/${ARM_SUBSCRIPTION_ID}/resourceGroups/${FUNC_RG}/providers/Microsoft.App/containerApps/${FUNC_NAME}"
 
           # GET current Container App, inject scale rules, PATCH back.
@@ -688,24 +700,16 @@ jobs:
       - name: Configure Orchestrator Function App
         id: configure-orch-app
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          FUNC_RG=$(tofu output -raw resource_group_name)
-          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
+          ORCH_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
 
           az functionapp config container set \
             --name "$ORCH_NAME" \
             --resource-group "$FUNC_RG" \
             --image "${{ needs.build-image.outputs.orch_image_uri }}"
 
-          mapfile -t APP_SETTINGS < <(
-            tofu output -json function_app_cli_app_settings \
-              | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
-          )
+          mapfile -t APP_SETTINGS < <(echo "$TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"')
 
           ORCH_SETTINGS=("${APP_SETTINGS[@]}" "PIPELINE_ROLE=orchestrator")
           DESIRED_SETTINGS_JSON=$(printf '%s\n' "${ORCH_SETTINGS[@]}" | jq -Rnc '
@@ -731,15 +735,15 @@ jobs:
             echo "Orchestrator settings unchanged — skipping update"
           fi
 
-          ALLOWED_ORIGINS_JSON=$(tofu output -json browser_allowed_origins | jq -c '.')
+          ALLOWED_ORIGINS_JSON="${TOFU_BROWSER_ALLOWED_ORIGINS_JSON}"
           if [ "$(echo "$ALLOWED_ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
             echo "❌ Refusing to clear Orchestrator Function App CORS: browser_allowed_origins is empty"
             exit 1
           fi
 
           # Single PATCH combining CORS + scaling (same rationale as Configure Function App).
-          MAX_INSTANCES=$(tofu output -raw function_app_cli_maximum_instance_count)
-          ORCH_MIN_INSTANCES=$(tofu output -raw function_app_orch_minimum_instance_count)
+          MAX_INSTANCES="${TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT}"
+          ORCH_MIN_INSTANCES="${TOFU_FUNCTION_APP_ORCH_MINIMUM_INSTANCE_COUNT}"
           if [ "$ORCH_MIN_INSTANCES" -gt 0 ]; then
             ALWAYS_READY='[{"name":"http","instanceCount":'"${ORCH_MIN_INSTANCES}"'}]'
           else
@@ -790,19 +794,14 @@ jobs:
       - name: Verify Function App config contract
         id: verify-config-contract
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
           set -euo pipefail
 
-          FUNC_RG=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_name)
-          ORCH_NAME=$(tofu output -raw function_app_orch_name)
+          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_NAME="${TOFU_FUNCTION_APP_NAME}"
+          ORCH_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
 
-          DESIRED_SETTINGS=$(tofu output -json function_app_cli_app_settings)
+          DESIRED_SETTINGS="${TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON}"
 
           verify_settings_subset() {
             local app_name="$1"
@@ -905,16 +904,11 @@ jobs:
       - name: Verify browser CORS contract
         id: verify-browser-cors
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_HOST=$(tofu output -raw function_app_orch_default_hostname)
-          STORAGE_NAME=$(tofu output -raw storage_account_name)
-          ORIGINS_JSON=$(tofu output -json browser_allowed_origins)
+          RG_NAME="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_HOST="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
+          STORAGE_NAME="${TOFU_STORAGE_ACCOUNT_NAME}"
+          ORIGINS_JSON="${TOFU_BROWSER_ALLOWED_ORIGINS_JSON}"
 
           if [ "$(echo "$ORIGINS_JSON" | jq 'length')" -eq 0 ]; then
             echo "❌ browser_allowed_origins is empty; cannot verify browser CORS contract"
@@ -964,90 +958,59 @@ jobs:
       - name: Export Function App hostname
         id: hostname
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
 
       - name: Export Compute Function App hostname
         id: compute-hostname
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw function_app_default_hostname)
+          HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
 
       - name: Export SWA hostname
         id: swa-hostname
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          HOSTNAME=$(tofu output -raw static_web_app_default_hostname)
-          CUSTOM_DOMAIN=$(tofu output -raw custom_domain)
+          HOSTNAME="${TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME}"
+          CUSTOM_DOMAIN="${TOFU_CUSTOM_DOMAIN}"
           echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
           echo "custom_domain=${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
 
       - name: Export App Insights connection string
         id: appinsights
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          echo "connection_string=$(tofu output -raw appinsights_connection_string)" >> "$GITHUB_OUTPUT"
+          echo "connection_string=${TOFU_APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_OUTPUT"
 
       - name: Export CIAM page config
         id: ciam-page-config
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
           # Single JSON blob with public CIAM bootstrap values; injected into
           # page HTML by the SWA deploy job. No Key Vault round-trip needed.
-          echo "json=$(tofu output -raw ciam_page_config)" >> "$GITHUB_OUTPUT"
+          {
+            echo "json<<EOF"
+            printf '%s\n' "${TOFU_CIAM_PAGE_CONFIG}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Export storage account name
         id: storage-account
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          echo "name=$(tofu output -raw storage_account_name)" >> "$GITHUB_OUTPUT"
+          echo "name=${TOFU_STORAGE_ACCOUNT_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Verify runtime readiness
         id: verify-readiness
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
           set -euo pipefail
           MAX_WAIT=300          # container startup + route registration can exceed 90s under cold start
           INTERVAL=5
-          COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
-          ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
+          ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
 
           probe_code() {
             local url="$1"
@@ -1144,16 +1107,11 @@ jobs:
       - name: Reconcile Event Grid subscription
         id: reconcile-eventgrid
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_orch_name)
-          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
-          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+          RG_NAME="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
+          HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
+          TOPIC_NAME="${TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME}"
 
           python ../../scripts/reconcile_eventgrid_subscription.py \
             --resource-group "$RG_NAME" \
@@ -1164,16 +1122,11 @@ jobs:
       - name: Validate infra gate
         id: validate-infra-gate
         working-directory: infra/tofu
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
         run: |
-          RG_NAME=$(tofu output -raw resource_group_name)
-          FUNC_NAME=$(tofu output -raw function_app_orch_name)
-          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
-          TOPIC_NAME=$(tofu output -raw event_grid_system_topic_name)
+          RG_NAME="${TOFU_RESOURCE_GROUP_NAME}"
+          FUNC_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
+          HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
+          TOPIC_NAME="${TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME}"
           EXPECTED_CAP=$(awk -F '=' '/^log_daily_cap_gb[[:space:]]*=/{gsub(/[[:space:]]/, "", $2); print $2; exit}' environments/${{ env.DEPLOY_ENV }}.tfvars)
           : "${EXPECTED_CAP:=0.1}"
 
@@ -1188,14 +1141,10 @@ jobs:
         id: async-smoke-gate
         working-directory: infra/tofu
         env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
           SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
           SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
         run: |
-          HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+          HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
           API_BASE="https://${HOSTNAME}"
           SMOKE_URL="${API_BASE}/api/internal-smoke"
           echo "Running internal smoke gate against ${SMOKE_URL}"
@@ -1223,17 +1172,13 @@ jobs:
         if: env.DEPLOY_ENV != 'prd'
         working-directory: infra/tofu
         env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
           SMOKE_POLL_INTERVAL: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_poll_interval_seconds || '5' }}
           SMOKE_MAX_ATTEMPTS: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_max_attempts || '60' }}
         run: |
-          STORAGE_ACCOUNT=$(tofu output -raw storage_account_name)
-          ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
-          ORCH_APP_NAME=$(tofu output -raw function_app_orch_name)
-          RG_NAME=$(tofu output -raw resource_group_name)
+          STORAGE_ACCOUNT="${TOFU_STORAGE_ACCOUNT_NAME}"
+          ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
+          ORCH_APP_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
+          RG_NAME="${TOFU_RESOURCE_GROUP_NAME}"
           python ../../scripts/pipeline_smoke.py \
             --storage-account "$STORAGE_ACCOUNT" \
             --orch-hostname "$ORCH_HOSTNAME" \
@@ -1300,10 +1245,10 @@ jobs:
           ORCH_HOSTNAME="${{ steps.hostname.outputs.hostname }}"
 
           if [ -z "$COMPUTE_HOSTNAME" ]; then
-            COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)
+            COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
           fi
           if [ -z "$ORCH_HOSTNAME" ]; then
-            ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)
+            ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
           fi
 
           if [ -z "$COMPUTE_HOSTNAME" ] || [ -z "$ORCH_HOSTNAME" ]; then
