@@ -278,7 +278,7 @@ class TestCsp:
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
         sources = connect_match.group(1).split()
-        assert not any("unpkg.com" in src for src in sources), (
+        assert not any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
             "CSP connect-src must not reference unpkg.com — Leaflet assets are now "
             "self-hosted under /vendor/leaflet/"
         )
