@@ -612,6 +612,17 @@ class TestDeployWorkflowSettings:
             "deploy.yml must still apply Function App settings via az CLI while "
             "body is ignore_changes in tofu"
         )
+        assert "Settings unchanged — skipping update" in deploy_yml, (
+            "deploy.yml should skip app settings writes when current settings already match"
+        )
+
+    def test_deploy_skips_function_app_patch_when_cors_and_scaling_match(self, deploy_yml):
+        assert "CORS/scaling unchanged — skipping PATCH" in deploy_yml, (
+            "deploy.yml should skip Function App PATCH when CORS/scaling already match desired values"
+        )
+        assert "Orchestrator CORS/scaling unchanged — skipping PATCH" in deploy_yml, (
+            "deploy.yml should also skip Orchestrator Function App PATCH when values are unchanged"
+        )
 
     def test_deploy_sets_max_instances_via_cli(self, deploy_yml):
         assert "maximumInstanceCount" in deploy_yml, (
