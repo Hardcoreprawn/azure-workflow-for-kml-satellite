@@ -524,7 +524,7 @@ jobs:
               | jq -r 'to_entries[] | "\(.key)=\(.value|tostring)"'
           )
 
-          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${APP_SETTINGS[@]}" | jq -Rn '
+          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${APP_SETTINGS[@]}" | jq -Rnc '
             [inputs | select(length > 0) | capture("^(?<name>[^=]+)=(?<value>.*)$")]
             | sort_by(.name)
           ')
@@ -708,7 +708,7 @@ jobs:
           )
 
           ORCH_SETTINGS=("${APP_SETTINGS[@]}" "PIPELINE_ROLE=orchestrator")
-          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${ORCH_SETTINGS[@]}" | jq -Rn '
+          DESIRED_SETTINGS_JSON=$(printf '%s\n' "${ORCH_SETTINGS[@]}" | jq -Rnc '
             [inputs | select(length > 0) | capture("^(?<name>[^=]+)=(?<value>.*)$")]
             | sort_by(.name)
           ')

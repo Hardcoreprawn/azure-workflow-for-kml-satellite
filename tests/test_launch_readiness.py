@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import typing
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
@@ -916,6 +917,107 @@ class TestDeployWorkflowSettings:
             "deploy.yml pipeline smoke test must be skipped in production "
             "to avoid triggering live imagery acquisition"
         )
+
+
+class TestDeployNoOpDiffGuardLogic:
+    """Prove the deploy.yml no-op diff guards actually compute the right answer.
+
+    The string-presence checks above only prove the skip *messages* exist in
+    the workflow text — they can't catch a bug in the jq diff logic itself
+    (e.g. key ordering causing false "changed" positives, or a filter that
+    silently always reports "unchanged"). This extracts the *actual* jq
+    programs embedded in deploy.yml and runs them through real jq against
+    synthetic fixtures, so a regression in the comparison logic fails a test
+    rather than shipping silently to a production deploy.
+    """
+
+    @pytest.fixture()
+    def configure_app_run(self) -> str:
+        workflow = yaml.safe_load(DEPLOY_YML.read_text())
+        for step in workflow["jobs"]["deploy-infra"]["steps"]:
+            if step.get("id") == "configure-app":
+                return step["run"]
+        raise AssertionError("configure-app step not found in deploy.yml deploy-infra job")
+
+    @staticmethod
+    def _extract_single_quoted(text: str, marker: str) -> str:
+        """Return the contents of the first `'...'` jq program following *marker*.
+
+        *marker* is expected to end with the opening quote itself.
+        """
+        start = text.index(marker) + len(marker)
+        end = text.index("'", start)
+        return text[start:end]
+
+    @staticmethod
+    def _run_jq(program: str, stdin_text: str, *extra_args: str) -> str:
+        result = subprocess.run(
+            ["jq", *extra_args, program],
+            input=stdin_text,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+
+    def _desired_settings_json(self, configure_app_run: str, settings_lines: str) -> str:
+        program = self._extract_single_quoted(configure_app_run, "jq -Rnc '")
+        return self._run_jq(program, settings_lines, "-Rnc")
+
+    def _current_settings_json(
+        self, configure_app_run: str, azure_settings_json: str, desired_json: str
+    ) -> str:
+        program = self._extract_single_quoted(
+            configure_app_run, 'jq -c --argjson desired "$DESIRED_SETTINGS_JSON" \''
+        )
+        return self._run_jq(
+            program, azure_settings_json, "-c", "--argjson", "desired", desired_json
+        )
+
+    def test_settings_diff_is_order_independent(self, configure_app_run):
+        """Same settings in a different key order must compare as unchanged."""
+        desired = self._desired_settings_json(configure_app_run, "FOO=1\nBAR=2\n")
+        azure_current = json.dumps(
+            [{"name": "BAR", "value": "2", "slotSetting": False}, {"name": "FOO", "value": "1"}]
+        )
+        current = self._current_settings_json(configure_app_run, azure_current, desired)
+        assert current == desired, "reordered-but-identical settings must compare equal"
+
+    def test_settings_diff_ignores_unmanaged_azure_keys(self, configure_app_run):
+        """Extra settings on Azure that tofu doesn't manage must not force a rewrite."""
+        desired = self._desired_settings_json(configure_app_run, "FOO=1\n")
+        azure_current = json.dumps(
+            [
+                {"name": "FOO", "value": "1"},
+                {"name": "WEBSITE_RUN_FROM_PACKAGE", "value": "1"},
+            ]
+        )
+        current = self._current_settings_json(configure_app_run, azure_current, desired)
+        assert current == desired, (
+            "an Azure-managed setting outside tofu's list must not trigger a rewrite"
+        )
+
+    def test_settings_diff_detects_changed_value(self, configure_app_run):
+        """A genuinely different value must be detected as changed."""
+        desired = self._desired_settings_json(configure_app_run, "FOO=1\n")
+        azure_current = json.dumps([{"name": "FOO", "value": "OLD_VALUE"}])
+        current = self._current_settings_json(configure_app_run, azure_current, desired)
+        assert current != desired, "a changed setting value must not compare equal"
+
+    def test_settings_diff_detects_missing_setting(self, configure_app_run):
+        """A tofu-desired setting absent from Azure must be detected as changed."""
+        desired = self._desired_settings_json(configure_app_run, "FOO=1\nBAR=2\n")
+        azure_current = json.dumps([{"name": "FOO", "value": "1"}])
+        current = self._current_settings_json(configure_app_run, azure_current, desired)
+        assert current != desired, "a missing desired setting must not compare equal"
+
+    def test_settings_diff_handles_values_containing_equals(self, configure_app_run):
+        """A setting value containing '=' (e.g. a connection string) must parse correctly."""
+        desired = self._desired_settings_json(
+            configure_app_run, "CONN_STR=AccountName=foo;AccountKey=bar==\n"
+        )
+        parsed = json.loads(desired)
+        assert parsed == [{"name": "CONN_STR", "value": "AccountName=foo;AccountKey=bar=="}]
 
 
 class TestStripeKeyVaultBootstrap:
