@@ -43,6 +43,20 @@ def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -
 
     current_quota_raw = doc.get("quota")
     current_quota: dict[str, Any] = current_quota_raw if isinstance(current_quota_raw, dict) else {}
+    # Instrumentation: log when a legacy per-user quota field is actually preserved.
+    # Fires only when the persisted document carries a non-empty quota dict, meaning
+    # at least one counter has been written under the old per-user accounting scheme.
+    # Safe to remove this shim once logs show zero hits in production.
+    # Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298
+    if latest_quota:
+        logger.warning(
+            "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s"
+            " — legacy per-user quota field is still present on this document."
+            " Quota accounting was retired in favour of org-level counters (D3)."
+            " Track removal at"
+            " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
+            doc.get("user_id") or doc.get("id", "<unknown>"),
+        )
     merged_quota = dict(latest_quota)
     merged_quota.update(current_quota)
     merged_quota["used"] = max(int(latest_quota.get("used", 0)), int(current_quota.get("used", 0)))

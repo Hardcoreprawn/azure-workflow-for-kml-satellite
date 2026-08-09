@@ -322,6 +322,18 @@ def _worst_change(changes: list[dict[str, Any]], key: str) -> dict[str, Any] | N
         return None
     season = worst.get("season", "")
     # Support both legacy (year_a/year_b) and current (year_from/year_to) keys.
+    _uses_legacy_year_keys = ("year_a" in worst or "year_b" in worst) and not (
+        "year_from" in worst or "year_to" in worst
+    )
+    if _uses_legacy_year_keys:
+        logger.warning(
+            "LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys key=%s season=%s"
+            " — change entry uses deprecated year_a/year_b keys instead of year_from/year_to."
+            " Track removal at"
+            " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1299",
+            key,
+            season,
+        )
     year_start = worst.get("year_from") or worst.get("year_a") or ""
     year_end = worst.get("year_to") or worst.get("year_b") or ""
     return {

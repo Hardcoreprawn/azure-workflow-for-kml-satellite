@@ -400,7 +400,16 @@ def _resolve_legacy_user_org(
         return None
     if requested_org_id and requested_org_id != legacy_org_id:
         return None
-    return get_org(legacy_org_id)
+    org = get_org(legacy_org_id)
+    if org is not None:
+        logger.warning(
+            "LEGACY_COMPAT_HIT legacy_user_org_resolved user_id=%s org_id=%s"
+            " — user document lacks org-membership record; resolved via bare org_id field."
+            " Track removal at https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1300",
+            user_id,
+            legacy_org_id,
+        )
+    return org
 
 
 # ── Member management ────────────────────────────────────────
@@ -748,6 +757,13 @@ def _set_user_org(user_id: str, org_id: str, role: str) -> None:
         if isinstance(latest, dict):
             latest_quota_raw = latest.get("quota")
             if isinstance(latest_quota_raw, dict):
+                logger.warning(
+                    "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s op=set_org"
+                    " — legacy per-user quota field is still present on this document."
+                    " Track removal at"
+                    " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
+                    user_id,
+                )
                 latest_quota: dict = latest_quota_raw
                 existing_quota_raw = existing.get("quota")
                 existing_quota: dict = (
@@ -787,6 +803,13 @@ def _clear_user_org(user_id: str) -> None:
             if isinstance(latest, dict):
                 latest_quota_raw = latest.get("quota")
                 if isinstance(latest_quota_raw, dict):
+                    logger.warning(
+                        "LEGACY_COMPAT_HIT per_user_quota_preserved user_id=%s op=clear_org"
+                        " — legacy per-user quota field is still present on this document."
+                        " Track removal at"
+                        " https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/1298",
+                        user_id,
+                    )
                     latest_quota: dict = latest_quota_raw
                     existing_quota_raw = (
                         existing.get("quota") if isinstance(existing.get("quota"), dict) else {}

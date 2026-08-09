@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from treesight.pipeline.enrichment.aoi_metrics import (
+    _worst_change,
     classify_ndvi,
     compute_aoi_metrics,
     compute_multi_aoi_summary,
@@ -357,3 +360,54 @@ class TestComputeMultiAoiSummary:
         ]
         result = compute_multi_aoi_summary(metrics)
         assert result["weighted_mean_ndvi"] is None
+
+
+class TestWorstChangeLegacyCompatLogging:
+    """#888/#1296: _worst_change must log LEGACY_COMPAT_HIT only when a change
+    entry uses the deprecated year_a/year_b keys, never for year_from/year_to."""
+
+    def test_logs_hit_for_legacy_year_keys(self, caplog):
+        changes = [{"loss_ha": 5.0, "season": "summer", "year_a": 2022, "year_b": 2023}]
+
+        with caplog.at_level("WARNING"):
+            result = _worst_change(changes, "loss_ha")
+
+        assert result is not None
+        assert result["period"] == "summer 2022\u21922023"
+        assert any(
+            "LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys" in r.message for r in caplog.records
+        )
+
+    def test_no_hit_for_current_year_keys(self, caplog):
+        changes = [{"loss_ha": 5.0, "season": "summer", "year_from": 2022, "year_to": 2023}]
+
+        with caplog.at_level("WARNING"):
+            result = _worst_change(changes, "loss_ha")
+
+        assert result is not None
+        assert result["period"] == "summer 2022\u21922023"
+        assert not any("LEGACY_COMPAT_HIT" in r.message for r in caplog.records)
+
+    def test_no_hit_when_both_key_shapes_present(self):
+        """current keys take precedence and suppress the legacy-hit signal."""
+        changes = [
+            {
+                "loss_ha": 5.0,
+                "season": "summer",
+                "year_a": 2020,
+                "year_b": 2021,
+                "year_from": 2022,
+                "year_to": 2023,
+            }
+        ]
+
+        import logging
+
+        with patch.object(
+            logging.getLogger("treesight.pipeline.enrichment.aoi_metrics"), "warning"
+        ) as mock_warn:
+            result = _worst_change(changes, "loss_ha")
+
+        assert result is not None
+        assert result["period"] == "summer 2022\u21922023"
+        mock_warn.assert_not_called()

@@ -314,3 +314,34 @@ Adjust via app settings and redeploy:
 - AOI_MAX_AREA_HA
 
 Validate changes with integration tests and one live sample upload.
+
+## Legacy/Compat Support Matrix
+
+The following paths exist for backward compatibility with older document shapes.
+They are **not** intentional long-term features; each one fires a
+`LEGACY_COMPAT_HIT` warning log whenever it is actually exercised in production.
+Once a path shows zero log hits over a sustained window (suggested: 30 days of
+normal traffic), it is safe to open the linked removal issue.
+
+| Path | Location | Why it exists | Safe-to-remove signal | Removal issue |
+|------|----------|--------------|----------------------|---------------|
+| Per-user `quota` field preservation | `treesight/security/users.py` `_preserve_quota_fields`; `treesight/security/orgs.py` `_set_user_org`, `_clear_user_org` | Accounting migrated from per-user counters to org-level counters in D3 of the domain-model overhaul (#1057). Shim kept to avoid resetting counters on user documents not yet backfilled. | `LEGACY_COMPAT_HIT per_user_quota_preserved` log message shows zero hits for ≥30 days | #1298 |
+| `_resolve_legacy_user_org` | `treesight/security/orgs.py:389` | Fallback for user documents created before org-membership normalisation; these carry a bare `org_id` field instead of a full membership record. | `LEGACY_COMPAT_HIT legacy_user_org_resolved` log message shows zero hits for ≥30 days | #1300 |
+| `year_a`/`year_b` dual-key support in AOI metrics | `treesight/pipeline/enrichment/aoi_metrics.py` `_worst_change` | Legacy callers emitted season-change entries with `year_a`/`year_b`; current schema uses `year_from`/`year_to`. Both shapes are accepted. | `LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys` log message shows zero hits for ≥30 days | #1299 |
+
+### Querying the instrumentation signals
+
+Using Application Insights / Azure Monitor:
+
+```kusto
+traces
+| where message startswith "LEGACY_COMPAT_HIT"
+| extend signal = extract(@"LEGACY_COMPAT_HIT (\S+)", 1, message)
+| summarize count() by signal, bin(timestamp, 1d)
+| order by timestamp desc
+```
+
+`summarize count()` only emits a row for (signal, day) combinations that
+actually occurred — it never emits an explicit `count = 0` row. The
+safe-to-remove signal is the **absence** of any row for a given `signal`
+across the most recent N days (suggested: 30), not a row with count = 0.
