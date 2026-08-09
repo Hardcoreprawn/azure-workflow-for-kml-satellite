@@ -6,18 +6,18 @@
 (function () {
   'use strict';
 
-  function pickEvidenceDefaultLayer(frame, em) {
-    if (typeof em().pickDefaultLayer === 'function') {
-      return em().pickDefaultLayer(frame);
+  function pickEvidenceDefaultLayer(frame, emObj) {
+    if (typeof emObj.pickDefaultLayer === 'function') {
+      return emObj.pickDefaultLayer(frame);
     }
     if (!frame) return 'rgb';
     if (frame.preferredLayer === 'ndvi' || frame.preferred_layer === 'ndvi') return 'ndvi';
     return 'rgb';
   }
 
-  function pickInitialEvidenceFrameIndex(frames, em) {
-    if (typeof em().pickInitialFrameIndex === 'function') {
-      return em().pickInitialFrameIndex(frames);
+  function pickInitialEvidenceFrameIndex(frames, emObj) {
+    if (typeof emObj.pickInitialFrameIndex === 'function') {
+      return emObj.pickInitialFrameIndex(frames);
     }
     if (!Array.isArray(frames) || !frames.length) return 0;
     return 0;
@@ -43,7 +43,6 @@
       btn.title = '';
       btn.classList.remove('is-disabled');
     });
-    return state;
   }
 
   function updateLayerButtonLabels(frame) {
@@ -197,8 +196,9 @@
       });
     });
 
-    state.frameIndex = pickInitialEvidenceFrameIndex(state.mapLayers, ctx.em);
-    state.layerMode = pickEvidenceDefaultLayer(state.mapLayers[state.frameIndex], ctx.em);
+    const emObj = ctx.em();
+    state.frameIndex = pickInitialEvidenceFrameIndex(state.mapLayers, emObj);
+    state.layerMode = pickEvidenceDefaultLayer(state.mapLayers[state.frameIndex], emObj);
     syncLayerModeButtons(state);
     showEvidenceFrame(state.frameIndex, ctx);
   }

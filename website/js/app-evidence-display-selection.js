@@ -261,7 +261,7 @@
     });
 
     if (resetBtn) {
-      resetBtn.addEventListener('click', function () { resetAoiSelection(ctx); });
+      resetBtn.onclick = function () { resetAoiSelection(ctx); };
     }
   }
 
