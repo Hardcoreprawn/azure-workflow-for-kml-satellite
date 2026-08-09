@@ -261,6 +261,167 @@ class TestCsp:
             "that is substituted with the actual storage hostname at deploy time"
         )
 
+    def test_style_src_no_unpkg(self, swa_config):
+        """CSP style-src must not reference unpkg.com now that Leaflet is self-hosted."""
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        style_match = re.search(r"style-src\s+([^;]+)", csp)
+        assert style_match, "CSP missing style-src directive"
+        sources = style_match.group(1).split()
+        assert not any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
+            "CSP style-src must not reference unpkg.com — Leaflet CSS is now self-hosted "
+            "under /vendor/leaflet/leaflet.css"
+        )
+
+    def test_connect_src_still_covers_unpkg_for_msal(self, swa_config):
+        """connect-src must still allow unpkg.com even though Leaflet is self-hosted.
+
+        script-src still loads @azure/msal-browser from unpkg.com, and per
+        test_connect_src_covers_cdn_domains_for_source_maps, every script-src
+        CDN must also be in connect-src (source-map fetches go through
+        connect-src). Removing it here would only be safe once msal-browser
+        is self-hosted too — not yet the case.
+        """
+        csp = swa_config["globalHeaders"]["Content-Security-Policy"]
+        connect_match = re.search(r"connect-src\s+([^;]+)", csp)
+        assert connect_match, "CSP missing connect-src directive"
+        sources = connect_match.group(1).split()
+        assert any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
+            "CSP connect-src must still allow unpkg.com while msal-browser is "
+            "loaded from there via script-src"
+        )
+
+    def test_navigation_fallback_excludes_vendor(self, swa_config):
+        """navigationFallback exclude list must include /vendor/* so vendor assets are served."""
+        exclude = swa_config["navigationFallback"]["exclude"]
+        assert "/vendor/*" in exclude, (
+            "navigationFallback.exclude must include /vendor/* so self-hosted vendor "
+            "assets (e.g. Leaflet) are served directly rather than rewritten to index.html"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Self-hosted vendor assets
+# ---------------------------------------------------------------------------
+
+
+class TestVendorLeaflet:
+    """Leaflet must be self-hosted under website/vendor/leaflet/ (issue #519)."""
+
+    VENDOR_DIR = WEBSITE / "vendor" / "leaflet"
+
+    def test_vendor_leaflet_css_exists(self):
+        """website/vendor/leaflet/leaflet.css must be present."""
+        assert (self.VENDOR_DIR / "leaflet.css").is_file(), (
+            "vendor/leaflet/leaflet.css is missing — run npm pack leaflet@1.9.4 and copy "
+            "dist/leaflet.css into website/vendor/leaflet/"
+        )
+
+    def test_vendor_leaflet_js_exists(self):
+        """website/vendor/leaflet/leaflet.js must be present."""
+        assert (self.VENDOR_DIR / "leaflet.js").is_file(), (
+            "vendor/leaflet/leaflet.js is missing — run npm pack leaflet@1.9.4 and copy "
+            "dist/leaflet.js into website/vendor/leaflet/"
+        )
+
+    def test_vendor_leaflet_js_map_exists(self):
+        """website/vendor/leaflet/leaflet.js.map must be present.
+
+        Without it, DevTools source-map fetches for leaflet.js 404 (noisy
+        but non-fatal) rather than resolving to readable source.
+        """
+        assert (self.VENDOR_DIR / "leaflet.js.map").is_file(), (
+            "vendor/leaflet/leaflet.js.map is missing — copy dist/leaflet.js.map "
+            "into website/vendor/leaflet/ alongside leaflet.js"
+        )
+
+    @pytest.mark.parametrize(
+        "image_name",
+        [
+            "marker-icon.png",
+            "marker-icon-2x.png",
+            "marker-shadow.png",
+            "layers.png",
+            "layers-2x.png",
+        ],
+    )
+    def test_vendor_leaflet_images_exist(self, image_name):
+        """Every marker/layer image Leaflet's default icon and layer control need must be present.
+
+        leaflet.css references layers.png/layers-2x.png directly via url();
+        leaflet.js constructs the marker-icon*/marker-shadow URLs at runtime
+        for the default marker icon. Missing any of these breaks map markers
+        or the layer-toggle control with no test signal otherwise.
+        """
+        assert (self.VENDOR_DIR / "images" / image_name).is_file(), (
+            f"vendor/leaflet/images/{image_name} is missing — copy dist/images/{image_name} "
+            "into website/vendor/leaflet/images/"
+        )
+
+    def test_landing_uses_local_leaflet_css(self, index_html):
+        """Landing page must load Leaflet CSS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.css" in index_html, (
+            "index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in index_html, (
+            "index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_landing_uses_local_leaflet_js(self, index_html):
+        """Landing page must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in index_html, (
+            "index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
+    def test_app_uses_local_leaflet_css(self, app_index_html):
+        """/app/ must load Leaflet CSS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.css" in app_index_html, (
+            "/app/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in app_index_html, (
+            "/app/index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_app_uses_local_leaflet_js(self, app_index_html):
+        """/app/ must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in app_index_html, (
+            "/app/index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
+    def test_eudr_uses_local_leaflet_css(self, eudr_index_html):
+        """/eudr/ must load Leaflet CSS from /vendor/, not CDN.
+
+        Regression guard: /eudr/index.html was missed in the initial
+        self-hosting pass, and the CSP's style-src no longer allows
+        unpkg.com — leaving it on the CDN would silently break the map
+        on the EUDR evidence-review page.
+        """
+        assert "/vendor/leaflet/leaflet.css" in eudr_index_html, (
+            "/eudr/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
+        )
+        assert "unpkg.com/leaflet" not in eudr_index_html, (
+            "/eudr/index.html must not reference Leaflet from unpkg.com"
+        )
+
+    def test_eudr_uses_local_leaflet_js(self, eudr_index_html):
+        """/eudr/ must load Leaflet JS from /vendor/, not CDN."""
+        assert "/vendor/leaflet/leaflet.js" in eudr_index_html, (
+            "/eudr/index.html must reference /vendor/leaflet/leaflet.js, not the unpkg CDN"
+        )
+
+    def test_no_page_references_leaflet_cdn(self):
+        """No HTML page anywhere under website/ may reference unpkg.com/leaflet.
+
+        Broad regression guard so a future page (or a page added after this
+        test file was last updated) can't silently reintroduce the CDN
+        reference that CSP's style-src no longer allows.
+        """
+        offenders = [
+            str(html_path.relative_to(WEBSITE))
+            for html_path in WEBSITE.rglob("*.html")
+            if "unpkg.com/leaflet" in html_path.read_text()
+        ]
+        assert not offenders, f"unpkg.com/leaflet CDN reference found in: {offenders}"
+
 
 # ---------------------------------------------------------------------------
 # Auth integration — login/logout use SWA routes
