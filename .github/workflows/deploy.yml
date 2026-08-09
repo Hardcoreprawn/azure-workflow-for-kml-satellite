@@ -588,8 +588,8 @@ jobs:
           CURRENT_SUPPORT_CREDENTIALS=$(echo "$CURRENT_SITE" | jq -r '.properties.siteConfig.cors.supportCredentials // false')
           CURRENT_MAX_INSTANCES=$(echo "$CURRENT_SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount // empty')
           CURRENT_ALWAYS_READY=$(echo "$CURRENT_SITE" \
-            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name, .instanceCount)')
-          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name, .instanceCount)')
+            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name)')
+          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name)')
 
           if [ "$CURRENT_ALLOWED_ORIGINS_JSON" != "$DESIRED_ALLOWED_ORIGINS_JSON" ] \
             || [ "$CURRENT_SUPPORT_CREDENTIALS" != "false" ] \
@@ -615,12 +615,13 @@ jobs:
               echo "⚠️  PATCH attempt $attempt failed (transient ARM conflict), retrying in 20s..."
               sleep 20
             done
+            CURRENT_SITE=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01")
           else
             echo "CORS/scaling unchanged — skipping PATCH"
           fi
 
           # Verify scaling config applied
-          ACTUAL=$(az rest --method GET --url "${FUNC_ID}?api-version=2024-04-01" \
+          ACTUAL=$(echo "$CURRENT_SITE" \
             | jq '{max: .properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount, alwaysReady: (.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [])}')
           echo "Scaling config: $ACTUAL"
 
@@ -756,8 +757,8 @@ jobs:
           CURRENT_SUPPORT_CREDENTIALS=$(echo "$CURRENT_SITE" | jq -r '.properties.siteConfig.cors.supportCredentials // false')
           CURRENT_MAX_INSTANCES=$(echo "$CURRENT_SITE" | jq -r '.properties.functionAppConfig.scaleAndConcurrency.maximumInstanceCount // empty')
           CURRENT_ALWAYS_READY=$(echo "$CURRENT_SITE" \
-            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name, .instanceCount)')
-          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name, .instanceCount)')
+            | jq -c '.properties.functionAppConfig.scaleAndConcurrency.alwaysReady // [] | sort_by(.name)')
+          DESIRED_ALWAYS_READY=$(echo "$ALWAYS_READY" | jq -c 'sort_by(.name)')
 
           if [ "$CURRENT_ALLOWED_ORIGINS_JSON" != "$DESIRED_ALLOWED_ORIGINS_JSON" ] \
             || [ "$CURRENT_SUPPORT_CREDENTIALS" != "false" ] \
