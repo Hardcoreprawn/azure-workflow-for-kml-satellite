@@ -267,7 +267,7 @@ class TestCsp:
         style_match = re.search(r"style-src\s+([^;]+)", csp)
         assert style_match, "CSP missing style-src directive"
         sources = style_match.group(1).split()
-        assert not any("unpkg.com" in src for src in sources), (
+        assert not any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
             "CSP style-src must not reference unpkg.com — Leaflet CSS is now self-hosted "
             "under /vendor/leaflet/leaflet.css"
         )
@@ -285,7 +285,7 @@ class TestCsp:
         connect_match = re.search(r"connect-src\s+([^;]+)", csp)
         assert connect_match, "CSP missing connect-src directive"
         sources = connect_match.group(1).split()
-        assert any("unpkg.com" in src for src in sources), (
+        assert any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
             "CSP connect-src must still allow unpkg.com while msal-browser is "
             "loaded from there via script-src"
         )
