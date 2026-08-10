@@ -453,28 +453,54 @@ jobs:
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           ARM_USE_OIDC: "true"
         run: |
+          set -euo pipefail
+
           TOFU_OUTPUTS=$(tofu output -json)
-          echo "TOFU_RESOURCE_GROUP_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.resource_group_name.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_name.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_ORCH_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_name.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_default_hostname.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_default_hostname.value')" >> "$GITHUB_ENV"
-          echo "TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME=$(echo "$TOFU_OUTPUTS" | jq -r '.static_web_app_default_hostname.value')" >> "$GITHUB_ENV"
-          echo "TOFU_CUSTOM_DOMAIN=$(echo "$TOFU_OUTPUTS" | jq -r '.custom_domain.value')" >> "$GITHUB_ENV"
-          APPINSIGHTS_CONNECTION_STRING=$(echo "$TOFU_OUTPUTS" | jq -r '.appinsights_connection_string.value')
+
+          # jq -e exits non-zero on a null/missing value (plain `jq -r` would
+          # print the literal string "null" and exit 0), so a missing tofu
+          # output fails the step immediately instead of silently propagating
+          # into later az/bash logic — matches `tofu output -raw`'s original
+          # fail-on-missing behavior.
+          tofu_out() { echo "$TOFU_OUTPUTS" | jq -er "$1"; }
+          tofu_out_json() { echo "$TOFU_OUTPUTS" | jq -ce "$1"; }
+
+          VAL=$(tofu_out '.resource_group_name.value')
+          echo "TOFU_RESOURCE_GROUP_NAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_name.value')
+          echo "TOFU_FUNCTION_APP_NAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_orch_name.value')
+          echo "TOFU_FUNCTION_APP_ORCH_NAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_default_hostname.value')
+          echo "TOFU_FUNCTION_APP_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_orch_default_hostname.value')
+          echo "TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.static_web_app_default_hostname.value')
+          echo "TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.custom_domain.value')
+          echo "TOFU_CUSTOM_DOMAIN=${VAL}" >> "$GITHUB_ENV"
+          APPINSIGHTS_CONNECTION_STRING=$(tofu_out '.appinsights_connection_string.value')
           echo "::add-mask::${APPINSIGHTS_CONNECTION_STRING}"
           echo "TOFU_APPINSIGHTS_CONNECTION_STRING=${APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_ENV"
-          echo "TOFU_STORAGE_ACCOUNT_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.storage_account_name.value')" >> "$GITHUB_ENV"
-          echo "TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME=$(echo "$TOFU_OUTPUTS" | jq -r '.event_grid_system_topic_name.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_cli_maximum_instance_count.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_CLI_MINIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_cli_minimum_instance_count.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_ORCH_MINIMUM_INSTANCE_COUNT=$(echo "$TOFU_OUTPUTS" | jq -r '.function_app_orch_minimum_instance_count.value')" >> "$GITHUB_ENV"
-          echo "TOFU_BROWSER_ALLOWED_ORIGINS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.browser_allowed_origins.value')" >> "$GITHUB_ENV"
-          echo "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON=$(echo "$TOFU_OUTPUTS" | jq -c '.function_app_cli_app_settings.value')" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.storage_account_name.value')
+          echo "TOFU_STORAGE_ACCOUNT_NAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.event_grid_system_topic_name.value')
+          echo "TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_cli_maximum_instance_count.value')
+          echo "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_cli_minimum_instance_count.value')
+          echo "TOFU_FUNCTION_APP_CLI_MINIMUM_INSTANCE_COUNT=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out '.function_app_orch_minimum_instance_count.value')
+          echo "TOFU_FUNCTION_APP_ORCH_MINIMUM_INSTANCE_COUNT=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out_json '.browser_allowed_origins.value')
+          echo "TOFU_BROWSER_ALLOWED_ORIGINS_JSON=${VAL}" >> "$GITHUB_ENV"
+          VAL=$(tofu_out_json '.function_app_cli_app_settings.value')
+          echo "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON=${VAL}" >> "$GITHUB_ENV"
           CIAM_ENV_DELIM="TOFU_CIAM_PAGE_CONFIG_BOUNDARY_$(openssl rand -hex 8)"
+          CIAM_PAGE_CONFIG=$(tofu_out '.ciam_page_config.value')
           {
             echo "TOFU_CIAM_PAGE_CONFIG<<${CIAM_ENV_DELIM}"
-            echo "$TOFU_OUTPUTS" | jq -r '.ciam_page_config.value'
+            echo "${CIAM_PAGE_CONFIG}"
             echo "${CIAM_ENV_DELIM}"
           } >> "$GITHUB_ENV"
 
