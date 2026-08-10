@@ -707,9 +707,9 @@ class TestDeployWorkflowSettings:
         assert 'COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"' in deploy_yml, (
             "deploy.yml readiness verification must check compute app hostname"
         )
-        assert (
-            'ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"' in deploy_yml
-        ), "deploy.yml readiness verification must check orchestrator app hostname"
+        assert 'ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"' in deploy_yml, (
+            "deploy.yml readiness verification must check orchestrator app hostname"
+        )
         assert 'verify_host_readiness "compute" "$COMPUTE_HOSTNAME"' in deploy_yml, (
             "deploy.yml readiness verification must probe compute app health/readiness"
         )
@@ -851,7 +851,8 @@ class TestDeployWorkflowSettings:
             "Event Grid reconcile step must read the orchestrator hostname"
         )
         assert "tofu output" not in body, (
-            "Event Grid reconcile step must use captured tofu env vars instead of extra tofu output calls"
+            "Event Grid reconcile step must use captured tofu env vars "
+            "instead of extra tofu output calls"
         )
 
     def test_deploy_validates_infra_gate(self, deploy_yml):
@@ -908,7 +909,8 @@ class TestDeployWorkflowSettings:
             "infra gate validation step must read the orchestrator hostname"
         )
         assert "tofu output" not in body, (
-            "infra gate validation step must use captured tofu env vars instead of extra tofu output calls"
+            "infra gate validation step must use captured tofu env vars "
+            "instead of extra tofu output calls"
         )
 
     def test_deploy_runs_pipeline_smoke_test(self, deploy_yml):
