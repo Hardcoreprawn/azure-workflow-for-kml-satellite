@@ -80,6 +80,14 @@ async def analysis_history(
     client: df.DurableOrchestrationClient,
 ) -> func.HttpResponse:
     """GET /api/analysis/history — recent signed-in runs for the current user."""
+    return await _build_analysis_history_route_response(req, client)
+
+
+async def _build_analysis_history_route_response(
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
+) -> func.HttpResponse:
+    """Build analysis-history response after bindings resolve."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
 
