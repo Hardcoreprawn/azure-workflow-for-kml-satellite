@@ -29,18 +29,23 @@ from ._phase_enrichment import _phase_enrichment, _safe_finalize_run, _safe_writ
 
 # _fulfil_batch/_fulfil_download/_fulfil_post_process aren't called directly in
 # this module anymore, but aoi_orchestrator.py imports them from here — keep
-# the re-export (`as` self-alias tells ruff this is intentional, not dead F401).
+# the re-export (declared in __all__ below so it isn't flagged as dead code).
 from ._phase_fulfilment import (
-    _fulfil_batch as _fulfil_batch,
+    _fulfil_batch,
+    _fulfil_download,
+    _fulfil_post_process,
+    _phase_fulfilment,
 )
-from ._phase_fulfilment import (
-    _fulfil_download as _fulfil_download,
-)
-from ._phase_fulfilment import (
-    _fulfil_post_process as _fulfil_post_process,
-)
-from ._phase_fulfilment import _phase_fulfilment
 from ._phase_ingestion import _phase_ingestion
+
+# Declares the fulfilment re-exports as intentional public API so static
+# analysis (CodeQL, in addition to ruff's F401) doesn't flag them as unused.
+__all__ = [
+    "_fulfil_batch",
+    "_fulfil_download",
+    "_fulfil_post_process",
+    "treesight_orchestrator",
+]
 
 logger = logging.getLogger(__name__)
 

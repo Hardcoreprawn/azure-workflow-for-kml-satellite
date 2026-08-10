@@ -318,6 +318,47 @@ class TestMosaicNdviParallel:
         assert stats[0] == {"mean": 0.4}
         assert raster_paths[0] is None
 
+    @patch("treesight.pipeline.enrichment._phase_runners.fetch_ndvi_stat")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_no_mosaic_and_no_cog_returns_none_stat(self, mock_mosaic, mock_ndvi, mock_fetch_stat):
+        """When mosaic registration and the COG path both fail, no tile fallback is possible."""
+        frames = [_make_frame()]
+        mock_mosaic.return_value = None
+        mock_ndvi.return_value = None
+        storage = MagicMock()
+        results: dict = {}
+
+        stats, raster_paths = _run_mosaic_ndvi_phase(
+            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
+        )
+
+        mock_fetch_stat.assert_not_called()
+        assert stats[0] is None
+        assert raster_paths[0] is None
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_records_resource_accumulator_metrics(self, mock_mosaic, mock_ndvi):
+        """The optional ResourceAccumulator must record mosaic/NDVI/S2 usage."""
+        from treesight.pipeline.enrichment.resource_accumulator import ResourceAccumulator
+
+        frames = [_make_frame(collection="sentinel-2-l2a")]
+        mock_mosaic.return_value = "sid-1"
+        mock_ndvi.return_value = {"mean": 0.5, "scene_id": "s-1"}
+        storage = MagicMock()
+        results: dict = {}
+        acc = ResourceAccumulator()
+
+        _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results, acc=acc)
+
+        acc_dict = acc.to_dict()
+        assert acc_dict["mosaic_registrations"] == 1
+        assert acc_dict["ndvi_computations"] == 1
+        assert acc_dict["sentinel2_scenes_registered"] == 1
+        assert "sentinel-2-l2a" in acc_dict["data_sources_queried"]
+        assert acc_dict["api_calls"]["planetary_computer"] == 2
+
 
 class TestPerAoiEnrichment:
     """Verify per-AOI enrichment fan-out in run_enrichment (#578)."""

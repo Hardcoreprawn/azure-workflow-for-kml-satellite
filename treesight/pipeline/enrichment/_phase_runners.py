@@ -151,12 +151,6 @@ def _run_eudr_phase(
 
     # Landsat historical NDVI baseline (#609)
     _run_landsat_baseline(flat_bbox_eudr, results)
-    log_phase(
-        "enrichment",
-        "wdpa_done",
-        checked=wdpa.get("checked", False),
-        protected=wdpa.get("is_protected", False),
-    )
 
     if acc:
         acc.add_source("esa-worldcover")
