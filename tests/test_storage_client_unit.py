@@ -89,7 +89,7 @@ class TestGetBlobServiceClient:
         monkeypatch.setattr(storage_client, "STORAGE_CONNECTION_STRING", "")
         monkeypatch.setattr(storage_client, "STORAGE_ACCOUNT_NAME", "acct")
         monkeypatch.setattr(storage_client, "BlobServiceClient", lambda *_args, **_kwargs: fake)
-        monkeypatch.setattr("azure.identity.DefaultAzureCredential", lambda: object())
+        monkeypatch.setattr("azure.identity.DefaultAzureCredential", object)
 
         assert storage_client.get_blob_service_client() is fake
 

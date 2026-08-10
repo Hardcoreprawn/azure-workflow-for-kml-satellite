@@ -47,7 +47,7 @@ class TestStripeProvider:
         returned = provider._get_stripe()
 
         assert returned is fake_stripe
-        assert fake_stripe.api_key == "sk_test_xxx"
+        assert fake_stripe.api_key == "sk_test_xxx"  # pragma: allowlist secret
 
     def test_report_usage_success(self, monkeypatch):
         provider = StripeProvider("sk_test_xxx")
