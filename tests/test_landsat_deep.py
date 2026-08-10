@@ -276,9 +276,9 @@ class TestFindBestLandsatScene:
 class TestLandsatNdviRouting:
     """Landsat frames should be routed through compute_landsat_ndvi."""
 
-    @patch("treesight.pipeline.enrichment.runner.compute_landsat_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_landsat_frame_uses_landsat_ndvi(self, mock_mosaic, mock_s2_ndvi, mock_ls_ndvi):
         from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase
 
@@ -315,9 +315,9 @@ class TestLandsatNdviRouting:
         mock_ls_ndvi.assert_called_once()
         mock_s2_ndvi.assert_not_called()
 
-    @patch("treesight.pipeline.enrichment.runner.compute_landsat_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_sentinel_frame_still_uses_s2_ndvi(self, mock_mosaic, mock_s2_ndvi, mock_ls_ndvi):
         from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase
 
@@ -359,9 +359,9 @@ class TestLandsatNdviRouting:
 class TestLandsatFrameLabelling:
     """Landsat frames must be labelled distinctly from Sentinel-2."""
 
-    @patch("treesight.pipeline.enrichment.runner.compute_landsat_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_landsat_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_landsat_frame_label_contains_landsat(self, mock_mosaic, mock_s2, mock_ls):
         from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase
 
@@ -394,8 +394,8 @@ class TestLandsatFrameLabelling:
         assert "Landsat" in frames[0]["label"]
         assert "30" in frames[0]["info"]  # 30m resolution
 
-    @patch("treesight.pipeline.enrichment.runner.compute_ndvi")
-    @patch("treesight.pipeline.enrichment.runner.register_mosaic")
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_sentinel_frame_label_unchanged(self, mock_mosaic, mock_s2):
         from treesight.pipeline.enrichment.runner import _run_mosaic_ndvi_phase
 
