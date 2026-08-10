@@ -569,6 +569,17 @@ class TestDeployWorkflowSettings:
     def deploy_yml(self):
         return DEPLOY_YML.read_text()
 
+    def test_deploy_captures_tofu_outputs_once(self, deploy_yml):
+        assert deploy_yml.count("TOFU_OUTPUTS=$(tofu output -json)") == 1, (
+            "deploy.yml must capture all tofu outputs once via a single json read"
+        )
+        assert "Capture Tofu outputs" in deploy_yml, (
+            "deploy.yml must include a dedicated step that captures tofu outputs into env vars"
+        )
+        assert "=$(tofu output -raw " not in deploy_yml, (
+            "deploy.yml should not repeatedly call tofu output -raw in deploy steps"
+        )
+
     def test_deploy_sets_app_settings_via_cli(self, deploy_yml):
         assert "az webapp config appsettings set" in deploy_yml, (
             "deploy.yml must still apply Function App settings via az CLI while body is ignore_changes in tofu"
@@ -600,11 +611,11 @@ class TestDeployWorkflowSettings:
         )
 
     def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
-        assert "tofu output -json function_app_cli_app_settings" in deploy_yml, (
+        assert "TOFU_FUNCTION_APP_CLI_APP_SETTINGS_JSON" in deploy_yml, (
             "deploy.yml must source CLI-managed Function App app settings from tofu outputs "
             "to avoid drifting away from Terraform"
         )
-        assert "tofu output -raw function_app_cli_maximum_instance_count" in deploy_yml, (
+        assert "TOFU_FUNCTION_APP_CLI_MAXIMUM_INSTANCE_COUNT" in deploy_yml, (
             "deploy.yml must source the CLI-managed scale cap from tofu outputs to avoid reparsing tfvars"
         )
         assert "grep 'ciam_tenant_name' environments/dev.tfvars" not in deploy_yml, (
@@ -639,10 +650,10 @@ class TestDeployWorkflowSettings:
         assert "curl" in deploy_yml, "deploy.yml smoke check must curl the FA health endpoint"
 
     def test_verify_runtime_readiness_checks_both_function_apps(self, deploy_yml):
-        assert "COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)" in deploy_yml, (
+        assert 'COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"' in deploy_yml, (
             "deploy.yml readiness verification must check compute app hostname"
         )
-        assert "ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)" in deploy_yml, (
+        assert 'ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"' in deploy_yml, (
             "deploy.yml readiness verification must check orchestrator app hostname"
         )
         assert 'verify_host_readiness "compute" "$COMPUTE_HOSTNAME"' in deploy_yml, (
@@ -771,17 +782,14 @@ class TestDeployWorkflowSettings:
         )
         assert match, "deploy.yml must include the Event Grid reconcile step"
         body = match.group("body")
-        assert "tofu output -raw function_app_orch_name" in body, (
+        assert 'FUNC_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"' in body, (
             "Event Grid reconcile step must read the orchestrator function app name"
         )
-        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+        assert 'HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"' in body, (
             "Event Grid reconcile step must read the orchestrator hostname"
         )
-        assert "tofu output -raw function_app_name" not in body, (
-            "Event Grid reconcile step must not read the compute app name"
-        )
-        assert "tofu output -raw function_app_default_hostname" not in body, (
-            "Event Grid reconcile step must not read the compute hostname"
+        assert "tofu output" not in body, (
+            "Event Grid reconcile step must use captured tofu env vars instead of extra tofu output calls"
         )
 
     def test_deploy_validates_infra_gate(self, deploy_yml):
@@ -822,17 +830,14 @@ class TestDeployWorkflowSettings:
         )
         assert match, "deploy.yml must include the infra gate validation step"
         body = match.group("body")
-        assert "tofu output -raw function_app_orch_name" in body, (
+        assert 'FUNC_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"' in body, (
             "infra gate validation step must read the orchestrator function app name"
         )
-        assert "tofu output -raw function_app_orch_default_hostname" in body, (
+        assert 'HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"' in body, (
             "infra gate validation step must read the orchestrator hostname"
         )
-        assert "tofu output -raw function_app_name" not in body, (
-            "infra gate validation step must not read the compute app name"
-        )
-        assert "tofu output -raw function_app_default_hostname" not in body, (
-            "infra gate validation step must not read the compute hostname"
+        assert "tofu output" not in body, (
+            "infra gate validation step must use captured tofu env vars instead of extra tofu output calls"
         )
 
     def test_deploy_runs_pipeline_smoke_test(self, deploy_yml):
