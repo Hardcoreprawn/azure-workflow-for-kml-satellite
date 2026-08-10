@@ -204,9 +204,7 @@ def resolve_active_org_for_user(
             # changed.  This avoids a Cosmos write on every authenticated read
             # and stops a transient per-request org selector from becoming the
             # durable default (multi-tab stickiness).
-            _repair_user_org_if_changed(
-                user_id, org_id, str(selected.get("org_role", "member")), read_item
-            )
+            _repair_user_org_if_changed(user_id, org_id, str(selected.get("org_role", "member")), read_item)
         return org
 
     # No membership found by user_id.  Try email-based healing when a verified
@@ -221,9 +219,7 @@ def resolve_active_org_for_user(
     return _resolve_legacy_user_org(user_id, requested, read_item)
 
 
-def _repair_user_org_if_changed(
-    user_id: str, org_id: str, role: str, read_item: ReadItemFn
-) -> None:
+def _repair_user_org_if_changed(user_id: str, org_id: str, role: str, read_item: ReadItemFn) -> None:
     """Backfill ``users.org_id`` only when it differs from the resolved org.
 
     Keeps the auth-boundary resolution read-only in steady state; the write
@@ -247,9 +243,7 @@ def _list_user_memberships(user_id: str) -> list[dict[str, Any]]:
         return []
 
 
-def _heal_membership_from_verified_email(
-    user_id: str, verified_email: str
-) -> dict[str, Any] | None:
+def _heal_membership_from_verified_email(user_id: str, verified_email: str) -> dict[str, Any] | None:
     """Add *user_id* to an existing org when a member with *verified_email* exists.
 
     This handles the case where a user's CIAM identity subject (``oid``) changes
@@ -316,11 +310,7 @@ def _heal_membership_from_verified_email(
 
         # Find the existing member entry to inherit their role.
         existing_member = next(
-            (
-                m
-                for m in members
-                if isinstance(m.get("email"), str) and m["email"].strip().lower() == email_lower
-            ),
+            (m for m in members if isinstance(m.get("email"), str) and m["email"].strip().lower() == email_lower),
             None,
         )
         if existing_member is None:
@@ -386,9 +376,7 @@ def _select_membership_org(
     )[0]
 
 
-def _resolve_legacy_user_org(
-    user_id: str, requested_org_id: str, read_item: ReadItemFn
-) -> dict[str, Any] | None:
+def _resolve_legacy_user_org(user_id: str, requested_org_id: str, read_item: ReadItemFn) -> dict[str, Any] | None:
     """Compatibility fallback for legacy users documents that only have org_id."""
     try:
         user = read_item("users", user_id, user_id) or {}
@@ -545,9 +533,7 @@ def check_pending_invite(email: str) -> dict[str, Any] | None:
     now = datetime.now(UTC).isoformat()
     results = query_items(
         "orgs",
-        "SELECT * FROM c WHERE c.doc_type = 'invite'"
-        " AND LOWER(c.email) = LOWER(@email)"
-        " AND c.expires_at > @now",
+        "SELECT * FROM c WHERE c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email) AND c.expires_at > @now",
         parameters=[
             {"name": "@email", "value": email.lower().strip()},
             {"name": "@now", "value": now},
@@ -611,9 +597,7 @@ def accept_invite_by_token(token: str, user_id: str) -> dict[str, Any]:
     now = datetime.now(UTC).isoformat()
     results = query_items(
         "orgs",
-        "SELECT * FROM c WHERE c.org_id = @org_id"
-        " AND c.doc_type = 'invite'"
-        " AND LOWER(c.email) = LOWER(@email)",
+        "SELECT * FROM c WHERE c.org_id = @org_id AND c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email)",
         parameters=[
             {"name": "@org_id", "value": org_id},
             {"name": "@email", "value": email.lower().strip()},
@@ -664,9 +648,7 @@ def revoke_invite(org_id: str, invite_email: str) -> dict[str, Any]:
 
     results = query_items(
         "orgs",
-        "SELECT * FROM c WHERE c.org_id = @org_id"
-        " AND c.doc_type = 'invite'"
-        " AND LOWER(c.email) = LOWER(@email)",
+        "SELECT * FROM c WHERE c.org_id = @org_id AND c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email)",
         parameters=[
             {"name": "@org_id", "value": org_id},
             {"name": "@email", "value": invite_email.lower().strip()},
@@ -766,20 +748,14 @@ def _set_user_org(user_id: str, org_id: str, role: str) -> None:
                 )
                 latest_quota: dict = latest_quota_raw
                 existing_quota_raw = existing.get("quota")
-                existing_quota: dict = (
-                    existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
-                )
+                existing_quota: dict = existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
                 merged_quota = dict(latest_quota)
                 merged_quota.update(existing_quota)
-                merged_quota["used"] = max(
-                    int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0))
-                )
+                merged_quota["used"] = max(int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0)))
                 latest_runs = latest_quota.get("runs", [])
                 existing_runs = existing_quota.get("runs", [])
                 if isinstance(latest_runs, list) and isinstance(existing_runs, list):
-                    merged_quota["runs"] = (
-                        latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
-                    )
+                    merged_quota["runs"] = latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
                 existing["quota"] = merged_quota
 
         upsert_item("users", existing)
@@ -811,23 +787,15 @@ def _clear_user_org(user_id: str) -> None:
                         user_id,
                     )
                     latest_quota: dict = latest_quota_raw
-                    existing_quota_raw = (
-                        existing.get("quota") if isinstance(existing.get("quota"), dict) else {}
-                    )
-                    existing_quota: dict = (
-                        existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
-                    )
+                    existing_quota_raw = existing.get("quota") if isinstance(existing.get("quota"), dict) else {}
+                    existing_quota: dict = existing_quota_raw if isinstance(existing_quota_raw, dict) else {}
                     merged_quota = dict(latest_quota)
                     merged_quota.update(existing_quota)
-                    merged_quota["used"] = max(
-                        int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0))
-                    )
+                    merged_quota["used"] = max(int(latest_quota.get("used", 0)), int(existing_quota.get("used", 0)))
                     latest_runs = latest_quota.get("runs", [])
                     existing_runs = existing_quota.get("runs", [])
                     if isinstance(latest_runs, list) and isinstance(existing_runs, list):
-                        merged_quota["runs"] = (
-                            latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
-                        )
+                        merged_quota["runs"] = latest_runs if len(latest_runs) >= len(existing_runs) else existing_runs
                     existing["quota"] = merged_quota
 
             upsert_item("users", existing)

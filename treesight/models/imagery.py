@@ -31,12 +31,8 @@ class ImageryFilters(BaseModel):
         collections: Provider-specific collection IDs.
     """
 
-    max_cloud_cover_pct: float = Field(
-        default=DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT, ge=0.0, le=100.0
-    )
-    max_off_nadir_deg: float = Field(
-        default=DEFAULT_MAX_OFF_NADIR_DEG, ge=0.0, le=MAX_OFF_NADIR_DEG_LIMIT
-    )
+    max_cloud_cover_pct: float = Field(default=DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT, ge=0.0, le=100.0)
+    max_off_nadir_deg: float = Field(default=DEFAULT_MAX_OFF_NADIR_DEG, ge=0.0, le=MAX_OFF_NADIR_DEG_LIMIT)
     min_resolution_m: float = Field(default=MIN_RESOLUTION_M, ge=MIN_RESOLUTION_M)
     max_resolution_m: float = Field(default=0.5, ge=MIN_RESOLUTION_M)
     date_start: datetime | None = None

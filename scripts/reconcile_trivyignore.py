@@ -276,8 +276,7 @@ def main(argv: list[str] | None = None) -> int:
         "--renew-window-days",
         type=int,
         default=DEFAULT_RENEW_WINDOW_DAYS,
-        help="Renew still-present entries expiring within this many days "
-        f"(default: {DEFAULT_RENEW_WINDOW_DAYS}).",
+        help=f"Renew still-present entries expiring within this many days (default: {DEFAULT_RENEW_WINDOW_DAYS}).",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -293,8 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument(
         "--gate",
         action="store_true",
-        help="Exit 1 if any present finding is not suppressed by the ignore file "
-        "(the base-image security gate).",
+        help="Exit 1 if any present finding is not suppressed by the ignore file (the base-image security gate).",
     )
     parser.add_argument(
         "--write-filtered",

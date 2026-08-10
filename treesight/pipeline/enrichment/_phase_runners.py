@@ -225,9 +225,7 @@ def _run_mosaic_ndvi_phase(
     def _register_one(idx: int, f: dict[str, Any]) -> tuple[int, str | None, str | None, str]:
         cloud_collections = {"sentinel-2-l2a", "landsat-c2-l2"}
         extra: list[dict[str, Any]] = (
-            [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}]
-            if f["collection"] in cloud_collections
-            else []
+            [{"op": "<=", "args": [{"property": "eo:cloud_cover"}, 20]}] if f["collection"] in cloud_collections else []
         )
         with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT_SECONDS, trust_env=False) as cl:
             sid = None
@@ -306,9 +304,7 @@ def _run_mosaic_ndvi_phase(
     ndvi_stats: list[dict[str, float] | None] = [None] * len(frame_plan)
     ndvi_raster_paths: list[str | None] = [None] * len(frame_plan)
 
-    def _compute_one_ndvi(
-        idx: int, f: dict[str, Any]
-    ) -> tuple[int, dict[str, Any] | None, str | None]:
+    def _compute_one_ndvi(idx: int, f: dict[str, Any]) -> tuple[int, dict[str, Any] | None, str | None]:
         cog_result = None
         if f["collection"] == "landsat-c2-l2":
             cog_result = compute_landsat_ndvi(flat_bbox, f["start"], f["end"])
@@ -318,9 +314,7 @@ def _run_mosaic_ndvi_phase(
             geotiff_bytes = cog_result.pop("geotiff_bytes", None)
             raster_path = None
             if geotiff_bytes:
-                raster_path = (
-                    f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
-                )
+                raster_path = f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
                 storage.upload_bytes(
                     output_container,
                     raster_path,
@@ -392,8 +386,7 @@ def _run_mosaic_ndvi_phase(
             "display_search_id": search_ids[i],
             "ndvi_search_id": ndvi_search_ids[i],
             "ndvi_scene_id": ndvi_stat.get("scene_id") if ndvi_stat else None,
-            "resolution_m": f.get("display_resolution_m")
-            or COLLECTION_DISPLAY_GSD_M.get(str(f.get("collection", ""))),
+            "resolution_m": f.get("display_resolution_m") or COLLECTION_DISPLAY_GSD_M.get(str(f.get("collection", ""))),
             "cloud_cover_pct": ndvi_stat.get("cloud_cover") if ndvi_stat else None,
             "acquired_at": ndvi_stat.get("datetime") if ndvi_stat else None,
             "artifact_path": f.get("ndvi_raster_path"),
@@ -404,9 +397,7 @@ def _run_mosaic_ndvi_phase(
         mosaic_count = sum(1 for s in search_ids if s)
         acc.increment("mosaic_registrations", mosaic_count)
         acc.increment("ndvi_computations", ndvi_count)
-        s2_count = sum(
-            1 for f in frame_plan if f["collection"] == "sentinel-2-l2a" and f.get("search_id")
-        )
+        s2_count = sum(1 for f in frame_plan if f["collection"] == "sentinel-2-l2a" and f.get("search_id"))
         if s2_count:
             acc.add_source("sentinel-2-l2a")
             acc.increment("sentinel2_scenes_registered", s2_count)

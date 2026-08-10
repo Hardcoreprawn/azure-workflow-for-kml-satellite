@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def ensure_nonempty_str_field(
-    value: Any, *, name: str, field: str, index: int | None = None
-) -> str:
+def ensure_nonempty_str_field(value: Any, *, name: str, field: str, index: int | None = None) -> str:
     """Validate a single field value is a non-empty str; raise TypeError otherwise."""
     if isinstance(value, str) and value:
         return value
@@ -14,9 +12,7 @@ def ensure_nonempty_str_field(
     raise TypeError(f"{name} activity output {where}key '{field}' must be non-empty str, got {got}")
 
 
-def ensure_dict_with_keys(
-    value: Any, *, name: str, required: tuple[str, ...] | list[str]
-) -> dict[str, Any]:
+def ensure_dict_with_keys(value: Any, *, name: str, required: tuple[str, ...] | list[str]) -> dict[str, Any]:
     """Validate dict-shaped activity output with required keys."""
     if not isinstance(value, dict):
         raise TypeError(f"{name} activity output must be dict, got {type(value).__name__}")
@@ -41,16 +37,12 @@ def ensure_list_of_dicts(
 
     for index, item in enumerate(value):
         if not isinstance(item, dict):
-            raise TypeError(
-                f"{name} activity output item {index} must be dict, got {type(item).__name__}"
-            )
+            raise TypeError(f"{name} activity output item {index} must be dict, got {type(item).__name__}")
 
         missing = [key for key in required_item_keys if key not in item]
         if missing:
             missing_keys = ", ".join(missing)
-            raise ValueError(
-                f"{name} activity output item {index} missing required keys: {missing_keys}"
-            )
+            raise ValueError(f"{name} activity output item {index} missing required keys: {missing_keys}")
 
     return value
 

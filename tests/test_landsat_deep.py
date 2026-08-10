@@ -66,9 +66,7 @@ class TestLandsatFramePlan:
             by_year.setdefault(f["year"], []).append(f)
         for year, year_frames in by_year.items():
             seasons = {f["season"] for f in year_frames}
-            assert seasons == {"winter", "spring", "summer", "autumn"}, (
-                f"Year {year} missing seasons: got {seasons}"
-            )
+            assert seasons == {"winter", "spring", "summer", "autumn"}, f"Year {year} missing seasons: got {seasons}"
 
     def test_landsat_frames_not_flagged_as_naip(self):
         frames = build_frame_plan(KENYA_COORDS)
@@ -179,9 +177,7 @@ class TestQaPixelMask:
 class TestFindBestLandsatScene:
     """Mocked STAC search for Landsat scenes."""
 
-    def _make_mock_item(
-        self, item_id, assets, cloud_cover=5.2, dt="2015-07-15T00:00:00Z", epsg=32637
-    ):
+    def _make_mock_item(self, item_id, assets, cloud_cover=5.2, dt="2015-07-15T00:00:00Z", epsg=32637):
         item = MagicMock()
         item.id = item_id
         item.assets = assets
@@ -210,12 +206,8 @@ class TestFindBestLandsatScene:
         mock_search.items.return_value = [mock_item]
         mock_pystac.Client.open.return_value.search.return_value = mock_search
 
-        with patch.dict(
-            "sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}
-        ):
-            result = _find_best_landsat_scene(
-                [36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30"
-            )
+        with patch.dict("sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}):
+            result = _find_best_landsat_scene([36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30")
 
         assert result is not None
         assert result["scene_id"] == "LC08_L2SP_170060_20150715"
@@ -233,12 +225,8 @@ class TestFindBestLandsatScene:
         mock_search.items.return_value = []
         mock_pystac.Client.open.return_value.search.return_value = mock_search
 
-        with patch.dict(
-            "sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}
-        ):
-            result = _find_best_landsat_scene(
-                [36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30"
-            )
+        with patch.dict("sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}):
+            result = _find_best_landsat_scene([36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30")
 
         assert result is None
 
@@ -258,12 +246,8 @@ class TestFindBestLandsatScene:
         mock_search.items.return_value = [mock_item]
         mock_pystac.Client.open.return_value.search.return_value = mock_search
 
-        with patch.dict(
-            "sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}
-        ):
-            result = _find_best_landsat_scene(
-                [36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30"
-            )
+        with patch.dict("sys.modules", {"planetary_computer": mock_pc, "pystac_client": mock_pystac}):
+            result = _find_best_landsat_scene([36.8, -1.3, 36.81, -1.31], "2015-06-01", "2015-09-30")
 
         assert result is None
 
@@ -447,8 +431,7 @@ class TestCrossSensorTimeline:
         sentinel_years = years_by_collection.get("sentinel-2-l2a", set())
         # Landsat should end at or overlap with Sentinel-2 start
         assert max(landsat_years) >= min(sentinel_years) - 1, (
-            f"Gap between Landsat (max {max(landsat_years)}) and "
-            f"Sentinel-2 (min {min(sentinel_years)})"
+            f"Gap between Landsat (max {max(landsat_years)}) and Sentinel-2 (min {min(sentinel_years)})"
         )
 
     def test_total_coverage_from_2013_to_current(self):

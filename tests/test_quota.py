@@ -99,9 +99,7 @@ class TestOrgPooledReaders:
     @patch("treesight.billing.accounting.compute_pool_allowance", return_value=50)
     @patch("treesight.security.orgs.get_user_org")
     @patch("treesight.security.billing.get_effective_subscription")
-    def test_submission_billing_fields_classify_from_org_usage(
-        self, mock_sub, mock_get_org, _mock_allowance
-    ):
+    def test_submission_billing_fields_classify_from_org_usage(self, mock_sub, mock_get_org, _mock_allowance):
         mock_sub.return_value = {"tier": "pro", "status": "active"}
         mock_get_org.return_value = {
             "org_id": "org-1",

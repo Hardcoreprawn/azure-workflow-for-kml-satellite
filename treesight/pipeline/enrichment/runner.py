@@ -310,9 +310,7 @@ def run_enrichment(
         # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
         max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            future_to_idx = {
-                pool.submit(_enrich_safe, entry): idx for idx, entry in enumerate(per_aoi_coords)
-            }
+            future_to_idx = {pool.submit(_enrich_safe, entry): idx for idx, entry in enumerate(per_aoi_coords)}
             for future in as_completed(future_to_idx):
                 per_aoi_enrichment[future_to_idx[future]] = future.result()
 

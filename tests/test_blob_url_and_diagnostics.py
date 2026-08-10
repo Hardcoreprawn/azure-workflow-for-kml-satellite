@@ -20,9 +20,7 @@ from treesight.errors import ContractError
 
 class TestBlobUrlHelpers:
     def test_expected_blob_host_prefers_development_storage(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setattr(
-            "treesight.config.STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true"
-        )
+        monkeypatch.setattr("treesight.config.STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true")
         monkeypatch.setattr("treesight.config.STORAGE_ACCOUNT_NAME", "")
         assert _blob_url._expected_blob_host() == "devstoreaccount1.blob.core.windows.net"
 
@@ -34,9 +32,7 @@ class TestBlobUrlHelpers:
         monkeypatch.setattr("treesight.config.STORAGE_ACCOUNT_NAME", "")
         assert _blob_url._expected_blob_host() == "127.0.0.1"
 
-    def test_expected_blob_host_from_account_name_and_managed_identity(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_expected_blob_host_from_account_name_and_managed_identity(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr("treesight.config.STORAGE_CONNECTION_STRING", "AccountName=MyAcct;")
         monkeypatch.setattr("treesight.config.STORAGE_ACCOUNT_NAME", "fallback")
         assert _blob_url._expected_blob_host() == "myacct.blob.core.windows.net"
@@ -44,17 +40,13 @@ class TestBlobUrlHelpers:
         monkeypatch.setattr("treesight.config.STORAGE_CONNECTION_STRING", "")
         assert _blob_url._expected_blob_host() == "fallback.blob.core.windows.net"
 
-    def test_is_trusted_blob_host_allows_expected_and_azurite_aliases(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_is_trusted_blob_host_allows_expected_and_azurite_aliases(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(_blob_url, "_expected_blob_host", lambda: "acct.blob.core.windows.net")
         assert _blob_url._is_trusted_blob_host("acct.blob.core.windows.net") is True
         assert _blob_url._is_trusted_blob_host("localhost") is True
         assert _blob_url._is_trusted_blob_host("evil.example.com") is False
 
-    def test_extract_container_and_blob_name_for_azure_and_azurite(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_extract_container_and_blob_name_for_azure_and_azurite(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(_blob_url, "_is_trusted_blob_host", lambda _host: True)
 
         azure_url = "https://acct.blob.core.windows.net/kml-input/folder/file.kml"
@@ -83,9 +75,7 @@ class TestBlobUrlHelpers:
     )
     def test_validate_blob_event_errors(self, blob_name, container_name, content_length, code):
         with pytest.raises(ContractError) as exc:
-            _blob_url._validate_blob_event(
-                blob_name, container_name, {"contentLength": content_length}
-            )
+            _blob_url._validate_blob_event(blob_name, container_name, {"contentLength": content_length})
         assert exc.value.code == code
 
 
@@ -109,9 +99,7 @@ class TestDiagnostics:
         )
 
     def test_orchestrator_status_options(self):
-        resp = asyncio.run(
-            _build_orchestrator_status_response(self._req(method="OPTIONS"), _Client(None))
-        )
+        resp = asyncio.run(_build_orchestrator_status_response(self._req(method="OPTIONS"), _Client(None)))
         assert resp.status_code == 204
 
     def test_orchestrator_status_rate_limited(self):
@@ -128,27 +116,21 @@ class TestDiagnostics:
     def test_orchestrator_status_missing_instance_id(self):
         with patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter:
             limiter.return_value.is_allowed.return_value = True
-            resp = asyncio.run(
-                _build_orchestrator_status_response(self._req(route_params={}), _Client(None))
-            )
+            resp = asyncio.run(_build_orchestrator_status_response(self._req(route_params={}), _Client(None)))
         assert resp.status_code == 400
 
     def test_orchestrator_status_not_found(self):
         with patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter:
             limiter.return_value.is_allowed.return_value = True
             resp = asyncio.run(
-                _build_orchestrator_status_response(
-                    self._req(route_params={"instance_id": "missing"}), _Client(None)
-                )
+                _build_orchestrator_status_response(self._req(route_params={"instance_id": "missing"}), _Client(None))
             )
         assert resp.status_code == 404
 
     def test_analysis_history_auth_and_rate_limit_branches(self):
         req = self._req(route_params={}, url="/api/analysis/history")
 
-        with patch(
-            "blueprints.pipeline.diagnostics.check_auth", side_effect=ValueError("bad token")
-        ):
+        with patch("blueprints.pipeline.diagnostics.check_auth", side_effect=ValueError("bad token")):
             resp = asyncio.run(_build_analysis_history_route_response(req, SimpleNamespace()))
             assert resp.status_code == 401
 
@@ -167,9 +149,7 @@ class TestDiagnostics:
     def test_analysis_history_success_calls_builder(self):
         req = self._req(route_params={}, url="/api/analysis/history")
 
-        fake_resp = func.HttpResponse(
-            json.dumps({"ok": True}), status_code=200, mimetype="application/json"
-        )
+        fake_resp = func.HttpResponse(json.dumps({"ok": True}), status_code=200, mimetype="application/json")
         with (
             patch("blueprints.pipeline.diagnostics.check_auth", return_value=({}, "user-1")),
             patch("blueprints.pipeline.diagnostics.get_pipeline_limiter") as limiter,

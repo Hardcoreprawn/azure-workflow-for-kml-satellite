@@ -94,14 +94,11 @@ class TestContainerAppsScaling:
 
     def test_function_app_config_has_max_instance_count(self, main_tf):
         assert "maximumInstanceCount" in main_tf, (
-            "main.tf must set maximumInstanceCount in functionAppConfig "
-            "to cap Container Apps scaling"
+            "main.tf must set maximumInstanceCount in functionAppConfig to cap Container Apps scaling"
         )
 
     def test_max_instances_variable_exists(self, variables_tf):
-        assert "function_max_instances" in variables_tf, (
-            "variables.tf must define function_max_instances variable"
-        )
+        assert "function_max_instances" in variables_tf, "variables.tf must define function_max_instances variable"
 
     def test_max_instances_default_is_reasonable(self, variables_tf):
         match = re.search(
@@ -112,8 +109,7 @@ class TestContainerAppsScaling:
         assert match, "function_max_instances variable must have a default"
         default = int(match.group(1))
         assert 1 <= default <= 10, (
-            f"function_max_instances default is {default} — "
-            "should be between 1 and 10 for cost safety"
+            f"function_max_instances default is {default} — should be between 1 and 10 for cost safety"
         )
 
 
@@ -129,32 +125,26 @@ class TestBrowserAnalytics:
     def test_analytics_script_tag_present(self, page):
         content = page.read_text()
         assert "/js/analytics.js" in content, (
-            f'{page.name} must include <script src="/js/analytics.js"> '
-            "for App Insights browser telemetry"
+            f'{page.name} must include <script src="/js/analytics.js"> for App Insights browser telemetry'
         )
 
     @pytest.mark.parametrize("page", HTML_PAGES, ids=lambda p: p.name)
     def test_ai_connection_string_meta_tag(self, page):
         content = page.read_text()
         assert 'name="ai-connection-string"' in content, (
-            f'{page.name} must include <meta name="ai-connection-string"> '
-            "for the analytics SDK to read at runtime"
+            f'{page.name} must include <meta name="ai-connection-string"> for the analytics SDK to read at runtime'
         )
 
     def test_analytics_js_exists(self):
         js = WEBSITE / "js" / "analytics.js"
         assert js.exists(), "website/js/analytics.js must exist"
         content = js.read_text()
-        assert "trackPageView" in content, (
-            "analytics.js must call trackPageView for page-level telemetry"
-        )
+        assert "trackPageView" in content, "analytics.js must call trackPageView for page-level telemetry"
 
     def test_analytics_disables_cookies(self):
         """GDPR: analytics must not set cookies."""
         content = (WEBSITE / "js" / "analytics.js").read_text()
-        assert "disableCookiesUsage" in content, (
-            "analytics.js must set disableCookiesUsage for GDPR compliance"
-        )
+        assert "disableCookiesUsage" in content, "analytics.js must set disableCookiesUsage for GDPR compliance"
 
 
 # ---------------------------------------------------------------------------
@@ -167,9 +157,7 @@ class TestSubmissionAuthRequirement:
 
     def test_submission_imports_auth_check(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
-        assert "check_auth" in src, (
-            "submission.py must import check_auth so pipeline submission requires sign-in"
-        )
+        assert "check_auth" in src, "submission.py must import check_auth so pipeline submission requires sign-in"
 
     def test_analysis_submit_routes_to_signed_in_handler(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
@@ -180,15 +168,11 @@ class TestSubmissionAuthRequirement:
         )
         assert func_match, "analysis_submit function not found"
         body = func_match.group(1)
-        assert "_submit_analysis_request" in body, (
-            "analysis_submit must delegate to the signed-in submission handler"
-        )
+        assert "_submit_analysis_request" in body, "analysis_submit must delegate to the signed-in submission handler"
 
     def test_no_anonymous_submit_handler_remains(self):
         src = (ROOT / "blueprints" / "pipeline" / "submission.py").read_text()
-        assert "_submit_demo_request" not in src, (
-            "submission.py must not keep an anonymous pipeline submission path"
-        )
+        assert "_submit_demo_request" not in src, "submission.py must not keep an anonymous pipeline submission path"
 
 
 # ---------------------------------------------------------------------------
@@ -215,9 +199,7 @@ class TestRequireAuth:
         )
         assert match, "REQUIRE_AUTH app setting not found"
         value_expr = match.group(1).strip()
-        assert value_expr == '"true"', (
-            f"REQUIRE_AUTH must be unconditionally '\"true\"', got: {value_expr}"
-        )
+        assert value_expr == '"true"', f"REQUIRE_AUTH must be unconditionally '\"true\"', got: {value_expr}"
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +235,7 @@ class TestLogAnalyticsCap:
         match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
         assert match, "dev.tfvars must set custom_domain explicitly"
         assert match.group(1) != "", (
-            "dev.tfvars must set custom_domain to the apex domain "
-            "so the SWA serves CORS headers for the correct origin"
+            "dev.tfvars must set custom_domain to the apex domain so the SWA serves CORS headers for the correct origin"
         )
 
 
@@ -279,15 +260,13 @@ class TestStaticWebAppCostControls:
     def test_static_web_app_sku_tier_is_free(self):
         body = self._static_web_app_main_body(MAIN_TF.read_text())
         assert 'sku_tier = "Free"' in body, (
-            'azurerm_static_web_app.main must keep sku_tier="Free" '
-            "to preserve the agreed SWA cost reduction"
+            'azurerm_static_web_app.main must keep sku_tier="Free" to preserve the agreed SWA cost reduction'
         )
 
     def test_static_web_app_sku_size_is_free(self):
         body = self._static_web_app_main_body(MAIN_TF.read_text())
         assert 'sku_size = "Free"' in body, (
-            'azurerm_static_web_app.main must keep sku_size="Free" '
-            "to preserve the agreed SWA cost reduction"
+            'azurerm_static_web_app.main must keep sku_size="Free" to preserve the agreed SWA cost reduction'
         )
 
 
@@ -326,19 +305,14 @@ class TestPreviewSiteGracefulDegradation:
             "id: check-token that probes SWA_DEPLOYMENT_TOKEN availability"
         )
         run_script = step.get("run", "")
-        assert "GITHUB_OUTPUT" in run_script, (
-            "check-token step must write 'available' to GITHUB_OUTPUT"
-        )
+        assert "GITHUB_OUTPUT" in run_script, "check-token step must write 'available' to GITHUB_OUTPUT"
         assert "available=false" in run_script or "available=true" in run_script, (
-            "check-token step must emit an 'available' output so downstream "
-            "steps can conditionally skip the deploy"
+            "check-token step must emit an 'available' output so downstream steps can conditionally skip the deploy"
         )
 
     def test_deploy_step_gated_on_token_check(self, deploy_steps):
         step = self._find_step(deploy_steps, name_fragment="Deploy to SWA")
-        assert step is not None, (
-            "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
-        )
+        assert step is not None, "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
         condition = step.get("if", "")
         assert "steps.check-token.outputs.available" in condition, (
             "The 'Deploy to SWA staging environment' step must be gated on "
@@ -347,9 +321,7 @@ class TestPreviewSiteGracefulDegradation:
 
     def test_deploy_step_has_continue_on_error(self, deploy_steps):
         step = self._find_step(deploy_steps, name_fragment="Deploy to SWA")
-        assert step is not None, (
-            "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
-        )
+        assert step is not None, "preview-site.yml must contain a 'Deploy to SWA staging environment' step"
         assert step.get("continue-on-error") is True, (
             "The 'Deploy to SWA staging environment' step must set "
             "continue-on-error: true so an invalid/expired token does not fail the "
@@ -376,9 +348,7 @@ class TestClosePreviewGracefulDegradation:
 
     def test_close_step_has_continue_on_error(self, close_steps):
         step = next((s for s in close_steps if "Tear down" in (s.get("name") or "")), None)
-        assert step is not None, (
-            "preview-site.yml must contain a 'Tear down staging environment' step"
-        )
+        assert step is not None, "preview-site.yml must contain a 'Tear down staging environment' step"
         assert step.get("continue-on-error") is True, (
             "The 'Tear down staging environment' step must set continue-on-error: "
             "true so tearing down a preview that was never deployed doesn't fail "
@@ -430,8 +400,7 @@ class TestDetectSecretsCi:
     def test_security_workflow_has_detect_secrets(self):
         yml = SECURITY_YML.read_text()
         assert "detect-secrets" in yml, (
-            "security.yml must include a detect-secrets job — "
-            "pre-commit hooks can be bypassed with --no-verify"
+            "security.yml must include a detect-secrets job — pre-commit hooks can be bypassed with --no-verify"
         )
 
     def test_detect_secrets_is_a_job(self):
@@ -449,9 +418,7 @@ class TestDetectSecretsCi:
 
     def test_secrets_baseline_file_exists(self):
         baseline = ROOT / ".secrets.baseline"
-        assert baseline.exists(), (
-            ".secrets.baseline must be committed for the detect-secrets CI job"
-        )
+        assert baseline.exists(), ".secrets.baseline must be committed for the detect-secrets CI job"
 
 
 # ---------------------------------------------------------------------------
@@ -518,9 +485,7 @@ class TestCspAppInsights:
         html = (ROOT / "website" / "app" / "index.html").read_text()
         inline_pattern = re.compile(r'\bon\w+\s*=\s*["\']', re.IGNORECASE)
         matches = inline_pattern.findall(html)
-        assert not matches, (
-            f"Found inline event handler(s) in app/index.html that CSP will block: {matches}"
-        )
+        assert not matches, f"Found inline event handler(s) in app/index.html that CSP will block: {matches}"
 
     def test_no_inline_executable_scripts_in_eudr_html(self):
         """CSP without unsafe-inline in script-src blocks inline executable scripts."""
@@ -537,9 +502,7 @@ class TestCspAppInsights:
             def handle_starttag(self, tag, attrs):
                 if tag.lower() != "script":
                     return
-                attr_map = {
-                    (name or "").lower(): (value or "").strip().lower() for name, value in attrs
-                }
+                attr_map = {(name or "").lower(): (value or "").strip().lower() for name, value in attrs}
                 has_src = bool(attr_map.get("src"))
                 is_json_data_tag = attr_map.get("type") == "application/json"
                 self._disallowed_candidate = not has_src and not is_json_data_tag
@@ -547,9 +510,7 @@ class TestCspAppInsights:
                 attrs_text = " ".join(
                     f'{name}="{value}"' if value is not None else str(name) for name, value in attrs
                 ).strip()
-                self._candidate_attrs = (
-                    f"<script {attrs_text}>".strip() if attrs_text else "<script>"
-                )
+                self._candidate_attrs = f"<script {attrs_text}>".strip() if attrs_text else "<script>"
 
             def handle_data(self, data):
                 if self._disallowed_candidate and data.strip():
@@ -592,8 +553,7 @@ class TestCspAppInsights:
                     continue
                 host = src.split("//", 1)[1].rstrip("/")
                 assert any(_csp_token_matches_host(cs, host) for cs in connect_sources), (
-                    f"CSP {directive} allows {src} but connect-src does not — "
-                    f"source-map fetches will be blocked"
+                    f"CSP {directive} allows {src} but connect-src does not — source-map fetches will be blocked"
                 )
 
 
@@ -611,8 +571,7 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_sets_app_settings_via_cli(self, deploy_yml):
         assert "az webapp config appsettings set" in deploy_yml, (
-            "deploy.yml must still apply Function App settings via az CLI while "
-            "body is ignore_changes in tofu"
+            "deploy.yml must still apply Function App settings via az CLI while body is ignore_changes in tofu"
         )
         assert "Settings unchanged — skipping update" in deploy_yml, (
             "deploy.yml should skip app settings writes when current settings already match"
@@ -620,8 +579,7 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_skips_function_app_patch_when_cors_and_scaling_match(self, deploy_yml):
         assert "CORS/scaling unchanged — skipping PATCH" in deploy_yml, (
-            "deploy.yml should skip Function App PATCH when CORS/scaling "
-            "already match desired values"
+            "deploy.yml should skip Function App PATCH when CORS/scaling already match desired values"
         )
         assert "Orchestrator CORS/scaling unchanged — skipping PATCH" in deploy_yml, (
             "deploy.yml should also skip Orchestrator Function App PATCH when values are unchanged"
@@ -629,22 +587,16 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_sets_max_instances_via_cli(self, deploy_yml):
         assert "maximumInstanceCount" in deploy_yml, (
-            "deploy.yml must apply maximumInstanceCount via az CLI because "
-            "body is ignore_changes in tofu"
+            "deploy.yml must apply maximumInstanceCount via az CLI because body is ignore_changes in tofu"
         )
 
     def test_deploy_updates_container_app_scale_rules_via_patch(self, deploy_yml):
-        patch_call = (
-            "az rest --method PATCH \\\n"
-            '              --url "${CONTAINER_APP_ID}?api-version=2024-03-01"'
-        )
+        patch_call = 'az rest --method PATCH \\\n              --url "${CONTAINER_APP_ID}?api-version=2024-03-01"'
         assert patch_call in deploy_yml, (
-            "deploy.yml must use PATCH (not PUT) when wiring KEDA scale rules"
-            " on the backing Container App"
+            "deploy.yml must use PATCH (not PUT) when wiring KEDA scale rules on the backing Container App"
         )
         assert "az rest --method PUT" not in deploy_yml, (
-            "deploy.yml must not replace the entire Container App resource"
-            " when updating scale rules"
+            "deploy.yml must not replace the entire Container App resource when updating scale rules"
         )
 
     def test_deploy_sources_cli_managed_function_settings_from_tofu_outputs(self, deploy_yml):
@@ -653,8 +605,7 @@ class TestDeployWorkflowSettings:
             "to avoid drifting away from Terraform"
         )
         assert "tofu output -raw function_app_cli_maximum_instance_count" in deploy_yml, (
-            "deploy.yml must source the CLI-managed scale cap from tofu outputs "
-            "to avoid reparsing tfvars"
+            "deploy.yml must source the CLI-managed scale cap from tofu outputs to avoid reparsing tfvars"
         )
         assert "grep 'ciam_tenant_name' environments/dev.tfvars" not in deploy_yml, (
             "deploy.yml should not reference CIAM settings (removed in #495)"
@@ -662,8 +613,7 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_injects_analytics_connection_string(self, deploy_yml):
         assert "ai-connection-string" in deploy_yml, (
-            "deploy.yml must inject the App Insights connection string into "
-            "HTML meta tags before SWA upload"
+            "deploy.yml must inject the App Insights connection string into HTML meta tags before SWA upload"
         )
 
     def test_swa_app_settings_not_managed_by_cli(self, deploy_yml):
@@ -679,26 +629,22 @@ class TestDeployWorkflowSettings:
         assert "function_app_orch_hostname" in deploy_yml, (
             "deploy.yml smoke check must use explicit orchestrator hostname output"
         )
-        assert (
-            '"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"'
-            in deploy_yml
-        ), "deploy.yml api-config injection must source orchestrator hostname output"
-        assert (
-            'FA_HOSTNAME="${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"'
-            in deploy_yml
-        ), "deploy.yml smoke-check step must target orchestrator hostname output"
-        assert "/api/health" in deploy_yml, (
-            "deploy.yml smoke check must test /api/health on the Container Apps FA"
+        assert '"apiBase": "https://${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"' in deploy_yml, (
+            "deploy.yml api-config injection must source orchestrator hostname output"
         )
+        assert 'FA_HOSTNAME="${{ needs.deploy-infra.outputs.function_app_orch_hostname }}"' in deploy_yml, (
+            "deploy.yml smoke-check step must target orchestrator hostname output"
+        )
+        assert "/api/health" in deploy_yml, "deploy.yml smoke check must test /api/health on the Container Apps FA"
         assert "curl" in deploy_yml, "deploy.yml smoke check must curl the FA health endpoint"
 
     def test_verify_runtime_readiness_checks_both_function_apps(self, deploy_yml):
         assert "COMPUTE_HOSTNAME=$(tofu output -raw function_app_default_hostname)" in deploy_yml, (
             "deploy.yml readiness verification must check compute app hostname"
         )
-        assert (
-            "ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)" in deploy_yml
-        ), "deploy.yml readiness verification must check orchestrator app hostname"
+        assert "ORCH_HOSTNAME=$(tofu output -raw function_app_orch_default_hostname)" in deploy_yml, (
+            "deploy.yml readiness verification must check orchestrator app hostname"
+        )
         assert 'verify_host_readiness "compute" "$COMPUTE_HOSTNAME"' in deploy_yml, (
             "deploy.yml readiness verification must probe compute app health/readiness"
         )
@@ -732,14 +678,11 @@ class TestDeployWorkflowSettings:
         assert "smoke_poll_interval_seconds" in deploy_yml, (
             "deploy.yml workflow_dispatch must expose smoke poll interval control"
         )
-        assert "smoke_max_attempts" in deploy_yml, (
-            "deploy.yml workflow_dispatch must expose smoke max-attempts control"
-        )
+        assert "smoke_max_attempts" in deploy_yml, "deploy.yml workflow_dispatch must expose smoke max-attempts control"
 
     def test_deploy_does_not_run_reset_helper(self, deploy_yml):
         assert "reset_dev_resource_group.py" not in deploy_yml, (
-            "deploy.yml should no longer call the clean-reset helper once "
-            "manual teardown owns resource deletion"
+            "deploy.yml should no longer call the clean-reset helper once manual teardown owns resource deletion"
         )
 
     def test_deploy_manual_teardown_path_only_prunes_state(self, deploy_yml):
@@ -752,18 +695,15 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_drops_stale_azapi_state_after_manual_teardown(self, deploy_yml):
         assert "Drop stale azapi state after manual teardown" in deploy_yml, (
-            "deploy.yml must clear stale azapi state after manual teardown so tofu plan "
-            "can recreate deleted resources"
+            "deploy.yml must clear stale azapi state after manual teardown so tofu plan can recreate deleted resources"
         )
         assert "tofu state rm" in deploy_yml, (
-            "deploy.yml manual teardown path must prune stale azapi resources "
-            "from state before tofu plan"
+            "deploy.yml manual teardown path must prune stale azapi resources from state before tofu plan"
         )
 
     def test_deploy_reconciles_event_grid_subscription(self, deploy_yml):
         assert "reconcile_eventgrid_subscription.py" in deploy_yml, (
-            "deploy.yml must reconcile the Event Grid webhook after "
-            "readiness so ingestion wiring is restored"
+            "deploy.yml must reconcile the Event Grid webhook after readiness so ingestion wiring is restored"
         )
 
     def test_deploy_sets_keda_queue_trigger_for_activities_app(self, deploy_yml):
@@ -796,8 +736,7 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_surfaces_stuck_arm_operation_diagnostics(self, deploy_yml):
         assert "another operation is in progress" in deploy_yml, (
-            "deploy.yml must detect stuck ARM write locks so retries do not hide "
-            "the blocking operation"
+            "deploy.yml must detect stuck ARM write locks so retries do not hide the blocking operation"
         )
         assert 'az monitor activity-log list --resource-id "$FUNC_ID"' in deploy_yml, (
             "deploy.yml must emit recent write activity for compute app lock diagnosis"
@@ -816,8 +755,7 @@ class TestDeployWorkflowSettings:
             re.DOTALL,
         )
         assert len(lock_blocks) >= 2, (
-            "deploy.yml must have stuck ARM lock detection blocks for both "
-            "compute and orchestrator Function Apps"
+            "deploy.yml must have stuck ARM lock detection blocks for both compute and orchestrator Function Apps"
         )
         for block in lock_blocks:
             assert "exit 1" in block, (
@@ -848,8 +786,7 @@ class TestDeployWorkflowSettings:
 
     def test_deploy_validates_infra_gate(self, deploy_yml):
         assert "validate_dev_infra_gate.py" in deploy_yml, (
-            "deploy.yml must validate the infra gate after reconciliation "
-            "so clean-slate redeploy failures stop the job"
+            "deploy.yml must validate the infra gate after reconciliation so clean-slate redeploy failures stop the job"
         )
 
     def test_deploy_runs_async_functional_smoke_gate(self, deploy_yml):
@@ -859,25 +796,17 @@ class TestDeployWorkflowSettings:
         assert "/api/internal-smoke" in deploy_yml, (
             "deploy.yml async smoke gate must target the internal deploy smoke endpoint"
         )
-        expected_curl_probe = (
-            "curl -sS --connect-timeout 5 --max-time 15 "
-            '-o /tmp/internal-smoke.json -w "%{http_code}"'
-        )
+        expected_curl_probe = 'curl -sS --connect-timeout 5 --max-time 15 -o /tmp/internal-smoke.json -w "%{http_code}"'
         assert expected_curl_probe in deploy_yml, (
             "deploy.yml async smoke gate must probe the internal smoke endpoint via curl"
         )
         assert '|| echo "000"' in deploy_yml, (
-            "deploy.yml async smoke gate must tolerate transient curl failures "
-            "and continue bounded retries"
+            "deploy.yml async smoke gate must tolerate transient curl failures and continue bounded retries"
         )
 
     def test_async_smoke_gate_is_bounded(self, deploy_yml):
-        assert "SMOKE_POLL_INTERVAL" in deploy_yml, (
-            "deploy.yml async smoke gate must define bounded poll interval"
-        )
-        assert "SMOKE_MAX_ATTEMPTS" in deploy_yml, (
-            "deploy.yml async smoke gate must define bounded max attempts"
-        )
+        assert "SMOKE_POLL_INTERVAL" in deploy_yml, "deploy.yml async smoke gate must define bounded poll interval"
+        assert "SMOKE_MAX_ATTEMPTS" in deploy_yml, "deploy.yml async smoke gate must define bounded max attempts"
         assert 'for attempt in $(seq 1 "$SMOKE_MAX_ATTEMPTS")' in deploy_yml, (
             "deploy.yml async smoke gate must use bounded retry attempts"
         )
@@ -911,12 +840,9 @@ class TestDeployWorkflowSettings:
             "deploy.yml must run a pipeline smoke test after the liveness gate "
             "to verify parse → acquire → fulfil without going through the auth gate"
         )
-        assert "pipeline_smoke.py" in deploy_yml, (
-            "deploy.yml pipeline smoke step must invoke scripts/pipeline_smoke.py"
-        )
+        assert "pipeline_smoke.py" in deploy_yml, "deploy.yml pipeline smoke step must invoke scripts/pipeline_smoke.py"
         assert "DEPLOY_ENV != 'prd'" in deploy_yml, (
-            "deploy.yml pipeline smoke test must be skipped in production "
-            "to avoid triggering live imagery acquisition"
+            "deploy.yml pipeline smoke test must be skipped in production to avoid triggering live imagery acquisition"
         )
 
 
@@ -972,22 +898,14 @@ class TestDeployNoOpDiffGuardLogic:
         program = self._extract_single_quoted(configure_app_run, "jq -Rnc '")
         return self._run_jq(program, settings_lines, "-Rnc")
 
-    def _current_settings_json(
-        self, configure_app_run: str, azure_settings_json: str, desired_json: str
-    ) -> str:
-        program = self._extract_single_quoted(
-            configure_app_run, 'jq -c --argjson desired "$DESIRED_SETTINGS_JSON" \''
-        )
-        return self._run_jq(
-            program, azure_settings_json, "-c", "--argjson", "desired", desired_json
-        )
+    def _current_settings_json(self, configure_app_run: str, azure_settings_json: str, desired_json: str) -> str:
+        program = self._extract_single_quoted(configure_app_run, 'jq -c --argjson desired "$DESIRED_SETTINGS_JSON" \'')
+        return self._run_jq(program, azure_settings_json, "-c", "--argjson", "desired", desired_json)
 
     def test_settings_diff_is_order_independent(self, configure_app_run):
         """Same settings in a different key order must compare as unchanged."""
         desired = self._desired_settings_json(configure_app_run, "FOO=1\nBAR=2\n")
-        azure_current = json.dumps(
-            [{"name": "BAR", "value": "2", "slotSetting": False}, {"name": "FOO", "value": "1"}]
-        )
+        azure_current = json.dumps([{"name": "BAR", "value": "2", "slotSetting": False}, {"name": "FOO", "value": "1"}])
         current = self._current_settings_json(configure_app_run, azure_current, desired)
         assert current == desired, "reordered-but-identical settings must compare equal"
 
@@ -1001,9 +919,7 @@ class TestDeployNoOpDiffGuardLogic:
             ]
         )
         current = self._current_settings_json(configure_app_run, azure_current, desired)
-        assert current == desired, (
-            "an Azure-managed setting outside tofu's list must not trigger a rewrite"
-        )
+        assert current == desired, "an Azure-managed setting outside tofu's list must not trigger a rewrite"
 
     def test_settings_diff_detects_changed_value(self, configure_app_run):
         """A genuinely different value must be detected as changed."""
@@ -1021,9 +937,7 @@ class TestDeployNoOpDiffGuardLogic:
 
     def test_settings_diff_handles_values_containing_equals(self, configure_app_run):
         """A setting value containing '=' (e.g. a connection string) must parse correctly."""
-        desired = self._desired_settings_json(
-            configure_app_run, "CONN_STR=AccountName=foo;AccountKey=bar==\n"
-        )
+        desired = self._desired_settings_json(configure_app_run, "CONN_STR=AccountName=foo;AccountKey=bar==\n")
         parsed = json.loads(desired)
         assert parsed == [{"name": "CONN_STR", "value": "AccountName=foo;AccountKey=bar=="}]
 
@@ -1043,8 +957,7 @@ class TestStripeKeyVaultBootstrap:
     def test_deployer_still_has_key_vault_secret_access(self):
         main_tf = MAIN_TF.read_text()
         assert 'role_definition_name = "Key Vault Secrets Officer"' in main_tf, (
-            "main.tf must still grant the deployer Key Vault Secrets Officer "
-            "for Stripe bootstrap scripts"
+            "main.tf must still grant the deployer Key Vault Secrets Officer for Stripe bootstrap scripts"
         )
 
     def test_stripe_app_settings_use_stable_key_vault_uris(self):
@@ -1069,8 +982,7 @@ class TestStripeKeyVaultBootstrap:
             "stripe_price_id_pro_eur",
         ]:
             assert f'variable "{variable_name}"' not in variables_tf, (
-                "variables.tf must not accept Stripe secret values once Key Vault "
-                "bootstrap owns those secrets"
+                "variables.tf must not accept Stripe secret values once Key Vault bootstrap owns those secrets"
             )
 
     def test_appinsights_connection_string_output_exists(self):
@@ -1089,8 +1001,7 @@ class TestStripeKeyVaultBootstrap:
         )
         assert match, "outputs.tf must define appinsights_connection_string output"
         assert "sensitive   = true" in match.group(0) or "sensitive = true" in match.group(0), (
-            "appinsights_connection_string output must be marked sensitive=true "
-            "to avoid OpenTofu plan failures"
+            "appinsights_connection_string output must be marked sensitive=true to avoid OpenTofu plan failures"
         )
 
 
@@ -1168,9 +1079,7 @@ class TestEventGridWebhookWiring:
         assert "/blobServices/default/containers/kml-input/blobs/analysis/" in body, (
             "Event Grid subject prefix must target analysis blobs in the kml-input container"
         )
-        assert "subjectEndsWith" not in body, (
-            "Event Grid subscription should not use extension-only suffix filters"
-        )
+        assert "subjectEndsWith" not in body, "Event Grid subscription should not use extension-only suffix filters"
 
 
 # ---------------------------------------------------------------------------
@@ -1191,17 +1100,15 @@ class TestPublicApiIngressDocsContract:
     def _documented_api_hosts(text: str) -> list[str]:
         urls = re.findall(r"https://[A-Za-z0-9{}.-]+", text)
         hosts = [url.replace("https://", "", 1) for url in urls]
-        return [
-            host for host in hosts if TestPublicApiIngressDocsContract._is_in_scope_api_host(host)
-        ]
+        return [host for host in hosts if TestPublicApiIngressDocsContract._is_in_scope_api_host(host)]
 
     @classmethod
     def _assert_uses_orchestrator_ingress_only(cls, text: str, *, source: str) -> None:
         hosts = cls._documented_api_hosts(text)
         assert hosts, f"{source} must document at least one API host"
-        assert not any(
-            host == "azurestaticapps.net" or host.endswith(".azurestaticapps.net") for host in hosts
-        ), f"{source} must not use Static Web App hostnames as API ingress"
+        assert not any(host == "azurestaticapps.net" or host.endswith(".azurestaticapps.net") for host in hosts), (
+            f"{source} must not use Static Web App hostnames as API ingress"
+        )
         assert not any(re.fullmatch(r"func-kmlsat-dev\.[A-Za-z0-9.-]+", host) for host in hosts), (
             f"{source} must not document the compute ingress hostname"
         )
@@ -1228,10 +1135,7 @@ class TestPublicApiIngressDocsContract:
             "Orchestrator is the canonical ingestion pipeline entry point."
         )
         # Defensive check: ensure we're NOT pointing to the compute app
-        assert (
-            "azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid"
-            not in tf
-        ), (
+        assert "azapi_resource.function_app.output.properties.defaultHostName}/runtime/webhooks/eventgrid" not in tf, (
             "Event Grid webhook must NOT target the compute function_app. "
             "blob_trigger is orchestrator-only and Event Grid must deliver to "
             "the orchestrator hostname."
@@ -1252,9 +1156,7 @@ class TestSemgrepConsistency:
             "security.yml Semgrep job must delegate to 'make sast' so the exact "
             "config runs identically locally and in CI"
         )
-        assert "semgrep scan" not in yml, (
-            "security.yml must not invoke 'semgrep scan' inline — use 'make sast'"
-        )
+        assert "semgrep scan" not in yml, "security.yml must not invoke 'semgrep scan' inline — use 'make sast'"
 
     def test_semgrep_does_not_use_config_auto(self):
         makefile = MAKEFILE.read_text()
@@ -1267,9 +1169,7 @@ class TestSemgrepConsistency:
     def test_sast_target_is_pinned(self):
         makefile = MAKEFILE.read_text()
         assert "sast:" in makefile, "Makefile must define a canonical 'sast' target"
-        assert "SEMGREP_VERSION ?=" in makefile, (
-            "Makefile must pin the Semgrep version so local and CI match"
-        )
+        assert "SEMGREP_VERSION ?=" in makefile, "Makefile must pin the Semgrep version so local and CI match"
         for pack in ("p/python", "p/owasp-top-ten", "p/security-audit"):
             assert pack in makefile, f"sast target must include pinned pack {pack}"
 
@@ -1292,52 +1192,38 @@ class TestTrivySignalQuality:
         makefile = MAKEFILE.read_text()
         assert (
             "scan-fs:" in makefile
-            and '"$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed'
-            in makefile
+            and '"$$T" fs . $(_TRIVY_IGN) --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed' in makefile
         ), "Makefile scan-fs target should ignore unfixed CVEs to reduce non-actionable alert noise"
 
     def test_deploy_trivy_image_ignores_unfixed(self):
         makefile = MAKEFILE.read_text()
         scan_image_cmd = (
-            '"$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) $(_TRIVY_SKIP) '
-            "--severity CRITICAL,HIGH --ignore-unfixed"
+            '"$$T" image $(IMAGE) $(_TRIVY_IGN) $(_TRIVY_SCAN) $(_TRIVY_SKIP) --severity CRITICAL,HIGH --ignore-unfixed'
         )
         assert "scan-image:" in makefile and scan_image_cmd in makefile, (
-            "Makefile scan-image target should ignore unfixed CVEs "
-            "to focus on actionable vulnerabilities"
+            "Makefile scan-image target should ignore unfixed CVEs to focus on actionable vulnerabilities"
         )
 
     def test_trivy_fs_make_uses_trivyignore(self):
         makefile = MAKEFILE.read_text()
-        assert "TRIVY_IGNOREFILE ?= .trivyignore" in makefile, (
-            "Makefile must default TRIVY_IGNOREFILE to .trivyignore"
-        )
-        assert '"$$T" fs . $(_TRIVY_IGN)' in makefile, (
-            "scan-fs must apply the configured Trivy ignorefile"
-        )
+        assert "TRIVY_IGNOREFILE ?= .trivyignore" in makefile, "Makefile must default TRIVY_IGNOREFILE to .trivyignore"
+        assert '"$$T" fs . $(_TRIVY_IGN)' in makefile, "scan-fs must apply the configured Trivy ignorefile"
 
     def test_trivy_scans_delegated_to_make(self):
         action = TRIVY_SCAN_ACTION.read_text()
         assert 'make "scan-${SCAN}"' in action, (
-            "the trivy-scan composite action must delegate to the canonical "
-            "make scan-* targets (single run path)"
+            "the trivy-scan composite action must delegate to the canonical make scan-* targets (single run path)"
         )
         # Inputs must reach the run: script via env (not ${{ }} interpolation)
         # to avoid shell injection — Semgrep run-shell-injection.
-        assert "SCAN: ${{ inputs.scan }}" in action, (
-            "composite action must pass inputs to the run step via env vars"
-        )
+        assert "SCAN: ${{ inputs.scan }}" in action, "composite action must pass inputs to the run step via env vars"
         assert 'scan-${{ inputs.scan }}"' not in action, (
-            "composite action run: script must not interpolate ${{ inputs }} "
-            "directly — pass via env and reference $VAR"
+            "composite action run: script must not interpolate ${{ inputs }} directly — pass via env and reference $VAR"
         )
         yml = SECURITY_YML.read_text()
-        assert "./.github/actions/trivy-scan" in yml, (
-            "security.yml must run Trivy through the shared composite action"
-        )
+        assert "./.github/actions/trivy-scan" in yml, "security.yml must run Trivy through the shared composite action"
         assert "trivy-action" not in yml, (
-            "security.yml should avoid bespoke trivy-action blocks in favor of the "
-            "shared composite action"
+            "security.yml should avoid bespoke trivy-action blocks in favor of the shared composite action"
         )
 
     def test_base_image_trivy_scan_uses_make(self):
@@ -1355,9 +1241,7 @@ class TestTrivySignalQuality:
         that scans references the action by path.
         """
         action = TRIVY_SCAN_ACTION.read_text()
-        assert "aquasecurity/setup-trivy@" in action, (
-            "the composite action must be the single place Trivy is installed"
-        )
+        assert "aquasecurity/setup-trivy@" in action, "the composite action must be the single place Trivy is installed"
 
         workflow_files = [SECURITY_YML, BASE_IMAGE_YML, DEPLOY_YML]
         for wf in workflow_files:
@@ -1365,9 +1249,7 @@ class TestTrivySignalQuality:
             assert "aquasecurity/setup-trivy@" not in text, (
                 f"{wf.name} must not install Trivy inline — use the composite action"
             )
-            assert "make scan-" not in text, (
-                f"{wf.name} must not call make scan-* inline — use the composite action"
-            )
+            assert "make scan-" not in text, f"{wf.name} must not call make scan-* inline — use the composite action"
             assert "./.github/actions/trivy-scan" in text, (
                 f"{wf.name} must invoke the shared trivy-scan composite action"
             )
@@ -1396,9 +1278,7 @@ class TestTrivySignalQuality:
         )
 
     def test_trivy_ignore_file_exists(self):
-        assert TRIVY_IGNORE.exists(), (
-            ".trivyignore must exist for temporary, documented risk exceptions"
-        )
+        assert TRIVY_IGNORE.exists(), ".trivyignore must exist for temporary, documented risk exceptions"
 
     def test_trivy_ignore_tracks_low_cost_network_acl_exceptions(self):
         ignore = TRIVY_IGNORE.read_text()
@@ -1408,9 +1288,7 @@ class TestTrivySignalQuality:
 
     def test_trivy_container_cve_suppressions_are_bounded_upstream_exceptions(self):
         ignore = TRIVY_IGNORE.read_text()
-        cve_entries = [
-            line.strip() for line in ignore.splitlines() if line.strip().startswith("CVE-")
-        ]
+        cve_entries = [line.strip() for line in ignore.splitlines() if line.strip().startswith("CVE-")]
         allowed = {
             "CVE-2026-48109": "#1030",
             "CVE-2026-48506": "#1031",
@@ -1419,9 +1297,7 @@ class TestTrivySignalQuality:
 
         for entry in cve_entries:
             vuln_id = entry.split()[0]
-            assert vuln_id in allowed, (
-                "only explicitly reviewed, upstream-vendored container CVEs may be suppressed"
-            )
+            assert vuln_id in allowed, "only explicitly reviewed, upstream-vendored container CVEs may be suppressed"
             assert allowed[vuln_id] in entry, "container CVE exceptions must link a tracking issue"
             assert "upstream Azure Functions bundle" in entry, (
                 "container CVE exceptions must identify the non-upgradeable upstream owner"
@@ -1435,9 +1311,7 @@ class TestTrivySignalQuality:
 
     def test_security_workflow_checks_trivyignore_expiry(self):
         yml = SECURITY_YML.read_text()
-        assert "Trivyignore Expiry Check" in yml, (
-            "security.yml must run a dedicated .trivyignore expiry check job"
-        )
+        assert "Trivyignore Expiry Check" in yml, "security.yml must run a dedicated .trivyignore expiry check job"
         assert "Validate .trivyignore expiries" in yml, (
             "security.yml must validate exp:YYYY-MM-DD metadata for .trivyignore entries"
         )
@@ -1497,9 +1371,7 @@ class TestTrivySignalQuality:
         set to the empty string on the command line.
         """
         makefile = MAKEFILE.read_text()
-        assert (
-            "_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)" in makefile
-        ), (
+        assert "_TRIVY_IGN = $(if $(TRIVY_IGNOREFILE),--ignorefile $(TRIVY_IGNOREFILE),)" in makefile, (
             "Makefile _TRIVY_IGN must use $(if ...) to conditionally include "
             "--ignorefile only when TRIVY_IGNOREFILE is non-empty"
         )
@@ -1547,9 +1419,9 @@ class TestContainerRuntimePrereqs:
             assert not re.search(r"\brm\b[^\n]*\.dll", host_section, flags=re.IGNORECASE), (
                 "Dockerfile.base host section must not rm any .dll files"
             )
-            assert not re.search(
-                r"find\b[^\n]*\.dll[^\n]*-delete", host_section, flags=re.IGNORECASE
-            ), "Dockerfile.base host section must not find -delete any .dll files"
+            assert not re.search(r"find\b[^\n]*\.dll[^\n]*-delete", host_section, flags=re.IGNORECASE), (
+                "Dockerfile.base host section must not find -delete any .dll files"
+            )
 
     def test_smoke_test_checks_host_dlls(self):
         """Container smoke test must verify critical host DLLs are present."""
@@ -1604,8 +1476,7 @@ class TestSubmissionCORSParity:
         assert fn_match, "error_response not found in _helpers.py"
         fn_body = fn_match.group(0)
         assert "Access-Control-Allow-Origin" in fn_body or "cors" in fn_body.lower(), (
-            "error_response must include CORS headers so error responses "
-            "are not blocked by CORS policy"
+            "error_response must include CORS headers so error responses are not blocked by CORS policy"
         )
 
 
@@ -1700,9 +1571,7 @@ class TestCIFeedbackHygiene:
 
     def test_deploy_never_cancels_in_progress(self):
         # Deploys must run to completion — never cancel a deploy mid-flight.
-        assert "cancel-in-progress: false" in DEPLOY_YML.read_text(), (
-            "deploy.yml must keep cancel-in-progress: false"
-        )
+        assert "cancel-in-progress: false" in DEPLOY_YML.read_text(), "deploy.yml must keep cancel-in-progress: false"
 
     def test_uv_setup_enables_cache(self):
         # Any workflow that still provisions uv per-job must enable caching to
@@ -1715,8 +1584,7 @@ class TestCIFeedbackHygiene:
             if "astral-sh/setup-uv" not in text:
                 continue
             assert "enable-cache: true" in text, (
-                f"{wf.name} setup-uv steps must enable caching to avoid re-resolving "
-                "the environment on every job"
+                f"{wf.name} setup-uv steps must enable caching to avoid re-resolving the environment on every job"
             )
 
     def test_ci_gate_jobs_run_in_dev_image(self):
@@ -1726,17 +1594,13 @@ class TestCIFeedbackHygiene:
         bare runner. See #1086 / ADR 0005."""
         workflow = yaml.safe_load(CI_YML.read_text())
         jobs = workflow["jobs"]
-        assert "resolve-image" in jobs, (
-            "ci.yml must define a resolve-image job that pins the dev image digest"
-        )
+        assert "resolve-image" in jobs, "ci.yml must define a resolve-image job that pins the dev image digest"
         # lint/test run directly as container jobs (job container == dev image).
         for job_id in ("lint", "test"):
             job = jobs[job_id]
             needs = job.get("needs")
             needs = [needs] if isinstance(needs, str) else (needs or [])
-            assert "resolve-image" in needs, (
-                f"{job_id} must depend on resolve-image for the pinned digest"
-            )
+            assert "resolve-image" in needs, f"{job_id} must depend on resolve-image for the pinned digest"
             container = job.get("container") or {}
             assert "needs.resolve-image.outputs.image" in str(container.get("image", "")), (
                 f"{job_id} must run inside the resolved dev image (by digest)"
@@ -1752,9 +1616,7 @@ class TestCIFeedbackHygiene:
         integ = jobs["integration"]
         needs = integ.get("needs")
         needs = [needs] if isinstance(needs, str) else (needs or [])
-        assert "resolve-image" in needs, (
-            "integration must depend on resolve-image for the pinned digest"
-        )
+        assert "resolve-image" in needs, "integration must depend on resolve-image for the pinned digest"
         integ_text = yaml.dump(integ)
         assert "needs.resolve-image.outputs.image" in integ_text, (
             "integration must run the gate inside the resolved dev image "
@@ -1787,17 +1649,14 @@ class TestCIFeedbackHygiene:
         the orchestrator never starts (#1273)."""
         compose = yaml.safe_load(COMPOSE_YML.read_text())
         services = compose["services"]
-        assert "event-grid-relay" in services, (
-            "docker-compose.yml must define an event-grid-relay service"
-        )
+        assert "event-grid-relay" in services, "docker-compose.yml must define an event-grid-relay service"
         relay = services["event-grid-relay"]
         depends_on = relay.get("depends_on", {})
         assert depends_on.get("func", {}).get("condition") == "service_healthy", (
             "event-grid-relay must wait for func to be healthy before starting"
         )
         assert relay.get("environment", {}).get("PYTHONUNBUFFERED") == "1", (
-            "without this, container stdout is fully block-buffered (no TTY) "
-            "and `docker compose logs` appears silent"
+            "without this, container stdout is fully block-buffered (no TTY) and `docker compose logs` appears silent"
         )
 
     def test_compose_repo_bind_mounts_use_dev_workspace(self):
@@ -1813,8 +1672,7 @@ class TestCIFeedbackHygiene:
             f"{name}: {volume}"
             for name, service in compose["services"].items()
             for volume in service.get("volumes", [])
-            if isinstance(volume, str)
-            and (volume.split(":", 1)[0] == "." or volume.split(":", 1)[0].startswith("./"))
+            if isinstance(volume, str) and (volume.split(":", 1)[0] == "." or volume.split(":", 1)[0].startswith("./"))
         ]
         assert not violations, (
             "these services bind-mount a bare '.'/'./' path instead of "
@@ -1844,9 +1702,7 @@ class TestCIFeedbackHygiene:
         assert env.get("COSMOS_ENDPOINT") == "http://cosmos:8081", (
             "func's COSMOS_ENDPOINT must point at the cosmos service"
         )
-        assert env.get("COSMOS_KEY"), (
-            "func must set COSMOS_KEY for the emulator (it has no managed-identity backend)"
-        )
+        assert env.get("COSMOS_KEY"), "func must set COSMOS_KEY for the emulator (it has no managed-identity backend)"
 
     def test_cosmos_key_never_referenced_in_production_infra(self):
         """COSMOS_KEY must stay a local-dev-only concept — a real deployment
@@ -1877,12 +1733,8 @@ class TestCIFeedbackHygiene:
         assert ACTIONLINT_YML.exists(), "actionlint.yml CI workflow must exist"
         wf = ACTIONLINT_YML.read_text()
         # CI must invoke the canonical make target, not an inline binary run.
-        assert "make lint-actions" in wf, (
-            "actionlint.yml must run `make lint-actions` (single route shared with local)"
-        )
-        assert "SHELLCHECK_OPTS" not in wf, (
-            "shellcheck rules must live in .shellcheckrc, not inline in the workflow"
-        )
+        assert "make lint-actions" in wf, "actionlint.yml must run `make lint-actions` (single route shared with local)"
+        assert "SHELLCHECK_OPTS" not in wf, "shellcheck rules must live in .shellcheckrc, not inline in the workflow"
 
         # The pinned version, target, and shellcheck rule suppressions all live
         # in the Makefile as the single source of truth (matching the
@@ -1890,9 +1742,7 @@ class TestCIFeedbackHygiene:
         # shellcheck via stdin, so a repo-root .shellcheckrc is not honoured —
         # the suppressions must ride on SHELLCHECK_OPTS from the make target.
         makefile = MAKEFILE.read_text()
-        assert "lint-actions:" in makefile, (
-            "Makefile must define the canonical 'lint-actions' target"
-        )
+        assert "lint-actions:" in makefile, "Makefile must define the canonical 'lint-actions' target"
         assert re.search(r"ACTIONLINT_VERSION \?= [0-9.]+", makefile), (
             "Makefile must pin ACTIONLINT_VERSION as the single source of truth"
         )
@@ -1904,9 +1754,7 @@ class TestCIFeedbackHygiene:
         # Local pre-commit must route through the same make target, not pin its
         # own separate actionlint version.
         pc = (ROOT / ".pre-commit-config.yaml").read_text()
-        assert "make lint-actions" in pc, (
-            "pre-commit actionlint hook must run `make lint-actions` so local == CI"
-        )
+        assert "make lint-actions" in pc, "pre-commit actionlint hook must run `make lint-actions` so local == CI"
         assert "rhysd/actionlint" not in pc, (
             "pre-commit must not pin a separate actionlint version; use make lint-actions"
         )
@@ -1946,9 +1794,7 @@ class TestDiffCoverRequiredGate:
         past the PR's branch point, and diff-cover fails with a
         'no merge base' CommandError on every such PR (found via #1282-1284)."""
         ci = CI_YML.read_text()
-        fetch_line = next(
-            line for line in ci.splitlines() if "git fetch" in line and "BASE_REF" in line
-        )
+        fetch_line = next(line for line in ci.splitlines() if "git fetch" in line and "BASE_REF" in line)
         assert "--depth" not in fetch_line, (
             "the diff-cover base-ref fetch must not be shallow (--depth=N) — "
             "this breaks merge-base resolution once main has moved on from "
@@ -1960,26 +1806,18 @@ class TestInfracostCostGate:
     """Verify Infracost CI gate is properly configured."""
 
     def test_infracost_workflow_exists(self):
-        assert INFRACOST_YML.exists(), (
-            "Infracost workflow missing at .github/workflows/infracost.yml"
-        )
+        assert INFRACOST_YML.exists(), "Infracost workflow missing at .github/workflows/infracost.yml"
 
     def test_infracost_usage_file_exists(self):
-        assert INFRACOST_USAGE.exists(), (
-            "Infracost usage file missing at infra/tofu/infracost-usage.yml"
-        )
+        assert INFRACOST_USAGE.exists(), "Infracost usage file missing at infra/tofu/infracost-usage.yml"
 
     def test_infracost_workflow_triggers_on_infra_changes(self):
         content = INFRACOST_YML.read_text()
-        assert "infra/tofu/**" in content, (
-            "Infracost workflow must trigger on infra/tofu/** changes"
-        )
+        assert "infra/tofu/**" in content, "Infracost workflow must trigger on infra/tofu/** changes"
 
     def test_infracost_workflow_has_budget_check(self):
         content = INFRACOST_YML.read_text()
-        assert "budget" in content.lower(), (
-            "Infracost workflow must include a budget threshold check"
-        )
+        assert "budget" in content.lower(), "Infracost workflow must include a budget threshold check"
 
     def test_infracost_usage_file_has_version(self):
         content = INFRACOST_USAGE.read_text()
@@ -1993,23 +1831,17 @@ class TestInfracostCostGate:
             "azurerm_key_vault.main",
         ]
         for resource in expected:
-            assert resource in content, (
-                f"Infracost usage file must have usage parameters for {resource}"
-            )
+            assert resource in content, f"Infracost usage file must have usage parameters for {resource}"
 
     def test_collection_script_exists(self):
         script = ROOT / "scripts" / "collect_infracost_usage.py"
-        assert script.exists(), (
-            "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
-        )
+        assert script.exists(), "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
 
     def test_infracost_optional_deps_defined(self):
         pyproject = ROOT / "pyproject.toml"
         content = pyproject.read_text()
         assert "[project.optional-dependencies]" in content
-        assert "infracost" in content, (
-            "pyproject.toml must define an 'infracost' optional dep group"
-        )
+        assert "infracost" in content, "pyproject.toml must define an 'infracost' optional dep group"
 
 
 # ---------------------------------------------------------------------------
@@ -2028,8 +1860,7 @@ class TestLinkedIssuePullRequestGate:
     def test_linked_issue_check_context_name_is_stable(self):
         content = REQUIRE_LINKED_ISSUE_YML.read_text()
         assert "name: check-issue-link" in content, (
-            "Linked-issue workflow job must be named 'check-issue-link' "
-            "so it can be required by branch protection"
+            "Linked-issue workflow job must be named 'check-issue-link' so it can be required by branch protection"
         )
 
     def test_linked_issue_workflow_validates_closing_keywords(self):
@@ -2066,13 +1897,9 @@ class TestLinkedIssuePullRequestGate:
         assert "head_ref" not in content and "head.ref" not in content, (
             "exemption must not trust the (forgeable) branch name"
         )
-        assert "pull_request.title" not in content, (
-            "exemption must not trust the (forgeable) PR title"
-        )
+        assert "pull_request.title" not in content, "exemption must not trust the (forgeable) PR title"
         # Broad bot allowlisting would let any installed App bypass the gate.
-        assert "user.type" not in content, (
-            "do not exempt all bots (user.type == 'Bot'); allowlist dependabot only"
-        )
+        assert "user.type" not in content, "do not exempt all bots (user.type == 'Bot'); allowlist dependabot only"
 
 
 # ---------------------------------------------------------------------------
@@ -2128,8 +1955,7 @@ class TestParseKmlGeometryHoleHandling:
         outer_idx = loop_body.find("outerBoundaryIs")
         raw_coord_idx = loop_body.find("getElementsByTagName('coordinates')")
         assert outer_idx < raw_coord_idx, (
-            "parseKmlGeometry must check outerBoundaryIs before falling back "
-            "to raw coordinates extraction (#580)"
+            "parseKmlGeometry must check outerBoundaryIs before falling back to raw coordinates extraction (#580)"
         )
 
 
@@ -2175,23 +2001,18 @@ class TestEudrModeToggle:
         content = self.APP_BILLING.read_text()
         assert "app-eudr-toggle" in content, "applyBillingStatus must manage EUDR toggle visibility"
         # Must check for paid tiers
-        assert "paidTiers" in content or "starter" in content, (
-            "EUDR toggle visibility must be gated on paid tier list"
-        )
+        assert "paidTiers" in content or "starter" in content, "EUDR toggle visibility must be gated on paid tier list"
 
     def test_eudr_request_uses_selected_aoi_context(self):
         content = self.APP_EVIDENCE_DISPLAY_AI.read_text()
         fn_start = content.find("async function requestEudrAssessment(")
-        assert fn_start != -1, (
-            "requestEudrAssessment function not found in app-evidence-display-ai.js"
-        )
+        assert fn_start != -1, "requestEudrAssessment function not found in app-evidence-display-ai.js"
         fn_end = content.find("\n  window.CanopexEvidenceDisplayAi", fn_start)
         if fn_end == -1:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
         assert "activeEvidenceContext" in content, (
-            "app-evidence-display-ai.js must define a helper that resolves "
-            "the active parcel context"
+            "app-evidence-display-ai.js must define a helper that resolves the active parcel context"
         )
         assert "activeEvidenceContext(state)" in fn_body or (
             "selectedAoi" in fn_body and "per_aoi_enrichment" in fn_body
@@ -2200,22 +2021,17 @@ class TestEudrModeToggle:
     def test_eudr_request_uses_real_ndvi_dates(self):
         content = self.APP_EVIDENCE_DISPLAY_AI.read_text()
         fn_start = content.find("async function requestEudrAssessment(")
-        assert fn_start != -1, (
-            "requestEudrAssessment function not found in app-evidence-display-ai.js"
-        )
+        assert fn_start != -1, "requestEudrAssessment function not found in app-evidence-display-ai.js"
         fn_end = content.find("\n  window.CanopexEvidenceDisplayAi", fn_start)
         if fn_end == -1:
             fn_end = len(content)
         fn_body = content[fn_start:fn_end]
         assert "buildEvidenceNdviTimeseries" in content, (
-            "app-evidence-display-ai.js must define a helper that builds"
-            " dated NDVI timeseries for evidence requests"
+            "app-evidence-display-ai.js must define a helper that builds dated NDVI timeseries for evidence requests"
         )
-        assert (
-            "buildEvidenceNdviTimeseries(source" in fn_body
-            or "f.datetime" in fn_body
-            or "fp.start" in fn_body
-        ), "requestEudrAssessment must send a real NDVI observation date, not only a display label"
+        assert "buildEvidenceNdviTimeseries(source" in fn_body or "f.datetime" in fn_body or "fp.start" in fn_body, (
+            "requestEudrAssessment must send a real NDVI observation date, not only a display label"
+        )
 
 
 class TestEvidenceMapQualityGate:
@@ -2227,12 +2043,10 @@ class TestEvidenceMapQualityGate:
     def test_evidence_map_reads_frame_quality_metadata(self):
         content = self.APP_EVIDENCE_DISPLAY_MAP.read_text()
         assert "rgb_display_suitable" in content, (
-            "app-evidence-display-map.js must read frame_plan.rgb_display_suitable "
-            "so coarse RGB frames can be demoted"
+            "app-evidence-display-map.js must read frame_plan.rgb_display_suitable so coarse RGB frames can be demoted"
         )
         assert "preferred_layer" in content, (
-            "app-evidence-display-map.js must read frame_plan.preferred_layer "
-            "to choose RGB vs NDVI intelligently"
+            "app-evidence-display-map.js must read frame_plan.preferred_layer to choose RGB vs NDVI intelligently"
         )
 
     def test_evidence_map_chooses_default_layer_from_frame_plan(self):
@@ -2376,9 +2190,7 @@ class TestEndpointAuthAudit:
                 if i < len(lines) and re.match(r"\s*(?:async )?def ", lines[i]):
                     i += 1
                 # Collect body until next top-level construct
-                while i < len(lines) and not re.match(
-                    r"(?:@bp\.|(?:async )?def |class )\S", lines[i]
-                ):
+                while i < len(lines) and not re.match(r"(?:@bp\.|(?:async )?def |class )\S", lines[i]):
                     i += 1
                 block = "\n".join(lines[block_start:i])
 
@@ -2412,13 +2224,10 @@ class TestEndpointAuthAudit:
                 if re.search(rf"""route\s*=\s*["']{re.escape(route)}["']""", src):
                     offenders.append(f"{py_file.relative_to(ROOT)}: route='{route}'")
 
-        assert not offenders, (
-            "Retired demo/proxy routes must not be registered (#922):\n"
-            + "\n".join(f"  - {o}" for o in offenders)
+        assert not offenders, "Retired demo/proxy routes must not be registered (#922):\n" + "\n".join(
+            f"  - {o}" for o in offenders
         )
-        assert not (bp_dir / "demo.py").exists(), (
-            "blueprints/demo.py was retired in #922 and must not be reintroduced"
-        )
+        assert not (bp_dir / "demo.py").exists(), "blueprints/demo.py was retired in #922 and must not be reintroduced"
 
 
 # ---------------------------------------------------------------------------
@@ -2491,16 +2300,12 @@ class TestCiamTofuOwnership:
     def test_ciam_deploy_sp_object_id_variable_declared(self, variables_tf):
         """ciam_deploy_sp_object_id variable must exist for owner assertion."""
         assert 'variable "ciam_deploy_sp_object_id"' in variables_tf, (
-            "variables.tf must declare ciam_deploy_sp_object_id to enable "
-            "Tofu-managed app owner assertion (issue #804)"
+            "variables.tf must declare ciam_deploy_sp_object_id to enable Tofu-managed app owner assertion (issue #804)"
         )
 
     def test_ciam_federated_identity_credential_resource_declared(self, main_tf):
         """azuread_application_federated_identity_credential.ciam_deploy_sp must be declared."""
-        assert (
-            'resource "azuread_application_federated_identity_credential" "ciam_deploy_sp"'
-            in main_tf
-        ), (
+        assert 'resource "azuread_application_federated_identity_credential" "ciam_deploy_sp"' in main_tf, (
             "main.tf must declare azuread_application_federated_identity_credential.ciam_deploy_sp "
             "to bring deploy SP OIDC trust under Tofu state (issue #804)"
         )
@@ -2562,12 +2367,10 @@ class TestCiamTofuOwnership:
             "infra/tofu/README.md must document the CIAM Tofu ownership phases (issue #781)"
         )
         assert "ciam_app_object_id" in readme, (
-            "infra/tofu/README.md must document the ciam_app_object_id variable "
-            "and how to find the object ID"
+            "infra/tofu/README.md must document the ciam_app_object_id variable and how to find the object ID"
         )
         assert "Deprecation of manual portal workflow" in readme, (
-            "infra/tofu/README.md must explicitly deprecate the manual portal workflow "
-            "once Phase 2 is active"
+            "infra/tofu/README.md must explicitly deprecate the manual portal workflow once Phase 2 is active"
         )
 
 

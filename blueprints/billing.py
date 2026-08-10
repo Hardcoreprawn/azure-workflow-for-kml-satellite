@@ -513,20 +513,15 @@ def billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     )
 
 
-@bp.route(
-    route="billing/emulation", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS
-)
+@bp.route(route="billing/emulation", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
-def billing_emulation(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def billing_emulation(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     if not _tier_emulation_allowed(user_id):
         if user_id == "anonymous":
             return error_response(401, "Authentication required for billing", req=req)
         return error_response(
             403,
-            "Billing features are not yet available for your account. "
-            "Use the contact form to request access.",
+            "Billing features are not yet available for your account. Use the contact form to request access.",
             req=req,
         )
 

@@ -45,13 +45,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--rollout-pct", type=int, default=0, help="Percentage (0-100, default 0)")
     p.add_argument("--kill-switch", action="store_true", help="Activate kill switch")
-    p.add_argument(
-        "--allow-anonymous", action="store_true", help="Allow anonymous (unauthenticated) access"
-    )
+    p.add_argument("--allow-anonymous", action="store_true", help="Allow anonymous (unauthenticated) access")
     p.add_argument("--description", default="", help="Human-readable description")
-    p.add_argument(
-        "--updated-by", default="operator", help="Identity performing the update (audit field)"
-    )
+    p.add_argument("--updated-by", default="operator", help="Identity performing the update (audit field)")
     p.add_argument("--dry-run", action="store_true", help="Print the document; do not write")
     return p.parse_args()
 

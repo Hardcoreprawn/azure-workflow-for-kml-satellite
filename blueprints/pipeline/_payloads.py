@@ -95,9 +95,7 @@ def _build_order_lookups(
     looked up and inserting them under the empty-string key would cause all
     ID-less orders to collide and overwrite each other.
     """
-    asset_urls: dict[str, str] = {
-        o["order_id"]: o.get("asset_url", "") for o in orders if o.get("order_id")
-    }
+    asset_urls: dict[str, str] = {o["order_id"]: o.get("asset_url", "") for o in orders if o.get("order_id")}
     order_meta: dict[str, dict[str, str]] = {
         o["order_id"]: {
             "role": o.get("role", ""),

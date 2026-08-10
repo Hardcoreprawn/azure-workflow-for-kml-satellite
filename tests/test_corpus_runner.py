@@ -68,22 +68,16 @@ class TestDiffAgainstBaseline:
         assert drifts == []
 
     def test_detects_aoi_count_drift(self):
-        drifts = _diff_against_baseline(
-            Path("sample.kml"), self._actual(aoi_count=3), self._baseline(aoi_count=2)
-        )
+        drifts = _diff_against_baseline(Path("sample.kml"), self._actual(aoi_count=3), self._baseline(aoi_count=2))
         assert any("aoi_count" in d for d in drifts)
         assert any("3" in d for d in drifts)
 
     def test_detects_downloads_completed_drift(self):
-        drifts = _diff_against_baseline(
-            Path("sample.kml"), self._actual(downloads=0), self._baseline(downloads=2)
-        )
+        drifts = _diff_against_baseline(Path("sample.kml"), self._actual(downloads=0), self._baseline(downloads=2))
         assert any("downloadsCompleted" in d for d in drifts)
 
     def test_detects_raw_imagery_path_count_drift(self):
-        drifts = _diff_against_baseline(
-            Path("sample.kml"), self._actual(paths=5), self._baseline(paths=2)
-        )
+        drifts = _diff_against_baseline(Path("sample.kml"), self._actual(paths=5), self._baseline(paths=2))
         assert any("rawImageryPathCount" in d for d in drifts)
 
     def test_skips_field_when_baseline_value_is_none(self):

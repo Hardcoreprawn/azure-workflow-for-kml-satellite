@@ -55,10 +55,7 @@ class Config:
 
 
 def _days_in_month(today: date) -> int:
-    if today.month == 12:
-        next_month = date(today.year + 1, 1, 1)
-    else:
-        next_month = date(today.year, today.month + 1, 1)
+    next_month = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
     return (next_month - date(today.year, today.month, 1)).days
 
 
@@ -162,9 +159,7 @@ def parse_blocking_refs(body: str) -> set[int]:
     return {int(match) for match in _BLOCKING_RE.findall(body)}
 
 
-_CLOSING_RE = re.compile(
-    r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\b\s*:?\s*#(\d+)", re.IGNORECASE
-)
+_CLOSING_RE = re.compile(r"\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\b\s*:?\s*#(\d+)", re.IGNORECASE)
 
 
 def parse_closing_refs(body: str) -> set[int]:
@@ -330,14 +325,8 @@ def load_open_issues(*, token: str, owner: str, repo: str) -> list[IssueCandidat
         # GitHub issues endpoint includes pull requests.
         if "pull_request" in issue:
             continue
-        labels = {
-            label.get("name", "") for label in issue.get("labels", []) if isinstance(label, dict)
-        }
-        assignees = {
-            assignee.get("login", "")
-            for assignee in issue.get("assignees", [])
-            if isinstance(assignee, dict)
-        }
+        labels = {label.get("name", "") for label in issue.get("labels", []) if isinstance(label, dict)}
+        assignees = {assignee.get("login", "") for assignee in issue.get("assignees", []) if isinstance(assignee, dict)}
         out.append(
             IssueCandidate(
                 number=int(issue["number"]),
@@ -496,10 +485,7 @@ def main() -> int:
         reserve_ratio=cfg.reserve_ratio,
     )
     if not budget.can_spend:
-        print(
-            f"budget_throttle: spent={budget.spent:.2f} allowed_today={budget.allowed_today:.2f}; "
-            "no new assignments"
-        )
+        print(f"budget_throttle: spent={budget.spent:.2f} allowed_today={budget.allowed_today:.2f}; no new assignments")
         return 0
 
     open_autopilot_prs = count_open_copilot_prs(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
@@ -523,11 +509,7 @@ def main() -> int:
         print("no eligible issues found")
         return 0
 
-    tier = (
-        "primary (Must/Should)"
-        if issue_priority_score(targets[0].labels) > 0
-        else "fallback (Could)"
-    )
+    tier = "primary (Must/Should)" if issue_priority_score(targets[0].labels) > 0 else "fallback (Could)"
     print(f"selected issues [{tier} tier]:")
     for target in targets:
         print(f"- #{target.number} {target.title} ({target.url})")

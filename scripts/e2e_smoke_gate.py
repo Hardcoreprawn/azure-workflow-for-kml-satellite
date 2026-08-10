@@ -159,8 +159,7 @@ def poll_orchestrator(
         time.sleep(poll_interval_seconds)
 
     raise TimeoutError(
-        f"orchestrator did not reach terminal state within {max_attempts} attempts"
-        f"; last payload={last_payload}"
+        f"orchestrator did not reach terminal state within {max_attempts} attempts; last payload={last_payload}"
     )
 
 
@@ -224,9 +223,7 @@ def verify_manifest(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--api-base", required=True, help="Base API URL, e.g. https://api.example.com"
-    )
+    parser.add_argument("--api-base", required=True, help="Base API URL, e.g. https://api.example.com")
     auth_group = parser.add_mutually_exclusive_group(required=False)
     auth_group.add_argument(
         "--bearer-token",
@@ -261,16 +258,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="OAuth2 scope string for client credentials flow, e.g. api://{id}/.default",
     )
-    parser.add_argument(
-        "--kml-path", default="tests/fixtures/sample.kml", help="Path to KML fixture"
-    )
-    parser.add_argument(
-        "--poll-interval", type=int, default=5, help="Seconds between orchestrator polls"
-    )
+    parser.add_argument("--kml-path", default="tests/fixtures/sample.kml", help="Path to KML fixture")
+    parser.add_argument("--poll-interval", type=int, default=5, help="Seconds between orchestrator polls")
     parser.add_argument("--max-attempts", type=int, default=120, help="Max poll attempts")
-    parser.add_argument(
-        "--eudr-mode", action="store_true", help="Set eudr_mode=true in upload/token"
-    )
+    parser.add_argument("--eudr-mode", action="store_true", help="Set eudr_mode=true in upload/token")
     parser.add_argument(
         "--skip-manifest-check",
         action="store_true",

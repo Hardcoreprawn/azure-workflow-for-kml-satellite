@@ -82,13 +82,9 @@ class TestFetchUsgsStreamflow:
                         "sourceInfo": {
                             "siteName": "Test River",
                             "siteCode": [{"value": "12345"}],
-                            "geoLocation": {
-                                "geogLocation": {"latitude": 40.0, "longitude": -100.0}
-                            },
+                            "geoLocation": {"geogLocation": {"latitude": 40.0, "longitude": -100.0}},
                         },
-                        "values": [
-                            {"value": [{"value": "1500", "dateTime": "2024-01-15T10:00:00"}]}
-                        ],
+                        "values": [{"value": [{"value": "1500", "dateTime": "2024-01-15T10:00:00"}]}],
                     }
                 ]
             }
@@ -115,13 +111,9 @@ class TestFetchUsgsStreamflow:
                         "sourceInfo": {
                             "siteName": "Empty Site",
                             "siteCode": [],
-                            "geoLocation": {
-                                "geogLocation": {"latitude": 40.0, "longitude": -100.0}
-                            },
+                            "geoLocation": {"geogLocation": {"latitude": 40.0, "longitude": -100.0}},
                         },
-                        "values": [
-                            {"value": [{"value": "500", "dateTime": "2024-01-15T10:00:00"}]}
-                        ],
+                        "values": [{"value": [{"value": "500", "dateTime": "2024-01-15T10:00:00"}]}],
                     }
                 ]
             }
@@ -146,9 +138,7 @@ class TestFetchUsgsStreamflow:
                         "sourceInfo": {
                             "siteName": "No Values",
                             "siteCode": [{"value": "99999"}],
-                            "geoLocation": {
-                                "geogLocation": {"latitude": 40.0, "longitude": -100.0}
-                            },
+                            "geoLocation": {"geogLocation": {"latitude": 40.0, "longitude": -100.0}},
                         },
                         "values": [],
                     }

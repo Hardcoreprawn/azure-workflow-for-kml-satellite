@@ -42,9 +42,7 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
         if "NotFound" in exc_name or "ResourceNotFound" in exc_name:
             logger.debug("No ticket found for blob=%s (path=%s)", blob_name, ticket_path)
         else:
-            logger.warning(
-                "Ticket read failed for blob=%s (path=%s): %s", blob_name, ticket_path, exc_name
-            )
+            logger.warning("Ticket read failed for blob=%s (path=%s): %s", blob_name, ticket_path, exc_name)
         return None
 
 

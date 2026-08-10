@@ -24,9 +24,7 @@ SEASONS: list[dict[str, Any]] = [
 ]
 
 # Monthly definitions for monthly cadence (Pro/Team tiers)
-MONTHS: list[dict[str, Any]] = [
-    {"key": f"m{m:02d}", "label": f"Month {m}", "month": m} for m in range(1, 13)
-]
+MONTHS: list[dict[str, Any]] = [{"key": f"m{m:02d}", "label": f"Month {m}", "month": m} for m in range(1, 13)]
 
 SEASONAL_YEARS = list(range(2018, date.today().year + 1))
 LANDSAT_YEARS = list(range(2013, 2018))  # Pre-Sentinel-2 historical baseline
@@ -51,9 +49,7 @@ def _max_aoi_span_m(coords: list[list[float]]) -> float:
     lats = [c[1] for c in coords]
     mid_lat = (min(lats) + max(lats)) / 2.0
     lat_span_m = (max(lats) - min(lats)) * METRES_PER_DEGREE_LATITUDE
-    lon_span_m = (
-        (max(lons) - min(lons)) * METRES_PER_DEGREE_LATITUDE * math.cos(math.radians(mid_lat))
-    )
+    lon_span_m = (max(lons) - min(lons)) * METRES_PER_DEGREE_LATITUDE * math.cos(math.radians(mid_lat))
     return max(lat_span_m, lon_span_m)
 
 
@@ -246,10 +242,7 @@ def build_frame_plan(
     # Apply date range filter
     if date_start or date_end:
         frames = [
-            f
-            for f in frames
-            if not (date_start and f["end"] < date_start)
-            and not (date_end and f["start"] > date_end)
+            f for f in frames if not (date_start and f["end"] < date_start) and not (date_end and f["start"] > date_end)
         ]
 
     return _annotate_display_metadata(frames, coords)

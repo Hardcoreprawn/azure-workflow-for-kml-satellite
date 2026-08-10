@@ -270,9 +270,7 @@ def main() -> None:
             else:
                 failed += 1
 
-        print(
-            f"\n[3/3] Results: {passed} passed, {failed} failed out of {len(fixtures)} fixture(s)."
-        )
+        print(f"\n[3/3] Results: {passed} passed, {failed} failed out of {len(fixtures)} fixture(s).")
     except Exception:
         print(f"\nFATAL — see func host log at {FUNC_HOST_LOG_PATH}", file=sys.stderr)
         raise

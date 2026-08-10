@@ -169,9 +169,7 @@ def _mint_sas_url(
             expiry=expiry,
             content_type=content_type,
         )
-        sas_url = (
-            f"{blob_service.url.rstrip('/')}/{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
-        )
+        sas_url = f"{blob_service.url.rstrip('/')}/{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
         return sas_url, None
 
     delegation_key = blob_service.get_user_delegation_key(
@@ -189,10 +187,7 @@ def _mint_sas_url(
         content_type=content_type,
     )
 
-    sas_url = (
-        f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/"
-        f"{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
-    )
+    sas_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net/{DEFAULT_INPUT_CONTAINER}/{blob_name}?{sas_token}"
     return sas_url, None
 
 
@@ -284,9 +279,7 @@ def _write_ticket_and_mint_sas(
     ticket = _build_ticket(body, user_id, submission_context, org_id=org_id)
     try:
         blob_service = get_blob_service_client()
-        ticket_blob = blob_service.get_blob_client(
-            DEFAULT_INPUT_CONTAINER, f".tickets/{submission_id}.json"
-        )
+        ticket_blob = blob_service.get_blob_client(DEFAULT_INPUT_CONTAINER, f".tickets/{submission_id}.json")
         ticket_blob.upload_blob(
             json.dumps(ticket).encode(),
             overwrite=True,
@@ -297,9 +290,7 @@ def _write_ticket_and_mint_sas(
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
 
     try:
-        sas_url, _ = _mint_sas_url(
-            blob_service, blob_name, submission_id, content_type=content_type
-        )
+        sas_url, _ = _mint_sas_url(blob_service, blob_name, submission_id, content_type=content_type)
     except Exception:
         logger.exception("Failed to mint SAS URL for submission_id=%s", submission_id)
         return None, error_response(502, "Storage service temporarily unavailable", req=req)
@@ -325,9 +316,7 @@ def _reserve_run_or_error(
             instance_id=submission_id,
         )
     except MemberCapExceededError as exc:
-        logger.info(
-            "Member cap exceeded during reservation org=%s user=%s", org_id, _redact(user_id)
-        )
+        logger.info("Member cap exceeded during reservation org=%s user=%s", org_id, _redact(user_id))
         return error_response(403, f"Your parcel capacity is exceeded. {exc!s}", req=req)
     except QuotaExhaustedError as exc:
         logger.info("Organization quota exhausted during reservation org=%s", org_id)
@@ -466,9 +455,7 @@ def upload_token(
     if parcel_count <= 0:
         return error_response(400, "parcel_count must be a positive integer", req=req)
 
-    reservation_err = _reserve_run_or_error(
-        org_id, user_id, parcel_count, is_eudr, submission_id, req
-    )
+    reservation_err = _reserve_run_or_error(org_id, user_id, parcel_count, is_eudr, submission_id, req)
     if reservation_err:
         return reservation_err
 

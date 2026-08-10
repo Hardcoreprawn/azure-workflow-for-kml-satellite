@@ -119,8 +119,7 @@ class TestSwaAuth:
         routes = swa_config.get("routes", [])
         api_routes = [r for r in routes if r.get("route", "").startswith("/api/")]
         assert not api_routes, (
-            "SWA config must not contain /api/* route rules — "
-            "all API calls go cross-origin to the Container Apps FA"
+            "SWA config must not contain /api/* route rules — all API calls go cross-origin to the Container Apps FA"
         )
 
     def test_api_not_excluded_from_navigation_fallback(self, swa_config):
@@ -146,24 +145,18 @@ class TestSwaAuth:
         routes = swa_config.get("routes", [])
         cfg_routes = [r for r in routes if r.get("route") == "/api-config.json"]
         assert cfg_routes, "api-config.json route must exist for BYOF hostname discovery"
-        assert "anonymous" in cfg_routes[0].get("allowedRoles", []), (
-            "api-config.json must allow anonymous access"
-        )
+        assert "anonymous" in cfg_routes[0].get("allowedRoles", []), "api-config.json must allow anonymous access"
 
     def test_landing_loads_msal_browser(self, index_html):
         """Landing page must load the MSAL browser SDK for CIAM auth (#710)."""
-        assert "msal-browser.min.js" in index_html, (
-            "index.html (landing) must load msal-browser.min.js for CIAM auth"
-        )
+        assert "msal-browser.min.js" in index_html, "index.html (landing) must load msal-browser.min.js for CIAM auth"
 
     def test_landing_loads_msal_with_defer(self, index_html):
         """Landing page must load MSAL, API client, and landing.js all with defer to avoid race."""
         # Check that all three critical scripts are loaded with defer
         api_tag = '<script src="/js/canopex-api-client.js" defer></script>'
         landing_tag = '<script src="/js/landing.js" defer></script>'
-        assert api_tag in index_html, (
-            "index.html must load canopex-api-client.js with defer attribute"
-        )
+        assert api_tag in index_html, "index.html must load canopex-api-client.js with defer attribute"
         assert landing_tag in index_html, "index.html must load landing.js with defer attribute"
         # Verify the MSAL script tag itself includes defer without depending on
         # exact formatting, attribute order, or fixed byte offsets.
@@ -175,20 +168,14 @@ class TestSwaAuth:
 
     def test_app_html_loads_msal_browser(self, app_index_html):
         """App entrypoint must load the MSAL browser SDK before app-msal.js."""
-        assert "msal-browser.min.js" in app_index_html, (
-            "/app/index.html must load msal-browser.min.js for CIAM auth"
-        )
+        assert "msal-browser.min.js" in app_index_html, "/app/index.html must load msal-browser.min.js for CIAM auth"
         msal_pos = app_index_html.index("msal-browser.min.js")
         msal_module_pos = app_index_html.index("app-msal.js")
-        assert msal_pos < msal_module_pos, (
-            "msal-browser CDN script must appear before app-msal.js in /app/index.html"
-        )
+        assert msal_pos < msal_module_pos, "msal-browser CDN script must appear before app-msal.js in /app/index.html"
 
     def test_no_dead_msal_cdn_references(self, index_html):
         """No deprecated MSAL CDN references on the landing page."""
-        assert "alcdn.msauth.net" not in index_html, (
-            "Dead MSAL CDN reference found: alcdn.msauth.net"
-        )
+        assert "alcdn.msauth.net" not in index_html, "Dead MSAL CDN reference found: alcdn.msauth.net"
 
 
 # ---------------------------------------------------------------------------
@@ -286,8 +273,7 @@ class TestCsp:
         assert connect_match, "CSP missing connect-src directive"
         sources = connect_match.group(1).split()
         assert any(_csp_token_matches_host(src, "unpkg.com") for src in sources), (
-            "CSP connect-src must still allow unpkg.com while msal-browser is "
-            "loaded from there via script-src"
+            "CSP connect-src must still allow unpkg.com while msal-browser is loaded from there via script-src"
         )
 
     def test_navigation_fallback_excludes_vendor(self, swa_config):
@@ -362,9 +348,7 @@ class TestVendorLeaflet:
         assert "/vendor/leaflet/leaflet.css" in index_html, (
             "index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
         )
-        assert "unpkg.com/leaflet" not in index_html, (
-            "index.html must not reference Leaflet from unpkg.com"
-        )
+        assert "unpkg.com/leaflet" not in index_html, "index.html must not reference Leaflet from unpkg.com"
 
     def test_landing_uses_local_leaflet_js(self, index_html):
         """Landing page must load Leaflet JS from /vendor/, not CDN."""
@@ -377,9 +361,7 @@ class TestVendorLeaflet:
         assert "/vendor/leaflet/leaflet.css" in app_index_html, (
             "/app/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
         )
-        assert "unpkg.com/leaflet" not in app_index_html, (
-            "/app/index.html must not reference Leaflet from unpkg.com"
-        )
+        assert "unpkg.com/leaflet" not in app_index_html, "/app/index.html must not reference Leaflet from unpkg.com"
 
     def test_app_uses_local_leaflet_js(self, app_index_html):
         """/app/ must load Leaflet JS from /vendor/, not CDN."""
@@ -398,9 +380,7 @@ class TestVendorLeaflet:
         assert "/vendor/leaflet/leaflet.css" in eudr_index_html, (
             "/eudr/index.html must reference /vendor/leaflet/leaflet.css, not the unpkg CDN"
         )
-        assert "unpkg.com/leaflet" not in eudr_index_html, (
-            "/eudr/index.html must not reference Leaflet from unpkg.com"
-        )
+        assert "unpkg.com/leaflet" not in eudr_index_html, "/eudr/index.html must not reference Leaflet from unpkg.com"
 
     def test_eudr_uses_local_leaflet_js(self, eudr_index_html):
         """/eudr/ must load Leaflet JS from /vendor/, not CDN."""
@@ -431,9 +411,7 @@ class TestVendorLeaflet:
 class TestAuthConfig:
     def test_landing_no_swa_auth_routes(self, landing_js):
         """landing.js must not reference SWA auth routes — auth is MSAL/CIAM now."""
-        assert "/.auth/login/aad" not in landing_js, (
-            "landing.js must not use SWA /.auth/login/aad — auth is CIAM/MSAL"
-        )
+        assert "/.auth/login/aad" not in landing_js, "landing.js must not use SWA /.auth/login/aad — auth is CIAM/MSAL"
 
     def test_landing_delegates_msal_to_shared_module(self, landing_js):
         """landing.js must delegate MSAL primitives to window.CanopexCiam.
@@ -442,12 +420,9 @@ class TestAuthConfig:
         root cause of cross-page sign-in races and scope drift. landing.js
         must now import everything via window.CanopexCiam.
         """
-        assert "window.CanopexCiam" in landing_js, (
-            "landing.js must reference window.CanopexCiam (canopex-auth.js)"
-        )
+        assert "window.CanopexCiam" in landing_js, "landing.js must reference window.CanopexCiam (canopex-auth.js)"
         assert "new window.msal.PublicClientApplication" not in landing_js, (
-            "landing.js must not construct its own PublicClientApplication "
-            "— delegate to canopex-auth.js"
+            "landing.js must not construct its own PublicClientApplication — delegate to canopex-auth.js"
         )
         assert "loginRedirect(" not in landing_js, (
             "landing.js must not call loginRedirect directly — use CanopexCiam.login()"
@@ -461,9 +436,7 @@ class TestAuthConfig:
         single source of truth.
         """
         js = APP_CIAM_JS.read_text()
-        assert "authRedirectTriggered" in js, (
-            "canopex-auth.js token refresh path must set authRedirectTriggered"
-        )
+        assert "authRedirectTriggered" in js, "canopex-auth.js token refresh path must set authRedirectTriggered"
         assert "acquireTokenRedirect" in js, (
             "canopex-auth.js must trigger acquireTokenRedirect when silent token refresh fails"
         )
@@ -477,23 +450,17 @@ class TestAuthConfig:
     def test_msal_module_uses_public_client_app(self):
         """The shared canopex-auth.js module must use MSAL PublicClientApplication."""
         js = APP_CIAM_JS.read_text()
-        assert "PublicClientApplication" in js, (
-            "canopex-auth.js must create msal.PublicClientApplication for CIAM auth"
-        )
+        assert "PublicClientApplication" in js, "canopex-auth.js must create msal.PublicClientApplication for CIAM auth"
 
     def test_msal_module_uses_login_redirect(self):
         """The shared canopex-auth.js module must use loginRedirect (not loginPopup)."""
         js = APP_CIAM_JS.read_text()
-        assert "loginRedirect" in js, (
-            "canopex-auth.js must call loginRedirect for the MSAL login flow"
-        )
+        assert "loginRedirect" in js, "canopex-auth.js must call loginRedirect for the MSAL login flow"
 
     def test_msal_module_supports_signup_prompt_create(self):
         """Shared CIAM module must expose an explicit sign-up redirect path."""
         js = APP_CIAM_JS.read_text()
-        assert "function signup()" in js, (
-            "canopex-auth.js must define signup() for first-visit account creation"
-        )
+        assert "function signup()" in js, "canopex-auth.js must define signup() for first-visit account creation"
         assert "prompt: 'create'" in js, (
             "canopex-auth.js signup() must pass prompt:create to open account-creation flow"
         )
@@ -503,9 +470,7 @@ class TestAuthConfig:
         assert "auth-signup-btn" in landing_js, (
             "landing.js must reference #auth-signup-btn for first-visit create-account CTA"
         )
-        assert "ciamAuth.signup" in landing_js, (
-            "landing.js create-account CTA must call CanopexCiam.signup()"
-        )
+        assert "ciamAuth.signup" in landing_js, "landing.js create-account CTA must call CanopexCiam.signup()"
 
     def test_msal_module_marks_redirect_triggered_token_errors(self):
         """getToken must signal redirect-in-progress.
@@ -517,16 +482,13 @@ class TestAuthConfig:
             "canopex-auth.js must mark redirect-in-progress token errors with authRedirectTriggered"
         )
         assert "throw buildRedirectError" in js, (
-            "canopex-auth.js getToken must throw a redirect marker error "
-            "when re-auth redirect starts"
+            "canopex-auth.js getToken must throw a redirect marker error when re-auth redirect starts"
         )
 
     def test_msal_module_get_token_waits_for_init(self):
         """getToken must wait for MSAL initialization and redirect handling."""
         js = APP_CIAM_JS.read_text()
-        assert "ensureMsalReady" in js, (
-            "canopex-auth.js must define a shared ensureMsalReady helper"
-        )
+        assert "ensureMsalReady" in js, "canopex-auth.js must define a shared ensureMsalReady helper"
         assert "var app = await ensureMsalReady();" in js, (
             "canopex-auth.js getToken must await ensureMsalReady before MSAL API calls"
         )
@@ -534,12 +496,8 @@ class TestAuthConfig:
     def test_msal_module_supports_api_audience_config(self):
         """MSAL module must read optional API audience from injected CIAM config."""
         js = APP_CIAM_JS.read_text()
-        assert "apiAudience" in js, (
-            "canopex-auth.js must parse apiAudience from canopex-ciam-config"
-        )
-        assert "audience + '/User.Read'" in js, (
-            "canopex-auth.js must derive an API scope from apiAudience"
-        )
+        assert "apiAudience" in js, "canopex-auth.js must parse apiAudience from canopex-ciam-config"
+        assert "audience + '/User.Read'" in js, "canopex-auth.js must derive an API scope from apiAudience"
 
     def test_msal_module_prefers_access_token_when_api_audience_present(self):
         """Backend bearer validation requires API-audience access token when configured."""
@@ -597,9 +555,7 @@ class TestAuthConfig:
         static "Loading…" placeholder forever in local dev.
         """
         js = APP_MSAL_JS.read_text()
-        local_dev_fn = js.split("function renderLocalDevUI")[1].split("function renderSignedInUI")[
-            0
-        ]
+        local_dev_fn = js.split("function renderLocalDevUI")[1].split("function renderSignedInUI")[0]
         assert "_loadBillingStatus" in local_dev_fn, (
             "renderLocalDevUI must call _loadBillingStatus so the hero cards populate"
         )
@@ -650,18 +606,14 @@ class TestAuthConfig:
         assert "@azure/msal-browser@3.30.0/lib/msal-browser.min.js" in index_html, (
             "index.html must pin MSAL to an exact version"
         )
-        assert 'integrity="sha384-' in index_html, (
-            "index.html must include SRI for the pinned MSAL script"
-        )
+        assert 'integrity="sha384-' in index_html, "index.html must include SRI for the pinned MSAL script"
 
     def test_app_msal_script_is_pinned_and_has_sri(self, app_index_html):
         """App MSAL script must use an exact version and SRI."""
         assert "@azure/msal-browser@3.30.0/lib/msal-browser.min.js" in app_index_html, (
             "/app/index.html must pin MSAL to an exact version"
         )
-        assert 'integrity="sha384-' in app_index_html, (
-            "/app/index.html must include SRI for the pinned MSAL script"
-        )
+        assert 'integrity="sha384-' in app_index_html, "/app/index.html must include SRI for the pinned MSAL script"
 
     def test_api_client_uses_api_config_json(self, api_client_js):
         """Shared API client must discover the Container Apps FA via /api-config.json."""
@@ -674,9 +626,7 @@ class TestAuthConfig:
         assert "Authorization" in api_client_js, (
             "canopex-api-client.js must set Authorization header for CIAM bearer flow"
         )
-        assert "Bearer" in api_client_js, (
-            "canopex-api-client.js must use Bearer scheme in Authorization header"
-        )
+        assert "Bearer" in api_client_js, "canopex-api-client.js must use Bearer scheme in Authorization header"
 
     def test_api_client_no_legacy_principal_header(self, api_client_js):
         """Shared API client must not send X-MS-CLIENT-PRINCIPAL — removed in #710."""
@@ -692,9 +642,7 @@ class TestAuthConfig:
 
     def test_api_client_accepts_get_token_injection(self, api_client_js):
         """Shared API client must expose setGetToken for dependency injection."""
-        assert "setGetToken" in api_client_js, (
-            "canopex-api-client.js must expose setGetToken for MSAL token injection"
-        )
+        assert "setGetToken" in api_client_js, "canopex-api-client.js must expose setGetToken for MSAL token injection"
 
     def test_api_client_aborts_request_when_redirect_auth_is_in_progress(self, api_client_js):
         """API client must avoid unauthenticated fallback during redirect auth."""
@@ -707,17 +655,13 @@ class TestAuthConfig:
 
     def test_app_shell_uses_shared_api_client(self, app_shell_js):
         """App shell should use the shared API client implementation."""
-        assert "CanopexApiClient.createClient" in app_shell_js, (
-            "app-shell.js must initialize the shared API client"
-        )
+        assert "CanopexApiClient.createClient" in app_shell_js, "app-shell.js must initialize the shared API client"
 
     def test_landing_loads_shared_api_client_before_consumer(self, index_html):
         """Landing entrypoint must load shared client before landing.js."""
         api_script = '<script src="/js/canopex-api-client.js" defer></script>'
         landing_script = '<script src="/js/landing.js" defer></script>'
-        assert api_script in index_html, (
-            "index.html must include shared API client script with defer"
-        )
+        assert api_script in index_html, "index.html must include shared API client script with defer"
         assert landing_script in index_html, "index.html must include landing.js script with defer"
         assert index_html.index(api_script) < index_html.index(landing_script), (
             "index.html must load canopex-api-client.js before landing.js"
@@ -765,8 +709,7 @@ class TestAuthConfig:
         ciam_js = APP_CIAM_JS.read_text()
         msal_js = APP_MSAL_JS.read_text()
         assert "acquireTokenPopup" in ciam_js, (
-            "canopex-auth.js reauthInPlace must call acquireTokenPopup "
-            "for transparent 401 re-auth (#757)"
+            "canopex-auth.js reauthInPlace must call acquireTokenPopup for transparent 401 re-auth (#757)"
         )
         assert "reauthInPlace" in msal_js, (
             "app-msal.js handleApiError must delegate to CanopexCiam.reauthInPlace (#757)"
@@ -782,8 +725,7 @@ class TestAuthConfig:
         next_fn_idx = js.find("\n  function ", ha_idx + 1)
         ha_body = js[ha_idx:next_fn_idx] if next_fn_idx != -1 else js[ha_idx:]
         assert "logoutRedirect" not in ha_body, (
-            "app-msal.js handleApiError must not call logoutRedirect on 401 "
-            "— use popup re-auth (#757)"
+            "app-msal.js handleApiError must not call logoutRedirect on 401 — use popup re-auth (#757)"
         )
 
     def test_msal_handle_api_error_shows_info_toast(self):
@@ -803,9 +745,7 @@ class TestAuthConfig:
         """/eudr entrypoint must load shared client before app-shell.js."""
         api_script = '<script src="/js/canopex-api-client.js" defer></script>'
         app_script = '<script src="/js/app-shell.js" defer></script>'
-        assert api_script in eudr_index_html, (
-            "/eudr/index.html must include shared API client script"
-        )
+        assert api_script in eudr_index_html, "/eudr/index.html must include shared API client script"
         assert app_script in eudr_index_html, "/eudr/index.html must include app-shell.js script"
         assert eudr_index_html.index(api_script) < eudr_index_html.index(app_script), (
             "/eudr/index.html must load canopex-api-client.js before app-shell.js"
@@ -813,17 +753,13 @@ class TestAuthConfig:
 
     def test_eudr_entry_uses_msal_not_legacy_auth(self, eudr_index_html):
         """EUDR app must use MSAL bearer flow, not legacy SWA auth module."""
-        assert "app-msal.js" in eudr_index_html, (
-            "/eudr/index.html must load app-msal.js for CIAM bearer auth"
-        )
+        assert "app-msal.js" in eudr_index_html, "/eudr/index.html must load app-msal.js for CIAM bearer auth"
         assert "app-auth.js" not in eudr_index_html, (
             "/eudr/index.html must not load app-auth.js (legacy SWA auth removed in #710)"
         )
         msal_pos = eudr_index_html.index("app-msal.js")
         app_shell_pos = eudr_index_html.index("app-shell.js")
-        assert msal_pos < app_shell_pos, (
-            "/eudr/index.html must load app-msal.js before app-shell.js"
-        )
+        assert msal_pos < app_shell_pos, "/eudr/index.html must load app-msal.js before app-shell.js"
 
     def test_eudr_entry_injects_ciam_config_script(self, eudr_index_html):
         """EUDR entrypoint must include CIAM config script element for MSAL initialization."""
@@ -834,13 +770,9 @@ class TestAuthConfig:
         ciam_context = eudr_index_html[max(0, ciam_idx - 100) : ciam_idx + 100]
         assert 'type="application/json"' in ciam_context, "canopex-ciam-config must be JSON type"
 
-    def test_entrypoints_include_api_audience_placeholder(
-        self, index_html, app_index_html, eudr_index_html
-    ):
+    def test_entrypoints_include_api_audience_placeholder(self, index_html, app_index_html, eudr_index_html):
         """CIAM config placeholders must reserve apiAudience for deploy-time injection."""
-        assert '"apiAudience":""' in index_html, (
-            "/index.html must include apiAudience in canopex-ciam-config JSON"
-        )
+        assert '"apiAudience":""' in index_html, "/index.html must include apiAudience in canopex-ciam-config JSON"
         assert '"apiAudience":""' in app_index_html, (
             "/app/index.html must include apiAudience in canopex-ciam-config JSON"
         )
@@ -848,9 +780,7 @@ class TestAuthConfig:
             "/eudr/index.html must include apiAudience in canopex-ciam-config JSON"
         )
 
-    def test_entrypoints_load_canopex_auth_before_consumers(
-        self, index_html, app_index_html, eudr_index_html
-    ):
+    def test_entrypoints_load_canopex_auth_before_consumers(self, index_html, app_index_html, eudr_index_html):
         """canopex-auth.js (shared CIAM module) must load before MSAL consumers.
 
         landing.js, app-msal.js and any future consumer rely on
@@ -875,16 +805,12 @@ class TestAuthConfig:
         )
 
         # /eudr/
-        assert ciam_script in eudr_index_html, (
-            "/eudr/index.html must load canopex-auth.js with defer"
-        )
+        assert ciam_script in eudr_index_html, "/eudr/index.html must load canopex-auth.js with defer"
         assert eudr_index_html.index(ciam_script) < eudr_index_html.index(app_msal_script), (
             "/eudr/index.html must load canopex-auth.js before app-msal.js"
         )
 
-    def test_entrypoints_load_msal_cdn_before_canopex_auth(
-        self, index_html, app_index_html, eudr_index_html
-    ):
+    def test_entrypoints_load_msal_cdn_before_canopex_auth(self, index_html, app_index_html, eudr_index_html):
         """MSAL.js CDN must load before canopex-auth.js (which references window.msal)."""
         ciam_script = "/js/canopex-auth.js"
         msal_marker = "@azure/msal-browser@3.30.0"
@@ -909,9 +835,7 @@ class TestAuthConfig:
 
     def test_app_runs_treats_stalled_runs_as_inactive(self, app_runs_js):
         """Stalled runs must not auto-resume indefinitely in history or polling."""
-        assert "'stalled'" in app_runs_js, (
-            "app-runs.js must treat stalled runtime status as inactive"
-        )
+        assert "'stalled'" in app_runs_js, "app-runs.js must treat stalled runtime status as inactive"
         assert "run.customStatus.stalled === true" in app_runs_js, (
             "app-runs.js must treat explicit stalled customStatus as inactive"
         )
@@ -1021,9 +945,7 @@ class TestQuotaExhaustedBackendSignal:
 
     def test_submission_quota_exhausted_includes_flag(self):
         """submission.py quota-exhausted 403 must include quota_exhausted in the body."""
-        src = (
-            Path(__file__).resolve().parent.parent / "blueprints" / "pipeline" / "submission.py"
-        ).read_text()
+        src = (Path(__file__).resolve().parent.parent / "blueprints" / "pipeline" / "submission.py").read_text()
         assert "quota_exhausted" in src, (
             "blueprints/pipeline/submission.py must set quota_exhausted in the 403 "
             "response body for QuotaExhaustedError"
@@ -1033,8 +955,7 @@ class TestQuotaExhaustedBackendSignal:
         """upload.py quota-exhausted 403 must include quota_exhausted in the body."""
         src = (Path(__file__).resolve().parent.parent / "blueprints" / "upload.py").read_text()
         assert "quota_exhausted" in src, (
-            "blueprints/upload.py must set quota_exhausted in the 403 "
-            "response body for QuotaExhaustedError"
+            "blueprints/upload.py must set quota_exhausted in the 403 response body for QuotaExhaustedError"
         )
 
 
@@ -1042,9 +963,7 @@ class TestBillingEmulationUi:
     def test_billing_module_defines_fallback_emulation_tiers(self, app_billing_js):
         """Plan emulation selector should remain usable if API omits emulation.tiers."""
         expected = "['demo', 'free', 'starter', 'pro', 'team', 'enterprise', 'eudr_pro']"
-        assert expected in app_billing_js, (
-            "app-billing.js must define a fallback tier list for plan emulation"
-        )
+        assert expected in app_billing_js, "app-billing.js must define a fallback tier list for plan emulation"
 
     def test_billing_module_formats_eudr_pro_label(self, app_billing_js):
         """Emulation selector should render eudr_pro with a readable label."""
@@ -1086,9 +1005,7 @@ class TestEudrUsageConsistency:
 
     def test_app_eudr_updates_hero_parcels_and_unavailable_state(self, app_eudr_js):
         """EUDR module should set hero parcel pill and clear loading state on errors."""
-        assert "eudr-parcels-used" in app_eudr_js, (
-            "app-eudr.js must update the hero parcels stat pill"
-        )
+        assert "eudr-parcels-used" in app_eudr_js, "app-eudr.js must update the hero parcels stat pill"
         assert "Usage unavailable right now." in app_eudr_js, (
             "app-eudr.js must clear loading text when usage fetch fails"
         )
@@ -1109,8 +1026,7 @@ class TestCorsConfig:
         """Custom domains must come from CORS_ALLOWED_ORIGINS env var, not hardcoded."""
         src = HELPERS_PY.read_text()
         assert "canopex.hrdcrprwn.com" not in src, (
-            "Custom domain must not be hardcoded — it should come from "
-            "CORS_ALLOWED_ORIGINS env var set by infra"
+            "Custom domain must not be hardcoded — it should come from CORS_ALLOWED_ORIGINS env var set by infra"
         )
 
     def test_cors_origins_from_env_var(self):
@@ -1199,9 +1115,7 @@ class TestStaticDiscoveryFiles:
             assert page in sitemap, f"sitemap.xml must list {page}"
 
     def test_security_txt_exists(self):
-        assert (WEBSITE / ".well-known" / "security.txt").is_file(), (
-            ".well-known/security.txt must exist"
-        )
+        assert (WEBSITE / ".well-known" / "security.txt").is_file(), ".well-known/security.txt must exist"
 
     def test_security_txt_has_contact(self):
         content = (WEBSITE / ".well-known" / "security.txt").read_text()
@@ -1227,9 +1141,7 @@ class TestEudrEntryPoint:
 
     def test_eudr_index_has_data_eudr_app(self):
         content = (WEBSITE / "eudr" / "index.html").read_text()
-        assert "data-eudr-app" in content, (
-            "eudr/index.html <body> must have data-eudr-app attribute to lock EUDR mode"
-        )
+        assert "data-eudr-app" in content, "eudr/index.html <body> must have data-eudr-app attribute to lock EUDR mode"
 
     def test_eudr_index_loads_app_shell(self):
         content = (WEBSITE / "eudr" / "index.html").read_text()
@@ -1306,8 +1218,7 @@ class TestNavigationModel:
             assert match, f"{page_path.name}: missing nav link {label!r} -> {href}"
             positions.append(match.start())
         assert positions == sorted(positions), (
-            f"{page_path.name}: nav links must appear in the canonical order "
-            f"{[label for label, _ in NAV_CORE_LINKS]}"
+            f"{page_path.name}: nav links must appear in the canonical order {[label for label, _ in NAV_CORE_LINKS]}"
         )
 
     @pytest.mark.parametrize("page_path", NAV_PAGES, ids=lambda p: str(p.relative_to(WEBSITE)))
@@ -1339,12 +1250,10 @@ class TestQueueAnalysisAuthBypass:
             "purely on getAccount() blocks the submit button from ever doing anything"
         )
         assert "if (!currentAccount && authEnabled)" in app_run_lifecycle_js, (
-            "queueAnalysis() must only bail out to login() when auth is both disabled-account "
-            "AND actually enabled"
+            "queueAnalysis() must only bail out to login() when auth is both disabled-account AND actually enabled"
         )
 
     def test_run_lifecycle_module_receives_auth_enabled_dep(self, app_shell_js):
         assert "authEnabled: authEnabled," in app_shell_js, (
-            "app-shell.js must wire the authEnabled dep into runLifecycleModule.init "
-            "so queueAnalysis() can check it"
+            "app-shell.js must wire the authEnabled dep into runLifecycleModule.init so queueAnalysis() can check it"
         )

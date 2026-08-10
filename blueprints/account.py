@@ -28,9 +28,7 @@ bp = func.Blueprint()
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def get_profile_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def get_profile_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Get current user profile."""
     del auth_claims  # unused
 
@@ -65,9 +63,7 @@ def get_profile_endpoint(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def update_profile_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def update_profile_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Update user profile (display name)."""
     del auth_claims  # unused
 
@@ -119,9 +115,7 @@ def update_profile_endpoint(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def delete_account_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def delete_account_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Delete user account (GDPR-compliant cascading deletion).
 
     Query parameters:

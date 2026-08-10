@@ -62,9 +62,7 @@ def _parse_polygon(
     if outer is not None and outer.text:
         exterior = _parse_coordinates(outer.text)
 
-    for inner_elem in polygon.findall(
-        f"{KML_NS}innerBoundaryIs/{KML_NS}LinearRing/{KML_NS}coordinates"
-    ):
+    for inner_elem in polygon.findall(f"{KML_NS}innerBoundaryIs/{KML_NS}LinearRing/{KML_NS}coordinates"):
         if inner_elem.text:
             ring = _parse_coordinates(inner_elem.text)
             if ring:
