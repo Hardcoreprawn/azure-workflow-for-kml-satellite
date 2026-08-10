@@ -29,22 +29,16 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
     pdf.set_font("Helvetica", "B", 11)
     operator = manifest.get("operator_name", "")
     if operator:
-        pdf.cell(
-            0, 7, f"Operator: {_safe_text(operator)}", align="C", new_x="LMARGIN", new_y="NEXT"
-        )
+        pdf.cell(0, 7, f"Operator: {_safe_text(operator)}", align="C", new_x="LMARGIN", new_y="NEXT")
     commodity = manifest.get("commodity", "")
     if commodity:
-        pdf.cell(
-            0, 7, f"Commodity: {_safe_text(commodity)}", align="C", new_x="LMARGIN", new_y="NEXT"
-        )
+        pdf.cell(0, 7, f"Commodity: {_safe_text(commodity)}", align="C", new_x="LMARGIN", new_y="NEXT")
 
     # Summary counts
     per_aoi = manifest.get("per_aoi_enrichment", [])
     total = len(per_aoi)
     succeeded = [a for a in per_aoi if "error" not in a]
-    free_count = sum(
-        1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free"
-    )
+    free_count = sum(1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free")
     review_count = len(succeeded) - free_count
 
     pdf.ln(8)
@@ -92,9 +86,7 @@ def _audit_executive_summary(pdf: Any, manifest: dict[str, Any]) -> None:
     per_aoi = manifest.get("per_aoi_enrichment", [])
     succeeded = [a for a in per_aoi if "error" not in a]
     failed = [a for a in per_aoi if "error" in a]
-    free_count = sum(
-        1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free"
-    )
+    free_count = sum(1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free")
     review_count = len(succeeded) - free_count
 
     pdf.cell(0, 6, f"Total plots assessed: {len(per_aoi)}", new_x="LMARGIN", new_y="NEXT")
@@ -375,8 +367,7 @@ def _audit_single_parcel(
         pdf.cell(
             0,
             5,
-            f"NDVI: {len(valid)} observations | "
-            f"Latest: {means[-1]:.3f} | Range: {min(means):.3f}-{max(means):.3f}",
+            f"NDVI: {len(valid)} observations | Latest: {means[-1]:.3f} | Range: {min(means):.3f}-{max(means):.3f}",
             new_x="LMARGIN",
             new_y="NEXT",
         )

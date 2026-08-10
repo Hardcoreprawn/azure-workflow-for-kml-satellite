@@ -219,11 +219,7 @@ def _p95(values: list[float]) -> float:
 def _summarize(scenario: str, aoi_count: int, runs: list[RunResult]) -> ScenarioSummary:
     durations = [r.duration_s for r in runs]
     success_count = sum(1 for r in runs if r.runtime_status == "Completed")
-    failure_count = sum(
-        1
-        for r in runs
-        if r.runtime_status in {"Failed", "Canceled", "Terminated", "TriggerRejected"}
-    )
+    failure_count = sum(1 for r in runs if r.runtime_status in {"Failed", "Canceled", "Terminated", "TriggerRejected"})
     timeout_count = sum(1 for r in runs if r.timed_out)
 
     return ScenarioSummary(
@@ -265,8 +261,7 @@ def _write_markdown(
         "",
         "## Scenario Summary",
         "",
-        "| Scenario | AOIs | Runs | Success | Failures | Timeouts | P50 (s) | P95 (s) | "
-        + "Throttle Signals |",
+        "| Scenario | AOIs | Runs | Success | Failures | Timeouts | P50 (s) | P95 (s) | " + "Throttle Signals |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 

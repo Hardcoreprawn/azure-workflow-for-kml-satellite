@@ -106,9 +106,7 @@ def timelapse_analysis_save(req: func.HttpRequest) -> func.HttpResponse:
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_ANALYSIS_BODY_BYTES:
-        return error_response(
-            413, f"Request body too large (max {_MAX_ANALYSIS_BODY_BYTES} bytes)", req=req
-        )
+        return error_response(413, f"Request body too large (max {_MAX_ANALYSIS_BODY_BYTES} bytes)", req=req)
 
     try:
         body = req.get_json()

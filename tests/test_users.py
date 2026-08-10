@@ -426,9 +426,7 @@ class TestOpsSetUserRole:
         monkeypatch.setenv("OPS_DASHBOARD_KEY", _OPS_KEY)
         from blueprints.ops import ops_set_user_role
 
-        resp = ops_set_user_role(
-            self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": "yes"})
-        )
+        resp = ops_set_user_role(self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": "yes"}))
         assert resp.status_code == 400
         assert "boolean" in json.loads(resp.get_body())["error"]
 
@@ -455,9 +453,7 @@ class TestOpsSetUserRole:
         ):
             from blueprints.ops import ops_set_user_role
 
-            resp = ops_set_user_role(
-                self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": True})
-            )
+            resp = ops_set_user_role(self._make_role_req(bearer=_OPS_KEY, body={"billing_allowed": True}))
             assert resp.status_code == 503
 
 
@@ -767,9 +763,7 @@ class TestAccountProfileEndpoint:
             with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
                 from blueprints.account import update_profile_endpoint
 
-                resp = update_profile_endpoint(
-                    _make_account_req(method="PATCH", bearer="token", body=b"{}")
-                )
+                resp = update_profile_endpoint(_make_account_req(method="PATCH", bearer="token", body=b"{}"))
                 assert resp.status_code == 400
                 assert "display_name" in json.loads(resp.get_body())["error"]
 
@@ -778,9 +772,7 @@ class TestAccountProfileEndpoint:
             with patch("blueprints._helpers.get_user_id_from_bearer_claims", return_value="u1"):
                 from blueprints.account import update_profile_endpoint
 
-                resp = update_profile_endpoint(
-                    _make_account_req(method="PATCH", bearer="token", body=b"not json")
-                )
+                resp = update_profile_endpoint(_make_account_req(method="PATCH", bearer="token", body=b"not json"))
                 assert resp.status_code == 400
 
     def test_updates_display_name_with_mocked_auth(self, monkeypatch):
@@ -873,9 +865,7 @@ class TestAccountDeleteEndpoint:
                 ):
                     from blueprints.account import delete_account_endpoint
 
-                    resp = delete_account_endpoint(
-                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
-                    )
+                    resp = delete_account_endpoint(_make_account_req(method="DELETE", url="/api/user", bearer="token"))
                     assert resp.status_code == 204
 
     def test_accepts_transfer_parameter(self, monkeypatch):
@@ -926,9 +916,7 @@ class TestAccountDeleteEndpoint:
                 ):
                     from blueprints.account import delete_account_endpoint
 
-                    resp = delete_account_endpoint(
-                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
-                    )
+                    resp = delete_account_endpoint(_make_account_req(method="DELETE", url="/api/user", bearer="token"))
                     assert resp.status_code == 400
 
     def test_handles_cosmos_unavailable(self, monkeypatch):
@@ -940,9 +928,7 @@ class TestAccountDeleteEndpoint:
                 ):
                     from blueprints.account import delete_account_endpoint
 
-                    resp = delete_account_endpoint(
-                        _make_account_req(method="DELETE", url="/api/user", bearer="token")
-                    )
+                    resp = delete_account_endpoint(_make_account_req(method="DELETE", url="/api/user", bearer="token"))
                     assert resp.status_code == 503
 
 
@@ -960,9 +946,7 @@ class TestPreserveQuotaFieldsLegacyCompatLogging:
             _preserve_quota_fields(doc, latest)
 
         assert doc["quota"]["used"] == 3
-        assert any(
-            "LEGACY_COMPAT_HIT per_user_quota_preserved" in r.message for r in caplog.records
-        )
+        assert any("LEGACY_COMPAT_HIT per_user_quota_preserved" in r.message for r in caplog.records)
 
     def test_no_hit_when_latest_doc_has_no_quota_field(self, caplog):
         from treesight.security.users import _preserve_quota_fields

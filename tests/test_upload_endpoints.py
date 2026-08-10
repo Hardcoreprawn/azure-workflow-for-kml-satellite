@@ -404,9 +404,7 @@ class TestUploadToken:
             return {"org_id": org_id, "name": name}
 
         with (
-            patch(
-                "blueprints.upload.create_org", side_effect=_create_org_side_effect
-            ) as mock_create,
+            patch("blueprints.upload.create_org", side_effect=_create_org_side_effect) as mock_create,
             patch(
                 "treesight.security.users.get_user",
                 return_value={"display_name": "Test User", "email": "t@example.com"},
@@ -430,9 +428,7 @@ class TestUploadToken:
         assert resp_1.status_code == 200
         assert resp_2.status_code == 200
         assert mock_create.call_count == 2
-        assert all(
-            call.kwargs.get("org_id") == "personal-test-user" for call in mock_create.call_args_list
-        )
+        assert all(call.kwargs.get("org_id") == "personal-test-user" for call in mock_create.call_args_list)
         assert self.mock_reserve_run.call_count == 2
         reserved_org_ids = [call.kwargs["org_id"] for call in self.mock_reserve_run.call_args_list]
         assert sorted(reserved_org_ids) == ["personal-test-user", "personal-test-user"]
@@ -477,9 +473,7 @@ class TestUploadToken:
     def test_refunds_quota_on_ticket_failure(self, mock_bsc):
         from blueprints.upload import upload_token
 
-        mock_bsc.return_value.get_blob_client.return_value.upload_blob.side_effect = RuntimeError(
-            "storage down"
-        )
+        mock_bsc.return_value.get_blob_client.return_value.upload_blob.side_effect = RuntimeError("storage down")
 
         req = _make_req("/api/upload/token", method="POST")
         with patch("blueprints.upload.STORAGE_ACCOUNT_NAME", "teststorage"):
@@ -712,9 +706,7 @@ class TestMintSasUrl:
         sas_url, err = _mint_sas_url(blob_service, "analysis/abc.kml", "abc")
 
         assert err is None
-        assert sas_url == (
-            "http://127.0.0.1:10000/devstoreaccount1/kml-input/analysis/abc.kml?sv=2024&sig=fakesig"
-        )
+        assert sas_url == ("http://127.0.0.1:10000/devstoreaccount1/kml-input/analysis/abc.kml?sv=2024&sig=fakesig")
         blob_service.get_user_delegation_key.assert_not_called()
         _, kwargs = mock_gen_sas.call_args
         assert kwargs["account_key"] == "fakekey"  # pragma: allowlist secret
@@ -733,10 +725,7 @@ class TestMintSasUrl:
         sas_url, err = _mint_sas_url(blob_service, "analysis/abc.kml", "abc")
 
         assert err is None
-        assert sas_url == (
-            "https://teststorage.blob.core.windows.net/kml-input/analysis/abc.kml"
-            "?sv=2024&sig=fakesig"
-        )
+        assert sas_url == ("https://teststorage.blob.core.windows.net/kml-input/analysis/abc.kml?sv=2024&sig=fakesig")
         blob_service.get_user_delegation_key.assert_called_once()
         _, kwargs = mock_gen_sas.call_args
         assert kwargs["account_name"] == "teststorage"

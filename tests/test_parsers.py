@@ -294,9 +294,7 @@ class TestFionaParserTimeout:
         with pytest.raises(TimeoutError, match="timed out"):
             fp_module.parse_kml_fiona(sample_kml_bytes)
 
-    def test_ingestion_falls_back_to_lxml_on_fiona_timeout(
-        self, sample_kml_bytes: bytes, monkeypatch
-    ):
+    def test_ingestion_falls_back_to_lxml_on_fiona_timeout(self, sample_kml_bytes: bytes, monkeypatch):
         """When Fiona times out, parse_kml_from_blob falls back to lxml successfully."""
         import time
         from unittest.mock import MagicMock

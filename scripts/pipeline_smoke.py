@@ -224,8 +224,7 @@ def get_durable_key(resource_group: str, orch_app_name: str) -> str:
     key = result.stdout.strip()
     if not key:
         raise RuntimeError(
-            f"az functionapp keys list returned an empty Durable extension key "
-            f"for {orch_app_name} in {resource_group}"
+            f"az functionapp keys list returned an empty Durable extension key for {orch_app_name} in {resource_group}"
         )
     return key
 
@@ -262,18 +261,13 @@ def poll_orchestration(
             raise
         status = payload.get("runtimeStatus", "Unknown")
         custom = payload.get("customStatus") or {}
-        phase_label = (
-            f" phase={custom.get('phase', '')}"
-            if isinstance(custom, dict) and custom.get("phase")
-            else ""
-        )
+        phase_label = f" phase={custom.get('phase', '')}" if isinstance(custom, dict) and custom.get("phase") else ""
         print(f"  [{attempt}/{max_attempts}] runtimeStatus={status}{phase_label}")
         if status in _TERMINAL_STATUSES:
             return payload
         time.sleep(poll_interval)
     raise TimeoutError(
-        f"Pipeline did not reach a terminal state after {max_attempts} attempts "
-        f"(instance_id={instance_id})"
+        f"Pipeline did not reach a terminal state after {max_attempts} attempts (instance_id={instance_id})"
     )
 
 

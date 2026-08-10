@@ -33,10 +33,7 @@ def select_eventgrid_key(payload: dict[str, Any]) -> str:
 def build_eventgrid_endpoint(hostname: str, function_name: str, function_key: str) -> str:
     """Build the runtime webhook endpoint for Event Grid delivery."""
     encoded_key = quote(function_key, safe="")
-    return (
-        f"https://{hostname}/runtime/webhooks/eventgrid"
-        f"?functionName={function_name}&code={encoded_key}"
-    )
+    return f"https://{hostname}/runtime/webhooks/eventgrid?functionName={function_name}&code={encoded_key}"
 
 
 def run_az_json(args: list[str]) -> dict[str, Any]:
@@ -51,9 +48,7 @@ def run_az_json(args: list[str]) -> dict[str, Any]:
     return json.loads(stdout) if stdout else {}
 
 
-def subscription_exists(
-    resource_group: str, system_topic_name: str, subscription_name: str
-) -> bool:
+def subscription_exists(resource_group: str, system_topic_name: str, subscription_name: str) -> bool:
     """Return whether the Event Grid subscription already exists."""
     completed = subprocess.run(
         [
@@ -152,11 +147,7 @@ def reconcile_subscription(
         function_key=select_eventgrid_key(keys),
     )
 
-    action = (
-        "update"
-        if subscription_exists(resource_group, system_topic_name, subscription_name)
-        else "create"
-    )
+    action = "update" if subscription_exists(resource_group, system_topic_name, subscription_name) else "create"
     subprocess.run(
         build_subscription_command(
             action=action,
@@ -172,9 +163,7 @@ def reconcile_subscription(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--resource-group", required=True, help="Azure resource group containing the system topic"
-    )
+    parser.add_argument("--resource-group", required=True, help="Azure resource group containing the system topic")
     parser.add_argument("--function-app", required=True, help="Azure Function App name")
     parser.add_argument("--hostname", required=True, help="Function App default hostname")
     parser.add_argument("--system-topic-name", required=True, help="Event Grid system topic name")

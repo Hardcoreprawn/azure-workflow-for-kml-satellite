@@ -112,9 +112,7 @@ class TestWorldcoverQuery:
         assert result["reason"] == "no_map_asset"
 
     def test_query_worldcover_success(self, monkeypatch: pytest.MonkeyPatch):
-        client = _Client(
-            [_Resp({"features": [{"id": "item-1", "assets": {"map": {"href": "h"}}}]})]
-        )
+        client = _Client([_Resp({"features": [{"id": "item-1", "assets": {"map": {"href": "h"}}}]})])
         monkeypatch.setattr(
             eudr,
             "_sample_worldcover_cog",
@@ -130,9 +128,7 @@ class TestWorldcoverQuery:
         result = eudr.query_worldcover([0, 0, 1, 1], http_client=client)
         assert result == {"available": False, "reason": "query_error", "bbox": [0, 0, 1, 1]}
 
-    def test_query_worldcover_constructs_http_client_when_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_query_worldcover_constructs_http_client_when_missing(self, monkeypatch: pytest.MonkeyPatch):
         client = _Client([_Resp({"features": []})])
         monkeypatch.setattr(eudr.httpx, "Client", lambda **_kwargs: _ContextClient(client))
         result = eudr.query_worldcover([0, 0, 1, 1])
@@ -231,12 +227,14 @@ class TestLulcHelpers:
             False,
             "insufficient_data",
         )
-        assert eudr._analyse_tree_cover_trend(
-            {"2021": {"tree_pct": 20.0}, "2022": {"tree_pct": 30.5}}
-        ) == (True, "increasing")
-        assert eudr._analyse_tree_cover_trend(
-            {"2021": {"tree_pct": 80.0}, "2022": {"tree_pct": 70.0}}
-        ) == (False, "declining")
+        assert eudr._analyse_tree_cover_trend({"2021": {"tree_pct": 20.0}, "2022": {"tree_pct": 30.5}}) == (
+            True,
+            "increasing",
+        )
+        assert eudr._analyse_tree_cover_trend({"2021": {"tree_pct": 80.0}, "2022": {"tree_pct": 70.0}}) == (
+            False,
+            "declining",
+        )
 
     def test_query_lulc_annual_no_data(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(eudr, "_fetch_lulc_years", lambda *_args: {})
@@ -257,9 +255,7 @@ class TestLulcHelpers:
         assert result["collection"] == "io-lulc-annual-v02"
         assert seen_years == list(range(2017, 2024))
 
-    def test_fetch_lulc_years_covers_skip_and_exception_paths(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_fetch_lulc_years_covers_skip_and_exception_paths(self, monkeypatch: pytest.MonkeyPatch):
         calls = {
             2021: _Resp({"features": []}),
             2022: _Resp({"features": [{"assets": {}}]}),
@@ -276,14 +272,11 @@ class TestLulcHelpers:
             eudr,
             "_sample_classification_cog",
             lambda *_args: (
-                sample_calls.append(_args)
-                or {"dominant_class": "Trees", "classes": [{"code": 4, "area_pct": 77.7}]}
+                sample_calls.append(_args) or {"dominant_class": "Trees", "classes": [{"code": 4, "area_pct": 77.7}]}
             ),
         )
 
-        result = eudr._fetch_lulc_years(
-            _YearClient(), "https://stac", [0, 0, 1, 1], [2021, 2022, 2023]
-        )
+        result = eudr._fetch_lulc_years(_YearClient(), "https://stac", [0, 0, 1, 1], [2021, 2022, 2023])
         assert result == {}
         assert sample_calls == []
 
@@ -294,10 +287,7 @@ class TestAlosQuery:
         assert eudr.query_alos_fnf([0, 0, 1, 1], http_client=no_data)["reason"] == "no_alos_data"
 
         missing_asset = _Client([_Resp({"features": [{"id": "x", "assets": {}}]})])
-        assert (
-            eudr.query_alos_fnf([0, 0, 1, 1], http_client=missing_asset)["reason"]
-            == "no_classification_asset"
-        )
+        assert eudr.query_alos_fnf([0, 0, 1, 1], http_client=missing_asset)["reason"] == "no_classification_asset"
 
     def test_query_alos_success_and_exception(self, monkeypatch: pytest.MonkeyPatch):
         success = _Client(
@@ -426,9 +416,7 @@ class TestSampleClassificationCog:
         _patch_cog_read(monkeypatch, data)
 
         labels = {1: "Forest", 2: "Non-forest"}
-        result = eudr._sample_classification_cog(
-            "https://example.com/cog.tif", [0, 0, 1, 1], labels
-        )
+        result = eudr._sample_classification_cog("https://example.com/cog.tif", [0, 0, 1, 1], labels)
         assert result["total_pixels"] == 4
         assert result["classes"][0]["label"] == "Forest"
         assert result["classes"][0]["pixel_count"] == 2

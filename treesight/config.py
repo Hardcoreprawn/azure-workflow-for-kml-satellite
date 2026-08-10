@@ -71,12 +71,8 @@ def config_get_int(d: dict[str, Any], key: str, default: int) -> int:
 # --- Pipeline configuration ---
 
 IMAGERY_PROVIDER = _env("IMAGERY_PROVIDER", "planetary_computer")
-IMAGERY_RESOLUTION_TARGET_M = _env_float(
-    "IMAGERY_RESOLUTION_TARGET_M", DEFAULT_IMAGERY_RESOLUTION_TARGET_M
-)
-IMAGERY_MAX_CLOUD_COVER_PCT = _env_float(
-    "IMAGERY_MAX_CLOUD_COVER_PCT", DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT
-)
+IMAGERY_RESOLUTION_TARGET_M = _env_float("IMAGERY_RESOLUTION_TARGET_M", DEFAULT_IMAGERY_RESOLUTION_TARGET_M)
+IMAGERY_MAX_CLOUD_COVER_PCT = _env_float("IMAGERY_MAX_CLOUD_COVER_PCT", DEFAULT_IMAGERY_MAX_CLOUD_COVER_PCT)
 AOI_BUFFER_M = _env_float("AOI_BUFFER_M", DEFAULT_AOI_BUFFER_M)
 AOI_MAX_AREA_HA = _env_float("AOI_MAX_AREA_HA", DEFAULT_AOI_MAX_AREA_HA)
 
@@ -177,9 +173,7 @@ def validate_config() -> None:
     if IMAGERY_RESOLUTION_TARGET_M <= 0:
         errors.append(f"IMAGERY_RESOLUTION_TARGET_M must be > 0, got {IMAGERY_RESOLUTION_TARGET_M}")
     if not (0 <= IMAGERY_MAX_CLOUD_COVER_PCT <= 100):
-        errors.append(
-            f"IMAGERY_MAX_CLOUD_COVER_PCT must be 0-100, got {IMAGERY_MAX_CLOUD_COVER_PCT}"
-        )
+        errors.append(f"IMAGERY_MAX_CLOUD_COVER_PCT must be 0-100, got {IMAGERY_MAX_CLOUD_COVER_PCT}")
     if AOI_BUFFER_M < 0:
         errors.append(f"AOI_BUFFER_M must be >= 0, got {AOI_BUFFER_M}")
     if AOI_MAX_AREA_HA <= 0:

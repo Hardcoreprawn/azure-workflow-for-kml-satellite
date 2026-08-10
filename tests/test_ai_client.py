@@ -31,9 +31,7 @@ class _FakeHttpClient:
     def __exit__(self, *_args):
         return False
 
-    def post(
-        self, url: str, json: dict | None = None, headers: dict | None = None
-    ) -> _FakeResponse:
+    def post(self, url: str, json: dict | None = None, headers: dict | None = None) -> _FakeResponse:
         self.posts.append((url, json, headers))
         return self.response
 
@@ -79,15 +77,11 @@ class TestCacheHelpers:
 
         ai_client._cache_write("k1", {"v": 1})
 
-        assert uploaded == [
-            (ai_client.AI_CACHE_CONTAINER, f"{ai_client.AI_CACHE_PREFIX}k1.json", {"v": 1})
-        ]
+        assert uploaded == [(ai_client.AI_CACHE_CONTAINER, f"{ai_client.AI_CACHE_PREFIX}k1.json", {"v": 1})]
 
 
 class TestProviderCalls:
-    def test_call_azure_ai_returns_none_when_not_configured(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_call_azure_ai_returns_none_when_not_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ai_client, "AZURE_AI_ENDPOINT", "")
         monkeypatch.setattr(ai_client, "AZURE_AI_API_KEY", "")
         assert ai_client._call_azure_ai("prompt") is None
@@ -151,17 +145,13 @@ class TestParsingAndGenerateAnalysis:
         monkeypatch.setattr(ai_client, "_try_cache_read", lambda _key: {"cached": True})
         assert ai_client.generate_analysis("p") == {"cached": True}
 
-    def test_generate_analysis_uses_azure_then_cache_write(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_generate_analysis_uses_azure_then_cache_write(self, monkeypatch: pytest.MonkeyPatch) -> None:
         writes: list[tuple[str, dict]] = []
 
         monkeypatch.setattr(ai_client, "_try_cache_read", lambda _key: None)
         monkeypatch.setattr(ai_client, "_call_azure_ai", lambda _prompt: '{"x": 1}')
         monkeypatch.setattr(ai_client, "_call_ollama", lambda _prompt: None)
-        monkeypatch.setattr(
-            ai_client, "_cache_write", lambda key, result: writes.append((key, result))
-        )
+        monkeypatch.setattr(ai_client, "_cache_write", lambda key, result: writes.append((key, result)))
 
         result = ai_client.generate_analysis("prompt")
 
@@ -176,9 +166,7 @@ class TestParsingAndGenerateAnalysis:
 
         assert ai_client.generate_analysis("prompt") == {"y": 2}
 
-    def test_generate_analysis_returns_none_when_all_fail(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_generate_analysis_returns_none_when_all_fail(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ai_client, "_try_cache_read", lambda _key: None)
         monkeypatch.setattr(ai_client, "_call_azure_ai", lambda _prompt: None)
         monkeypatch.setattr(ai_client, "_call_ollama", lambda _prompt: "not json")

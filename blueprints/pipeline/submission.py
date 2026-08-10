@@ -75,9 +75,7 @@ def _load_prior_ticket_for_user(user_id: str, prior_submission_id: str) -> dict[
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()
-        ticket = storage.download_json(
-            DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json"
-        )
+        ticket = storage.download_json(DEFAULT_INPUT_CONTAINER, f".tickets/{prior_submission_id}.json")
         if isinstance(ticket, dict) and ticket.get("user_id") == user_id:
             return ticket
         return None

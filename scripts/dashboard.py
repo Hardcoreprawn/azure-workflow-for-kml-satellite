@@ -371,11 +371,7 @@ def build_kanban(
             }
         else:
             # Track the furthest phase reached per run
-            cur_idx = (
-                _PHASE_ORDER.index(runs[op_id]["phase"])
-                if runs[op_id]["phase"] in _PHASE_ORDER
-                else 0
-            )
+            cur_idx = _PHASE_ORDER.index(runs[op_id]["phase"]) if runs[op_id]["phase"] in _PHASE_ORDER else 0
             new_idx = _PHASE_ORDER.index(phase) if phase in _PHASE_ORDER else 0
             if new_idx > cur_idx:
                 runs[op_id]["phase"] = phase
@@ -460,9 +456,7 @@ def build_requests_table(requests: list[dict]) -> Panel:
 
     for req in (requests or [])[:10]:
         code = str(req.get("resultCode", ""))
-        code_style = (
-            "green" if code.startswith("2") else "yellow" if code.startswith("4") else "red"
-        )
+        code_style = "green" if code.startswith("2") else "yellow" if code.startswith("4") else "red"
         user = _truncate(str(req.get("user_AuthenticatedId", "") or "anon"), 14)
         dur = str(int(float(req.get("duration", 0)))) if req.get("duration") else ""
         table.add_row(

@@ -110,9 +110,7 @@ def compute_ndvi_trend(ndvi_stats: list[dict[str, float] | None]) -> dict[str, A
         "earliest_mean": round(earliest_mean, 4),
         "latest_mean": round(latest_mean, 4),
         "overall_change": round(overall_change, 4),
-        "overall_change_pct": round(overall_change / earliest_mean * 100, 1)
-        if earliest_mean
-        else 0.0,
+        "overall_change_pct": round(overall_change / earliest_mean * 100, 1) if earliest_mean else 0.0,
         "max_consecutive_drop": round(max_drop, 4),
         "max_drop_frame_index": max_drop_idx,
         "coefficient_of_variation": round(cv, 3),
@@ -197,9 +195,7 @@ def compute_aoi_metrics(
             "comparisons": len(changes),
             "total_loss_ha": round(sum(c.get("loss_ha", 0) for c in changes), 2),
             "total_gain_ha": round(sum(c.get("gain_ha", 0) for c in changes), 2),
-            "net_change_ha": round(
-                sum(c.get("gain_ha", 0) - c.get("loss_ha", 0) for c in changes), 2
-            ),
+            "net_change_ha": round(sum(c.get("gain_ha", 0) - c.get("loss_ha", 0) for c in changes), 2),
             "trajectory": summary.get("trajectory", "unknown"),
             "worst_loss": _worst_change(changes, "loss_ha"),
             "best_gain": _worst_change(changes, "gain_ha"),

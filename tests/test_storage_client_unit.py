@@ -72,9 +72,7 @@ class TestGetBlobServiceClient:
 
     def test_uses_connection_string(self, monkeypatch: pytest.MonkeyPatch):
         fake = _FakeServiceClient()
-        monkeypatch.setattr(
-            storage_client, "STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true"
-        )
+        monkeypatch.setattr(storage_client, "STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true")
         monkeypatch.setattr(storage_client, "STORAGE_ACCOUNT_NAME", "")
         monkeypatch.setattr(
             storage_client.BlobServiceClient,
@@ -121,9 +119,7 @@ class TestBlobStorageClientMethods:
         client = storage_client.BlobStorageClient.__new__(storage_client.BlobStorageClient)
         client._client = fake
 
-        url = client.upload_bytes(
-            "kml-input", "analysis/out.json", b"abc", content_type="text/plain"
-        )
+        url = client.upload_bytes("kml-input", "analysis/out.json", b"abc", content_type="text/plain")
 
         assert url == fake.blob.url
         assert fake.blob.upload_calls

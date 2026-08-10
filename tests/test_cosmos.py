@@ -20,9 +20,7 @@ def _reset_cosmos_singletons():
 @pytest.fixture()
 def mock_cosmos_env(monkeypatch):
     """Set minimal Cosmos config env vars."""
-    monkeypatch.setattr(
-        "treesight.config.COSMOS_ENDPOINT", "https://cosmos-test.documents.azure.com:443/"
-    )
+    monkeypatch.setattr("treesight.config.COSMOS_ENDPOINT", "https://cosmos-test.documents.azure.com:443/")
     monkeypatch.setattr("treesight.config.COSMOS_DATABASE_NAME", "treesight")
     # Explicit: no key configured — real deployments never set COSMOS_KEY
     # (see infra/tofu/main.tf), so this is the managed-identity/cloud case.
@@ -40,9 +38,7 @@ class TestGetClient:
 
     @patch("treesight.storage.cosmos.DefaultAzureCredential")
     @patch("treesight.storage.cosmos.CosmosClient")
-    def test_creates_client_with_default_credential(
-        self, mock_client_cls, mock_cred_cls, mock_cosmos_env
-    ):
+    def test_creates_client_with_default_credential(self, mock_client_cls, mock_cred_cls, mock_cosmos_env):
         mock_cred = MagicMock()
         mock_cred_cls.return_value = mock_cred
 
@@ -63,16 +59,14 @@ class TestGetClient:
         assert mock_client_cls.call_count == 1
 
     @patch("treesight.storage.cosmos.CosmosClient")
-    def test_uses_key_credential_when_cosmos_key_set(
-        self, mock_client_cls, mock_cosmos_env, monkeypatch
-    ):
+    def test_uses_key_credential_when_cosmos_key_set(self, mock_client_cls, mock_cosmos_env, monkeypatch):
         """The Cosmos DB Emulator (used by make dev-all, #1269) has no
         managed-identity backend at all -- it only supports a master key.
         COSMOS_KEY opts into that, but only ever locally: real deployments
         (infra/tofu/main.tf) never set it, so production always falls
         through to DefaultAzureCredential below.
         """
-        emulator_key = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="  # noqa: E501  # pragma: allowlist secret
+        emulator_key = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="  # pragma: allowlist secret  # noqa: E501
         monkeypatch.setattr("treesight.config.COSMOS_KEY", emulator_key)
 
         cosmos._get_client()
@@ -128,9 +122,7 @@ class TestReadItem:
         from azure.cosmos.exceptions import CosmosResourceNotFoundError
 
         mock_container = MagicMock()
-        mock_container.read_item.side_effect = CosmosResourceNotFoundError(
-            status_code=404, message="Not found"
-        )
+        mock_container.read_item.side_effect = CosmosResourceNotFoundError(status_code=404, message="Not found")
         mock_get_container.return_value = mock_container
 
         result = cosmos.read_item("runs", "missing", "u1")
@@ -183,9 +175,7 @@ class TestDeleteItem:
         from azure.cosmos.exceptions import CosmosResourceNotFoundError
 
         mock_container = MagicMock()
-        mock_container.delete_item.side_effect = CosmosResourceNotFoundError(
-            status_code=404, message="Not found"
-        )
+        mock_container.delete_item.side_effect = CosmosResourceNotFoundError(status_code=404, message="Not found")
         mock_get_container.return_value = mock_container
 
         # Should not raise
@@ -288,9 +278,7 @@ class TestReplaceItemWithEtag:
         )
 
         mock_container = MagicMock()
-        mock_container.replace_item.side_effect = CosmosAccessConditionFailedError(
-            message="precondition failed"
-        )
+        mock_container.replace_item.side_effect = CosmosAccessConditionFailedError(message="precondition failed")
         mock_get_container.return_value = mock_container
 
         with pytest.raises(cosmos.EtagPreconditionFailedError):

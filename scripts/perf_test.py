@@ -230,9 +230,7 @@ def print_imagery_report(data: bytes, elapsed: float, result: SearchResult) -> N
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Performance & quality test for Planetary Computer pipeline"
-    )
+    parser = argparse.ArgumentParser(description="Performance & quality test for Planetary Computer pipeline")
     parser.add_argument("--kml", default=DEFAULT_KML, help="KML file to process")
     parser.add_argument("--asset-key", default=DEFAULT_ASSET_KEY, help="PC asset key to download")
     parser.add_argument("--max-items", type=int, default=5, help="Max STAC results per AOI")
@@ -290,9 +288,7 @@ def main() -> None:
         date_start=date_start,
         date_end=date_end,
     )
-    print(
-        f"  Filters: cloud < {args.max_cloud}%, dates {date_start:%Y-%m-%d} → {date_end:%Y-%m-%d}"
-    )
+    print(f"  Filters: cloud < {args.max_cloud}%, dates {date_start:%Y-%m-%d} → {date_end:%Y-%m-%d}")
     print(f"  Asset key: {args.asset_key}, max items: {args.max_items}")
 
     provider = PlanetaryComputerProvider(
@@ -340,10 +336,7 @@ def main() -> None:
             if results:
                 r = results[0]
                 media = r.extra.get("media_type", "?")
-                print(
-                    f"            top scene: {r.scene_id}  cloud: {r.cloud_cover_pct:.1f}%  "
-                    f"media: {media}"
-                )
+                print(f"            top scene: {r.scene_id}  cloud: {r.cloud_cover_pct:.1f}%  media: {media}")
 
     # -----------------------------------------------------------------------
     # Phase 3: Download & Validate

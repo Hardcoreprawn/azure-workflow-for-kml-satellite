@@ -20,9 +20,7 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 
-def _require_org_owner(
-    user_id: str, org_id: str
-) -> tuple[dict[str, Any] | None, func.HttpResponse | None]:
+def _require_org_owner(user_id: str, org_id: str) -> tuple[dict[str, Any] | None, func.HttpResponse | None]:
     """Return (org, None) if user is an owner, or (None, error_response)."""
     from treesight.security.orgs import get_org
 
@@ -188,9 +186,7 @@ def org_invite(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> fun
 
 @bp.route(route="org/members", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
-def org_members_list(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def org_members_list(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/org/members — list org members."""
     del auth_claims  # unused
     from treesight.security.orgs import list_members
@@ -218,9 +214,7 @@ def org_members_list(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def org_member_manage(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def org_member_manage(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """DELETE (remove) or PATCH (change role) a member."""
     del auth_claims  # unused
     member_id = req.route_params.get("member_id", "")
@@ -298,9 +292,7 @@ def _change_role(req: func.HttpRequest, org_id: str, member_id: str) -> func.Htt
 
 @bp.route(route="org/invites", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
-def org_invites_list(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def org_invites_list(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/org/invites — list pending invitations for the org."""
     del auth_claims  # unused
     from treesight.security.orgs import list_pending_invites
@@ -323,9 +315,7 @@ def org_invites_list(
 
     invites = list_pending_invites(org_id)
     # Filter sensitive fields; exclude token — live JWTs must not be exposed in listings.
-    safe_invites = [
-        {k: v for k, v in inv.items() if not k.startswith("_") and k != "token"} for inv in invites
-    ]
+    safe_invites = [{k: v for k, v in inv.items() if not k.startswith("_") and k != "token"} for inv in invites]
     return func.HttpResponse(
         json.dumps({"invites": safe_invites}),
         status_code=200,
@@ -342,9 +332,7 @@ def org_invites_list(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def org_invite_revoke(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def org_invite_revoke(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """PATCH /api/org/invites/{email}/revoke — revoke a pending invitation."""
     del auth_claims  # unused
     email = req.route_params.get("email", "")
@@ -391,9 +379,7 @@ def org_invite_revoke(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def org_invite_accept(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def org_invite_accept(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/org/invites/{token}/accept — accept an invitation by token."""
     del auth_claims  # unused
     token = req.route_params.get("token", "")

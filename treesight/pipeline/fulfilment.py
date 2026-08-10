@@ -69,9 +69,7 @@ def download_imagery(
         elif asset_url:
             image_bytes = fetch_asset_bytes(asset_url)
         else:
-            raise ValueError(
-                "No asset_url provided — cannot download imagery. Use a stub provider in tests."
-            )
+            raise ValueError("No asset_url provided — cannot download imagery. Use a stub provider in tests.")
 
         content_type = blob_ref.content_type or "image/tiff"
         storage.upload_bytes(

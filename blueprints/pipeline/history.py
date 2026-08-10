@@ -104,11 +104,7 @@ def assert_run_write_access(run_record: dict[str, Any], requesting_user_id: str)
     try:
         org = get_user_org(requesting_user_id)
         if org and isinstance(org, dict):
-            member_ids = {
-                str(m.get("user_id", "")).strip()
-                for m in org.get("members", [])
-                if isinstance(m, dict)
-            }
+            member_ids = {str(m.get("user_id", "")).strip() for m in org.get("members", []) if isinstance(m, dict)}
             if owner_id in member_ids:
                 return
     except Exception:
@@ -219,10 +215,7 @@ def _fetch_submission_records(user_id: str, limit: int, *, offset: int = 0) -> l
     try:
         from treesight.storage import cosmos
 
-        query = (
-            "SELECT * FROM c WHERE c.user_id = @uid"
-            " ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
-        )
+        query = "SELECT * FROM c WHERE c.user_id = @uid ORDER BY c.submitted_at DESC OFFSET @off LIMIT @lim"
         return cosmos.query_items(
             "runs",
             query,
@@ -334,9 +327,7 @@ async def _build_analysis_history_response(
 
     import asyncio
 
-    runs = await asyncio.gather(
-        *(_build_analysis_history_entry(record, client) for record in records)
-    )
+    runs = await asyncio.gather(*(_build_analysis_history_entry(record, client) for record in records))
     active_run = next((run for run in runs if _history_run_is_active(run)), None)
 
     payload = {
@@ -393,12 +384,8 @@ async def _build_analysis_history_entry(
         "workspaceRole": record.get("workspace_role"),
         "workspacePreference": record.get("workspace_preference"),
         "runtimeStatus": runtime_status,
-        "createdTime": status_payload.get("createdTime")
-        if status_payload
-        else record.get("submitted_at", ""),
-        "lastUpdatedTime": status_payload.get("lastUpdatedTime")
-        if status_payload
-        else record.get("submitted_at", ""),
+        "createdTime": status_payload.get("createdTime") if status_payload else record.get("submitted_at", ""),
+        "lastUpdatedTime": status_payload.get("lastUpdatedTime") if status_payload else record.get("submitted_at", ""),
         "customStatus": status_payload.get("customStatus") if status_payload else None,
         "output": output,
         "artifactCount": len(artifacts) if isinstance(artifacts, dict) else 0,

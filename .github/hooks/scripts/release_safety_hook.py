@@ -63,9 +63,7 @@ def main() -> int:
     haystack = "\n".join(flatten_strings(payload)).lower()
 
     should_gate = any(marker.lower() in haystack for marker in RELEASE_PATH_MARKERS)
-    should_gate = should_gate or any(
-        marker.lower() in haystack for marker in RELEASE_COMMAND_MARKERS
-    )
+    should_gate = should_gate or any(marker.lower() in haystack for marker in RELEASE_COMMAND_MARKERS)
 
     if not should_gate:
         return 0

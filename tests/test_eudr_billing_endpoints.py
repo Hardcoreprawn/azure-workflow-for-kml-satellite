@@ -474,9 +474,7 @@ class TestSummaryRowsFromManifest:
         }
         run_record = {
             "parcel_notes": {"0": "Verified on-site — no change visible"},
-            "parcel_overrides": {
-                "0": {"reason": "Ground-truthed as compliant after site visit", "reverted": False}
-            },
+            "parcel_overrides": {"0": {"reason": "Ground-truthed as compliant after site visit", "reverted": False}},
         }
         rows = _summary_rows_from_manifest("run-003", "2026-03-01T00:00:00Z", manifest, run_record)
         assert rows[0]["overridden"] == "yes"
@@ -549,9 +547,7 @@ class TestEudrSummaryExport:
     def test_unauthenticated_returns_401(self, _auth):
         from blueprints.eudr import _eudr_summary_export
 
-        req = make_test_request(
-            url="/api/eudr/summary-export", auth_header=None, principal_user_id=None
-        )
+        req = make_test_request(url="/api/eudr/summary-export", auth_header=None, principal_user_id=None)
         client = AsyncMock()
         resp = asyncio.run(_eudr_summary_export(req, client))
         assert resp.status_code == 401

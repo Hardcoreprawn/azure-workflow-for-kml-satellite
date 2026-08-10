@@ -234,9 +234,7 @@ class TestBillingStatus:
     def test_status_uses_org_pool_counters(self, _mock_pool, _mock_org, _mock_read):
         from blueprints.billing import billing_status
 
-        req = func.HttpRequest(
-            method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b""
-        )
+        req = func.HttpRequest(method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b"")
         resp = billing_status(req)
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
@@ -247,9 +245,7 @@ class TestBillingStatus:
     def test_free_user_status(self, _mock_read):
         from blueprints.billing import billing_status
 
-        req = func.HttpRequest(
-            method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b""
-        )
+        req = func.HttpRequest(method="GET", url="/api/billing/status", headers={"Origin": _ALLOWED_ORIGIN}, body=b"")
         resp = billing_status(req)
         assert resp.status_code == 200
         data = json.loads(resp.get_body())
@@ -407,9 +403,7 @@ class TestCosmosBillingAllowed:
     @patch("treesight.storage.cosmos.upsert_item")
     @patch("treesight.storage.cosmos.read_item")
     @patch("treesight.security.users.get_user")
-    def test_tier_emulation_allowed_via_cosmos_user_record(
-        self, mock_get_user, mock_read, mock_upsert
-    ):
+    def test_tier_emulation_allowed_via_cosmos_user_record(self, mock_get_user, mock_read, mock_upsert):
         """User allowlisted in Cosmos user record can use tier emulation."""
         from blueprints.billing import billing_emulation
 

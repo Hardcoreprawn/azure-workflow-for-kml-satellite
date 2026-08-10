@@ -65,10 +65,7 @@ def send_email(
     sender = os.environ.get("EMAIL_SENDER_ADDRESS", "")
 
     if not conn_str or not sender:
-        logger.warning(
-            "Email not configured — set COMMUNICATION_SERVICES_CONNECTION_STRING "
-            "and EMAIL_SENDER_ADDRESS"
-        )
+        logger.warning("Email not configured — set COMMUNICATION_SERVICES_CONNECTION_STRING and EMAIL_SENDER_ADDRESS")
         return False
 
     effective_allowlist = _allowed_recipients()

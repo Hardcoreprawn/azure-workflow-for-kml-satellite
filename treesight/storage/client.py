@@ -42,10 +42,7 @@ def get_blob_service_client() -> BlobServiceClient:
             account_url = f"https://{STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
             _client = BlobServiceClient(account_url, credential=DefaultAzureCredential())
         else:
-            raise RuntimeError(
-                "Storage is not configured: set AzureWebJobsStorage or "
-                "AzureWebJobsStorage__accountName"
-            )
+            raise RuntimeError("Storage is not configured: set AzureWebJobsStorage or AzureWebJobsStorage__accountName")
     return _client
 
 

@@ -500,9 +500,7 @@ def eudr_manifest():
                 "ndvi_stats": [{"mean": 0.35, "min": 0.1, "max": 0.55, "std": 0.15}],
                 "change_detection": {
                     "summary": {"trajectory": "declining", "comparisons": 1},
-                    "season_changes": [
-                        {"loss_ha": 2.5, "loss_pct": 8.0, "label": "spring 2023-2024"}
-                    ],
+                    "season_changes": [{"loss_ha": 2.5, "loss_pct": 8.0, "label": "spring 2023-2024"}],
                 },
                 "worldcover": {
                     "available": True,

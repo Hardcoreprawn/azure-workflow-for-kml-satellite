@@ -133,9 +133,7 @@ def _process_monitor(monitor: Any) -> None:
     date_end = now.date().isoformat()
     last_run_id = getattr(monitor, "last_run_id", None)
     has_successful_monitoring_run = bool(
-        monitor.last_run_at
-        and isinstance(last_run_id, str)
-        and last_run_id.startswith("monitoring-")
+        monitor.last_run_at and isinstance(last_run_id, str) and last_run_id.startswith("monitoring-")
     )
     date_start = monitor.last_run_at.date().isoformat() if has_successful_monitoring_run else None
 
@@ -154,9 +152,7 @@ def _process_monitor(monitor: Any) -> None:
     # The live enrichment contract returns {"season_changes": [...], "summary": {...}},
     # while older tests/mocks may still pass a flat metrics dict directly.
     change_result = enrichment_result.get("change_detection")
-    season_changes = (
-        change_result.get("season_changes") if isinstance(change_result, dict) else None
-    )
+    season_changes = change_result.get("season_changes") if isinstance(change_result, dict) else None
     if isinstance(season_changes, list) and season_changes:
         dated_changes = [
             change
@@ -196,9 +192,7 @@ def _process_monitor(monitor: Any) -> None:
 # --- HTTP endpoints: monitoring CRUD -----------------------------------
 
 
-def list_monitors_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def list_monitors_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/monitoring — list the user's monitors."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
@@ -215,9 +209,7 @@ def list_monitors_endpoint(
     )
 
 
-def create_monitor_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/monitoring — create a new monitor for an AOI."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
@@ -288,13 +280,9 @@ def create_monitor_endpoint(
     )
 
 
-@bp.route(
-    route="monitoring", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS
-)
+@bp.route(route="monitoring", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 @require_auth
-def monitoring_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def monitoring_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Dispatch `/api/monitoring` reads and creates through one registered route."""
     if req.method == "OPTIONS":
         return cors_preflight(req)
@@ -355,9 +343,7 @@ def _apply_patch(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def monitor_detail_endpoint(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def monitor_detail_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET/PATCH/DELETE /api/monitoring/{monitor_id}."""
     if req.method == "OPTIONS":
         return cors_preflight(req)

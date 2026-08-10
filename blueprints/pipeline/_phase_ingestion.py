@@ -52,12 +52,9 @@ def _phase_ingestion(
     enforce_aoi_limit(feature_count=len(feature_list), tier=inp.get("tier"))
 
     # Fan-out: prepare AOIs
-    context.set_custom_status(
-        {"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)}
-    )
+    context.set_custom_status({"phase": "ingestion", "step": "preparing_aois", "features": len(feature_list)})
     aoi_tasks = [
-        context.call_activity("prepare_aoi", {"feature": f, "buffer_m": inp.get("buffer_m")})
-        for f in feature_list
+        context.call_activity("prepare_aoi", {"feature": f, "buffer_m": inp.get("buffer_m")}) for f in feature_list
     ]
     aois = ensure_list_of_dicts((yield context.task_all(aoi_tasks)), name="prepare_aoi")
 
@@ -66,18 +63,14 @@ def _phase_ingestion(
     per_aoi_coords = _collect_per_aoi_coords(aois)
 
     # Extract area_ha per AOI for batch routing (before claim-check offload)
-    aoi_area_by_name: dict[str, float] = {
-        a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois
-    }
+    aoi_area_by_name: dict[str, float] = {a.get("feature_name", ""): a.get("area_ha", 0.0) for a in aois}
 
     # Extract centroids for pipeline telemetry spread calculation (#400).
     # [0.0, 0.0] is treesight.geo.centroid's placeholder for a missing/empty
     # polygon (see blueprints/monitoring.py's identical check) -- including it
     # would wildly inflate max_spread_km with a fake distance to Null Island.
     aoi_centroids: list[list[float]] = [
-        a["centroid"]
-        for a in aois
-        if a.get("centroid") and len(a["centroid"]) == 2 and a["centroid"] != [0.0, 0.0]
+        a["centroid"] for a in aois if a.get("centroid") and len(a["centroid"]) == 2 and a["centroid"] != [0.0, 0.0]
     ]
 
     # Claim-check: store full AOI dicts in blob storage, get lightweight refs

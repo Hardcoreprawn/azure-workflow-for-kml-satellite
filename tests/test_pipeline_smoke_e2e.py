@@ -172,9 +172,7 @@ def _poll_orchestrator(
         if status in _TERMINAL_STATUSES:
             return data
         time.sleep(interval)
-    raise TimeoutError(
-        f"Orchestration {instance_id!r} did not reach a terminal state within {timeout}s"
-    )
+    raise TimeoutError(f"Orchestration {instance_id!r} did not reach a terminal state within {timeout}s")
 
 
 def _submit_and_wait(kml_path: Path) -> dict:

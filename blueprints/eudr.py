@@ -262,9 +262,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
 
     records = _fetch_org_run_records(user_id, limit=400)
     month_keys = _last_n_month_keys(6)
-    by_month: dict[str, dict[str, int]] = {
-        k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys
-    }
+    by_month: dict[str, dict[str, int]] = {k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys}
     for record in records:
         submitted = _parse_iso_datetime(str(record.get("submitted_at", "")))
         if not submitted:
@@ -302,9 +300,7 @@ def _eudr_usage_payload(user_id: str) -> dict:
             "nextTierThreshold": next_threshold,
             "nextTierRateGbp": next_rate,
             "parcelsToNextTier": (next_threshold - period_used) if next_threshold else 0,
-            "within20PercentOfNextTier": bool(
-                next_threshold and period_used >= int(next_threshold * 0.8)
-            ),
+            "within20PercentOfNextTier": bool(next_threshold and period_used >= int(next_threshold * 0.8)),
         },
         "history": months,
     }
@@ -575,9 +571,7 @@ def _summary_rows_from_manifest(
                 "center_lat": center.get("lat", ""),
                 "center_lon": center.get("lon", ""),
                 "determination_status": (
-                    "error"
-                    if "error" in aoi
-                    else ("compliant" if det.get("deforestation_free") else "non_compliant")
+                    "error" if "error" in aoi else ("compliant" if det.get("deforestation_free") else "non_compliant")
                 ),
                 "determination_confidence": det.get("confidence", ""),
                 "determination_flags": "; ".join(det.get("flags", [])),

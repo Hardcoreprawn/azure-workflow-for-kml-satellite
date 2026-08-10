@@ -249,15 +249,11 @@ class TableRateLimiter:
 # ---------------------------------------------------------------------------
 
 # Pre-configured limiters for different endpoint tiers
-form_limiter: RateLimiterProtocol = RateLimiter(
-    max_requests=RATE_LIMIT_FORM_MAX, window_seconds=RATE_LIMIT_FORM_WINDOW
-)
+form_limiter: RateLimiterProtocol = RateLimiter(max_requests=RATE_LIMIT_FORM_MAX, window_seconds=RATE_LIMIT_FORM_WINDOW)
 pipeline_limiter: RateLimiterProtocol = RateLimiter(
     max_requests=RATE_LIMIT_PIPELINE_MAX, window_seconds=RATE_LIMIT_PIPELINE_WINDOW
 )
-demo_limiter: RateLimiterProtocol = RateLimiter(
-    max_requests=RATE_LIMIT_DEMO_MAX, window_seconds=RATE_LIMIT_DEMO_WINDOW
-)
+demo_limiter: RateLimiterProtocol = RateLimiter(max_requests=RATE_LIMIT_DEMO_MAX, window_seconds=RATE_LIMIT_DEMO_WINDOW)
 
 
 def set_form_limiter(limiter: RateLimiterProtocol) -> None:
@@ -316,15 +312,9 @@ def wire_rate_limiters(
     else:
         raise ValueError("Either connection_string or table_service_client is required")
 
-    set_form_limiter(
-        TableRateLimiter(RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW, "form", **kwargs)
-    )
-    set_pipeline_limiter(
-        TableRateLimiter(RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW, "pipeline", **kwargs)
-    )
-    set_demo_limiter(
-        TableRateLimiter(RATE_LIMIT_DEMO_MAX, RATE_LIMIT_DEMO_WINDOW, "demo", **kwargs)
-    )
+    set_form_limiter(TableRateLimiter(RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW, "form", **kwargs))
+    set_pipeline_limiter(TableRateLimiter(RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW, "pipeline", **kwargs))
+    set_demo_limiter(TableRateLimiter(RATE_LIMIT_DEMO_MAX, RATE_LIMIT_DEMO_WINDOW, "demo", **kwargs))
 
 
 def get_client_ip(req) -> str:

@@ -233,9 +233,7 @@ class TestSafeWritePipelineStats:
         context.call_activity_with_retry.return_value = {"ok": True}
         ing = {"ingestion": {"aoi_count": 1}}
 
-        gen = _safe_write_pipeline_stats(
-            context, {"user_id": "u1", "tier": "free"}, ing, {}, {}, {}, "inst-1"
-        )
+        gen = _safe_write_pipeline_stats(context, {"user_id": "u1", "tier": "free"}, ing, {}, {}, {}, "inst-1")
         result = _drain(gen, [{"ok": True}])
 
         assert result is None

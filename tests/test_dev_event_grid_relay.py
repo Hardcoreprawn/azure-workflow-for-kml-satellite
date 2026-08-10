@@ -82,14 +82,10 @@ class TestExtractEventgridKey:
         assert dev_event_grid_relay._extract_eventgrid_key(json.dumps(["not", "a", "dict"])) is None
 
     def test_returns_none_when_system_keys_is_not_a_list(self):
-        assert (
-            dev_event_grid_relay._extract_eventgrid_key(json.dumps({"systemKeys": "oops"})) is None
-        )
+        assert dev_event_grid_relay._extract_eventgrid_key(json.dumps({"systemKeys": "oops"})) is None
 
     def test_skips_non_dict_entries_in_system_keys(self):
-        host_json = json.dumps(
-            {"systemKeys": ["oops", {"name": "eventgrid_extension", "value": "eg-key"}]}
-        )
+        host_json = json.dumps({"systemKeys": ["oops", {"name": "eventgrid_extension", "value": "eg-key"}]})
         assert dev_event_grid_relay._extract_eventgrid_key(host_json) == "eg-key"
 
 
@@ -135,9 +131,7 @@ class TestRelayForeverSeedsExistingBlobs:
             "from_connection_string",
             lambda _conn_str: fake_client,
         )
-        monkeypatch.setattr(
-            dev_event_grid_relay, "_fetch_eventgrid_key", lambda _client: "test-key"
-        )
+        monkeypatch.setattr(dev_event_grid_relay, "_fetch_eventgrid_key", lambda _client: "test-key")
         relayed: list[str] = []
         monkeypatch.setattr(
             dev_event_grid_relay,
