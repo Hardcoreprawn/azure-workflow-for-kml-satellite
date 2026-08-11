@@ -112,11 +112,7 @@ def _check_ciam(authority: str) -> dict:
         import requests  # imported locally to keep startup cost low
 
         r = requests.get(url, timeout=3)
-        return (
-            {"status": "ok"}
-            if r.status_code == 200
-            else {"status": "unreachable", "http": r.status_code}
-        )
+        return {"status": "ok"} if r.status_code == 200 else {"status": "unreachable", "http": r.status_code}
     except Exception as exc:
         return {"status": "unreachable", "error": str(exc)}
 
@@ -148,11 +144,7 @@ def _check_recent_pipeline(lookback_hours: int = 24) -> dict:
     try:
         rows = _cosmos.query_items(
             "run-records",
-            (
-                "SELECT VALUE COUNT(1) FROM c "
-                "WHERE c.status = 'completed' "
-                "AND c.submitted_at >= @cutoff"
-            ),
+            ("SELECT VALUE COUNT(1) FROM c WHERE c.status = 'completed' AND c.submitted_at >= @cutoff"),
             parameters=[{"name": "@cutoff", "value": cutoff}],
         )
         count = int(rows[0]) if rows else 0

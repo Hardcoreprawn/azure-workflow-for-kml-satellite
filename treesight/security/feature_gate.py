@@ -73,9 +73,7 @@ def tier_emulation_allowed(user_id: str | None) -> bool:
         if user_doc and user_doc.get("tier_emulation_allowed") is True:
             return True
     except Exception:
-        logger.debug(
-            "Cosmos tier_emulation_allowed check failed for user=%s", user_id, exc_info=True
-        )
+        logger.debug("Cosmos tier_emulation_allowed check failed for user=%s", user_id, exc_info=True)
 
     return False
 

@@ -682,8 +682,7 @@ class TestMonitoringScheduler:
             _process_monitor(m)
 
         assert mock_send.call_count == 0, (
-            "Monitoring should evaluate alerts against the newest year pair, not the "
-            "last season_changes entry"
+            "Monitoring should evaluate alerts against the newest year pair, not the last season_changes entry"
         )
 
     def test_process_monitor_passes_delta_window_on_repeat_run(self, _mock_cosmos):

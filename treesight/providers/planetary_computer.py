@@ -62,9 +62,7 @@ class PlanetaryComputerProvider(ImageryProvider):
         self._stub_mode = bool(config.get("stub_mode", False))
         self._asset_key = str(config.get("asset_key", DEFAULT_ASSET_KEY))
         raw_collections = config.get("collections", DEFAULT_COLLECTIONS)
-        self._collections = (
-            list(raw_collections) if isinstance(raw_collections, list) else DEFAULT_COLLECTIONS
-        )
+        self._collections = list(raw_collections) if isinstance(raw_collections, list) else DEFAULT_COLLECTIONS
         self._max_items = int(config.get("max_items", DEFAULT_MAX_ITEMS))  # type: ignore[arg-type]
         self._fallback = bool(config.get("fallback", True))
 

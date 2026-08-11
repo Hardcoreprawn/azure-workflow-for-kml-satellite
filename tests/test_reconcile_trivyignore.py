@@ -33,9 +33,7 @@ def _scan(*vuln_ids: str) -> dict:
         "Results": [
             {
                 "Target": "test",
-                "Vulnerabilities": [
-                    {"VulnerabilityID": vid, "Severity": "HIGH"} for vid in vuln_ids
-                ],
+                "Vulnerabilities": [{"VulnerabilityID": vid, "Severity": "HIGH"} for vid in vuln_ids],
             }
         ]
     }
@@ -177,9 +175,7 @@ def test_mixed_file_reconciles_each_entry_independently():
         "AZU-0012 # exp:2026-07-09 storage acl\n"
         "\n"
         "# container CVEs\n"
-        "CVE-2026-RESOLVED # exp:2026-06-16 gone now\n".replace(
-            "CVE-2026-RESOLVED", "CVE-2026-1000"
-        )
+        "CVE-2026-RESOLVED # exp:2026-06-16 gone now\n".replace("CVE-2026-RESOLVED", "CVE-2026-1000")
         + "CVE-2026-2000 # exp:2026-06-16 still present, expired\n"
         + "CVE-2026-3000 # exp:2026-12-01 still present, future\n"
     )
@@ -216,9 +212,7 @@ def test_present_ids_from_real_trivy_shape(tmp_path):
             {"Target": "debian", "Vulnerabilities": None},
             {
                 "Target": "python",
-                "Vulnerabilities": [
-                    {"VulnerabilityID": "CVE-2026-1", "Severity": "HIGH", "PkgName": "x"}
-                ],
+                "Vulnerabilities": [{"VulnerabilityID": "CVE-2026-1", "Severity": "HIGH", "PkgName": "x"}],
             },
         ]
     }
@@ -347,12 +341,8 @@ def test_e2e_suppressed_cve_visible_in_raw_absent_from_filtered_kept_by_reconcil
 
     # 3. Reconciler reads the raw scan and keeps/renews the still-present entry.
     result = reconcile(ignore_text, present_ids=raw_ids, today=TODAY)
-    assert suppressed_cve in result.text, (
-        "reconciler must keep the suppression when the CVE is still in the raw scan"
-    )
-    assert result.actions[0].kind in ("kept", "renewed"), (
-        "reconciler must keep or renew the entry, not remove it"
-    )
+    assert suppressed_cve in result.text, "reconciler must keep the suppression when the CVE is still in the raw scan"
+    assert result.actions[0].kind in ("kept", "renewed"), "reconciler must keep or renew the entry, not remove it"
 
     # 4. Gate: raw scan has an unsuppressed CVE (other_cve) → gate must fail.
     rc = main(["--scan", str(raw_path), "--ignore-file", str(ignore_path), "--gate"])

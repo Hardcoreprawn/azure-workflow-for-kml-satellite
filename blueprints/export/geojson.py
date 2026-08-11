@@ -176,9 +176,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         if ring and ring[0] != ring[-1]:
             ring.append(ring[0])
 
-        geometry: dict[str, Any] | None = (
-            {"type": "Polygon", "coordinates": [ring]} if ring else None
-        )
+        geometry: dict[str, Any] | None = {"type": "Polygon", "coordinates": [ring]} if ring else None
 
         features.append({"type": "Feature", "geometry": geometry, "properties": props})
 

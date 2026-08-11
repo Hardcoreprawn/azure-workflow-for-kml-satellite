@@ -429,9 +429,7 @@ def test_plan_sync_dry_run_groups_creates_not_individual_alerts() -> None:
     """Dry-run: 20 Pillow-style alerts (2 locations each for 10 CVEs) yield 10 creates."""
     cves = [f"CVE-2024-{i:04d}" for i in range(10)]
     alerts = [
-        _alert(i * 2 + loc, rule_id=cve, location=f"/path/{loc}:1")
-        for i, cve in enumerate(cves)
-        for loc in range(2)
+        _alert(i * 2 + loc, rule_id=cve, location=f"/path/{loc}:1") for i, cve in enumerate(cves) for loc in range(2)
     ]
     plan = plan_sync(open_alerts=alerts, tracked_issues=[])
 

@@ -123,9 +123,7 @@ def delete_item(container_name: str, item_id: str, partition_key: str) -> None:
         container.delete_item(item=item_id, partition_key=partition_key)
 
 
-def read_item_with_etag(
-    container_name: str, item_id: str, partition_key: str
-) -> tuple[dict[str, Any], str] | None:
+def read_item_with_etag(container_name: str, item_id: str, partition_key: str) -> tuple[dict[str, Any], str] | None:
     """Read a document and return ``(item, etag)`` or ``None`` if not found.
 
     The returned etag must be passed to :func:`replace_item_with_etag` to

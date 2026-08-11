@@ -66,9 +66,7 @@ REGIONS: list[Region] = [
     Region("us_alaska", 51.0, -180.0, 72.0, -130.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0),
     Region("us_hawaii", 18.0, -161.0, 23.0, -154.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0),
     # --- Tropics (key for EUDR deforestation monitoring) ------------------
-    Region(
-        "tropics_americas", -23.5, -93.0, 23.5, -34.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0
-    ),
+    Region("tropics_americas", -23.5, -93.0, 23.5, -34.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0),
     Region("tropics_africa", -23.5, -18.0, 23.5, 52.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0),
     Region("tropics_asia", -23.5, 52.0, 23.5, 180.0, ("sentinel-2-l2a", "landsat-c2-l2"), 10.0),
     # --- Europe -----------------------------------------------------------

@@ -202,9 +202,7 @@ def run_page_journey(page: Page, base_url: str, journey: PageJourney) -> PageRes
 
     problems: list[str] = []
     try:
-        response = page.goto(
-            f"{base_url}{journey.path}", wait_until="networkidle", timeout=NAV_TIMEOUT_MS
-        )
+        response = page.goto(f"{base_url}{journey.path}", wait_until="networkidle", timeout=NAV_TIMEOUT_MS)
     except Exception as exc:  # surfaced as a journey failure, not a script crash
         return PageResult(journey=journey, problems=[f"navigation error: {exc}"])
 
@@ -232,9 +230,7 @@ def run_persona_journey(page: Page, base_url: str, journey: PersonaJourney) -> P
     """Drive one persona's golden path: empty state -> one click -> ready to submit."""
     problems: list[str] = []
     try:
-        page.goto(
-            f"{base_url}{journey.entry_path}", wait_until="networkidle", timeout=NAV_TIMEOUT_MS
-        )
+        page.goto(f"{base_url}{journey.entry_path}", wait_until="networkidle", timeout=NAV_TIMEOUT_MS)
     except Exception as exc:
         return PersonaJourneyResult(journey=journey, problems=[f"navigation error: {exc}"])
 
@@ -271,9 +267,7 @@ def run_persona_journey(page: Page, base_url: str, journey: PersonaJourney) -> P
     return PersonaJourneyResult(journey=journey, problems=problems)
 
 
-def run_api_check(
-    client: httpx.Client, func_base: str, web_base: str, check: ApiCheck
-) -> ApiResult:
+def run_api_check(client: httpx.Client, func_base: str, web_base: str, check: ApiCheck) -> ApiResult:
     """Call one API endpoint directly and compare against the expected status."""
     base = web_base if check.base == "web" else func_base
     url = f"{base}{check.path}"
@@ -282,9 +276,7 @@ def run_api_check(
     except httpx.HTTPError as exc:
         return ApiResult(check=check, detail=f"request error: {exc}", ok=False)
     ok = response.status_code == check.expect_status
-    return ApiResult(
-        check=check, detail=f"{response.status_code} (expected {check.expect_status})", ok=ok
-    )
+    return ApiResult(check=check, detail=f"{response.status_code} (expected {check.expect_status})", ok=ok)
 
 
 def print_report(
@@ -312,11 +304,7 @@ def print_report(
         status = "PASS" if result.ok else "FAIL"
         print(f"[{status}] {result.check.name}: {result.detail}")
 
-    all_ok = (
-        all(r.ok for r in page_results)
-        and all(r.ok for r in persona_results)
-        and all(r.ok for r in api_results)
-    )
+    all_ok = all(r.ok for r in page_results) and all(r.ok for r in persona_results) and all(r.ok for r in api_results)
     print("\n" + ("ALL CHECKS PASSED" if all_ok else "SOME CHECKS FAILED"))
     return all_ok
 
@@ -329,9 +317,7 @@ def main() -> int:
     args = parser.parse_args()
 
     with httpx.Client() as client:
-        api_results = [
-            run_api_check(client, args.func_base, args.web_base, check) for check in API_CHECKS
-        ]
+        api_results = [run_api_check(client, args.func_base, args.web_base, check) for check in API_CHECKS]
 
     page_results: list[PageResult] = []
     persona_results: list[PersonaJourneyResult] = []

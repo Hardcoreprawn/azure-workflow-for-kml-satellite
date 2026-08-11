@@ -137,9 +137,7 @@ class TestAnalysisSubmitCORS:
         side_effect=QuotaExhaustedError("org-123", 5),
     )
     @pytest.mark.anyio
-    async def test_quota_error_has_cors_headers(
-        self, mock_reserve_run, mock_get_user_org, mock_auth
-    ):
+    async def test_quota_error_has_cors_headers(self, mock_reserve_run, mock_get_user_org, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request({"kml_content": "<kml>test</kml>"})
@@ -147,9 +145,7 @@ class TestAnalysisSubmitCORS:
         resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 403
-        assert "Access-Control-Allow-Origin" in resp.headers, (
-            "CORS headers missing on 403 quota error"
-        )
+        assert "Access-Control-Allow-Origin" in resp.headers, "CORS headers missing on 403 quota error"
         import json as _json
 
         body = _json.loads(resp.get_body())
@@ -164,9 +160,7 @@ class TestAnalysisSubmitCORS:
     @patch("blueprints.pipeline.submission.get_user_org", return_value={"org_id": "org-123"})
     @patch("blueprints.pipeline.submission.reserve_run", return_value={"reserved_parcels": 1})
     @pytest.mark.anyio
-    async def test_invalid_json_error_has_cors_headers(
-        self, mock_reserve_run, mock_get_user_org, mock_auth
-    ):
+    async def test_invalid_json_error_has_cors_headers(self, mock_reserve_run, mock_get_user_org, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request()  # no body → ValueError
@@ -174,9 +168,7 @@ class TestAnalysisSubmitCORS:
         resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 400
-        assert "Access-Control-Allow-Origin" in resp.headers, (
-            "CORS headers missing on 400 JSON parse error"
-        )
+        assert "Access-Control-Allow-Origin" in resp.headers, "CORS headers missing on 400 JSON parse error"
 
     @patch(
         "blueprints.pipeline.submission.check_auth",
@@ -189,9 +181,7 @@ class TestAnalysisSubmitCORS:
         return_value={"tier": "free", "status": "none"},
     )
     @pytest.mark.anyio
-    async def test_missing_kml_error_has_cors_headers(
-        self, mock_sub, mock_reserve_run, mock_get_user_org, mock_auth
-    ):
+    async def test_missing_kml_error_has_cors_headers(self, mock_sub, mock_reserve_run, mock_get_user_org, mock_auth):
         from blueprints.pipeline.submission import _submit_analysis_request
 
         req = _make_request({"kml_content": ""})
@@ -199,9 +189,7 @@ class TestAnalysisSubmitCORS:
         resp = await _submit_analysis_request(req, blob_prefix="analysis")
 
         assert resp.status_code == 400
-        assert "Access-Control-Allow-Origin" in resp.headers, (
-            "CORS headers missing on 400 missing kml_content"
-        )
+        assert "Access-Control-Allow-Origin" in resp.headers, "CORS headers missing on 400 missing kml_content"
 
 
 class TestErrorResponseCORS:

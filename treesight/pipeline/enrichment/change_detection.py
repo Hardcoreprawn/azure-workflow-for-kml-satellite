@@ -217,10 +217,7 @@ def detect_changes(
             change_geotiff = change.pop("change_geotiff_bytes", None)
             change_path = None
             if change_geotiff:
-                change_path = (
-                    f"enrichment/{project_name}/{timestamp}"
-                    f"/change/{season}_{year_a}_to_{year_b}.tif"
-                )
+                change_path = f"enrichment/{project_name}/{timestamp}/change/{season}_{year_a}_to_{year_b}.tif"
                 storage.upload_bytes(
                     output_container,
                     change_path,
@@ -251,9 +248,7 @@ def detect_changes(
     if all_deltas:
         avg_delta = sum(all_deltas) / len(all_deltas)
         summary["avg_mean_delta"] = round(avg_delta, 4)
-        summary["trajectory"] = (
-            "Improving" if avg_delta > 0.02 else "Declining" if avg_delta < -0.02 else "Stable"
-        )
+        summary["trajectory"] = "Improving" if avg_delta > 0.02 else "Declining" if avg_delta < -0.02 else "Stable"
     else:
         summary["avg_mean_delta"] = None
         summary["trajectory"] = "Insufficient data"

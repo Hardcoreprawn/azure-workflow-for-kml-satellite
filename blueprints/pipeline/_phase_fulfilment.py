@@ -40,9 +40,7 @@ def _fulfil_batch(
     ctx: dict[str, str],
 ) -> _PhaseGen:
     """Submit oversized AOIs to Azure Batch and poll until complete."""
-    context.set_custom_status(
-        {"phase": "fulfilment", "step": "batch_submit", "count": len(batch_ready)}
-    )
+    context.set_custom_status({"phase": "fulfilment", "step": "batch_submit", "count": len(batch_ready)})
     batch_submit_retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=LONG_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=LONG_RETRY_MAX_ATTEMPTS,
@@ -74,9 +72,7 @@ def _fulfil_batch(
         if poll_iteration > MAX_POLL_ITERATIONS:
             logger.warning("batch poll exceeded %d iterations — aborting", MAX_POLL_ITERATIONS)
             break
-        context.set_custom_status(
-            {"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)}
-        )
+        context.set_custom_status({"phase": "fulfilment", "step": "batch_polling", "pending": len(pending)})
         batch_poll_retry = df.RetryOptions(
             first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
             max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
@@ -103,9 +99,7 @@ def _fulfil_batch(
         if pending:
             import datetime as _dt
 
-            fire_at = context.current_utc_datetime + _dt.timedelta(
-                seconds=BATCH_POLL_INTERVAL_SECONDS
-            )
+            fire_at = context.current_utc_datetime + _dt.timedelta(seconds=BATCH_POLL_INTERVAL_SECONDS)
             yield context.create_timer(fire_at)
 
     return {"batch_tracking": batch_tracking}
@@ -136,9 +130,7 @@ def _fulfil_download(
             context.call_activity_with_retry(
                 "download_imagery",
                 dl_retry,
-                _download_payload(
-                    outcome, inp, ctx, asset_urls, order_meta, aoi_ref_lookup, output_container
-                ),
+                _download_payload(outcome, inp, ctx, asset_urls, order_meta, aoi_ref_lookup, output_container),
             )
             for outcome in batch
         ]
@@ -215,9 +207,7 @@ def _phase_fulfilment(
     # Azure Batch path for oversized AOIs
     batch_tracking: list[dict[str, Any]] = []
     if batch_ready:
-        batch_result = yield from _fulfil_batch(
-            context, batch_ready, asset_urls, output_container, ctx
-        )
+        batch_result = yield from _fulfil_batch(context, batch_ready, asset_urls, output_container, ctx)
         batch_tracking = batch_result["batch_tracking"]
 
     # Serverless download path

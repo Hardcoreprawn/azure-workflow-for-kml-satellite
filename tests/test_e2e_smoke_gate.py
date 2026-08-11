@@ -210,16 +210,12 @@ def test_acquire_token_raises_on_error_response(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         smoke._requests,
         "post",
-        lambda *a, **kw: _FakeRequestsPost(
-            200, {"error": "invalid_client", "error_description": "Bad secret"}
-        ),
+        lambda *a, **kw: _FakeRequestsPost(200, {"error": "invalid_client", "error_description": "Bad secret"}),
     )
 
     with pytest.raises(ValueError, match="invalid_client"):
         smoke.acquire_token_client_credentials(
-            token_endpoint=(
-                "https://tenant.ciamlogin.com/tenant.onmicrosoft.com/oauth2/v2.0/token"
-            ),
+            token_endpoint=("https://tenant.ciamlogin.com/tenant.onmicrosoft.com/oauth2/v2.0/token"),
             client_id="test-client-id",
             client_secret="__FIXTURE_SECRET__",  # pragma: allowlist secret
             scope="api://test-client-id/.default",

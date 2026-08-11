@@ -55,17 +55,13 @@ class TestExtractEnrichmentSet:
     def test_enrichment_with_ndvi_stats_key(self):
         """ndvi_stats/ndvi_raster_paths/ndvi_search_ids are the real keys
         treesight.pipeline.enrichment.runner writes, not "ndvi"."""
-        result = _extract_enrichment_set(
-            {"manifest_path": "s3://bucket/m.json", "ndvi_stats": [{"scene_id": "s1"}]}
-        )
+        result = _extract_enrichment_set({"manifest_path": "s3://bucket/m.json", "ndvi_stats": [{"scene_id": "s1"}]})
         assert "ndvi" in result
 
     def test_ndvi_stats_list_of_only_none_is_not_counted(self):
         """ndvi_stats is pre-sized with None placeholders for every frame —
         a non-empty list of Nones must not be mistaken for real NDVI data."""
-        result = _extract_enrichment_set(
-            {"manifest_path": "s3://bucket/m.json", "ndvi_stats": [None, None]}
-        )
+        result = _extract_enrichment_set({"manifest_path": "s3://bucket/m.json", "ndvi_stats": [None, None]})
         assert result == ["enrichment"]
 
     def test_enrichment_with_weather_daily_key(self):
@@ -75,15 +71,11 @@ class TestExtractEnrichmentSet:
         assert "weather" in result
 
     def test_weather_daily_none_is_not_counted(self):
-        result = _extract_enrichment_set(
-            {"manifest_path": "s3://bucket/m.json", "weather_daily": None}
-        )
+        result = _extract_enrichment_set({"manifest_path": "s3://bucket/m.json", "weather_daily": None})
         assert result == ["enrichment"]
 
     def test_enrichment_with_mosaic_search_ids_key(self):
-        result = _extract_enrichment_set(
-            {"manifest_path": "s3://bucket/m.json", "search_ids": ["id-1"]}
-        )
+        result = _extract_enrichment_set({"manifest_path": "s3://bucket/m.json", "search_ids": ["id-1"]})
         assert "mosaic" in result
 
     def test_enrichment_with_change_detection_key(self):

@@ -103,10 +103,7 @@ def _now() -> datetime:
 def _current_period_bounds(now: datetime) -> tuple[str, str]:
     """Return ``(period_start, period_end)`` ISO strings for the UTC month."""
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0, tzinfo=UTC)
-    if start.month == 12:
-        end = start.replace(year=start.year + 1, month=1)
-    else:
-        end = start.replace(month=start.month + 1)
+    end = start.replace(year=start.year + 1, month=1) if start.month == 12 else start.replace(month=start.month + 1)
     return start.isoformat(), end.isoformat()
 
 
@@ -359,8 +356,7 @@ def reserve_run(
         available = allowance - in_flight
         if available < parcel_count:
             raise QuotaExhaustedError(
-                f"org {org_id} pool exhausted: requested {parcel_count}, "
-                f"available {available} of {allowance}"
+                f"org {org_id} pool exhausted: requested {parcel_count}, available {available} of {allowance}"
             )
 
         # Optional per-member cap.
@@ -369,8 +365,7 @@ def reserve_run(
             member_used = _member_period_usage(usage, user_id)
             if member_used + parcel_count > int(cap):
                 raise MemberCapExceededError(
-                    f"user {user_id} cap {cap} would be exceeded "
-                    f"(used {member_used}, requesting {parcel_count})"
+                    f"user {user_id} cap {cap} would be exceeded (used {member_used}, requesting {parcel_count})"
                 )
 
         # Commit.
@@ -472,8 +467,7 @@ def finalize_run(  # noqa: C901
                 except EtagPreconditionFailedError as exc:
                     last_error = exc
                     logger.debug(
-                        "finalize_run etag conflict while clearing metering marker "
-                        "org=%s instance=%s",
+                        "finalize_run etag conflict while clearing metering marker org=%s instance=%s",
                         org_id,
                         instance_id,
                     )

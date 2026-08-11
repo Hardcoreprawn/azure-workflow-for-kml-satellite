@@ -182,24 +182,13 @@ def evaluate_alert(
     ndvi_mean = change_result.get("mean_delta")
 
     if thresholds.loss_pct is not None and loss_pct >= thresholds.loss_pct:
-        breaches.append(
-            f"Vegetation loss {loss_pct:.1f}% exceeds threshold {thresholds.loss_pct:.1f}%"
-        )
+        breaches.append(f"Vegetation loss {loss_pct:.1f}% exceeds threshold {thresholds.loss_pct:.1f}%")
 
     if thresholds.gain_pct is not None and gain_pct >= thresholds.gain_pct:
-        breaches.append(
-            f"Vegetation gain {gain_pct:.1f}% exceeds threshold {thresholds.gain_pct:.1f}%"
-        )
+        breaches.append(f"Vegetation gain {gain_pct:.1f}% exceeds threshold {thresholds.gain_pct:.1f}%")
 
-    if (
-        thresholds.ndvi_mean_drop is not None
-        and ndvi_mean is not None
-        and ndvi_mean < -thresholds.ndvi_mean_drop
-    ):
-        breaches.append(
-            f"Mean NDVI dropped by {abs(ndvi_mean):.3f} "
-            f"(threshold: {thresholds.ndvi_mean_drop:.3f})"
-        )
+    if thresholds.ndvi_mean_drop is not None and ndvi_mean is not None and ndvi_mean < -thresholds.ndvi_mean_drop:
+        breaches.append(f"Mean NDVI dropped by {abs(ndvi_mean):.3f} (threshold: {thresholds.ndvi_mean_drop:.3f})")
 
     if not breaches:
         return None

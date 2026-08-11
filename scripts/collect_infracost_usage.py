@@ -129,9 +129,7 @@ def collect_log_analytics_ingestion(
     lookback_days: int,
 ) -> float:
     """Return monthly data ingestion in GB for Log Analytics workspace."""
-    total_bytes = _query_metric(
-        client, resource_uri, "Ingestion Volume", MetricAggregationType.TOTAL, start, end
-    )
+    total_bytes = _query_metric(client, resource_uri, "Ingestion Volume", MetricAggregationType.TOTAL, start, end)
     if total_bytes is None:
         return 0.5  # fallback default
     # Convert MB over the lookback window to monthly GB estimate.
@@ -148,12 +146,8 @@ def collect_storage_metrics(
     lookback_days: int,
 ) -> dict:
     """Collect storage account usage metrics."""
-    used_capacity = _query_metric(
-        client, resource_uri, "UsedCapacity", MetricAggregationType.AVERAGE, start, end
-    )
-    transactions = _query_metric(
-        client, resource_uri, "Transactions", MetricAggregationType.TOTAL, start, end
-    )
+    used_capacity = _query_metric(client, resource_uri, "UsedCapacity", MetricAggregationType.AVERAGE, start, end)
+    transactions = _query_metric(client, resource_uri, "Transactions", MetricAggregationType.TOTAL, start, end)
 
     storage_gb = round((used_capacity or 0) / (1024**3), 3)
     monthly_ops = round(((transactions or 0) / lookback_days) * 30)
@@ -172,9 +166,7 @@ def collect_keyvault_operations(
     lookback_days: int,
 ) -> int:
     """Return estimated monthly secret operations for Key Vault."""
-    total = _query_metric(
-        client, resource_uri, "ServiceApiHit", MetricAggregationType.TOTAL, start, end
-    )
+    total = _query_metric(client, resource_uri, "ServiceApiHit", MetricAggregationType.TOTAL, start, end)
     if total is None or total == 0:
         return 500  # fallback default
     daily_avg = total / lookback_days
@@ -210,9 +202,7 @@ def collect_cosmos_storage_gb(
     end: datetime,
 ) -> float:
     """Return Cosmos DB data usage in GB."""
-    total_bytes = _query_metric(
-        client, resource_uri, "DataUsage", MetricAggregationType.AVERAGE, start, end
-    )
+    total_bytes = _query_metric(client, resource_uri, "DataUsage", MetricAggregationType.AVERAGE, start, end)
     if total_bytes is None or total_bytes == 0:
         return 0.1
     return round(total_bytes / (1024**3), 3)
@@ -325,11 +315,7 @@ def main() -> None:
 
     # ── Collect metrics ──────────────────────────────────────
     print("  Log Analytics ingestion…")
-    la_gb = (
-        collect_log_analytics_ingestion(metrics_client, la_uri, start, end, args.lookback)
-        if la_uri
-        else 0.5
-    )
+    la_gb = collect_log_analytics_ingestion(metrics_client, la_uri, start, end, args.lookback) if la_uri else 0.5
     print(f"    → {la_gb} GB/month")
 
     print("  Storage account usage…")
@@ -341,20 +327,14 @@ def main() -> None:
     print(f"    → {storage_metrics['storage_gb']} GB stored")
 
     print("  Key Vault operations…")
-    kv_ops = (
-        collect_keyvault_operations(metrics_client, kv_uri, start, end, args.lookback)
-        if kv_uri
-        else 500
-    )
+    kv_ops = collect_keyvault_operations(metrics_client, kv_uri, start, end, args.lookback) if kv_uri else 500
     print(f"    → {kv_ops} ops/month")
 
     cosmos_enabled = cosmos_uri is not None
     cosmos_data = {}
     if cosmos_enabled:
         print("  Cosmos DB request units…")
-        total_ru = collect_cosmos_request_units(
-            metrics_client, cosmos_uri, start, end, args.lookback
-        )
+        total_ru = collect_cosmos_request_units(metrics_client, cosmos_uri, start, end, args.lookback)
         total_gb = collect_cosmos_storage_gb(metrics_client, cosmos_uri, start, end)
         # Distribute across containers proportionally (estimated split)
         cosmos_data = {

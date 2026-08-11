@@ -167,9 +167,7 @@ class TestCatalogueListResponse:
     def test_build(self):
         entry = _make_entry()
         resp_entry = CatalogueEntryResponse.from_model(entry)
-        body = CatalogueListResponse(
-            entries=[resp_entry], total=1, offset=0, limit=20, has_more=False
-        )
+        body = CatalogueListResponse(entries=[resp_entry], total=1, offset=0, limit=20, has_more=False)
         assert len(body.entries) == 1
         assert body.total == 1
         assert body.has_more is False
@@ -532,8 +530,6 @@ class TestSlugifyProperty:
                 # non-alphanumeric characters; skip uniqueness check in that case.
                 return
             ids = [_make_id(run_id, n) for n in names]
-            assert len(set(ids)) == len(ids), (
-                f"Slug collision detected: names={names!r} produced ids={ids!r}"
-            )
+            assert len(set(ids)) == len(ids), f"Slug collision detected: names={names!r} produced ids={ids!r}"
 
         _inner()

@@ -217,12 +217,8 @@ def test_select_issues_fallback_respects_assignment_and_dependency_blocks() -> N
 def test_fallback_priority_score_ranks_could_and_gates_others() -> None:
     assert fallback_priority_score({"moscow:could"}) > 0
     # Security and priority hints refine ordering within the Could tier.
-    assert fallback_priority_score({"moscow:could", "security"}) > fallback_priority_score(
-        {"moscow:could"}
-    )
-    assert fallback_priority_score({"moscow:could", "priority:now"}) > fallback_priority_score(
-        {"moscow:could"}
-    )
+    assert fallback_priority_score({"moscow:could", "security"}) > fallback_priority_score({"moscow:could"})
+    assert fallback_priority_score({"moscow:could", "priority:now"}) > fallback_priority_score({"moscow:could"})
     # Non-Could and gated labels score 0.
     assert fallback_priority_score({"moscow:should"}) == 0
     assert fallback_priority_score({"moscow:wont"}) == 0

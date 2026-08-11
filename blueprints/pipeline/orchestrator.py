@@ -181,9 +181,7 @@ def treesight_orchestrator(context: df.DurableOrchestrationContext):  # type: ig
         context.set_custom_status({"phase": "completed", "step": "done"})
         if user_id and tier != "demo" and inp.get("org_id"):
             yield from _safe_finalize_run(context, inp["org_id"], instance_id, "completed")
-        yield from _safe_write_pipeline_stats(
-            context, inp, ing, acq_s, ful_s, enrichment, instance_id, started_at
-        )
+        yield from _safe_write_pipeline_stats(context, inp, ing, acq_s, ful_s, enrichment, instance_id, started_at)
         return summary
     except Exception:
         if user_id and tier != "demo" and inp.get("org_id"):

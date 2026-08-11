@@ -519,9 +519,7 @@ class TestPeriodRollover:
                 "finalized_instance_ids": [],
             },
         )
-        org["usage_history"] = [
-            {"period_end": f"2020-{m:02d}-01T00:00:00+00:00"} for m in range(2, 14)
-        ]
+        org["usage_history"] = [{"period_end": f"2020-{m:02d}-01T00:00:00+00:00"} for m in range(2, 14)]
         _state, _read, _replace = _stub_storage(org)
         with (
             patch(_READ_ETAG, side_effect=_read),

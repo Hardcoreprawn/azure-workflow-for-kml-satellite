@@ -73,9 +73,7 @@ elif STORAGE_ACCOUNT_NAME:
         from treesight.security.rate_limit import wire_rate_limiters
 
         table_url = f"https://{STORAGE_ACCOUNT_NAME}.table.core.windows.net"
-        wire_rate_limiters(
-            table_service_client=TableServiceClient(table_url, credential=DefaultAzureCredential())
-        )
+        wire_rate_limiters(table_service_client=TableServiceClient(table_url, credential=DefaultAzureCredential()))
     except Exception:
         logger.warning(
             "Could not initialise Table rate limiters via MI; falling back to in-memory",

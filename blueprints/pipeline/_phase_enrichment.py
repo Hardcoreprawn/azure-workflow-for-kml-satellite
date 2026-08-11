@@ -63,9 +63,7 @@ def _phase_enrichment(
     # ── Step 1: data sources ∥ imagery (parallel fan-out) ─────
     context.set_custom_status({"phase": "enrichment", "step": "data_sources_and_imagery"})
     parallel_tasks = [
-        context.call_activity_with_retry(
-            "enrich_data_sources", enrichment_retry, enrichment_common
-        ),
+        context.call_activity_with_retry("enrich_data_sources", enrichment_retry, enrichment_common),
         context.call_activity_with_retry("enrich_imagery", enrichment_retry, enrichment_common),
     ]
     data_sources, imagery = cast(
@@ -76,9 +74,7 @@ def _phase_enrichment(
     # ── Step 2: per-AOI enrichment (parallel fan-out, one per AOI) ──
     per_aoi_results: list[dict[str, Any]] = []
     if per_aoi_coords and len(per_aoi_coords) > 1:
-        context.set_custom_status(
-            {"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)}
-        )
+        context.set_custom_status({"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)})
         aoi_tasks = [
             context.call_activity_with_retry(
                 "enrich_single_aoi",
@@ -138,9 +134,7 @@ def _safe_finalize_run(
             {"org_id": org_id, "instance_id": instance_id},
         )
     except Exception:
-        logger.exception(
-            "Failed to finalize run (%s) org=%s instance=%s", status, org_id, instance_id
-        )
+        logger.exception("Failed to finalize run (%s) org=%s instance=%s", status, org_id, instance_id)
 
 
 def _safe_write_pipeline_stats(

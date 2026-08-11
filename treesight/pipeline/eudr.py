@@ -679,9 +679,7 @@ def query_alos_fnf(
 
             breakdown = _sample_classification_cog(fnf_asset["href"], bbox, ALOS_FNF_CLASSES)
 
-            forest_pct = sum(
-                c["area_pct"] for c in breakdown.get("classes", []) if c["code"] in (1, 2)
-            )
+            forest_pct = sum(c["area_pct"] for c in breakdown.get("classes", []) if c["code"] in (1, 2))
             non_forest_pct = next(
                 (c["area_pct"] for c in breakdown.get("classes", []) if c["code"] == 3),
                 0.0,

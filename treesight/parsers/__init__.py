@@ -97,9 +97,7 @@ def validate_kml_bytes(data: bytes) -> None:
     """
     # Fast pre-flight: reject DOCTYPE before even touching the XML parser
     if _DOCTYPE_RE.search(data[:4096]):
-        raise ValueError(
-            "KML contains a DOCTYPE declaration — DTD/entity declarations are not permitted"
-        )
+        raise ValueError("KML contains a DOCTYPE declaration — DTD/entity declarations are not permitted")
 
     from lxml import etree
 

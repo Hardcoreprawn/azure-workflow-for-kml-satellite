@@ -36,9 +36,7 @@ AZURITE_BLOB_PORT: Final[int] = 10000
 AZURITE_QUEUE_PORT: Final[int] = 10001
 AZURITE_TABLE_PORT: Final[int] = 10002
 
-AZURITE_BLOB_BASE: Final[str] = (
-    f"http://{AZURITE_BLOB_HOST}:{AZURITE_BLOB_PORT}/{AZURITE_ACCOUNT_NAME}"
-)
+AZURITE_BLOB_BASE: Final[str] = f"http://{AZURITE_BLOB_HOST}:{AZURITE_BLOB_PORT}/{AZURITE_ACCOUNT_NAME}"
 
 AZURITE_CONN_STR: Final[str] = (
     f"DefaultEndpointsProtocol=http;"
