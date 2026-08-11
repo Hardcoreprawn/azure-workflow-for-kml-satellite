@@ -99,7 +99,6 @@ ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and
 	uv run python scripts/ux_journeys.py
 
 test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node")
-	$(if $(strip $(TESTS)),,$(error TESTS is required, e.g. TESTS="tests/test_rate_limit.py"))
 	uv run python scripts/run_targeted_tests.py
 
 test: ## Run unit tests (canonical — CI runs this exact command)

@@ -1662,12 +1662,11 @@ class TestFastTestLoop:
 
         assert "test-fast:" in makefile
         assert "test-fast" in makefile.split(".PHONY:", 1)[1].split("\n\n", 1)[0]
-        assert "$(if $(strip $(TESTS)),,$(error TESTS is required" in makefile
 
         fast_target = re.search(r"^test-fast:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
         assert fast_target is not None
         assert "uv run python scripts/run_targeted_tests.py" in fast_target.group(0)
-        assert "uv run pytest $(TESTS)" not in fast_target.group(0)
+        assert "$(TESTS)" not in fast_target.group(0)
 
     def test_fast_target_does_not_weaken_canonical_gates(self):
         makefile = MAKEFILE.read_text()
