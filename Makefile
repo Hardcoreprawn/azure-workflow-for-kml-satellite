@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -103,7 +103,13 @@ test: ## Run unit tests (canonical — CI runs this exact command)
 
 test-int: ## Run integration tests against a running Azurite (creates containers first)
 	uv run python scripts/init_storage.py
-	uv run pytest tests/test_integration.py -v
+	uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
+
+test-int-live: ## Run integration smoke tests against Azurite + local Functions host
+	uv run python scripts/run_integration_tests.py --marker integration_live_stack tests/test_pipeline_smoke_e2e.py tests/test_monster_aoi_scale.py
+
+test-int-stripe: ## Run external Stripe integration tests (requires STRIPE_API_KEY)
+	uv run python scripts/run_integration_tests.py --marker integration_external tests/test_integration_billing.py
 
 test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running Azurite — no live Azure environment required (#1215)
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }

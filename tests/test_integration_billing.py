@@ -47,7 +47,7 @@ skip_no_stripe = pytest.mark.skipif(
     reason="No Stripe test key available (set STRIPE_API_KEY or configure Key Vault)",
 )
 
-pytestmark = [pytest.mark.integration, skip_no_stripe]
+pytestmark = [pytest.mark.integration, pytest.mark.integration_external, skip_no_stripe]
 
 # Stripe test-mode tokens (never pass raw card numbers to the API)
 # See: https://docs.stripe.com/testing#tokens

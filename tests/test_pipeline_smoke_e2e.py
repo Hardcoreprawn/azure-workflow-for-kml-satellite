@@ -10,9 +10,10 @@ Requires:
 
 Run with::
 
-    uv run pytest tests/test_pipeline_smoke_e2e.py -v -m integration
+    make test-int-live
 
-Skip when dependencies are unavailable::
+The tier fails when dependencies are unavailable. Exclude all integration
+tests from the unit suite with::
 
     uv run pytest tests/ -v -m "not integration"
 """
@@ -38,7 +39,7 @@ _TERMINAL_STATUSES = frozenset({"Completed", "Failed", "Canceled", "Terminated"}
 # duplicate_names.kml contains exactly 2 Placemark elements.
 _DUPLICATE_KML_FEATURE_COUNT = 2
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.integration_live_stack]
 
 
 # ---------------------------------------------------------------------------
@@ -255,12 +256,7 @@ class TestDuplicateAoiBackToBackSmoke:
 
         for run_num, result in enumerate((result_1, result_2), start=1):
             status = result.get("runtimeStatus")
-            if status != "Completed":
-                pytest.skip(
-                    f"Run {run_num} reached {status!r} instead of 'Completed'. "
-                    "Resolve duplicate-AOI handling so the pipeline completes before "
-                    "asserting AOI counts."
-                )
+            assert status == "Completed", f"Run {run_num} reached {status!r} instead of 'Completed'"
 
             output = result.get("output", {})
             aoi_count = output.get("aoiCount") if isinstance(output, dict) else None

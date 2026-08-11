@@ -85,13 +85,14 @@ the parser, geo, or enrichment code will exercise these assertions automatically
 ### Re-running against a live environment
 
 ```bash
-make dev-all                           # Azurite + local Functions host
-uv run pytest tests/test_monster_aoi_scale.py -v -m integration -s
+make dev-all        # Azurite + local Functions host
+make test-int-live  # live-stack integration tier
 ```
 
 The integration test class (`TestPipelineSmokeMonster`) validates connectivity
-to Azurite and the Functions host; it skips rather than fails when those
-dependencies are absent.
+to Azurite and the Functions host. Individual tests skip when dependencies are
+absent, but the tier runner fails an all-skipped run so missing infrastructure
+cannot produce a green integration gate.
 
 ## Methodology notes
 

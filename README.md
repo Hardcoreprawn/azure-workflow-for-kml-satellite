@@ -376,6 +376,15 @@ to deployed behavior also require the applicable post-deploy smoke evidence.
 contain spaces with nested quotes (for example, `TESTS='"path::test[value with spaces]"'`).
 Pytest options and argfiles are rejected; fixed safety flags cannot be overridden.
 
+Integration tests are split by dependency so a missing service cannot masquerade
+as a green gate:
+
+```bash
+make test-int         # required Azurite tier; fails if no test executes
+make test-int-live    # opt-in Azurite + local Functions host smoke tests
+make test-int-stripe  # opt-in external Stripe test-mode API tests
+```
+
 For the full local product surface (website + Functions host + Azurite, same
 containerised execution model as production), run the single docker-compose
 stack:

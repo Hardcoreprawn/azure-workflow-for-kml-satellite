@@ -57,7 +57,10 @@ packages = ["treesight"]
 testpaths = ["tests"]
 pythonpath = [".", "scripts"]
 markers = [
-    "integration: tests requiring a live Azurite instance",
+    "integration: tests requiring infrastructure or an external service",
+    "integration_azurite: required tests against a live Azurite instance",
+    "integration_live_stack: opt-in tests requiring Azurite and a local Functions host",
+    "integration_external: opt-in tests requiring an external service or credentials",
 ]
 filterwarnings = [
     # planetary-computer 1.0.0 uses class-based Config (Pydantic v2 deprecated).
