@@ -128,9 +128,7 @@ async def export_data(
     if fmt == "eudr-geojson":
         geojson = _build_eudr_geojson(manifest)
         body = json.dumps(geojson, indent=2, default=str)
-        headers["Content-Disposition"] = (
-            f'attachment; filename="treesight_{instance_id}_eudr.geojson"'
-        )
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.geojson"'
         return func.HttpResponse(
             body,
             status_code=200,
@@ -150,18 +148,14 @@ async def export_data(
 
     if fmt == "eudr-pdf":
         parcel_reviews = _as_dict(run_record.get("parcel_reviews")) if run_record else None
-        parcel_review_history = (
-            _as_dict(run_record.get("parcel_review_history")) if run_record else None
-        )
+        parcel_review_history = _as_dict(run_record.get("parcel_review_history")) if run_record else None
         pdf_bytes = build_eudr_audit_pdf(
             manifest,
             instance_id,
             parcel_reviews=parcel_reviews,
             parcel_review_history=parcel_review_history,
         )
-        headers["Content-Disposition"] = (
-            f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
-        )
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
         return func.HttpResponse(
             pdf_bytes,
             status_code=200,

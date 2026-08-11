@@ -6,15 +6,11 @@ from scripts import validate_dev_infra_gate as validate
 def test_find_first_value_recurses_nested_payloads() -> None:
     payload = {
         "properties": {
-            "destination": {
-                "properties": {"endpointUrl": "https://example.invalid/runtime/webhooks/eventgrid"}
-            }
+            "destination": {"properties": {"endpointUrl": "https://example.invalid/runtime/webhooks/eventgrid"}}
         }
     }
 
-    assert validate.find_first_value(payload, "endpointUrl") == (
-        "https://example.invalid/runtime/webhooks/eventgrid"
-    )
+    assert validate.find_first_value(payload, "endpointUrl") == ("https://example.invalid/runtime/webhooks/eventgrid")
 
 
 def test_find_first_value_returns_none_when_absent() -> None:
@@ -49,9 +45,7 @@ def test_validate_gate_requests_full_eventgrid_endpoint_url(monkeypatch) -> None
 
     monkeypatch.setattr(validate, "fetch_json", fake_fetch_json)
     monkeypatch.setattr(validate, "run_az_json", fake_run_az_json)
-    monkeypatch.setattr(
-        validate, "resolve_workspace_name", lambda resource_group, workspace_name: "log-kmlsat-dev"
-    )
+    monkeypatch.setattr(validate, "resolve_workspace_name", lambda resource_group, workspace_name: "log-kmlsat-dev")
 
     validate.validate_gate(
         resource_group="rg-kmlsat-dev",
@@ -64,9 +58,5 @@ def test_validate_gate_requests_full_eventgrid_endpoint_url(monkeypatch) -> None
         workspace_name=None,
     )
 
-    show_call = next(
-        args
-        for args in calls
-        if args[:4] == ["eventgrid", "system-topic", "event-subscription", "show"]
-    )
+    show_call = next(args for args in calls if args[:4] == ["eventgrid", "system-topic", "event-subscription", "show"])
     assert "--include-full-endpoint-url" in show_call

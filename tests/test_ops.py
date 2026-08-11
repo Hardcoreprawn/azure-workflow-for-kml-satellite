@@ -21,9 +21,7 @@ from blueprints.ops import _check_ops_key, _recent_requests, track_request
 _FAKE_STARTER = json.dumps(
     {
         "taskHubName": "TestHub",
-        "creationUrls": {
-            "createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"
-        },
+        "creationUrls": {"createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"},
         "managementUrls": {
             "statusQueryGetUri": "http://localhost/api/instances/{instanceId}",
             "sendEventPostUri": "http://localhost/api/instances/{instanceId}/raiseEvent/{eventName}",
@@ -40,9 +38,7 @@ _FAKE_STARTER = json.dumps(
 _FAKE_STARTER = json.dumps(
     {
         "taskHubName": "TestHub",
-        "creationUrls": {
-            "createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"
-        },
+        "creationUrls": {"createNewInstancePostUri": "http://localhost/api/orchestrators/{functionName}"},
         "managementUrls": {
             "statusQueryGetUri": "http://localhost/api/instances/{instanceId}",
             "sendEventPostUri": "http://localhost/api/instances/{instanceId}/raiseEvent/{eventName}",

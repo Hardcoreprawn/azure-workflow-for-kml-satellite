@@ -98,13 +98,7 @@ class TestCentroid:
         import ast
         import pathlib
 
-        runner_path = (
-            pathlib.Path(__file__).parents[1]
-            / "treesight"
-            / "pipeline"
-            / "enrichment"
-            / "runner.py"
-        )
+        runner_path = pathlib.Path(__file__).parents[1] / "treesight" / "pipeline" / "enrichment" / "runner.py"
         tree = ast.parse(runner_path.read_text())
         centroid_defs = [
             node
@@ -198,11 +192,7 @@ class TestSquareBbox:
         from treesight.constants import METRES_PER_DEGREE_LATITUDE
 
         lat_m = result_lat_span * METRES_PER_DEGREE_LATITUDE
-        lon_m = (
-            result_lon_span
-            * METRES_PER_DEGREE_LATITUDE
-            * math.cos(math.radians((result[1] + result[3]) / 2))
-        )
+        lon_m = result_lon_span * METRES_PER_DEGREE_LATITUDE * math.cos(math.radians((result[1] + result[3]) / 2))
         assert abs(lat_m - lon_m) / max(lat_m, lon_m) < 0.01  # <1% difference
 
     def test_contains_original_bbox(self):

@@ -56,9 +56,7 @@ async def _build_orchestrator_status_response(
     # get_status returns without history, so omit show_history.
     status = await client.get_status(instance_id)
     if not status:
-        return func.HttpResponse(
-            json.dumps({"error": "not found"}), status_code=404, mimetype="application/json"
-        )
+        return func.HttpResponse(json.dumps({"error": "not found"}), status_code=404, mimetype="application/json")
 
     result = _durable_status_payload(status)
     return func.HttpResponse(

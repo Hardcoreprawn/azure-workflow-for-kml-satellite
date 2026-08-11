@@ -24,12 +24,8 @@ def test_pipeline_init_checks_pipeline_role():
     """
     init_path = REPO_ROOT / "blueprints" / "pipeline" / "__init__.py"
     source = init_path.read_text()
-    assert "PIPELINE_ROLE" in source, (
-        "blueprints/pipeline/__init__.py must read PIPELINE_ROLE env var"
-    )
-    assert "_PIPELINE_ROLE" in source, (
-        "blueprints/pipeline/__init__.py must store PIPELINE_ROLE in a local variable"
-    )
+    assert "PIPELINE_ROLE" in source, "blueprints/pipeline/__init__.py must read PIPELINE_ROLE env var"
+    assert "_PIPELINE_ROLE" in source, "blueprints/pipeline/__init__.py must store PIPELINE_ROLE in a local variable"
 
 
 def test_pipeline_activities_guarded_by_pipeline_role():
@@ -140,9 +136,7 @@ def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypa
     names = {fn.get_function_name() for fn in functions}
 
     assert functions, "function_app_orch must index at least one function"
-    assert "monitoring_scheduler" not in names, (
-        "function_app_orch must not register the monitoring timer trigger"
-    )
+    assert "monitoring_scheduler" not in names, "function_app_orch must not register the monitoring timer trigger"
 
 
 # ── 7. Blueprint role-filter contract (#779) ────────────────────────────
@@ -181,8 +175,7 @@ def test_orchestrator_excludes_public_api_blueprints():
 
     for name, bp in [("billing", billing_bp), ("export", export_bp), ("ops", ops_bp)]:
         assert id(bp) not in orch_ids, (
-            f"Orchestrator must not register the '{name}' blueprint — "
-            "public-API routes must be compute-only (#779)."
+            f"Orchestrator must not register the '{name}' blueprint — public-API routes must be compute-only (#779)."
         )
 
 
@@ -213,9 +206,7 @@ def test_dockerfile_orchestrator_exists():
 def test_dockerfile_orchestrator_sets_pipeline_role():
     """Dockerfile.orchestrator must set PIPELINE_ROLE=orchestrator."""
     source = (REPO_ROOT / "Dockerfile.orchestrator").read_text()
-    assert "PIPELINE_ROLE=orchestrator" in source, (
-        "Dockerfile.orchestrator must set ENV PIPELINE_ROLE=orchestrator"
-    )
+    assert "PIPELINE_ROLE=orchestrator" in source, "Dockerfile.orchestrator must set ENV PIPELINE_ROLE=orchestrator"
 
 
 def test_dockerfile_orchestrator_excludes_heavy_packages():
@@ -224,17 +215,13 @@ def test_dockerfile_orchestrator_excludes_heavy_packages():
     # Must use the grep-v exclusion pattern
     heavy = ["fiona", "rasterio", "numpy"]
     for pkg in heavy:
-        assert pkg in source, (
-            f"Dockerfile.orchestrator must explicitly exclude {pkg} from the install"
-        )
+        assert pkg in source, f"Dockerfile.orchestrator must explicitly exclude {pkg} from the install"
 
 
 def test_dockerfile_orchestrator_copies_orch_entry_point():
     """Dockerfile.orchestrator must install function_app_orch.py as function_app.py."""
     source = (REPO_ROOT / "Dockerfile.orchestrator").read_text()
-    assert "function_app_orch.py" in source, (
-        "Dockerfile.orchestrator must COPY function_app_orch.py"
-    )
+    assert "function_app_orch.py" in source, "Dockerfile.orchestrator must COPY function_app_orch.py"
 
 
 # ── 4. image-config.env ─────────────────────────────────────────────────
@@ -295,9 +282,7 @@ def test_deploy_yml_builds_orchestrator_image():
 def test_deploy_yml_passes_orchestrator_image_to_tofu():
     """deploy.yml must pass orchestrator_image variable to tofu plan."""
     source = (REPO_ROOT / ".github" / "workflows" / "deploy.yml").read_text()
-    assert "orchestrator_image=" in source, (
-        'deploy.yml must pass -var="orchestrator_image=..." to tofu plan'
-    )
+    assert "orchestrator_image=" in source, 'deploy.yml must pass -var="orchestrator_image=..." to tofu plan'
 
 
 def test_deploy_yml_configures_orchestrator_app():

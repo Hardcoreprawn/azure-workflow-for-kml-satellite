@@ -160,9 +160,7 @@ class TestDetectChanges:
         tiff_after = _make_ndvi_tiff(after)
 
         mock_storage = MagicMock()
-        mock_storage.download_bytes.side_effect = lambda _c, p: (
-            tiff_before if "2022" in p else tiff_after
-        )
+        mock_storage.download_bytes.side_effect = lambda _c, p: tiff_before if "2022" in p else tiff_after
 
         result = detect_changes(
             frame_plan=self._make_frame_plan(),

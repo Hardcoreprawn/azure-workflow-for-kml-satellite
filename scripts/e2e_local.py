@@ -130,9 +130,7 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
 
-def poll_orchestration(
-    instance_id: str, *, timeout: float, interval: float = 3.0
-) -> dict[str, Any]:
+def poll_orchestration(instance_id: str, *, timeout: float, interval: float = 3.0) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
 
     Returns the final status payload. Raises TimeoutError if no terminal
@@ -158,9 +156,7 @@ def poll_orchestration(
         if status in _TERMINAL_STATUSES:
             return data
         time.sleep(interval)
-    raise TimeoutError(
-        f"Orchestration {instance_id} did not reach a terminal state within {timeout}s"
-    )
+    raise TimeoutError(f"Orchestration {instance_id} did not reach a terminal state within {timeout}s")
 
 
 def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
@@ -169,16 +165,12 @@ def assert_pipeline_succeeded(status_payload: dict[str, Any]) -> None:
     """
     status = status_payload.get("runtimeStatus")
     if status != "Completed":
-        raise AssertionError(
-            f"Orchestration ended in {status!r}, expected 'Completed'. Payload: {status_payload}"
-        )
+        raise AssertionError(f"Orchestration ended in {status!r}, expected 'Completed'. Payload: {status_payload}")
 
     output = status_payload.get("output") or {}
     downloads_completed = output.get("downloadsCompleted", 0)
     if downloads_completed < 1:
-        raise AssertionError(
-            f"Expected at least 1 completed download, got {downloads_completed}. Summary: {output}"
-        )
+        raise AssertionError(f"Expected at least 1 completed download, got {downloads_completed}. Summary: {output}")
 
     raw_imagery_paths = (output.get("artifacts") or {}).get("rawImageryPaths") or []
     if not raw_imagery_paths:

@@ -50,9 +50,7 @@ def _validate_lat_lon(lat: float, lon: float) -> None:
         raise ValueError(f"Longitude {lon} out of range [-180, 180]")
 
 
-def _point_to_polygon(
-    lat: float, lon: float, buffer_m: float = DEFAULT_BUFFER_M
-) -> list[list[float]]:
+def _point_to_polygon(lat: float, lon: float, buffer_m: float = DEFAULT_BUFFER_M) -> list[list[float]]:
     """Create a circle-approximation polygon around a point.
 
     Returns exterior ring as ``[[lon, lat], ...]`` (GeoJSON convention).
@@ -201,8 +199,7 @@ def parse_csv(
     lon_col = _find_column(headers, {"lon", "lng", "longitude", "long"})
     if lat_col is None or lon_col is None:
         raise ValueError(
-            "CSV must have latitude and longitude columns "
-            "(accepted: lat/latitude, lon/lng/longitude/long)"
+            "CSV must have latitude and longitude columns (accepted: lat/latitude, lon/lng/longitude/long)"
         )
 
     name_col = _find_column(headers, {"name", "label", "aoi", "site"})
@@ -219,11 +216,7 @@ def parse_csv(
 
         _validate_lat_lon(lat, lon)
 
-        fname = (
-            str(row[name_col]).strip()
-            if name_col and row.get(name_col)
-            else f"Point ({lat:.6f}, {lon:.6f})"
-        )
+        fname = str(row[name_col]).strip() if name_col and row.get(name_col) else f"Point ({lat:.6f}, {lon:.6f})"
 
         ring = _point_to_polygon(lat, lon, buffer_m)
         features.append(

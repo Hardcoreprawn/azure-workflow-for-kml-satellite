@@ -270,11 +270,7 @@ class TestSignedInLowCostSubmission:
         upload_call = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_call[0][1].startswith("analysis/")
         # Verify ticket carries tier info for blob_trigger
-        ticket_calls = [
-            c
-            for c in mock_storage_cls.return_value.upload_json.call_args_list
-            if ".tickets/" in str(c)
-        ]
+        ticket_calls = [c for c in mock_storage_cls.return_value.upload_json.call_args_list if ".tickets/" in str(c)]
         assert len(ticket_calls) >= 1
         ticket_data = ticket_calls[0][0][2]
         assert ticket_data["cadence"] == "seasonal"
@@ -308,11 +304,7 @@ class TestSignedInLowCostSubmission:
         upload_call = mock_storage_cls.return_value.upload_bytes.call_args
         assert upload_call[0][1].startswith("analysis/")
         # Verify ticket carries tier info for blob_trigger
-        ticket_calls = [
-            c
-            for c in mock_storage_cls.return_value.upload_json.call_args_list
-            if ".tickets/" in str(c)
-        ]
+        ticket_calls = [c for c in mock_storage_cls.return_value.upload_json.call_args_list if ".tickets/" in str(c)]
         assert len(ticket_calls) >= 1
         ticket_data = ticket_calls[0][0][2]
         assert ticket_data["tier"] == "demo"

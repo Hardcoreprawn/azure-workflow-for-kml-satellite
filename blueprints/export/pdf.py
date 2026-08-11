@@ -321,8 +321,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
             pdf.cell(
                 0,
                 5,
-                f"NDVI: {len(valid)} observations, latest {means[-1]:.3f}, "
-                f"range {min(means):.3f}-{max(means):.3f}",
+                f"NDVI: {len(valid)} observations, latest {means[-1]:.3f}, range {min(means):.3f}-{max(means):.3f}",
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
@@ -333,8 +332,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
             pdf.cell(
                 0,
                 5,
-                f"Change trajectory: {cd.get('trajectory', 'unknown')} "
-                f"({cd.get('comparisons', 0)} comparisons)",
+                f"Change trajectory: {cd.get('trajectory', 'unknown')} ({cd.get('comparisons', 0)} comparisons)",
                 new_x="LMARGIN",
                 new_y="NEXT",
             )
@@ -383,9 +381,7 @@ def _build_pdf(manifest: dict[str, Any], instance_id: str = "") -> bytes:
                 new_y="NEXT",
             )
         if temps:
-            avg_t = sum(t for t in temps if t is not None) / max(
-                1, len([t for t in temps if t is not None])
-            )
+            avg_t = sum(t for t in temps if t is not None) / max(1, len([t for t in temps if t is not None]))
             pdf.cell(0, 6, f"Mean temperature: {avg_t:.1f} C", new_x="LMARGIN", new_y="NEXT")
         if precips:
             total_p = sum(p for p in precips if p is not None)

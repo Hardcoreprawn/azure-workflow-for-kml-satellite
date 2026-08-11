@@ -222,9 +222,7 @@ class TestComputeAoiMetrics:
     def test_change_detection_present(self):
         aoi = _make_aoi_data()
         change = {
-            "season_changes": [
-                {"loss_ha": 2.0, "gain_ha": 1.0, "season": "summer", "year_a": 2022, "year_b": 2023}
-            ],
+            "season_changes": [{"loss_ha": 2.0, "gain_ha": 1.0, "season": "summer", "year_a": 2022, "year_b": 2023}],
             "summary": {"comparisons": 1, "trajectory": "declining"},
         }
         result = compute_aoi_metrics(aoi, [], change_detection=change)
@@ -329,9 +327,7 @@ class TestComputeMultiAoiSummary:
 
     def test_change_aggregation(self):
         change = {
-            "season_changes": [
-                {"loss_ha": 3.0, "gain_ha": 1.0, "season": "summer", "year_a": 2022, "year_b": 2023}
-            ],
+            "season_changes": [{"loss_ha": 3.0, "gain_ha": 1.0, "season": "summer", "year_a": 2022, "year_b": 2023}],
             "summary": {"trajectory": "declining"},
         }
         metrics = [
@@ -374,9 +370,7 @@ class TestWorstChangeLegacyCompatLogging:
 
         assert result is not None
         assert result["period"] == "summer 2022\u21922023"
-        assert any(
-            "LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys" in r.message for r in caplog.records
-        )
+        assert any("LEGACY_COMPAT_HIT aoi_metrics_legacy_year_keys" in r.message for r in caplog.records)
 
     def test_no_hit_for_current_year_keys(self, caplog):
         changes = [{"loss_ha": 5.0, "season": "summer", "year_from": 2022, "year_to": 2023}]
@@ -403,9 +397,7 @@ class TestWorstChangeLegacyCompatLogging:
 
         import logging
 
-        with patch.object(
-            logging.getLogger("treesight.pipeline.enrichment.aoi_metrics"), "warning"
-        ) as mock_warn:
+        with patch.object(logging.getLogger("treesight.pipeline.enrichment.aoi_metrics"), "warning") as mock_warn:
             result = _worst_change(changes, "loss_ha")
 
         assert result is not None

@@ -532,9 +532,7 @@ class TestPhaseIngestionAoiLimitGate:
         gen.send(three_features)
         # If we got here, enforce_aoi_limit passed and the generator continued
         # to the prepare_aoi fan-out step (task_all yield)
-        ctx.set_custom_status.assert_any_call(
-            {"phase": "ingestion", "step": "preparing_aois", "features": 3}
-        )
+        ctx.set_custom_status.assert_any_call({"phase": "ingestion", "step": "preparing_aois", "features": 3})
 
 
 class TestAcquisitionActivityRetry:
@@ -620,9 +618,7 @@ class TestAcquisitionActivityRetry:
             gen.send([{"order_id": "o1"}])  # poll yield
 
         # poll_order should be called with retry
-        poll_calls = [
-            c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"
-        ]
+        poll_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"]
         assert len(poll_calls) >= 1
         retry_opts = poll_calls[0][0][1]
         assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
@@ -719,11 +715,7 @@ class TestFulfilmentRetry:
         )
         gen.send(None)
 
-        submit_calls = [
-            c
-            for c in ctx.call_activity_with_retry.call_args_list
-            if c[0][0] == "submit_batch_fulfilment"
-        ]
+        submit_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "submit_batch_fulfilment"]
         assert len(submit_calls) == 1
         retry_opts = submit_calls[0][0][1]
         assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
@@ -1184,9 +1176,7 @@ class TestAoiPollOrderRetry:
             gen.send([{"order_id": "o1"}])  # resume with acquire result
 
         # poll_order should use call_activity_with_retry
-        retry_calls = [
-            c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"
-        ]
+        retry_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"]
         assert len(retry_calls) >= 1
 
 
@@ -1415,9 +1405,7 @@ class TestOrchestratorActivityOutputContracts:
             [{"feature_name": "farm", "bbox": [36.8, -1.3, 36.81, -1.31]}]
         )  # resolve prepare_aoi; yield store_aoi_claims
 
-        with pytest.raises(
-            ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"
-        ):
+        with pytest.raises(ValueError, match=r"store_aoi_claims activity output item 0 missing required keys: ref"):
             gen.send([{"key": "farm"}])  # resolve store_aoi_claims
 
 
@@ -1437,9 +1425,7 @@ class TestPhaseIngestionCentroidTelemetry:
         ctx = MagicMock()
         ctx.call_activity.return_value = "sentinel"
 
-        gen = _phase_ingestion(
-            ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-6", {"timestamp": "t1"}
-        )
+        gen = _phase_ingestion(ctx, {"blob_name": "test.kml", "tier": "enterprise"}, "inst-6", {"timestamp": "t1"})
         gen.send(None)  # yield parse_kml
         gen.send(
             [
@@ -1487,9 +1473,7 @@ class TestPhaseCustomStatusReporting:
 
         ctx.set_custom_status.assert_called()
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "ingestion" and s.get("step") == "parsing_kml" for s in statuses
-        )
+        assert any(s.get("phase") == "ingestion" and s.get("step") == "parsing_kml" for s in statuses)
 
     def test_ingestion_sets_preparing_aois_status(self):
         """Phase ingestion sets status when fan-out to prepare_aoi begins."""
@@ -1506,9 +1490,7 @@ class TestPhaseCustomStatusReporting:
             gen.send(features)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "ingestion" and s.get("step") == "preparing_aois" for s in statuses
-        )
+        assert any(s.get("phase") == "ingestion" and s.get("step") == "preparing_aois" for s in statuses)
 
     def test_acquisition_sets_searching_status(self):
         """Phase acquisition must set customStatus with step=searching."""
@@ -1523,9 +1505,7 @@ class TestPhaseCustomStatusReporting:
         gen.send(None)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "acquisition" and s.get("step") == "searching" for s in statuses
-        )
+        assert any(s.get("phase") == "acquisition" and s.get("step") == "searching" for s in statuses)
 
     def test_acquisition_sets_polling_status(self):
         """Phase acquisition sets status when polling begins."""
@@ -1566,9 +1546,7 @@ class TestPhaseCustomStatusReporting:
         gen.send(None)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "fulfilment" and s.get("step") == "downloading" for s in statuses
-        )
+        assert any(s.get("phase") == "fulfilment" and s.get("step") == "downloading" for s in statuses)
 
     def test_enrichment_sets_data_sources_status(self):
         """Phase enrichment sets customStatus for data_sources_and_imagery step."""
@@ -1588,10 +1566,7 @@ class TestPhaseCustomStatusReporting:
         gen.send(None)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "enrichment" and s.get("step") == "data_sources_and_imagery"
-            for s in statuses
-        )
+        assert any(s.get("phase") == "enrichment" and s.get("step") == "data_sources_and_imagery" for s in statuses)
 
     def test_enrichment_sets_finalizing_status(self):
         """Phase enrichment sets customStatus with step=finalizing before enrich_finalize."""
@@ -1614,9 +1589,7 @@ class TestPhaseCustomStatusReporting:
             gen.send([{"frame_plan": []}, {"ndvi": {}}])  # resume after parallel
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(
-            s.get("phase") == "enrichment" and s.get("step") == "finalizing" for s in statuses
-        )
+        assert any(s.get("phase") == "enrichment" and s.get("step") == "finalizing" for s in statuses)
 
     def test_coordinator_sets_completed_status(self):
         """Main orchestrator must call set_custom_status with phase='completed' after all phases.
@@ -1660,8 +1633,7 @@ class TestPhaseCustomStatusReporting:
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == "treesight_orchestrator":
                 assert _has_completed_status_call(node), (
-                    "treesight_orchestrator must call "
-                    "set_custom_status({'phase': 'completed', ...})"
+                    "treesight_orchestrator must call set_custom_status({'phase': 'completed', ...})"
                 )
                 return
 

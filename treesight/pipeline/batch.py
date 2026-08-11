@@ -66,15 +66,11 @@ def submit_batch_job(
             TaskAddParameter,
         )
     except ImportError as exc:
-        raise RuntimeError(
-            "azure-batch SDK not installed.  Install it with: uv pip install azure-batch"
-        ) from exc
+        raise RuntimeError("azure-batch SDK not installed.  Install it with: uv pip install azure-batch") from exc
 
     cfg = _get_batch_config()
     if not cfg["account_url"] or not cfg["account_name"]:
-        raise RuntimeError(
-            "BATCH_ACCOUNT_URL and BATCH_ACCOUNT_NAME must be set for Azure Batch fallback."
-        )
+        raise RuntimeError("BATCH_ACCOUNT_URL and BATCH_ACCOUNT_NAME must be set for Azure Batch fallback.")
 
     credentials = SharedKeyCredentials(cfg["account_name"], cfg["account_key"])
     client = BatchServiceClient(credentials, batch_url=cfg["account_url"])

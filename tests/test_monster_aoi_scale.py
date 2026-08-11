@@ -111,9 +111,7 @@ class TestParseMonster200:
     def test_parses_200_features(self, monster_kml_bytes: bytes) -> None:
         """Exactly 200 Placemark elements must be returned."""
         features = parse_kml_lxml(monster_kml_bytes, source_file="monster_200.kml")
-        assert len(features) == _EXPECTED_AOI_COUNT, (
-            f"Expected {_EXPECTED_AOI_COUNT} features, got {len(features)}"
-        )
+        assert len(features) == _EXPECTED_AOI_COUNT, f"Expected {_EXPECTED_AOI_COUNT} features, got {len(features)}"
 
     def test_all_aois_have_positive_area(self, monster_kml_bytes: bytes) -> None:
         """Every AOI must have area_ha > 0 — no degenerate polygons."""
@@ -228,12 +226,9 @@ class TestEnrichmentFanOut200:
         dropped = [i for i, r in enumerate(per_aoi) if r is None or r == {}]
         assert not dropped, f"Dropped AOI indices (expected 0): {dropped[:10]}"
 
-        assert len(per_aoi) == _EXPECTED_AOI_COUNT, (
-            f"Expected {_EXPECTED_AOI_COUNT} results, got {len(per_aoi)}"
-        )
+        assert len(per_aoi) == _EXPECTED_AOI_COUNT, f"Expected {_EXPECTED_AOI_COUNT} results, got {len(per_aoi)}"
         assert len(timings) == _EXPECTED_AOI_COUNT, (
-            f"Timing capture mismatch: recorded {len(timings)} timings "
-            f"for {_EXPECTED_AOI_COUNT} AOIs"
+            f"Timing capture mismatch: recorded {len(timings)} timings for {_EXPECTED_AOI_COUNT} AOIs"
         )
 
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
@@ -270,11 +265,7 @@ class TestEnrichmentFanOut200:
                 per_aoi_coords=per_aoi_coords,
             )
 
-        errored = [
-            r.get("name", f"idx-{i}")
-            for i, r in enumerate(result["per_aoi_enrichment"])
-            if "error" in r
-        ]
+        errored = [r.get("name", f"idx-{i}") for i, r in enumerate(result["per_aoi_enrichment"]) if "error" in r]
         assert not errored, f"AOIs with enrichment errors: {errored}"
 
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
@@ -328,8 +319,7 @@ class TestEnrichmentFanOut200:
 
         # --- Assertions ---
         assert wall_elapsed < _MAX_FANOUT_SECONDS, (
-            f"Fan-out for {_EXPECTED_AOI_COUNT} AOIs took {wall_elapsed:.2f}s "
-            f"— exceeds {_MAX_FANOUT_SECONDS}s ceiling"
+            f"Fan-out for {_EXPECTED_AOI_COUNT} AOIs took {wall_elapsed:.2f}s — exceeds {_MAX_FANOUT_SECONDS}s ceiling"
         )
         # p99 ceiling: each individual AOI stub should finish in well under a second.
         assert p99 < 1.0, f"Per-AOI p99 = {p99 * 1000:.1f} ms exceeds 1 000 ms"

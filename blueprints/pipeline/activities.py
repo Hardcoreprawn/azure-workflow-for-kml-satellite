@@ -70,9 +70,7 @@ def parse_kml(payload: _Payload) -> list[dict[str, Any]] | dict[str, Any]:
     from treesight.constants import MAX_FEATURES_PER_KML
 
     if len(features) > MAX_FEATURES_PER_KML:
-        raise ValueError(
-            f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}"
-        )
+        raise ValueError(f"KML contains {len(features)} features, exceeding the limit of {MAX_FEATURES_PER_KML}")
 
     feature_dicts = [f.model_dump() for f in features]
 

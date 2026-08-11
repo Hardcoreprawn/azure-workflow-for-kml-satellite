@@ -173,9 +173,7 @@ class TestPrepareAoi:
             "source_file": "test.kml",
             "geometry": {
                 "type": "Polygon",
-                "coordinates": [
-                    [[36.79, -1.31], [36.81, -1.31], [36.81, -1.29], [36.79, -1.29], [36.79, -1.31]]
-                ],
+                "coordinates": [[[36.79, -1.31], [36.81, -1.31], [36.81, -1.29], [36.79, -1.29], [36.79, -1.31]]],
             },
             "metadata": {},
         }
@@ -403,9 +401,7 @@ class TestPollOrder:
 
         with (
             patch("treesight.providers.registry.get_provider") as mock_get_prov,
-            patch(
-                "treesight.pipeline.acquisition.poll_order", return_value=outcome_mock
-            ) as mock_poll,
+            patch("treesight.pipeline.acquisition.poll_order", return_value=outcome_mock) as mock_poll,
         ):
             mock_get_prov.return_value = MagicMock()
             poll_order(

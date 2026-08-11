@@ -52,11 +52,7 @@ def _aoi_acquire(
 
     acq_result = cast(
         "Any",
-        (
-            yield context.call_activity_with_retry(
-                activity, acq_retry, _acq_payload(aoi_ref, pipeline_inp, composite)
-            )
-        ),
+        (yield context.call_activity_with_retry(activity, acq_retry, _acq_payload(aoi_ref, pipeline_inp, composite))),
     )
 
     # Normalize: composite returns list of orders, non-composite returns one
@@ -118,9 +114,7 @@ def _aoi_fulfil(
     # Batch path (oversized AOI)
     batch_tracking: list[dict[str, Any]] = []
     if batch_ready:
-        batch_result = yield from _fulfil_batch(
-            context, batch_ready, asset_urls, output_container, ctx
-        )
+        batch_result = yield from _fulfil_batch(context, batch_ready, asset_urls, output_container, ctx)
         batch_tracking = batch_result["batch_tracking"]
 
     # Serverless download path
@@ -189,9 +183,7 @@ def aoi_pipeline(context: df.DurableOrchestrationContext):  # type: ignore[retur
     acq = yield from _aoi_acquire(context, pipeline_inp, aoi_ref)
 
     context.set_custom_status({"aoi": aoi_name, "step": "downloading"})
-    ful = yield from _aoi_fulfil(
-        context, pipeline_inp, ctx, acq, aoi_ref, aoi_area_ha, output_container
-    )
+    ful = yield from _aoi_fulfil(context, pipeline_inp, ctx, acq, aoi_ref, aoi_area_ha, output_container)
 
     context.set_custom_status({"aoi": aoi_name, "step": "completed"})
 

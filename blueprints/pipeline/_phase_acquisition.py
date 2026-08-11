@@ -32,9 +32,7 @@ def _phase_acquisition(
     """Search for imagery and poll until orders are ready."""
     context.set_custom_status({"phase": "acquisition", "step": "searching", "aois": len(aoi_refs)})
     composite = bool(inp.get("composite_search", True))
-    acq_batch_size = max(
-        1, config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE)
-    )
+    acq_batch_size = max(1, config_get_int(inp, "acquisition_batch_size", DEFAULT_ACQUISITION_BATCH_SIZE))
 
     # Retry options for transient provider failures (STAC API timeouts, 5xx).
     acq_retry = df.RetryOptions(

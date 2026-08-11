@@ -67,8 +67,7 @@ def aggregate_weather_monthly(weather: dict[str, Any]) -> dict[str, Any]:
     return {
         "labels": keys,
         "temp": [
-            round(sum(months[k]["temp"]) / len(months[k]["temp"]), 1) if months[k]["temp"] else None
-            for k in keys
+            round(sum(months[k]["temp"]) / len(months[k]["temp"]), 1) if months[k]["temp"] else None for k in keys
         ],
         "precip": [round(months[k]["precip"], 1) for k in keys],
     }

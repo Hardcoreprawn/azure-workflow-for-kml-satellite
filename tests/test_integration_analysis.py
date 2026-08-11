@@ -224,9 +224,7 @@ class TestFramePlanIntegrity:
         s2_frames = [f for f in plan if f["collection"] == "sentinel-2-l2a"]
         assert s2_frames, "expected Sentinel-2 frames for tiny UK AOI"
         assert any(f["rgb_display_suitable"] is False for f in s2_frames)
-        assert all(
-            f["preferred_layer"] == "ndvi" for f in s2_frames if not f["rgb_display_suitable"]
-        )
+        assert all(f["preferred_layer"] == "ndvi" for f in s2_frames if not f["rgb_display_suitable"])
 
     def test_small_naip_aoi_keeps_rgb_as_suitable(self):
         """Tiny CONUS AOIs should keep NAIP RGB as the preferred display layer."""
@@ -260,9 +258,7 @@ class TestFramePlanIntegrity:
         legacy = annotated[0]
         modern = annotated[1]
 
-        assert legacy["display_resolution_m"] == NAIP_LEGACY_GSD_M, (
-            "2014 NAIP frame should use the legacy 1.0 m/px GSD"
-        )
+        assert legacy["display_resolution_m"] == NAIP_LEGACY_GSD_M, "2014 NAIP frame should use the legacy 1.0 m/px GSD"
         assert modern["display_resolution_m"] < NAIP_LEGACY_GSD_M, (
             "post-2014 NAIP frame should use the finer 0.6 m/px GSD"
         )
@@ -480,9 +476,7 @@ class TestPromptContextBuilding:
         # Build the same context lines the blueprint builds
         context_lines: list[str] = []
         context_lines.append(f"NDVI Average: {trends['ndvi_avg']:.3f}")
-        context_lines.append(
-            f"NDVI Range: {trends['ndvi_min_val']:.3f} to {trends['ndvi_max_val']:.3f}"
-        )
+        context_lines.append(f"NDVI Range: {trends['ndvi_min_val']:.3f} to {trends['ndvi_max_val']:.3f}")
         context_lines.append(f"Volatility: {trends['ndvi_volatility']}")
         context_lines.append(f"Multi-year Trajectory: {trends['ndvi_trajectory']}")
 

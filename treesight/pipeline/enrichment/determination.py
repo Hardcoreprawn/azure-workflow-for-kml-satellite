@@ -50,18 +50,13 @@ def _assess_change_detection(
         loss_pct_val = sc.get("loss_pct", 0)
         loss_ha_val = sc.get("loss_ha", 0)
         if loss_pct_val >= loss_pct_threshold and loss_ha_val >= loss_ha_threshold:
-            flags.append(
-                f"Vegetation loss {sc['loss_pct']:.1f}% "
-                f"({sc['loss_ha']:.1f} ha) in {sc.get('label', '?')}"
-            )
+            flags.append(f"Vegetation loss {sc['loss_pct']:.1f}% ({sc['loss_ha']:.1f} ha) in {sc.get('label', '?')}")
 
     if trajectory == "Declining":
         flags.append("Overall NDVI trajectory is declining")
 
     if avg_delta is not None and avg_delta < ndvi_decline_threshold:
-        flags.append(
-            f"Mean NDVI delta {avg_delta:+.4f} below threshold ({ndvi_decline_threshold:+.4f})"
-        )
+        flags.append(f"Mean NDVI delta {avg_delta:+.4f} below threshold ({ndvi_decline_threshold:+.4f})")
 
     return summary
 

@@ -94,9 +94,7 @@ class SyncPlan:
     to_update: list[tuple[TrackedIssue, AlertGroup]]
     to_close: list[TrackedIssue]
     # Each tuple: (duplicate_issue, canonical_issue, group) for migration comments.
-    to_close_duplicate: list[tuple[TrackedIssue, TrackedIssue, AlertGroup]] = field(
-        default_factory=list
-    )
+    to_close_duplicate: list[tuple[TrackedIssue, TrackedIssue, AlertGroup]] = field(default_factory=list)
 
 
 # ── Pure logic ─────────────────────────────────────────────────
@@ -241,8 +239,7 @@ def build_group_issue_spec(group: AlertGroup, *, labels: list[str]) -> IssueSpec
     group_marker = f"<!-- {GROUP_MARKER_PREFIX}{group.tool}/{group.rule_id} -->"
     alert_markers = "\n".join(f"<!-- {MARKER_PREFIX}{a.number} -->" for a in group.alerts)
     alert_lines = "\n".join(
-        f"- Alert [#{a.number}]({a.html_url}) — `{a.location}` (severity: {a.severity})"
-        for a in group.alerts
+        f"- Alert [#{a.number}]({a.html_url}) — `{a.location}` (severity: {a.severity})" for a in group.alerts
     )
 
     body = (
@@ -425,15 +422,9 @@ def load_open_alerts(*, token: str, owner: str, repo: str) -> list[CodeScanningA
     for item in raw:
         rule = item.get("rule", {}) if isinstance(item.get("rule"), dict) else {}
         tool = item.get("tool", {}) if isinstance(item.get("tool"), dict) else {}
-        instance = (
-            item.get("most_recent_instance", {})
-            if isinstance(item.get("most_recent_instance"), dict)
-            else {}
-        )
+        instance = item.get("most_recent_instance", {}) if isinstance(item.get("most_recent_instance"), dict) else {}
         message = instance.get("message", {}) if isinstance(instance.get("message"), dict) else {}
-        description = str(
-            rule.get("description") or message.get("text") or rule.get("name") or ""
-        ).strip()
+        description = str(rule.get("description") or message.get("text") or rule.get("name") or "").strip()
         alerts.append(
             CodeScanningAlert(
                 number=int(item["number"]),
@@ -586,10 +577,7 @@ def main() -> int:
     if args.dry_run:
         for grp in plan.to_create:
             alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
-            print(
-                f"- would create: {grp.tool} {grp.rule_id} "
-                f"({len(grp.alerts)} instance(s): {alert_nums})"
-            )
+            print(f"- would create: {grp.tool} {grp.rule_id} ({len(grp.alerts)} instance(s): {alert_nums})")
         for canonical, grp in plan.to_update:
             alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
             print(
@@ -611,10 +599,7 @@ def main() -> int:
         spec = build_group_issue_spec(grp, labels=labels)
         number = create_issue(token=token, owner=args.owner, repo=args.repo, spec=spec)
         alert_nums = ", ".join(f"#{a.number}" for a in grp.alerts)
-        print(
-            f"created issue #{number} for {grp.tool} {grp.rule_id} "
-            f"({len(grp.alerts)} instance(s): {alert_nums})"
-        )
+        print(f"created issue #{number} for {grp.tool} {grp.rule_id} ({len(grp.alerts)} instance(s): {alert_nums})")
 
     for canonical, grp in plan.to_update:
         spec = build_group_issue_spec(grp, labels=labels)
@@ -640,10 +625,7 @@ def main() -> int:
             canonical_issue_number=canonical.number,
             group=grp,
         )
-        print(
-            f"closed duplicate issue #{dup.number} "
-            f"(canonical: #{canonical.number} for {grp.tool} {grp.rule_id})"
-        )
+        print(f"closed duplicate issue #{dup.number} (canonical: #{canonical.number} for {grp.tool} {grp.rule_id})")
 
     for issue in plan.to_close:
         if issue.group_key is not None:
