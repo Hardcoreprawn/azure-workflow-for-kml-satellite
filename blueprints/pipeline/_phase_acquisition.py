@@ -51,8 +51,7 @@ def _monitor_orders(
             break
 
         status_tasks = [
-            context.call_activity_with_retry("check_order_status", poll_retry, _poll_payload(o, inp))
-            for o in pending
+            context.call_activity_with_retry("check_order_status", poll_retry, _poll_payload(o, inp)) for o in pending
         ]
         statuses = cast(
             "list[dict[str, Any]]",
