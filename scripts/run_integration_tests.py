@@ -5,9 +5,9 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from typing import Any
 
 import pytest
-from _pytest.reports import TestReport
 
 INTEGRATION_MARKERS = (
     "integration_azurite",
@@ -22,7 +22,7 @@ class RequirePassingIntegrationTests:
     def __init__(self) -> None:
         self.passed = 0
 
-    def pytest_runtest_logreport(self, report: TestReport) -> None:
+    def pytest_runtest_logreport(self, report: Any) -> None:
         if report.when == "call" and report.passed:
             self.passed += 1
 
