@@ -127,13 +127,9 @@ def _build_csv(manifest: dict[str, Any]) -> str:
             "is_naip": frame.get("is_naip", False),
             "display_search_id": provenance.get("display_search_id", ""),
             "ndvi_search_id": provenance.get("ndvi_search_id", ""),
-            "ndvi_scene_id": provenance.get(
-                "ndvi_scene_id", ndvi.get("scene_id", "") if ndvi else ""
-            ),
+            "ndvi_scene_id": provenance.get("ndvi_scene_id", ndvi.get("scene_id", "") if ndvi else ""),
             "resolution_m": provenance.get("resolution_m", ""),
-            "cloud_cover_pct": provenance.get(
-                "cloud_cover_pct", ndvi.get("cloud_cover", "") if ndvi else ""
-            ),
+            "cloud_cover_pct": provenance.get("cloud_cover_pct", ndvi.get("cloud_cover", "") if ndvi else ""),
             "acquired_at": provenance.get("acquired_at", ndvi.get("datetime", "") if ndvi else ""),
             "artifact_path": provenance.get("artifact_path", frame.get("ndvi_raster_path", "")),
             "ndvi_mean": ndvi.get("mean", "") if ndvi else "",
@@ -264,9 +260,7 @@ def _build_eudr_csv(
                 "determination_confidence": det.get("confidence", "unknown"),
                 "determination_flags": "; ".join(det.get("flags", [])),
                 "worldcover_dominant": lc.get("dominant_class", ""),
-                "worldcover_tree_pct": (
-                    {c["code"]: c for c in lc.get("classes", [])}.get(10, {}).get("area_pct", "")
-                ),
+                "worldcover_tree_pct": ({c["code"]: c for c in lc.get("classes", [])}.get(10, {}).get("area_pct", "")),
                 "wdpa_is_protected": wdpa.get("is_protected", ""),
                 "ndvi_latest_mean": valid[-1]["mean"] if valid else "",
                 "ndvi_observations": len(valid),

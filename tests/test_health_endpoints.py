@@ -131,9 +131,7 @@ class TestContract:
 class TestInternalSmoke:
     def test_returns_200_for_dev_orchestrator_host(self):
         resp = internal_smoke(
-            _make_req(
-                url="https://func-kmlsat-dev-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke"
-            )
+            _make_req(url="https://func-kmlsat-dev-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke")
         )
         assert resp.status_code == 200
         body = json.loads(resp.get_body())
@@ -142,9 +140,7 @@ class TestInternalSmoke:
 
     def test_returns_200_for_prd_orchestrator_host(self):
         resp = internal_smoke(
-            _make_req(
-                url="https://func-kmlsat-prd-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke"
-            )
+            _make_req(url="https://func-kmlsat-prd-orch.example.uksouth.azurecontainerapps.io/api/internal-smoke")
         )
         assert resp.status_code == 200
 

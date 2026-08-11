@@ -44,13 +44,9 @@ def parse_args() -> argparse.Namespace:
     action = p.add_mutually_exclusive_group(required=True)
     action.add_argument("--enable", action="store_true", help="Enable feature for this user")
     action.add_argument("--disable", action="store_true", help="Disable feature for this user")
-    action.add_argument(
-        "--clear", action="store_true", help="Remove override (reverts to flag-level status)"
-    )
+    action.add_argument("--clear", action="store_true", help="Remove override (reverts to flag-level status)")
 
-    p.add_argument(
-        "--updated-by", default="operator", help="Identity performing the update (audit field)"
-    )
+    p.add_argument("--updated-by", default="operator", help="Identity performing the update (audit field)")
     p.add_argument("--dry-run", action="store_true", help="Print the resulting document; no write")
     return p.parse_args()
 

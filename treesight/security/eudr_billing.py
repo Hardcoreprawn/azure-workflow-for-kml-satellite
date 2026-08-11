@@ -87,9 +87,7 @@ def eudr_graduated_overage_gbp(period_parcels_used: int, included_parcels: int) 
 
     # Walk the band boundaries: base rate up to the first tier threshold,
     # then each subsequent tier rate.
-    thresholds: list[tuple[int | None, float]] = [
-        (threshold, rate) for threshold, rate in EUDR_OVERAGE_TIERS
-    ]
+    thresholds: list[tuple[int | None, float]] = [(threshold, rate) for threshold, rate in EUDR_OVERAGE_TIERS]
     upper_limits = [t for t, _ in thresholds] + [None]
     rates = [EUDR_OVERAGE_BASE_RATE_GBP] + [r for _, r in thresholds]
 

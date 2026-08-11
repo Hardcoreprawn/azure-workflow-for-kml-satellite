@@ -130,9 +130,7 @@ class TestBillingFieldsForSubmission:
     @patch(_COMPUTE_POOL_ALLOWANCE, return_value=50)
     @patch(_GET_USER_ORG, return_value={"org_id": "org-1", "usage": [1, 2, 3]})
     @patch(_GET_SUB)
-    def test_malformed_usage_falls_back_to_zeroed(
-        self, mock_sub, _mock_org, _mock_allowance, caplog
-    ):
+    def test_malformed_usage_falls_back_to_zeroed(self, mock_sub, _mock_org, _mock_allowance, caplog):
         """Non-dict ``usage`` must not crash — zeroed fallback plus a warning."""
         mock_sub.return_value = {"tier": "pro", "status": "active"}
 
@@ -389,9 +387,7 @@ class TestOverageProviderIntegration:
     @patch(_GET_SUB)
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
-    def test_report_overage_calls_provider(
-        self, mock_read, mock_upsert, mock_sub, mock_provider_fn
-    ):
+    def test_report_overage_calls_provider(self, mock_read, mock_upsert, mock_sub, mock_provider_fn):
         mock_read.return_value = {
             "id": "inst-over",
             "user_id": "u1",
@@ -425,9 +421,7 @@ class TestOverageProviderIntegration:
     @patch(_GET_SUB)
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
-    def test_credit_overage_calls_provider(
-        self, mock_read, mock_upsert, mock_sub, mock_provider_fn
-    ):
+    def test_credit_overage_calls_provider(self, mock_read, mock_upsert, mock_sub, mock_provider_fn):
         mock_read.return_value = {
             "id": "inst-credit",
             "user_id": "u1",
@@ -462,9 +456,7 @@ class TestOverageProviderIntegration:
     @patch(_GET_SUB)
     @patch(_COSMOS_UPSERT)
     @patch(_COSMOS_READ)
-    def test_no_provider_call_without_stripe_sub(
-        self, mock_read, mock_upsert, mock_sub, mock_provider_fn
-    ):
+    def test_no_provider_call_without_stripe_sub(self, mock_read, mock_upsert, mock_sub, mock_provider_fn):
         mock_read.return_value = {
             "id": "inst-nosub",
             "user_id": "u1",

@@ -137,9 +137,7 @@ class TestDeforestationDetermination:
 
     def test_custom_thresholds(self):
         enrichment = _make_enrichment(loss_pct=3.0, loss_ha=2.0)
-        det = determine_deforestation_free(
-            enrichment, loss_pct_threshold=2.0, loss_ha_threshold=0.5
-        )
+        det = determine_deforestation_free(enrichment, loss_pct_threshold=2.0, loss_ha_threshold=0.5)
         assert det["deforestation_free"] is False
 
     def test_evidence_contains_change_detection(self):

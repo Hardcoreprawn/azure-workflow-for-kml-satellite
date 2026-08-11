@@ -123,9 +123,7 @@ def _fetch_paginated(token: str, path: str) -> list[dict[str, Any]]:
     return results
 
 
-def list_active_autopilot_prs(
-    *, token: str, owner: str, repo: str, max_prs: int
-) -> list[dict[str, Any]]:
+def list_active_autopilot_prs(*, token: str, owner: str, repo: str, max_prs: int) -> list[dict[str, Any]]:
     pulls = _fetch_paginated(token, f"/repos/{owner}/{repo}/pulls?state=open")
     active: list[dict[str, Any]] = []
     for pr in pulls:
@@ -259,9 +257,7 @@ def render_comment(summary: PRSummary) -> str:
     lines.append("")
     lines.append("### Needs Opinion")
     if summary.unresolved_threads:
-        lines.append(
-            "- Yes. There are unresolved review threads requiring maintainer judgment or approval."
-        )
+        lines.append("- Yes. There are unresolved review threads requiring maintainer judgment or approval.")
     else:
         lines.append("- No explicit opinion-needed threads currently open.")
 
@@ -280,9 +276,7 @@ def render_comment(summary: PRSummary) -> str:
     elif summary.pending_checks:
         lines.append("Status: WAITING_ON_CI")
     elif summary.is_draft:
-        lines.append(
-            "Status: READY_TO_PROMOTE — no blockers; promote out of draft with `gh pr ready`"
-        )
+        lines.append("Status: READY_TO_PROMOTE — no blockers; promote out of draft with `gh pr ready`")
     else:
         lines.append("Status: READY_FOR_MAINTAINER_REVIEW")
 
@@ -296,9 +290,7 @@ def _find_existing_watchdog_comment(
     repo: str,
     pr_number: int,
 ) -> int | None:
-    comments = _fetch_paginated(
-        token, f"/repos/{owner}/{repo}/issues/{pr_number}/comments?sort=created"
-    )
+    comments = _fetch_paginated(token, f"/repos/{owner}/{repo}/issues/{pr_number}/comments?sort=created")
     for comment in comments:
         if not isinstance(comment, dict):
             continue
@@ -359,9 +351,7 @@ def promote_draft_pr(*, token: str, pr_node_id: str, pr_number: int) -> None:
     }
     """
     result = _github_graphql(token=token, query=mutation, variables={"nodeId": pr_node_id})
-    pr_data = ((result.get("data") or {}).get("markPullRequestReadyForReview") or {}).get(
-        "pullRequest"
-    ) or {}
+    pr_data = ((result.get("data") or {}).get("markPullRequestReadyForReview") or {}).get("pullRequest") or {}
     if pr_data.get("isDraft") is not False:
         raise RuntimeError(f"#{pr_number}: promote mutation returned unexpected state: {pr_data}")
     print(f"#{pr_number} auto-promoted from draft to ready-for-review")
@@ -470,22 +460,14 @@ def ralph_signature(items: tuple[str, ...]) -> str:
     return "|".join(sorted(items))
 
 
-def should_nudge_agent(
-    summary: PRSummary, author_login: str, attempts: int, max_attempts: int
-) -> bool:
+def should_nudge_agent(summary: PRSummary, author_login: str, attempts: int, max_attempts: int) -> bool:
     """True when a blocked agent PR should be nudged to finish (within attempt cap)."""
-    return (
-        author_login in TRUSTED_PROMOTE_LOGINS and summary.has_blockers and attempts < max_attempts
-    )
+    return author_login in TRUSTED_PROMOTE_LOGINS and summary.has_blockers and attempts < max_attempts
 
 
-def ralph_nudge_history(
-    *, token: str, owner: str, repo: str, pr_number: int
-) -> tuple[int, str | None]:
+def ralph_nudge_history(*, token: str, owner: str, repo: str, pr_number: int) -> tuple[int, str | None]:
     """Return (nudge_count, last_signature) from prior Ralph comments on the PR."""
-    comments = _fetch_paginated(
-        token, f"/repos/{owner}/{repo}/issues/{pr_number}/comments?sort=created"
-    )
+    comments = _fetch_paginated(token, f"/repos/{owner}/{repo}/issues/{pr_number}/comments?sort=created")
     count = 0
     last_sig: str | None = None
     for comment in comments:
@@ -502,9 +484,7 @@ def ralph_nudge_history(
 
 def fetch_issue_acceptance(*, token: str, owner: str, repo: str, issue_number: int) -> str:
     """Best-effort extraction of the '## Acceptance' section from the linked issue."""
-    issue = _github_rest(
-        token=token, method="GET", path=f"/repos/{owner}/{repo}/issues/{issue_number}"
-    )
+    issue = _github_rest(token=token, method="GET", path=f"/repos/{owner}/{repo}/issues/{issue_number}")
     body = str((issue or {}).get("body") or "")
     match = re.search(r"(?ims)^##\s*Acceptance\b.*?(?=^##\s|\Z)", body)
     return match.group(0).strip() if match else ""
@@ -519,19 +499,14 @@ def render_nudge_comment(
 ) -> str:
     """Render the @copilot completion-nudge comment (Ralph loop)."""
     bullets = "\n".join(f"- {item}" for item in items) or "- (no machine-detected blockers)"
-    spec = acceptance or (
-        "_No `## Acceptance` section found on the linked issue — see the issue for scope._"
-    )
+    spec = acceptance or ("_No `## Acceptance` section found on the linked issue — see the issue for scope._")
     return "\n".join(
         [
             RALPH_MARKER,
             f"<!-- ralph-sig: {ralph_signature(items)} -->",
             "## PR Watchdog — completion nudge",
             "",
-            (
-                f"@copilot this PR does not yet meet its Definition of Done "
-                f"(attempt {attempt}/{max_attempts})."
-            ),
+            (f"@copilot this PR does not yet meet its Definition of Done (attempt {attempt}/{max_attempts})."),
             "",
             "**Outstanding:**",
             bullets,
@@ -566,9 +541,7 @@ def maybe_nudge_agent(
     agent is mid-run or stuck, and re-nudging would double-drive it (see the
     autopilot 'don't race the agent' lesson).
     """
-    attempts, last_sig = ralph_nudge_history(
-        token=read_token, owner=owner, repo=repo, pr_number=summary.number
-    )
+    attempts, last_sig = ralph_nudge_history(token=read_token, owner=owner, repo=repo, pr_number=summary.number)
     if not should_nudge_agent(summary, author_login, attempts, max_attempts):
         return False
     items = unmet_dod_items(summary)
@@ -577,8 +550,7 @@ def maybe_nudge_agent(
         return False
     if dry_run:
         print(
-            f"#{summary.number} dry-run: would ralph-nudge "
-            f"(attempt {attempts + 1}/{max_attempts}); unmet={list(items)}"
+            f"#{summary.number} dry-run: would ralph-nudge (attempt {attempts + 1}/{max_attempts}); unmet={list(items)}"
         )
         return True
     issue_number = linked_issue_number(pr_body)
@@ -655,8 +627,7 @@ def _process_pr(
     author_login = str((pr.get("user") or {}).get("login", ""))
     age_days = pr_age_days(pr)
     print(
-        f"#{summary.number} blockers={summary.has_blockers} "
-        f"pending={len(summary.pending_checks)} age={age_days:.1f}d"
+        f"#{summary.number} blockers={summary.has_blockers} pending={len(summary.pending_checks)} age={age_days:.1f}d"
     )
 
     if dry_run:

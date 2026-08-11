@@ -86,8 +86,7 @@ def billing_fields_for_submission(user_id: str) -> dict[str, Any]:
         malformed_usage = usage_raw is not None and not isinstance(usage_raw, dict)
         if malformed_usage:
             logger.warning(
-                "Unexpected org usage shape for billing classification "
-                "user=%s type=%s; using zeroed fallback",
+                "Unexpected org usage shape for billing classification user=%s type=%s; using zeroed fallback",
                 _redact(user_id),
                 type(usage_raw).__name__,
             )
@@ -145,9 +144,7 @@ def complete_run_billing(user_id: str, instance_id: str) -> None:
         _report_overage(user_id, instance_id, doc)
         if not doc.get("payment_ref"):
             # Stay pending so Durable retry can re-attempt billing
-            raise RuntimeError(
-                f"Overage billing not confirmed instance={instance_id} user={_redact(user_id)}"
-            )
+            raise RuntimeError(f"Overage billing not confirmed instance={instance_id} user={_redact(user_id)}")
 
     doc["billing_status"] = "charged"
     upsert_item("runs", doc)
@@ -218,9 +215,7 @@ def fail_run_billing(
         _credit_overage(user_id, instance_id, doc, reason)
 
         if not doc.get("payment_ref"):
-            raise RuntimeError(
-                f"Overage credit not confirmed instance={instance_id} user={_redact(user_id)}"
-            )
+            raise RuntimeError(f"Overage credit not confirmed instance={instance_id} user={_redact(user_id)}")
 
     # Preserve estimated cost so refunded work can be tracked as wasted cost.
     estimated_cost_pence = doc.get("estimated_cost_pence")

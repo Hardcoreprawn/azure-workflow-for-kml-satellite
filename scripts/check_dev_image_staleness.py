@@ -103,21 +103,14 @@ def staleness_reason(
     ``repo_build_digest`` and ``image_build_label`` are provided.
     """
     if image_lock_label is None:
-        return (
-            f"image has no {LABEL_KEY} label "
-            "(image not pulled, or built without the uv.lock digest)"
-        )
+        return f"image has no {LABEL_KEY} label (image not pulled, or built without the uv.lock digest)"
     if image_lock_label != repo_lock_digest:
         return (
             "uv.lock has changed since the dev image was built "
             f"(repo={repo_lock_digest[:12]}…, image={image_lock_label[:12]}…) — "
             "the dev-image workflow needs to rebuild/publish"
         )
-    if (
-        repo_build_digest is not None
-        and image_build_label is not None
-        and image_build_label != repo_build_digest
-    ):
+    if repo_build_digest is not None and image_build_label is not None and image_build_label != repo_build_digest:
         return (
             "build inputs (Dockerfile.dev / pyproject.toml / rust/) have changed "
             "since the dev image was built "
@@ -190,17 +183,12 @@ def main(argv: list[str] | None = None) -> int:
 
     image_lock_label = read_image_label(args.image, LABEL_KEY)
     image_build_label = read_image_label(args.image, LABEL_KEY_BUILD)
-    reason = staleness_reason(
-        repo_lock_digest, image_lock_label, repo_build_digest, image_build_label
-    )
+    reason = staleness_reason(repo_lock_digest, image_lock_label, repo_build_digest, image_build_label)
 
     if reason is None:
         lock_short = repo_lock_digest[:12]
         build_short = repo_build_digest[:12] if repo_build_digest else "n/a"
-        print(
-            f"dev image is in sync with {args.lock} ({lock_short}…) "
-            f"and build inputs ({build_short}…)"
-        )
+        print(f"dev image is in sync with {args.lock} ({lock_short}…) and build inputs ({build_short}…)")
         return 0
 
     prefix = "warning" if args.warn else "error"

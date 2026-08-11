@@ -236,9 +236,7 @@ def _find_or_create_product(stripe: Any) -> Any:
 
     return stripe.Product.create(
         name="Canopex Pro",
-        description=(
-            "Canopex Pro subscription — geospatial satellite analysis with higher limits."
-        ),
+        description=("Canopex Pro subscription — geospatial satellite analysis with higher limits."),
         metadata={"app": "treesight", "tier": "pro"},
     )
 

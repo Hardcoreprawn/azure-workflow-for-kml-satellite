@@ -68,9 +68,7 @@ def _preserve_quota_fields(doc: dict[str, Any], latest: dict[str, Any] | None) -
         and isinstance(latest_runs, list)
         and isinstance(current_runs, list)
     ):
-        merged_quota["runs"] = (
-            latest_runs if len(latest_runs) >= len(current_runs) else current_runs
-        )
+        merged_quota["runs"] = latest_runs if len(latest_runs) >= len(current_runs) else current_runs
 
     doc["quota"] = merged_quota
 

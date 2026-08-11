@@ -51,9 +51,7 @@ def resolve_workspace_name(resource_group: str, workspace_name: str | None) -> s
     if workspace_name:
         return workspace_name
 
-    payload = run_az_json(
-        ["monitor", "log-analytics", "workspace", "list", "--resource-group", resource_group]
-    )
+    payload = run_az_json(["monitor", "log-analytics", "workspace", "list", "--resource-group", resource_group])
     if not isinstance(payload, list) or len(payload) != 1:
         raise RuntimeError(
             "Could not resolve a single Log Analytics workspace automatically; pass --workspace-name explicitly"
@@ -144,9 +142,7 @@ def validate_gate(
     if actual_cap is None:
         raise RuntimeError("Log Analytics workspace is missing workspaceCapping.dailyQuotaGb")
     if float(actual_cap) > expected_daily_cap_gb:
-        raise RuntimeError(
-            f"Log Analytics daily quota is {actual_cap} GB, expected <= {expected_daily_cap_gb} GB"
-        )
+        raise RuntimeError(f"Log Analytics daily quota is {actual_cap} GB, expected <= {expected_daily_cap_gb} GB")
 
 
 def parse_args() -> argparse.Namespace:
@@ -171,9 +167,7 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Expected maximum Log Analytics daily quota in GB",
     )
-    parser.add_argument(
-        "--workspace-name", default=None, help="Optional Log Analytics workspace name"
-    )
+    parser.add_argument("--workspace-name", default=None, help="Optional Log Analytics workspace name")
     return parser.parse_args()
 
 

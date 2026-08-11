@@ -287,9 +287,7 @@ def analysis_review_list(req: func.HttpRequest) -> func.HttpResponse:
         review_history = {}
 
     return func.HttpResponse(
-        json.dumps(
-            {"instance_id": instance_id, "reviews": reviews, "review_history": review_history}
-        ),
+        json.dumps({"instance_id": instance_id, "reviews": reviews, "review_history": review_history}),
         status_code=200,
         mimetype="application/json",
         headers=cors_headers(req),
@@ -377,8 +375,7 @@ def _parse_review_body(
             "save",
             error_response(
                 400,
-                f"Note must be at least {_MIN_REVIEW_NOTE_LENGTH} characters"
-                " when marking as reviewed",
+                f"Note must be at least {_MIN_REVIEW_NOTE_LENGTH} characters when marking as reviewed",
                 req=req,
             ),
         )

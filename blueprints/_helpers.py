@@ -137,10 +137,7 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     """
 
     require_auth_enabled = os.environ.get("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
-    if (
-        os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes")
-        and not require_auth_enabled
-    ):
+    if os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes") and not require_auth_enabled:
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if principal_header:
             principal = parse_client_principal(principal_header)
@@ -159,9 +156,7 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
 def _requested_org_id(req: func.HttpRequest) -> str | None:
     """Extract an optional org selector from query params or headers."""
     query_params = getattr(req, "params", None)
-    requested = (
-        str(query_params.get("org_id", "")).strip() if isinstance(query_params, Mapping) else ""
-    )
+    requested = str(query_params.get("org_id", "")).strip() if isinstance(query_params, Mapping) else ""
     if requested:
         return requested
     for header_name in ("X-Canopex-Org-Id", "X-Org-Id"):
@@ -267,16 +262,12 @@ def require_auth(fn):
 
 
 @overload
-def check_auth(
-    req: func.HttpRequest, *, include_active_org: Literal[False] = False
-) -> tuple[dict, str]:
+def check_auth(req: func.HttpRequest, *, include_active_org: Literal[False] = False) -> tuple[dict, str]:
     """Overload: returns (claims, user_id) when active org is not requested."""
 
 
 @overload
-def check_auth(
-    req: func.HttpRequest, *, include_active_org: Literal[True]
-) -> tuple[dict, str, dict[str, Any] | None]:
+def check_auth(req: func.HttpRequest, *, include_active_org: Literal[True]) -> tuple[dict, str, dict[str, Any] | None]:
     """Overload: returns (claims, user_id, active_org) when requested."""
 
 

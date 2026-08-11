@@ -75,11 +75,7 @@ def parse_kml_fiona(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
                 features.append(_polygon_to_feature(geom, props, source_file, len(features)))
             elif geom_type == "MultiPolygon":
                 for poly_coords in geom.get("coordinates", []):
-                    features.append(
-                        _multi_polygon_part_to_feature(
-                            poly_coords, props, source_file, len(features)
-                        )
-                    )
+                    features.append(_multi_polygon_part_to_feature(poly_coords, props, source_file, len(features)))
             else:
                 logger.warning(
                     "fiona_parser: skipping non-polygon type=%s index=%d source=%s",

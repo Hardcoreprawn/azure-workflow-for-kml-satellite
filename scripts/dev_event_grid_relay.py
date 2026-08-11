@@ -75,9 +75,7 @@ def _extract_eventgrid_key(host_json_text: str) -> str | None:
     return None
 
 
-def _fetch_eventgrid_key(
-    blob_service: BlobServiceClient, retries: int = 15, delay: float = 2.0
-) -> str | None:
+def _fetch_eventgrid_key(blob_service: BlobServiceClient, retries: int = 15, delay: float = 2.0) -> str | None:
     """Read the func host's current Event Grid system key from Azurite.
 
     The Functions host auto-generates and stores this in the
@@ -91,9 +89,7 @@ def _fetch_eventgrid_key(
     secrets_container = blob_service.get_container_client(_SECRETS_CONTAINER)
     for attempt in range(1, retries + 1):
         try:
-            blobs = sorted(
-                secrets_container.list_blobs(), key=lambda b: b.last_modified, reverse=True
-            )
+            blobs = sorted(secrets_container.list_blobs(), key=lambda b: b.last_modified, reverse=True)
             for blob in blobs:
                 text = secrets_container.get_blob_client(blob.name).download_blob().readall()
                 key = _extract_eventgrid_key(text.decode())
@@ -150,9 +146,7 @@ def relay_forever(
             seen.add(blob_name)
             if not _is_relayable_blob(blob_name):
                 continue
-            _relay_one(
-                container_client, container, blob_name, function_name, func_base, function_key
-            )
+            _relay_one(container_client, container, blob_name, function_name, func_base, function_key)
 
         time.sleep(poll_interval)
 
@@ -198,9 +192,7 @@ def main() -> int:
         default=DEFAULT_EVENT_GRID_FUNCTION_NAME,
         help="Event Grid function name (default: blob_trigger)",
     )
-    parser.add_argument(
-        "--poll-interval", type=float, default=POLL_INTERVAL_SECONDS, help="Seconds between polls"
-    )
+    parser.add_argument("--poll-interval", type=float, default=POLL_INTERVAL_SECONDS, help="Seconds between polls")
     args = parser.parse_args()
 
     try:

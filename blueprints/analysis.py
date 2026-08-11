@@ -61,15 +61,11 @@ def _run_analysis(
         return error_response(401, str(exc), req=req)
 
     if rate_limit and not get_pipeline_limiter().is_allowed(get_client_ip(req)):
-        return error_response(
-            429, "Too many requests \u2014 please wait before trying again", req=req
-        )
+        return error_response(429, "Too many requests \u2014 please wait before trying again", req=req)
 
     raw_body = req.get_body()
     if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(
-            400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req
-        )
+        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req)
 
     try:
         body = req.get_json()
@@ -303,9 +299,7 @@ def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
         "trend_analysis": {...}
     }
     """
-    return _run_analysis(
-        req, run_fn=_timelapse_logic, require_ndvi=True, error_msg="Analysis failed"
-    )
+    return _run_analysis(req, run_fn=_timelapse_logic, require_ndvi=True, error_msg="Analysis failed")
 
 
 def _calculate_trends(
@@ -322,9 +316,7 @@ def _calculate_trends(
 
     if ndvi_series:
         # All means (including None placeholders for alignment)
-        ndvi_means: list[float] = [
-            float(s["mean"]) for s in ndvi_series if s.get("mean") is not None
-        ]
+        ndvi_means: list[float] = [float(s["mean"]) for s in ndvi_series if s.get("mean") is not None]
 
         if len(ndvi_means) >= 2:
             trends["ndvi_avg"] = round(sum(ndvi_means) / len(ndvi_means), 4)
@@ -334,11 +326,7 @@ def _calculate_trends(
             # Volatility (standard deviation)
             trends["ndvi_std_dev"] = round(statistics.pstdev(ndvi_means), 4)
             trends["ndvi_volatility"] = (
-                "High"
-                if trends["ndvi_std_dev"] > 0.15
-                else "Moderate"
-                if trends["ndvi_std_dev"] > 0.08
-                else "Low"
+                "High" if trends["ndvi_std_dev"] > 0.15 else "Moderate" if trends["ndvi_std_dev"] > 0.08 else "Low"
             )
 
         # --- Year-over-year same-season comparison (avoids seasonal false alarms) ---
@@ -385,9 +373,7 @@ def _calculate_trends(
             trends["ndvi_end"] = round(ndvi_means[-1], 4)
             trends["ndvi_change"] = round(trends["ndvi_end"] - trends["ndvi_start"], 4)
             if trends["ndvi_start"] != 0:
-                trends["ndvi_pct_change"] = round(
-                    trends["ndvi_change"] / trends["ndvi_start"] * 100, 1
-                )
+                trends["ndvi_pct_change"] = round(trends["ndvi_change"] / trends["ndvi_start"] * 100, 1)
             else:
                 trends["ndvi_pct_change"] = 0.0
             trends["ndvi_trajectory"] = (
@@ -415,12 +401,8 @@ def _calculate_trends(
             trends["ndvi_by_season"] = season_summary
 
     if weather_series:
-        temps: list[float] = [
-            float(s["temperature"]) for s in weather_series if s.get("temperature") is not None
-        ]
-        precips: list[float] = [
-            float(s["precipitation"]) for s in weather_series if s.get("precipitation") is not None
-        ]
+        temps: list[float] = [float(s["temperature"]) for s in weather_series if s.get("temperature") is not None]
+        precips: list[float] = [float(s["precipitation"]) for s in weather_series if s.get("precipitation") is not None]
         months: list[str] = [str(s["month"]) for s in weather_series if s.get("month")]
 
         if len(temps) >= 2:
@@ -530,9 +512,7 @@ def _eudr_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
     if trend_info.get("ndvi_avg") is not None:
         context_lines.append(f"NDVI Average: {trend_info['ndvi_avg']:.3f}")
     if trend_info.get("ndvi_min_val") is not None:
-        context_lines.append(
-            f"NDVI Range: {trend_info['ndvi_min_val']:.3f} to {trend_info['ndvi_max_val']:.3f}"
-        )
+        context_lines.append(f"NDVI Range: {trend_info['ndvi_min_val']:.3f} to {trend_info['ndvi_max_val']:.3f}")
     if trend_info.get("ndvi_trajectory"):
         context_lines.append(f"Trajectory: {trend_info['ndvi_trajectory']}")
     if trend_info.get("ndvi_yoy_avg_change") is not None:
@@ -542,8 +522,7 @@ def _eudr_logic(req: func.HttpRequest, context: dict) -> func.HttpResponse:
         context_lines.append("\n  Per-season post-2020 NDVI:")
         for skey, sdata in trend_info["ndvi_by_season"].items():
             context_lines.append(
-                f"    {skey.capitalize()}: avg={sdata['avg']:.3f} "
-                f"(range {sdata['min']:.3f}–{sdata['max']:.3f})"
+                f"    {skey.capitalize()}: avg={sdata['avg']:.3f} (range {sdata['min']:.3f}–{sdata['max']:.3f})"
             )
 
     context_lines.append("\n=== Significant Events (post-2020) ===")

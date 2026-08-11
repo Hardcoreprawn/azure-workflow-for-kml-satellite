@@ -68,9 +68,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         assert len(stats) == 3
         assert len(raster_paths) == 3
@@ -130,9 +128,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, _ = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        stats, _ = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         # One should have succeeded, one should be None
         populated = [s for s in stats if s is not None]
@@ -144,9 +140,7 @@ class TestMosaicNdviParallel:
         """NAIP frames register both NAIP and sentinel-2-l2a for NDVI."""
         frames = [_make_frame(collection="naip", is_naip=True)]
         sids = []
-        mock_mosaic.side_effect = lambda coll, start, end, bbox, extra, cl: (
-            sids.append(coll) or f"sid-{coll}"
-        )
+        mock_mosaic.side_effect = lambda coll, start, end, bbox, extra, cl: sids.append(coll) or f"sid-{coll}"
         mock_ndvi.return_value = {"mean": 0.5}
         storage = MagicMock()
         results: dict = {}
@@ -270,9 +264,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         storage.upload_bytes.assert_called_once()
         call_args = storage.upload_bytes.call_args
@@ -289,9 +281,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, [], "proj", "ts", "out", storage, results
-        )
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, [], "proj", "ts", "out", storage, results)
 
         assert stats == []
         assert raster_paths == []
@@ -310,9 +300,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         mock_fetch_stat.assert_called_once()
         assert stats[0] == {"mean": 0.4}
@@ -329,9 +317,7 @@ class TestMosaicNdviParallel:
         storage = MagicMock()
         results: dict = {}
 
-        stats, raster_paths = _run_mosaic_ndvi_phase(
-            BBOX, COORDS, frames, "proj", "ts", "out", storage, results
-        )
+        stats, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, results)
 
         mock_fetch_stat.assert_not_called()
         assert stats[0] is None
@@ -368,9 +354,7 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_per_aoi_enrichment_runs_per_aoi(
-        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
-    ):
+    def test_per_aoi_enrichment_runs_per_aoi(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """With per_aoi_coords containing 2+ AOIs, each gets its own enrichment."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
@@ -400,9 +384,7 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_single_aoi_skips_per_aoi(
-        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
-    ):
+    def test_single_aoi_skips_per_aoi(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """With only 1 AOI, per-AOI enrichment is not triggered."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
@@ -428,9 +410,7 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_per_aoi_failure_does_not_abort(
-        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
-    ):
+    def test_per_aoi_failure_does_not_abort(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """If one AOI's enrichment fails, others still succeed."""
 
         def enrich_side_effect(entry, **kwargs):
@@ -473,18 +453,13 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_per_aoi_uses_thread_pool(
-        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
-    ):
+    def test_per_aoi_uses_thread_pool(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """Per-AOI loop uses ThreadPoolExecutor — not a plain serial for-loop (#863)."""
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
-        per_aoi = [
-            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
-            for i in range(4)
-        ]
+        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(4)]
 
         submitted: list[int] = []
         real_tpe = ThreadPoolExecutor
@@ -512,9 +487,7 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_per_aoi_results_preserve_order(
-        self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change
-    ):
+    def test_per_aoi_results_preserve_order(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """Results list preserves submission order even when tasks complete out-of-order (#863)."""
         import threading
 
@@ -535,22 +508,15 @@ class TestPerAoiEnrichment:
                 started += 1
                 if started >= 2:
                     overlap_observed.set()
-            assert overlap_observed.wait(timeout=1), (
-                "Per-AOI tasks did not overlap; expected concurrent execution."
-            )
+            assert overlap_observed.wait(timeout=1), "Per-AOI tasks did not overlap; expected concurrent execution."
             idx = int(entry["name"].split()[-1])
             return {"name": entry["name"], "ndvi": idx}
 
         mock_plan.side_effect = plan_side_effect
 
-        per_aoi = [
-            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
-            for i in range(3)
-        ]
+        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(3)]
 
-        with patch(
-            "treesight.pipeline.enrichment.runner._enrich_single_aoi", side_effect=slow_enrich
-        ):
+        with patch("treesight.pipeline.enrichment.runner._enrich_single_aoi", side_effect=slow_enrich):
             result = run_enrichment(
                 coords=[[-50, -10], [-50, -9], [-49, -9]],
                 project_name="test",
@@ -581,10 +547,7 @@ class TestPerAoiEnrichment:
         mock_mosaic.return_value = ([], [])
         storage = MagicMock()
 
-        per_aoi = [
-            {"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10}
-            for i in range(3)
-        ]
+        per_aoi = [{"name": f"Farm {i}", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 10} for i in range(3)]
 
         seen_workers: list[int | None] = []
 

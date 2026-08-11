@@ -107,9 +107,7 @@ def catalogue_list(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def catalogue_detail(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def catalogue_detail(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Get a single catalogue entry by id."""
     entry_id = req.route_params.get("entryId", "")
     if not entry_id:
@@ -138,9 +136,7 @@ def catalogue_detail(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def catalogue_by_run(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def catalogue_by_run(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """List all catalogue entries for a specific pipeline run."""
     run_id = req.route_params.get("runId", "")
     if not run_id:
@@ -174,9 +170,7 @@ def catalogue_by_run(
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-def catalogue_by_aoi(
-    req: func.HttpRequest, *, auth_claims: dict, user_id: str
-) -> func.HttpResponse:
+def catalogue_by_aoi(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """List acquisition history for a specific AOI (time-series)."""
     aoi_name = req.route_params.get("aoiName", "")
     if not aoi_name:

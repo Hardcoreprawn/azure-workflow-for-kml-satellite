@@ -29,8 +29,7 @@ def test_build_eventgrid_endpoint_url_encodes_key() -> None:
     )
 
     assert endpoint == (
-        "https://func-kmlsat-dev.example.com/runtime/webhooks/eventgrid"
-        "?functionName=blob_trigger&code=abc%2B%2F%3D123"
+        "https://func-kmlsat-dev.example.com/runtime/webhooks/eventgrid?functionName=blob_trigger&code=abc%2B%2F%3D123"
     )
 
 

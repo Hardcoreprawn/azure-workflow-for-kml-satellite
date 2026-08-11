@@ -77,8 +77,7 @@ def _mock_cosmos():  # noqa: C901
                 members = val.get("members", [])
                 param_email = params["@email"].lower().strip()
                 if not any(
-                    isinstance(m.get("email"), str) and m["email"].strip().lower() == param_email
-                    for m in members
+                    isinstance(m.get("email"), str) and m["email"].strip().lower() == param_email for m in members
                 ):
                     matches = False
 
@@ -862,9 +861,7 @@ class TestMembershipHealingFromVerifiedEmail:
         store, upsert, read, delete, query = _mock_cosmos()
 
         # Old identity has an org with their email.
-        store["orgs:personal-old-uid"] = self._org_with_member(
-            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
-        )
+        store["orgs:personal-old-uid"] = self._org_with_member("personal-old-uid", "old-uid", "j.brewster@outlook.com")
 
         with ExitStack() as stack:
             _apply_patches(stack, store, upsert, read, delete, query)
@@ -899,9 +896,7 @@ class TestMembershipHealingFromVerifiedEmail:
             )
 
         org_doc = store.get("orgs:personal-old-uid")
-        new_member = next(
-            (m for m in org_doc.get("members", []) if m["user_id"] == "new-uid"), None
-        )
+        new_member = next((m for m in org_doc.get("members", []) if m["user_id"] == "new-uid"), None)
         assert new_member is not None
         assert new_member["role"] == "owner"
 
@@ -910,9 +905,7 @@ class TestMembershipHealingFromVerifiedEmail:
         from treesight.security.orgs import resolve_active_org_for_user
 
         store, upsert, read, delete, query = _mock_cosmos()
-        store["orgs:personal-old-uid"] = self._org_with_member(
-            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
-        )
+        store["orgs:personal-old-uid"] = self._org_with_member("personal-old-uid", "old-uid", "j.brewster@outlook.com")
 
         with ExitStack() as stack:
             _apply_patches(stack, store, upsert, read, delete, query)
@@ -925,9 +918,7 @@ class TestMembershipHealingFromVerifiedEmail:
         from treesight.security.orgs import resolve_active_org_for_user
 
         store, upsert, read, delete, query = _mock_cosmos()
-        store["orgs:personal-old-uid"] = self._org_with_member(
-            "personal-old-uid", "old-uid", "j.brewster@outlook.com"
-        )
+        store["orgs:personal-old-uid"] = self._org_with_member("personal-old-uid", "old-uid", "j.brewster@outlook.com")
 
         with ExitStack() as stack:
             _apply_patches(stack, store, upsert, read, delete, query)
@@ -972,9 +963,7 @@ class TestMembershipHealingFromVerifiedEmail:
         from treesight.security.orgs import resolve_active_org_for_user
 
         store, upsert, read, delete, query = _mock_cosmos()
-        store["orgs:personal-old-uid"] = self._org_with_member(
-            "personal-old-uid", "old-uid", "J.Brewster@Outlook.COM"
-        )
+        store["orgs:personal-old-uid"] = self._org_with_member("personal-old-uid", "old-uid", "J.Brewster@Outlook.COM")
 
         with ExitStack() as stack:
             _apply_patches(stack, store, upsert, read, delete, query)
@@ -1032,9 +1021,7 @@ class TestResolveLegacyUserOrgLogging:
             result = _resolve_legacy_user_org("user-1", "", read_item)
 
         assert result == {"org_id": "org-legacy"}
-        assert any(
-            "LEGACY_COMPAT_HIT legacy_user_org_resolved" in r.message for r in caplog.records
-        )
+        assert any("LEGACY_COMPAT_HIT legacy_user_org_resolved" in r.message for r in caplog.records)
 
     def test_no_hit_when_user_has_no_legacy_org_id(self, caplog):
         from treesight.security.orgs import _resolve_legacy_user_org

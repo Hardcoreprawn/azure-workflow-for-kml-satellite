@@ -112,8 +112,7 @@ def test_function_app_loads_all_blueprints():
     of functions.  This catches import-time failures.
     """
     assert len(_ALL_FUNCTIONS) > 0, (
-        "function_app.app.get_functions() returned 0 functions — "
-        "something is wrong with blueprint registration."
+        "function_app.app.get_functions() returned 0 functions — something is wrong with blueprint registration."
     )
 
 
@@ -123,6 +122,4 @@ def test_function_count_is_expected():
     """
     names = sorted(fn.get_function_name() or "" for fn in _ALL_FUNCTIONS)
     # As of PR #301: 32 functions.  Update when adding/removing.
-    assert len(_ALL_FUNCTIONS) >= 30, (
-        f"Expected at least 30 registered functions, got {len(_ALL_FUNCTIONS)}: {names}"
-    )
+    assert len(_ALL_FUNCTIONS) >= 30, f"Expected at least 30 registered functions, got {len(_ALL_FUNCTIONS)}: {names}"

@@ -100,9 +100,7 @@ class DevProxyHandler(http.server.SimpleHTTPRequestHandler):
         # Build an opener that refuses redirects — prevents a compromised
         # func host from bouncing us to internal/external endpoints.
         opener = urllib.request.build_opener()
-        opener.handlers = [
-            h for h in opener.handlers if not isinstance(h, urllib.request.HTTPRedirectHandler)
-        ]
+        opener.handlers = [h for h in opener.handlers if not isinstance(h, urllib.request.HTTPRedirectHandler)]
 
         try:
             # Use extended timeout for AI analysis endpoints (can take 100+ seconds)

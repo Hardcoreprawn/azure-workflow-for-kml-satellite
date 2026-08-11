@@ -293,9 +293,7 @@ class TestGetEudrBillingStatus:
 
     @patch("treesight.billing.accounting.get_pool_status")
     @patch(_GET_ORG)
-    def test_status_reports_overage_when_reserved_plus_completed_exceeds_allowance(
-        self, mock_get_org, mock_pool
-    ):
+    def test_status_reports_overage_when_reserved_plus_completed_exceeds_allowance(self, mock_get_org, mock_pool):
         from treesight.security.eudr_billing import get_eudr_billing_status
 
         mock_get_org.return_value = {
