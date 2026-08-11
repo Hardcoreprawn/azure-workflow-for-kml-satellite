@@ -47,11 +47,12 @@ Anything short of this is *started, not finished*. See
 [.github/copilot-instructions.md](../.github/copilot-instructions.md)
 "Delivery Workflow".
 
-**Completion SLA — 5 days.** An agent PR that stays `BLOCKED` or stale (no
-progress) for more than 5 days is closed and its linked issue re-queued, so the
-queue keeps moving instead of accreting half-done work. Enforced by the PR
-Watchdog stale-close path (opt-in via `AUTOPILOT_WATCHDOG_STALE_CLOSE`; off until
-the maintainer enables it).
+**Completion SLA — 5 days.** A draft agent PR with an implementation blocker
+(failing checks, unresolved review threads, or a missing linked issue) and no
+progress for more than 5 days may be closed and re-queued. Missing CI or review
+state alone never triggers stale closure. Enforced by the PR Watchdog stale-close
+path (opt-in via `AUTOPILOT_WATCHDOG_STALE_CLOSE`; off until the maintainer
+enables it).
 
 ---
 

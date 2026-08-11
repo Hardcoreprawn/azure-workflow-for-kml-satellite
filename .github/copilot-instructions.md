@@ -34,6 +34,8 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
   4. **PR is marked ready** (not left in draft) so CI actually runs.
   5. **Watchdog status reported** in the PR (`READY_TO_PROMOTE` / `READY_FOR_MAINTAINER_REVIEW`).
 - **Finish before you start (drain-first).** Before beginning or being assigned new work, check for open agent PRs that are `BLOCKED` or `READY_TO_PROMOTE`. Resolve those first — add the missing linked issue, fix the failing check, or close a dead/superseded PR — rather than opening another PR. Empty/no-diff PRs (e.g. "verification only, nothing to change") must be closed, not left open: record the finding in a close comment. The goal is a *shrinking* queue.
+- **Zero checks is blocked, never green.** `READY_*` requires the complete required-check set to be present and successful; a missing check or `CHANGES_REQUESTED` decision blocks promotion.
+- **Security-sensitive changes require owner review.** CODEOWNERS routes auth, billing, quota/ownership, workflow, and infrastructure changes to `@Hardcoreprawn`. Ask for the owner's decision before merge; an agent must not infer approval or merge these changes on its own.
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
