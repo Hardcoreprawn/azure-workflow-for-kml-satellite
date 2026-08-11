@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -38,6 +39,36 @@ os.environ.setdefault(
     f"{TEST_ORIGIN},https://green-moss-0e849ac03.2.azurestaticapps.net",
 )
 os.environ.setdefault("PRIMARY_SITE_URL", TEST_ORIGIN)
+
+
+def reset_rate_limiters() -> None:
+    """Install fresh in-memory limiters for an isolated unit-test lifecycle."""
+    from treesight.constants import (
+        RATE_LIMIT_DEMO_MAX,
+        RATE_LIMIT_DEMO_WINDOW,
+        RATE_LIMIT_FORM_MAX,
+        RATE_LIMIT_FORM_WINDOW,
+        RATE_LIMIT_PIPELINE_MAX,
+        RATE_LIMIT_PIPELINE_WINDOW,
+    )
+    from treesight.security.rate_limit import (
+        RateLimiter,
+        set_demo_limiter,
+        set_form_limiter,
+        set_pipeline_limiter,
+    )
+
+    set_form_limiter(RateLimiter(RATE_LIMIT_FORM_MAX, RATE_LIMIT_FORM_WINDOW))
+    set_pipeline_limiter(RateLimiter(RATE_LIMIT_PIPELINE_MAX, RATE_LIMIT_PIPELINE_WINDOW))
+    set_demo_limiter(RateLimiter(RATE_LIMIT_DEMO_MAX, RATE_LIMIT_DEMO_WINDOW))
+
+
+@pytest.fixture(autouse=True)
+def isolate_rate_limiters() -> Iterator[None]:
+    """Keep unit tests independent from function-app runtime wiring."""
+    reset_rate_limiters()
+    yield
+    reset_rate_limiters()
 
 
 @pytest.fixture()
