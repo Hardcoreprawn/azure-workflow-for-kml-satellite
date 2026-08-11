@@ -1,6 +1,7 @@
 """Tests for treesight.security.rate_limit."""
 
 import datetime
+import importlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -125,6 +126,38 @@ def _expired_window_end() -> datetime.datetime:
 
 
 class TestTableRateLimiter:
+    @pytest.mark.parametrize("module_name", ["function_app", "function_app_orch"])
+    def test_function_entrypoint_wires_distributed_limiters(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        module_name: str,
+    ) -> None:
+        import treesight.security as security
+        import treesight.security.rate_limit as rate_limit
+
+        mock_table_service_client = MagicMock()
+        real_wire_rate_limiters = rate_limit.wire_rate_limiters
+        wiring_calls: list[tuple[str | None, object | None]] = []
+
+        def wire_rate_limiters_for_test(
+            *,
+            connection_string: str | None = None,
+            table_service_client: object | None = None,
+        ) -> None:
+            wiring_calls.append((connection_string, table_service_client))
+            real_wire_rate_limiters(table_service_client=mock_table_service_client)
+
+        monkeypatch.setattr(rate_limit, "wire_rate_limiters", wire_rate_limiters_for_test)
+        monkeypatch.setattr(security, "TableReplayStore", MagicMock())
+
+        module = importlib.import_module(module_name)
+        importlib.reload(module)
+
+        assert wiring_calls
+        assert isinstance(get_form_limiter(), TableRateLimiter)
+        assert isinstance(get_pipeline_limiter(), TableRateLimiter)
+        assert isinstance(get_demo_limiter(), TableRateLimiter)
+
     def test_runtime_wiring_installs_table_backed_limiters(self):
         table_service_client = MagicMock()
 
