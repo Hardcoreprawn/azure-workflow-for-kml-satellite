@@ -22,14 +22,20 @@ runs:
   steps:
     - name: POST DeploymentMarker event
       shell: bash
+      env:
+        CONNECTION_STRING: ${{ inputs.connection-string }}
+        OUTCOME: ${{ inputs.outcome }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        SHA: ${{ github.sha }}
+        RUN_ID: ${{ github.run_id }}
       run: |
-        if [ -z "${{ inputs.connection-string }}" ]; then
-          echo "::warning::No App Insights connection string available — skipping deploy marker (outcome=${{ inputs.outcome }})."
+        if [ -z "$CONNECTION_STRING" ]; then
+          echo "::warning::No App Insights connection string available — skipping deploy marker (outcome=${OUTCOME})."
           exit 0
         fi
 
-        IKEY=$(echo "${{ inputs.connection-string }}" | grep -oP 'InstrumentationKey=\K[^;]+' || true)
-        ENDPOINT=$(echo "${{ inputs.connection-string }}" | grep -oP 'IngestionEndpoint=\K[^;]+' || true)
+        IKEY=$(echo "$CONNECTION_STRING" | grep -oP 'InstrumentationKey=\K[^;]+' || true)
+        ENDPOINT=$(echo "$CONNECTION_STRING" | grep -oP 'IngestionEndpoint=\K[^;]+' || true)
         ENDPOINT="${ENDPOINT%/}"
         if [ -z "$IKEY" ] || [ -z "$ENDPOINT" ]; then
           echo "::warning::Could not parse InstrumentationKey/IngestionEndpoint from connection string — skipping deploy marker."
@@ -40,10 +46,10 @@ runs:
         PAYLOAD=$(jq -n \
           --arg ikey "$IKEY" \
           --arg time "$TIMESTAMP" \
-          --arg outcome "${{ inputs.outcome }}" \
-          --arg environment "${{ inputs.environment }}" \
-          --arg sha "${{ github.sha }}" \
-          --arg run_id "${{ github.run_id }}" \
+          --arg outcome "$OUTCOME" \
+          --arg environment "$ENVIRONMENT" \
+          --arg sha "$SHA" \
+          --arg run_id "$RUN_ID" \
           '{
             name: "Microsoft.ApplicationInsights.Event",
             time: $time,
@@ -70,8 +76,8 @@ runs:
           -d "$PAYLOAD" || echo "000")
 
         if [ "$HTTP_CODE" != "200" ]; then
-          echo "::warning::Deploy marker POST returned HTTP ${HTTP_CODE} (outcome=${{ inputs.outcome }}); continuing."
+          echo "::warning::Deploy marker POST returned HTTP ${HTTP_CODE} (outcome=${OUTCOME}); continuing."
           cat /tmp/deploy-marker-response.json 2>/dev/null || true
         else
-          echo "Deploy marker recorded: outcome=${{ inputs.outcome }} environment=${{ inputs.environment }}"
+          echo "Deploy marker recorded: outcome=${OUTCOME} environment=${ENVIRONMENT}"
         fi
