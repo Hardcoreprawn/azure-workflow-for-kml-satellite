@@ -1662,8 +1662,10 @@ class TestFastTestLoop:
 
         assert "test-fast:" in makefile
         assert "test-fast" in makefile.split(".PHONY:", 1)[1].split("\n\n", 1)[0]
+        assert "test-fast: override export TESTS := $(value TESTS)" in makefile
+        assert "\nexport TESTS\n" not in makefile
 
-        fast_target = re.search(r"^test-fast:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+        fast_target = re.search(r"^test-fast: ##.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
         assert fast_target is not None
         assert "uv run python scripts/run_targeted_tests.py" in fast_target.group(0)
         assert "$(TESTS)" not in fast_target.group(0)

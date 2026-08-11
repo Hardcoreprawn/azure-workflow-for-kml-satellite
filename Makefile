@@ -7,11 +7,6 @@
 SHELL  := /bin/bash
 .DEFAULT_GOAL := help
 
-# Freeze the raw command-line/environment value before any Make expansion, then
-# pass it to the structured runner through the environment (never a shell command).
-override TESTS := $(value TESTS)
-export TESTS
-
 # ───────────────────── Help ─────────────────────
 
 help: ## Show this help
@@ -98,6 +93,8 @@ ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and
 	uv run playwright install chromium --with-deps 2>/dev/null || uv run playwright install chromium
 	uv run python scripts/ux_journeys.py
 
+# Freeze and export the raw value only for this target, never through a shell command.
+test-fast: override export TESTS := $(value TESTS)
 test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node")
 	uv run python scripts/run_targeted_tests.py
 
