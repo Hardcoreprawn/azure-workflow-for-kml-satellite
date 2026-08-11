@@ -143,7 +143,13 @@ def test_make_target_does_not_expand_environment_make_functions(tmp_path: Path) 
 
 def test_unrelated_make_target_does_not_inherit_tests() -> None:
     completed = subprocess.run(
-        ["make", "--eval", "print-tests:\n\t@printf '%s' \"$${TESTS+x}\"", "print-tests"],
+        [
+            "make",
+            "--no-print-directory",
+            "--eval",
+            "print-tests:\n\t@printf '%s' \"$${TESTS+x}\"",
+            "print-tests",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
