@@ -79,5 +79,8 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 
 ## Recently Landed
 
-- [#873](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/873): board-based prioritisation + pipeline regression guards
-- [#874](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/874): parallelise per-AOI enrichment loop ([#863](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/issues/863)) — prevent activity timeout at 50+ AOIs (ThreadPoolExecutor, concurrency cap, error isolation, tests, TDD)
+- [#1315](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1315): refactor poll_order → DF monitor pattern (`check_order_status`) — fixed a real pydantic validation bug (`error=None` vs `""`) caught by the Pipeline e2e CI gate
+- [#1316](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1316): fail-fast when GHCR base image missing in deploy, instead of silently rebuilding locally
+- [#1318](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1318): deploy start/success/failure markers to App Insights — fixed a Semgrep-flagged script-injection risk (inline `${{ }}` in a `run:` block)
+- [#1320](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1320): quadrant + security mix report for backlog autopilot (visibility only)
+- [#1322](https://github.com/Hardcoreprawn/azure-workflow-for-kml-satellite/pull/1322): TTL + auto-teardown sweep for website-only preview environments
