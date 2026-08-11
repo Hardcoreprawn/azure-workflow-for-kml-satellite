@@ -1,0 +1,77 @@
+name: "Emit deploy marker"
+description: >-
+  Best-effort custom event to Application Insights recording a deploy
+  outcome (success/failure), so "time since last successful deploy" is
+  queryable instead of requiring a manual `az` query (#1012). Never fails
+  the calling job — telemetry delivery problems must not mask or be
+  confused with the actual deploy result.
+
+inputs:
+  connection-string:
+    description: "App Insights connection string (InstrumentationKey=...;IngestionEndpoint=...)."
+    required: true
+  outcome:
+    description: "Deploy outcome: success or failure."
+    required: true
+  environment:
+    description: "Target environment (dev or prd)."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: POST DeploymentMarker event
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.connection-string }}" ]; then
+          echo "::warning::No App Insights connection string available — skipping deploy marker (outcome=${{ inputs.outcome }})."
+          exit 0
+        fi
+
+        IKEY=$(echo "${{ inputs.connection-string }}" | grep -oP 'InstrumentationKey=\K[^;]+' || true)
+        ENDPOINT=$(echo "${{ inputs.connection-string }}" | grep -oP 'IngestionEndpoint=\K[^;]+' || true)
+        ENDPOINT="${ENDPOINT%/}"
+        if [ -z "$IKEY" ] || [ -z "$ENDPOINT" ]; then
+          echo "::warning::Could not parse InstrumentationKey/IngestionEndpoint from connection string — skipping deploy marker."
+          exit 0
+        fi
+
+        TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+        PAYLOAD=$(jq -n \
+          --arg ikey "$IKEY" \
+          --arg time "$TIMESTAMP" \
+          --arg outcome "${{ inputs.outcome }}" \
+          --arg environment "${{ inputs.environment }}" \
+          --arg sha "${{ github.sha }}" \
+          --arg run_id "${{ github.run_id }}" \
+          '{
+            name: "Microsoft.ApplicationInsights.Event",
+            time: $time,
+            iKey: $ikey,
+            data: {
+              baseType: "EventData",
+              baseData: {
+                ver: 2,
+                name: "DeploymentMarker",
+                properties: {
+                  outcome: $outcome,
+                  environment: $environment,
+                  sha: $sha,
+                  run_id: $run_id
+                }
+              }
+            }
+          }')
+
+        HTTP_CODE=$(curl -sS -o /tmp/deploy-marker-response.json -w "%{http_code}" \
+          --connect-timeout 5 --max-time 15 \
+          -X POST "${ENDPOINT}/v2/track" \
+          -H "Content-Type: application/json" \
+          -d "$PAYLOAD" || echo "000")
+
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "::warning::Deploy marker POST returned HTTP ${HTTP_CODE} (outcome=${{ inputs.outcome }}); continuing."
+          cat /tmp/deploy-marker-response.json 2>/dev/null || true
+        else
+          echo "Deploy marker recorded: outcome=${{ inputs.outcome }} environment=${{ inputs.environment }}"
+        fi
