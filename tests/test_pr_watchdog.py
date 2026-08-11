@@ -174,6 +174,40 @@ def test_collect_check_status_requires_success_for_every_required_context(monkey
     assert missing == ()
 
 
+def test_collect_check_status_uses_latest_successful_attempt(monkeypatch) -> None:
+    checks = [{"id": 1, "name": name, "status": "completed", "conclusion": "success"} for name in REQUIRED_CHECKS]
+    checks.extend(
+        [
+            {"id": 10, "name": "Test", "status": "completed", "conclusion": "failure"},
+            {"id": 11, "name": "Test", "status": "completed", "conclusion": "success"},
+        ]
+    )
+    monkeypatch.setattr("scripts.pr_watchdog._github_rest", lambda **_kwargs: {"check_runs": checks})
+
+    failing, pending, missing = collect_check_status(token="t", owner="o", repo="r", head_sha="abc")
+
+    assert failing == ()
+    assert pending == ()
+    assert missing == ()
+
+
+def test_collect_check_status_uses_latest_pending_attempt(monkeypatch) -> None:
+    checks = [{"id": 1, "name": name, "status": "completed", "conclusion": "success"} for name in REQUIRED_CHECKS]
+    checks.extend(
+        [
+            {"id": 10, "name": "Test", "status": "completed", "conclusion": "success"},
+            {"id": 11, "name": "Test", "status": "in_progress", "conclusion": None},
+        ]
+    )
+    monkeypatch.setattr("scripts.pr_watchdog._github_rest", lambda **_kwargs: {"check_runs": checks})
+
+    failing, pending, missing = collect_check_status(token="t", owner="o", repo="r", head_sha="abc")
+
+    assert failing == ()
+    assert pending == ("Test",)
+    assert missing == ()
+
+
 def test_collect_review_state_returns_decision_and_threads(monkeypatch) -> None:
     captured_query: list[str] = []
     response = {

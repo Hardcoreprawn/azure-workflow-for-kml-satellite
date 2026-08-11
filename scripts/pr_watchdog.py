@@ -241,13 +241,28 @@ def collect_check_status(
     )
     checks = data.get("check_runs", []) if isinstance(data, dict) else []
 
-    failing: list[str] = []
-    pending: list[str] = []
-    observed_names: set[str] = set()
+    latest_by_name: dict[str, dict[str, Any]] = {}
     for check in checks:
         if not isinstance(check, dict):
             continue
         name = str(check.get("name", "unknown"))
+        previous = latest_by_name.get(name)
+        current_order = (int(check.get("id") or 0), str(check.get("started_at") or ""))
+        previous_order = (
+            (
+                int(previous.get("id") or 0),
+                str(previous.get("started_at") or ""),
+            )
+            if previous is not None
+            else (-1, "")
+        )
+        if current_order >= previous_order:
+            latest_by_name[name] = check
+
+    failing: list[str] = []
+    pending: list[str] = []
+    observed_names: set[str] = set()
+    for name, check in latest_by_name.items():
         observed_names.add(name)
         status = str(check.get("status", ""))
         conclusion = str(check.get("conclusion", ""))
