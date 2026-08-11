@@ -1,6 +1,6 @@
 """Tests for Phase 2 — acquisition logic (§3.2).
 
-Covers ``acquire_imagery``, ``poll_order``, and ``poll_orders_batch``
+Covers ``acquire_imagery``, ``check_order_status``, and ``acquire_composite``
 using a controllable stub provider.
 """
 
@@ -148,106 +148,80 @@ class TestAcquireImagery:
 
 
 # ---------------------------------------------------------------------------
-# poll_order
+# check_order_status
 # ---------------------------------------------------------------------------
 
 
-class TestPollOrder:
-    """Tests for ``poll_order``."""
+class TestCheckOrderStatus:
+    """Tests for ``check_order_status`` — single-shot, no loop, no sleep."""
 
-    def test_immediate_ready(self) -> None:
-        """An immediately-ready order returns on first poll."""
-        from treesight.pipeline.acquisition import poll_order
+    def test_ready_state_is_terminal(self) -> None:
+        """A ready order returns is_terminal=True and state='ready'."""
+        from treesight.pipeline.acquisition import check_order_status
 
         provider = _StubProvider(
             poll_sequence=[OrderStatus(state="ready", is_terminal=True)],
         )
-        outcome = poll_order("order-1", provider, poll_interval=0, poll_timeout=5)
+        result = check_order_status("order-1", provider)
 
-        assert outcome.state == "ready"
-        assert outcome.poll_count == 1
-        assert outcome.order_id == "order-1"
+        assert result["state"] == "ready"
+        assert result["is_terminal"] is True
+        assert result["order_id"] == "order-1"
+        assert result["provider"] == "stub"
+        # error must be a string (not None) — ImageryOutcome.error is `str = ""`,
+        # and pydantic validation rejects None when the pipeline summary is built.
+        assert result["error"] == ""
 
-    def test_pending_then_ready(self) -> None:
-        """Two pending polls followed by a ready status."""
-        from treesight.pipeline.acquisition import poll_order
+    def test_pending_state_is_not_terminal(self) -> None:
+        """A pending order returns is_terminal=False."""
+        from treesight.pipeline.acquisition import check_order_status
+
+        provider = _StubProvider(
+            poll_sequence=[OrderStatus(state="pending", is_terminal=False)],
+        )
+        result = check_order_status("order-2", provider)
+
+        assert result["state"] == "pending"
+        assert result["is_terminal"] is False
+
+    def test_failed_terminal_state(self) -> None:
+        """A terminal failure returns state='failed' and is_terminal=True."""
+        from treesight.pipeline.acquisition import check_order_status
+
+        provider = _StubProvider(
+            poll_sequence=[OrderStatus(state="failed", message="Payment required", is_terminal=True)],
+        )
+        result = check_order_status("order-3", provider)
+
+        assert result["state"] == "failed"
+        assert result["is_terminal"] is True
+
+    def test_unknown_terminal_state_normalized_to_failed(self) -> None:
+        """Unknown terminal states are normalized to 'failed'."""
+        from treesight.pipeline.acquisition import check_order_status
+
+        provider = _StubProvider(
+            poll_sequence=[OrderStatus(state="queued_for_review", is_terminal=True)],
+        )
+        result = check_order_status("order-4", provider)
+
+        assert result["state"] == "failed"
+        assert result["is_terminal"] is True
+        assert "queued_for_review" in result["error"]
+
+    def test_no_sleep_or_loop(self) -> None:
+        """check_order_status makes exactly one provider.poll call."""
+        from treesight.pipeline.acquisition import check_order_status
 
         provider = _StubProvider(
             poll_sequence=[
-                OrderStatus(state="pending", is_terminal=False),
                 OrderStatus(state="pending", is_terminal=False),
                 OrderStatus(state="ready", is_terminal=True),
             ],
         )
-        outcome = poll_order("order-2", provider, poll_interval=0, poll_timeout=10)
+        check_order_status("order-5", provider)
 
-        assert outcome.state == "ready"
-        assert outcome.poll_count == 3
-
-    def test_timeout(self) -> None:
-        """A perpetually-pending provider triggers timeout."""
-        from treesight.pipeline.acquisition import poll_order
-
-        provider = _StubProvider(
-            poll_sequence=[OrderStatus(state="pending", is_terminal=False)],
-        )
-        outcome = poll_order(
-            "order-3",
-            provider,
-            poll_interval=0,
-            poll_timeout=0,
-        )
-
-        assert outcome.state == "acquisition_timeout"
-        assert "timed out" in outcome.error.lower()
-
-    def test_failed_terminal_state(self) -> None:
-        """A terminal failure is returned immediately."""
-        from treesight.pipeline.acquisition import poll_order
-
-        provider = _StubProvider(
-            poll_sequence=[
-                OrderStatus(state="failed", message="Payment required", is_terminal=True),
-            ],
-        )
-        outcome = poll_order("order-4", provider, poll_interval=0, poll_timeout=10)
-
-        assert outcome.state == "failed"
-        assert outcome.poll_count == 1
-
-    def test_unknown_terminal_state_is_normalized_to_failed(self) -> None:
-        """Unsupported provider terminal states are narrowed at the boundary."""
-        from treesight.pipeline.acquisition import poll_order
-
-        provider = _StubProvider(
-            poll_sequence=[
-                OrderStatus(state="queued_for_review", is_terminal=True),
-            ],
-        )
-        outcome = poll_order("order-unknown", provider, poll_interval=0, poll_timeout=10)
-
-        assert outcome.state == "failed"
-        assert "queued_for_review" in outcome.error
-
-    def test_max_iterations_cap(self) -> None:
-        """Loop exits after MAX_POLL_ITERATIONS even if timeout hasn't fired."""
-        from unittest.mock import patch
-
-        from treesight.pipeline.acquisition import poll_order
-
-        provider = _StubProvider(
-            poll_sequence=[OrderStatus(state="pending", is_terminal=False)],
-        )
-        with patch("treesight.pipeline.acquisition.MAX_POLL_ITERATIONS", 3):
-            outcome = poll_order(
-                "order-cap",
-                provider,
-                poll_interval=0,
-                poll_timeout=9999,
-            )
-
-        assert outcome.state == "acquisition_timeout"
-        assert "poll iterations" in outcome.error.lower()
+        assert provider._poll_call_count == 1
 
 
 class TestImageryOutcomeStateGuard:
@@ -258,47 +232,6 @@ class TestImageryOutcomeStateGuard:
         assert _is_imagery_outcome_state("ready")
         assert _is_imagery_outcome_state("failed")
         assert not _is_imagery_outcome_state("queued_for_review")
-
-
-# ---------------------------------------------------------------------------
-# poll_orders_batch
-# ---------------------------------------------------------------------------
-
-
-class TestPollOrdersBatch:
-    """Tests for ``poll_orders_batch``."""
-
-    def test_polls_all_orders(self) -> None:
-        """All orders in the batch are polled and outcomes returned."""
-        from treesight.pipeline.acquisition import poll_orders_batch
-
-        provider = _StubProvider(
-            poll_sequence=[OrderStatus(state="ready", is_terminal=True)],
-        )
-        orders = [
-            {"order_id": "o-1", "scene_id": "S-1", "aoi_feature_name": "Block A"},
-            {"order_id": "o-2", "scene_id": "S-2", "aoi_feature_name": "Block B"},
-        ]
-        overrides = {
-            "poll_interval_seconds": 0,
-            "poll_timeout_seconds": 5,
-        }
-        results = poll_orders_batch(orders, provider, overrides)
-
-        assert len(results) == 2
-        assert results[0].order_id == "o-1"
-        assert results[0].scene_id == "S-1"
-        assert results[0].aoi_feature_name == "Block A"
-        assert results[1].order_id == "o-2"
-
-    def test_empty_batch(self) -> None:
-        """An empty order list returns an empty result list."""
-        from treesight.pipeline.acquisition import poll_orders_batch
-
-        provider = _StubProvider()
-        results = poll_orders_batch([], provider)
-
-        assert results == []
 
 
 # ---------------------------------------------------------------------------

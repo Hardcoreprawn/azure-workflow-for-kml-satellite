@@ -80,7 +80,7 @@ class TestPhaseAcquisition:
         # Yields: task_all(acq_tasks) then task_all(poll_tasks).
         responses = [
             [[{"order_id": "ord-1", "aoi_feature_name": "A"}]],
-            [{"order_id": "ord-1", "state": "ready", "aoi_feature_name": "A"}],
+            [{"order_id": "ord-1", "state": "ready", "aoi_feature_name": "A", "is_terminal": True}],
         ]
 
         gen = _phase_acquisition(context, {"composite_search": True}, aoi_refs, {"A": 1.0})

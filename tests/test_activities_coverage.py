@@ -367,23 +367,29 @@ class TestAcquireComposite:
 
 
 # ---------------------------------------------------------------------------
-# poll_order
+# check_order_status
 # ---------------------------------------------------------------------------
 
 
-class TestPollOrder:
-    def test_poll_returns_outcome_dict(self):
-        from blueprints.pipeline.activities import poll_order
-
-        outcome_mock = MagicMock()
-        outcome_mock.model_dump.return_value = {"state": "ready", "message": "ok"}
+class TestCheckOrderStatus:
+    def test_check_returns_status_dict(self):
+        from blueprints.pipeline.activities import check_order_status
 
         with (
             patch("treesight.providers.registry.get_provider") as mock_get_prov,
-            patch("treesight.pipeline.acquisition.poll_order", return_value=outcome_mock),
+            patch(
+                "treesight.pipeline.acquisition.check_order_status",
+                return_value={
+                    "state": "ready",
+                    "is_terminal": True,
+                    "order_id": "ord-1",
+                    "provider": "stub",
+                    "error": None,
+                },
+            ),
         ):
             mock_get_prov.return_value = MagicMock()
-            result = poll_order(
+            result = check_order_status(
                 {
                     "order_id": "ord-1",
                     "scene_id": "sc-1",
@@ -392,28 +398,30 @@ class TestPollOrder:
             )
 
         assert result["state"] == "ready"
+        assert result["is_terminal"] is True
+        assert result["scene_id"] == "sc-1"
+        assert result["aoi_feature_name"] == "Block A"
 
-    def test_poll_passes_override_params(self):
-        from blueprints.pipeline.activities import poll_order
-
-        outcome_mock = MagicMock()
-        outcome_mock.model_dump.return_value = {"state": "ready"}
+    def test_check_propagates_order_id(self):
+        from blueprints.pipeline.activities import check_order_status
 
         with (
             patch("treesight.providers.registry.get_provider") as mock_get_prov,
-            patch("treesight.pipeline.acquisition.poll_order", return_value=outcome_mock) as mock_poll,
+            patch(
+                "treesight.pipeline.acquisition.check_order_status",
+                return_value={
+                    "state": "pending",
+                    "is_terminal": False,
+                    "order_id": "ord-2",
+                    "provider": "stub",
+                    "error": None,
+                },
+            ) as mock_check,
         ):
             mock_get_prov.return_value = MagicMock()
-            poll_order(
-                {
-                    "order_id": "ord-2",
-                    "overrides": {"poll_interval_seconds": 10, "poll_timeout_seconds": 600},
-                }
-            )
+            check_order_status({"order_id": "ord-2"})
 
-        call_kwargs = mock_poll.call_args.kwargs
-        assert call_kwargs["poll_interval"] == 10
-        assert call_kwargs["poll_timeout"] == 600
+        assert mock_check.call_args.args[0] == "ord-2"
 
 
 # ---------------------------------------------------------------------------

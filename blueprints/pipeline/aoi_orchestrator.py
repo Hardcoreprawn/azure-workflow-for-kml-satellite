@@ -13,19 +13,21 @@ from typing import Any, cast
 
 import azure.durable_functions as df
 
+from treesight.config import config_get_int
 from treesight.constants import (
     ACTIVITY_RETRY_FIRST_INTERVAL_MS,
     ACTIVITY_RETRY_MAX_ATTEMPTS,
     DEFAULT_OUTPUT_CONTAINER,
+    DEFAULT_POLL_INTERVAL_SECONDS,
 )
 
 from . import bp
 from ._payloads import (
     _acq_payload,
     _build_order_lookups,
-    _poll_payload,
     _split_batch_routing,
 )
+from ._phase_acquisition import _monitor_orders
 from .orchestrator import _fulfil_batch, _fulfil_download, _fulfil_post_process
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
@@ -58,19 +60,16 @@ def _aoi_acquire(
     # Normalize: composite returns list of orders, non-composite returns one
     orders: list[dict[str, Any]] = acq_result if composite else [acq_result]
 
-    # Poll orders — use DF-level retry for resilience against transient failures.
+    # Poll orders — DF monitor pattern: single-shot activity + durable timer.
     poll_retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
     )
-    poll_tasks = [
-        context.call_activity_with_retry("poll_order", poll_retry, _poll_payload(o, pipeline_inp))
-        for o in orders
-        if o.get("order_id")
-    ]
+    poll_interval = config_get_int(pipeline_inp, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
+
     poll_results = cast(
         "list[dict[str, Any]]",
-        (yield context.task_all(poll_tasks)) if poll_tasks else [],
+        (yield from _monitor_orders(context, orders, poll_retry, poll_interval, pipeline_inp)),
     )
 
     ready = [r for r in poll_results if r.get("state") == "ready"]
