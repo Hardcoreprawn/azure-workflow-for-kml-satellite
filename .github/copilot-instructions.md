@@ -72,6 +72,10 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - Write the test first. The test defines the contract; the implementation makes it pass.
 - Run the narrowest meaningful executable validation first.
 - Prefer behavior-scoped tests over broad suite runs when iterating.
+- **Edit loop:** use `make test-fast TESTS="path-or-node"` for quiet, fail-fast targeted tests without coverage overhead.
+- **Handoff:** run `make check` before declaring work complete or opening a ready PR.
+- **Merge:** required CI, integration, changed-lines coverage, and pipeline gates remain authoritative; local selection never replaces required full gates.
+- **Promotion:** deployed behavior requires the applicable authenticated smoke and operational release evidence.
 - For cross-cutting, deploy, auth, billing, API, or runtime changes, run the `Code Review Critic` after local validation and before requesting PR review.
 - Call out residual rollout risk when runtime validation is unavailable.
 

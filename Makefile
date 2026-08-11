@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-int test-pipeline-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -92,6 +92,11 @@ ux-smoke: ## UX smoke test across host site, EUDR/conservation/account apps, and
 	@uv run python -c "import playwright" 2>/dev/null || { echo "ERROR: playwright not installed. Run: uv sync --extra ux"; exit 1; }
 	uv run playwright install chromium --with-deps 2>/dev/null || uv run playwright install chromium
 	uv run python scripts/ux_journeys.py
+
+# Freeze and export the raw value only for this target, never through a shell command.
+test-fast: override export TESTS := $(value TESTS)
+test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node")
+	uv run python scripts/run_targeted_tests.py
 
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
