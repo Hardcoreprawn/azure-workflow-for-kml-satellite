@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-08-06
+Last updated: 2026-08-11
 
 ---
 
@@ -109,7 +109,7 @@ portfolio-level risk visibility.
 |----|---------|
 | #1322 | feat(ci): TTL + auto-teardown sweep for website-only preview environments — daily scheduled sweep tears down stale `website/**`-only preview PRs via the existing SWA close-preview action (closes #1321, slice of #1011). |
 | #1320 | feat(autopilot): quadrant + security mix report — `compute_mix_report()` classifies open issues into Planned/Unplanned × Delivery/Operations plus security share, printed every autopilot run for visibility (closes #1319, slice of #1010). |
-| #1318 | feat(observability): deploy start/success/failure markers to App Insights via a new best-effort `emit-deploy-marker` composite action; review found the action spliced `${{ inputs.* }}` directly into a `run:` shell block (Semgrep OSS script-injection finding) — fixed by routing through `env:` (closes #1317, slice of #1012). |
+| #1318 | feat(observability): deploy success/failure markers to App Insights via a new best-effort `emit-deploy-marker` composite action; review found the action spliced `${{ inputs.* }}` directly into a `run:` shell block (Semgrep OSS script-injection finding) — fixed by routing through `env:` (closes #1317, slice of #1012). |
 | #1316 | fix: fail-fast when the GHCR base image is missing in deploy, instead of silently rebuilding locally and masking base-image drift (closes #720). |
 | #1315 | refactor(pipeline): replace blocking `poll_order` (`time.sleep` in an activity) with the Durable Functions monitor pattern — single-shot `check_order_status` activity + durable timers; review caught a real pydantic validation bug where `check_order_status` returned `error=None` instead of `""`, failing `PipelineSummary` validation on every run — fixed and covered by an updated unit test (closes #625). |
 | #1306 | refactor(pipeline): split `blueprints/pipeline/orchestrator.py` (791→186 lines) and `treesight/pipeline/enrichment/runner.py` (1055→604 lines) into per-phase sibling modules — every function body verified byte-identical to the pre-split original; fixed a dropped `@bp.orchestration_trigger` decorator and a duplicate `wdpa_done` telemetry log caught during review; added direct unit coverage for the extracted Durable Functions phase generators, which had previously only been exercised through mocks (closes #1292). |
