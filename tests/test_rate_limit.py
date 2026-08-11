@@ -1,11 +1,21 @@
 """Tests for treesight.security.rate_limit."""
 
 import datetime
+import importlib
 from unittest.mock import MagicMock
 
 import pytest
 
-from treesight.security.rate_limit import RateLimiter, TableRateLimiter, get_client_ip
+from tests.conftest import reset_rate_limiters
+from treesight.security.rate_limit import (
+    RateLimiter,
+    TableRateLimiter,
+    get_client_ip,
+    get_demo_limiter,
+    get_form_limiter,
+    get_pipeline_limiter,
+    wire_rate_limiters,
+)
 
 # ---------------------------------------------------------------------------
 # get_client_ip
@@ -50,6 +60,18 @@ class TestGetClientIp:
 
 
 class TestRateLimiter:
+    def test_unit_suite_uses_fresh_in_memory_limiters(self):
+        first_limiters = (get_form_limiter(), get_pipeline_limiter(), get_demo_limiter())
+        for limiter in first_limiters:
+            assert isinstance(limiter, RateLimiter)
+            assert limiter.is_allowed("shared-key") is True
+
+        reset_rate_limiters()
+
+        second_limiters = (get_form_limiter(), get_pipeline_limiter(), get_demo_limiter())
+        assert all(current is not previous for current, previous in zip(second_limiters, first_limiters, strict=True))
+        assert all(limiter.is_allowed("shared-key") is True for limiter in second_limiters)
+
     def test_allows_within_limit(self):
         limiter = RateLimiter(max_requests=3, window_seconds=60)
         assert limiter.is_allowed("ip1") is True
@@ -104,6 +126,48 @@ def _expired_window_end() -> datetime.datetime:
 
 
 class TestTableRateLimiter:
+    @pytest.mark.parametrize("module_name", ["function_app", "function_app_orch"])
+    def test_function_entrypoint_wires_distributed_limiters(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        module_name: str,
+    ) -> None:
+        import treesight.security as security
+
+        rate_limit = importlib.import_module("treesight.security.rate_limit")
+        mock_table_service_client = MagicMock()
+        real_wire_rate_limiters = rate_limit.wire_rate_limiters
+        wiring_calls: list[tuple[str | None, object | None]] = []
+
+        def wire_rate_limiters_for_test(
+            *,
+            connection_string: str | None = None,
+            table_service_client: object | None = None,
+        ) -> None:
+            wiring_calls.append((connection_string, table_service_client))
+            real_wire_rate_limiters(table_service_client=mock_table_service_client)
+
+        monkeypatch.setattr(rate_limit, "wire_rate_limiters", wire_rate_limiters_for_test)
+        monkeypatch.setattr(security, "TableReplayStore", MagicMock())
+
+        module = importlib.import_module(module_name)
+        importlib.reload(module)
+
+        assert wiring_calls
+        assert isinstance(get_form_limiter(), TableRateLimiter)
+        assert isinstance(get_pipeline_limiter(), TableRateLimiter)
+        assert isinstance(get_demo_limiter(), TableRateLimiter)
+
+    def test_runtime_wiring_installs_table_backed_limiters(self):
+        table_service_client = MagicMock()
+
+        wire_rate_limiters(table_service_client=table_service_client)
+
+        assert isinstance(get_form_limiter(), TableRateLimiter)
+        assert isinstance(get_pipeline_limiter(), TableRateLimiter)
+        assert isinstance(get_demo_limiter(), TableRateLimiter)
+        assert table_service_client.create_table_if_not_exists.call_count == 3
+
     def test_first_request_creates_entity_and_allows(self):
         from azure.core.exceptions import ResourceNotFoundError
 
