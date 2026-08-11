@@ -9,7 +9,6 @@ See blueprints/pipeline/__init__.py for details.
 """
 
 from collections.abc import Generator
-from datetime import timedelta
 from typing import Any, cast
 
 import azure.durable_functions as df
@@ -20,16 +19,15 @@ from treesight.constants import (
     ACTIVITY_RETRY_MAX_ATTEMPTS,
     DEFAULT_OUTPUT_CONTAINER,
     DEFAULT_POLL_INTERVAL_SECONDS,
-    MAX_POLL_ITERATIONS,
 )
 
 from . import bp
 from ._payloads import (
     _acq_payload,
     _build_order_lookups,
-    _poll_payload,
     _split_batch_routing,
 )
+from ._phase_acquisition import _monitor_orders
 from .orchestrator import _fulfil_batch, _fulfil_download, _fulfil_post_process
 
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
@@ -69,45 +67,10 @@ def _aoi_acquire(
     )
     poll_interval = config_get_int(pipeline_inp, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
 
-    pending = [o for o in orders if o.get("order_id")]
-    completed: dict[str, dict[str, Any]] = {}
-
-    for _iteration in range(MAX_POLL_ITERATIONS):
-        if not pending:
-            break
-
-        status_tasks = [
-            context.call_activity_with_retry(
-                "check_order_status", poll_retry, _poll_payload(o, pipeline_inp)
-            )
-            for o in pending
-        ]
-        statuses = cast(
-            "list[dict[str, Any]]",
-            (yield context.task_all(status_tasks)),
-        )
-
-        still_pending: list[dict[str, Any]] = []
-        for order, status in zip(pending, statuses, strict=True):
-            if status.get("is_terminal"):
-                completed[order["order_id"]] = {**order, **status}
-            else:
-                still_pending.append(order)
-        pending = still_pending
-
-        if pending:
-            fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
-            yield context.create_timer(fire_at)
-
-    for order in pending:
-        completed[order["order_id"]] = {
-            **order,
-            "state": "acquisition_timeout",
-            "is_terminal": True,
-            "error": f"Exceeded {MAX_POLL_ITERATIONS} poll iterations",
-        }
-
-    poll_results = list(completed.values())
+    poll_results = cast(
+        "list[dict[str, Any]]",
+        (yield from _monitor_orders(context, orders, poll_retry, poll_interval, pipeline_inp)),
+    )
 
     ready = [r for r in poll_results if r.get("state") == "ready"]
     asset_urls, order_meta = _build_order_lookups(orders)

@@ -26,6 +26,62 @@ from ._payloads import _acq_payload, _build_order_lookups, _poll_payload, _split
 _PhaseGen = Generator[Any, Any, dict[str, Any]]
 
 
+def _monitor_orders(
+    context: df.DurableOrchestrationContext,
+    orders: list[dict[str, Any]],
+    poll_retry: df.RetryOptions,
+    poll_interval: int,
+    inp: dict[str, Any],
+) -> Generator[Any, Any, list[dict[str, Any]]]:
+    """DF monitor-pattern poll loop for a batch of orders.
+
+    Calls ``check_order_status`` (single-shot, no sleep) for all pending
+    orders per round, waits ``poll_interval`` seconds via a durable timer
+    between rounds, and caps at ``MAX_POLL_ITERATIONS`` rounds.  Orders
+    that exceed the cap are marked ``acquisition_timeout``.
+
+    Returns a flat list of completed order dicts (original order fields merged
+    with the status returned by ``check_order_status``).
+    """
+    pending = [o for o in orders if o.get("order_id")]
+    completed: dict[str, dict[str, Any]] = {}
+
+    for _iteration in range(MAX_POLL_ITERATIONS):
+        if not pending:
+            break
+
+        status_tasks = [
+            context.call_activity_with_retry("check_order_status", poll_retry, _poll_payload(o, inp))
+            for o in pending
+        ]
+        statuses = cast(
+            "list[dict[str, Any]]",
+            (yield context.task_all(status_tasks)),
+        )
+
+        still_pending: list[dict[str, Any]] = []
+        for order, status in zip(pending, statuses, strict=True):
+            if status.get("is_terminal"):
+                completed[order["order_id"]] = {**order, **status}
+            else:
+                still_pending.append(order)
+        pending = still_pending
+
+        if pending:
+            fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
+            yield context.create_timer(fire_at)
+
+    for order in pending:
+        completed[order["order_id"]] = {
+            **order,
+            "state": "acquisition_timeout",
+            "is_terminal": True,
+            "error": f"Exceeded {MAX_POLL_ITERATIONS} poll iterations",
+        }
+
+    return list(completed.values())
+
+
 def _phase_acquisition(
     context: df.DurableOrchestrationContext,
     inp: dict[str, Any],
@@ -69,43 +125,10 @@ def _phase_acquisition(
     )
     poll_interval = config_get_int(inp, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
 
-    pending = [o for o in orders if o.get("order_id")]
-    completed: dict[str, dict[str, Any]] = {}
-
-    for _iteration in range(MAX_POLL_ITERATIONS):
-        if not pending:
-            break
-
-        status_tasks = [
-            context.call_activity_with_retry("check_order_status", poll_retry, _poll_payload(o, inp))
-            for o in pending
-        ]
-        statuses = cast(
-            "list[dict[str, Any]]",
-            (yield context.task_all(status_tasks)),
-        )
-
-        still_pending: list[dict[str, Any]] = []
-        for order, status in zip(pending, statuses, strict=True):
-            if status.get("is_terminal"):
-                completed[order["order_id"]] = {**order, **status}
-            else:
-                still_pending.append(order)
-        pending = still_pending
-
-        if pending:
-            fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
-            yield context.create_timer(fire_at)
-
-    for order in pending:
-        completed[order["order_id"]] = {
-            **order,
-            "state": "acquisition_timeout",
-            "is_terminal": True,
-            "error": f"Exceeded {MAX_POLL_ITERATIONS} poll iterations",
-        }
-
-    poll_results = list(completed.values())
+    poll_results = cast(
+        "list[dict[str, Any]]",
+        (yield from _monitor_orders(context, orders, poll_retry, poll_interval, inp)),
+    )
 
     ready = [r for r in poll_results if r.get("state") == "ready"]
     failed = [r for r in poll_results if r.get("state") != "ready"]
