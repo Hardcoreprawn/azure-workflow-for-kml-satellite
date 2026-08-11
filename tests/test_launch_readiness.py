@@ -41,6 +41,8 @@ from treesight.security.url import csp_token_matches_host as _csp_token_matches_
 ROOT = Path(__file__).resolve().parent.parent
 WEBSITE = ROOT / "website"
 INFRA = ROOT / "infra" / "tofu"
+README_MD = ROOT / "README.md"
+COPILOT_INSTRUCTIONS = ROOT / ".github" / "copilot-instructions.md"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
@@ -1652,6 +1654,37 @@ class TestSignedOutStatusBadge:
         assert "elements.statusBadge" in fn_body and "style.display = 'none'" in fn_body, (
             "renderSignedOutUI must hide the navbar status badge"
         )
+
+
+class TestFastTestLoop:
+    def test_makefile_defines_fast_targeted_test_contract(self):
+        makefile = MAKEFILE.read_text()
+
+        assert "test-fast:" in makefile
+        assert "test-fast" in makefile.split(".PHONY:", 1)[1].split("\n\n", 1)[0]
+        assert "$(if $(strip $(TESTS)),,$(error TESTS is required" in makefile
+
+        fast_target = re.search(r"^test-fast:.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+        assert fast_target is not None
+        assert "uv run python scripts/run_targeted_tests.py" in fast_target.group(0)
+        assert "uv run pytest $(TESTS)" not in fast_target.group(0)
+
+    def test_fast_target_does_not_weaken_canonical_gates(self):
+        makefile = MAKEFILE.read_text()
+
+        assert "test: ## Run unit tests (canonical — CI runs this exact command)" in makefile
+        assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml' in makefile
+        assert "check: lint test ## Full local gate (lint + test) — identical to CI" in makefile
+
+    def test_validation_tiers_are_documented(self):
+        readme = README_MD.read_text()
+        instructions = COPILOT_INSTRUCTIONS.read_text()
+
+        assert 'make test-fast TESTS="tests/test_' in readme
+        assert "make check" in readme
+        assert "Edit loop" in instructions and "make test-fast" in instructions
+        assert "Handoff" in instructions and "make check" in instructions
+        assert "never replaces required full gates" in instructions
 
 
 # ---------------------------------------------------------------------------

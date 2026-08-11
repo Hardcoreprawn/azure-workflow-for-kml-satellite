@@ -359,15 +359,22 @@ uv sync --all-extras
 # Install pre-commit hooks
 uv run pre-commit install
 
-# Run all quality checks manually
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest tests/unit -v
+# Fast edit loop: one node, class, or test file; quiet, fail-fast, no coverage
+make test-fast TESTS="tests/test_rate_limit.py::TestRateLimiter"
+
+# Handoff gate: canonical lint, format, type-check, and full unit suite
+make check
 
 # Or run everything via pre-commit
 uv run pre-commit run --all-files
 ```
+
+Targeted tests accelerate local editing only. Before review, run `make check`;
+required CI, integration, and pipeline gates remain the merge contract. Changes
+to deployed behavior also require the applicable post-deploy smoke evidence.
+`TESTS` accepts test paths and node IDs only; quote parameterized node IDs that
+contain spaces with nested quotes (for example, `TESTS='"path::test[value with spaces]"'`).
+Pytest options and argfiles are rejected; fixed safety flags cannot be overridden.
 
 For the full local product surface (website + Functions host + Azurite, same
 containerised execution model as production), run the single docker-compose
