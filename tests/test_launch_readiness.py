@@ -352,9 +352,7 @@ class TestPreviewSiteTTLSweep:
 
     def test_default_ttl_is_within_one_to_three_days(self, workflow):
         ttl_input = workflow[True]["workflow_dispatch"]["inputs"]["ttl_days"]
-        assert 1 <= int(ttl_input["default"]) <= 3, (
-            "default TTL must be within the 1-3 day range #1011 specifies"
-        )
+        assert 1 <= int(ttl_input["default"]) <= 3, "default TTL must be within the 1-3 day range #1011 specifies"
 
     def test_teardown_reuses_the_same_swa_close_action(self, workflow):
         steps = workflow["jobs"]["teardown-stale"]["steps"]
@@ -374,8 +372,7 @@ class TestPreviewSiteTTLSweep:
     def test_teardown_only_runs_when_stale_prs_found(self, workflow):
         job = workflow["jobs"]["teardown-stale"]
         assert job["if"] == "needs.find-stale.outputs.stale_prs != '[]'", (
-            "teardown-stale must be gated on a non-empty stale-PR list, "
-            "not run unconditionally every schedule tick"
+            "teardown-stale must be gated on a non-empty stale-PR list, not run unconditionally every schedule tick"
         )
 
     def test_out_of_scope_for_full_stack_envs(self, workflow):
