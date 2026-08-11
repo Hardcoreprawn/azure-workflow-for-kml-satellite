@@ -153,7 +153,7 @@ class TestAoiAcquire:
         # Drive the generator to completion, feeding each yield the next mocked
         # result. A plain loop (vs. nested try/except) can't leave `result`
         # unassigned if the generator ever needs an extra step to finish.
-        for next_value in (single_order, []):
+        for next_value in (single_order, [{"state": "ready", "order_id": "ord-1", "is_terminal": True}]):
             try:
                 gen.send(next_value)
             except StopIteration as exc:
@@ -172,7 +172,7 @@ class TestAoiAcquire:
             {"scene_id": "sc-2"},  # no order_id
         ]
         ctx.call_activity_with_retry.return_value = orders
-        ctx.task_all.return_value = [{"state": "ready", "order_id": "ord-1"}]
+        ctx.task_all.return_value = [{"state": "ready", "order_id": "ord-1", "is_terminal": True}]
         aoi_ref = {"key": "Block A", "ref": "claims/inst/0.json"}
 
         gen = _aoi_acquire(ctx, {"composite_search": True}, aoi_ref)
@@ -180,7 +180,7 @@ class TestAoiAcquire:
         with contextlib.suppress(StopIteration):
             gen.send(orders)
             with contextlib.suppress(StopIteration):
-                gen.send([{"state": "ready", "order_id": "ord-1"}])
+                gen.send([{"state": "ready", "order_id": "ord-1", "is_terminal": True}])
 
         # Only one order has an order_id, so only one poll task should be created.
         task_all_calls = ctx.task_all.call_args_list
@@ -221,13 +221,13 @@ class TestAoiAcquire:
         ctx = MagicMock()
         orders = [{"order_id": "ord-1", "scene_id": "sc-1"}]
         ctx.call_activity_with_retry.return_value = orders
-        ctx.task_all.return_value = [{"state": "ready", "order_id": "ord-1"}]
+        ctx.task_all.return_value = [{"state": "ready", "order_id": "ord-1", "is_terminal": True}]
         aoi_ref = {"key": "Field", "ref": "claims/inst/0.json"}
 
         gen = _aoi_acquire(ctx, {}, aoi_ref)
         gen.send(None)
         result = None
-        for next_value in (orders, [{"state": "ready", "order_id": "ord-1"}]):
+        for next_value in (orders, [{"state": "ready", "order_id": "ord-1", "is_terminal": True}]):
             try:
                 gen.send(next_value)
             except StopIteration as exc:

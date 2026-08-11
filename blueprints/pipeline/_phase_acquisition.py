@@ -7,6 +7,7 @@ See blueprints/pipeline/__init__.py for details.
 """
 
 from collections.abc import Generator
+from datetime import timedelta
 from typing import Any, cast
 
 import azure.durable_functions as df
@@ -16,6 +17,8 @@ from treesight.constants import (
     ACTIVITY_RETRY_FIRST_INTERVAL_MS,
     ACTIVITY_RETRY_MAX_ATTEMPTS,
     DEFAULT_ACQUISITION_BATCH_SIZE,
+    DEFAULT_POLL_INTERVAL_SECONDS,
+    MAX_POLL_ITERATIONS,
 )
 
 from ._payloads import _acq_payload, _build_order_lookups, _poll_payload, _split_batch_routing
@@ -58,21 +61,51 @@ def _phase_acquisition(
         else:
             orders.extend(batch_results)
 
-    # Poll orders — use DF-level retry consistently (use the platform).
+    # Poll orders — DF monitor pattern: single-shot activity + durable timer.
     context.set_custom_status({"phase": "acquisition", "step": "polling", "orders": len(orders)})
     poll_retry = df.RetryOptions(
         first_retry_interval_in_milliseconds=ACTIVITY_RETRY_FIRST_INTERVAL_MS,
         max_number_of_attempts=ACTIVITY_RETRY_MAX_ATTEMPTS,
     )
-    poll_tasks = [
-        context.call_activity_with_retry("poll_order", poll_retry, _poll_payload(o, inp))
-        for o in orders
-        if o.get("order_id")
-    ]
-    poll_results = cast(
-        "list[dict[str, Any]]",
-        (yield context.task_all(poll_tasks)) if poll_tasks else [],
-    )
+    poll_interval = config_get_int(inp, "poll_interval_seconds", DEFAULT_POLL_INTERVAL_SECONDS)
+
+    pending = [o for o in orders if o.get("order_id")]
+    completed: dict[str, dict[str, Any]] = {}
+
+    for _iteration in range(MAX_POLL_ITERATIONS):
+        if not pending:
+            break
+
+        status_tasks = [
+            context.call_activity_with_retry("check_order_status", poll_retry, _poll_payload(o, inp))
+            for o in pending
+        ]
+        statuses = cast(
+            "list[dict[str, Any]]",
+            (yield context.task_all(status_tasks)),
+        )
+
+        still_pending: list[dict[str, Any]] = []
+        for order, status in zip(pending, statuses, strict=True):
+            if status.get("is_terminal"):
+                completed[order["order_id"]] = {**order, **status}
+            else:
+                still_pending.append(order)
+        pending = still_pending
+
+        if pending:
+            fire_at = context.current_utc_datetime + timedelta(seconds=poll_interval)
+            yield context.create_timer(fire_at)
+
+    for order in pending:
+        completed[order["order_id"]] = {
+            **order,
+            "state": "acquisition_timeout",
+            "is_terminal": True,
+            "error": f"Exceeded {MAX_POLL_ITERATIONS} poll iterations",
+        }
+
+    poll_results = list(completed.values())
 
     ready = [r for r in poll_results if r.get("state") == "ready"]
     failed = [r for r in poll_results if r.get("state") != "ready"]

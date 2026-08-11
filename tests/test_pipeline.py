@@ -590,8 +590,8 @@ class TestAcquisitionActivityRetry:
         activity_name = ctx.call_activity_with_retry.call_args[0][0]
         assert activity_name == "acquire_imagery"
 
-    def test_poll_order_uses_retry(self):
-        """poll_order should use transient retry (talks to external APIs)."""
+    def test_check_order_status_uses_retry(self):
+        """check_order_status should use transient retry (talks to external APIs)."""
         from unittest.mock import MagicMock
 
         from blueprints.pipeline.orchestrator import _phase_acquisition
@@ -602,10 +602,10 @@ class TestAcquisitionActivityRetry:
 
         ctx = MagicMock()
         ctx.call_activity_with_retry.return_value = "acq_sentinel"
-        # First yield: acquisition batch. Second yield: poll batch.
+        # First yield: acquisition batch. Second yield: poll status check (terminal).
         ctx.task_all.side_effect = [
             [{"order_id": "o1"}],  # acquisition
-            [{"state": "ready", "order_id": "o1"}],  # polling
+            [{"state": "ready", "order_id": "o1", "is_terminal": True}],  # polling
         ]
 
         inp = {"composite_search": False}
@@ -617,8 +617,8 @@ class TestAcquisitionActivityRetry:
         with contextlib.suppress(StopIteration):
             gen.send([{"order_id": "o1"}])  # poll yield
 
-        # poll_order should be called with retry
-        poll_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"]
+        # check_order_status should be called with retry
+        poll_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "check_order_status"]
         assert len(poll_calls) >= 1
         retry_opts = poll_calls[0][0][1]
         assert retry_opts.first_retry_interval_in_milliseconds == ACTIVITY_RETRY_FIRST_INTERVAL_MS
@@ -1160,14 +1160,18 @@ class TestProgressivePipeline:
 
 
 class TestAoiPollOrderRetry:
-    """Verify poll_order uses call_activity_with_retry (DF-level retry)."""
+    """Verify check_order_status uses call_activity_with_retry (DF-level retry)."""
 
-    def test_poll_order_uses_call_activity_with_retry(self):
+    def test_check_order_status_uses_call_activity_with_retry(self):
         from blueprints.pipeline.aoi_orchestrator import _aoi_acquire
 
         ctx = MagicMock()
         ctx.call_activity_with_retry.return_value = [{"order_id": "o1"}]
-        ctx.task_all.return_value = [{"order_id": "o1", "state": "ready"}]
+        # First task_all: acquire result. Second task_all: status check (terminal).
+        ctx.task_all.side_effect = [
+            [{"order_id": "o1"}],
+            [{"order_id": "o1", "state": "ready", "is_terminal": True}],
+        ]
 
         gen = _aoi_acquire(ctx, {"composite_search": True}, {"ref": "r", "key": "k"})
         gen.send(None)  # first yield: acquire (with retry)
@@ -1175,8 +1179,8 @@ class TestAoiPollOrderRetry:
         with contextlib.suppress(StopIteration):
             gen.send([{"order_id": "o1"}])  # resume with acquire result
 
-        # poll_order should use call_activity_with_retry
-        retry_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "poll_order"]
+        # check_order_status should use call_activity_with_retry
+        retry_calls = [c for c in ctx.call_activity_with_retry.call_args_list if c[0][0] == "check_order_status"]
         assert len(retry_calls) >= 1
 
 

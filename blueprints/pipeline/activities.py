@@ -12,7 +12,6 @@ generics on binding arguments.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from treesight.config import config_get_int
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER, DEFAULT_PROVIDER
 
 from . import bp
@@ -209,25 +208,18 @@ def acquire_composite(payload: _Payload) -> list[dict[str, Any]]:
 
 
 @bp.activity_trigger(input_name="payload")
-def poll_order(payload: _Payload) -> dict[str, Any]:
-    from treesight.pipeline.acquisition import poll_order as _poll
+def check_order_status(payload: _Payload) -> dict[str, Any]:
+    from treesight.pipeline.acquisition import check_order_status as _check
     from treesight.providers.registry import get_provider
 
     provider = get_provider(
         payload.get("provider_name", DEFAULT_PROVIDER),
         payload.get("provider_config"),
     )
-    outcome = _poll(
-        payload["order_id"],
-        provider,
-        poll_interval=config_get_int(payload.get("overrides", {}), "poll_interval_seconds", 30),
-        poll_timeout=config_get_int(payload.get("overrides", {}), "poll_timeout_seconds", 1800),
-        max_retries=config_get_int(payload.get("overrides", {}), "max_retries", 3),
-        retry_base=config_get_int(payload.get("overrides", {}), "retry_base_seconds", 5),
-    )
-    outcome.scene_id = payload.get("scene_id", "")
-    outcome.aoi_feature_name = payload.get("aoi_feature_name", "")
-    return outcome.model_dump()
+    result = _check(payload["order_id"], provider)
+    result["scene_id"] = payload.get("scene_id", "")
+    result["aoi_feature_name"] = payload.get("aoi_feature_name", "")
+    return result
 
 
 # ---------------------------------------------------------------------------
