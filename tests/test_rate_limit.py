@@ -133,8 +133,8 @@ class TestTableRateLimiter:
         module_name: str,
     ) -> None:
         import treesight.security as security
-        import treesight.security.rate_limit as rate_limit
 
+        rate_limit = importlib.import_module("treesight.security.rate_limit")
         mock_table_service_client = MagicMock()
         real_wire_rate_limiters = rate_limit.wire_rate_limiters
         wiring_calls: list[tuple[str | None, object | None]] = []
