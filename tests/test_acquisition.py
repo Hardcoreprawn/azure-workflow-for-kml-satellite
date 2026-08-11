@@ -168,7 +168,9 @@ class TestCheckOrderStatus:
         assert result["is_terminal"] is True
         assert result["order_id"] == "order-1"
         assert result["provider"] == "stub"
-        assert result["error"] is None
+        # error must be a string (not None) — ImageryOutcome.error is `str = ""`,
+        # and pydantic validation rejects None when the pipeline summary is built.
+        assert result["error"] == ""
 
     def test_pending_state_is_not_terminal(self) -> None:
         """A pending order returns is_terminal=False."""

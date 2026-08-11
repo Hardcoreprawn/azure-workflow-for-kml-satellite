@@ -132,13 +132,13 @@ def check_order_status(
     """
     status = provider.poll(order_id)
     state: str = status.state
-    error: str | None = None
+    error: str = ""
 
     if status.is_terminal and not _is_imagery_outcome_state(state):
         error = f"Unsupported terminal state '{state}' from provider {provider.name}"
         state = "failed"
     elif status.is_terminal and state == "failed":
-        error = getattr(status, "message", None)
+        error = getattr(status, "message", None) or ""
 
     log_phase(
         "acquisition",
