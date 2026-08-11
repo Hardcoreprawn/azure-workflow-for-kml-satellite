@@ -904,6 +904,48 @@ class TestDeployWorkflowSettings:
             "deploy.yml pipeline smoke test must be skipped in production to avoid triggering live imagery acquisition"
         )
 
+    def test_deploy_emits_success_marker(self, deploy_yml):
+        assert "Emit deploy-success marker" in deploy_yml, (
+            "deploy.yml must emit a deploy-success/failure marker so "
+            "time-since-last-successful-deploy is queryable (#1012)"
+        )
+        assert "./.github/actions/emit-deploy-marker" in deploy_yml, (
+            "deploy.yml must use the shared emit-deploy-marker composite action"
+        )
+        assert "needs.deploy-infra.outputs.appinsights_connection_string" in deploy_yml, (
+            "deploy-success marker must source the App Insights connection string from deploy-infra's job output"
+        )
+
+    def test_deploy_emits_infra_failure_marker(self, deploy_yml):
+        match = re.search(r"deploy-marker-infra-failure:(?P<body>.*)", deploy_yml, re.DOTALL)
+        assert match, "deploy.yml must define a deploy-marker-infra-failure job"
+        body = match.group("body")
+        assert "if: failure() && needs.deploy-infra.result == 'failure'" in body, (
+            "deploy-marker-infra-failure job must only run when deploy-infra itself failed"
+        )
+        assert "outcome: failure" in body, "deploy-marker-infra-failure job must record outcome: failure"
+
+
+class TestEmitDeployMarkerAction:
+    """Ensure the shared deploy-marker composite action stays best-effort (#1012)."""
+
+    @pytest.fixture()
+    def action_yml(self):
+        return (ROOT / ".github" / "actions" / "emit-deploy-marker" / "action.yml").read_text()
+
+    def test_action_is_best_effort(self, action_yml):
+        assert "exit 0" in action_yml, (
+            "emit-deploy-marker must exit 0 when the connection string is missing/unparseable "
+            "so telemetry failures never mask or fail the real deploy outcome"
+        )
+        assert "::warning::" in action_yml, (
+            "emit-deploy-marker must surface a warning annotation on skip, not fail silently"
+        )
+
+    def test_action_posts_to_track_api(self, action_yml):
+        assert "/v2/track" in action_yml, "emit-deploy-marker must POST to the App Insights v2/track ingestion endpoint"
+        assert "DeploymentMarker" in action_yml, "emit-deploy-marker must name the custom event DeploymentMarker"
+
 
 class TestDeployNoOpDiffGuardLogic:
     """Prove the deploy.yml no-op diff guards actually compute the right answer.

@@ -1449,3 +1449,33 @@ jobs:
             echo "❌ FA health endpoint did not return 200 within 60s (got ${HEALTH})"
             exit 1
           fi
+
+      # Records "deploy_success" so time-since-last-successful-deploy is a
+      # queryable App Insights event instead of a manual `az` query (#1012).
+      - name: Emit deploy-success marker
+        if: always() && !cancelled()
+        uses: ./.github/actions/emit-deploy-marker
+        with:
+          connection-string: ${{ needs.deploy-infra.outputs.appinsights_connection_string }}
+          outcome: ${{ job.status == 'success' && 'success' || 'failure' }}
+          environment: ${{ env.DEPLOY_ENV }}
+
+  # Best-effort failure marker for the case deploy-website never even starts
+  # (e.g. deploy-infra itself failed before any App Insights output existed).
+  # deploy-website's own final step already covers the case where infra
+  # succeeded but the website job later failed, so this job only fires when
+  # deploy-infra failed outright.
+  deploy-marker-infra-failure:
+    name: Emit deploy-failure marker (infra)
+    runs-on: ubuntu-latest
+    needs: deploy-infra
+    if: failure() && needs.deploy-infra.result == 'failure'
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - name: Emit deploy-failure marker
+        uses: ./.github/actions/emit-deploy-marker
+        with:
+          connection-string: ${{ needs.deploy-infra.outputs.appinsights_connection_string }}
+          outcome: failure
+          environment: ${{ env.DEPLOY_ENV }}
