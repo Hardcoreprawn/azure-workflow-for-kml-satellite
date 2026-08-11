@@ -7,6 +7,7 @@ from scripts.backlog_autopilot import (
     IssueCandidate,
     assign_issue_to_copilot,
     compute_budget_status,
+    compute_mix_report,
     count_open_copilot_prs,
     fallback_priority_score,
     parse_args,
@@ -341,3 +342,43 @@ def test_count_open_copilot_prs_counts_drafts_and_ready_agent_prs(monkeypatch) -
     # 2 Copilot PRs (draft + ready) + 1 [WIP]-titled PR = 3; the two other
     # human/bot PRs are excluded.
     assert count == 3
+
+
+def test_mix_report_classifies_planned_vs_unplanned_and_delivery_vs_operations() -> None:
+    issues = [
+        _issue(1, {"enhancement"}),  # planned delivery
+        _issue(2, {"discovered", "enhancement"}),  # unplanned delivery
+        _issue(3, {"tech-debt"}),  # planned operations
+        _issue(4, {"discovered", "security"}),  # unplanned operations + security
+        _issue(5, {"epic"}),  # unclassified
+    ]
+
+    mix = compute_mix_report(issues)
+
+    assert mix.total == 5
+    assert mix.planned_delivery == 1
+    assert mix.unplanned_delivery == 1
+    assert mix.planned_operations == 1
+    assert mix.unplanned_operations == 1
+    assert mix.unclassified == 1
+    assert mix.security == 1
+    assert mix.security_share == 0.2
+
+
+def test_mix_report_operations_label_wins_when_issue_matches_both_facets() -> None:
+    # An issue carrying both an operations label and a delivery label is
+    # counted once, as operations — operations/security work is the facet
+    # the balance rule exists to protect from being crowded out.
+    issues = [_issue(1, {"security", "enhancement"})]
+
+    mix = compute_mix_report(issues)
+
+    assert mix.planned_operations == 1
+    assert mix.planned_delivery == 0
+
+
+def test_mix_report_empty_snapshot_has_zero_security_share() -> None:
+    mix = compute_mix_report([])
+
+    assert mix.total == 0
+    assert mix.security_share == 0.0

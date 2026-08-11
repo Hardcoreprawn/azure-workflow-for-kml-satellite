@@ -143,6 +143,99 @@ def fallback_priority_score(labels: set[str]) -> int:
     return score
 
 
+# Quadrant heuristics (#1010): Unplanned = carries `discovered` (found mid-work,
+# usually urgent); Planned = does not. Operations/Delivery are derived from
+# topical labels — an issue can match both facets (e.g. a discovered security
+# bug is Unplanned+Operations); an issue matching neither facet is Unclassified
+# rather than silently miscounted into one side.
+_OPERATIONS_LABELS = frozenset(
+    {
+        "operations",
+        "infra",
+        "infrastructure",
+        "ci",
+        "ci-cd",
+        "deployment",
+        "tech-debt",
+        "security",
+        "observability",
+        "refactor",
+    }
+)
+_DELIVERY_LABELS = frozenset({"enhancement", "frontend", "pipeline", "billing", "export", "ux", "api", "eudr"})
+
+
+@dataclass(frozen=True)
+class MixReport:
+    """Quadrant + security mix across a snapshot of open issues (#1010).
+
+    Visibility only — this repo treats the 25%-per-quadrant balance as a
+    soft, human-reviewed attractor, not a hard-blocked quota, so this report
+    surfaces the mix without enforcing it.
+    """
+
+    total: int
+    planned_delivery: int
+    planned_operations: int
+    unplanned_delivery: int
+    unplanned_operations: int
+    unclassified: int
+    security: int
+
+    @property
+    def security_share(self) -> float:
+        return self.security / self.total if self.total else 0.0
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {
+            "total": self.total,
+            "planned_delivery": self.planned_delivery,
+            "planned_operations": self.planned_operations,
+            "unplanned_delivery": self.unplanned_delivery,
+            "unplanned_operations": self.unplanned_operations,
+            "unclassified": self.unclassified,
+            "security": self.security,
+            "security_share": round(self.security_share, 3),
+        }
+
+
+def compute_mix_report(issues: list[IssueCandidate]) -> MixReport:
+    """Compute the quadrant + security mix for a snapshot of open issues."""
+    planned_delivery = planned_operations = 0
+    unplanned_delivery = unplanned_operations = 0
+    unclassified = 0
+    security = 0
+
+    for issue in issues:
+        if "security" in issue.labels:
+            security += 1
+        is_unplanned = "discovered" in issue.labels
+        is_operations = bool(issue.labels & _OPERATIONS_LABELS)
+        is_delivery = bool(issue.labels & _DELIVERY_LABELS)
+        if is_operations:
+            if is_unplanned:
+                unplanned_operations += 1
+            else:
+                planned_operations += 1
+        elif is_delivery:
+            if is_unplanned:
+                unplanned_delivery += 1
+            else:
+                planned_delivery += 1
+        else:
+            unclassified += 1
+
+    return MixReport(
+        total=len(issues),
+        planned_delivery=planned_delivery,
+        planned_operations=planned_operations,
+        unplanned_delivery=unplanned_delivery,
+        unplanned_operations=unplanned_operations,
+        unclassified=unclassified,
+        security=security,
+    )
+
+
 _BLOCKING_RE = re.compile(r"(?:blocked[\s-]*by|depends[\s-]*on)\s*:?\s*#(\d+)", re.IGNORECASE)
 
 
@@ -497,6 +590,18 @@ def main() -> int:
         return 0
 
     issues = load_open_issues(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
+
+    # Visibility only (#1010) — surfaced every run so the quadrant/security
+    # mix is a glance-able fact, not a manual audit. Does not gate selection.
+    mix = compute_mix_report(issues)
+    print(
+        f"mix_report: total={mix.total} "
+        f"planned_delivery={mix.planned_delivery} planned_operations={mix.planned_operations} "
+        f"unplanned_delivery={mix.unplanned_delivery} unplanned_operations={mix.unplanned_operations} "
+        f"unclassified={mix.unclassified} security={mix.security} "
+        f"security_share={mix.security_share:.1%}"
+    )
+
     in_progress = load_open_pr_linked_issues(token=cfg.token, owner=cfg.owner, repo=cfg.repo)
     targets = select_issues(
         issues,
