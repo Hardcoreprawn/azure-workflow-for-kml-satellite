@@ -859,8 +859,7 @@ class TestDeployWorkflowSettings:
             "deploy.yml must use the shared emit-deploy-marker composite action"
         )
         assert "needs.deploy-infra.outputs.appinsights_connection_string" in deploy_yml, (
-            "deploy-success marker must source the App Insights connection string "
-            "from deploy-infra's job output"
+            "deploy-success marker must source the App Insights connection string from deploy-infra's job output"
         )
 
     def test_deploy_emits_infra_failure_marker(self, deploy_yml):
@@ -870,9 +869,7 @@ class TestDeployWorkflowSettings:
         assert "if: failure() && needs.deploy-infra.result == 'failure'" in body, (
             "deploy-marker-infra-failure job must only run when deploy-infra itself failed"
         )
-        assert "outcome: failure" in body, (
-            "deploy-marker-infra-failure job must record outcome: failure"
-        )
+        assert "outcome: failure" in body, "deploy-marker-infra-failure job must record outcome: failure"
 
 
 class TestEmitDeployMarkerAction:
@@ -892,12 +889,8 @@ class TestEmitDeployMarkerAction:
         )
 
     def test_action_posts_to_track_api(self, action_yml):
-        assert "/v2/track" in action_yml, (
-            "emit-deploy-marker must POST to the App Insights v2/track ingestion endpoint"
-        )
-        assert "DeploymentMarker" in action_yml, (
-            "emit-deploy-marker must name the custom event DeploymentMarker"
-        )
+        assert "/v2/track" in action_yml, "emit-deploy-marker must POST to the App Insights v2/track ingestion endpoint"
+        assert "DeploymentMarker" in action_yml, "emit-deploy-marker must name the custom event DeploymentMarker"
 
 
 class TestDeployNoOpDiffGuardLogic:
