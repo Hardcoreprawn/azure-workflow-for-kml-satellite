@@ -162,9 +162,7 @@ _OPERATIONS_LABELS = frozenset(
         "refactor",
     }
 )
-_DELIVERY_LABELS = frozenset(
-    {"enhancement", "frontend", "pipeline", "billing", "export", "ux", "api", "eudr"}
-)
+_DELIVERY_LABELS = frozenset({"enhancement", "frontend", "pipeline", "billing", "export", "ux", "api", "eudr"})
 
 
 @dataclass(frozen=True)
