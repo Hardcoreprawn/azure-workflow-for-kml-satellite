@@ -378,6 +378,7 @@ class TestEnrichmentFanOut200:
 
 
 @pytest.mark.integration
+@pytest.mark.integration_live_stack
 class TestPipelineSmokeMonster:
     """Connectivity guard for the 200-AOI monster KML integration run.
 
@@ -388,7 +389,7 @@ class TestPipelineSmokeMonster:
     Run with::
 
         make dev-all  # in another terminal
-        uv run pytest tests/test_monster_aoi_scale.py -v -m integration
+        make test-int-live
     """
 
     def _azurite_reachable(self) -> bool:

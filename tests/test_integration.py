@@ -2,7 +2,7 @@
 
 Requires Azurite running on localhost (``make dev-up``).
 
-Run with:  uv run pytest tests/test_integration.py -v
+Run with:  make test-int
 Skip with: uv run pytest tests/ -v -m "not integration"
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from _azurite import AZURITE_BLOB_BASE, AZURITE_CONN_STR, CONTAINERS, azurite_blob_reachable
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.integration_azurite]
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

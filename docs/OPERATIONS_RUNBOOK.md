@@ -168,7 +168,7 @@ make dev-all   # Start Azurite + containerised Functions host + website
 Run:
 
 ```sh
-uv run pytest tests/test_pipeline_smoke_e2e.py -v -m integration
+make test-int-live
 ```
 
 What it checks:
@@ -176,10 +176,12 @@ What it checks:
 1. First submission of `tests/fixtures/duplicate_names.kml` reaches a terminal state.
 2. Second (back-to-back) submission reaches a terminal state.
 3. Both runs produce the **same** terminal status — no flakiness between submissions.
-4. If both runs complete, `aoiCount` equals the input feature count (2) — no silent data loss.
+4. Both runs must complete successfully and report `aoiCount` equal to the input feature count (2).
 
 The tests are skipped automatically when Azurite or the local Functions host
-is not reachable, so they will not break the standard `make test` suite.
+is not reachable, so they do not affect the standard `make test` suite. The
+`make test-int-live` gate converts an all-skipped run into a failure so missing
+dependencies cannot appear green.
 
 ## Monitor
 
