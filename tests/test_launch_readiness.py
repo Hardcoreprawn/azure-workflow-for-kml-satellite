@@ -55,6 +55,7 @@ BASE_IMAGE_YML = ROOT / ".github" / "workflows" / "base-image.yml"
 INFRACOST_YML = ROOT / ".github" / "workflows" / "infracost.yml"
 REQUIRE_LINKED_ISSUE_YML = ROOT / ".github" / "workflows" / "require-linked-issue.yml"
 PREVIEW_SITE_YML = ROOT / ".github" / "workflows" / "preview-site.yml"
+PREVIEW_SITE_TTL_SWEEP_YML = ROOT / ".github" / "workflows" / "preview-site-ttl-sweep.yml"
 INFRACOST_USAGE = INFRA / "infracost-usage.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore"
 MAKEFILE = ROOT / "Makefile"
@@ -354,6 +355,62 @@ class TestPreviewSiteGracefulDegradation:
             "The 'Deploy to SWA staging environment' step must set "
             "continue-on-error: true so an invalid/expired token does not fail the "
             "job and block the PR"
+        )
+
+
+class TestPreviewSiteTTLSweep:
+    """Ensure stale website previews auto-expire independent of PR close (#1011).
+
+    preview-site.yml's close-preview job only fires on PR close; a preview
+    left open with no activity would otherwise linger indefinitely with no
+    TTL. This is the scheduled, self-contained sweep half of that gap for
+    the website-only preview tier (full-stack ephemeral envs remain
+    tracked separately in #1011 and blocked on #846).
+    """
+
+    @pytest.fixture()
+    def workflow(self) -> dict:
+        return yaml.safe_load(PREVIEW_SITE_TTL_SWEEP_YML.read_text())
+
+    def test_runs_on_a_schedule(self, workflow):
+        assert "schedule" in workflow[True], (
+            "preview-site-ttl-sweep.yml must run on a schedule, not only on demand, "
+            "so TTL expiry doesn't depend on someone remembering to trigger it"
+        )
+
+    def test_default_ttl_is_within_one_to_three_days(self, workflow):
+        ttl_input = workflow[True]["workflow_dispatch"]["inputs"]["ttl_days"]
+        assert 1 <= int(ttl_input["default"]) <= 3, (
+            "default TTL must be within the 1-3 day range #1011 specifies"
+        )
+
+    def test_teardown_reuses_the_same_swa_close_action(self, workflow):
+        steps = workflow["jobs"]["teardown-stale"]["steps"]
+        close_step = next(
+            (s for s in steps if s.get("uses", "").startswith("Azure/static-web-apps-deploy")),
+            None,
+        )
+        assert close_step is not None, (
+            "teardown-stale job must reuse the Azure/static-web-apps-deploy action "
+            "(same teardown path as preview-site.yml's close-preview job)"
+        )
+        assert close_step["with"]["action"] == "close"
+        assert close_step.get("continue-on-error") is True, (
+            "closing an already-gone preview must not fail the sweep job"
+        )
+
+    def test_teardown_only_runs_when_stale_prs_found(self, workflow):
+        job = workflow["jobs"]["teardown-stale"]
+        assert job["if"] == "needs.find-stale.outputs.stale_prs != '[]'", (
+            "teardown-stale must be gated on a non-empty stale-PR list, "
+            "not run unconditionally every schedule tick"
+        )
+
+    def test_out_of_scope_for_full_stack_envs(self, workflow):
+        content = PREVIEW_SITE_TTL_SWEEP_YML.read_text()
+        assert "#846" in content, (
+            "the sweeper must document its dependency on #846 (hosting right-size) "
+            "so it isn't silently extended to full-stack teardown before that lands"
         )
 
 
