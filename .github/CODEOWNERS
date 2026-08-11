@@ -1,0 +1,22 @@
+# Security, billing, ownership, and release controls require maintainer review.
+/treesight/security/ @Hardcoreprawn
+/treesight/billing/ @Hardcoreprawn
+/blueprints/_helpers.py @Hardcoreprawn
+/blueprints/account.py @Hardcoreprawn
+/blueprints/analysis.py @Hardcoreprawn
+/blueprints/billing.py @Hardcoreprawn
+/blueprints/eudr.py @Hardcoreprawn
+/blueprints/export/ @Hardcoreprawn
+/blueprints/ops.py @Hardcoreprawn
+/blueprints/org.py @Hardcoreprawn
+/blueprints/upload.py @Hardcoreprawn
+/blueprints/pipeline/ @Hardcoreprawn
+/.github/CODEOWNERS @Hardcoreprawn
+/.github/actions/ @Hardcoreprawn
+/.github/workflows/ @Hardcoreprawn
+/infra/tofu/ @Hardcoreprawn
+/scripts/pr_watchdog.py @Hardcoreprawn
+/treesight/config.py @Hardcoreprawn
+/treesight/pipeline/enrichment/ @Hardcoreprawn
+/treesight/pipeline/eudr.py @Hardcoreprawn
+/treesight/pipeline/submission_helpers.py @Hardcoreprawn

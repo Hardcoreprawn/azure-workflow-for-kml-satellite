@@ -32,7 +32,10 @@ This repository uses the following free GitHub security features:
 - **Push protection** — blocks pushes containing secrets before they reach the repo
 - **CodeQL analysis** — static analysis for security vulnerabilities on every PR
 - **Private vulnerability reporting** — responsible disclosure channel
-- **Branch protection** — PRs required, CI must pass, stale reviews dismissed
+- **Owner review routing** — the committed `.github/CODEOWNERS` file identifies
+  `@Hardcoreprawn` as the reviewer for auth, billing, ownership, workflow, and
+  infrastructure paths. `pr-watchdog` highlights those changes as needing an
+  owner opinion; it does not infer approval or replace the owner's merge decision.
 
 ## Open-Source Documentation Posture
 
@@ -129,4 +132,6 @@ a dedicated least-privilege job rescans the fresh image **without** `.trivyignor
 Drift is healed through a reviewed bot PR on branch `chore/trivyignore-reconcile`
 — never an auto-commit to `main`. This requires the repository setting
 **Settings → Actions → General → "Allow GitHub Actions to create and approve
-pull requests"** to be enabled.
+pull requests"** to be enabled because GitHub combines both capabilities under
+one setting. This workflow uses that capability only to create a reviewable PR;
+no workflow may submit approvals or merge security-sensitive changes.

@@ -33,11 +33,64 @@ CHECK_FAILURE_CONCLUSIONS = {
     "stale",
 }
 
+# Contexts required by the main branch ruleset. Canonical CI runs for every PR,
+# including docs-only changes, so each context has one workflow provenance.
+REQUIRED_CHECKS: frozenset[str] = frozenset(
+    {
+        "Actionlint",
+        "Analyze Python (python)",
+        "Dependency Audit",
+        "Lint",
+        "Secret Detection",
+        "Semgrep SAST",
+        "Test",
+        "Trivy Filesystem Scan",
+        "Trivy IaC Scan",
+        "check-issue-link",
+    }
+)
+CODE_REQUIRED_CHECKS: frozenset[str] = frozenset(
+    {
+        "Integration (Azurite)",
+        "Pipeline e2e (local gate)",
+    }
+)
+
+BLOCKING_REVIEW_DECISIONS = frozenset({"CHANGES_REQUESTED"})
+
 COMMENT_MARKER = "<!-- pr-watchdog -->"
 
 # GitHub logins that the Watchdog will auto-promote from draft.
 # Only the Copilot coding-agent is trusted by default; extend if needed.
 TRUSTED_PROMOTE_LOGINS: frozenset[str] = frozenset({"Copilot"})
+SENSITIVE_PATH_PREFIXES: tuple[str, ...] = (
+    ".github/actions/",
+    ".github/workflows/",
+    "blueprints/export/",
+    "blueprints/pipeline/",
+    "infra/tofu/",
+    "treesight/billing/",
+    "treesight/pipeline/enrichment/",
+    "treesight/security/",
+)
+SENSITIVE_PATHS: frozenset[str] = frozenset(
+    {
+        "blueprints/_helpers.py",
+        "blueprints/account.py",
+        "blueprints/analysis.py",
+        "blueprints/billing.py",
+        "blueprints/eudr.py",
+        "blueprints/ops.py",
+        "blueprints/org.py",
+        "blueprints/pipeline/submission.py",
+        "blueprints/upload.py",
+        ".github/CODEOWNERS",
+        "scripts/pr_watchdog.py",
+        "treesight/config.py",
+        "treesight/pipeline/eudr.py",
+        "treesight/pipeline/submission_helpers.py",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -56,12 +109,21 @@ class PRSummary:
     failing_checks: tuple[str, ...]
     pending_checks: tuple[str, ...]
     unresolved_threads: tuple[ReviewThread, ...]
+    missing_required_checks: tuple[str, ...] = ()
+    review_decision: str = ""
+    sensitive_change: bool = False
     missing_linked_issue: bool = False
     is_draft: bool = False
 
     @property
     def has_blockers(self) -> bool:
-        return bool(self.failing_checks or self.unresolved_threads or self.missing_linked_issue)
+        return bool(
+            self.failing_checks
+            or self.missing_required_checks
+            or self.unresolved_threads
+            or self.review_decision in BLOCKING_REVIEW_DECISIONS
+            or self.missing_linked_issue
+        )
 
     @property
     def is_ready_to_promote(self) -> bool:
@@ -123,6 +185,33 @@ def _fetch_paginated(token: str, path: str) -> list[dict[str, Any]]:
     return results
 
 
+def _is_sensitive_path(path: str) -> bool:
+    return path in SENSITIVE_PATHS or path.startswith(SENSITIVE_PATH_PREFIXES)
+
+
+def collect_changed_paths(
+    *,
+    token: str,
+    owner: str,
+    repo: str,
+    pr_number: int,
+) -> tuple[str, ...]:
+    """Return changed file paths for assurance and owner-review routing."""
+    files = _fetch_paginated(token, f"/repos/{owner}/{repo}/pulls/{pr_number}/files")
+    return tuple(str(item.get("filename") or "") for item in files if item.get("filename"))
+
+
+def is_sensitive_change(paths: tuple[str, ...]) -> bool:
+    """Return whether changed paths should be routed to the repository owner."""
+    return any(_is_sensitive_path(path) for path in paths)
+
+
+def required_checks_for_paths(paths: tuple[str, ...]) -> frozenset[str]:
+    """Return the complete required set; paths remain available for policy evolution."""
+    del paths
+    return REQUIRED_CHECKS | CODE_REQUIRED_CHECKS
+
+
 def list_active_autopilot_prs(*, token: str, owner: str, repo: str, max_prs: int) -> list[dict[str, Any]]:
     pulls = _fetch_paginated(token, f"/repos/{owner}/{repo}/pulls?state=open")
     active: list[dict[str, Any]] = []
@@ -143,7 +232,8 @@ def collect_check_status(
     owner: str,
     repo: str,
     head_sha: str,
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    required_checks: frozenset[str] = REQUIRED_CHECKS,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     data = _github_rest(
         token=token,
         method="GET",
@@ -151,34 +241,53 @@ def collect_check_status(
     )
     checks = data.get("check_runs", []) if isinstance(data, dict) else []
 
-    failing: list[str] = []
-    pending: list[str] = []
+    latest_by_name: dict[str, dict[str, Any]] = {}
     for check in checks:
         if not isinstance(check, dict):
             continue
         name = str(check.get("name", "unknown"))
+        previous = latest_by_name.get(name)
+        current_order = (int(check.get("id") or 0), str(check.get("started_at") or ""))
+        previous_order = (
+            (
+                int(previous.get("id") or 0),
+                str(previous.get("started_at") or ""),
+            )
+            if previous is not None
+            else (-1, "")
+        )
+        if current_order >= previous_order:
+            latest_by_name[name] = check
+
+    failing: list[str] = []
+    pending: list[str] = []
+    observed_names: set[str] = set()
+    for name, check in latest_by_name.items():
+        observed_names.add(name)
         status = str(check.get("status", ""))
         conclusion = str(check.get("conclusion", ""))
         if status != "completed":
             pending.append(name)
             continue
-        if conclusion in CHECK_FAILURE_CONCLUSIONS:
+        if conclusion in CHECK_FAILURE_CONCLUSIONS or (name in required_checks and conclusion != "success"):
             failing.append(name)
 
-    return tuple(sorted(set(failing))), tuple(sorted(set(pending)))
+    missing = required_checks - observed_names
+    return tuple(sorted(set(failing))), tuple(sorted(set(pending))), tuple(sorted(missing))
 
 
-def collect_unresolved_threads(
+def collect_review_state(
     *,
     token: str,
     owner: str,
     repo: str,
     pr_number: int,
-) -> tuple[ReviewThread, ...]:
+) -> tuple[tuple[ReviewThread, ...], str]:
     query = """
     query($owner: String!, $repo: String!, $number: Int!) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $number) {
+                    reviewDecision
           reviewThreads(first: 100) {
             nodes {
               isResolved
@@ -222,7 +331,7 @@ def collect_unresolved_threads(
             )
         )
 
-    return tuple(unresolved)
+    return tuple(unresolved), str(pr_data.get("reviewDecision") or "")
 
 
 def render_comment(summary: PRSummary) -> str:
@@ -242,6 +351,18 @@ def render_comment(summary: PRSummary) -> str:
     else:
         lines.append("- Failing checks: none")
 
+    if summary.missing_required_checks:
+        lines.append("- Missing required checks:")
+        for check in summary.missing_required_checks:
+            lines.append(f"  - {check}")
+    else:
+        lines.append("- Missing required checks: none")
+
+    if summary.review_decision:
+        lines.append(f"- Review decision: {summary.review_decision}")
+    else:
+        lines.append("- Review decision: not reported")
+
     if summary.unresolved_threads:
         lines.append("- Unresolved review threads:")
         for thread in summary.unresolved_threads:
@@ -256,8 +377,11 @@ def render_comment(summary: PRSummary) -> str:
 
     lines.append("")
     lines.append("### Needs Opinion")
+    needs_owner_review = summary.sensitive_change or summary.review_decision == "REVIEW_REQUIRED"
     if summary.unresolved_threads:
         lines.append("- Yes. There are unresolved review threads requiring maintainer judgment or approval.")
+    elif needs_owner_review:
+        lines.append("- Yes. Ask @Hardcoreprawn to review this PR before merge.")
     else:
         lines.append("- No explicit opinion-needed threads currently open.")
 
@@ -386,7 +510,8 @@ def is_stale_closeable(summary: PRSummary, age_days: float, threshold_days: floa
     waiting on CI) and older than the threshold are eligible. Ready-for-review
     PRs are left alone — they may be under active human review.
     """
-    return summary.is_draft and summary.has_blockers and age_days > threshold_days
+    implementation_blockers = bool(summary.failing_checks or summary.unresolved_threads or summary.missing_linked_issue)
+    return summary.is_draft and implementation_blockers and age_days > threshold_days
 
 
 def close_stale_pr(
@@ -447,6 +572,10 @@ def unmet_dod_items(summary: PRSummary) -> tuple[str, ...]:
         items.append("Add a closing issue link (`Closes #NNN`) to the PR body.")
     for check in summary.failing_checks:
         items.append(f"Fix the failing check: {check}")
+    for check in summary.missing_required_checks:
+        items.append(f"Run the missing required check: {check}")
+    if summary.review_decision in BLOCKING_REVIEW_DECISIONS:
+        items.append(f"Clear the blocking review decision: {summary.review_decision}")
     for thread in summary.unresolved_threads:
         where = thread.path or "the PR"
         items.append(f"Resolve the review thread on {where}: {thread.url}")
@@ -612,8 +741,17 @@ def _process_pr(
     number = int(pr["number"])
     head = pr.get("head") or {}
     head_sha = str(head.get("sha", ""))
-    failing, pending = collect_check_status(token=token, owner=owner, repo=repo, head_sha=head_sha)
-    unresolved = collect_unresolved_threads(token=token, owner=owner, repo=repo, pr_number=number)
+    changed_paths = collect_changed_paths(token=token, owner=owner, repo=repo, pr_number=number)
+    required_checks = required_checks_for_paths(changed_paths)
+    failing, pending, missing_checks = collect_check_status(
+        token=token,
+        owner=owner,
+        repo=repo,
+        head_sha=head_sha,
+        required_checks=required_checks,
+    )
+    unresolved, review_decision = collect_review_state(token=token, owner=owner, repo=repo, pr_number=number)
+    sensitive_change = is_sensitive_change(changed_paths)
     summary = PRSummary(
         number=number,
         url=str(pr.get("html_url", "")),
@@ -621,6 +759,9 @@ def _process_pr(
         failing_checks=failing,
         pending_checks=pending,
         unresolved_threads=unresolved,
+        missing_required_checks=missing_checks,
+        review_decision=review_decision,
+        sensitive_change=sensitive_change,
         missing_linked_issue=not body_links_issue(pr.get("body")),
         is_draft=bool(pr.get("draft")),
     )
