@@ -188,11 +188,9 @@ jobs:
             echo "image=${GHCR_IMAGE}" >> "$GITHUB_OUTPUT"
             echo "### Base image: pulled from GHCR :package:" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::warning::Base image not found on GHCR — building from Dockerfile.base"
-            LOCAL_TAG="treesight-base:ci-local"
-            docker build -f Dockerfile.base -t "${LOCAL_TAG}" .
-            echo "image=${LOCAL_TAG}" >> "$GITHUB_OUTPUT"
-            echo "### Base image: built locally from Dockerfile.base :hammer:" >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Base image not found on GHCR: ${GHCR_IMAGE}"
+            echo "Publish the base image first by running the 'Base image' workflow, then re-trigger deploy."
+            exit 1
           fi
 
       - name: Build image
