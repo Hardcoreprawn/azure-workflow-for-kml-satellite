@@ -193,7 +193,7 @@ sast: ## Semgrep static analysis (pinned version + packs — reproducible local 
 # local runs match CI ("make updates first, like the pipeline").
 # CI sets TRIVY_FORMAT=sarif + TRIVY_OUTPUT=<file> to emit SARIF for Code
 # Scanning; the base-image reconcile sets TRIVY_IGNOREFILE= to scan unsuppressed.
-TRIVY_VERSION ?= 0.72.0
+TRIVY_VERSION ?= 0.73.0
 TRIVY ?= trivy
 TRIVY_FORMAT ?= table
 TRIVY_OUTPUT ?=

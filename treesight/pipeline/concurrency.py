@@ -11,10 +11,12 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
+from treesight.constants import COSMOS_CONTAINER_RUNS
+
 logger = logging.getLogger(__name__)
 
 
-def count_active_runs(container_name: str = "run-records") -> int:
+def count_active_runs(container_name: str = COSMOS_CONTAINER_RUNS) -> int:
     """Return the number of active pipeline runs in Cosmos.
 
     A run is considered active when its ``status`` is ``submitted``,
@@ -55,7 +57,7 @@ def count_active_runs(container_name: str = "run-records") -> int:
         return 0
 
 
-def at_concurrency_cap(container_name: str = "run-records") -> bool:
+def at_concurrency_cap(container_name: str = COSMOS_CONTAINER_RUNS) -> bool:
     """Return True when active run count is at or above MAX_CONCURRENT_JOBS."""
     from treesight import config
 
