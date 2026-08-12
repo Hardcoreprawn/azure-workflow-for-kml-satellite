@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 
 import azure.durable_functions as df
 import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
 
 from treesight.models.blob_event import BlobEvent
 from treesight.security.billing import get_effective_subscription, plan_capabilities
@@ -29,7 +30,10 @@ def _is_api_managed_blob(blob_name: str) -> bool:
     parts = PurePosixPath(blob_name).parts
     if len(parts) != 2 or parts[0] != "analysis":
         return False
-    stem = PurePosixPath(parts[-1]).stem
+    path = PurePosixPath(parts[-1])
+    if path.suffix.lower() not in {".kml", ".kmz"}:
+        return False
+    stem = path.stem
     try:
         uuid.UUID(stem)
         return True
@@ -42,11 +46,9 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
 
     Returns ``None`` if no ticket is found (e.g. storage-native uploads).
 
-    For API-managed ``analysis/{uuid}.kml|kmz`` blobs a missing ticket is an
-    expected not-found (returns ``None``), but any other exception — transient
-    storage failures, auth errors, network errors — is re-raised so that the
-    Event Grid delivery fails and Azure retries rather than starting
-    unattributed, unaccounted orchestration.
+    For API-managed ``analysis/{uuid}.kml|kmz`` blobs every read failure,
+    including a missing ticket, is re-raised so that Event Grid retries rather
+    than starting unattributed, unaccounted orchestration.
 
     For storage-native upload paths all exceptions are swallowed because no
     ticket is ever written for those blobs.
@@ -64,11 +66,9 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
         return storage.download_json(container_name, ticket_path)
     except Exception as exc:
         exc_name = type(exc).__name__
-        not_found = "NotFound" in exc_name or "ResourceNotFound" in exc_name
-        if not_found:
+        if isinstance(exc, ResourceNotFoundError) and not api_managed:
             logger.debug("No ticket found for blob=%s (path=%s)", blob_name, ticket_path)
             return None
-        # Unexpected/transient error: log always, then fail-closed for API blobs.
         logger.warning(
             "Ticket read failed for blob=%s (path=%s): %s",
             blob_name,
