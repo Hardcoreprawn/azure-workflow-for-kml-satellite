@@ -198,8 +198,10 @@ jobs:
         env:
           IMAGE_NAME: ${{ steps.meta.outputs.image_name }}
         run: |
+          source .github/image-config.env
           docker build \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg UV_VERSION="${UV_VERSION}" \
             --build-arg APP_VERSION="${{ steps.meta.outputs.app_version }}" \
             --build-arg GIT_SHA="${{ github.sha }}" \
             -t "${IMAGE_NAME}:${{ github.sha }}" \
@@ -211,9 +213,11 @@ jobs:
         env:
           ORCH_IMAGE_NAME: ${{ steps.meta.outputs.orch_image_name }}
         run: |
+          source .github/image-config.env
           docker build \
             -f Dockerfile.orchestrator \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg UV_VERSION="${UV_VERSION}" \
             --build-arg APP_VERSION="${{ steps.meta.outputs.app_version }}" \
             --build-arg GIT_SHA="${{ github.sha }}" \
             -t "${ORCH_IMAGE_NAME}:${{ github.sha }}" \

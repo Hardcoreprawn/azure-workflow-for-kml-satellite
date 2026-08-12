@@ -106,6 +106,7 @@ services:
       # `make dev-all` works out of the box for a new dev machine too.
       args:
         BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
+        UV_VERSION: ${UV_VERSION}
     container_name: canopex-func
     ports:
       - "7071:80"

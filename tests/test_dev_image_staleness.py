@@ -70,6 +70,18 @@ def test_build_inputs_digest_changes_when_pyproject_changes(tmp_path):
     assert d1 != d2
 
 
+def test_build_inputs_digest_changes_when_image_config_changes(tmp_path):
+    df = tmp_path / "Dockerfile.dev"
+    df.write_bytes(b"FROM base\n")
+    config = tmp_path / ".github" / "image-config.env"
+    config.parent.mkdir()
+    config.write_bytes(b'UV_VERSION="0.11.28"\n')
+    d1 = build_inputs_digest(df, root=tmp_path)
+    config.write_bytes(b'UV_VERSION="0.12.0"\n')
+    d2 = build_inputs_digest(df, root=tmp_path)
+    assert d1 != d2
+
+
 def test_build_inputs_digest_missing_extras_ok(tmp_path):
     df = tmp_path / "Dockerfile.dev"
     df.write_bytes(b"FROM base\n")
