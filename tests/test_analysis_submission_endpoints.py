@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import azure.functions as func
+import pytest
+from azure.core.exceptions import ResourceNotFoundError
 
 from tests.conftest import TEST_LOCAL_ORIGIN, make_test_request
 from treesight.constants import DEFAULT_INPUT_CONTAINER, PIPELINE_PAYLOADS_CONTAINER
@@ -985,14 +987,16 @@ class TestBlobTriggerIngress:
         assert orch_input["max_history_years"] == 5
 
     def test_blob_trigger_works_without_ticket(self):
-        """Storage-native uploads (no ticket) still work."""
+        """Storage-native uploads (no ticket) still work — any error is ignored."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger
 
         client = _FakeDurableClient()
         event = self._make_blob_event("uploads/test-run.kml", "evt-upload")
 
+        # Use a generic (non-NotFound) exception to confirm storage-native path
+        # never fails-closed regardless of error type.
         with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
-            mock_storage_cls.return_value.download_json.side_effect = Exception("not found")
+            mock_storage_cls.return_value.download_json.side_effect = OSError("network error")
             asyncio.run(_process_blob_trigger(event, client))
 
         assert len(client.calls) == 1
@@ -1001,6 +1005,67 @@ class TestBlobTriggerIngress:
         assert client.calls[0]["client_input"]["blob_name"] == "uploads/test-run.kml"
         # No user_id when no ticket
         assert "user_id" not in client.calls[0]["client_input"]
+
+    def test_blob_trigger_api_blob_missing_ticket_raises(self):
+        """Missing ticket on an API blob must raise so Event Grid retries."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+        client = _FakeDurableClient()
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-notfound")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.side_effect = ResourceNotFoundError("404")
+            with pytest.raises(RuntimeError, match="Ticket read failed for API blob"):
+                asyncio.run(_process_blob_trigger(event, client))
+
+        assert client.calls == []
+
+    def test_blob_trigger_storage_native_missing_ticket_is_ticketless(self):
+        """Genuine missing ticket on a storage-native analysis path is allowed."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("analysis/storage-native.kml", "evt-native-notfound")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.side_effect = ResourceNotFoundError("404")
+            asyncio.run(_process_blob_trigger(event, client))
+
+        assert len(client.calls) == 1
+        assert client.calls[0]["instance_id"] == "evt-native-notfound"
+        assert "user_id" not in client.calls[0]["client_input"]
+
+    def test_blob_trigger_api_blob_transient_error_raises(self):
+        """Transient storage error on an API blob must raise so Event Grid retries."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "11112222-3333-4444-5555-666677778888"
+        client = _FakeDurableClient()
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-transient")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.side_effect = OSError("storage unavailable")
+            with pytest.raises(RuntimeError, match="Ticket read failed for API blob"):
+                asyncio.run(_process_blob_trigger(event, client))
+
+        # Orchestration must NOT have started
+        assert len(client.calls) == 0
+
+    def test_blob_trigger_api_blob_auth_error_raises(self):
+        """Auth error on ticket read for API blob must raise, not silently proceed."""
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        sub_id = "aaaabbbb-1111-2222-3333-ccccddddeeee"
+        client = _FakeDurableClient()
+        event = self._make_blob_event(f"analysis/{sub_id}.kml", "evt-auth-error")
+
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.side_effect = PermissionError("auth denied")
+            with pytest.raises(RuntimeError, match="Ticket read failed for API blob"):
+                asyncio.run(_process_blob_trigger(event, client))
+
+        assert len(client.calls) == 0
 
     def test_blob_trigger_applies_free_tier_limits(self):
         """Free tier ticket should apply cadence and history limits."""

@@ -10,6 +10,7 @@ from pathlib import PurePosixPath
 
 import azure.durable_functions as df
 import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
 
 from treesight.models.blob_event import BlobEvent
 from treesight.security.billing import get_effective_subscription, plan_capabilities
@@ -20,29 +21,66 @@ from ._blob_url import _extract_blob_name, _extract_container, _validate_blob_ev
 logger = logging.getLogger(__name__)
 
 
+def _is_api_managed_blob(blob_name: str) -> bool:
+    """Return True for ``analysis/{uuid}.kml|kmz`` blobs submitted via the API.
+
+    These blobs must have an associated submission ticket.  Storage-native
+    uploads (any other path pattern) are allowed to proceed without one.
+    """
+    parts = PurePosixPath(blob_name).parts
+    if len(parts) != 2 or parts[0] != "analysis":
+        return False
+    path = PurePosixPath(parts[-1])
+    if path.suffix.lower() not in {".kml", ".kmz"}:
+        return False
+    stem = path.stem
+    try:
+        uuid.UUID(stem)
+        return True
+    except ValueError:
+        return False
+
+
 def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
     """Read the ticket blob written by SWA API or submission endpoint.
 
     Returns ``None`` if no ticket is found (e.g. storage-native uploads).
-    Logs a warning on transient errors to make billing/tier failures visible.
+
+    For API-managed ``analysis/{uuid}.kml|kmz`` blobs every read failure,
+    including a missing ticket, is re-raised so that Event Grid retries rather
+    than starting unattributed, unaccounted orchestration.
+
+    For storage-native upload paths all exceptions are swallowed because no
+    ticket is ever written for those blobs.
     """
     parts = PurePosixPath(blob_name).parts
     if len(parts) < 2:
         return None
     stem = PurePosixPath(parts[-1]).stem
     ticket_path = f".tickets/{stem}.json"
+    api_managed = _is_api_managed_blob(blob_name)
     try:
         from treesight.storage.client import BlobStorageClient
 
         storage = BlobStorageClient()
         return storage.download_json(container_name, ticket_path)
     except Exception as exc:
-        # Distinguish "not found" from transient/unexpected errors.
         exc_name = type(exc).__name__
-        if "NotFound" in exc_name or "ResourceNotFound" in exc_name:
+        if isinstance(exc, ResourceNotFoundError) and not api_managed:
             logger.debug("No ticket found for blob=%s (path=%s)", blob_name, ticket_path)
-        else:
-            logger.warning("Ticket read failed for blob=%s (path=%s): %s", blob_name, ticket_path, exc_name)
+            return None
+        logger.warning(
+            "Ticket read failed for blob=%s (path=%s): %s",
+            blob_name,
+            ticket_path,
+            exc_name,
+            exc_info=True,
+        )
+        if api_managed:
+            raise RuntimeError(
+                f"Ticket read failed for API blob {blob_name!r}: {exc_name} — failing "
+                "so Event Grid retries rather than starting unattributed orchestration"
+            ) from exc
         return None
 
 
