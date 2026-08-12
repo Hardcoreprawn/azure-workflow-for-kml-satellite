@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import azure.functions as func
 import pytest
@@ -708,9 +708,17 @@ class TestDeleteUser:
 
             delete_user("u1")
 
-            # Should delete user document
-            delete_calls = [c for c in delete.call_args_list if c[0][0] == "users"]
-            assert len(delete_calls) >= 1
+            query.assert_called_once_with(
+                "runs",
+                "SELECT c.id FROM c WHERE c.user_id = @user_id",
+                parameters=[{"name": "@user_id", "value": "u1"}],
+                partition_key="u1",
+            )
+            assert delete.call_args_list == [
+                call("runs", "run1", "u1"),
+                call("runs", "run2", "u1"),
+                call("users", "u1", "u1"),
+            ]
 
     def test_delete_user_raises_when_cosmos_unavailable(self):
         with patch("treesight.storage.cosmos.cosmos_available", return_value=False):

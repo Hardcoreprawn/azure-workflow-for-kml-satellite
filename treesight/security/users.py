@@ -323,13 +323,14 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
     # Cascade delete user data (runs, analysis, etc.)
     try:
         runs = query_items(
-            "user_runs",
+            "runs",
             "SELECT c.id FROM c WHERE c.user_id = @user_id",
             parameters=[{"name": "@user_id", "value": user_id}],
+            partition_key=user_id,
         )
         for run in runs:
             try:
-                delete_item("user_runs", run["id"], user_id)
+                delete_item("runs", run["id"], user_id)
             except Exception:
                 logger.warning(
                     "Failed to delete run during user deletion user=%s run=%s",
