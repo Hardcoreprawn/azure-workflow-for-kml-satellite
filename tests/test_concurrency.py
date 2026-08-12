@@ -27,6 +27,19 @@ def _make_submit_req(body=None):
 
 
 class TestCountActiveRuns:
+    def test_default_container_name_matches_runs_constant(self):
+        """Regression: default container must be COSMOS_CONTAINER_RUNS, not 'run-records'."""
+        import inspect
+
+        from treesight.constants import COSMOS_CONTAINER_RUNS
+        from treesight.pipeline.concurrency import at_concurrency_cap, count_active_runs
+
+        sig_count = inspect.signature(count_active_runs)
+        assert sig_count.parameters["container_name"].default == COSMOS_CONTAINER_RUNS
+
+        sig_cap = inspect.signature(at_concurrency_cap)
+        assert sig_cap.parameters["container_name"].default == COSMOS_CONTAINER_RUNS
+
     def test_returns_zero_when_cosmos_unavailable(self):
         from treesight.pipeline.concurrency import count_active_runs
 
