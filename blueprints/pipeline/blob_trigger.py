@@ -74,6 +74,7 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
             blob_name,
             ticket_path,
             exc_name,
+            exc_info=True,
         )
         if api_managed:
             raise RuntimeError(
