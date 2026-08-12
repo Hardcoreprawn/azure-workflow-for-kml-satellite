@@ -40,6 +40,26 @@ class TestCountActiveRuns:
         sig_cap = inspect.signature(at_concurrency_cap)
         assert sig_cap.parameters["container_name"].default == COSMOS_CONTAINER_RUNS
 
+    def test_default_call_queries_runs_container(self):
+        """Regression: calling with no args must query the 'runs' container, not 'run-records'."""
+        from treesight.constants import COSMOS_CONTAINER_RUNS
+        from treesight.pipeline.concurrency import count_active_runs
+
+        captured: list[str] = []
+
+        def _fake_query_items(container_name, query, **kwargs):
+            captured.append(container_name)
+            return [0]
+
+        with (
+            patch("treesight.storage.cosmos.cosmos_available", return_value=True),
+            patch("treesight.storage.cosmos.query_items", side_effect=_fake_query_items),
+            patch("treesight.config.MAX_JOB_DURATION_MINUTES", 15),
+        ):
+            count_active_runs()
+
+        assert captured == [COSMOS_CONTAINER_RUNS]
+
     def test_returns_zero_when_cosmos_unavailable(self):
         from treesight.pipeline.concurrency import count_active_runs
 
