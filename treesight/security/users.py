@@ -326,6 +326,7 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
             "runs",
             "SELECT c.id FROM c WHERE c.user_id = @user_id",
             parameters=[{"name": "@user_id", "value": user_id}],
+            partition_key=user_id,
         )
         for run in runs:
             try:

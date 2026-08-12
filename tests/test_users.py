@@ -712,6 +712,7 @@ class TestDeleteUser:
                 "runs",
                 "SELECT c.id FROM c WHERE c.user_id = @user_id",
                 parameters=[{"name": "@user_id", "value": "u1"}],
+                partition_key="u1",
             )
             assert delete.call_args_list == [
                 call("runs", "run1", "u1"),
