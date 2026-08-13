@@ -556,6 +556,7 @@ class TestBuildEudrGeoJson:
         assert props["parcel_name"] == "Farm A"
         assert props["area_ha"] == 12.5
         assert props["determination_status"] == "no_signal_detected"
+        assert props["determination_confidence"] == "high"
 
     def test_worldcover_in_properties(self, eudr_manifest):
         result = _build_eudr_geojson(eudr_manifest)
@@ -606,9 +607,11 @@ class TestBuildEudrGeoJson:
         assert len(result["features"]) == 1
         props = result["features"][0]["properties"]
         assert props["determination_status"] == "no_signal_detected"
+
+    def test_no_per_aoi_falls_back_to_toplevel(self):
         manifest = {
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
-            "determination": {"status": "unknown", "confidence": "low", "flags": []},
+            "determination": {"screening_outcome": "insufficient_evidence", "confidence": "low", "flags": []},
         }
         result = _build_eudr_geojson(manifest)
         assert len(result["features"]) == 1
