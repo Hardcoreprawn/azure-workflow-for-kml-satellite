@@ -746,17 +746,19 @@ def revoke_pending_invites_for_user(user_email: str) -> int:
     from treesight.storage.cosmos import query_items, upsert_item
 
     now = datetime.now(UTC).isoformat()
-    results = query_items(
-        "orgs",
-        "SELECT * FROM c WHERE c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email) AND c.status = 'pending'",
-        parameters=[{"name": "@email", "value": user_email.lower().strip()}],
+    pending = list(
+        query_items(
+            "orgs",
+            "SELECT * FROM c WHERE c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email) AND c.status = 'pending'",
+            parameters=[{"name": "@email", "value": user_email.lower().strip()}],
+        )
     )
-    for invite in results:
+    for invite in pending:
         invite["status"] = "revoked"
         invite["revoked_at"] = now
         upsert_item("orgs", invite)
         logger.info("Invite revoked on erasure org=%s email=%s", invite.get("org_id"), user_email)
-    return len(results)
+    return len(pending)
 
 
 # ── Helpers ──────────────────────────────────────────────────
