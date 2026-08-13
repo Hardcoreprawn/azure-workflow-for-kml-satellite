@@ -10,7 +10,7 @@ generics on binding arguments.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from treesight.constants import DEFAULT_OUTPUT_CONTAINER, DEFAULT_PROVIDER
 
@@ -40,6 +40,38 @@ def _load_aoi(payload: dict[str, Any], storage: Any = None) -> Any:
         data = PayloadOffloader(s).load_claim(payload["aoi_ref"])
         return AOI.model_validate(data)
     return AOI.model_validate(payload["aoi"])
+
+
+def _finalize_and_release_admission(
+    org_id: str,
+    instance_id: str,
+    *,
+    status: Literal["completed", "failed"],
+) -> None:
+    """Finalize billing state and always attempt admission-slot release."""
+    from treesight.billing.accounting import finalize_run
+    from treesight.pipeline.concurrency import release_admission_slot
+
+    finalize_error: Exception | None = None
+    try:
+        finalize_run(org_id=org_id, instance_id=instance_id, status=status)
+    except Exception as exc:
+        finalize_error = exc
+    try:
+        release_admission_slot(instance_id)
+    except Exception:
+        logger.exception(
+            "Failed to release admission slot status=%s org=%s instance=%s",
+            status,
+            org_id,
+            instance_id,
+        )
+        # If billing finalization already failed, surface that original error
+        # and keep slot-release failure as logged context.
+        if finalize_error is None:
+            raise
+    if finalize_error is not None:
+        raise finalize_error
 
 
 @bp.activity_trigger(input_name="payload")
@@ -464,13 +496,11 @@ def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
 
     Moves runs from reserved → completed in org.usage, emits Stripe metered event.
     """
-    from treesight.billing.accounting import finalize_run
-
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
 
     try:
-        finalize_run(org_id=org_id, instance_id=instance_id, status="completed")
+        _finalize_and_release_admission(org_id, instance_id, status="completed")
         logger.info(
             "Run finalized (completed) org=%s instance=%s",
             org_id,
@@ -492,13 +522,11 @@ def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
 
     Moves runs from reserved → refunded in org.usage, refunds member per-period cap.
     """
-    from treesight.billing.accounting import finalize_run
-
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
 
     try:
-        finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
+        _finalize_and_release_admission(org_id, instance_id, status="failed")
         logger.info(
             "Run finalized (failed) org=%s instance=%s",
             org_id,

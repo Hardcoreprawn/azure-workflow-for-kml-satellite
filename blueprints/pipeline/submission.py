@@ -27,7 +27,11 @@ from treesight.billing.accounting import (
     reserve_run,
 )
 from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
-from treesight.pipeline.concurrency import at_concurrency_cap
+from treesight.pipeline.concurrency import (
+    AdmissionUnavailableError,
+    release_admission_slot,
+    reserve_admission_slot,
+)
 from treesight.security.billing import get_effective_subscription, plan_capabilities
 from treesight.security.orgs import get_user_org
 from treesight.security.redact import redact_user_id as _redact
@@ -44,6 +48,30 @@ def _finalize_run_on_failure(org_id: str, instance_id: str) -> None:
         finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
     except Exception:
         logger.exception("Failed to finalize run for org=%s instance=%s", org_id, instance_id)
+
+
+def _release_admission_on_failure(instance_id: str) -> None:
+    """Best-effort admission-slot release on pre-orchestrator failure."""
+    try:
+        release_admission_slot(instance_id)
+    except Exception:
+        logger.exception("Failed to release admission slot for instance=%s", instance_id)
+
+
+def _reserve_admission_or_response(req: func.HttpRequest, submission_id: str) -> func.HttpResponse | None:
+    """Reserve admission slot or return an HTTP rejection response."""
+    try:
+        admitted = reserve_admission_slot(submission_id)
+    except AdmissionUnavailableError:
+        return error_response(503, "Admission control unavailable — please retry.", req=req)
+    if admitted:
+        return None
+    return func.HttpResponse(
+        json.dumps({"error": "Concurrency cap reached — try again later"}),
+        status_code=429,
+        mimetype="application/json",
+        headers={**cors_headers(req), "Retry-After": "30"},
+    )
 
 
 def _normalize_auth_result(
@@ -338,15 +366,6 @@ async def _submit_analysis_request(
         return error_response(401, str(exc), req=req)
     _claims, user_id, active_org = _normalize_auth_result(auth_result)
 
-    # Reject new submissions when the concurrency cap is reached (#759).
-    if at_concurrency_cap():
-        return func.HttpResponse(
-            json.dumps({"error": "Concurrency cap reached — try again later"}),
-            status_code=429,
-            mimetype="application/json",
-            headers={**cors_headers(req), "Retry-After": "30"},
-        )
-
     # Parse body early so we can check for a prior_submission_id before
     # deciding whether to reserve (avoids double-billing on fallback,
     # fixes #767).
@@ -369,6 +388,12 @@ async def _submit_analysis_request(
         )
 
     submission_id = prior_submission_id if prior_ticket else str(uuid.uuid4())
+
+    # Reserve admission atomically before quota and blob writes.
+    admission_err = _reserve_admission_or_response(req, submission_id)
+    if admission_err:
+        return admission_err
+
     reserved, org_id, quota_err = _resolve_quota(
         user_id,
         body,
@@ -378,6 +403,7 @@ async def _submit_analysis_request(
         active_org=active_org,
     )
     if quota_err:
+        _release_admission_on_failure(submission_id)
         return quota_err
 
     submission_context = _extract_submission_context(body)
@@ -412,9 +438,11 @@ async def _submit_analysis_request(
         log_tag=f"Analysis process started prefix={blob_prefix}",
     )
 
-    # If submission failed, refund the reserved parcel.
-    if resp.status_code != 202 and reserved and org_id:
-        _finalize_run_on_failure(org_id, submission_id)
+    # If submission failed, refund reserved quota and release the slot.
+    if resp.status_code != 202:
+        if reserved and org_id:
+            _finalize_run_on_failure(org_id, submission_id)
+        _release_admission_on_failure(submission_id)
 
     # Persist submission record for analysis history
     if resp.status_code == 202 and (blob_prefix.strip("/") or "analysis") == "analysis":
