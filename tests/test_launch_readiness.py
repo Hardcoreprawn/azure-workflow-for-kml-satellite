@@ -2024,6 +2024,29 @@ class TestInfracostCostGate:
             "Infracost fallback warning must be gated on collect_usage_metrics failure"
         )
 
+    def test_infracost_tofu_init_is_non_blocking(self):
+        content = INFRACOST_YML.read_text()
+        assert "id: tofu_init" in content, "Infracost workflow must define a tofu_init step id"
+        assert "- name: Tofu Init" in content and "continue-on-error: true" in content, (
+            "Infracost workflow must treat Tofu Init as non-blocking so transient backend failures "
+            "do not hard-fail the cost gate"
+        )
+
+    def test_infracost_steps_require_successful_tofu_init(self):
+        content = INFRACOST_YML.read_text()
+        assert "steps.tofu_init.outcome == 'success'" in content, (
+            "Infracost plan, breakdown, comment, and budget steps must run only when tofu_init succeeds"
+        )
+
+    def test_infracost_posts_skip_notice_when_tofu_init_fails(self):
+        content = INFRACOST_YML.read_text()
+        assert "steps.tofu_init.outcome != 'success'" in content, (
+            "Infracost skip notice must trigger when tofu_init fails"
+        )
+        assert "OpenTofu init failed" in content, (
+            "Infracost skip notice must explain tofu init failures as transient and retryable"
+        )
+
     def test_infracost_optional_deps_defined(self):
         pyproject = ROOT / "pyproject.toml"
         content = pyproject.read_text()
