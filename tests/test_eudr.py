@@ -679,7 +679,7 @@ class TestPdfExport:
                     "area_ha": 1.5,
                     "center": {"lat": 1.0, "lon": 2.0},
                     "coords": [[1.0, 2.0], [1.1, 2.0], [1.1, 2.1], [1.0, 2.0]],
-                    "determination": {"deforestation_free": False},
+                    "determination": {"screening_outcome": "signal_detected", "confidence": "medium", "flags": [], "operator_conclusion": None},
                 }
             ],
         }
@@ -778,7 +778,7 @@ class TestPdfExport:
                     "area_ha": 1.0,
                     "center": {"lat": 0.0, "lon": 0.0},
                     "coords": [[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.0]],
-                    "determination": {"deforestation_free": False},
+                    "determination": {"screening_outcome": "signal_detected", "confidence": "medium", "flags": [], "operator_conclusion": None},
                 }
             ],
         }
@@ -808,7 +808,7 @@ class TestPdfExport:
                     "area_ha": 1.0,
                     "center": {"lat": 0.0, "lon": 0.0},
                     "coords": [[0.0, 0.0], [0.1, 0.0], [0.1, 0.1], [0.0, 0.0]],
-                    "determination": {"deforestation_free": False},
+                    "determination": {"screening_outcome": "signal_detected", "confidence": "medium", "flags": [], "operator_conclusion": None},
                 }
             ],
         }

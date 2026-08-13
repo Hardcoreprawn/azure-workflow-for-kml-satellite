@@ -132,9 +132,9 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["center_lat"] = center.get("lat")
         props["center_lon"] = center.get("lon")
 
-        # Determination
+        # Screening result
         det = aoi.get("determination", {})
-        props["determination_status"] = det.get("status", "unknown")
+        props["determination_status"] = det.get("screening_outcome", "insufficient_evidence")
         props["determination_confidence"] = det.get("confidence", "unknown")
         props["determination_flags"] = det.get("flags", [])
 

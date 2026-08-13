@@ -256,7 +256,7 @@ def _build_eudr_csv(
                 "area_ha": aoi.get("area_ha", ""),
                 "center_lat": center.get("lat", ""),
                 "center_lon": center.get("lon", ""),
-                "determination_status": det.get("status", "unknown"),
+                "determination_status": det.get("screening_outcome", "insufficient_evidence"),
                 "determination_confidence": det.get("confidence", "unknown"),
                 "determination_flags": "; ".join(det.get("flags", [])),
                 "worldcover_dominant": lc.get("dominant_class", ""),

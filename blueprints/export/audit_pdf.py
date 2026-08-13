@@ -38,7 +38,9 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
     per_aoi = manifest.get("per_aoi_enrichment", [])
     total = len(per_aoi)
     succeeded = [a for a in per_aoi if "error" not in a]
-    free_count = sum(1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free")
+    free_count = sum(
+        1 for a in succeeded if a.get("determination", {}).get("screening_outcome") == "no_signal_detected"
+    )
     review_count = len(succeeded) - free_count
 
     pdf.ln(8)
@@ -48,7 +50,7 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
         pdf.cell(
             0,
             7,
-            f"Deforestation-free: {free_count} | Further review: {review_count}",
+            f"No signal detected: {free_count} | Requires review: {review_count}",
             align="C",
             new_x="LMARGIN",
             new_y="NEXT",
@@ -86,14 +88,16 @@ def _audit_executive_summary(pdf: Any, manifest: dict[str, Any]) -> None:
     per_aoi = manifest.get("per_aoi_enrichment", [])
     succeeded = [a for a in per_aoi if "error" not in a]
     failed = [a for a in per_aoi if "error" in a]
-    free_count = sum(1 for a in succeeded if a.get("determination", {}).get("status") == "deforestation_free")
+    free_count = sum(
+        1 for a in succeeded if a.get("determination", {}).get("screening_outcome") == "no_signal_detected"
+    )
     review_count = len(succeeded) - free_count
 
     pdf.cell(0, 6, f"Total plots assessed: {len(per_aoi)}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(
         0,
         6,
-        f"Plots classified deforestation-free: {free_count} of {len(succeeded)}",
+        f"Plots with no signal detected: {free_count} of {len(succeeded)}",
         new_x="LMARGIN",
         new_y="NEXT",
     )
@@ -181,11 +185,14 @@ def _audit_methodology(pdf: Any) -> None:
             "with each parcel. Overlap with a protected area is flagged as a risk factor.",
         ),
         (
-            "Deforestation determination",
-            "A parcel is classified 'deforestation_free' when: (1) no significant NDVI "
+            "Satellite screening",
+            "A parcel receives 'no_signal_detected' when: (1) no significant NDVI "
             "loss (>5% of area or >1 ha) is detected in any post-2020 comparison period, "
             "and (2) the overall vegetation trajectory is not declining. Otherwise the "
-            "parcel is classified 'further_review'.",
+            "parcel is classified 'signal_detected' (review required). Parcels with "
+            "insufficient data receive 'insufficient_evidence'. "
+            "This outcome is satellite screening evidence only and does not constitute "
+            "an operator risk conclusion or EUDR compliance claim.",
         ),
         (
             "Limitations",
@@ -312,19 +319,21 @@ def _audit_single_parcel(
         new_y="NEXT",
     )
 
-    # Determination result
+    # Screening result
     det = aoi.get("determination", {})
-    status = det.get("status", "unknown")
+    screening_outcome = det.get("screening_outcome", "insufficient_evidence")
     confidence = det.get("confidence", "unknown")
     pdf.set_font("Helvetica", "B", 10)
     status_label = {
-        "deforestation_free": "DEFORESTATION-FREE",
-        "further_review": "FURTHER REVIEW REQUIRED",
-    }.get(status, status.upper())
+        "no_signal_detected": "NO DEFORESTATION SIGNAL DETECTED",
+        "signal_detected": "SIGNAL DETECTED - REVIEW REQUIRED",
+        "insufficient_evidence": "INSUFFICIENT EVIDENCE",
+        "error": "ERROR",
+    }.get(screening_outcome, screening_outcome.upper())
     pdf.cell(
         0,
         7,
-        f"Determination: {status_label} (confidence: {confidence})",
+        f"Screening: {status_label} (confidence: {confidence})",
         new_x="LMARGIN",
         new_y="NEXT",
     )

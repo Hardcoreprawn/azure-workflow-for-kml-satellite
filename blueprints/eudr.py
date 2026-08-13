@@ -571,7 +571,7 @@ def _summary_rows_from_manifest(
                 "center_lat": center.get("lat", ""),
                 "center_lon": center.get("lon", ""),
                 "determination_status": (
-                    "error" if "error" in aoi else ("compliant" if det.get("deforestation_free") else "non_compliant")
+                    "error" if "error" in aoi else det.get("screening_outcome", "insufficient_evidence")
                 ),
                 "determination_confidence": det.get("confidence", ""),
                 "determination_flags": "; ".join(det.get("flags", [])),

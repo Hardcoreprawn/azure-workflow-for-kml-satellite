@@ -1,4 +1,4 @@
-"""Tests for deforestation-free determination (#603)."""
+"""Tests for satellite screening determination (#603, #1341)."""
 
 from __future__ import annotations
 
@@ -93,52 +93,59 @@ def _make_enrichment(
 
 
 class TestDeforestationDetermination:
-    def test_clean_parcel_is_deforestation_free(self):
+    def test_clean_parcel_has_no_signal_detected(self):
+        """Clean satellite result → screening_outcome is 'no_signal_detected', not a compliance claim."""
         enrichment = _make_enrichment()
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is True
+        assert det["screening_outcome"] == "no_signal_detected"
         assert det["confidence"] == "high"
         assert det["flags"] == []
+
+    def test_clean_result_does_not_set_operator_conclusion(self):
+        """A clean satellite result must NOT create an operator conclusion (#1341)."""
+        enrichment = _make_enrichment()
+        det = determine_deforestation_free(enrichment)
+        assert det["operator_conclusion"] is None
 
     def test_significant_loss_flags(self):
         enrichment = _make_enrichment(loss_pct=8.0, loss_ha=2.5)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert any("Vegetation loss" in f for f in det["flags"])
 
     def test_declining_trajectory_flags(self):
         enrichment = _make_enrichment(trajectory="Declining", avg_delta=-0.06)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert any("declining" in f.lower() for f in det["flags"])
 
     def test_wdpa_protected_area_flags(self):
         enrichment = _make_enrichment(wdpa_protected=True)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert any("WDPA" in f for f in det["flags"])
 
-    def test_no_data_returns_low_confidence(self):
+    def test_no_data_returns_insufficient_evidence(self):
         enrichment = _make_enrichment(comparisons=0, season_changes=[])
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "insufficient_evidence"
         assert det["confidence"] == "low"
 
     def test_loss_below_threshold_passes(self):
         enrichment = _make_enrichment(loss_pct=3.0, loss_ha=0.5)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is True
+        assert det["screening_outcome"] == "no_signal_detected"
 
     def test_loss_pct_above_but_ha_below_passes(self):
         """Small absolute area shouldn't trigger even with high percentage."""
         enrichment = _make_enrichment(loss_pct=10.0, loss_ha=0.3)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is True
+        assert det["screening_outcome"] == "no_signal_detected"
 
     def test_custom_thresholds(self):
         enrichment = _make_enrichment(loss_pct=3.0, loss_ha=2.0)
         det = determine_deforestation_free(enrichment, loss_pct_threshold=2.0, loss_ha_threshold=0.5)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
 
     def test_evidence_contains_change_detection(self):
         enrichment = _make_enrichment()
@@ -165,7 +172,7 @@ class TestDeforestationDetermination:
         det = determine_deforestation_free(enrichment)
         assert det["evidence"]["worldcover"]["available"] is False
 
-    def test_multiple_flags_medium_or_high_confidence(self):
+    def test_multiple_flags_high_confidence(self):
         enrichment = _make_enrichment(
             loss_pct=8.0,
             loss_ha=2.0,
@@ -174,20 +181,20 @@ class TestDeforestationDetermination:
             wdpa_protected=True,
         )
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert len(det["flags"]) >= 3
         assert det["confidence"] == "high"
 
     def test_lulc_change_detected_flags(self):
         enrichment = _make_enrichment(lulc_available=True, lulc_change_detected=True)
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert any("IO LULC" in f and "change" in f for f in det["flags"])
 
     def test_lulc_declining_trend_flags(self):
         enrichment = _make_enrichment(lulc_available=True, lulc_trend="declining")
         det = determine_deforestation_free(enrichment)
-        assert det["deforestation_free"] is False
+        assert det["screening_outcome"] == "signal_detected"
         assert any("declining" in f.lower() for f in det["flags"])
 
     def test_lulc_evidence_recorded(self):

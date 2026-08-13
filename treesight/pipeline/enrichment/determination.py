@@ -1,15 +1,38 @@
-"""Deforestation-free determination per AOI (#603).
+"""Satellite screening determination per AOI (#603, #1341).
 
-Evaluates enrichment results to produce a binary deforestation-free
-determination and structured evidence summary for EUDR compliance.
+Evaluates enrichment results to produce a machine screening outcome and
+structured evidence summary for EUDR due-diligence support.
+
+The screening outcome reflects what the satellite data shows; it is NOT
+a legal compliance claim.  An operator risk conclusion (separate, human-owned)
+is required before any EUDR assertion can be made.
+
+Screening outcomes
+------------------
+``no_signal_detected``
+    All checks passed and sufficient data exists.  Equivalent to the former
+    ``deforestation_free=True`` result; means *no deforestation signal was
+    detected by satellite*, not that the parcel is legally compliant.
+
+``signal_detected``
+    One or more flags were raised (vegetation loss, declining trajectory, etc.).
+
+``insufficient_evidence``
+    Not enough satellite data to reach a conclusion (comparisons == 0).
+
+``error``
+    An exception occurred during determination (set by callers, not this fn).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
+
+# Valid machine screening outcomes.
+ScreeningOutcome = Literal["no_signal_detected", "signal_detected", "insufficient_evidence", "error"]
 
 # Thresholds for the algorithmic determination.
 # A parcel is "deforestation-free" when ALL conditions hold:
@@ -154,8 +177,12 @@ def determine_deforestation_free(
     Returns
     -------
     dict
-        ``{"deforestation_free": bool, "confidence": str,
-          "flags": list[str], "evidence": dict}``
+        ``{"screening_outcome": ScreeningOutcome, "confidence": str,
+          "flags": list[str], "evidence": dict, "operator_conclusion": None}``
+
+        ``operator_conclusion`` is always ``None`` here; it is a human-owned
+        field that must be set explicitly by a reviewer — the machine outcome
+        never implies a legal compliance claim.
     """
     flags: list[str] = []
     evidence: dict[str, Any] = {}
@@ -171,20 +198,24 @@ def determine_deforestation_free(
 
     _assess_supplementary_layers(enrichment, flags, evidence)
 
-    # ── Determination ─────────────────────────────────────────
+    # ── Screening outcome ──────────────────────────────────────
     has_data = summary.get("comparisons", 0) > 0
-    deforestation_free = has_data and len(flags) == 0
 
     if not has_data:
+        screening_outcome: ScreeningOutcome = "insufficient_evidence"
         confidence = "low"
     elif flags:
+        screening_outcome = "signal_detected"
         confidence = "medium" if len(flags) == 1 else "high"
     else:
+        screening_outcome = "no_signal_detected"
         confidence = "high"
 
     return {
-        "deforestation_free": deforestation_free,
+        "screening_outcome": screening_outcome,
         "confidence": confidence,
         "flags": flags,
         "evidence": evidence,
+        # operator_conclusion is always None from the machine; set by a human reviewer.
+        "operator_conclusion": None,
     }

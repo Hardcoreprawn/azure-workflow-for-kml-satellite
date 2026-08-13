@@ -417,7 +417,7 @@ class TestSummaryRowsFromManifest:
                     "area_ha": 10.5,
                     "center": {"lat": -1.5, "lon": 37.5},
                     "determination": {
-                        "deforestation_free": True,
+                        "screening_outcome": "no_signal_detected",
                         "confidence": "high",
                         "flags": [],
                     },
@@ -429,7 +429,7 @@ class TestSummaryRowsFromManifest:
         row = rows[0]
         assert row["run_id"] == "run-001"
         assert row["parcel_name"] == "Parcel A"
-        assert row["determination_status"] == "compliant"
+        assert row["determination_status"] == "no_signal_detected"
         assert row["determination_confidence"] == "high"
         assert row["overridden"] == "no"
         assert row["note"] == ""
@@ -444,7 +444,7 @@ class TestSummaryRowsFromManifest:
                     "area_ha": 5.0,
                     "center": {"lat": 0.0, "lon": 0.0},
                     "determination": {
-                        "deforestation_free": False,
+                        "screening_outcome": "signal_detected",
                         "confidence": "high",
                         "flags": ["Vegetation loss 12.0% (1.5 ha) in 2024-Q1"],
                     },
@@ -452,7 +452,7 @@ class TestSummaryRowsFromManifest:
             ]
         }
         rows = _summary_rows_from_manifest("run-002", "2026-02-01T08:00:00Z", manifest, None)
-        assert rows[0]["determination_status"] == "non_compliant"
+        assert rows[0]["determination_status"] == "signal_detected"
         assert "Vegetation loss" in rows[0]["determination_flags"]
 
     def test_merges_override_and_note(self):
@@ -465,7 +465,7 @@ class TestSummaryRowsFromManifest:
                     "area_ha": 3.0,
                     "center": {"lat": 1.0, "lon": 30.0},
                     "determination": {
-                        "deforestation_free": False,
+                        "screening_outcome": "signal_detected",
                         "confidence": "medium",
                         "flags": [],
                     },
@@ -497,7 +497,7 @@ class TestSummaryRowsFromManifest:
                     "area_ha": 1.0,
                     "center": {},
                     "determination": {
-                        "deforestation_free": False,
+                        "screening_outcome": "signal_detected",
                         "confidence": "low",
                         "flags": [],
                     },
@@ -521,7 +521,7 @@ class TestSummaryRowsFromManifest:
                     "area_ha": 1.0,
                     "center": {},
                     "determination": {
-                        "deforestation_free": False,
+                        "screening_outcome": "signal_detected",
                         "confidence": "low",
                         "flags": [],
                     },
@@ -570,7 +570,7 @@ class TestEudrSummaryExport:
                     "area_ha": 8.0,
                     "center": {"lat": -2.0, "lon": 36.0},
                     "determination": {
-                        "deforestation_free": True,
+                        "screening_outcome": "no_signal_detected",
                         "confidence": "high",
                         "flags": [],
                     },
@@ -592,7 +592,7 @@ class TestEudrSummaryExport:
         body = resp.get_body().decode()
         assert "run_id" in body  # header present
         assert "Parcel Alpha" in body
-        assert "compliant" in body
+        assert "no_signal_detected" in body
 
     @_REQUIRE_AUTH
     @patch(
