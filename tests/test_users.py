@@ -586,7 +586,9 @@ class TestDeleteUser:
         """User is not a member of any org; just delete the user doc."""
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
-            patch("treesight.security.orgs.list_orgs_for_user", return_value=[]),
+            patch("treesight.security.orgs.list_orgs_for_user_strict", return_value=[]),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
+            patch("treesight.storage.cosmos.query_items", return_value=[]),
             patch("treesight.storage.cosmos.delete_item") as delete,
         ):
             from treesight.security.users import delete_user
@@ -599,13 +601,16 @@ class TestDeleteUser:
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch(
-                "treesight.security.orgs.list_orgs_for_user",
+                "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[
                     {"org_id": "org1", "org_role": "member"},
                     {"org_id": "org2", "org_role": "member"},
                 ],
             ),
             patch("treesight.security.orgs.remove_member") as remove_member,
+            patch("treesight.storage.cosmos.read_item", return_value=None),
+            patch("treesight.storage.cosmos.query_items", return_value=[]),
+            patch("treesight.security.orgs.revoke_pending_invites_for_user", return_value=0),
             patch("treesight.storage.cosmos.delete_item") as delete,
         ):
             from treesight.security.users import delete_user
@@ -619,12 +624,15 @@ class TestDeleteUser:
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch(
-                "treesight.security.orgs.list_orgs_for_user",
+                "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
             patch("treesight.security.orgs.get_org") as get_org,
             patch("treesight.security.orgs.change_member_role") as change_role,
             patch("treesight.security.orgs.remove_member") as remove_member,
+            patch("treesight.security.orgs.revoke_pending_invites_for_user", return_value=0),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
+            patch("treesight.storage.cosmos.query_items", return_value=[]),
             patch("treesight.storage.cosmos.delete_item"),
         ):
             org_doc = {
@@ -650,7 +658,7 @@ class TestDeleteUser:
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch(
-                "treesight.security.orgs.list_orgs_for_user",
+                "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
             patch("treesight.security.orgs.get_org") as get_org,
@@ -671,7 +679,7 @@ class TestDeleteUser:
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
             patch(
-                "treesight.security.orgs.list_orgs_for_user",
+                "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
             patch("treesight.security.orgs.get_org") as get_org,
@@ -691,10 +699,11 @@ class TestDeleteUser:
                 delete_user("u1", transfer_to_user_id="u3")
 
     def test_delete_user_cascades_data_deletion(self):
-        """All user data (runs, analysis) should be marked for deletion."""
+        """All user data (runs) should be deleted before the user document."""
         with (
             patch("treesight.storage.cosmos.cosmos_available", return_value=True),
-            patch("treesight.security.orgs.list_orgs_for_user", return_value=[]),
+            patch("treesight.security.orgs.list_orgs_for_user_strict", return_value=[]),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
             patch("treesight.storage.cosmos.delete_item") as delete,
             patch("treesight.storage.cosmos.query_items") as query,
         ):
@@ -708,6 +717,7 @@ class TestDeleteUser:
 
             delete_user("u1")
 
+            # query_items called for runs (org lookup is patched via list_orgs_for_user_strict)
             query.assert_called_once_with(
                 "runs",
                 "SELECT c.id FROM c WHERE c.user_id = @user_id",

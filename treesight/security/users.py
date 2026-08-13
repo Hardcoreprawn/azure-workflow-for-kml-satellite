@@ -252,31 +252,40 @@ def update_user_profile(user_id: str, *, display_name: str) -> dict[str, Any]:
 
 
 def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None:
-    """Delete a user account with cascade cleanup.
+    """Delete a user account with cascade cleanup (GDPR erasure).
 
-    - Removes user from all orgs
-    - If user is sole owner of an org, must transfer to another member
-    - Deletes all user data (runs, analysis, etc.)
-    - Removes the user document
+    Execution order:
+    1. Fail-closed org membership lookup — any storage error aborts erasure.
+    2. Org ownership transfer / membership removal.
+    3. Revoke all pending invites sent to this user's email.
+    4. Cancel active subscription (marks it cancelled; billing records retained
+       for legal/tax purposes).
+    5. Delete all personal run records.  Any item failure is collected; if any
+       deletion failed, the user document is NOT removed so erasure is retryable.
+    6. Delete the user identity document — the very last step.
 
-    Raises ValueError if sole owner without transfer target or transfer target
-    is not a member of the org.
+    Raises:
+        ValueError: sole owner without a transfer target, or transfer target not
+            a member of the org.
+        RuntimeError: Cosmos DB unavailable, or any cleanup step failed that
+            prevents a complete erasure (user doc is preserved for retry).
     """
     from treesight.security.orgs import (
         change_member_role,
         get_org,
-        list_orgs_for_user,
+        list_orgs_for_user_strict,
         remove_member,
+        revoke_pending_invites_for_user,
     )
     from treesight.storage.cosmos import cosmos_available, delete_item, query_items
 
     if not cosmos_available():
         raise RuntimeError("Cosmos DB is not available")
 
-    # Get all orgs the user is a member of
-    user_orgs = list_orgs_for_user(user_id)
+    # 1. Fail-closed org lookup — propagate any storage error.
+    user_orgs = list_orgs_for_user_strict(user_id)
 
-    # Handle org membership: remove from orgs, transfer ownership if needed
+    # 2. Org ownership transfer / membership removal.
     for user_org in user_orgs:
         org_id = user_org.get("org_id")
         if not isinstance(org_id, str) or not org_id:
@@ -285,7 +294,6 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
         org_role = user_org.get("org_role")
 
         if org_role == "owner":
-            # Check if sole owner
             org = get_org(org_id)
             if not org:
                 logger.warning("Org %s not found during delete_user", org_id)
@@ -293,22 +301,17 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
 
             owners = [m for m in org.get("members", []) if m["role"] == "owner"]
             if len(owners) == 1:
-                # User is sole owner — must transfer
                 if not transfer_to_user_id:
                     raise ValueError(
                         f"User {user_id} is sole owner of org {org_id}; "
                         "must specify transfer_to_user_id to delete account"
                     )
-
-                # Verify transfer target is a member
                 target_member = next(
                     (m for m in org.get("members", []) if m["user_id"] == transfer_to_user_id),
                     None,
                 )
                 if not target_member:
                     raise ValueError(f"User {transfer_to_user_id} is not a member of org {org_id}")
-
-                # Promote transfer target to owner
                 change_member_role(org_id, transfer_to_user_id, "owner")
                 logger.info(
                     "Ownership transferred org=%s from=%s to=%s",
@@ -317,30 +320,93 @@ def delete_user(user_id: str, *, transfer_to_user_id: str | None = None) -> None
                     transfer_to_user_id,
                 )
 
-        # Remove user from org
         remove_member(org_id, user_id)
 
-    # Cascade delete user data (runs, analysis, etc.)
-    try:
-        runs = query_items(
-            "runs",
-            "SELECT c.id FROM c WHERE c.user_id = @user_id",
-            parameters=[{"name": "@user_id", "value": user_id}],
-            partition_key=user_id,
-        )
-        for run in runs:
-            try:
-                delete_item("runs", run["id"], user_id)
-            except Exception:
-                logger.warning(
-                    "Failed to delete run during user deletion user=%s run=%s",
-                    user_id,
-                    run["id"],
-                    exc_info=True,
-                )
-    except Exception:
-        logger.warning("Failed to query user runs during deletion user=%s", user_id, exc_info=True)
+    # 3. Revoke pending invites for this user's email.
+    user_doc = _get_user_for_erasure(user_id)
+    user_email = user_doc.get("email", "") if user_doc else ""
+    if user_email:
+        revoked = revoke_pending_invites_for_user(user_email)
+        if revoked:
+            logger.info("Revoked %d pending invite(s) on erasure user=%s", revoked, user_id)
 
-    # Delete user document
+    # 4. Cancel active subscription (preserve record for billing/legal retention).
+    _cancel_subscription_on_erasure(user_id)
+
+    # 5. Delete run records; collect any item-level failures.
+    failed_runs = _delete_user_runs(user_id, query_items, delete_item)
+    if failed_runs:
+        raise RuntimeError(
+            f"Erasure incomplete for user={user_id}: "
+            f"{len(failed_runs)} run(s) could not be deleted: {failed_runs}. "
+            "User identity preserved — retry erasure to complete."
+        )
+
+    # 6. Delete user identity document — only reached if all cleanup succeeded.
     delete_item("users", user_id, user_id)
     logger.info("User deleted user=%s", user_id)
+
+
+def _get_user_for_erasure(user_id: str) -> dict[str, Any] | None:
+    """Read the user document for erasure purposes; return None on failure."""
+    from treesight.storage.cosmos import read_item
+
+    try:
+        return read_item("users", user_id, user_id)
+    except Exception:
+        logger.warning("Could not read user doc for erasure user=%s", user_id, exc_info=True)
+        return None
+
+
+def _cancel_subscription_on_erasure(user_id: str) -> None:
+    """Mark the user's subscription as cancelled on account erasure.
+
+    Billing history is intentionally retained for legal/tax purposes.
+    This does not delete the subscription record; it stamps it as cancelled.
+    """
+    from datetime import UTC, datetime
+
+    from treesight.storage.cosmos import read_item, upsert_item
+
+    try:
+        sub = read_item("subscriptions", user_id, user_id)
+        if sub and sub.get("status") not in ("cancelled", "none", None):
+            sub["status"] = "cancelled"
+            sub["cancelled_at"] = datetime.now(UTC).isoformat()
+            sub["cancelled_reason"] = "gdpr_erasure"
+            upsert_item("subscriptions", sub)
+            logger.info("Subscription cancelled on erasure user=%s", user_id)
+    except Exception:
+        logger.warning("Failed to cancel subscription on erasure user=%s", user_id, exc_info=True)
+
+
+def _delete_user_runs(
+    user_id: str,
+    query_items: Any,
+    delete_item: Any,
+) -> list[str]:
+    """Delete all run records for *user_id*.
+
+    Returns a list of run IDs that could not be deleted (empty means success).
+    Raises if the run query itself fails (not a partial item failure).
+    """
+    runs = query_items(
+        "runs",
+        "SELECT c.id FROM c WHERE c.user_id = @user_id",
+        parameters=[{"name": "@user_id", "value": user_id}],
+        partition_key=user_id,
+    )
+    failed: list[str] = []
+    for run in runs:
+        run_id = run["id"]
+        try:
+            delete_item("runs", run_id, user_id)
+        except Exception:
+            logger.error(
+                "Failed to delete run during user erasure user=%s run=%s",
+                user_id,
+                run_id,
+                exc_info=True,
+            )
+            failed.append(run_id)
+    return failed

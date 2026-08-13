@@ -689,30 +689,74 @@ def list_orgs_for_user(user_id: str) -> list[dict[str, Any]]:
     We include the full ``members`` array and extract the role in Python
     to guarantee ``org_role`` is a string (not ``["owner"]``).
     """
-    from treesight.storage.cosmos import query_items
-
     try:
-        results = query_items(
-            "orgs",
-            "SELECT c.org_id, c.name, c.created_at, c.members"
-            " FROM c WHERE c.doc_type = 'org'"
-            ' AND ARRAY_CONTAINS(c.members, {"user_id": @user_id}, true)',
-            # Note: Cosmos SQL requires quoted property names in object literals.
-            parameters=[{"name": "@user_id", "value": user_id}],
-        )
-        # Extract role from members list; avoids the Cosmos subquery array-projection issue.
-        # Copy each row before mutating so we don't disturb Cosmos SDK objects (or mock stores).
-        output = []
-        for result in results:
-            row = {k: v for k, v in result.items() if k != "members"}
-            members = result.get("members", [])
-            member = next((m for m in members if m["user_id"] == user_id), None)
-            row["org_role"] = member["role"] if member else None
-            output.append(row)
-        return output
+        return _query_user_orgs(user_id)
     except Exception:
         logger.warning("Failed to query orgs for user=%s", user_id, exc_info=True)
         return []
+
+
+def list_orgs_for_user_strict(user_id: str) -> list[dict[str, Any]]:
+    """Fail-closed variant of :func:`list_orgs_for_user`.
+
+    Unlike the public helper, this function propagates any storage error
+    instead of returning an empty list.  Use this when a false-empty result
+    could silently skip org cleanup (e.g. account erasure).
+
+    Raises:
+        Exception: any storage or network error from the underlying query.
+    """
+    return _query_user_orgs(user_id)
+
+
+def _query_user_orgs(user_id: str) -> list[dict[str, Any]]:
+    """Execute the org-membership query and return normalised rows.
+
+    Shared by :func:`list_orgs_for_user` and :func:`list_orgs_for_user_strict`.
+    Callers decide whether to catch or propagate exceptions.
+    """
+    from treesight.storage.cosmos import query_items
+
+    results = query_items(
+        "orgs",
+        "SELECT c.org_id, c.name, c.created_at, c.members"
+        " FROM c WHERE c.doc_type = 'org'"
+        ' AND ARRAY_CONTAINS(c.members, {"user_id": @user_id}, true)',
+        # Note: Cosmos SQL requires quoted property names in object literals.
+        parameters=[{"name": "@user_id", "value": user_id}],
+    )
+    # Extract role from members list; avoids the Cosmos subquery array-projection issue.
+    # Copy each row before mutating so we don't disturb Cosmos SDK objects (or mock stores).
+    output = []
+    for result in results:
+        row = {k: v for k, v in result.items() if k != "members"}
+        members = result.get("members", [])
+        member = next((m for m in members if m["user_id"] == user_id), None)
+        row["org_role"] = member["role"] if member else None
+        output.append(row)
+    return output
+
+
+def revoke_pending_invites_for_user(user_email: str) -> int:
+    """Revoke all pending invites sent to *user_email* across all orgs.
+
+    Returns the count of invites revoked.  Raises on storage failure so the
+    caller (account erasure) can detect incomplete cleanup.
+    """
+    from treesight.storage.cosmos import query_items, upsert_item
+
+    now = datetime.now(UTC).isoformat()
+    results = query_items(
+        "orgs",
+        "SELECT * FROM c WHERE c.doc_type = 'invite' AND LOWER(c.email) = LOWER(@email) AND c.status = 'pending'",
+        parameters=[{"name": "@email", "value": user_email.lower().strip()}],
+    )
+    for invite in results:
+        invite["status"] = "revoked"
+        invite["revoked_at"] = now
+        upsert_item("orgs", invite)
+        logger.info("Invite revoked on erasure org=%s email=%s", invite.get("org_id"), user_email)
+    return len(results)
 
 
 # ── Helpers ──────────────────────────────────────────────────
