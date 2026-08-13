@@ -25,7 +25,7 @@ class AdmissionUnavailableError(RuntimeError):
     """Raised when admission state cannot be read or updated safely."""
 
 
-@dataclass(frozen=True)
+@dataclass
 class _AdmissionState:
     doc: dict[str, Any]
     etag: str
@@ -148,7 +148,10 @@ def reserve_admission_slot(
                 if slots != loaded.doc.get("active_slots"):
                     loaded.doc["active_slots"] = slots
                     loaded.doc["updated_at"] = now.isoformat()
-                    _replace_state(container_name, loaded)
+                    try:
+                        _replace_state(container_name, loaded)
+                    except AdmissionUnavailableError:
+                        logger.debug("admission_slot_denied stale-save conflict; returning denial")
                 return False
 
             slots[instance_id] = now.isoformat()
@@ -173,7 +176,9 @@ def release_admission_slot(
 ) -> bool:
     """Release a previously reserved admission slot.
 
-    Returns True when a slot was removed. No-op for unknown instance IDs.
+    Returns True when a slot was removed. Unknown instance IDs are treated as
+    no-op releases, but storage failures can still raise
+    :class:`AdmissionUnavailableError`.
     """
     from treesight import config
     from treesight.storage import cosmos as _cosmos

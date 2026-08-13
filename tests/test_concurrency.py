@@ -8,6 +8,8 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
+from threading import Lock
 from unittest.mock import patch
 
 import azure.functions as func
@@ -122,7 +124,7 @@ class TestCountActiveRuns:
         from treesight.pipeline.concurrency import count_active_runs
 
         stale = "2000-01-01T00:00:00+00:00"
-        fresh = "2100-01-01T00:00:00+00:00"
+        fresh = (datetime.now(UTC) + timedelta(days=365 * 50)).isoformat()
         doc = {"id": "x", "user_id": "__system__", "active_slots": {"stale": stale, "fresh": fresh}}
         replace_calls = []
 
@@ -155,10 +157,11 @@ class TestAdmissionReservation:
     def test_reserve_denies_when_cap_reached(self):
         from treesight.pipeline.concurrency import reserve_admission_slot
 
+        future = (datetime.now(UTC) + timedelta(days=365 * 50)).isoformat()
         doc = {
             "id": "x",
             "user_id": "__system__",
-            "active_slots": {"a": "2100-01-01T00:00:00+00:00", "b": "2100-01-01T00:00:00+00:00"},
+            "active_slots": {"a": future, "b": future},
         }
 
         with (
@@ -172,7 +175,8 @@ class TestAdmissionReservation:
     def test_reserve_is_idempotent_for_same_instance(self):
         from treesight.pipeline.concurrency import reserve_admission_slot
 
-        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": "2100-01-01T00:00:00+00:00"}}
+        future = (datetime.now(UTC) + timedelta(days=365 * 50)).isoformat()
+        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": future}}
         with (
             patch("treesight.config.MAX_CONCURRENT_JOBS", 2),
             patch("treesight.config.MAX_JOB_DURATION_MINUTES", 60),
@@ -203,16 +207,19 @@ class TestAdmissionReservation:
         from treesight.storage.cosmos import EtagPreconditionFailedError
 
         store = {"etag": "1", "doc": {"id": "x", "user_id": "__system__", "active_slots": {}}}
+        store_lock = Lock()
 
         def _read(_container_name, _item_id, _partition_key):
-            return deepcopy(store["doc"]), store["etag"]
+            with store_lock:
+                return deepcopy(store["doc"]), store["etag"]
 
         def _replace(_container_name, item, *, etag):
-            if etag != store["etag"]:
-                raise EtagPreconditionFailedError("conflict")
-            store["doc"] = deepcopy(item)
-            store["etag"] = str(int(store["etag"]) + 1)
-            return item
+            with store_lock:
+                if etag != store["etag"]:
+                    raise EtagPreconditionFailedError("conflict")
+                store["doc"] = deepcopy(item)
+                store["etag"] = str(int(store["etag"]) + 1)
+                return item
 
         with (
             patch("treesight.config.MAX_CONCURRENT_JOBS", 1),
@@ -233,7 +240,8 @@ class TestAdmissionRelease:
     def test_release_unknown_slot_is_noop(self):
         from treesight.pipeline.concurrency import release_admission_slot
 
-        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": "2100-01-01T00:00:00+00:00"}}
+        future = (datetime.now(UTC) + timedelta(days=365 * 50)).isoformat()
+        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": future}}
         with (
             patch("treesight.config.MAX_CONCURRENT_JOBS", 2),
             patch("treesight.config.MAX_JOB_DURATION_MINUTES", 60),
@@ -247,7 +255,8 @@ class TestAdmissionRelease:
     def test_release_removes_slot(self):
         from treesight.pipeline.concurrency import release_admission_slot
 
-        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": "2100-01-01T00:00:00+00:00"}}
+        future = (datetime.now(UTC) + timedelta(days=365 * 50)).isoformat()
+        doc = {"id": "x", "user_id": "__system__", "active_slots": {"inst-1": future}}
         replace_calls = []
 
         def _replace(_container_name, item, *, etag):
