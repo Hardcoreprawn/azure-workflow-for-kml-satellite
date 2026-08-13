@@ -59,8 +59,9 @@ export DEV_WORKSPACE
 
 dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — the single local dev path
 	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
+	source .github/image-config.env && export UV_VERSION && \
 	docker compose down --remove-orphans 2>/dev/null || true
-	docker compose up --build -d
+	source .github/image-config.env && export UV_VERSION && docker compose up --build -d
 	@echo ""
 	@echo "╔══════════════════════════════════════════════════════╗"
 	@echo "║  All services starting via docker-compose:           ║"

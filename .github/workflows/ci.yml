@@ -303,9 +303,11 @@ jobs:
 
       - name: Build app image
         run: |
+          source .github/image-config.env
           APP_VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
           docker build \
             --build-arg BASE_IMAGE="${{ steps.base.outputs.image }}" \
+            --build-arg UV_VERSION="${UV_VERSION}" \
             --build-arg APP_VERSION="${APP_VERSION}" \
             --build-arg GIT_SHA="${{ github.sha }}" \
             -t treesight:ci-check .
