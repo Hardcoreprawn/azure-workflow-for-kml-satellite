@@ -738,10 +738,14 @@ class TestFinalizeRun:
     def test_finalize_completed_success(self):
         from blueprints.pipeline.activities import finalize_run_completed
 
-        with patch("treesight.billing.accounting.finalize_run") as mock_fn:
+        with (
+            patch("treesight.billing.accounting.finalize_run") as mock_fn,
+            patch("treesight.pipeline.concurrency.release_admission_slot") as release_mock,
+        ):
             result = finalize_run_completed({"org_id": "org-1", "instance_id": "inst-1"})
 
         mock_fn.assert_called_once_with(org_id="org-1", instance_id="inst-1", status="completed")
+        release_mock.assert_called_once_with("inst-1")
         assert result == {"finalized": True, "status": "completed"}
 
     def test_finalize_completed_raises_on_error(self):
@@ -757,10 +761,14 @@ class TestFinalizeRun:
     def test_finalize_failed_success(self):
         from blueprints.pipeline.activities import finalize_run_failed
 
-        with patch("treesight.billing.accounting.finalize_run") as mock_fn:
+        with (
+            patch("treesight.billing.accounting.finalize_run") as mock_fn,
+            patch("treesight.pipeline.concurrency.release_admission_slot") as release_mock,
+        ):
             result = finalize_run_failed({"org_id": "org-1", "instance_id": "inst-1"})
 
         mock_fn.assert_called_once_with(org_id="org-1", instance_id="inst-1", status="failed")
+        release_mock.assert_called_once_with("inst-1")
         assert result == {"finalized": True, "status": "failed"}
 
     def test_finalize_failed_raises_on_error(self):

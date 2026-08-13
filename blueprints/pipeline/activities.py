@@ -465,12 +465,14 @@ def finalize_run_completed(payload: _Payload) -> dict[str, Any]:
     Moves runs from reserved → completed in org.usage, emits Stripe metered event.
     """
     from treesight.billing.accounting import finalize_run
+    from treesight.pipeline.concurrency import release_admission_slot
 
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
 
     try:
         finalize_run(org_id=org_id, instance_id=instance_id, status="completed")
+        release_admission_slot(instance_id)
         logger.info(
             "Run finalized (completed) org=%s instance=%s",
             org_id,
@@ -493,12 +495,14 @@ def finalize_run_failed(payload: _Payload) -> dict[str, Any]:
     Moves runs from reserved → refunded in org.usage, refunds member per-period cap.
     """
     from treesight.billing.accounting import finalize_run
+    from treesight.pipeline.concurrency import release_admission_slot
 
     org_id: str = payload["org_id"]
     instance_id: str = payload["instance_id"]
 
     try:
         finalize_run(org_id=org_id, instance_id=instance_id, status="failed")
+        release_admission_slot(instance_id)
         logger.info(
             "Run finalized (failed) org=%s instance=%s",
             org_id,
