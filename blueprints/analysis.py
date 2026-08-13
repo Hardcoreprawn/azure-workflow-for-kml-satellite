@@ -541,16 +541,16 @@ were produced on land not subject to deforestation after 31 December 2020.
 
 {context_str}
 
-Provide a structured EUDR compliance assessment as JSON (respond ONLY \
+Provide a structured satellite screening assessment as JSON (respond ONLY \
 with valid JSON, no markdown):
 {{
-  "deforestation_free": true,
+  "screening_outcome": "no_signal_detected|signal_detected|insufficient_evidence",
   "confidence": "high|medium|low",
   "conclusion": "Clear 1-sentence conclusion starting with the site name",
   "evidence": [
     {{
       "indicator": "Specific data point or observation",
-      "interpretation": "What this means for EUDR compliance"
+      "interpretation": "What this means for EUDR evidence"
     }}
   ],
   "risk_factors": ["Any identified risks or caveats"],
@@ -560,22 +560,24 @@ with valid JSON, no markdown):
 }}
 
 CRITICAL RULES:
-- Lead with the BINARY conclusion: deforestation_free = true or false.
+- Use screening_outcome "no_signal_detected" when ALL seasons show stable or \
+improving vegetation with no significant year-over-year declines.
+- Use "signal_detected" if ANY same-season NDVI decline exceeds 0.15 \
+(indicating possible canopy loss) or other deforestation indicators are present.
+- Use "insufficient_evidence" if data is sparse (<4 observations).
 - Set confidence to "high" only when ALL seasons show stable or improving \
 vegetation with no significant year-over-year declines.
 - Set confidence to "low" if data is sparse (<4 observations) or if \
 any significant decline events were detected.
-- "deforestation_free" should be false if ANY same-season NDVI decline \
-exceeds 0.15 (indicating possible canopy loss).
-- Always include a disclaimer that satellite analysis alone does not \
-constitute full EUDR due diligence.
+- Always include a disclaimer that satellite screening alone does not \
+constitute full EUDR due diligence or an operator risk conclusion.
 - Cite actual NDVI values from the data as evidence.
 - Compare SAME SEASONS across years — seasonal variation is NOT deforestation."""
 
     analysis = generate_analysis(prompt)
     if analysis is None:
         analysis = {
-            "deforestation_free": None,
+            "screening_outcome": "insufficient_evidence",
             "confidence": "unavailable",
             "conclusion": "AI analysis unavailable — all providers failed",
             "evidence": [],

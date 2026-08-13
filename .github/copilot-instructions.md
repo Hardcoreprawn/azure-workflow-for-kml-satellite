@@ -7,6 +7,7 @@
 - Use `docs/PID.md` for product scope and system intent.
 - Use `docs/ARCHITECTURE_OVERVIEW.md`, `docs/API_INTERFACE_REFERENCE.md`, and `docs/OPERATIONS_RUNBOOK.md` when changing runtime behavior, contracts, or operations.
 - Read `docs/adr/0006-ai-agent-governance-verify-dont-trust.md` before treating any agent PR, gate, or backlog state as "done" — it names the specific flaky/broken-on-every-change failure pattern this repo is recovering from and the mechanical countermeasures now required. Verify with evidence; do not trust because it looks finished.
+- Read `docs/adr/0007-functional-immutability-local-first.md` before adding compatibility paths: default to immutable functional transforms and direct schema evolution while pre-live/local-first.
 
 ## Prioritization
 

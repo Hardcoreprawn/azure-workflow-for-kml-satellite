@@ -19,6 +19,7 @@ import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from treesight.pipeline.enrichment.determination import as_screening_determination
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 bp = func.Blueprint()
@@ -555,7 +556,7 @@ def _summary_rows_from_manifest(
     for idx, aoi in enumerate(per_aoi):
         parcel_key = str(idx)
         center = aoi.get("center", {})
-        det = aoi.get("determination", {})
+        determination = as_screening_determination(aoi.get("determination"))
         raw_override = parcel_overrides.get(parcel_key, {})
         override = raw_override if isinstance(raw_override, dict) else {}
         overridden = bool(override) and not override.get("reverted")
@@ -570,11 +571,9 @@ def _summary_rows_from_manifest(
                 "area_ha": aoi.get("area_ha", ""),
                 "center_lat": center.get("lat", ""),
                 "center_lon": center.get("lon", ""),
-                "determination_status": (
-                    "error" if "error" in aoi else ("compliant" if det.get("deforestation_free") else "non_compliant")
-                ),
-                "determination_confidence": det.get("confidence", ""),
-                "determination_flags": "; ".join(det.get("flags", [])),
+                "determination_status": ("error" if "error" in aoi else determination.screening_outcome),
+                "determination_confidence": determination.confidence,
+                "determination_flags": "; ".join(determination.flags),
                 "overridden": "yes" if overridden else "no",
                 "override_reason": override.get("reason", "") if overridden else "",
                 "note": parcel_notes.get(parcel_key, ""),
