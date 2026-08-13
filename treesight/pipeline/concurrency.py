@@ -50,19 +50,18 @@ def _prune_stale_slots(
     now: datetime,
     window_minutes: int,
     mode: str,
-) -> int:
+) -> tuple[dict[str, str], int]:
     cutoff = now - timedelta(minutes=window_minutes)
     min_dt = datetime.min.replace(tzinfo=UTC)
-    stale_ids = [instance_id for instance_id, ts in slots.items() if (_parse_ts(ts) or min_dt) < cutoff]
-    for instance_id in stale_ids:
-        del slots[instance_id]
+    active_slots = {instance_id: ts for instance_id, ts in slots.items() if (_parse_ts(ts) or min_dt) >= cutoff}
+    stale_ids = [instance_id for instance_id in slots if instance_id not in active_slots]
     if stale_ids:
         logger.warning(
             "admission_slots_reconciled mode=%s leaked_slots=%d",
             mode,
             len(stale_ids),
         )
-    return len(stale_ids)
+    return active_slots, len(stale_ids)
 
 
 def _admission_doc() -> dict[str, Any]:
@@ -133,7 +132,12 @@ def reserve_admission_slot(
                 continue
 
             slots = dict(loaded.doc.get("active_slots") or {})
-            _prune_stale_slots(slots, now=now, window_minutes=window_minutes, mode="cosmos")
+            slots, _ = _prune_stale_slots(
+                slots,
+                now=now,
+                window_minutes=window_minutes,
+                mode="cosmos",
+            )
 
             if instance_id in slots:
                 return True
@@ -146,18 +150,24 @@ def reserve_admission_slot(
                     cap,
                 )
                 if slots != loaded.doc.get("active_slots"):
-                    loaded.doc["active_slots"] = slots
-                    loaded.doc["updated_at"] = now.isoformat()
+                    updated_doc = {
+                        **loaded.doc,
+                        "active_slots": slots,
+                        "updated_at": now.isoformat(),
+                    }
                     try:
-                        _replace_state(container_name, loaded)
+                        _replace_state(container_name, _AdmissionState(doc=updated_doc, etag=loaded.etag))
                     except AdmissionUnavailableError:
                         logger.debug("admission_slot_denied stale-save conflict; returning denial")
                 return False
 
             slots[instance_id] = now.isoformat()
-            loaded.doc["active_slots"] = slots
-            loaded.doc["updated_at"] = now.isoformat()
-            _replace_state(container_name, loaded)
+            updated_doc = {
+                **loaded.doc,
+                "active_slots": slots,
+                "updated_at": now.isoformat(),
+            }
+            _replace_state(container_name, _AdmissionState(doc=updated_doc, etag=loaded.etag))
             return True
         except AdmissionUnavailableError as exc:
             last_error = exc
@@ -201,13 +211,21 @@ def release_admission_slot(
                 return False
 
             slots = dict(loaded.doc.get("active_slots") or {})
-            _prune_stale_slots(slots, now=now, window_minutes=window_minutes, mode="cosmos")
+            slots, _ = _prune_stale_slots(
+                slots,
+                now=now,
+                window_minutes=window_minutes,
+                mode="cosmos",
+            )
             removed = slots.pop(instance_id, None) is not None
             if not removed and slots == loaded.doc.get("active_slots"):
                 return False
-            loaded.doc["active_slots"] = slots
-            loaded.doc["updated_at"] = now.isoformat()
-            _replace_state(container_name, loaded)
+            updated_doc = {
+                **loaded.doc,
+                "active_slots": slots,
+                "updated_at": now.isoformat(),
+            }
+            _replace_state(container_name, _AdmissionState(doc=updated_doc, etag=loaded.etag))
             return removed
         except AdmissionUnavailableError as exc:
             last_error = exc
@@ -234,12 +252,20 @@ def count_active_runs(container_name: str = COSMOS_CONTAINER_RUNS) -> int:
         slots = dict(loaded.doc.get("active_slots") or {})
         window_minutes = max(1, int(config.MAX_JOB_DURATION_MINUTES))
         now = _now()
-        pruned = _prune_stale_slots(slots, now=now, window_minutes=window_minutes, mode="cosmos")
+        slots, pruned = _prune_stale_slots(
+            slots,
+            now=now,
+            window_minutes=window_minutes,
+            mode="cosmos",
+        )
         if pruned:
-            loaded.doc["active_slots"] = slots
-            loaded.doc["updated_at"] = now.isoformat()
+            updated_doc = {
+                **loaded.doc,
+                "active_slots": slots,
+                "updated_at": now.isoformat(),
+            }
             try:
-                _replace_state(container_name, loaded)
+                _replace_state(container_name, _AdmissionState(doc=updated_doc, etag=loaded.etag))
             except AdmissionUnavailableError:
                 logger.debug("count_active_runs prune save conflict; returning live count")
         return len(slots)
