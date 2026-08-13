@@ -50,17 +50,19 @@ remove the prd freeze guard, then follow the standard deploy steps below.
 ### Standard deploy
 
 1. Run CI checks.
-2. Deploy infrastructure and app via GitHub Actions deploy workflow.
-3. Confirm Terraform-managed browser origins include the SWA default hostname and the production custom domain so both `/api/*` and direct blob SAS uploads pass CORS preflight.
-4. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
-5. Verify Function host readiness using /api/health.
+2. Confirm custom-domain ownership preflight is green (dev/prd must not claim the same non-empty domain unless a controlled transfer is explicitly approved).
+3. Deploy infrastructure and app via GitHub Actions deploy workflow.
+4. For a one-off production domain transfer, use `workflow_dispatch` with `allow_domain_transfer=true` and execute DNS validation + rollback checks before proceeding.
+5. Confirm Terraform-managed browser origins include the SWA default hostname and the production custom domain so both `/api/*` and direct blob SAS uploads pass CORS preflight.
+6. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
+7. Verify Function host readiness using /api/health.
    Deploy workflow note: compute and orchestrator readiness probes run in parallel and both must pass.
-6. Verify Event Grid subscription reconciliation succeeds.
-7. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion with a valid diagnostics payload shape).
-8. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
-9. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
-10. Treat Function App managed identity as a deploy contract (both apps must remain `SystemAssigned` with non-empty `principalId`); deploy fails fast if identity drifts.
-11. Treat CLI-owned Function App body wiring as intentional (`image`, app settings, platform CORS, scale): `tofu` does not reconcile these fields because they are set and then contract-verified in deploy CI.
+8. Verify Event Grid subscription reconciliation succeeds.
+9. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion with a valid diagnostics payload shape).
+10. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
+11. For direct `analysis/` uploads created by `/api/analysis/submit`, rely on the HTTP submission path as the authoritative orchestration start; BlobCreated automation should only start storage-native uploads outside that prefix.
+12. Treat Function App managed identity as a deploy contract (both apps must remain `SystemAssigned` with non-empty `principalId`); deploy fails fast if identity drifts.
+13. Treat CLI-owned Function App body wiring as intentional (`image`, app settings, platform CORS, scale): `tofu` does not reconcile these fields because they are set and then contract-verified in deploy CI.
 
 workflow_dispatch reproducibility controls for the async smoke gate:
 

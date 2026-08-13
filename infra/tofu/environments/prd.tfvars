@@ -13,6 +13,7 @@ default_tags = {
 }
 budget_amount         = 50
 budget_contact_emails = ["alerts@jablab.dev"]
+# Domain ownership contract: production owns the apex domain.
 custom_domain         = "canopex.hrdcrprwn.com"
 enable_azure_ai       = false
 enable_stripe         = true
