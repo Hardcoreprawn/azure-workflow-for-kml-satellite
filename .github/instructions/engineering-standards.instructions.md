@@ -24,6 +24,14 @@ Write idiomatic, clean, high-reliability Python. Every function should be testab
 - Avoid mutable state. Prefer returning new values over mutating arguments.
 - Use dataclasses or Pydantic models for structured data, not dicts-of-dicts.
 
+### Local-First Schema Policy
+
+- While pre-live/local-first, prefer direct schema evolution over compatibility layers.
+- Update producers, consumers, fixtures, and tests together in one change where practical.
+- Avoid dual-read and dual-write compatibility code unless required by an external boundary.
+- Prefer fail-fast validation and explicit errors over permissive fallback behavior.
+- If a compatibility shim is unavoidable, scope it tightly and track removal work.
+
 ## Error Handling — Let It Crash
 
 - Validate at system boundaries (API handlers, blob trigger, activity entry points).
