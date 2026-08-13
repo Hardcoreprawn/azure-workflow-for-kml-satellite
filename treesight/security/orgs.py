@@ -754,9 +754,12 @@ def revoke_pending_invites_for_user(user_email: str) -> int:
         )
     )
     for invite in pending:
-        invite["status"] = "revoked"
-        invite["revoked_at"] = now
-        upsert_item("orgs", invite)
+        revoked_invite = {
+            **invite,
+            "status": "revoked",
+            "revoked_at": now,
+        }
+        upsert_item("orgs", revoked_invite)
         logger.info("Invite revoked on erasure org=%s email=%s", invite.get("org_id"), user_email)
     return len(pending)
 

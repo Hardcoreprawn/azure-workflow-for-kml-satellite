@@ -379,10 +379,13 @@ def _cancel_subscription_on_erasure(user_id: str) -> None:
 
     sub = read_item("subscriptions", user_id, user_id)
     if sub and sub.get("status") not in ("cancelled", "none", None):
-        sub["status"] = "cancelled"
-        sub["cancelled_at"] = datetime.now(UTC).isoformat()
-        sub["cancelled_reason"] = "gdpr_erasure"
-        upsert_item("subscriptions", sub)
+        cancelled_sub = {
+            **sub,
+            "status": "cancelled",
+            "cancelled_at": datetime.now(UTC).isoformat(),
+            "cancelled_reason": "gdpr_erasure",
+        }
+        upsert_item("subscriptions", cancelled_sub)
         logger.info("Subscription cancelled on erasure user=%s", user_id)
 
 
