@@ -78,7 +78,9 @@ jobs:
             azure-mgmt-resource
 
       - name: Collect Azure usage metrics
+        id: collect_usage_metrics
         if: steps.azure_login.outcome == 'success'
+        continue-on-error: true
         run: |
           python -c "from azure.identity import DefaultAzureCredential; print('SDK import OK')"
           python scripts/collect_infracost_usage.py \
@@ -86,6 +88,11 @@ jobs:
             --resource-group "${{ secrets.DEV_RESOURCE_GROUP }}" \
             --lookback 31 \
             --output infra/tofu/infracost-usage.yml
+
+      - name: Warn when metrics collection falls back to baseline usage file
+        if: steps.azure_login.outcome == 'success' && steps.collect_usage_metrics.outcome == 'failure'
+        run: |
+          echo "::warning::Cost estimate is using the committed infracost-usage.yml baseline because live metrics collection failed. Re-run Infracost to refresh live usage metrics."
 
       # ── OpenTofu plan ──────────────────────────────────────
       - name: Setup OpenTofu

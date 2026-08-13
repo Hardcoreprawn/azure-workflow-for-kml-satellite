@@ -2005,6 +2005,25 @@ class TestInfracostCostGate:
         script = ROOT / "scripts" / "collect_infracost_usage.py"
         assert script.exists(), "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
 
+    def test_infracost_metrics_collection_is_non_blocking(self):
+        content = INFRACOST_YML.read_text()
+        assert "id: collect_usage_metrics" in content, (
+            "Infracost workflow must assign an id to the metrics collection step"
+        )
+        assert "continue-on-error: true" in content, (
+            "Infracost workflow must treat live metrics collection as non-blocking so transient Azure failures "
+            "do not fail the entire cost gate"
+        )
+
+    def test_infracost_warns_on_metrics_fallback(self):
+        content = INFRACOST_YML.read_text()
+        assert "Warn when metrics collection falls back to baseline usage file" in content, (
+            "Infracost workflow must emit a warning when it falls back to committed usage baseline"
+        )
+        assert "steps.collect_usage_metrics.outcome == 'failure'" in content, (
+            "Infracost fallback warning must be gated on collect_usage_metrics failure"
+        )
+
     def test_infracost_optional_deps_defined(self):
         pyproject = ROOT / "pyproject.toml"
         content = pyproject.read_text()
