@@ -7,7 +7,10 @@
 # Base image: ghcr.io/<owner>/treesight-base:latest
 # Built by CI on every push to main.
 # ─────────────────────────────────────────────────────────────
+ARG UV_VERSION=0.11.28
 ARG BASE_IMAGE=treesight-base:latest
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
 FROM ${BASE_IMAGE}
 
 ARG APP_VERSION=0.0.0-dev
@@ -22,7 +25,7 @@ ENV APP_VERSION=${APP_VERSION} \
     GIT_SHA=${GIT_SHA}
 
 # Install uv for fast, deterministic dependency resolution
-COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 # Install Python packages (production only, from lockfile)
 COPY pyproject.toml uv.lock ./

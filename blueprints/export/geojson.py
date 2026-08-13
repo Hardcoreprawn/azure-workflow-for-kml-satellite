@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from treesight.pipeline.enrichment.determination import as_screening_determination
+
 
 def _build_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
     """Build a GeoJSON FeatureCollection from the enrichment manifest.
@@ -132,11 +134,11 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["center_lat"] = center.get("lat")
         props["center_lon"] = center.get("lon")
 
-        # Determination
-        det = aoi.get("determination", {})
-        props["determination_status"] = det.get("status", "unknown")
-        props["determination_confidence"] = det.get("confidence", "unknown")
-        props["determination_flags"] = det.get("flags", [])
+        # Screening result
+        determination = as_screening_determination(aoi.get("determination"))
+        props["determination_status"] = determination.screening_outcome
+        props["determination_confidence"] = determination.confidence
+        props["determination_flags"] = list(determination.flags)
 
         # WorldCover baseline
         wc = aoi.get("worldcover", {})

@@ -10,6 +10,7 @@ Verifies that:
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -232,6 +233,21 @@ def test_image_config_env_has_orch_repo():
     path = REPO_ROOT / ".github" / "image-config.env"
     source = path.read_text()
     assert "ORCH_IMAGE_REPO" in source, ".github/image-config.env must define ORCH_IMAGE_REPO"
+
+
+def test_image_config_env_defines_shared_uv_version():
+    """All project images must receive one pinned uv version from image-config.env."""
+    source = (REPO_ROOT / ".github" / "image-config.env").read_text()
+    assert re.search(r'^UV_VERSION="?\d+\.\d+\.\d+"?$', source, re.MULTILINE)
+
+
+def test_project_dockerfiles_consume_shared_uv_version():
+    """Project Dockerfiles must not drift through hardcoded uv image tags."""
+    for filename in ("Dockerfile", "Dockerfile.orchestrator", "Dockerfile.dev"):
+        source = (REPO_ROOT / filename).read_text()
+        assert "ARG UV_VERSION" in source, f"{filename} must declare ARG UV_VERSION"
+        assert "ghcr.io/astral-sh/uv:${UV_VERSION} AS uv" in source, f"{filename} must use the shared uv build stage"
+        assert not re.search(r"ghcr\.io/astral-sh/uv:\d", source), f"{filename} must not hardcode a uv image version"
 
 
 # ── 5. infra/tofu — orchestrator_image variable and resource ────────────

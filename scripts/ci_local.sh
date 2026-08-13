@@ -51,8 +51,10 @@ trap cleanup EXIT
 # ── Build the dev image (mirrors dev-image.yml) ────────────────────────────
 if [[ "${NO_BUILD:-0}" != "1" ]]; then
   log "Building ${DEV_IMAGE} from Dockerfile.dev (--target dev)"
+  source .github/image-config.env
   UVLOCK_SHA="$(sha256sum uv.lock | cut -d' ' -f1)"
   docker build -f Dockerfile.dev --target dev \
+    --build-arg UV_VERSION="${UV_VERSION}" \
     --build-arg UVLOCK_SHA="${UVLOCK_SHA}" \
     -t "${DEV_IMAGE}" .
 fi

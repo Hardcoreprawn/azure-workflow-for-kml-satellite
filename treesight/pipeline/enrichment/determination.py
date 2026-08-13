@@ -1,15 +1,94 @@
-"""Deforestation-free determination per AOI (#603).
+"""Satellite screening determination per AOI (#603, #1341).
 
-Evaluates enrichment results to produce a binary deforestation-free
-determination and structured evidence summary for EUDR compliance.
+Evaluates enrichment results to produce a machine screening outcome and
+structured evidence summary for EUDR due-diligence support.
+
+The screening outcome reflects what the satellite data shows; it is NOT
+a legal compliance claim.  An operator risk conclusion (separate, human-owned)
+is required before any EUDR assertion can be made.
+
+Screening outcomes
+------------------
+``no_signal_detected``
+    All checks passed and sufficient data exists.  Equivalent to the former
+    ``deforestation_free=True`` result; means *no deforestation signal was
+    detected by satellite*, not that the parcel is legally compliant.
+
+``signal_detected``
+    One or more flags were raised (vegetation loss, declining trajectory, etc.).
+
+``insufficient_evidence``
+    Not enough satellite data to reach a conclusion (comparisons == 0).
+
+``error``
+    An exception occurred during determination (set by callers, not this fn).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal, cast
 
 logger = logging.getLogger(__name__)
+
+# Valid machine screening outcomes.
+ScreeningOutcome = Literal["no_signal_detected", "signal_detected", "insufficient_evidence", "error"]
+
+_VALID_SCREENING_OUTCOMES: set[str] = {
+    "no_signal_detected",
+    "signal_detected",
+    "insufficient_evidence",
+    "error",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ScreeningDetermination:
+    """Immutable determination view.
+
+    This value object decouples call-sites from mutable source dictionaries.
+    """
+
+    screening_outcome: ScreeningOutcome
+    confidence: str
+    flags: tuple[str, ...]
+
+
+def as_screening_determination(value: dict[str, Any] | None) -> ScreeningDetermination:
+    """Normalise determination payloads into an immutable current-schema view.
+
+    Expected form:
+    - ``{"screening_outcome": "no_signal_detected|signal_detected|insufficient_evidence|error"}``
+
+    Local-first policy: we intentionally do not support legacy determination
+    keys such as ``status`` or ``deforestation_free``.
+    """
+    determination = value if isinstance(value, dict) else {}
+
+    raw_outcome = determination.get("screening_outcome", "insufficient_evidence")
+    screening_outcome: ScreeningOutcome
+    if isinstance(raw_outcome, str):
+        candidate = raw_outcome.strip().lower()
+        if candidate in _VALID_SCREENING_OUTCOMES:
+            screening_outcome = cast(ScreeningOutcome, candidate)
+        else:
+            raise ValueError(f"Invalid screening_outcome: {raw_outcome!r}")
+    else:
+        raise ValueError("screening_outcome must be a string")
+
+    raw_confidence = determination.get("confidence")
+    confidence = raw_confidence.strip() if isinstance(raw_confidence, str) and raw_confidence.strip() else "unknown"
+
+    raw_flags = determination.get("flags")
+    flags = tuple(str(flag) for flag in raw_flags) if isinstance(raw_flags, list) else ()
+
+    return ScreeningDetermination(
+        screening_outcome=screening_outcome,
+        confidence=confidence,
+        flags=flags,
+    )
+
 
 # Thresholds for the algorithmic determination.
 # A parcel is "deforestation-free" when ALL conditions hold:
@@ -154,8 +233,12 @@ def determine_deforestation_free(
     Returns
     -------
     dict
-        ``{"deforestation_free": bool, "confidence": str,
-          "flags": list[str], "evidence": dict}``
+        ``{"screening_outcome": ScreeningOutcome, "confidence": str,
+          "flags": list[str], "evidence": dict, "operator_conclusion": None}``
+
+        ``operator_conclusion`` is always ``None`` here; it is a human-owned
+        field that must be set explicitly by a reviewer — the machine outcome
+        never implies a legal compliance claim.
     """
     flags: list[str] = []
     evidence: dict[str, Any] = {}
@@ -171,20 +254,24 @@ def determine_deforestation_free(
 
     _assess_supplementary_layers(enrichment, flags, evidence)
 
-    # ── Determination ─────────────────────────────────────────
+    # ── Screening outcome ──────────────────────────────────────
     has_data = summary.get("comparisons", 0) > 0
-    deforestation_free = has_data and len(flags) == 0
 
     if not has_data:
+        screening_outcome: ScreeningOutcome = "insufficient_evidence"
         confidence = "low"
     elif flags:
+        screening_outcome = "signal_detected"
         confidence = "medium" if len(flags) == 1 else "high"
     else:
+        screening_outcome = "no_signal_detected"
         confidence = "high"
 
     return {
-        "deforestation_free": deforestation_free,
+        "screening_outcome": screening_outcome,
         "confidence": confidence,
         "flags": flags,
         "evidence": evidence,
+        # operator_conclusion is always None from the machine; set by a human reviewer.
+        "operator_conclusion": None,
     }

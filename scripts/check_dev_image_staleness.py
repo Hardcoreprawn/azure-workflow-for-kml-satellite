@@ -5,7 +5,8 @@ The dev image (``Dockerfile.dev``) bakes two OCI labels:
 
 * ``org.canopex.uvlock-sha256``  — SHA-256 of ``uv.lock`` (dependency drift)
 * ``org.canopex.build-inputs-sha256`` — combined SHA-256 of ``Dockerfile.dev``,
-  ``pyproject.toml``, and all files under ``rust/`` (image-recipe drift)
+  ``.github/image-config.env``, ``pyproject.toml``, and all files under
+  ``rust/`` (image-recipe/toolchain drift)
 
 This guard compares the repo's current digests against the labels on a given
 image reference and fails loudly when either diverges. The comparison logic is
@@ -29,7 +30,7 @@ LABEL_KEY = "org.canopex.uvlock-sha256"
 LABEL_KEY_BUILD = "org.canopex.build-inputs-sha256"
 DEFAULT_LOCK = "uv.lock"
 DEFAULT_DOCKERFILE = "Dockerfile.dev"
-_BUILD_EXTRAS = ["pyproject.toml", "rust"]
+_BUILD_EXTRAS = [".github/image-config.env", "pyproject.toml", "rust"]
 
 
 def uv_lock_digest(lock_path: str | Path) -> str:

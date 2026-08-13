@@ -22,11 +22,13 @@
 #                   it's a separate, explicitly-targeted stage rather than
 #                   bloating every other job/devcontainer.
 # ─────────────────────────────────────────────────────────────
+ARG UV_VERSION=0.11.28
 ARG BASE_IMAGE=ghcr.io/hardcoreprawn/treesight-base:latest
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 # ── Stage 1: build the treesight_rs wheel ───────────────────
 FROM ${BASE_IMAGE} AS rust-build
-COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 # Pin the interpreter to the base runtime's CPython so the wheel is ABI-tagged
 # for the same Python the final image (and production) runs, and uv never
 # downloads a managed CPython.
@@ -46,7 +48,7 @@ RUN uv build --wheel --out-dir /wheels /build/rust
 
 # ── Stage 2: runtime dev image ──────────────────────────────
 FROM ${BASE_IMAGE} AS dev
-COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /usr/local/bin/uv
+COPY --from=uv /uv /usr/local/bin/uv
 
 # Digest of the uv.lock this image was built from. The publish workflow sets
 # it; a stale image (lock changed but image not rebuilt) is detected by

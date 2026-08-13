@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import json
@@ -478,9 +479,10 @@ def eudr_manifest():
                 },
                 "wdpa": {"checked": True, "is_protected": False},
                 "determination": {
-                    "status": "deforestation_free",
+                    "screening_outcome": "no_signal_detected",
                     "confidence": "high",
                     "flags": [],
+                    "operator_conclusion": None,
                 },
             },
             {
@@ -513,9 +515,10 @@ def eudr_manifest():
                 },
                 "wdpa": {"checked": True, "is_protected": True},
                 "determination": {
-                    "status": "further_review",
+                    "screening_outcome": "signal_detected",
                     "confidence": "medium",
                     "flags": ["Vegetation loss 8.0% (2.5 ha) in spring 2023-2024"],
+                    "operator_conclusion": None,
                 },
             },
             {
@@ -553,7 +556,7 @@ class TestBuildEudrGeoJson:
         props = result["features"][0]["properties"]
         assert props["parcel_name"] == "Farm A"
         assert props["area_ha"] == 12.5
-        assert props["determination_status"] == "deforestation_free"
+        assert props["determination_status"] == "no_signal_detected"
         assert props["determination_confidence"] == "high"
 
     def test_worldcover_in_properties(self, eudr_manifest):
@@ -589,7 +592,12 @@ class TestBuildEudrGeoJson:
             "per_aoi_enrichment": [],
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
             "center": {"lat": -1.305, "lon": 36.805},
-            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "determination": {
+                "screening_outcome": "no_signal_detected",
+                "confidence": "high",
+                "flags": [],
+                "operator_conclusion": None,
+            },
             "worldcover": {
                 "available": True,
                 "land_cover": {
@@ -604,15 +612,29 @@ class TestBuildEudrGeoJson:
         result = _build_eudr_geojson(manifest)
         assert len(result["features"]) == 1
         props = result["features"][0]["properties"]
-        assert props["determination_status"] == "deforestation_free"
+        assert props["determination_status"] == "no_signal_detected"
 
     def test_no_per_aoi_falls_back_to_toplevel(self):
         manifest = {
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
-            "determination": {"status": "unknown", "confidence": "low", "flags": []},
+            "determination": {"screening_outcome": "insufficient_evidence", "confidence": "low", "flags": []},
         }
         result = _build_eudr_geojson(manifest)
         assert len(result["features"]) == 1
+
+    def test_does_not_mutate_manifest_when_building_geojson(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Immutable parcel",
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "determination": {"screening_outcome": "signal_detected", "flags": ["x"]},
+                }
+            ]
+        }
+        before = copy.deepcopy(manifest)
+        _build_eudr_geojson(manifest)
+        assert manifest == before
 
     def test_no_per_aoi_no_toplevel_returns_empty(self):
         result = _build_eudr_geojson({})
@@ -650,8 +672,24 @@ class TestBuildEudrCsv:
         result = _build_eudr_csv(eudr_manifest)
         reader = csv.DictReader(io.StringIO(result))
         rows = list(reader)
-        assert rows[0]["determination_status"] == "deforestation_free"
-        assert rows[1]["determination_status"] == "further_review"
+        assert rows[0]["determination_status"] == "no_signal_detected"
+        assert rows[1]["determination_status"] == "signal_detected"
+
+    def test_does_not_mutate_manifest_when_building_csv(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Immutable parcel",
+                    "determination": {
+                        "screening_outcome": "signal_detected",
+                        "flags": ["flag-a", "flag-b"],
+                    },
+                }
+            ]
+        }
+        before = copy.deepcopy(manifest)
+        _build_eudr_csv(manifest)
+        assert manifest == before
 
     def test_failed_aoi_marked(self, eudr_manifest):
         result = _build_eudr_csv(eudr_manifest)
@@ -665,7 +703,12 @@ class TestBuildEudrCsv:
             "per_aoi_enrichment": [],
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
             "center": {"lat": -1.305, "lon": 36.805},
-            "determination": {"status": "deforestation_free", "confidence": "high", "flags": []},
+            "determination": {
+                "screening_outcome": "no_signal_detected",
+                "confidence": "high",
+                "flags": [],
+                "operator_conclusion": None,
+            },
             "worldcover": {
                 "available": True,
                 "land_cover": {
@@ -681,7 +724,7 @@ class TestBuildEudrCsv:
         reader = csv.DictReader(io.StringIO(result))
         rows = list(reader)
         assert len(rows) == 1
-        assert rows[0]["determination_status"] == "deforestation_free"
+        assert rows[0]["determination_status"] == "no_signal_detected"
 
     def test_malformed_parcel_reviews_do_not_crash(self, eudr_manifest):
         """A corrupted (non-dict) parcel_reviews value on the run record must not 500."""
@@ -756,6 +799,6 @@ class TestBuildEudrAuditPdf:
         assert result.startswith(b"%PDF")
 
     def test_mixed_determinations(self, eudr_manifest):
-        """Mix of deforestation_free and further_review parcels."""
+        """Mix of no_signal_detected and signal_detected parcels."""
         result = build_eudr_audit_pdf(eudr_manifest, "run-mixed")
         assert result.startswith(b"%PDF")
