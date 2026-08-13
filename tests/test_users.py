@@ -627,6 +627,7 @@ class TestDeleteUser:
                 "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
             patch("treesight.security.orgs.get_org") as get_org,
             patch("treesight.security.orgs.change_member_role") as change_role,
             patch("treesight.security.orgs.remove_member") as remove_member,
@@ -661,6 +662,7 @@ class TestDeleteUser:
                 "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
             patch("treesight.security.orgs.get_org") as get_org,
         ):
             org_doc = {
@@ -682,6 +684,7 @@ class TestDeleteUser:
                 "treesight.security.orgs.list_orgs_for_user_strict",
                 return_value=[{"org_id": "org1", "org_role": "owner"}],
             ),
+            patch("treesight.storage.cosmos.read_item", return_value=None),
             patch("treesight.security.orgs.get_org") as get_org,
         ):
             org_doc = {
