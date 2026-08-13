@@ -52,3 +52,23 @@ def test_validate_ownership_accepts_blank_dev_domain() -> None:
         allow_transfer=False,
     )
     assert result.requires_transfer is False
+
+
+def test_validate_ownership_rejects_case_and_trailing_dot_collision() -> None:
+    with pytest.raises(ValueError, match="same custom domain"):
+        domain_guard.validate_domain_ownership(
+            dev_domain="Dev.Example.com",
+            prd_domain="dev.example.com.",
+            target_env="prd",
+            allow_transfer=False,
+        )
+
+
+def test_validate_ownership_allows_case_and_trailing_dot_collision_with_override() -> None:
+    result = domain_guard.validate_domain_ownership(
+        dev_domain="Dev.Example.com",
+        prd_domain="dev.example.com.",
+        target_env="prd",
+        allow_transfer=True,
+    )
+    assert result.requires_transfer is True

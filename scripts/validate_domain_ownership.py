@@ -17,6 +17,10 @@ class DomainOwnershipResult:
     requires_transfer: bool
 
 
+def normalize_domain(domain: str) -> str:
+    return domain.strip().rstrip(".").lower()
+
+
 def extract_custom_domain(tfvars_text: str) -> str:
     match = _CUSTOM_DOMAIN_PATTERN.search(tfvars_text)
     if match is None:
@@ -44,13 +48,16 @@ def validate_domain_ownership(
     target_env: str,
     allow_transfer: bool,
 ) -> DomainOwnershipResult:
+    dev_domain_normalized = normalize_domain(dev_domain)
+    prd_domain_normalized = normalize_domain(prd_domain)
+
     if target_env not in {"dev", "prd"}:
         raise ValueError("target_env must be 'dev' or 'prd'")
 
-    if prd_domain == "":
+    if prd_domain_normalized == "":
         raise ValueError("prd.tfvars must set a non-empty custom_domain")
 
-    requires_transfer = dev_domain != "" and dev_domain == prd_domain
+    requires_transfer = dev_domain_normalized != "" and dev_domain_normalized == prd_domain_normalized
     if requires_transfer and not (target_env == "prd" and allow_transfer):
         raise ValueError(
             "dev and prd currently claim the same custom domain. "
@@ -59,8 +66,8 @@ def validate_domain_ownership(
         )
 
     return DomainOwnershipResult(
-        dev_domain=dev_domain,
-        prd_domain=prd_domain,
+        dev_domain=dev_domain_normalized,
+        prd_domain=prd_domain_normalized,
         requires_transfer=requires_transfer,
     )
 
