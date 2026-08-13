@@ -53,11 +53,7 @@ def _prune_stale_slots(
 ) -> int:
     cutoff = now - timedelta(minutes=window_minutes)
     min_dt = datetime.min.replace(tzinfo=UTC)
-    stale_ids = [
-        instance_id
-        for instance_id, ts in slots.items()
-        if (_parse_ts(ts) or min_dt) < cutoff
-    ]
+    stale_ids = [instance_id for instance_id, ts in slots.items() if (_parse_ts(ts) or min_dt) < cutoff]
     for instance_id in stale_ids:
         del slots[instance_id]
     if stale_ids:
