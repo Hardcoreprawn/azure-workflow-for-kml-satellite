@@ -5,6 +5,7 @@ import io
 from typing import Any
 
 from blueprints.export.geojson import _toplevel_as_single_aoi
+from treesight.pipeline.enrichment.determination import as_screening_determination
 
 _EUDR_CSV_FIELDS = [
     "parcel_name",
@@ -241,7 +242,7 @@ def _build_eudr_csv(
             continue
 
         center = aoi.get("center", {})
-        det = aoi.get("determination", {})
+        determination = as_screening_determination(aoi.get("determination"))
         wc = aoi.get("worldcover", {})
         lc = wc.get("land_cover", {}) if wc.get("available") else {}
         wdpa = aoi.get("wdpa", {})
@@ -256,9 +257,9 @@ def _build_eudr_csv(
                 "area_ha": aoi.get("area_ha", ""),
                 "center_lat": center.get("lat", ""),
                 "center_lon": center.get("lon", ""),
-                "determination_status": det.get("screening_outcome", "insufficient_evidence"),
-                "determination_confidence": det.get("confidence", "unknown"),
-                "determination_flags": "; ".join(det.get("flags", [])),
+                "determination_status": determination.screening_outcome,
+                "determination_confidence": determination.confidence,
+                "determination_flags": "; ".join(determination.flags),
                 "worldcover_dominant": lc.get("dominant_class", ""),
                 "worldcover_tree_pct": ({c["code"]: c for c in lc.get("classes", [])}.get(10, {}).get("area_pct", "")),
                 "wdpa_is_protected": wdpa.get("is_protected", ""),

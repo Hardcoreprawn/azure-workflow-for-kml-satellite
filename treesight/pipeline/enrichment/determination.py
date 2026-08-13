@@ -27,12 +27,68 @@ Screening outcomes
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Literal, cast
 
 logger = logging.getLogger(__name__)
 
 # Valid machine screening outcomes.
 ScreeningOutcome = Literal["no_signal_detected", "signal_detected", "insufficient_evidence", "error"]
+
+_VALID_SCREENING_OUTCOMES: set[str] = {
+    "no_signal_detected",
+    "signal_detected",
+    "insufficient_evidence",
+    "error",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ScreeningDetermination:
+    """Immutable determination view.
+
+    This value object decouples call-sites from mutable source dictionaries.
+    """
+
+    screening_outcome: ScreeningOutcome
+    confidence: str
+    flags: tuple[str, ...]
+
+
+def as_screening_determination(value: dict[str, Any] | None) -> ScreeningDetermination:
+    """Normalise determination payloads into an immutable current-schema view.
+
+    Expected form:
+    - ``{"screening_outcome": "no_signal_detected|signal_detected|insufficient_evidence|error"}``
+
+    Local-first policy: we intentionally do not support legacy determination
+    keys such as ``status`` or ``deforestation_free``.
+    """
+    determination = value if isinstance(value, dict) else {}
+
+    raw_outcome = determination.get("screening_outcome", "insufficient_evidence")
+    screening_outcome: ScreeningOutcome
+    if isinstance(raw_outcome, str):
+        candidate = raw_outcome.strip().lower()
+        if candidate in _VALID_SCREENING_OUTCOMES:
+            screening_outcome = cast(ScreeningOutcome, candidate)
+        else:
+            raise ValueError(f"Invalid screening_outcome: {raw_outcome!r}")
+    else:
+        raise ValueError("screening_outcome must be a string")
+
+    raw_confidence = determination.get("confidence")
+    confidence = raw_confidence.strip() if isinstance(raw_confidence, str) and raw_confidence.strip() else "unknown"
+
+    raw_flags = determination.get("flags")
+    flags = tuple(str(flag) for flag in raw_flags) if isinstance(raw_flags, list) else ()
+
+    return ScreeningDetermination(
+        screening_outcome=screening_outcome,
+        confidence=confidence,
+        flags=flags,
+    )
+
 
 # Thresholds for the algorithmic determination.
 # A parcel is "deforestation-free" when ALL conditions hold:

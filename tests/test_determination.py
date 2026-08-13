@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from treesight.pipeline.enrichment.determination import (
+    as_screening_determination,
     determine_deforestation_free,
 )
 
@@ -234,3 +235,37 @@ class TestDeforestationDetermination:
         enrichment = _make_enrichment()
         det = determine_deforestation_free(enrichment)
         assert det["evidence"]["landsat_baseline"]["available"] is False
+
+
+class TestScreeningDeterminationModel:
+    def test_maps_current_schema_to_screening_outcome(self):
+        determination = as_screening_determination(
+            {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": ["check"]}
+        )
+        assert determination.screening_outcome == "no_signal_detected"
+        assert determination.confidence == "high"
+        assert determination.flags == ("check",)
+
+    def test_invalid_outcome_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid screening_outcome"):
+            as_screening_determination({"screening_outcome": "unexpected"})
+
+    def test_legacy_status_raises(self):
+        import pytest
+
+        with pytest.raises(ValueError, match="Invalid screening_outcome"):
+            as_screening_determination({"screening_outcome": "further_review"})
+
+    def test_does_not_mutate_input_payload(self):
+        payload = {
+            "screening_outcome": "signal_detected",
+            "flags": ["alpha", "beta"],
+        }
+        before = {
+            "screening_outcome": payload["screening_outcome"],
+            "flags": list(payload["flags"]),
+        }
+        _ = as_screening_determination(payload)
+        assert payload == before

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import json
@@ -591,7 +592,12 @@ class TestBuildEudrGeoJson:
             "per_aoi_enrichment": [],
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
             "center": {"lat": -1.305, "lon": 36.805},
-            "determination": {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": [], "operator_conclusion": None},
+            "determination": {
+                "screening_outcome": "no_signal_detected",
+                "confidence": "high",
+                "flags": [],
+                "operator_conclusion": None,
+            },
             "worldcover": {
                 "available": True,
                 "land_cover": {
@@ -615,6 +621,20 @@ class TestBuildEudrGeoJson:
         }
         result = _build_eudr_geojson(manifest)
         assert len(result["features"]) == 1
+
+    def test_does_not_mutate_manifest_when_building_geojson(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Immutable parcel",
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31]],
+                    "determination": {"screening_outcome": "signal_detected", "flags": ["x"]},
+                }
+            ]
+        }
+        before = copy.deepcopy(manifest)
+        _build_eudr_geojson(manifest)
+        assert manifest == before
 
     def test_no_per_aoi_no_toplevel_returns_empty(self):
         result = _build_eudr_geojson({})
@@ -655,6 +675,22 @@ class TestBuildEudrCsv:
         assert rows[0]["determination_status"] == "no_signal_detected"
         assert rows[1]["determination_status"] == "signal_detected"
 
+    def test_does_not_mutate_manifest_when_building_csv(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Immutable parcel",
+                    "determination": {
+                        "screening_outcome": "signal_detected",
+                        "flags": ["flag-a", "flag-b"],
+                    },
+                }
+            ]
+        }
+        before = copy.deepcopy(manifest)
+        _build_eudr_csv(manifest)
+        assert manifest == before
+
     def test_failed_aoi_marked(self, eudr_manifest):
         result = _build_eudr_csv(eudr_manifest)
         reader = csv.DictReader(io.StringIO(result))
@@ -667,7 +703,12 @@ class TestBuildEudrCsv:
             "per_aoi_enrichment": [],
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
             "center": {"lat": -1.305, "lon": 36.805},
-            "determination": {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": [], "operator_conclusion": None},
+            "determination": {
+                "screening_outcome": "no_signal_detected",
+                "confidence": "high",
+                "flags": [],
+                "operator_conclusion": None,
+            },
             "worldcover": {
                 "available": True,
                 "land_cover": {

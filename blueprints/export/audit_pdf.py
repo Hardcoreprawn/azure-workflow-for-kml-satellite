@@ -5,6 +5,7 @@ from typing import Any
 from blueprints.export.csv import _as_dict
 from blueprints.export.pdf import _safe_text
 from treesight.constants import EUDR_CUTOFF_DATE
+from treesight.pipeline.enrichment.determination import as_screening_determination
 
 _EUDR_CUTOFF_YEAR = 2021  # Post-31 December 2020
 
@@ -39,7 +40,9 @@ def _audit_cover_page(pdf: Any, manifest: dict[str, Any], instance_id: str) -> N
     total = len(per_aoi)
     succeeded = [a for a in per_aoi if "error" not in a]
     free_count = sum(
-        1 for a in succeeded if a.get("determination", {}).get("screening_outcome") == "no_signal_detected"
+        1
+        for a in succeeded
+        if as_screening_determination(a.get("determination")).screening_outcome == "no_signal_detected"
     )
     review_count = len(succeeded) - free_count
 
@@ -89,7 +92,9 @@ def _audit_executive_summary(pdf: Any, manifest: dict[str, Any]) -> None:
     succeeded = [a for a in per_aoi if "error" not in a]
     failed = [a for a in per_aoi if "error" in a]
     free_count = sum(
-        1 for a in succeeded if a.get("determination", {}).get("screening_outcome") == "no_signal_detected"
+        1
+        for a in succeeded
+        if as_screening_determination(a.get("determination")).screening_outcome == "no_signal_detected"
     )
     review_count = len(succeeded) - free_count
 
@@ -320,9 +325,9 @@ def _audit_single_parcel(
     )
 
     # Screening result
-    det = aoi.get("determination", {})
-    screening_outcome = det.get("screening_outcome", "insufficient_evidence")
-    confidence = det.get("confidence", "unknown")
+    determination = as_screening_determination(aoi.get("determination"))
+    screening_outcome = determination.screening_outcome
+    confidence = determination.confidence
     pdf.set_font("Helvetica", "B", 10)
     status_label = {
         "no_signal_detected": "NO DEFORESTATION SIGNAL DETECTED",
@@ -339,7 +344,7 @@ def _audit_single_parcel(
     )
     pdf.set_font("Helvetica", "", 9)
 
-    for flag in det.get("flags", []):
+    for flag in determination.flags:
         pdf.set_text_color(180, 0, 0)
         pdf.cell(0, 5, _safe_text(f"  ! {flag}"), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
