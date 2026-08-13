@@ -103,39 +103,46 @@ Authorization: Bearer {JWT}
 `transfer_to` (optional query parameter): user_id to transfer org ownership to.
 Required if the authenticated user is the sole owner of any organisation.
 
-**Deletion scope** (cascading):
+**Deletion scope** (cascading, executed in this order):
 
-1. **User document** → Deleted entirely
-2. **Org memberships** → User removed from all organizations
-3. **Org ownership** → If user is sole owner, ownership transferred (if `transfer_to` provided) or deletion blocked with 400
-4. **Analyses & runs** → Marked for deletion (soft-delete, cascading audit log cleanup follows)
-5. **Invites** → Pending invites issued by user are revoked; invites TO user are deleted
-6. **Billing records** → Retained for 7 years per tax law (CANNOT delete; anonymized in GDPR export)
+1. **Org membership lookup** → Fail-closed: any storage error aborts erasure entirely (user document preserved for retry).
+2. **Org memberships** → User removed from all organisations. If sole owner and `transfer_to` provided, ownership is transferred first.
+3. **Pending invites** → All pending invites sent to the user's email are revoked across all orgs.
+4. **Subscription** → Active subscription is stamped `cancelled` with reason `gdpr_erasure`. Billing records are **retained** for legal/tax purposes (see Retention Policy below).
+5. **Run records** → All personal run documents deleted. If any item deletion fails, the user identity document is preserved and the endpoint returns 500 so the caller can retry.
+6. **User identity document** → Deleted **last**, only after all preceding steps succeed.
+
+**What is NOT currently deleted automatically**:
+- Uploaded/source/output blobs (pending blob lifecycle policy — see open issue #1366)
+- Stripe subscription cancellation via the Stripe API (manual step required if Stripe is live)
+- Analysis annotations and monitor/catalogue entries (require explicit per-entity erasure)
 
 **Ownership transfer rules**:
 - If user is **sole owner** of an org and `transfer_to` is not provided → **400 Bad Request**
 - If user is **sole owner** and `transfer_to` is provided:
   - `transfer_to` user must already be an org member
-  - Ownership transferred to recipient
-  - Original user removed from org
+  - Ownership transferred to recipient before user is removed
 - If user is **not owner** (member only) → No transfer needed; removal succeeds
 
 **Endpoint contract**:
-- **Status 204**: Success (no content), user deleted
-- **Status 400**: Validation error (invalid transfer_to, transfer_to is not org member, sole owner without transfer)
-- **Status 404**: User not found
-- **Status 503**: Cosmos DB unavailable
+- **Status 204**: Success — all cleanup steps completed, user identity deleted.
+- **Status 400**: Validation error (sole owner without transfer, or transfer target not a member).
+- **Status 500**: Cleanup partially failed (e.g. a run deletion failed). User identity document is preserved. Caller should retry `DELETE /api/user` — the operation is designed to be idempotent.
+- **Status 503**: Cosmos DB unavailable.
+
+> **Retry safety**: Because the user identity document is only deleted after all cleanup succeeds, a failed erasure can always be retried. Each retry re-runs the full cleanup sequence from the start.
 
 **User action**: User visits Account → Account Settings → Delete Account (red button). Form requires confirmation + optional transfer_to. On submit:
 1. Modal confirms action: "This will permanently delete your account, all invites, and all associated data."
 2. If user is org owner, form requires "Transfer ownership to:" field (member selector)
 3. On confirm, DELETE /api/user is called
-4. On success, session ends, user redirected to home page
+4. On success (204), session ends, user redirected to home page
+5. On 500, display: "Account deletion partially failed. Please try again or contact support."
 
 **Why `transfer_to` is required for sole owners**:
-- Org data is not deleted; only user is deleted
-- If sole owner is deleted without transfer, org becomes orphaned
-- Law requires delegation of responsibility; transfer ensures continuity
+- Org data and evidence are not deleted; only the user's personal data is deleted.
+- If sole owner is deleted without transfer, the org becomes orphaned with no admin.
+- Transfer ensures continuity and compliance with shared-data governance.
 
 ---
 
@@ -276,10 +283,10 @@ A: If you own an org with other members, you must transfer ownership to another 
 A: No. Only you can delete your account via the DELETE /api/user endpoint. This ensures accountability and prevents unauthorized erasure.
 
 **Q: What happens to my analyses after I delete my account?**
-A: Your personal profile is deleted, but analyses and runs you created are marked for deletion. The system respects the "right to be forgotten" by cascading deletion through associated data. Imagery you uploaded is also deleted (unless org members have active analyses referencing it—those are preserved as a fallback).
+A: Your personal run records are deleted as part of account erasure. Org-owned evidence (shared analyses, annotations) is not deleted — it transfers with the org under the new owner. Uploaded blobs are not automatically deleted in the current implementation (tracked in issue #1366); contact support for manual blob removal.
 
 **Q: Can I recover a deleted account?**
-A: No. Deletion is permanent and irreversible after 30 days. Contact support within 30 days of deletion for emergency recovery options.
+A: No. Deletion is permanent and irreversible immediately upon confirmation. There is no soft-delete or recovery window. Contact support if you believe an account was deleted in error.
 
 **Q: How long are my invites kept?**
 A: Pending invites expire after 7 days. Accepted invites are archived. Revoked or expired invites are deleted after 90 days to allow GDPR cleanup.
