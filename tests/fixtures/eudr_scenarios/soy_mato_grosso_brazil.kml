@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Soy — Mato Grosso, Brazil (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the soy commodity (Regulation 2023/1115,
+      Annex I CN heading 1201 / 1208 / 2304). Mato Grosso is Brazil's largest
+      soy-producing state and sits within the Cerrado/Amazon "arc of deforestation"
+      frequently cited in EUDR risk-benchmarking literature. This single
+      mechanized-scale farm reflects the real production scale in this region
+      (typically far larger than smallholder cocoa/coffee/rubber plots). Coordinates
+      are illustrative and do NOT assert the surveyed boundary of any specific named
+      farm or claim anything about its actual compliance status.
+    </description>
+    <Placemark>
+      <name>Farm block</name>
+      <description>Representative test AOI, ~2,000 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -55.850000,-12.379694,0
+              -55.834745,-12.385101,0
+              -55.823924,-12.400000,0
+              -55.834814,-12.414832,0
+              -55.850000,-12.427750,0
+              -55.869438,-12.418985,0
+              -55.876592,-12.400000,0
+              -55.867079,-12.383319,0
+              -55.850000,-12.379694,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

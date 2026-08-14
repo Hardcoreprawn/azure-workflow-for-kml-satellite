@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Cocoa — Soubre Region, Cote d'Ivoire (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the cocoa commodity (Regulation 2023/1115,
+      Annex I CN heading 1801-1806). Cote d'Ivoire is the world's largest cocoa
+      producer and the Soubre region (south-west, near the Cavally/Sassandra basins)
+      is a well-documented cocoa belt frequently cited in EUDR risk-benchmarking
+      literature. Two smallholder-scale parcels reflect the real aggregation pattern
+      of cocoa supply chains (many small farms feeding one shipment) — these
+      coordinates do NOT assert the surveyed boundary of any specific named farm or
+      cooperative, and make no claim about that farm's actual compliance status.
+    </description>
+    <Placemark>
+      <name>Parcel A — smallholder plot</name>
+      <description>Representative test AOI, ~8 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -6.650000,5.751508,0
+              -6.648904,5.751090,0
+              -6.648312,5.750000,0
+              -6.648996,5.749001,0
+              -6.650000,5.748587,0
+              -6.651148,5.748857,0
+              -6.651511,5.750000,0
+              -6.651019,5.751014,0
+              -6.650000,5.751508,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Parcel B — smallholder plot</name>
+      <description>Representative test AOI, ~5 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -6.600000,5.781378,0
+              -6.599251,5.780745,0
+              -6.598596,5.780000,0
+              -6.599231,5.779235,0
+              -6.600000,5.778821,0
+              -6.600970,5.779035,0
+              -6.601138,5.780000,0
+              -6.600851,5.780847,0
+              -6.600000,5.781378,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

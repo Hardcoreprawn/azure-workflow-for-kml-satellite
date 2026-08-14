@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Cattle Ranch — Sao Felix do Xingu, Para, Brazil (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the cattle commodity (Regulation 2023/1115).
+      Sao Felix do Xingu, Para is a real, well-documented cattle-ranching municipality
+      in the Amazon "arc of deforestation" frequently cited in EUDR due-diligence
+      literature. These two parcels are placed at plausible rural coordinates within
+      the municipality to exercise the pipeline against a real, defensible geography —
+      they do NOT assert the surveyed boundary of any specific named ranch or claim
+      ownership/consent for a real property. Combined area ~13,000 ha across two
+      parcels, consistent with the multi-parcel ranch pattern documented in
+      docs/PERSONA_DEEP_DIVE.md and website/docs/eudr-supplier-guide.html.
+    </description>
+    <Placemark>
+      <name>Parcel A — pasture block</name>
+      <description>Representative test AOI, ~5,000 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -51.850000,-6.514622,0
+              -51.826494,-6.526647,0
+              -51.809912,-6.550000,0
+              -51.827253,-6.572599,0
+              -51.850000,-6.588262,0
+              -51.875586,-6.575419,0
+              -51.881972,-6.550000,0
+              -51.876958,-6.523218,0
+              -51.850000,-6.514622,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Parcel B — pasture block</name>
+      <description>Representative test AOI, ~8,000 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -52.080000,-6.733038,0
+              -52.045244,-6.745487,0
+              -52.024534,-6.780000,0
+              -52.046396,-6.813369,0
+              -52.080000,-6.827916,0
+              -52.115095,-6.814849,0
+              -52.122655,-6.780000,0
+              -52.114170,-6.746069,0
+              -52.080000,-6.733038,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
