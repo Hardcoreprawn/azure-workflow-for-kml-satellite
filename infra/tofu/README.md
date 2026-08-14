@@ -93,12 +93,14 @@ surface drift as a planned change.
 ### Completing Phase 2 (import the app registration)
 
 1. Get the SPA app object ID:
+
    ```bash
    az ad app show --id 1b51e2e8-15af-448b-8886-1345aeda73ba \
      --query id -o tsv \
      --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
      --allow-no-subscriptions
    ```
+
 2. Set `ciam_app_object_id = "<result>"` in `environments/<env>.tfvars`.
 3. Run `tofu plan` — confirm Tofu plans to **import** the registration (not create).
 4. Run `tofu apply` — registration is now in state.
@@ -106,14 +108,17 @@ surface drift as a planned change.
 ### Completing Phase 3 (federated identity credentials)
 
 1. Get the deploy SP app registration object ID:
+
    ```bash
    az ad app show --id <TF_VAR_CIAM_DEPLOY_CLIENT_ID> \
      --query id -o tsv \
      --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
      --allow-no-subscriptions
    ```
+
 2. Set `ciam_deploy_app_object_id = "<result>"` in `environments/<env>.tfvars`.
 3. Import existing federated credentials (prevents Tofu creating duplicates):
+
    ```bash
    # List existing credential IDs
    az rest --method GET \
@@ -128,17 +133,20 @@ surface drift as a planned change.
      'azuread_application_federated_identity_credential.ciam_deploy_sp["prd"]' \
      '<deploy-app-object-id>/<credential-object-id-for-prd>'
    ```
+
 4. Run `tofu plan` — confirm no-op for existing credentials.
 
 ### Completing Phase 4 (owner assertion)
 
 1. Get the deploy SP service principal object ID:
+
    ```bash
    az ad sp show --id <TF_VAR_CIAM_DEPLOY_CLIENT_ID> \
      --query id -o tsv \
      --tenant 98a402ed-45fb-4cf8-bbfe-2b4c19bc36c7 \
      --allow-no-subscriptions
    ```
+
 2. Set `ciam_deploy_sp_object_id = "<result>"` in `environments/<env>.tfvars`.
 3. Run `tofu plan` — Tofu will assert the owner relationship.
 4. Run `tofu apply`.
@@ -218,3 +226,10 @@ Supporting helpers:
 - The deploy workflow owns Event Grid webhook subscription reconciliation because it can verify host readiness, trigger indexing, and current webhook keys before making the subscription live.
 - `enable_event_grid_subscription` defaults to `false` to avoid OpenTofu racing runtime indexing or publishing a stale webhook key.
 - OpenTofu references Stripe secrets by stable Key Vault secret names only. The actual Stripe values are bootstrap/operator-managed by the setup scripts and must not be passed through tfvars or Terraform variables.
+
+### Custom Domain Ownership (dev vs prd)
+
+- Production owns the apex custom domain (`infra/tofu/environments/prd.tfvars`).
+- Dev defaults to the SWA-provided hostname (`custom_domain = ""` in `infra/tofu/environments/dev.tfvars`).
+- The deploy preflight validates that dev/prd do not claim the same non-empty custom domain.
+- A one-off prod cutover can be performed only via `workflow_dispatch` with `allow_domain_transfer=true`, after DNS validation and rollback steps are prepared.

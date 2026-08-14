@@ -13,12 +13,12 @@ default_tags = {
 }
 budget_amount         = 10
 budget_contact_emails = ["j.brewster@outlook.com"]
-# NOTE: Apex domain is intentionally assigned to dev (the only deployed env).
-# Clear this before applying prd.tfvars — a domain can only bind to one SWA.
-custom_domain = "canopex.hrdcrprwn.com"
-# One-time: import pre-existing custom domain into Tofu state.
-# Set to false (or remove) after first successful apply.
-import_custom_domain         = true
+# Domain ownership contract: production owns the apex domain.
+# Dev uses the default SWA hostname unless an explicit non-production domain
+# is configured here for a controlled test.
+custom_domain = ""
+# Only set true for one-time import when dev custom_domain is non-empty.
+import_custom_domain         = false
 enable_azure_ai              = false
 enable_stripe                = true
 enable_cosmos_db             = true
