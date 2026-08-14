@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Wood/Timber — Tshopo Province, DRC (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the wood commodity (Regulation 2023/1115,
+      Annex I CN Chapter 44 / 47 / 48). The Congo Basin (here, Tshopo province, DRC,
+      near Kisangani) is the world's second-largest rainforest and a frequently
+      cited high-risk geography for EUDR timber due diligence. This single
+      harvested-block-scale plot reflects a typical logging concession sub-unit
+      geolocation, not the full concession area. Coordinates are illustrative and do
+      NOT assert the surveyed boundary of any specific named concession or claim
+      anything about its actual legality/compliance status.
+    </description>
+    <Placemark>
+      <name>Harvested block</name>
+      <description>Representative test AOI, ~500 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              24.600000,0.862293,0
+              24.607518,0.857517,0
+              24.613946,0.850000,0
+              24.609736,0.840265,0
+              24.600000,0.838198,0
+              24.591057,0.841058,0
+              24.589283,0.850000,0
+              24.592400,0.857599,0
+              24.600000,0.862293,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
