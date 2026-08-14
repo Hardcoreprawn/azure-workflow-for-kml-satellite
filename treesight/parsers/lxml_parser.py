@@ -16,7 +16,7 @@ KML_NS = "{http://www.opengis.net/kml/2.2}"
 
 def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using lxml. Fallback when Fiona/GDAL is unavailable."""
-    from lxml import etree
+    import lxml.etree as etree
 
     # Secure parser: disable external entities and network access to prevent XXE
     parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
