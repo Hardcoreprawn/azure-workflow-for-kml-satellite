@@ -8,7 +8,7 @@ missing journey steps.
 importer (50–5,000 sourcing plots). Secondary: EUDR audit consultancy
 doing assessments on behalf of importers.
 
-Last updated: 2026-04-18
+Last updated: 2026-08-14 (J6/gap-matrix reprioritized; TraceX competitive comparison cross-referenced — see PERSONA_DEEP_DIVE.md §8.8)
 
 ---
 
@@ -105,8 +105,8 @@ it?
 | **Canopex today** | ✅ EUDR-specific exports: `eudr-pdf` (audit-grade PDF with per-parcel determination), `eudr-geojson` (machine-readable), `eudr-csv` (tabular). ✅ General exports: `pdf`, `geojson`, `csv`, `csv-bulk`. ✅ Per-parcel assessment sections in the PDF. ✅ Scene provenance (scene IDs for reproducibility). |
 | **Gap 1** | 🟡 **No imagery in the PDF.** The audit PDF contains text, NDVI stats, and determination results but not the actual satellite imagery tiles. An auditor seeing "NDVI declined 35% in Q2 2023" wants to see the before/after image. (Issue #647 exists for this.) |
 | **Gap 2** | 🟡 **No aggregated compliance summary report.** If I've assessed 200 parcels across 5 runs, there's no single report that says "180 compliant, 15 flagged, 5 failed." Each run produces its own report. |
-| **Gap 3** | 🟢 **No formal due diligence statement template.** The EUDR requires a specific "due diligence statement" format for submission to the EU Information System. This is distinct from the audit PDF — it's a formal declaration document. (The EU IS isn't fully operational yet, so this is forward-looking.) |
-| **Priority** | Gap 1 is MEDIUM (already tracked as #647). Gap 2 is MEDIUM. Gap 3 is LOW (blocked on EU IS). |
+| **Gap 3** | 🟡 **No formal due diligence statement template.** The EUDR requires a specific "due diligence statement" (DDS) format submitted via EU TRACES NT, structured to Annex II fields: product info (HS/CN code, commodity name, scientific name for timber, quantity), country of production, geolocation, supplier details, deforestation confirmation, legality proof, risk assessment. This is distinct from the audit PDF — it's a formal declaration document. **Update (2026-08-14, see PERSONA_DEEP_DIVE.md §8.8):** TRACES NT is confirmed live today, not blocked — large/medium operators must submit by 30 December 2026 (delayed 12 months from Dec 2025 by an amending regulation), SMEs by 30 June 2027. We also don't currently track HS/CN commodity codes at all (`commodity` is free-text). Direct API submission to TRACES NT is a separate, higher-risk item requiring EU economic-operator registration and legal review of submitting a legally-binding declaration on a customer's behalf — an Annex-II-structured *export* (not submission) is the achievable near-term slice. |
+| **Priority** | Gap 1 is MEDIUM (already tracked as #647). Gap 2 is MEDIUM. Gap 3 is now MEDIUM (was LOW) given the confirmed Dec 2026 deadline — revisit before Q4 2026. |
 
 ### J7 — Manage Ongoing Compliance
 
@@ -299,6 +299,8 @@ Trigger: "Client X needs EUDR compliance evidence for 50 plots by Friday."
 
 | Gap | Journey | Description | Effort | Stage |
 | --- | ------- | ----------- | ------ | ----- |
+| **Due diligence statement (DDS) export** (#1384) | J6 | Annex-II-structured export (HS/CN code, country of production, geolocation, supplier details, deforestation confirmation, legality/risk placeholders) — a customer-manually-submittable DDS, not direct TRACES NT API submission. Moved up from Low given the confirmed 30 Dec 2026 deadline (see PERSONA_DEEP_DIVE.md §8.8). | Medium | 3.x |
+| **HS/CN commodity code tracking** (#1384) | J6 | `commodity` is currently free-text on the manifest only — no validation against EUDR Annex I CN codes, no per-plot tagging. Prerequisite for the DDS export above. | Low | 3.x |
 | Before/after comparison view | J5 | Side-by-side or slider view of pre/post-2020 imagery | Medium | 3.x |
 | Annotation/notes per parcel | J5, J8, J9 | Text notes attached to parcels for audit defense | Medium | 3.x |
 | Human override of determination | J5 | Mark flagged parcel as "compliant with explanation" | Low | 3.x |
@@ -318,8 +320,9 @@ Trigger: "Client X needs EUDR compliance evidence for 50 plots by Friday."
 
 | Gap | Journey | Description | Effort | Stage |
 | --- | ------- | ----------- | ------ | ----- |
-| EU Information System integration | J6 | Submit due diligence statements directly (blocked on EU IS) | High | 5.x |
-| Due diligence statement template | J6 | Formal EUDR DDS format (distinct from audit PDF) | Medium | 4.x |
+| Direct TRACES NT API submission (#1385, watch) | J6 | One-click DDS submission (not just export) — requires EU economic-operator registration, EU Login, and legal review of submitting a legally-binding declaration on a customer's behalf. Confirmed live/not blocked (§8.8) but deliberately deferred: high liability, no customer request yet. | High | 5.x |
+| ERP integration (SAP/Dynamics/Odoo) (#1386, watch) | — | Native connectors for enterprise/large-trader customers, per TraceX competitive comparison (§8.8). No customer signal yet. | High | 5.x |
+| SSO/SAML for Enterprise tier | J9 | Already implied by the published Enterprise pricing tier; not built. | Medium | 4.x |
 | Methodology versioning | J8 | Record which algorithm version produced each determination | Low | 4.x |
 | Role-based access within org | J9 | Viewer/analyst/admin roles | Medium | 4.x |
 | Multi-org for consultancies | C | Manage multiple client orgs from one account | High | 4.x |
@@ -400,5 +403,8 @@ Trigger: "Client X needs EUDR compliance evidence for 50 plots by Friday."
 | Scheduled re-monitoring | #310 | Stage 3.1 (implemented, needs EUDR wiring) |
 | Shareable links | 3.8 in roadmap | No issue yet |
 | Country-risk flagging | — | New issue needed |
-| Commodity tracking | — | New issue needed |
+| Commodity tracking / DDS export | #1384 | New — HS/CN coding + Annex-II export |
+| Direct TRACES NT submission | #1385 | New — watch item, deferred pending legal review |
+| ERP integration | #1386 | New — watch item, no customer signal yet |
+| Supplier coordination (task-tracking vs ingestion) | #1383 | New — watch item, see PERSONA_DEEP_DIVE.md §8.8 |
 | Supplier data template | — | New issue needed |

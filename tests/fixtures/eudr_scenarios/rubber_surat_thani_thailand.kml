@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Rubber — Surat Thani, Thailand (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the rubber commodity (Regulation
+      2023/1115, Annex I CN heading 4001). Thailand is the world's largest natural
+      rubber producer, and smallholder plots of a few to a few dozen hectares (as
+      here) are the dominant real-world production pattern in Surat Thani and
+      neighbouring southern provinces. Coordinates are illustrative and do NOT
+      assert the surveyed boundary of any specific named smallholding or claim
+      anything about its actual compliance status.
+    </description>
+    <Placemark>
+      <name>Smallholder plot</name>
+      <description>Representative test AOI, ~15 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              99.200000,9.002073,0
+              99.201456,9.001438,0
+              99.202138,9.000000,0
+              99.201419,8.998598,0
+              99.200000,8.997682,0
+              99.198701,8.998717,0
+              99.197943,9.000000,0
+              99.198379,9.001601,0
+              99.200000,9.002073,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

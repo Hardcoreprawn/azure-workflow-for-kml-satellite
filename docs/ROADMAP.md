@@ -3,7 +3,7 @@
 **Single source of truth for what to build next.**
 Issues hold the detail. The project board holds the live queue.
 
-Last updated: 2026-08-11
+Last updated: 2026-08-14
 
 ---
 
@@ -108,12 +108,12 @@ portfolio-level risk visibility.
 
 | PR | Summary |
 |----|---------|
+| #1378 | chore: remove dead scratch file (`LOG_TARGETS.json`, previously leaked real Azure resource IDs before being emptied but never deleted), archive 6 stale dated review docs into `docs/archive/` per existing convention (closes #1377). |
+| #1388 | docs(eudr): add TraceX competitive comparison (`PERSONA_DEEP_DIVE.md` §8.8) — confirms EU TRACES NT is live (not blocked) with a 30 Dec 2026 deadline for large/medium operators; reprioritizes the formal DDS-template gap from Low to Medium; spawns #1384 (DDS export), #1385/#1386 (watch items: direct TRACES submission, ERP integration) (closes #1387). |
+| #1376 | feat: add `pytest-timeout` to dev deps with 60s default timeout, so import-time stalls/hangs fail fast with a clear signal instead of silently wasting CI minutes (closes #1119). |
+| #1381 | test(fixtures): add real-world AOI scenarios for all 7 EUDR commodities (cattle, cocoa, coffee, oil palm, rubber, soy, wood) at real, defensible producing-region coordinates — Stage 0 local proof-of-value gate for epic #1013's relight criteria (closes #1380, slice of #1379). |
 | #1322 | feat(ci): TTL + auto-teardown sweep for website-only preview environments — daily scheduled sweep tears down stale `website/**`-only preview PRs via the existing SWA close-preview action (closes #1321, slice of #1011). |
 | #1320 | feat(autopilot): quadrant + security mix report — `compute_mix_report()` classifies open issues into Planned/Unplanned × Delivery/Operations plus security share, printed every autopilot run for visibility (closes #1319, slice of #1010). |
-| #1318 | feat(observability): deploy success/failure markers to App Insights via a new best-effort `emit-deploy-marker` composite action; review found the action spliced `${{ inputs.* }}` directly into a `run:` shell block (Semgrep OSS script-injection finding) — fixed by routing through `env:` (closes #1317, slice of #1012). |
-| #1316 | fix: fail-fast when the GHCR base image is missing in deploy, instead of silently rebuilding locally and masking base-image drift (closes #720). |
-| #1315 | refactor(pipeline): replace blocking `poll_order` (`time.sleep` in an activity) with the Durable Functions monitor pattern — single-shot `check_order_status` activity + durable timers; review caught a real pydantic validation bug where `check_order_status` returned `error=None` instead of `""`, failing `PipelineSummary` validation on every run — fixed and covered by an updated unit test (closes #625). |
-| #1306 | refactor(pipeline): split `blueprints/pipeline/orchestrator.py` (791→186 lines) and `treesight/pipeline/enrichment/runner.py` (1055→604 lines) into per-phase sibling modules — every function body verified byte-identical to the pre-split original; fixed a dropped `@bp.orchestration_trigger` decorator and a duplicate `wdpa_done` telemetry log caught during review; added direct unit coverage for the extracted Durable Functions phase generators, which had previously only been exercised through mocks (closes #1292). |
 | —  | **MILESTONE (2026-07-12): Domain-model overhaul begun — Organisation as the single ownership root** (epic #1057; model documented in `docs/DATA_MODEL.md` — conceptual/logical/physical + D1–D5 divergences). **D3 landed**: per-user quota retired, org pool is the sole accounting unit. D1 (auth active-org resolution) in progress; D2 (org-partitioning) sequenced after D1. |
 | —  | **MILESTONE (2026-05-20): First confirmed end-to-end pipeline run in production.** KML upload → blob trigger → orchestrator → imagery acquisition → NDVI + change detection + climate enrichment → results rendered in dashboard. Mean NDVI, range, trajectory, 54-frame timelapse, and EUDR compliance entry point all returned correctly. Stage 2C proof-of-life confirmed. |
 
