@@ -1049,6 +1049,37 @@ Canopex is an unknown tool from an unknown company. For Elena to bet her EUDR co
 - Want weather context and AI analysis that GFW Pro doesn't provide
 - Want a predictable monthly price, not consumption-based tokens
 
+### 8.8 TraceX vs Canopex — Head-to-Head for EUDR
+
+TraceX (tracextech.com) is a supply-chain traceability SaaS vendor selling a
+purpose-built "EUDR compliance solution" that digitizes supplier onboarding
+and submits Due Diligence Statements (DDS) directly to EU TRACES NT. Reviewed
+2026-08-14 against their public "EU TRACES NT & EUDR Compliance Guide"
+(vendor marketing content, not official EU documentation — treat capability
+claims as directional, not verified).
+
+| Dimension | TraceX | Canopex |
+|-----------|--------|-----------|
+| **Positioning** | End-to-end supply-chain traceability + compliance platform | Satellite evidence generator for due diligence |
+| **Supplier data collection** | Mobile-first field app, offline-tolerant, GPS-verified plot capture, KYC docs | None — supplier data arrives out-of-band (spreadsheet/email), officer uploads KML (see #1383) |
+| **Deforestation analysis** | JRC + Hansen datasets (forest-loss layers only) | Sentinel-2 NDVI, Landsat historical baseline, ESA WorldCover, ALOS, FIRMS fire, WDPA, Open-Meteo weather, AI narrative — materially broader corroboration |
+| **HS/CN commodity coding** | Confirmed for all regulated SKUs (part of their pre-flight validation) | ❌ Not tracked — `commodity` is a free-text manifest field, no Annex I CN-code validation |
+| **DDS generation** | Rule engine auto-generates Annex-II-structured DDS from plot/commodity/risk/legality data | ❌ Audit PDF/CSV/GeoJSON exports exist but aren't structured to Annex II fields — no formal DDS template (tracked, low priority, in EUDR_USER_JOURNEYS.md J6 Gap 3) |
+| **TRACES NT submission** | API-direct, one-click, returns DDS reference/verification number | ❌ Not built — would require EU Login + registered "economic operator" account and carries real liability if submitting on a customer's behalf |
+| **ERP integration** | Native SAP/Dynamics/Odoo connectors | ❌ None |
+| **Compliance dashboard** | DDS status, supplier risk scores, country benchmarking, audit trail | ❌ Tracked but unbuilt (J7 Gap 1, J3 Gap 2) |
+| **Audit retention** | 5-year searchable archive (matches EUDR's mandatory retention period) | Partial — blob storage + history panel, no explicit immutable/tamper-evident archive (J8 Gap 1) |
+| **Enterprise security** | SSO/OAuth, multi-tenancy, RBAC | ❌ CIAM auth only, no SSO/SAML, no role-based access (J9 Gap 1) |
+| **Pricing** | Not published (demo/quote-gated) | £19–£49/month self-serve, transparent |
+
+**Honest assessment:** TraceX competes on *process automation and TRACES submission* — it assumes the hard evidentiary question ("was this plot actually deforested?") is solved elsewhere (JRC/Hansen forest-loss layers) and focuses on getting supplier data captured and a DDS filed. Canopex competes on the opposite end: materially deeper, multi-source satellite evidence and AI interpretation, with weaker supply-chain-process tooling.
+
+**What this confirms, not merely suggests:** TraceX is a real, funded, live product built around exactly the "supplier coordination" gap flagged in #1383 — independent market validation that the gap is real, without changing the verdict that Canopex shouldn't build the supplier-facing half of it ahead of a paying customer's explicit ask (see #1383 for the full reasoning). It also confirms the EU Information System is not "blocked"/non-operational as earlier docs assumed — TRACES NT is live today with a concrete enforcement deadline (large/medium operators: 30 December 2026, delayed 12 months from the original December 2025 date by a December 2025 amending regulation; small/micro operators: 30 June 2027), which raises the priority of J6 Gap 3 (formal DDS template) from "low, blocked" to "should be revisited before the Q4 2026 deadline window."
+
+**Where we should not compete:** ERP integration, mobile/offline supplier capture, and direct TRACES NT submission all require organizational commitments (ERP partnerships, field-data infrastructure, EU economic-operator registration + legal liability review) far beyond a solo-developer product's near-term reach, and none has been requested by a paying customer yet.
+
+**Tracked follow-ups:** #1384 (HS/CN commodity coding + Annex-II-structured DDS export — the achievable near-term slice), #1385 (direct TRACES NT API submission — watch item, deferred pending legal review and customer signal), #1386 (ERP integration — watch item, no customer signal yet), #1383 (supplier coordination is a task-tracking gap, not just data-ingestion).
+
 ---
 
 ## 9. Market Sizing — Grounded Estimates
