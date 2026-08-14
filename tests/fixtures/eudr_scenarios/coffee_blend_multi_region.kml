@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Coffee Blend — 4-Origin Supply Chain (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the coffee commodity (Regulation 2023/1115),
+      modelling a real-world roaster blend that sources across multiple continents
+      rather than a single origin. EUDR requires geolocation for every plot feeding a
+      blended shipment (Article 9), so a realistic due-diligence file for a blend looks
+      exactly like this: several small plots, several countries, one submission.
+      Four origins, chosen to span distinct producing regions:
+        - Brazil (Cerrado Mineiro, Minas Gerais) — South America, estate-scale arabica.
+        - Ethiopia (Hararghe highlands, East Ethiopia) — East Africa; historically traded
+          via Somali overland routes to the port of Berbera, and the well-documented
+          source of the spicy/winey natural-process character ("a little pep") often
+          associated with Somali/Horn-of-Africa coffee in blends. Note: Somalia itself
+          has very limited modern coffee cultivation (small emerging plots in the
+          Somaliland highlands); Hararghe is the defensible, well-documented origin for
+          this flavor profile and is used here rather than an unverified Somalia claim.
+        - Vietnam (Dak Lak, Central Highlands) — mainland Southeast Asia, robusta.
+        - Indonesia (Gayo highlands, Central Aceh, Sumatra) — maritime Southeast Asia,
+          smallholder arabica.
+      Each plot is placed at plausible rural coordinates within the named producing
+      region to exercise the pipeline against real, defensible geographies — none
+      asserts the surveyed boundary of a specific named farm or claims ownership/consent
+      for a real property.
+    </description>
+    <Placemark>
+      <name>Brazil — Cerrado Mineiro estate plot</name>
+      <description>Representative test AOI, ~43 ha, near Patrocinio, Minas Gerais — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              -46.992500,-18.940819,0
+              -46.989702,-18.941253,0
+              -46.988616,-18.943900,0
+              -46.989901,-18.946359,0
+              -46.992500,-18.947045,0
+              -46.995395,-18.946638,0
+              -46.996615,-18.943900,0
+              -46.995131,-18.941412,0
+              -46.992500,-18.940819,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Ethiopia — Hararghe highlands smallholder plot</name>
+      <description>Representative test AOI, ~26 ha, Hararghe highlands, East Ethiopia — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              42.060000,9.357222,0
+              42.061662,9.356640,0
+              42.062626,9.355000,0
+              42.062059,9.352968,0
+              42.060000,9.352656,0
+              42.058338,9.353360,0
+              42.057532,9.355000,0
+              42.057890,9.357082,0
+              42.060000,9.357222,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Vietnam — Dak Lak robusta plot</name>
+      <description>Representative test AOI, ~35 ha, near Buon Ma Thuot, Dak Lak — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              108.050000,12.669709,0
+              108.052058,12.668708,0
+              108.052835,12.666700,0
+              108.052618,12.664146,0
+              108.050000,12.663468,0
+              108.047565,12.664325,0
+              108.046716,12.666700,0
+              108.047817,12.668830,0
+              108.050000,12.669709,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Indonesia — Gayo highlands smallholder plot</name>
+      <description>Representative test AOI, ~14 ha, near Takengon, Central Aceh, Sumatra — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              96.838000,4.628794,0
+              96.839403,4.628399,0
+              96.839741,4.627000,0
+              96.839564,4.625441,0
+              96.838000,4.625215,0
+              96.836572,4.625576,0
+              96.835713,4.627000,0
+              96.836650,4.628346,0
+              96.838000,4.628794,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

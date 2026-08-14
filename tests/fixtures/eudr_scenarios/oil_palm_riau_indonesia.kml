@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Oil Palm — Riau, Sumatra, Indonesia (representative test AOI)</name>
+    <description>
+      Illustrative EUDR test scenario for the palm oil commodity (Regulation
+      2023/1115, Annex I CN heading 1511 / 1207.10). Riau province, Sumatra is one
+      of Indonesia's largest oil-palm-producing regions and a frequently cited
+      EUDR risk-benchmarking geography. This single estate-scale plot reflects
+      industrial plantation scale (distinct from smallholder cocoa/coffee plots
+      above) relevant to large-operator EUDR due diligence. Coordinates are
+      illustrative and do NOT assert the surveyed boundary of any specific named
+      plantation or claim anything about its actual compliance status.
+    </description>
+    <Placemark>
+      <name>Estate block</name>
+      <description>Representative test AOI, ~150 ha — not a real surveyed boundary.</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              101.300000,0.706127,0
+              101.304826,0.704826,0
+              101.305385,0.700000,0
+              101.305430,0.694570,0
+              101.300000,0.692699,0
+              101.294543,0.694543,0
+              101.294015,0.700000,0
+              101.295874,0.704125,0
+              101.300000,0.706127,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

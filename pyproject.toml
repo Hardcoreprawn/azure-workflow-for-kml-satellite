@@ -33,6 +33,7 @@ dev = [
     "pytest>=9.0.3",
     "anyio>=4.0",
     "pytest-cov>=6.0",
+    "pytest-timeout>=2.3",
     "diff-cover>=9.2",
     "ruff>=0.8.0",
     "hypothesis>=6.0",
@@ -56,6 +57,8 @@ packages = ["treesight"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".", "scripts"]
+timeout = 60
+timeout_method = "thread"
 markers = [
     "integration: tests requiring infrastructure or an external service",
     "integration_azurite: required tests against a live Azurite instance",
