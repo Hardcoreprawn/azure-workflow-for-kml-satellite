@@ -433,7 +433,10 @@ paths:
       operationId: exportData
       summary: Export pipeline results
       description: |
-        Downloads pipeline output in the specified format.
+        Downloads pipeline output in the specified format. The `eudr-*` formats
+        are per-parcel EUDR due-diligence exports. `eudr-dds` is a DRAFT export
+        structured to Regulation (EU) 2023/1115 Annex II — it is not a submission
+        to EU TRACES NT; the operator must review and submit it themselves.
       tags: [export]
       parameters:
         - $ref: "#/components/parameters/instanceId"
@@ -442,7 +445,17 @@ paths:
           required: true
           schema:
             type: string
-            enum: [geojson, csv]
+            enum:
+              [
+                geojson,
+                csv,
+                csv-bulk,
+                pdf,
+                eudr-geojson,
+                eudr-csv,
+                eudr-pdf,
+                eudr-dds,
+              ]
           description: Export format
       responses:
         "200":
@@ -455,6 +468,14 @@ paths:
             text/csv:
               schema:
                 type: string
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                description: Annex-II-structured DDS export draft (`eudr-dds` only)
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
