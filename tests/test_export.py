@@ -801,12 +801,12 @@ class TestBuildEudrDds:
         manifest = dict(eudr_manifest)
         manifest["operator_name"] = "Acme Trading GmbH"
         manifest["operator_address"] = "1 Example Str, Berlin, DE"
-        manifest["operator_eori"] = "DE123456789"
+        manifest["operator_eori"] = "DE000000000"
         result = _build_eudr_dds(manifest)
         operator = result["dds_annex_ii"]["1_operator"]
         assert operator["name"] == "Acme Trading GmbH"
         assert operator["address"] == "1 Example Str, Berlin, DE"
-        assert operator["eori"] == "DE123456789"
+        assert operator["eori"] == "DE000000000"
 
     def test_missing_operator_fields_default_to_empty_string(self):
         result = _build_eudr_dds({})
