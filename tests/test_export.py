@@ -813,6 +813,23 @@ class TestBuildEudrDds:
         operator = result["dds_annex_ii"]["1_operator"]
         assert operator == {"name": "", "address": "", "eori": ""}
 
+    def test_explicit_null_operator_and_commodity_fields_do_not_crash(self):
+        """A manifest with explicit None values (not just absent keys) must not crash."""
+        manifest = {
+            "operator_name": None,
+            "operator_address": None,
+            "operator_eori": None,
+            "commodity": None,
+            "country_of_production": None,
+            "per_aoi_enrichment": [],
+        }
+        result = _build_eudr_dds(manifest)
+        dds = result["dds_annex_ii"]
+        assert dds["1_operator"] == {"name": "", "address": "", "eori": ""}
+        assert dds["2_product"]["commodity"] == ""
+        assert dds["2_product"]["commodity_recognized"] is False
+        assert dds["3_production"]["country_of_production"] == ""
+
     def test_geolocation_uses_polygon_for_plots_over_four_hectares(self, eudr_manifest):
         """Article 2(28): polygons required for plots > 4 ha."""
         result = _build_eudr_dds(eudr_manifest)
@@ -888,6 +905,25 @@ class TestBuildEudrDds:
         before = copy.deepcopy(eudr_manifest)
         _build_eudr_dds(eudr_manifest)
         assert eudr_manifest == before
+
+
+class TestDispatchEudrExport:
+    """The internal export-format dispatch guard (#1391 review finding)."""
+
+    def test_raises_for_non_eudr_format(self):
+        """Caller contract: only call with fmt in _EUDR_FORMATS. Must not silently no-op."""
+        from blueprints.export import _dispatch_eudr_export
+
+        with pytest.raises(ValueError, match="non-EUDR format"):
+            _dispatch_eudr_export("csv", {}, "inst-1", None, {})
+
+    @pytest.mark.parametrize("fmt", ["eudr-geojson", "eudr-csv", "eudr-pdf", "eudr-dds"])
+    def test_handles_every_format_in_eudr_formats_constant(self, fmt, eudr_manifest):
+        from blueprints.export import _EUDR_FORMATS, _dispatch_eudr_export
+
+        assert fmt in _EUDR_FORMATS
+        response = _dispatch_eudr_export(fmt, eudr_manifest, "inst-1", None, {})
+        assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

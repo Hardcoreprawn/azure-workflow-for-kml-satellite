@@ -27,16 +27,8 @@ from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FORMATS = {
-    "geojson",
-    "csv",
-    "csv-bulk",
-    "pdf",
-    "eudr-geojson",
-    "eudr-csv",
-    "eudr-pdf",
-    "eudr-dds",
-}
+_EUDR_FORMATS = frozenset({"eudr-geojson", "eudr-csv", "eudr-pdf", "eudr-dds"})
+_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf", *_EUDR_FORMATS}
 
 
 def _fetch_run_record_for_export(instance_id: str) -> "dict[str, Any] | None":
@@ -75,8 +67,8 @@ def _dispatch_eudr_export(
     instance_id: str,
     run_record: "dict[str, Any] | None",
     headers: dict[str, str],
-) -> "func.HttpResponse | None":
-    """Handle the ``eudr-*`` export formats. Returns ``None`` if ``fmt`` isn't one of them."""
+) -> "func.HttpResponse":
+    """Handle the ``eudr-*`` export formats. Caller must check ``fmt in _EUDR_FORMATS`` first."""
     if fmt == "eudr-geojson":
         geojson = _build_eudr_geojson(manifest)
         body = json.dumps(geojson, indent=2, default=str)
@@ -99,7 +91,7 @@ def _dispatch_eudr_export(
         headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr_dds.json"'
         return func.HttpResponse(body, status_code=200, mimetype="application/json", headers=headers)
 
-    return None
+    raise ValueError(f"_dispatch_eudr_export got non-EUDR format {fmt!r} — caller must check _EUDR_FORMATS first")
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +180,8 @@ async def export_data(
             headers=headers,
         )
 
-    if fmt in {"eudr-geojson", "eudr-csv", "eudr-pdf", "eudr-dds"}:
-        eudr_response = _dispatch_eudr_export(fmt, manifest, instance_id, run_record, headers)
-        assert eudr_response is not None  # fmt is one of the four handled above
-        return eudr_response
+    if fmt in _EUDR_FORMATS:
+        return _dispatch_eudr_export(fmt, manifest, instance_id, run_record, headers)
 
     # PDF
     pdf_bytes = _build_pdf(manifest, instance_id)

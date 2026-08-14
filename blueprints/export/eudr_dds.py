@@ -33,23 +33,23 @@ _DDS_DISCLAIMER = (
 def _operator_block(manifest: dict[str, Any]) -> dict[str, Any]:
     """Annex II item 1: operator's name, address, and EORI number."""
     return {
-        "name": manifest.get("operator_name", ""),
-        "address": manifest.get("operator_address", ""),
-        "eori": manifest.get("operator_eori", ""),
+        "name": manifest.get("operator_name") or "",
+        "address": manifest.get("operator_address") or "",
+        "eori": manifest.get("operator_eori") or "",
     }
 
 
 def _product_block(manifest: dict[str, Any]) -> dict[str, Any]:
     """Annex II item 2: HS code, description, quantity."""
-    raw_commodity = manifest.get("commodity", "")
+    raw_commodity = manifest.get("commodity") or ""
     normalized = normalize_commodity(raw_commodity)
     hs_codes = list(EUDR_COMMODITIES[normalized].hs_codes) if normalized else []
     return {
         "commodity": raw_commodity,
         "commodity_recognized": normalized is not None,
         "hs_codes": hs_codes,
-        "description": manifest.get("product_description", ""),
-        "scientific_name": manifest.get("scientific_name", ""),
+        "description": manifest.get("product_description") or "",
+        "scientific_name": manifest.get("scientific_name") or "",
         "quantity_kg": manifest.get("quantity_kg"),
     }
 
@@ -66,7 +66,7 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
 
 def _production_block(manifest: dict[str, Any]) -> dict[str, Any]:
     """Annex II item 3: country of production and geolocation of all plots."""
-    is_cattle = normalize_commodity(manifest.get("commodity", "")) == "cattle"
+    is_cattle = normalize_commodity(manifest.get("commodity") or "") == "cattle"
     per_aoi = manifest.get("per_aoi_enrichment", [])
     plots: list[dict[str, Any]] = []
     for aoi in per_aoi:
@@ -76,7 +76,7 @@ def _production_block(manifest: dict[str, Any]) -> dict[str, Any]:
         plot.update(_plot_geolocation(aoi, is_cattle=is_cattle))
         plots.append(plot)
     return {
-        "country_of_production": manifest.get("country_of_production", ""),
+        "country_of_production": manifest.get("country_of_production") or "",
         "plots": plots,
     }
 
