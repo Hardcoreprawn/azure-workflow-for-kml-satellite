@@ -642,6 +642,9 @@ class TestDeployWorkflowSettings:
         assert "Capture Tofu outputs" in deploy_yml, (
             "deploy.yml must include a dedicated step that captures tofu outputs into env vars"
         )
+        assert "id: tofu-outputs" in deploy_yml, (
+            "deploy.yml must expose deploy-infra outputs from the single tofu outputs capture step"
+        )
         assert "=$(tofu output -raw " not in deploy_yml, (
             "deploy.yml should not repeatedly call tofu output -raw in deploy steps"
         )
@@ -733,6 +736,12 @@ class TestDeployWorkflowSettings:
         assert "steps.configure-orch-app.outcome == 'success'" in deploy_yml, (
             "rollback guard must consider orchestrator configure step outcome"
         )
+        assert "Capture current orchestrator container image" not in deploy_yml, (
+            "deploy.yml should capture previous images once in the canonical rollback capture step"
+        )
+        assert "Rollback orchestrator to previous image" not in deploy_yml, (
+            "deploy.yml should keep a single canonical rollback step instead of a duplicate orchestrator-only rollback"
+        )
         assert "steps.current-image.outputs.image_compute" in deploy_yml, (
             "rollback guard must use captured compute image output"
         )
@@ -742,8 +751,8 @@ class TestDeployWorkflowSettings:
         assert 'ORCH_NAME="${{ steps.current-image.outputs.orch_name }}"' in deploy_yml, (
             "rollback step must restore orchestrator app image"
         )
-        assert "steps.compute-hostname.outputs.hostname" in deploy_yml, (
-            "rollback step must validate compute app health after rollback"
+        assert 'COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"' in deploy_yml, (
+            "rollback step must validate compute app health using the captured tofu compute hostname"
         )
 
     def test_workflow_dispatch_supports_manual_teardown_rebuild(self, deploy_yml):

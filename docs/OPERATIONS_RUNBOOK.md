@@ -57,6 +57,7 @@ remove the prd freeze guard, then follow the standard deploy steps below.
 6. Preview SWA hosts are not wildcard-allowed for blob uploads; if a preview environment needs browser uploads, add its exact origin through infra before rollout.
 7. Verify Function host readiness using /api/health.
    Deploy workflow note: compute and orchestrator readiness probes run in parallel and both must pass.
+   Rollback note: a single canonical rollback step restores whichever app images were updated (compute, orchestrator, or both) and then health-checks both hosts.
 8. Verify Event Grid subscription reconciliation succeeds.
 9. Require post-readiness async smoke gate to pass (upload token → blob upload → orchestrator completion with a valid diagnostics payload shape).
 10. `/api/analysis/submit` must reject unauthenticated callers before any upload or orchestration work begins.
