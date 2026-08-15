@@ -4,6 +4,11 @@ from treesight.models.aoi import AOI
 from treesight.models.blob_event import BlobEvent
 from treesight.models.enums import OrderState, WorkflowState
 from treesight.models.feature import Feature
+from treesight.models.geolocation import (
+    GeolocationProvenance,
+    GeometryType,
+    LegalUseClassification,
+)
 from treesight.models.imagery import ImageryFilters, SearchResult
 from treesight.models.outcomes import (
     AcquisitionResult,
@@ -31,9 +36,12 @@ __all__ = [
     "EnrichmentManifest",
     "Feature",
     "FulfillmentResult",
+    "GeolocationProvenance",
+    "GeometryType",
     "ImageryFilters",
     "ImageryOutcome",
     "IngestionResult",
+    "LegalUseClassification",
     "MetadataResult",
     "OrderState",
     "PipelineSummary",
