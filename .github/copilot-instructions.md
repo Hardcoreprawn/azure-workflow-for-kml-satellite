@@ -39,6 +39,7 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - **Security-sensitive changes require owner review.** CODEOWNERS routes auth, billing, quota/ownership, workflow, and infrastructure changes to `@Hardcoreprawn`. Ask for the owner's decision before merge; an agent must not infer approval or merge these changes on its own.
 - Start planned work from a GitHub issue whenever practical. Apply the appropriate `priority:*` label to new issues.
 - Keep pull requests narrow, stage-aligned, and traceable to a roadmap item or issue.
+- **If unrelated CI flakiness blocks your PR, don't fix it inline.** File a `[discovered]` issue for the flaky/unrelated failure (per `issue-tracking.instructions.md`) and open a separate PR closing it. A PR fixing scope-A must not silently absorb a scope-B fix just because scope-B's CI job happened to be red at the time — this breaks single-issue traceability and couples an unrelated fix's revert surface to the original change (see #1394 for a case where this happened).
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
 - When behavior, contracts, or rollout expectations change, update the relevant tests and docs in the same change.
 
