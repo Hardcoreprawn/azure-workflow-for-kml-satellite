@@ -871,10 +871,19 @@ class TestBuildEudrDds:
         plot = result["dds_annex_ii"]["3_production"]["plots"][0]
         assert plot["geolocation_type"] == "point"
 
-    def test_skips_failed_aoi_entries(self, eudr_manifest):
+    def test_includes_failed_aoi_entries_with_error_marker(self, eudr_manifest):
+        """A failed AOI must be visible in the export, not silently dropped (review finding on #1391)."""
         result = _build_eudr_dds(eudr_manifest)
         plots = result["dds_annex_ii"]["3_production"]["plots"]
-        assert all(p["name"] != "Farm C (failed)" for p in plots)
+        failed = next(p for p in plots if p["name"] == "Farm C (failed)")
+        assert failed["error"] == "enrichment_failed"
+        assert "geolocation_type" not in failed
+        assert "coordinates" not in failed
+
+    def test_plot_count_matches_per_aoi_enrichment_including_failures(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        plots = result["dds_annex_ii"]["3_production"]["plots"]
+        assert len(plots) == len(eudr_manifest["per_aoi_enrichment"])
 
     def test_reference_to_existing_statement_defaults_to_none(self, eudr_manifest):
         result = _build_eudr_dds(eudr_manifest)

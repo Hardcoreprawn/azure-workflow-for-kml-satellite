@@ -65,12 +65,19 @@ def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]
 
 
 def _production_block(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Annex II item 3: country of production and geolocation of all plots."""
+    """Annex II item 3: country of production and geolocation of all plots.
+
+    Failed AOIs are included with an ``error`` marker and no geolocation,
+    rather than silently omitted — a shorter plot list must not be mistaken
+    for a smaller, fully-enriched supply chain (matches the eudr-geojson/
+    eudr-csv exports, which surface failures the same way).
+    """
     is_cattle = normalize_commodity(manifest.get("commodity") or "") == "cattle"
     per_aoi = manifest.get("per_aoi_enrichment", [])
     plots: list[dict[str, Any]] = []
     for aoi in per_aoi:
         if "error" in aoi:
+            plots.append({"name": aoi.get("name", ""), "error": aoi["error"]})
             continue
         plot = {"name": aoi.get("name", ""), "area_ha": aoi.get("area_ha", 0.0)}
         plot.update(_plot_geolocation(aoi, is_cattle=is_cattle))
