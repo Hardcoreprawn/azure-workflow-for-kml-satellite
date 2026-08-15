@@ -53,6 +53,7 @@ jobs:
           check_heading "Observable problem"
           check_heading "Acceptance signal"
           check_heading "First focused check"
+          check_heading "Handoff checks"
           check_heading "Risk class"
           check_heading "Non-goals"
           check_heading "Dependencies"
@@ -81,6 +82,7 @@ jobs:
               `- **Observable problem** — current behavior and repro/evidence pointer`,
               `- **Acceptance signal** — measurable outcome (test name, command output, metric)`,
               `- **First focused check** — exact narrow command expected to fail before and pass after`,
+              `- **Handoff checks** — broader commands required before review (default: \`make check\`)`,
               `- **Risk class** — low / normal / high / release-critical`,
               `- **Non-goals** — adjacent work explicitly excluded`,
               `- **Dependencies** — \`Blocked by #N\` / \`Depends on #N\` (or "none")`,
