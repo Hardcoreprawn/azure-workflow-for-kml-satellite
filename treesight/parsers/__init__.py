@@ -99,7 +99,7 @@ def validate_kml_bytes(data: bytes) -> None:
     if _DOCTYPE_RE.search(data[:4096]):
         raise ValueError("KML contains a DOCTYPE declaration — DTD/entity declarations are not permitted")
 
-    from lxml import etree
+    import lxml.etree as etree
 
     try:
         root = etree.fromstring(data)
