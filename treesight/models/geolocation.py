@@ -84,9 +84,7 @@ class GeolocationProvenance(BaseModel):
     """
 
     source_geometry_type: GeometryType
-    source_geometry: list[Any] = Field(
-        description="Original supplier-declared geometry coordinates (immutable)."
-    )
+    source_geometry: list[Any] = Field(description="Original supplier-declared geometry coordinates (immutable).")
     derived_geometry: list[list[float]] | None = Field(
         default=None,
         description="Analysis footprint derived from the source geometry.",

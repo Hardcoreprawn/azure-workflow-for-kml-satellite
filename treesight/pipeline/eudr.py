@@ -191,9 +191,7 @@ def build_geolocation_provenance(
     positional_verifier: str = plot.get("positional_verifier", "")
 
     raw_date = plot.get("capture_date")
-    capture_date: _date | None = (
-        _date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
-    )
+    capture_date: _date | None = _date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
 
     if "coordinates" in plot:
         source_coords: list[Any] = list(plot["coordinates"])
@@ -220,15 +218,9 @@ def build_geolocation_provenance(
         derived = _point_buffer(lon, lat, radius, segments=segments)
 
         # EUDR Article 2(28): polygon required when declared area > 4 ha.
-        polygon_required = bool(
-            plot_area_ha is not None and plot_area_ha > _EUDR_POLYGON_REQUIRED_HA
-        )
+        polygon_required = bool(plot_area_ha is not None and plot_area_ha > _EUDR_POLYGON_REQUIRED_HA)
 
-        classification = (
-            LegalUseClassification.INCOMPLETE
-            if polygon_required
-            else LegalUseClassification.DDS_ELIGIBLE
-        )
+        classification = LegalUseClassification.INCOMPLETE if polygon_required else LegalUseClassification.DDS_ELIGIBLE
 
         return GeolocationProvenance(
             source_geometry_type=GeometryType.POINT,
@@ -248,8 +240,7 @@ def build_geolocation_provenance(
         )
 
     raise ValueError(
-        "plot must contain either 'coordinates' (polygon) or 'lon'+'lat' (point), "
-        f"got keys: {list(plot.keys())!r}"
+        f"plot must contain either 'coordinates' (polygon) or 'lon'+'lat' (point), got keys: {list(plot.keys())!r}"
     )
 
 
