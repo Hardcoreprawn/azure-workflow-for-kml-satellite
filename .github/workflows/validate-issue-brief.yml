@@ -1,0 +1,99 @@
+name: Validate Issue Brief
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  validate-issue-brief:
+    name: validate-issue-brief
+    runs-on: ubuntu-latest
+    # Only validate issues that look like implementation work items.
+    # Maintenance/docs issues (labelled 'maintenance') are exempted.
+    steps:
+      - name: Check for maintenance label
+        id: check-label
+        env:
+          LABELS: ${{ toJson(github.event.issue.labels) }}
+        run: |
+          if printf '%s\n' "$LABELS" | grep -q '"name": "maintenance"'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate required headings
+        if: steps.check-label.outputs.skip == 'false'
+        id: validate
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Guard: skip validation when the body is empty or the JSON literal "null"
+          if [ -z "$ISSUE_BODY" ] || [ "$ISSUE_BODY" = "null" ]; then
+            echo "Issue body is empty — skipping heading validation."
+            echo "missing=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          missing=()
+
+          check_heading() {
+            local heading="$1"
+            if ! printf '%s\n' "$ISSUE_BODY" | grep -qiE "^##\s+${heading}"; then
+              missing+=("$heading")
+            fi
+          }
+
+          check_heading "Owning anchor"
+          check_heading "Observable problem"
+          check_heading "Acceptance signal"
+          check_heading "First focused check"
+          check_heading "Handoff checks"
+          check_heading "Risk class"
+          check_heading "Non-goals"
+          check_heading "Dependencies"
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            joined=$(IFS=", "; echo "${missing[*]}")
+            echo "missing=${joined}" >> "$GITHUB_OUTPUT"
+            echo "::warning::Issue #${ISSUE_NUMBER} is missing required headings: ${joined}"
+          else
+            echo "missing=" >> "$GITHUB_OUTPUT"
+            echo "All required headings present in issue #${ISSUE_NUMBER}."
+          fi
+
+      - name: Post comment when headings are missing
+        if: steps.check-label.outputs.skip == 'false' && steps.validate.outputs.missing != ''
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const missing = `${{ steps.validate.outputs.missing }}`;
+            const body = [
+              `👋 This issue appears to be a **Work item** but is missing some required brief fields: **${missing}**.`,
+              ``,
+              `Please update the issue body to include all of the following headings so a coding agent can begin without broad repository exploration:`,
+              ``,
+              `- **Owning anchor** — file, symbol, endpoint, or failing command`,
+              `- **Observable problem** — current behavior and repro/evidence pointer`,
+              `- **Acceptance signal** — measurable outcome (test name, command output, metric)`,
+              `- **First focused check** — exact narrow command expected to fail before and pass after`,
+              `- **Handoff checks** — broader commands required before review (default: \`make check\`)`,
+              `- **Risk class** — low / normal / high / release-critical`,
+              `- **Non-goals** — adjacent work explicitly excluded`,
+              `- **Dependencies** — \`Blocked by #N\` / \`Depends on #N\` (or "none")`,
+              ``,
+              `If this is a docs/typo/maintenance issue, add the \`maintenance\` label to skip this check.`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
