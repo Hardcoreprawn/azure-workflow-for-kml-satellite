@@ -54,7 +54,7 @@ def _read_submission_ticket(container_name: str, blob_name: str) -> dict | None:
     ticket is ever written for those blobs.
     """
     parts = PurePosixPath(blob_name).parts
-    if len(parts) < 2:
+    if not parts:
         return None
     stem = PurePosixPath(parts[-1]).stem
     ticket_path = f".tickets/{stem}.json"
