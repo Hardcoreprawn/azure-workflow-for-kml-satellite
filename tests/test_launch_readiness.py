@@ -46,6 +46,7 @@ COPILOT_INSTRUCTIONS = ROOT / ".github" / "copilot-instructions.md"
 MAIN_TF = INFRA / "main.tf"
 VARIABLES_TF = INFRA / "variables.tf"
 DEV_TFVARS = INFRA / "environments" / "dev.tfvars"
+PRD_TFVARS = INFRA / "environments" / "prd.tfvars"
 HOST_JSON = ROOT / "host.json"
 SECURITY_YML = ROOT / ".github" / "workflows" / "security.yml"
 CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
@@ -232,12 +233,22 @@ class TestLogAnalyticsCap:
             "until Log Analytics proves its value"
         )
 
-    def test_dev_custom_domain_is_set(self):
-        tfvars = DEV_TFVARS.read_text()
-        match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars, re.MULTILINE)
-        assert match, "dev.tfvars must set custom_domain explicitly"
-        assert match.group(1) != "", (
-            "dev.tfvars must set custom_domain to the apex domain so the SWA serves CORS headers for the correct origin"
+    @staticmethod
+    def _extract_custom_domain(tfvars_path: Path) -> str:
+        match = re.search(r'^custom_domain\s*=\s*"([^"]*)"', tfvars_path.read_text(), re.MULTILINE)
+        assert match, f"{tfvars_path.name} must set custom_domain explicitly"
+        return match.group(1).strip()
+
+    def test_prd_custom_domain_is_set(self):
+        prd_domain = self._extract_custom_domain(PRD_TFVARS)
+        assert prd_domain != "", "prd.tfvars must define the production custom domain explicitly"
+
+    def test_dev_and_prd_custom_domains_do_not_collide(self):
+        dev_domain = self._extract_custom_domain(DEV_TFVARS)
+        prd_domain = self._extract_custom_domain(PRD_TFVARS)
+        assert dev_domain != prd_domain, (
+            "dev.tfvars and prd.tfvars must not claim the same custom_domain; use separate hostnames or a"
+            " workflow-gated transfer operation"
         )
 
 
@@ -745,6 +756,29 @@ class TestDeployWorkflowSettings:
             "deploy.yml workflow_dispatch must expose smoke poll interval control"
         )
         assert "smoke_max_attempts" in deploy_yml, "deploy.yml workflow_dispatch must expose smoke max-attempts control"
+
+    def test_workflow_dispatch_supports_domain_transfer_gate(self, deploy_yml):
+        assert "allow_domain_transfer" in deploy_yml, (
+            "deploy.yml workflow_dispatch must require an explicit allow_domain_transfer toggle "
+            "for controlled custom-domain ownership transfer"
+        )
+
+    def test_deploy_preflight_validates_domain_ownership(self, deploy_yml):
+        assert "Validate custom-domain ownership" in deploy_yml, (
+            "deploy.yml preflight must validate dev/prd custom-domain ownership before deploy"
+        )
+        assert "scripts/validate_domain_ownership.py" in deploy_yml, (
+            "deploy.yml preflight must call scripts/validate_domain_ownership.py"
+        )
+
+    def test_deploy_preflight_checks_out_repo_before_domain_validation(self, deploy_yml):
+        checkout_index = deploy_yml.find("Checkout repository for preflight checks")
+        validate_index = deploy_yml.find("Validate custom-domain ownership")
+        assert checkout_index >= 0, (
+            "deploy.yml preflight must checkout the repository before running file-backed validation scripts"
+        )
+        assert validate_index >= 0, "deploy.yml preflight must include the custom-domain validation step"
+        assert checkout_index < validate_index, "deploy.yml preflight must run checkout before custom-domain validation"
 
     def test_deploy_does_not_run_reset_helper(self, deploy_yml):
         assert "reset_dev_resource_group.py" not in deploy_yml, (
@@ -1970,6 +2004,48 @@ class TestInfracostCostGate:
     def test_collection_script_exists(self):
         script = ROOT / "scripts" / "collect_infracost_usage.py"
         assert script.exists(), "Usage metrics collection script missing at scripts/collect_infracost_usage.py"
+
+    def test_infracost_metrics_collection_is_non_blocking(self):
+        content = INFRACOST_YML.read_text()
+        assert "id: collect_usage_metrics" in content, (
+            "Infracost workflow must assign an id to the metrics collection step"
+        )
+        assert "continue-on-error: true" in content, (
+            "Infracost workflow must treat live metrics collection as non-blocking so transient Azure failures "
+            "do not fail the entire cost gate"
+        )
+
+    def test_infracost_warns_on_metrics_fallback(self):
+        content = INFRACOST_YML.read_text()
+        assert "Warn when metrics collection falls back to baseline usage file" in content, (
+            "Infracost workflow must emit a warning when it falls back to committed usage baseline"
+        )
+        assert "steps.collect_usage_metrics.outcome == 'failure'" in content, (
+            "Infracost fallback warning must be gated on collect_usage_metrics failure"
+        )
+
+    def test_infracost_tofu_init_is_non_blocking(self):
+        content = INFRACOST_YML.read_text()
+        assert "id: tofu_init" in content, "Infracost workflow must define a tofu_init step id"
+        assert "- name: Tofu Init" in content and "continue-on-error: true" in content, (
+            "Infracost workflow must treat Tofu Init as non-blocking so transient backend failures "
+            "do not hard-fail the cost gate"
+        )
+
+    def test_infracost_steps_require_successful_tofu_init(self):
+        content = INFRACOST_YML.read_text()
+        assert "steps.tofu_init.outcome == 'success'" in content, (
+            "Infracost plan, breakdown, comment, and budget steps must run only when tofu_init succeeds"
+        )
+
+    def test_infracost_posts_skip_notice_when_tofu_init_fails(self):
+        content = INFRACOST_YML.read_text()
+        assert "steps.tofu_init.outcome != 'success'" in content, (
+            "Infracost skip notice must trigger when tofu_init fails"
+        )
+        assert "OpenTofu init failed" in content, (
+            "Infracost skip notice must explain tofu init failures as transient and retryable"
+        )
 
     def test_infracost_optional_deps_defined(self):
         pyproject = ROOT / "pyproject.toml"

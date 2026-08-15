@@ -7,6 +7,7 @@ cancellation (Consumer Contracts Regulations 2013 — 14-day cooling-off).
 import json
 import logging
 import os
+from typing import Any, cast
 
 import azure.functions as func
 
@@ -286,15 +287,15 @@ def billing_webhook(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Invalid payload", status_code=400)
 
     try:
-        _handle_event(event)
+        _handle_event(cast(dict[str, Any], event))
     except Exception:
-        logger.exception("Failed to process Stripe event %s", event.get("type", ""))
+        logger.exception("Failed to process Stripe event %s", cast(dict[str, Any], event).get("type", ""))
         return func.HttpResponse("Internal error", status_code=500)
 
     return func.HttpResponse("ok", status_code=200)
 
 
-def _handle_event(event: dict) -> None:
+def _handle_event(event: dict[str, Any]) -> None:
     """Dispatch Stripe webhook events to subscription record updates.
 
     Raises on save_subscription failure so the webhook handler can return
@@ -367,7 +368,7 @@ def _handle_event(event: dict) -> None:
         logger.warning("Payment failed for user=%s", user_id)
 
 
-def _handle_eudr_event(event_type: str, obj: dict, metadata: dict) -> None:
+def _handle_eudr_event(event_type: str, obj: dict[str, Any], metadata: dict[str, Any]) -> None:
     """Handle Stripe events for EUDR org-scoped subscriptions (#613)."""
     from treesight.security.eudr_billing import save_eudr_subscription
 
@@ -426,7 +427,7 @@ def _extract_metered_sub_item(subscription_id: str | None) -> str | None:
         return None
     try:
         stripe = _get_stripe()
-        sub = stripe.Subscription.retrieve(subscription_id)
+        sub = cast(dict[str, Any], stripe.Subscription.retrieve(subscription_id))
         for item in sub.get("items", {}).get("data", []):
             price = item.get("price", {})
             if price.get("recurring", {}).get("usage_type") == "metered":

@@ -11,6 +11,7 @@ import pytest
 
 from blueprints.export.audit_pdf import build_eudr_audit_pdf
 from blueprints.export.csv import _build_bulk_csv, _build_csv, _build_eudr_csv
+from blueprints.export.eudr_dds import _build_eudr_dds
 from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
 from blueprints.export.pdf import _build_pdf, _pdf_scene_provenance_section
 
@@ -742,6 +743,196 @@ class TestBuildPdfEudrPerParcel:
         result = _build_pdf(eudr_manifest, "run-eudr-582")
         assert isinstance(result, bytes)
         assert result.startswith(b"%PDF")
+
+
+# ---------------------------------------------------------------------------
+# Annex-II-structured DDS export draft (#1384)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildEudrDds:
+    """Annex-II-structured due diligence statement export draft (#1384)."""
+
+    def test_returns_dict_with_six_annex_ii_fields(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        dds = result["dds_annex_ii"]
+        assert set(dds) == {
+            "1_operator",
+            "2_product",
+            "3_production",
+            "4_reference_to_existing_statement",
+            "5_declaration",
+            "6_signature",
+        }
+
+    def test_json_serialisable(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        body = json.dumps(result, default=str)
+        assert json.loads(body) == json.loads(json.dumps(result, default=str))
+
+    def test_declaration_text_matches_regulation_annex_ii_item_5(self, eudr_manifest):
+        """Verbatim from Regulation (EU) 2023/1115 Annex II, item 5."""
+        result = _build_eudr_dds(eudr_manifest)
+        assert result["dds_annex_ii"]["5_declaration"] == (
+            "By submitting this due diligence statement the operator confirms that "
+            "due diligence in accordance with Regulation (EU) 2023/1115 was carried "
+            "out and that no or only a negligible risk was found that the relevant "
+            "products do not comply with Article 3, point (a) or (b), of that "
+            "Regulation."
+        )
+
+    def test_recognizes_commodity_and_populates_hs_codes(self, eudr_manifest):
+        manifest = dict(eudr_manifest)
+        manifest["commodity"] = "coffee"
+        result = _build_eudr_dds(manifest)
+        product = result["dds_annex_ii"]["2_product"]
+        assert product["commodity_recognized"] is True
+        assert any(code == "0901" for code, _ in product["hs_codes"])
+
+    def test_unrecognized_commodity_is_flagged_not_crashed(self, eudr_manifest):
+        manifest = dict(eudr_manifest)
+        manifest["commodity"] = "banana"
+        result = _build_eudr_dds(manifest)
+        product = result["dds_annex_ii"]["2_product"]
+        assert product["commodity_recognized"] is False
+        assert product["hs_codes"] == []
+
+    def test_operator_fields_from_manifest(self, eudr_manifest):
+        manifest = dict(eudr_manifest)
+        manifest["operator_name"] = "Acme Trading GmbH"
+        manifest["operator_address"] = "1 Example Str, Berlin, DE"
+        manifest["operator_eori"] = "DE000000000"
+        result = _build_eudr_dds(manifest)
+        operator = result["dds_annex_ii"]["1_operator"]
+        assert operator["name"] == "Acme Trading GmbH"
+        assert operator["address"] == "1 Example Str, Berlin, DE"
+        assert operator["eori"] == "DE000000000"
+
+    def test_missing_operator_fields_default_to_empty_string(self):
+        result = _build_eudr_dds({})
+        operator = result["dds_annex_ii"]["1_operator"]
+        assert operator == {"name": "", "address": "", "eori": ""}
+
+    def test_explicit_null_operator_and_commodity_fields_do_not_crash(self):
+        """A manifest with explicit None values (not just absent keys) must not crash."""
+        manifest = {
+            "operator_name": None,
+            "operator_address": None,
+            "operator_eori": None,
+            "commodity": None,
+            "country_of_production": None,
+            "per_aoi_enrichment": [],
+        }
+        result = _build_eudr_dds(manifest)
+        dds = result["dds_annex_ii"]
+        assert dds["1_operator"] == {"name": "", "address": "", "eori": ""}
+        assert dds["2_product"]["commodity"] == ""
+        assert dds["2_product"]["commodity_recognized"] is False
+        assert dds["3_production"]["country_of_production"] == ""
+
+    def test_geolocation_uses_polygon_for_plots_over_four_hectares(self, eudr_manifest):
+        """Article 2(28): polygons required for plots > 4 ha."""
+        result = _build_eudr_dds(eudr_manifest)
+        plots = result["dds_annex_ii"]["3_production"]["plots"]
+        farm_a = next(p for p in plots if p["name"] == "Farm A")  # area_ha=12.5
+        assert farm_a["geolocation_type"] == "polygon"
+        assert len(farm_a["coordinates"]) > 1
+
+    def test_geolocation_uses_point_for_small_plots(self):
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Tiny plot",
+                    "area_ha": 1.2,
+                    "center": {"lat": -1.3, "lon": 36.8},
+                    "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+                }
+            ]
+        }
+        result = _build_eudr_dds(manifest)
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "point"
+        assert plot["coordinates"] == [36.8, -1.3]
+
+    def test_cattle_always_uses_point_geolocation_for_establishments(self):
+        """Article 9(1)(d): for cattle, geolocation refers to establishments, not plot polygons."""
+        manifest = {
+            "commodity": "cattle",
+            "per_aoi_enrichment": [
+                {
+                    "name": "Ranch A",
+                    "area_ha": 8000.0,
+                    "center": {"lat": -6.55, "lon": -51.85},
+                    "coords": [[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]],
+                }
+            ],
+        }
+        result = _build_eudr_dds(manifest)
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "point"
+
+    def test_includes_failed_aoi_entries_with_error_marker(self, eudr_manifest):
+        """A failed AOI must be visible in the export, not silently dropped (review finding on #1391)."""
+        result = _build_eudr_dds(eudr_manifest)
+        plots = result["dds_annex_ii"]["3_production"]["plots"]
+        failed = next(p for p in plots if p["name"] == "Farm C (failed)")
+        assert failed["error"] == "enrichment_failed"
+        assert "geolocation_type" not in failed
+        assert "coordinates" not in failed
+
+    def test_plot_count_matches_per_aoi_enrichment_including_failures(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        plots = result["dds_annex_ii"]["3_production"]["plots"]
+        assert len(plots) == len(eudr_manifest["per_aoi_enrichment"])
+
+    def test_reference_to_existing_statement_defaults_to_none(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        assert result["dds_annex_ii"]["4_reference_to_existing_statement"]["reference_number"] is None
+
+    def test_reference_to_existing_statement_from_manifest(self, eudr_manifest):
+        manifest = dict(eudr_manifest)
+        manifest["existing_dds_reference"] = "DDS-REF-12345"
+        result = _build_eudr_dds(manifest)
+        assert result["dds_annex_ii"]["4_reference_to_existing_statement"]["reference_number"] == "DDS-REF-12345"
+
+    def test_signature_block_is_blank_template(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        signature = result["dds_annex_ii"]["6_signature"]
+        assert signature == {
+            "signed_for_and_on_behalf_of": "",
+            "date": "",
+            "name_and_function": "",
+            "signature": "",
+        }
+
+    def test_includes_draft_disclaimer(self, eudr_manifest):
+        result = _build_eudr_dds(eudr_manifest)
+        assert "draft" in result["_disclaimer"].lower()
+        assert "operator" in result["_disclaimer"].lower()
+
+    def test_does_not_mutate_manifest(self, eudr_manifest):
+        before = copy.deepcopy(eudr_manifest)
+        _build_eudr_dds(eudr_manifest)
+        assert eudr_manifest == before
+
+
+class TestDispatchEudrExport:
+    """The internal export-format dispatch guard (#1391 review finding)."""
+
+    def test_raises_for_non_eudr_format(self):
+        """Caller contract: only call with fmt in _EUDR_FORMATS. Must not silently no-op."""
+        from blueprints.export import _dispatch_eudr_export
+
+        with pytest.raises(ValueError, match="non-EUDR format"):
+            _dispatch_eudr_export("csv", {}, "inst-1", None, {})
+
+    @pytest.mark.parametrize("fmt", ["eudr-geojson", "eudr-csv", "eudr-pdf", "eudr-dds"])
+    def test_handles_every_format_in_eudr_formats_constant(self, fmt, eudr_manifest):
+        from blueprints.export import _EUDR_FORMATS, _dispatch_eudr_export
+
+        assert fmt in _EUDR_FORMATS
+        response = _dispatch_eudr_export(fmt, eudr_manifest, "inst-1", None, {})
+        assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

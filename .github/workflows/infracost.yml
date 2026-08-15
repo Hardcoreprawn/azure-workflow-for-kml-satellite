@@ -78,7 +78,9 @@ jobs:
             azure-mgmt-resource
 
       - name: Collect Azure usage metrics
+        id: collect_usage_metrics
         if: steps.azure_login.outcome == 'success'
+        continue-on-error: true
         run: |
           python -c "from azure.identity import DefaultAzureCredential; print('SDK import OK')"
           python scripts/collect_infracost_usage.py \
@@ -86,6 +88,11 @@ jobs:
             --resource-group "${{ secrets.DEV_RESOURCE_GROUP }}" \
             --lookback 31 \
             --output infra/tofu/infracost-usage.yml
+
+      - name: Warn when metrics collection falls back to baseline usage file
+        if: steps.azure_login.outcome == 'success' && steps.collect_usage_metrics.outcome == 'failure'
+        run: |
+          echo "::warning::Cost estimate is using the committed infracost-usage.yml baseline because live metrics collection failed. Re-run Infracost to refresh live usage metrics."
 
       # ── OpenTofu plan ──────────────────────────────────────
       - name: Setup OpenTofu
@@ -103,7 +110,9 @@ jobs:
           restore-keys: tofu-providers-
 
       - name: Tofu Init
+        id: tofu_init
         if: steps.azure_login.outcome == 'success'
+        continue-on-error: true
         working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -131,7 +140,7 @@ jobs:
           exit 1
 
       - name: Tofu Plan (JSON)
-        if: steps.azure_login.outcome == 'success'
+        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -147,13 +156,13 @@ jobs:
 
       # ── Infracost ──────────────────────────────────────────
       - name: Setup Infracost
-        if: steps.azure_login.outcome == 'success'
+        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         uses: infracost/actions/setup@fb736a8f219195d6efdca58682069b16fe1bc280 # v4
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Generate Infracost breakdown
-        if: steps.azure_login.outcome == 'success'
+        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         working-directory: infra/tofu
         env:
           INFRACOST_CURRENCY: GBP
@@ -165,7 +174,7 @@ jobs:
             --out-file=/tmp/infracost-base.json
 
       - name: Post PR comment
-        if: steps.azure_login.outcome == 'success'
+        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         run: |
           infracost comment github \
             --path=/tmp/infracost-base.json \
@@ -177,7 +186,7 @@ jobs:
 
       # ── Budget gate ────────────────────────────────────────
       - name: Check budget threshold
-        if: steps.azure_login.outcome == 'success'
+        if: steps.azure_login.outcome == 'success' && steps.tofu_init.outcome == 'success'
         run: |
           MONTHLY=$(infracost output \
             --path=/tmp/infracost-base.json \
@@ -195,12 +204,17 @@ jobs:
 
       # ── Fallback: post a note when Azure auth was unavailable ──
       - name: Post skip notice
-        if: steps.azure_login.outcome != 'success'
+        if: steps.azure_login.outcome != 'success' || steps.tofu_init.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "::notice::Cost estimate skipped — Azure OIDC login was unavailable (transient)"
+          if [ "${{ steps.azure_login.outcome }}" != "success" ]; then
+            MESSAGE="💰 **Infracost**: Cost estimate skipped — Azure OIDC login was unavailable (transient). Re-run the workflow to retry."
+          else
+            MESSAGE="💰 **Infracost**: Cost estimate skipped — OpenTofu init failed (transient backend/auth issue). Re-run the workflow to retry."
+          fi
+          echo "::notice::${MESSAGE}"
           gh pr comment "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" \
-            --body "💰 **Infracost**: Cost estimate skipped — Azure OIDC login was unavailable (transient). Re-run the workflow to retry." \
+            --body "${MESSAGE}" \
             2>/dev/null || true

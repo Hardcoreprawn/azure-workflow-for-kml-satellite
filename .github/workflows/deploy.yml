@@ -43,6 +43,11 @@ on:
         required: false
         type: boolean
         default: false
+      allow_domain_transfer:
+        description: Allow controlled prod custom-domain transfer if dev/prd currently claim the same domain.
+        required: false
+        type: boolean
+        default: false
       smoke_poll_interval_seconds:
         description: Poll interval (seconds) for post-readiness async smoke gate.
         required: false
@@ -85,6 +90,20 @@ jobs:
     outputs:
       proceed: ${{ steps.gate.outputs.proceed }}
     steps:
+      - name: Checkout repository for preflight checks
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+
+      - name: Validate custom-domain ownership
+        env:
+          TARGET_ENV: ${{ env.DEPLOY_ENV }}
+          ALLOW_DOMAIN_TRANSFER: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_domain_transfer || 'false' }}
+        run: |
+          python3 scripts/validate_domain_ownership.py \
+            --dev-tfvars infra/tofu/environments/dev.tfvars \
+            --prd-tfvars infra/tofu/environments/prd.tfvars \
+            --target-env "$TARGET_ENV" \
+            --allow-transfer "$ALLOW_DOMAIN_TRANSFER"
+
       - name: Block production deploys (reset freeze)
         if: ${{ inputs.environment == 'prd' }}
         run: |

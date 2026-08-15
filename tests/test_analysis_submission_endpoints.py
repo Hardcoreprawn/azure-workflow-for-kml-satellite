@@ -959,6 +959,32 @@ class TestBlobTriggerIngress:
         assert orch_input["provider_name"] == "planetary_computer"
         assert orch_input["tier"] == "pro"
 
+    def test_blob_trigger_enriches_from_ticket_for_root_level_blob(self):
+        """Ticket enrichment must apply for bare-filename (single-segment) blob paths.
+
+        Root-level container uploads (e.g. via simulate_upload.py / corpus_runner.py)
+        have no subfolder, so blob_name is just "foo.kml" — this must still read
+        and apply the sibling .tickets/foo.json ticket.
+        """
+        from blueprints.pipeline.blob_trigger import _process_blob_trigger
+
+        client = _FakeDurableClient()
+        event = self._make_blob_event("cattle_para_brazil.kml", "evt-root")
+
+        ticket = {
+            "user_id": "anonymous",
+            "tier": "enterprise",
+            "eudr_mode": True,
+        }
+        with patch("treesight.storage.client.BlobStorageClient") as mock_storage_cls:
+            mock_storage_cls.return_value.download_json.return_value = ticket
+            asyncio.run(_process_blob_trigger(event, client))
+
+        orch_input = client.calls[0]["client_input"]
+        assert orch_input["user_id"] == "anonymous"
+        assert orch_input["tier"] == "enterprise"
+        assert orch_input["eudr_mode"] is True
+
     def test_blob_trigger_enriches_with_pre_resolved_tier(self):
         """When ticket already has tier, billing lookup is skipped."""
         from blueprints.pipeline.blob_trigger import _process_blob_trigger

@@ -667,6 +667,11 @@ class TestPdfExport:
 
         assert "pdf" in _ALLOWED_FORMATS
 
+    def test_eudr_dds_format_in_allowed_formats(self):
+        from blueprints.export import _ALLOWED_FORMATS
+
+        assert "eudr-dds" in _ALLOWED_FORMATS
+
     def test_eudr_audit_pdf_includes_review_history(self):
         """build_eudr_audit_pdf must render all revisions from parcel_review_history."""
         from blueprints.export.audit_pdf import build_eudr_audit_pdf
