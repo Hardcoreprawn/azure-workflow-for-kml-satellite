@@ -11,6 +11,11 @@ from typing import Any
 import httpx
 
 from treesight.constants import DEFAULT_HTTP_TIMEOUT_SECONDS, EARTH_RADIUS_M
+from treesight.models.geolocation import (
+    GeolocationProvenance,
+    GeometryType,
+    LegalUseClassification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +135,122 @@ def _point_buffer(lon: float, lat: float, radius_m: float, segments: int = 32) -
 def _xml_escape(text: str) -> str:
     """XML escaping for KML text content."""
     return html.escape(text, quote=True)
+
+
+# EUDR Article 2(28): plots ≤ 4 ha may use a point; plots > 4 ha require a polygon.
+_EUDR_POLYGON_REQUIRED_HA = 4.0
+
+
+def build_geolocation_provenance(
+    plot: dict[str, Any],
+    *,
+    buffer_m: float = 100.0,
+    segments: int = 32,
+) -> GeolocationProvenance:
+    """Build a :class:`~treesight.models.geolocation.GeolocationProvenance` record for a plot.
+
+    The supplier-declared (source) geometry is preserved verbatim.  If the
+    source is a point, a circular buffer polygon is computed and stored as the
+    *derived* analysis geometry; the source point is never replaced.
+
+    Parameters
+    ----------
+    plot:
+        Plot descriptor dict — same shape accepted by :func:`coords_to_kml`:
+
+        * Point: ``{"name": "P", "lon": 2.35, "lat": 48.86}``
+        * Polygon: ``{"name": "F", "coordinates": [[lon, lat], ...]}``
+
+        Optional extra keys forwarded into provenance:
+
+        * ``radius_m`` — override buffer radius for point plots.
+        * ``plot_area_ha`` — declared plot area.
+        * ``source_actor``, ``source_document``, ``capture_method``,
+          ``capture_date`` (ISO-8601 ``YYYY-MM-DD``), ``positional_accuracy_m``,
+          ``positional_verifier``.
+
+    buffer_m:
+        Default buffer radius in metres applied when the source is a point
+        and ``radius_m`` is not set in *plot*.
+    segments:
+        Number of segments used to approximate the circular buffer polygon.
+
+    Returns
+    -------
+    GeolocationProvenance
+        Frozen record with source and derived geometry separated, plus EUDR
+        legal-use classification.
+    """
+    from datetime import date as _date
+
+    plot_area_ha: float | None = plot.get("plot_area_ha")  # type: ignore[assignment]
+    source_actor: str = plot.get("source_actor", "")
+    source_document: str = plot.get("source_document", "")
+    capture_method: str = plot.get("capture_method", "")
+    positional_accuracy_m: float | None = plot.get("positional_accuracy_m")  # type: ignore[assignment]
+    positional_verifier: str = plot.get("positional_verifier", "")
+
+    raw_date = plot.get("capture_date")
+    capture_date: _date | None = (
+        _date.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
+    )
+
+    if "coordinates" in plot:
+        source_coords: list[Any] = list(plot["coordinates"])
+        return GeolocationProvenance(
+            source_geometry_type=GeometryType.POLYGON,
+            source_geometry=source_coords,
+            derived_geometry=None,
+            derivation_method="",
+            derivation_params={},
+            source_actor=source_actor,
+            source_document=source_document,
+            capture_method=capture_method,
+            capture_date=capture_date,
+            positional_accuracy_m=positional_accuracy_m,
+            positional_verifier=positional_verifier,
+            plot_area_ha=plot_area_ha,
+            polygon_required=False,
+            legal_use_classification=LegalUseClassification.DDS_ELIGIBLE,
+        )
+
+    if "lon" in plot and "lat" in plot:
+        lon, lat = float(plot["lon"]), float(plot["lat"])
+        radius = float(plot.get("radius_m", buffer_m))
+        derived = _point_buffer(lon, lat, radius, segments=segments)
+
+        # EUDR Article 2(28): polygon required when declared area > 4 ha.
+        polygon_required = bool(
+            plot_area_ha is not None and plot_area_ha > _EUDR_POLYGON_REQUIRED_HA
+        )
+
+        classification = (
+            LegalUseClassification.INCOMPLETE
+            if polygon_required
+            else LegalUseClassification.DDS_ELIGIBLE
+        )
+
+        return GeolocationProvenance(
+            source_geometry_type=GeometryType.POINT,
+            source_geometry=[lon, lat],
+            derived_geometry=derived,
+            derivation_method="point_buffer_circle",
+            derivation_params={"radius_m": radius, "segments": segments},
+            source_actor=source_actor,
+            source_document=source_document,
+            capture_method=capture_method,
+            capture_date=capture_date,
+            positional_accuracy_m=positional_accuracy_m,
+            positional_verifier=positional_verifier,
+            plot_area_ha=plot_area_ha,
+            polygon_required=polygon_required,
+            legal_use_classification=classification,
+        )
+
+    raise ValueError(
+        "plot must contain either 'coordinates' (polygon) or 'lon'+'lat' (point), "
+        f"got keys: {list(plot.keys())!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
