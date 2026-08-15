@@ -30,9 +30,7 @@ class TestPointGeolocationProvenance:
         prov = build_geolocation_provenance({"name": "Paris plot", "lon": lon, "lat": lat})
 
         assert prov.source_geometry_type == GeometryType.POINT
-        assert prov.source_geometry == [lon, lat], (
-            "Source geometry must be the original point, not a derived buffer"
-        )
+        assert prov.source_geometry == [lon, lat], "Source geometry must be the original point, not a derived buffer"
 
     def test_derived_geometry_is_a_polygon_ring(self):
         """Derived geometry must be a non-empty closed polygon ring."""
@@ -65,9 +63,7 @@ class TestPointGeolocationProvenance:
         assert prov.derivation_params["segments"] == 16
 
     def test_custom_radius_forwarded_from_plot(self):
-        prov = build_geolocation_provenance(
-            {"name": "P", "lon": 1.0, "lat": 1.0, "radius_m": 50.0}
-        )
+        prov = build_geolocation_provenance({"name": "P", "lon": 1.0, "lat": 1.0, "radius_m": 50.0})
         assert prov.derivation_params["radius_m"] == 50.0
 
     def test_provenance_model_is_frozen(self):
@@ -99,24 +95,18 @@ class TestLegalUseClassification:
     """EUDR 4 ha threshold drives polygon_required and classification."""
 
     def test_point_under_4ha_is_dds_eligible(self):
-        prov = build_geolocation_provenance(
-            {"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 3.9}
-        )
+        prov = build_geolocation_provenance({"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 3.9})
         assert not prov.polygon_required
         assert prov.legal_use_classification == LegalUseClassification.DDS_ELIGIBLE
 
     def test_point_over_4ha_is_incomplete(self):
-        prov = build_geolocation_provenance(
-            {"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 4.1}
-        )
+        prov = build_geolocation_provenance({"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 4.1})
         assert prov.polygon_required
         assert prov.legal_use_classification == LegalUseClassification.INCOMPLETE
 
     def test_point_exactly_4ha_is_dds_eligible(self):
         """Boundary: exactly 4 ha does not require a polygon."""
-        prov = build_geolocation_provenance(
-            {"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 4.0}
-        )
+        prov = build_geolocation_provenance({"name": "P", "lon": 0.0, "lat": 0.0, "plot_area_ha": 4.0})
         assert not prov.polygon_required
         assert prov.legal_use_classification == LegalUseClassification.DDS_ELIGIBLE
 
@@ -181,9 +171,7 @@ class TestProvenanceMetadataFields:
     def test_capture_date_parsed_from_iso_string(self):
         from datetime import date
 
-        prov = build_geolocation_provenance(
-            {"name": "P", "lon": 0.0, "lat": 0.0, "capture_date": "2024-06-15"}
-        )
+        prov = build_geolocation_provenance({"name": "P", "lon": 0.0, "lat": 0.0, "capture_date": "2024-06-15"})
         assert prov.capture_date == date(2024, 6, 15)
 
     def test_positional_accuracy_stored(self):
