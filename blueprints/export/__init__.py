@@ -19,6 +19,7 @@ from blueprints._helpers import (
 )
 from blueprints.export.audit_pdf import build_eudr_audit_pdf
 from blueprints.export.csv import _as_dict, _build_bulk_csv, _build_csv, _build_eudr_csv
+from blueprints.export.eudr_dds import _build_eudr_dds
 from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
 from blueprints.export.pdf import _build_pdf
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
@@ -26,7 +27,8 @@ from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 bp = func.Blueprint()
 logger = logging.getLogger(__name__)
 
-_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf", "eudr-geojson", "eudr-csv", "eudr-pdf"}
+_EUDR_FORMATS = frozenset({"eudr-geojson", "eudr-csv", "eudr-pdf", "eudr-dds"})
+_ALLOWED_FORMATS = {"geojson", "csv", "csv-bulk", "pdf", *_EUDR_FORMATS}
 
 
 def _fetch_run_record_for_export(instance_id: str) -> "dict[str, Any] | None":
@@ -41,6 +43,55 @@ def _fetch_run_record_for_export(instance_id: str) -> "dict[str, Any] | None":
     except Exception:
         logger.warning("export: could not fetch run record for %s", instance_id)
         return None
+
+
+def _build_eudr_pdf_bytes(
+    manifest: dict[str, Any],
+    instance_id: str,
+    run_record: "dict[str, Any] | None",
+) -> bytes:
+    """Build the audit-grade EUDR PDF, pulling reviewer annotations from the run record."""
+    parcel_reviews = _as_dict(run_record.get("parcel_reviews")) if run_record else None
+    parcel_review_history = _as_dict(run_record.get("parcel_review_history")) if run_record else None
+    return build_eudr_audit_pdf(
+        manifest,
+        instance_id,
+        parcel_reviews=parcel_reviews,
+        parcel_review_history=parcel_review_history,
+    )
+
+
+def _dispatch_eudr_export(
+    fmt: str,
+    manifest: dict[str, Any],
+    instance_id: str,
+    run_record: "dict[str, Any] | None",
+    headers: dict[str, str],
+) -> "func.HttpResponse":
+    """Handle the ``eudr-*`` export formats. Caller must check ``fmt in _EUDR_FORMATS`` first."""
+    if fmt == "eudr-geojson":
+        geojson = _build_eudr_geojson(manifest)
+        body = json.dumps(geojson, indent=2, default=str)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.geojson"'
+        return func.HttpResponse(body, status_code=200, mimetype="application/geo+json", headers=headers)
+
+    if fmt == "eudr-csv":
+        csv_body = _build_eudr_csv(manifest, run_record=run_record)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.csv"'
+        return func.HttpResponse(csv_body, status_code=200, mimetype="text/csv", headers=headers)
+
+    if fmt == "eudr-pdf":
+        pdf_bytes = _build_eudr_pdf_bytes(manifest, instance_id, run_record)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
+        return func.HttpResponse(pdf_bytes, status_code=200, mimetype="application/pdf", headers=headers)
+
+    if fmt == "eudr-dds":
+        dds = _build_eudr_dds(manifest)
+        body = json.dumps(dds, indent=2, default=str)
+        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr_dds.json"'
+        return func.HttpResponse(body, status_code=200, mimetype="application/json", headers=headers)
+
+    raise ValueError(f"_dispatch_eudr_export got non-EUDR format {fmt!r} — caller must check _EUDR_FORMATS first")
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +112,11 @@ async def export_data(
     """GET /api/export/{instance_id}/{format} — download enrichment data.
 
     Supported formats: ``geojson``, ``csv``, ``csv-bulk``, ``pdf``,
-    ``eudr-geojson``, ``eudr-csv``, ``eudr-pdf``.
+    ``eudr-geojson``, ``eudr-csv``, ``eudr-pdf``, ``eudr-dds``.
+
+    ``eudr-dds`` is a DRAFT export structured to Regulation (EU) 2023/1115
+    Annex II — it is not a submission to EU TRACES NT; the operator must
+    review and submit it themselves (see docs/PERSONA_DEEP_DIVE.md #8.8).
 
     The ``csv-bulk`` format produces one row per AOI with aggregated metrics.
     Falls back to the regular temporal CSV when ``per_aoi_metrics`` is absent.
@@ -125,43 +180,8 @@ async def export_data(
             headers=headers,
         )
 
-    if fmt == "eudr-geojson":
-        geojson = _build_eudr_geojson(manifest)
-        body = json.dumps(geojson, indent=2, default=str)
-        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.geojson"'
-        return func.HttpResponse(
-            body,
-            status_code=200,
-            mimetype="application/geo+json",
-            headers=headers,
-        )
-
-    if fmt == "eudr-csv":
-        csv_body = _build_eudr_csv(manifest, run_record=run_record)
-        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr.csv"'
-        return func.HttpResponse(
-            csv_body,
-            status_code=200,
-            mimetype="text/csv",
-            headers=headers,
-        )
-
-    if fmt == "eudr-pdf":
-        parcel_reviews = _as_dict(run_record.get("parcel_reviews")) if run_record else None
-        parcel_review_history = _as_dict(run_record.get("parcel_review_history")) if run_record else None
-        pdf_bytes = build_eudr_audit_pdf(
-            manifest,
-            instance_id,
-            parcel_reviews=parcel_reviews,
-            parcel_review_history=parcel_review_history,
-        )
-        headers["Content-Disposition"] = f'attachment; filename="treesight_{instance_id}_eudr_report.pdf"'
-        return func.HttpResponse(
-            pdf_bytes,
-            status_code=200,
-            mimetype="application/pdf",
-            headers=headers,
-        )
+    if fmt in _EUDR_FORMATS:
+        return _dispatch_eudr_export(fmt, manifest, instance_id, run_record, headers)
 
     # PDF
     pdf_bytes = _build_pdf(manifest, instance_id)
