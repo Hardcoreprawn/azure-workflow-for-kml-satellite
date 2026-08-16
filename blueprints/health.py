@@ -41,6 +41,24 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
+@bp.route(route="internal-health", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def internal_health(req: func.HttpRequest) -> func.HttpResponse:
+    """Lightweight warm-up probe for client-side cold-start masking.
+
+    Called silently on app-shell init so the container is warm before
+    the user submits their first analysis request.  Always returns 200
+    with a minimal body so the browser fetch never throws.
+    """
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+    return func.HttpResponse(
+        json.dumps({"status": "warm"}),
+        status_code=200,
+        mimetype="application/json",
+        headers=cors_headers(req),
+    )
+
+
 @bp.route(route="readiness", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def readiness(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":

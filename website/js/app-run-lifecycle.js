@@ -396,7 +396,7 @@
 
   function stopAnalysisPolling() {
     if (activeAnalysisPoll) {
-      clearInterval(activeAnalysisPoll);
+      clearTimeout(activeAnalysisPoll);
       activeAnalysisPoll = null;
     }
   }
@@ -406,18 +406,28 @@
   async function pollAnalysisRun(instanceId) {
     stopAnalysisPolling();
     const thisGeneration = ++analysisPollGeneration;
+    const pollStartMs = Date.now();
     let consecutiveFailures = 0;
     const MAX_CONSECUTIVE_FAILURES = 5;
 
+    // Returns the poll interval in ms based on elapsed time since polling began.
+    // Slows down for long-running operations to avoid unnecessary traffic while
+    // still giving the user timely updates during normal analysis runs.
+    function calcPollIntervalMs() {
+      const elapsedMs = Date.now() - pollStartMs;
+      if (elapsedMs < 30000) return 3000;
+      if (elapsedMs < 120000) return 6000;
+      return 12000;
+    }
+
+    // Returns true if the poll loop should continue, false on terminal state.
     async function refreshRun() {
-      // Bail out if a newer poll has started while we were awaiting.
-      if (analysisPollGeneration !== thisGeneration) return null;
+      if (analysisPollGeneration !== thisGeneration) return false;
       try {
         var res = await _d.apiFetch('/api/orchestrator/' + instanceId);
         var data = await res.json();
         consecutiveFailures = 0;
-        // Re-check after await — another selectAnalysisRun may have fired.
-        if (analysisPollGeneration !== thisGeneration) return null;
+        if (analysisPollGeneration !== thisGeneration) return false;
         upsertHistoryRun(data);
         updateAnalysisRun(data);
 
@@ -425,7 +435,6 @@
         var phase = _d.mapAnalysisPhase ? _d.mapAnalysisPhase(data.customStatus, runtime) : (data.customStatus && data.customStatus.phase) || 'queued';
         if (_d.setAnalysisProgressVisible) _d.setAnalysisProgressVisible(true);
         if (runtime === 'Completed') {
-          stopAnalysisPolling();
           if (_d.setAnalysisStep) _d.setAnalysisStep('complete', 'done');
           if (_d.updateAnalysisStory) _d.updateAnalysisStory('complete', runtime, data);
           if (_d.clearCacheKey) { _d.clearCacheKey('billing'); _d.clearCacheKey('history'); }
@@ -442,38 +451,43 @@
               evidenceHero.scrollIntoView({ behavior: scrollBehavior, block: 'start' });
             }, 400);
           }
-        } else if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated' || runtime === 'Stalled') {
-          stopAnalysisPolling();
+          return false;
+        }
+        if (runtime === 'Failed' || runtime === 'Canceled' || runtime === 'Terminated' || runtime === 'Stalled') {
           if (_d.setAnalysisStep) _d.setAnalysisStep(phase, 'failed');
           if (_d.updateAnalysisStory) _d.updateAnalysisStory(phase, runtime, data);
           if (_d.loadAnalysisHistory) _d.loadAnalysisHistory({ preferInstanceId: instanceId });
-        } else {
-          if (_d.setAnalysisStep) _d.setAnalysisStep(phase, 'active');
-          if (_d.updateAnalysisStory) _d.updateAnalysisStory(phase, runtime || 'Pending', data);
+          return false;
         }
-        return data;
+        if (_d.setAnalysisStep) _d.setAnalysisStep(phase, 'active');
+        if (_d.updateAnalysisStory) _d.updateAnalysisStory(phase, runtime || 'Pending', data);
+        return true;
       } catch {
         consecutiveFailures++;
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          stopAnalysisPolling();
           if (_d.setAnalysisStatus) _d.setAnalysisStatus('Connection lost \u2014 pipeline updates have stopped. Reload the page to resume.', 'error');
+          return false;
         }
-        return null;
+        return true;
       }
     }
 
-    var initialData = await refreshRun();
-    if (analysisPollGeneration !== thisGeneration) return; // superseded during initial fetch
-    if (initialData) {
-      var initialRuntime = initialData.runtimeStatus || '';
-      if (initialRuntime === 'Completed' || initialRuntime === 'Failed' || initialRuntime === 'Canceled' || initialRuntime === 'Terminated' || initialRuntime === 'Stalled') {
-        return;
-      }
+    // Schedule the next timed refresh, adapting the interval as the run ages.
+    function scheduleNextPoll() {
+      activeAnalysisPoll = setTimeout(async function() {
+        activeAnalysisPoll = null;
+        const keepPolling = await refreshRun();
+        if (keepPolling && analysisPollGeneration === thisGeneration) {
+          scheduleNextPoll();
+        }
+      }, calcPollIntervalMs());
     }
 
-    activeAnalysisPoll = setInterval(function () {
-      refreshRun();
-    }, 3000);
+    var initialResult = await refreshRun();
+    if (analysisPollGeneration !== thisGeneration) return;
+    if (initialResult) {
+      scheduleNextPoll();
+    }
   }
 
   async function queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, priorSubmissionId) {
@@ -538,6 +552,7 @@
     if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
     if (_d.updateAnalysisStory) _d.updateAnalysisStory('submit', 'Pending', null);
     updateAnalysisRun(null);
+    if (_d.setAnalysisStatus) _d.setAnalysisStatus('Validating KML\u2026', 'info');
 
     var workspaceRole = _d.getWorkspaceRole ? _d.getWorkspaceRole() : 'conservation';
     var workspacePreference = _d.getWorkspacePreference ? _d.getWorkspacePreference() : 'investigate';
@@ -575,13 +590,20 @@
       }
 
       var tokenRes;
+      // Show a cold-start notice if the token request stalls beyond 5 s.
+      if (_d.setAnalysisStatus) _d.setAnalysisStatus('Acquiring upload token\u2026', 'info');
+      const coldStartTimer = setTimeout(function() {
+        if (_d.setAnalysisStatus) _d.setAnalysisStatus('API is starting up, this may take a moment\u2026', 'info');
+      }, 5000);
       try {
-        tokenRes = await _d.apiFetch('/api/upload/token', {
+        const apiFetchFn = _d.apiFetchWithRetry || _d.apiFetch;
+        tokenRes = await apiFetchFn('/api/upload/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(tokenBody)
         });
       } catch (tokenFetchErr) {
+        clearTimeout(coldStartTimer);
         // 401 is handled centrally by apiFetch (clears session, shows re-login prompt).
         if (tokenFetchErr.status === 401) {
           if (_d.resetAnalysisProgress) _d.resetAnalysisProgress();
@@ -605,6 +627,7 @@
       }
 
       const tokenData = await tokenRes.json();
+      clearTimeout(coldStartTimer);
       let submissionId = tokenData.submissionId || tokenData.submission_id;
       const sasUrl = tokenData.sasUrl || tokenData.sas_url;
       let uploadQueued = false;
@@ -612,6 +635,7 @@
       // Step 2: Upload KML directly to blob storage via SAS URL
       if (submissionId && sasUrl) {
         button.textContent = 'Uploading\u2026';
+        if (_d.setAnalysisStatus) _d.setAnalysisStatus('Uploading to storage\u2026', 'info');
         if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
 
         try {
@@ -633,12 +657,7 @@
       // Fallback for browser upload/CORS failures: submit directly to API.
       if (!uploadQueued) {
         button.textContent = 'Queueing\u2026';
-        if (_d.setAnalysisStatus) {
-          _d.setAnalysisStatus(
-            'Direct upload is unavailable in this browser session. Falling back to secure API submission\u2026',
-            'info'
-          );
-        }
+        if (_d.setAnalysisStatus) _d.setAnalysisStatus('Starting analysis pipeline\u2026', 'info');
         try {
           submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, submissionId);
         } catch (submitFetchErr) {

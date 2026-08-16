@@ -154,6 +154,15 @@
       return apiBase;
     }
 
+    // Fire-and-forget warm-up probe to /api/internal-health so the container
+    // is awake before the user's first submission.  Silently ignored on failure.
+    function warmInternalHealth(base) {
+      const url = (base || '') + '/api/internal-health';
+      fetchWithTimeout(url, config.warmUpTimeoutMs).catch(function() {
+        /* silent fail — warm-up is best-effort */
+      });
+    }
+
     async function discoverApiBase() {
       const cachedStatus = readCachedServiceStatus(config);
       if (cachedStatus) {
@@ -176,6 +185,8 @@
           apiBase = candidate;
           applyServiceStatus(config, 'online');
           writeCachedServiceStatus(config, 'online');
+          // Warm /api/internal-health now that we know the correct base URL.
+          warmInternalHealth(apiBase);
           return;
         } catch {
           /* try next candidate */
@@ -187,12 +198,33 @@
       // rather than falling back to relative SWA paths (which have no API backend).
       if (configuredBase) {
         apiBase = configuredBase;
-        scheduleWarmUpProbe(config, configuredBase, function() { apiBase = configuredBase; });
+        scheduleWarmUpProbe(config, configuredBase, function() {
+          apiBase = configuredBase;
+          warmInternalHealth(apiBase);
+        });
       }
       if (!cachedStatus) {
         applyServiceStatus(config, 'offline');
       }
       writeCachedServiceStatus(config, 'offline');
+    }
+
+    // Retry apiFetch once after retryDelayMs when the first attempt throws a
+    // network or timeout error (AbortError).  Used for cold-start recovery on
+    // critical writes (upload-token, submit).  Non-network errors (4xx, auth)
+    // propagate immediately without retrying so the caller can handle them.
+    async function apiFetchWithRetry(path, opts, retryDelayMs) {
+      const delay = typeof retryDelayMs === 'number' ? retryDelayMs : 2000;
+      try {
+        return await apiFetch(path, opts);
+      } catch (firstErr) {
+        // Only retry on network/timeout — HTTP errors (status set) propagate.
+        if (firstErr && typeof firstErr.status === 'number') {
+          throw firstErr;
+        }
+        await delayMs(delay);
+        return await apiFetch(path, opts);
+      }
     }
 
     async function apiFetch(path, opts) {
@@ -231,6 +263,7 @@
     return {
       discoverApiBase: discoverApiBase,
       fetch: apiFetch,
+      fetchWithRetry: apiFetchWithRetry,
       setGetToken: setGetToken,
       clearAuth: clearAuth,
       getApiBase: getApiBase,
