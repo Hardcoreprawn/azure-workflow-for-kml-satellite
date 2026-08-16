@@ -465,6 +465,7 @@
       } catch {
         consecutiveFailures++;
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+          stopAnalysisPolling();
           if (_d.setAnalysisStatus) _d.setAnalysisStatus('Connection lost \u2014 pipeline updates have stopped. Reload the page to resume.', 'error');
           return false;
         }
@@ -657,7 +658,12 @@
       // Fallback for browser upload/CORS failures: submit directly to API.
       if (!uploadQueued) {
         button.textContent = 'Queueing\u2026';
-        if (_d.setAnalysisStatus) _d.setAnalysisStatus('Starting analysis pipeline\u2026', 'info');
+        if (_d.setAnalysisStatus) {
+          _d.setAnalysisStatus(
+            'Direct upload is unavailable in this browser session. Falling back to secure API submission\u2026',
+            'info'
+          );
+        }
         try {
           submissionId = await queueAnalysisViaSubmitApi(kmlContent, submissionContext, tokenBody, submissionId);
         } catch (submitFetchErr) {
