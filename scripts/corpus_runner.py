@@ -79,15 +79,25 @@ _CORPUS_TIER = "enterprise"
 _CORPUS_USER_ID = "corpus-runner"
 
 
-def _upload_ticket(blob_name: str, container: str) -> None:
-    """Write a submission ticket so the pipeline uses the corpus tier.
+def _upload_ticket(
+    blob_name: str,
+    container: str,
+    *,
+    tier: str = _CORPUS_TIER,
+    user_id: str = _CORPUS_USER_ID,
+) -> None:
+    """Write a submission ticket so the pipeline uses the given tier.
 
     The ticket is read by the blob_trigger to enrich the orchestrator input
     with tier/user metadata.  Without it the pipeline defaults to free tier
     (aoi_limit=5), which would reject large fixtures like monster_200.kml.
+
+    ``tier``/``user_id`` are overridable so sibling runners (e.g.
+    ``scripts/real_acquisition_runner.py``, #1379) can reuse this exact
+    quota-bypass pattern under their own identity instead of duplicating it.
     """
     stem = Path(blob_name).stem
-    ticket: dict[str, Any] = {"tier": _CORPUS_TIER, "user_id": _CORPUS_USER_ID}
+    ticket: dict[str, Any] = {"tier": tier, "user_id": user_id}
     ticket_path = f".tickets/{stem}.json"
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     container_client = client.get_container_client(container)

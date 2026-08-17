@@ -60,6 +60,19 @@ class TestBuildFuncHostEnv:
         env = build_func_host_env({"AzureWebJobsStorage": "UseDevelopmentStorage=true"})
         assert env["AzureWebJobsStorage"] == "UseDevelopmentStorage=true"
 
+    def test_test_mode_false_omits_canopex_test_mode(self):
+        """scripts/real_acquisition_runner.py (#1379) needs the real imagery
+        provider, not the synthetic stub CANOPEX_TEST_MODE selects."""
+        env = build_func_host_env({}, test_mode=False)
+        assert "CANOPEX_TEST_MODE" not in env
+
+    def test_test_mode_false_strips_an_inherited_value(self):
+        """A developer's shell may already export CANOPEX_TEST_MODE from a
+        previous test-mode run — it must never leak into a real-acquisition
+        run just because the parent process happened to have it set."""
+        env = build_func_host_env({"CANOPEX_TEST_MODE": "1"}, test_mode=False)
+        assert "CANOPEX_TEST_MODE" not in env
+
 
 class TestAssertPipelineSucceeded:
     def test_passes_for_a_real_successful_run(self):

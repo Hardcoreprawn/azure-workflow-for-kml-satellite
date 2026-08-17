@@ -33,6 +33,10 @@ azurite-data/
 .e2e-local-func-host.log
 .azurite/
 
+# Real-acquisition local runner (#1379, #1405)
+.real-acquisition-func-host.log
+.real-acquisition-output/
+
 # Rust build artifacts
 rust/target/
 
