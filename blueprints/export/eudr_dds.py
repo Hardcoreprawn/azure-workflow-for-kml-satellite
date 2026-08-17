@@ -55,11 +55,35 @@ def _product_block(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def _plot_geolocation(aoi: dict[str, Any], *, is_cattle: bool) -> dict[str, Any]:
-    """Article 2(28): point for cattle establishments or plots <=4 ha, else polygon."""
+    """Article 2(28): use supplier-declared geometry type when available.
+
+    When ``source_geometry_type`` is present in the AOI (set by
+    :func:`treesight.pipeline.eudr.coords_to_kml` via
+    :func:`treesight.pipeline.eudr.build_geolocation_provenance`), the
+    supplier-declared type drives the point/polygon choice.
+
+    - ``"Point"`` source → ``"point"`` geolocation (regardless of buffer area).
+    - ``"Polygon"`` source → ``"polygon"`` geolocation (regardless of buffer area).
+
+    Falls back to the legacy area-threshold rule when ``source_geometry_type``
+    is absent (e.g. KML submitted without provenance metadata, or enrichment
+    results from before this field was introduced).
+    """
     center = aoi.get("center", {})
     point = [center.get("lon"), center.get("lat")]
+
+    if is_cattle:
+        return {"geolocation_type": "point", "coordinates": point}
+
+    source_geometry_type = aoi.get("source_geometry_type", "")
+    if source_geometry_type == "Point":
+        return {"geolocation_type": "point", "coordinates": point}
+    if source_geometry_type == "Polygon":
+        return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
+
+    # Legacy fallback: derive from buffer area when source_geometry_type is absent.
     area_ha = aoi.get("area_ha", 0.0)
-    if is_cattle or area_ha <= 4.0:
+    if area_ha <= 4.0:
         return {"geolocation_type": "point", "coordinates": point}
     return {"geolocation_type": "polygon", "coordinates": list(aoi.get("coords", []))}
 
