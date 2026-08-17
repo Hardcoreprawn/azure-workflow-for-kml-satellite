@@ -11,7 +11,7 @@ Covers:
 import json
 from unittest.mock import patch
 
-from blueprints.health import contract, health, health_deep, internal_smoke, readiness
+from blueprints.health import contract, health, health_deep, internal_health, internal_smoke, readiness
 from tests.conftest import TEST_LOCAL_ORIGIN, TEST_ORIGIN, make_test_request
 from treesight import __git_sha__, __version__
 from treesight.constants import API_CONTRACT_VERSION
@@ -120,6 +120,34 @@ class TestContract:
 
     def test_options_returns_204(self):
         resp = contract(_make_req(method="OPTIONS"))
+        assert resp.status_code == 204
+
+
+# ---------------------------------------------------------------------------
+# /api/internal-health  (warm-up probe for cold-start masking)
+# ---------------------------------------------------------------------------
+
+
+class TestInternalHealth:
+    def test_returns_200(self):
+        resp = internal_health(_make_req(url="/api/internal-health"))
+        assert resp.status_code == 200
+
+    def test_body_status_is_warm(self):
+        resp = internal_health(_make_req(url="/api/internal-health"))
+        body = json.loads(resp.get_body())
+        assert body["status"] == "warm"
+
+    def test_cors_header_for_allowed_origin(self):
+        resp = internal_health(_make_req(url="/api/internal-health"))
+        assert resp.headers.get("Access-Control-Allow-Origin") == _ALLOWED_ORIGIN
+
+    def test_no_cors_header_for_unknown_origin(self):
+        resp = internal_health(_make_req(origin=_UNKNOWN_ORIGIN, url="/api/internal-health"))
+        assert "Access-Control-Allow-Origin" not in resp.headers
+
+    def test_options_returns_204(self):
+        resp = internal_health(_make_req(method="OPTIONS", url="/api/internal-health"))
         assert resp.status_code == 204
 
 

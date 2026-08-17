@@ -2353,6 +2353,8 @@ class TestEndpointAuthAudit:
         "health/deep",
         # Internal deploy-only smoke probe (dev orchestrator host restricted)
         "internal-smoke",
+        # Client-side warm-up probe for cold-start masking — no auth, no side effects
+        "internal-health",
         "billing/webhook",
         "contact-form",
         # UUID-gated bearer pattern

@@ -158,6 +158,22 @@
     }
   }
 
+  // Retry apiFetch once after retryDelayMs on network/timeout failures.
+  // HTTP errors (4xx, 5xx) are not retried — they propagate immediately.
+  async function apiFetchWithRetry(path, opts, retryDelayMs) {
+    if (_apiClient && typeof _apiClient.fetchWithRetry === 'function') {
+      try {
+        return await _apiClient.fetchWithRetry(path, opts, retryDelayMs);
+      } catch (err) {
+        if (typeof authModule.handleApiError === 'function') {
+          authModule.handleApiError(err);
+        }
+        throw err;
+      }
+    }
+    return apiFetch(path, opts);
+  }
+
   function setAnalysisStatus(message, tone) {
     if (typeof coreDom.setAnalysisStatus === 'function') {
       return coreDom.setAnalysisStatus(message, tone);
@@ -333,6 +349,7 @@
 
   initModule(runLifecycleModule, {
       apiFetch: apiFetch,
+      apiFetchWithRetry: apiFetchWithRetry,
       getApiReady: function () { return apiDiscoveryReady; },
       getAccount: runtimeModule.getAccount,
       authEnabled: authEnabled,
