@@ -46,8 +46,8 @@ def internal_health(req: func.HttpRequest) -> func.HttpResponse:
     """Lightweight warm-up probe for client-side cold-start masking.
 
     Called silently on app-shell init so the container is warm before
-    the user submits their first analysis request.  Always returns 200
-    with a minimal body so the browser fetch never throws.
+    the user submits their first analysis request. GET returns 200 with a
+    minimal JSON body; OPTIONS returns the standard 204 CORS preflight response.
     """
     if req.method == "OPTIONS":
         return cors_preflight(req)
