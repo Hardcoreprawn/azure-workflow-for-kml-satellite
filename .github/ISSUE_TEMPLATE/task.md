@@ -13,10 +13,51 @@ labels: []
 ## Persona & job-to-be-done
 
 <!-- Which persona this serves and the job it improves. See docs/PERSONA_DEEP_DIVE.md.
-     Persona options: conservation / ESG-EUDR / agricultural-advisor / operator-dev. -->
+     Persona options: conservation / ESG-EUDR / agricultural-advisor / operator-dev.
+     For purely internal maintenance where developer JTBD is self-evident, write "operator-dev". -->
 
 - Persona:
 - Job-to-be-done:
+
+## Owning anchor
+
+<!-- The single file, symbol, endpoint, workflow, or failing command that directly controls
+     the behavior being changed. A coding agent uses this to navigate without broad exploration.
+     Example: "blueprints/pipeline/submission.py → submit_analysis()" or "make check → ruff E501" -->
+
+## Observable problem
+
+<!-- Current behavior and a minimal repro or evidence pointer (log line, failing test name,
+     screenshot, CI run URL). Be specific enough that a coding agent can reproduce it. -->
+
+- Current behavior:
+- Repro / evidence:
+
+## Acceptance signal
+
+<!-- Measurable behavior — not prose-only completion. Prefer a test name, command output,
+     or metric threshold. Example: "pytest tests/test_parsers.py::test_rejects_zip_bomb passes" -->
+
+## First focused check
+
+<!-- The exact narrow test or command expected to FAIL before the change and PASS afterward.
+     One line. Example: "make test-fast TESTS=tests/test_parsers.py::test_rejects_zip_bomb" -->
+
+## Handoff checks
+
+<!-- Exact broader commands required before review. Default set: -->
+
+- [ ] `make check` passes locally
+
+## Risk class
+
+<!-- low | normal | high | release-critical -->
+
+Risk:
+
+## Non-goals
+
+<!-- Adjacent work explicitly excluded from this PR. Helps reviewers spot scope creep. -->
 
 ## Dependencies
 
@@ -26,14 +67,6 @@ labels: []
      Write "none" if there are no prerequisites. -->
 
 Depends on: none
-
-## Acceptance signal
-
-<!-- How we know it's done — the observable outcome or the test that proves it. -->
-
-## Scope / notes
-
-<!-- Optional: implementation pointers, key files, edge cases, out-of-scope. -->
 
 <!--
 Before submitting, add labels so the autopilot can rank and gate this issue:

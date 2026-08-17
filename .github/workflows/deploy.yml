@@ -320,7 +320,7 @@ jobs:
 
       - name: Upload Trivy image SARIF
         if: ${{ always() && inputs.image_tag == '' && hashFiles('trivy-image.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
@@ -337,17 +337,17 @@ jobs:
       # (all public values). Only the deploy SP client_id remains a secret.
       TF_VAR_ciam_deploy_client_id: ${{ secrets.TF_VAR_CIAM_DEPLOY_CLIENT_ID || '' }}
     outputs:
-      function_app_orch_hostname: ${{ steps.hostname.outputs.hostname }}
-      appinsights_connection_string: ${{ steps.appinsights.outputs.connection_string }}
-      swa_hostname: ${{ steps.swa-hostname.outputs.hostname }}
-      custom_domain: ${{ steps.swa-hostname.outputs.custom_domain }}
-      ciam_page_config: ${{ steps.ciam-page-config.outputs.json }}
-      storage_account_name: ${{ steps.storage-account.outputs.name }}
+      function_app_orch_hostname: ${{ steps.tofu-outputs.outputs.function_app_orch_hostname }}
+      appinsights_connection_string: ${{ steps.tofu-outputs.outputs.appinsights_connection_string }}
+      swa_hostname: ${{ steps.tofu-outputs.outputs.swa_hostname }}
+      custom_domain: ${{ steps.tofu-outputs.outputs.custom_domain }}
+      ciam_page_config: ${{ steps.tofu-outputs.outputs.ciam_page_config }}
+      storage_account_name: ${{ steps.tofu-outputs.outputs.storage_account_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -467,6 +467,7 @@ jobs:
         run: tofu apply -auto-approve tfplan
 
       - name: Capture Tofu outputs
+        id: tofu-outputs
         working-directory: infra/tofu
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -496,15 +497,20 @@ jobs:
           echo "TOFU_FUNCTION_APP_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
           VAL=$(tofu_out '.function_app_orch_default_hostname.value')
           echo "TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
+          echo "function_app_orch_hostname=${VAL}" >> "$GITHUB_OUTPUT"
           VAL=$(tofu_out '.static_web_app_default_hostname.value')
           echo "TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME=${VAL}" >> "$GITHUB_ENV"
+          echo "swa_hostname=${VAL}" >> "$GITHUB_OUTPUT"
           VAL=$(tofu_out '.custom_domain.value')
           echo "TOFU_CUSTOM_DOMAIN=${VAL}" >> "$GITHUB_ENV"
+          echo "custom_domain=${VAL}" >> "$GITHUB_OUTPUT"
           APPINSIGHTS_CONNECTION_STRING=$(tofu_out '.appinsights_connection_string.value')
           echo "::add-mask::${APPINSIGHTS_CONNECTION_STRING}"
           echo "TOFU_APPINSIGHTS_CONNECTION_STRING=${APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_ENV"
+          echo "appinsights_connection_string=${APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_OUTPUT"
           VAL=$(tofu_out '.storage_account_name.value')
           echo "TOFU_STORAGE_ACCOUNT_NAME=${VAL}" >> "$GITHUB_ENV"
+          echo "storage_account_name=${VAL}" >> "$GITHUB_OUTPUT"
           VAL=$(tofu_out '.event_grid_system_topic_name.value')
           echo "TOFU_EVENT_GRID_SYSTEM_TOPIC_NAME=${VAL}" >> "$GITHUB_ENV"
           VAL=$(tofu_out '.function_app_cli_maximum_instance_count.value')
@@ -524,6 +530,12 @@ jobs:
             echo "${CIAM_PAGE_CONFIG}"
             echo "${CIAM_ENV_DELIM}"
           } >> "$GITHUB_ENV"
+          CIAM_OUTPUT_DELIM="TOFU_CIAM_PAGE_CONFIG_BOUNDARY_$(openssl rand -hex 8)"
+          {
+            echo "ciam_page_config<<${CIAM_OUTPUT_DELIM}"
+            printf '%s\n' "${CIAM_PAGE_CONFIG}"
+            echo "${CIAM_OUTPUT_DELIM}"
+          } >> "$GITHUB_OUTPUT"
 
       # Capture current container images so we can rollback if the
       # new deployment fails readiness checks.
@@ -552,21 +564,6 @@ jobs:
           echo "orch_name=${ORCH_NAME}" >> "$GITHUB_OUTPUT"
           echo "Previous compute image: ${CURRENT_COMPUTE_IMAGE:-<none>}"
           echo "Previous orchestrator image: ${CURRENT_ORCH_IMAGE:-<none>}"
-
-      - name: Capture current orchestrator container image
-        id: current-orch-image
-        working-directory: infra/tofu
-        run: |
-          FUNC_RG="${TOFU_RESOURCE_GROUP_NAME}"
-          ORCH_NAME="${TOFU_FUNCTION_APP_ORCH_NAME}"
-          CURRENT_IMAGE=$(az functionapp config container show \
-            --name "$ORCH_NAME" \
-            --resource-group "$FUNC_RG" \
-            --query '[?name==`DOCKER_CUSTOM_IMAGE_NAME`].value' -o tsv 2>/dev/null || echo "")
-          echo "image=${CURRENT_IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "func_rg=${FUNC_RG}" >> "$GITHUB_OUTPUT"
-          echo "func_name=${ORCH_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Previous orchestrator image: ${CURRENT_IMAGE:-<none>}"
 
       # azapi v2 crashes when updating the function app body (identity bug).
       # So tofu ignores body changes and we apply mutable config via CLI.
@@ -1005,55 +1002,6 @@ jobs:
 
           echo "✅ Browser CORS contract verified for Function App preflight and blob service configuration."
 
-      - name: Export Function App hostname
-        id: hostname
-        working-directory: infra/tofu
-        run: |
-          HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
-          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Export Compute Function App hostname
-        id: compute-hostname
-        working-directory: infra/tofu
-        run: |
-          HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
-          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Export SWA hostname
-        id: swa-hostname
-        working-directory: infra/tofu
-        run: |
-          HOSTNAME="${TOFU_STATIC_WEB_APP_DEFAULT_HOSTNAME}"
-          CUSTOM_DOMAIN="${TOFU_CUSTOM_DOMAIN}"
-          echo "hostname=${HOSTNAME}" >> "$GITHUB_OUTPUT"
-          echo "custom_domain=${CUSTOM_DOMAIN}" >> "$GITHUB_OUTPUT"
-
-      - name: Export App Insights connection string
-        id: appinsights
-        working-directory: infra/tofu
-        run: |
-          echo "::add-mask::${TOFU_APPINSIGHTS_CONNECTION_STRING}"
-          echo "connection_string=${TOFU_APPINSIGHTS_CONNECTION_STRING}" >> "$GITHUB_OUTPUT"
-
-      - name: Export CIAM page config
-        id: ciam-page-config
-        working-directory: infra/tofu
-        run: |
-          # Single JSON blob with public CIAM bootstrap values; injected into
-          # page HTML by the SWA deploy job. No Key Vault round-trip needed.
-          CIAM_OUTPUT_DELIM="TOFU_CIAM_PAGE_CONFIG_BOUNDARY_$(openssl rand -hex 8)"
-          {
-            echo "json<<${CIAM_OUTPUT_DELIM}"
-            printf '%s\n' "${TOFU_CIAM_PAGE_CONFIG}"
-            echo "${CIAM_OUTPUT_DELIM}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Export storage account name
-        id: storage-account
-        working-directory: infra/tofu
-        run: |
-          echo "name=${TOFU_STORAGE_ACCOUNT_NAME}" >> "$GITHUB_OUTPUT"
-
       - name: Verify runtime readiness
         id: verify-readiness
         working-directory: infra/tofu
@@ -1293,15 +1241,8 @@ jobs:
             return 1
           }
 
-          COMPUTE_HOSTNAME="${{ steps.compute-hostname.outputs.hostname }}"
-          ORCH_HOSTNAME="${{ steps.hostname.outputs.hostname }}"
-
-          if [ -z "$COMPUTE_HOSTNAME" ]; then
-            COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
-          fi
-          if [ -z "$ORCH_HOSTNAME" ]; then
-            ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
-          fi
+          COMPUTE_HOSTNAME="${TOFU_FUNCTION_APP_DEFAULT_HOSTNAME}"
+          ORCH_HOSTNAME="${TOFU_FUNCTION_APP_ORCH_DEFAULT_HOSTNAME}"
 
           if [ -z "$COMPUTE_HOSTNAME" ] || [ -z "$ORCH_HOSTNAME" ]; then
             echo "❌ Rollback health verification could not resolve function app hostnames."
@@ -1320,44 +1261,6 @@ jobs:
 
           echo "✅ Rollback successful — both previous images are healthy."
 
-      - name: Rollback orchestrator to previous image
-        if: failure() && steps.configure-orch-app.outcome == 'success' && steps.current-orch-image.outputs.image != ''
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: "true"
-        run: |
-          PREV_IMAGE="${{ steps.current-orch-image.outputs.image }}"
-          ORCH_NAME="${{ steps.current-orch-image.outputs.func_name }}"
-          FUNC_RG="${{ steps.current-orch-image.outputs.func_rg }}"
-
-          echo "⚠️ Readiness checks failed — rolling back orchestrator to previous image."
-          echo "  Previous: ${PREV_IMAGE}"
-          echo "  Failed:   ${{ needs.build-image.outputs.orch_image_uri }}"
-
-          az functionapp config container set \
-            --name "$ORCH_NAME" \
-            --resource-group "$FUNC_RG" \
-            --image "$PREV_IMAGE"
-
-          # Wait for the rollback to take effect
-          echo "Waiting for rolled-back orchestrator container to become healthy..."
-          HOSTNAME="${{ steps.hostname.outputs.hostname }}"
-          BASE_URL="https://${HOSTNAME}"
-          for i in $(seq 1 12); do
-            sleep 10
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/api/health" 2>/dev/null || echo "000")
-            echo "  [${i}0s] health=${code}"
-            if [ "$code" = "200" ]; then
-              echo "✅ Orchestrator rollback successful — previous image is healthy."
-              exit 0
-            fi
-          done
-          echo "⚠️ Orchestrator rollback applied but health check did not recover within 120s."
-          echo "  Manual intervention may be required."
-          exit 1
-
   # ── 3. Deploy static website ───────────────────────────────
   deploy-website:
     name: Deploy Static Website
@@ -1368,7 +1271,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       - name: Azure Login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

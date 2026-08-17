@@ -43,6 +43,24 @@ For every substantial task, identify the primary persona, the job-to-be-done bei
 - Update `docs/ROADMAP.md` "Recently Landed" table and the GitHub Project board when PRs merge or stage status changes.
 - When behavior, contracts, or rollout expectations change, update the relevant tests and docs in the same change.
 
+## Required Issue Brief
+
+Every new implementation issue must identify all of the following fields before a coding agent begins work. The **Work item** template in `.github/ISSUE_TEMPLATE/task.md` enforces these headings for UI-created issues. Issues created via the API or `gh` CLI must include the same fields by convention.
+
+| Field | Purpose |
+|-------|---------|
+| **Persona & JTBD** | Which persona and job-to-be-done are served. Omit only for purely internal maintenance. |
+| **Owning anchor** | The single file, symbol, endpoint, workflow, or failing command that directly controls the behavior. Lets a coding agent navigate without broad exploration. |
+| **Observable problem** | Current behavior plus a minimal repro or evidence pointer (log line, test name, CI URL). |
+| **Acceptance signal** | Measurable behavior — not prose-only completion. Prefer a test name, command output, or metric threshold. |
+| **First focused check** | The exact narrow test or command expected to FAIL before the change and PASS afterward. One line. |
+| **Handoff checks** | Exact broader commands required before review. Default: `make check`. |
+| **Risk class** | One of: `low`, `normal`, `high`, `release-critical`. |
+| **Non-goals** | Adjacent work explicitly excluded from this PR. |
+| **Dependencies** | `Blocked by #N` / `Depends on #N` in the issue body (not comments). Write `none` if no prerequisites. |
+
+Simple docs/typo issues use the **Docs / typo / maintenance** template and are exempt from the fields above.
+
 ## Backlog Hygiene
 
 - When manipulating GitHub Issues or Projects, always fetch the full dataset explicitly. For CLI operations, pass a `--limit` large enough to cover the whole board; never rely on defaults.
