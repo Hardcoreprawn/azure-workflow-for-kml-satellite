@@ -627,8 +627,12 @@
         return;
       }
 
-      const tokenData = await tokenRes.json();
-      clearTimeout(coldStartTimer);
+      let tokenData;
+      try {
+        tokenData = await tokenRes.json();
+      } finally {
+        clearTimeout(coldStartTimer);
+      }
       let submissionId = tokenData.submissionId || tokenData.submission_id;
       const sasUrl = tokenData.sasUrl || tokenData.sas_url;
       let uploadQueued = false;
