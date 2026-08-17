@@ -4,10 +4,12 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
-import contextlib
+import logging
 from typing import Any
 
 from treesight.constants import DEFAULT_PROVIDER
+
+logger = logging.getLogger(__name__)
 
 
 def _collect_enrichment_coords(aois: list[dict[str, Any]]) -> list[list[float]]:
@@ -84,8 +86,14 @@ def _collect_per_aoi_coords(
                 entry["source_geometry_type"] = source_geometry_type
             plot_area_ha_str = meta.get("plot_area_ha", "")
             if plot_area_ha_str:
-                with contextlib.suppress(ValueError):
+                try:
                     entry["plot_area_ha"] = float(plot_area_ha_str)
+                except ValueError:
+                    logger.warning(
+                        "Could not parse plot_area_ha %r for AOI %r; field omitted",
+                        plot_area_ha_str,
+                        entry.get("name", ""),
+                    )
             result.append(entry)
 
     # Assign spatial cluster labels (#581)
