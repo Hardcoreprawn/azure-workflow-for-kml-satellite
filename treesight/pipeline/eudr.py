@@ -34,6 +34,9 @@ _KML_FOOTER = """\
 _PLACEMARK_POLYGON = """\
   <Placemark>
     <name>{name}</name>
+    <ExtendedData>
+      <Data name="source_geometry_type"><value>Polygon</value></Data>
+    </ExtendedData>
     <Polygon>
       <outerBoundaryIs>
         <LinearRing>
@@ -48,6 +51,11 @@ _PLACEMARK_POINT_BUFFER = """\
   <Placemark>
     <name>{name}</name>
     <description>Buffer radius: {radius_m}m around ({lon}, {lat})</description>
+    <ExtendedData>
+      <Data name="source_geometry_type"><value>Point</value></Data>
+      <Data name="source_lon"><value>{lon}</value></Data>
+      <Data name="source_lat"><value>{lat}</value></Data>
+    </ExtendedData>
     <Polygon>
       <outerBoundaryIs>
         <LinearRing>
@@ -73,6 +81,12 @@ def coords_to_kml(
     - A polygon: ``{"name": "Plot B", "coordinates": [[lon,lat], ...]}``
       → written as-is.
 
+    ``source_geometry_type`` (``"Point"`` or ``"Polygon"``) is embedded as
+    ``<ExtendedData>`` on each ``<Placemark>`` via
+    :func:`build_geolocation_provenance`.  The enrichment pipeline reads this
+    field back from the KML so that DDS exports can distinguish supplier-declared
+    geometry from analysis-derived geometry (EUDR Article 2(28)).
+
     Returns a valid KML string.
     """
     parts = [_KML_HEADER.format(doc_name=_xml_escape(doc_name))]
@@ -80,7 +94,8 @@ def coords_to_kml(
     for plot in plots:
         name = _xml_escape(plot.get("name", "Unnamed"))
         if "coordinates" in plot:
-            # Polygon mode
+            # Polygon mode — build provenance to record the declared source geometry.
+            build_geolocation_provenance(plot, buffer_m=buffer_m)
             ring = plot["coordinates"]
             # Close ring if needed
             if ring and ring[0] != ring[-1]:
@@ -88,7 +103,8 @@ def coords_to_kml(
             coord_str = " ".join(f"{c[0]},{c[1]},0" for c in ring)
             parts.append(_PLACEMARK_POLYGON.format(name=name, coordinates=coord_str))
         elif "lon" in plot and "lat" in plot:
-            # Point → buffer circle
+            # Point → buffer circle — build provenance to record source point.
+            build_geolocation_provenance(plot, buffer_m=buffer_m)
             lon, lat = float(plot["lon"]), float(plot["lat"])
             radius = float(plot.get("radius_m", buffer_m))
             ring = _point_buffer(lon, lat, radius)

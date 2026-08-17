@@ -11,7 +11,7 @@ import pytest
 
 from blueprints.export.audit_pdf import build_eudr_audit_pdf
 from blueprints.export.csv import _build_bulk_csv, _build_csv, _build_eudr_csv
-from blueprints.export.eudr_dds import _build_eudr_dds
+from blueprints.export.eudr_dds import _build_eudr_dds, _plot_geolocation
 from blueprints.export.geojson import _build_eudr_geojson, _build_geojson
 from blueprints.export.pdf import _build_pdf, _pdf_scene_provenance_section
 
@@ -914,6 +914,104 @@ class TestBuildEudrDds:
         before = copy.deepcopy(eudr_manifest)
         _build_eudr_dds(eudr_manifest)
         assert eudr_manifest == before
+
+
+class TestPlotGeolocationProvenance:
+    """_plot_geolocation uses supplier-declared source_geometry_type when present (#1343)."""
+
+    def test_point_source_type_returns_point_regardless_of_area(self):
+        """A point-sourced plot must use point geolocation even if area > 4 ha."""
+        aoi = {
+            "source_geometry_type": "Point",
+            "area_ha": 10.0,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": [],
+        }
+        result = _plot_geolocation(aoi, is_cattle=False)
+        assert result["geolocation_type"] == "point"
+        assert result["coordinates"] == [36.8, -1.3]
+
+    def test_polygon_source_type_returns_polygon_for_small_area(self):
+        """A polygon-sourced plot must use polygon geolocation even if area <= 4 ha."""
+        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "area_ha": 1.2,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": coords,
+        }
+        result = _plot_geolocation(aoi, is_cattle=False)
+        assert result["geolocation_type"] == "polygon"
+        assert result["coordinates"] == coords
+
+    def test_cattle_always_returns_point_regardless_of_source_geometry_type(self):
+        """is_cattle overrides source_geometry_type."""
+        coords = [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31], [36.8, -1.3]]
+        aoi = {
+            "source_geometry_type": "Polygon",
+            "area_ha": 8000.0,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": coords,
+        }
+        result = _plot_geolocation(aoi, is_cattle=True)
+        assert result["geolocation_type"] == "point"
+
+    def test_legacy_fallback_area_over_4ha_returns_polygon(self):
+        """Without source_geometry_type, area > 4 ha falls back to polygon."""
+        aoi = {
+            "area_ha": 12.5,
+            "center": {"lat": -6.55, "lon": -51.85},
+            "coords": [[-51.85, -6.51], [-51.82, -6.55], [-51.85, -6.59]],
+        }
+        result = _plot_geolocation(aoi, is_cattle=False)
+        assert result["geolocation_type"] == "polygon"
+
+    def test_legacy_fallback_area_under_4ha_returns_point(self):
+        """Without source_geometry_type, area <= 4 ha falls back to point."""
+        aoi = {
+            "area_ha": 2.0,
+            "center": {"lat": -1.3, "lon": 36.8},
+            "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+        }
+        result = _plot_geolocation(aoi, is_cattle=False)
+        assert result["geolocation_type"] == "point"
+
+    def test_dds_export_uses_point_for_point_sourced_plot(self):
+        """End-to-end: point-source plot with large nominal area still exports as point."""
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Small GPS point",
+                    "source_geometry_type": "Point",
+                    "area_ha": 0.03,
+                    "center": {"lat": 48.86, "lon": 2.35},
+                    "coords": [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]],
+                }
+            ]
+        }
+        result = _build_eudr_dds(manifest)
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "point"
+        assert plot["coordinates"] == [2.35, 48.86]
+
+    def test_dds_export_uses_polygon_for_polygon_sourced_small_plot(self):
+        """End-to-end: polygon-source plot with area <= 4 ha exports as polygon."""
+        coords = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87], [2.34, 48.85]]
+        manifest = {
+            "per_aoi_enrichment": [
+                {
+                    "name": "Declared polygon 2 ha",
+                    "source_geometry_type": "Polygon",
+                    "area_ha": 2.0,
+                    "center": {"lat": 48.86, "lon": 2.35},
+                    "coords": coords,
+                }
+            ]
+        }
+        result = _build_eudr_dds(manifest)
+        plot = result["dds_annex_ii"]["3_production"]["plots"][0]
+        assert plot["geolocation_type"] == "polygon"
+        assert plot["coordinates"] == coords
 
 
 class TestDispatchEudrExport:

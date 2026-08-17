@@ -74,6 +74,14 @@ def _enrich_single_aoi(
         "frame_plan": frame_plan,
         "area_ha": aoi_entry.get("area_ha", 0.0),
     }
+    # Pass through supplier-declared geometry metadata for DDS geolocation
+    # (EUDR Article 2(28) — point vs polygon threshold uses declared source, not derived area).
+    source_geometry_type = aoi_entry.get("source_geometry_type", "")
+    if source_geometry_type:
+        result["source_geometry_type"] = source_geometry_type
+    plot_area_ha = aoi_entry.get("plot_area_ha")
+    if plot_area_ha is not None:
+        result["plot_area_ha"] = plot_area_ha
 
     if not frame_plan:
         return result

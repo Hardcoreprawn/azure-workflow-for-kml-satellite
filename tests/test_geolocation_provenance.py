@@ -197,3 +197,68 @@ class TestBuildGeolocationProvenanceErrors:
     def test_missing_geometry_raises_value_error(self):
         with pytest.raises(ValueError, match=r"coordinates.*lon.*lat"):
             build_geolocation_provenance({"name": "No geometry"})
+
+
+# ---------------------------------------------------------------------------
+# §6 — KML wiring: coords_to_kml embeds source_geometry_type via provenance
+# ---------------------------------------------------------------------------
+
+
+class TestCoordsToKmlProvenanceWiring:
+    """coords_to_kml calls build_geolocation_provenance and embeds source_geometry_type."""
+
+    def test_point_kml_contains_source_geometry_type_extended_data(self):
+        from treesight.pipeline.eudr import coords_to_kml
+
+        kml = coords_to_kml([{"name": "P", "lon": 2.35, "lat": 48.86}])
+        assert "<Data name=" in kml
+        assert "source_geometry_type" in kml
+        assert "<value>Point</value>" in kml
+
+    def test_polygon_kml_contains_source_geometry_type_extended_data(self):
+        from treesight.pipeline.eudr import coords_to_kml
+
+        coords = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]]
+        kml = coords_to_kml([{"name": "F", "coordinates": coords}])
+        assert "source_geometry_type" in kml
+        assert "<value>Polygon</value>" in kml
+
+    def test_point_kml_does_not_contain_polygon_type(self):
+        from treesight.pipeline.eudr import coords_to_kml
+
+        kml = coords_to_kml([{"name": "P", "lon": 2.35, "lat": 48.86}])
+        assert "<value>Polygon</value>" not in kml
+
+    def test_polygon_kml_does_not_contain_point_type(self):
+        from treesight.pipeline.eudr import coords_to_kml
+
+        coords = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]]
+        kml = coords_to_kml([{"name": "F", "coordinates": coords}])
+        assert "<value>Point</value>" not in kml
+
+    def test_point_kml_contains_source_lon_lat(self):
+        from treesight.pipeline.eudr import coords_to_kml
+
+        kml = coords_to_kml([{"name": "P", "lon": 2.35, "lat": 48.86}])
+        assert "source_lon" in kml
+        assert "source_lat" in kml
+
+    def test_lxml_parser_reads_source_geometry_type_from_kml(self):
+        """ExtendedData set by coords_to_kml is parsed into Feature.metadata by lxml parser."""
+        from treesight.parsers.lxml_parser import parse_kml_lxml
+        from treesight.pipeline.eudr import coords_to_kml
+
+        kml_bytes = coords_to_kml([{"name": "P", "lon": 2.35, "lat": 48.86}]).encode()
+        features = parse_kml_lxml(kml_bytes, source_file="test.kml")
+        assert len(features) == 1
+        assert features[0].metadata.get("source_geometry_type") == "Point"
+
+    def test_lxml_parser_reads_polygon_source_geometry_type(self):
+        from treesight.parsers.lxml_parser import parse_kml_lxml
+        from treesight.pipeline.eudr import coords_to_kml
+
+        coords = [[2.34, 48.85], [2.36, 48.85], [2.36, 48.87], [2.34, 48.87]]
+        kml_bytes = coords_to_kml([{"name": "F", "coordinates": coords}]).encode()
+        features = parse_kml_lxml(kml_bytes, source_file="test.kml")
+        assert len(features) == 1
+        assert features[0].metadata.get("source_geometry_type") == "Polygon"

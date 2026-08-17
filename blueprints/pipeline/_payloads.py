@@ -4,6 +4,7 @@ NOTE: Do NOT add ``from __future__ import annotations`` to this module.
 See blueprints/pipeline/__init__.py for details.
 """
 
+import contextlib
 from typing import Any
 
 from treesight.constants import DEFAULT_PROVIDER
@@ -46,8 +47,13 @@ def _collect_per_aoi_coords(
     Returns a list of dicts, one per AOI, each containing:
     - ``name``: the feature name
     - ``coords``: the exterior coordinates (or bbox-derived ring)
-    - ``area_ha``: area in hectares
+    - ``area_ha``: area in hectares (derived from buffer polygon)
     - ``cluster``: zero-based cluster index from spatial grouping
+    - ``source_geometry_type``: ``"Point"`` or ``"Polygon"`` when present in AOI
+      metadata (set by :func:`treesight.pipeline.eudr.coords_to_kml` via
+      :func:`treesight.pipeline.eudr.build_geolocation_provenance`)
+    - ``plot_area_ha``: supplier-declared area in hectares when present in
+      AOI metadata
     """
     result: list[dict[str, Any]] = []
     for aoi in aois:
@@ -64,13 +70,23 @@ def _collect_per_aoi_coords(
                     [min_lon, min_lat],
                 ]
         if coords:
-            result.append(
-                {
-                    "name": aoi.get("feature_name", ""),
-                    "coords": coords,
-                    "area_ha": aoi.get("area_ha", 0.0),
-                }
-            )
+            entry: dict[str, Any] = {
+                "name": aoi.get("feature_name", ""),
+                "coords": coords,
+                "area_ha": aoi.get("area_ha", 0.0),
+            }
+            # Propagate supplier-declared geometry type and area from KML ExtendedData
+            # so DDS exports use supplier-declared values, not derived buffer geometry
+            # (EUDR Article 2(28)).  Set by coords_to_kml via build_geolocation_provenance.
+            meta: dict[str, str] = aoi.get("metadata", {})
+            source_geometry_type = meta.get("source_geometry_type", "")
+            if source_geometry_type:
+                entry["source_geometry_type"] = source_geometry_type
+            plot_area_ha_str = meta.get("plot_area_ha", "")
+            if plot_area_ha_str:
+                with contextlib.suppress(ValueError):
+                    entry["plot_area_ha"] = float(plot_area_ha_str)
+            result.append(entry)
 
     # Assign spatial cluster labels (#581)
     if len(result) > 1:
