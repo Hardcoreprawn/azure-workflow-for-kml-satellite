@@ -49,16 +49,24 @@ _DUMMY_CIAM_DEFAULTS = {
 }
 
 
-def build_func_host_env(base_env: dict[str, str]) -> dict[str, str]:
+def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> dict[str, str]:
     """Return the environment for the ``func start`` subprocess.
 
     Self-contained by design: ``local.settings.json`` is git-ignored, so a
     fresh CI checkout won't have one — every setting the host needs to pass
     startup validation and reach the right Azurite must be set here, not
     assumed to come from a developer's local file.
+
+    ``test_mode=False`` (used by ``scripts/real_acquisition_runner.py``,
+    #1379) exercises the real imagery provider instead of the synthetic
+    stub — any inherited ``CANOPEX_TEST_MODE`` from a developer's shell is
+    stripped rather than left to leak into a real-acquisition run.
     """
     env = dict(base_env)
-    env["CANOPEX_TEST_MODE"] = "1"
+    if test_mode:
+        env["CANOPEX_TEST_MODE"] = "1"
+    else:
+        env.pop("CANOPEX_TEST_MODE", None)
     # Dockerfile.base sets this for the *production* container convention
     # (/home/site/wwwroot). func start trusts it over the actual working
     # directory, so in any image that inherits it, func silently looks for
@@ -83,10 +91,10 @@ def build_func_host_env(base_env: dict[str, str]) -> dict[str, str]:
     return env
 
 
-def start_func_host(*, log_path: Path) -> subprocess.Popen:
+def start_func_host(*, log_path: Path, test_mode: bool = True) -> subprocess.Popen:
     """Start ``func start --python`` in the background with an env built
     by ``build_func_host_env`` — see that function for why."""
-    env = build_func_host_env(dict(os.environ))
+    env = build_func_host_env(dict(os.environ), test_mode=test_mode)
     log_file = log_path.open("w")
     try:
         return subprocess.Popen(

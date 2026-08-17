@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -116,6 +116,11 @@ test-pipeline-local: ## Unattended local/CI pipeline e2e gate against a running 
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
 	uv run python scripts/init_storage.py
 	uv run python scripts/e2e_local.py
+
+real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planetary Computer provider for manual review (#1379) — not a CI gate
+	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
+	uv run python scripts/init_storage.py
+	uv run python scripts/real_acquisition_runner.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
