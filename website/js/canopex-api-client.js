@@ -219,7 +219,7 @@
         return await apiFetch(path, opts);
       } catch (firstErr) {
         // Only retry on network/timeout — HTTP errors (status set) propagate.
-        if (firstErr && typeof firstErr.status === 'number') {
+        if (firstErr && (firstErr.authRedirectTriggered || typeof firstErr.status === 'number')) {
           throw firstErr;
         }
         await delayMs(delay);
