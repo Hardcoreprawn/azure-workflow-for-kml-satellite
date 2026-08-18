@@ -1,5 +1,5 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-all dev-logs dev-rebuild \
+       dev-all dev-all-stub dev-logs dev-rebuild \
 	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
@@ -57,7 +57,7 @@ dev-init: dev-up ## Start Azurite + create storage containers
 DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
 export DEV_WORKSPACE
 
-dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — the single local dev path
+dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — real Planetary Computer imagery, the single local dev path
 	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
 	source .github/image-config.env && export UV_VERSION && \
 	docker compose down --remove-orphans 2>/dev/null || true
@@ -71,9 +71,13 @@ dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) —
 	@echo "║  Orchestrator: http://localhost:7072/api/health        ║"
 	@echo "║  Azurite:    localhost:10000 (blob)                   ║"
 	@echo "║                                                      ║"
+	@echo "║  Imagery:    real PC (dev-all-stub = stub)            ║"
 	@echo "║  Logs:       make dev-logs                            ║"
 	@echo "║  Stop:       docker compose down                      ║"
 	@echo "╚══════════════════════════════════════════════════════╝"
+
+dev-all-stub: ## Full stack, synthetic imagery (CANOPEX_TEST_MODE=1) — fast whole-pipeline regression run, no real Planetary Computer calls
+	CANOPEX_TEST_MODE=1 $(MAKE) dev-all
 
 dev-logs: ## Tail logs from all docker-compose services
 	docker compose logs -f --tail=50
