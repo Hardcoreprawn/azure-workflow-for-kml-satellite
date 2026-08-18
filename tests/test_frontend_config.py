@@ -1287,7 +1287,7 @@ class TestKmlToKmzClientCompression:
         )
         assert "buildKmzFromKmlText" in app_analysis_preflight_js, (
             "app-analysis-preflight.js must define buildKmzFromKmlText to "
-            "compress raw KML into a KMZ archive without external libraries"
+            "compress raw KML into a KMZ archive via the vendored fflate library"
         )
 
     def test_preflight_stores_kmz_bytes_for_kml_upload(self, app_analysis_preflight_js):
@@ -1337,11 +1337,29 @@ class TestKmlToKmzClientCompression:
             "input handler so pasted/typed KML doesn't upload stale KMZ bytes"
         )
 
-    def test_preflight_zip_uses_deflate_raw_compression(self, app_analysis_preflight_js):
-        assert "deflate-raw" in app_analysis_preflight_js, (
-            "buildKmzFromKmlText must use CompressionStream('deflate-raw') "
-            "so the resulting KMZ achieves real compression without external libs"
+    def test_preflight_uses_fflate_zip_not_synchronous_compression(self, app_analysis_preflight_js):
+        """buildKmzFromKmlText must use fflate's async zip() (Worker-offloaded when
+        available), not zipSync() — a large KML (up to the 10 MiB server-side cap)
+        would otherwise block the main thread for a perceptible amount of time."""
+        assert "fflate.zip(" in app_analysis_preflight_js, (
+            "buildKmzFromKmlText must call fflate.zip() (vendored, Worker-capable)"
         )
+        assert "fflate.zipSync(" not in app_analysis_preflight_js, (
+            "must not use fflate.zipSync() — it runs synchronously on the main "
+            "thread and would block the UI for large KML files"
+        )
+
+    def test_pages_load_vendored_fflate_before_preflight_script(self):
+        """fflate must be a global by the time app-analysis-preflight.js runs —
+        both deferred scripts execute in document order, so the fflate <script>
+        tag must appear first on every page that loads the preflight module."""
+        for html_path in (WEBSITE / "app" / "index.html", WEBSITE / "eudr" / "index.html"):
+            html = html_path.read_text()
+            fflate_pos = html.find("/vendor/fflate/fflate.js")
+            preflight_pos = html.find("/js/app-analysis-preflight.js")
+            assert fflate_pos != -1, f"{html_path.name} must load the vendored fflate script"
+            assert preflight_pos != -1, f"{html_path.name} must load app-analysis-preflight.js"
+            assert fflate_pos < preflight_pos, f"{html_path.name} must load fflate.js before app-analysis-preflight.js"
 
     def test_convert_csv_to_kml_clears_stale_pending_kmz_bytes(self, app_analysis_preflight_js):
         """Assigning textarea.value directly (as convertCSVToKml does) does not

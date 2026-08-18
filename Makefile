@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -102,6 +102,9 @@ test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
 
+test-js: ## Execute website/js correctness tests with Node's built-in test runner (no npm deps)
+	node --test tests/js/
+
 test-int: ## Run integration tests against a running Azurite (creates containers first)
 	uv run python scripts/init_storage.py
 	uv run python scripts/run_integration_tests.py --marker integration_azurite tests/test_integration.py
@@ -131,7 +134,7 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff format .
 	uv run ruff check --fix .
 
-check: lint test ## Full local gate (lint + test) — identical to CI
+check: lint test test-js ## Full local gate (lint + test + JS tests) — identical to CI
 
 ci-local: ## Run the gates inside the dev container image, exactly as CI does (#1086)
 	bash scripts/ci_local.sh $(GATE)
