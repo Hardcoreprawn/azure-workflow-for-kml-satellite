@@ -1901,9 +1901,10 @@ class TestCIFeedbackHygiene:
 
         env = orch.get("environment", {})
         func_env = services["func"].get("environment", {})
-        # Same storage/Cosmos/CIAM wiring as func — a routing gap should be the
-        # only difference a curl comparison between the two hosts can reveal.
-        for key in ("AzureWebJobsStorage", "COSMOS_ENDPOINT", "COSMOS_KEY", "CIAM_TENANT_ID"):
+        # Same storage/Cosmos/CIAM/test-mode wiring as func — a routing gap
+        # should be the only difference a curl comparison between the two
+        # hosts can reveal.
+        for key in ("AzureWebJobsStorage", "COSMOS_ENDPOINT", "COSMOS_KEY", "CIAM_TENANT_ID", "CANOPEX_TEST_MODE"):
             assert env.get(key) == func_env.get(key), f"orch and func must share identical {key!r} wiring"
 
         assert "healthcheck" in orch, "orch service must define a healthcheck like func"

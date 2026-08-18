@@ -174,17 +174,21 @@ def _all_eventgrid_keys() -> list[str]:
     host shares the same Azurite secrets store (#1407 added the second
     host). Rather than guess, callers try every key in turn.
     """
+    # Mirrors dev_event_grid_relay.py's own container name (that constant is
+    # private/underscored there, so duplicated here rather than imported).
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     container = client.get_container_client("azure-webjobs-secrets")
     keys: list[str] = []
     try:
         blobs = list(container.list_blobs())
-    except Exception:
+    except Exception as exc:
+        print(f"  ... could not list Event Grid secrets container: {exc}")
         return keys
     for blob in blobs:
         try:
             text = container.get_blob_client(blob.name).download_blob().readall().decode()
-        except Exception:
+        except Exception as exc:
+            print(f"  ... could not read secrets blob {blob.name!r}: {exc}")
             continue
         key = _extract_eventgrid_key(text)
         if key:
@@ -224,7 +228,7 @@ def _run_pipeline(host_label: str, base: str) -> tuple[bool, str | None]:
         return False, None
 
     try:
-        status_payload = poll_orchestration(instance_id, timeout=PIPELINE_TIMEOUT_SECONDS)
+        status_payload = poll_orchestration(instance_id, timeout=PIPELINE_TIMEOUT_SECONDS, base=base)
         assert_pipeline_succeeded(status_payload)
         return True, instance_id
     except (TimeoutError, AssertionError) as exc:
@@ -268,15 +272,19 @@ def check_exports(instance_id: str | None) -> list[Result]:
 def check_website() -> list[Result]:
     print("\n[7/9] Website")
     results: list[Result] = []
-    try:
-        with httpx.Client() as client:
+    with httpx.Client() as client:
+        try:
             resp = client.get(WEB_BASE, timeout=10.0)
             site_ok = resp.status_code == 200 and "Canopex" in resp.text
+        except httpx.TransportError as exc:
+            print(f"  ... static site check failed: {exc}")
+            site_ok = False
+        try:
             proxy_resp = client.get(f"{WEB_BASE}/api/health", timeout=10.0)
             proxy_ok = proxy_resp.status_code == 200
-    except httpx.TransportError as exc:
-        print(f"  ... website check failed: {exc}")
-        site_ok = proxy_ok = False
+        except httpx.TransportError as exc:
+            print(f"  ... /api/* proxy check failed: {exc}")
+            proxy_ok = False
     _print_result("static site serves", site_ok)
     _print_result("/api/* proxy reaches func", proxy_ok)
     results.append(("website:static", site_ok))

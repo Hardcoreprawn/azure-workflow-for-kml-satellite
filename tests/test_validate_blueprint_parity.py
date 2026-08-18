@@ -45,20 +45,22 @@ class TestRoutes:
         for route in ROUTES:
             assert route.path.startswith("/api/"), f"{route.path!r} must start with /api/"
 
-    def test_covers_every_blueprint_restored_by_1407(self):
-        expected = {
-            "health",
-            "billing",
-            "upload",
-            "monitoring",
-            "ops",
-            "catalogue",
-            "contact",
-            "account",
-            "org",
-            "export",
-            "eudr",
-            "analysis",
-        }
+    def test_covers_every_registered_http_blueprint(self):
+        """ROUTES must cover every blueprint function_registration._http_blueprints()
+        actually registers on both roles — not a hand-copied duplicate list, which
+        can silently drift out of sync with the real registration set (missed
+        the whole `pipeline` blueprint, including /api/analysis/submit and
+        /api/orchestrator/{id}, until this test was added). Blueprint objects
+        don't expose their registration name, so this compares counts rather
+        than names: a mismatch means at least one blueprint has zero route
+        coverage here.
+        """
+        from function_registration import _http_blueprints
+
         covered = {route.blueprint for route in ROUTES}
-        assert expected <= covered, f"Missing blueprint coverage: {expected - covered}"
+        expected_count = len(_http_blueprints())
+        assert len(covered) == expected_count, (
+            f"ROUTES covers {len(covered)} distinct blueprints "
+            f"({sorted(covered)}) but _http_blueprints() registers "
+            f"{expected_count} — every blueprint needs at least one route in ROUTES"
+        )

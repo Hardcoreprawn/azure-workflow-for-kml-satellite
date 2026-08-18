@@ -51,6 +51,10 @@ ROUTES: tuple[RouteCheck, ...] = (
     RouteCheck("POST", "/api/convert-coordinates", "eudr"),
     RouteCheck("POST", "/api/eudr-assessment", "analysis"),
     RouteCheck("GET", "/api/internal-health", "health"),
+    # /api/orchestrator/{id} 404s with a real JSON body ({"error": "not found"})
+    # for an unknown instance — a business-logic 404, not the empty-body
+    # "route not registered" 404 (blueprints/pipeline/diagnostics.py).
+    RouteCheck("GET", "/api/orchestrator/local-parity-check", "pipeline"),
 )
 
 # A route no blueprint defines — the baseline for "genuinely unregistered".
