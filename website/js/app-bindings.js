@@ -114,6 +114,8 @@
     var kmlInput = document.getElementById('app-analysis-kml');
     if (kmlInput) {
       kmlInput.addEventListener('input', function () {
+        // Manual text edit invalidates any file-derived KMZ bytes.
+        if (d.clearPendingKmzBytes) d.clearPendingKmzBytes();
         if (d.updateAnalysisPreflight) d.updateAnalysisPreflight(this.value);
       });
     }

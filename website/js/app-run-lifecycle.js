@@ -584,6 +584,12 @@
         tokenBody.submission_context = submissionContext;
       }
 
+      // If the user loaded a file, KMZ bytes are ready — request a KMZ blob name.
+      var kmzBytes = _d.getPendingKmzBytes ? _d.getPendingKmzBytes() : null;
+      if (kmzBytes) {
+        tokenBody.filename = 'submission.kmz';
+      }
+
       // EUDR compliance mode (#600)
       var eudrCheckbox = document.getElementById('app-eudr-mode');
       if (eudrCheckbox && eudrCheckbox.checked) {
@@ -637,21 +643,25 @@
       const sasUrl = tokenData.sasUrl || tokenData.sas_url;
       let uploadQueued = false;
 
-      // Step 2: Upload KML directly to blob storage via SAS URL
+      // Step 2: Upload to blob storage via SAS URL.
+      // Use KMZ bytes when available (file upload path); fall back to raw KML text.
       if (submissionId && sasUrl) {
         button.textContent = 'Uploading\u2026';
         if (_d.setAnalysisStatus) _d.setAnalysisStatus('Uploading to storage\u2026', 'info');
         if (_d.setAnalysisStep) _d.setAnalysisStep('submit', 'active');
 
         try {
-          const kmlBytes = new TextEncoder().encode(kmlContent);
+          var uploadBody = kmzBytes ? kmzBytes : new TextEncoder().encode(kmlContent);
+          var uploadContentType = kmzBytes
+            ? 'application/vnd.google-earth.kmz'
+            : 'application/vnd.google-earth.kml+xml';
           const uploadRes = await fetch(sasUrl, {
             method: 'PUT',
             headers: {
               'x-ms-blob-type': 'BlockBlob',
-              'Content-Type': 'application/vnd.google-earth.kml+xml'
+              'Content-Type': uploadContentType
             },
-            body: kmlBytes
+            body: uploadBody
           });
           uploadQueued = !!(uploadRes && uploadRes.ok);
         } catch (_) {
