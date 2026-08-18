@@ -162,6 +162,59 @@ services:
       retries: 18
       start_period: 60s
 
+  # Local parity twin of `func`, built from Dockerfile.orchestrator (#1407/#1408).
+  # Both images now register the identical public HTTP blueprint set — this
+  # service exists so that parity is provable locally (curl the same route
+  # against both hosts) before anything reaches Azure, per the "prove it
+  # locally first" principle: real cost/time is burned pushing infra changes
+  # to Azure only to discover a routing gap that a local container would
+  # have caught in seconds.
+  orch:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+      args:
+        BASE_IMAGE: ghcr.io/hardcoreprawn/treesight-base:latest
+        UV_VERSION: ${UV_VERSION}
+    container_name: canopex-orch
+    ports:
+      - "7072:80"
+    depends_on:
+      azurite:
+        condition: service_healthy
+      cosmos:
+        condition: service_healthy
+    environment:
+      AzureWebJobsStorage: >-  # pragma: allowlist secret
+        DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1
+      AzureWebJobsFeatureFlags: EnableWorkerIndexing
+      FUNCTIONS_WORKER_RUNTIME: python
+      WEBSITE_HOSTNAME: "localhost:80"
+      IMAGERY_PROVIDER: planetary_computer
+      IMAGERY_RESOLUTION_TARGET_M: "0.5"
+      IMAGERY_MAX_CLOUD_COVER_PCT: "20.0"
+      AOI_BUFFER_M: "100.0"
+      AOI_MAX_AREA_HA: "10000.0"
+      DEMO_VALET_TOKEN_SECRET: local-dev-secret-change-me  # pragma: allowlist secret
+      DEMO_VALET_TOKEN_TTL_SECONDS: "86400"
+      DEMO_VALET_TOKEN_MAX_USES: "3"
+      CIAM_AUTHORITY: "https://ciam.example.com"
+      CIAM_TENANT_ID: "local-dev-tenant"
+      CIAM_API_AUDIENCE: "api://local-dev-audience"
+      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "mistral"
+      COSMOS_ENDPOINT: "http://cosmos:8081"
+      COSMOS_DATABASE_NAME: "treesight"
+      COSMOS_KEY: "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="  # pragma: allowlist secret
+      AzureFunctionsJobHost__logging__logLevel__Default: "Information"
+      AzureFunctionsJobHost__logging__logLevel__Azure: "Warning"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:80/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
   # Azurite has no real Event Grid, so blob uploads made directly via a SAS
   # URL (blueprints/upload.py's upload_token flow, i.e. every real browser
   # submission) never reach blueprints/pipeline/blob_trigger.py — nothing

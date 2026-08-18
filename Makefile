@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -67,7 +67,8 @@ dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) —
 	@echo "║  All services starting via docker-compose:           ║"
 	@echo "║                                                      ║"
 	@echo "║  Website:    http://localhost:4280                    ║"
-	@echo "║  Functions:  http://localhost:7071/api/health         ║"
+	@echo "║  Functions:  http://localhost:7071/api/health (compute)║"
+	@echo "║  Orchestrator: http://localhost:7072/api/health        ║"
 	@echo "║  Azurite:    localhost:10000 (blob)                   ║"
 	@echo "║                                                      ║"
 	@echo "║  Logs:       make dev-logs                            ║"
@@ -121,6 +122,9 @@ real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planeta
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
 	uv run python scripts/init_storage.py
 	uv run python scripts/real_acquisition_runner.py
+
+blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
+	uv run python scripts/validate_blueprint_parity.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
