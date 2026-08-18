@@ -1909,11 +1909,12 @@ class TestCIFeedbackHygiene:
         docker-compose invocation, and `make dev-all` must remain the
         real-imagery default."""
         source = (ROOT / "Makefile").read_text()
-        assert "dev-all-stub:" in source, "Makefile must define a dev-all-stub target"
-        stub_recipe = source.split("dev-all-stub:", 1)[1].split("\n\n", 1)[0]
-        assert "CANOPEX_TEST_MODE=1" in stub_recipe, "dev-all-stub must set CANOPEX_TEST_MODE=1"
-        dev_all_recipe = source.split("\ndev-all:", 1)[1].split("\n\n", 1)[0]
-        assert "CANOPEX_TEST_MODE" not in dev_all_recipe, (
+        stub_recipe = re.search(r"^dev-all-stub:.*?(?=^\S)", source, re.MULTILINE | re.DOTALL)
+        assert stub_recipe, "Makefile must define a dev-all-stub target"
+        assert re.search(r"CANOPEX_TEST_MODE\s*=\s*1", stub_recipe.group()), "dev-all-stub must set CANOPEX_TEST_MODE=1"
+        dev_all_recipe = re.search(r"^dev-all:.*?(?=^\S)", source, re.MULTILINE | re.DOTALL)
+        assert dev_all_recipe, "Makefile must define a dev-all target"
+        assert not re.search(r"CANOPEX_TEST_MODE\s*=", dev_all_recipe.group()), (
             "dev-all itself must not set CANOPEX_TEST_MODE — it stays real-imagery by default"
         )
 
