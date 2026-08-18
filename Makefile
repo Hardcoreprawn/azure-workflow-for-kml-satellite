@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
        dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check lint fmt check smoke clean prune-branches \
+	test-upload ux-smoke test-fast test test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -125,6 +125,9 @@ real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planeta
 
 blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
 	uv run python scripts/validate_blueprint_parity.py
+
+verify-local: ## Full local verification gate: every service/surface/integration in one command (needs make dev-all running) (#1411, surfaces #1414)
+	uv run python scripts/verify_local_stack.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
