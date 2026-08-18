@@ -1,14 +1,17 @@
 """Azure Functions entry point for the orchestrator image (#466).
 
-Registers only the pipeline and health blueprints — not the full public API.
-Does NOT register activity functions — those run in the compute image.
+Registers the full public HTTP blueprint set (#1407) plus the pipeline
+blueprint's Durable orchestrator/blob-trigger routes — but NOT activity
+functions, which run only in the compute image.
 
 Both images share the same Durable task hub and Azure Storage connection.
 PIPELINE_ROLE=orchestrator is set in Dockerfile.orchestrator so
 blueprints/pipeline/__init__.py skips importing the activities module.
 
-The orchestrator deliberately omits all public-API blueprints (billing, ops,
-export, etc.) to reduce attack surface and cold-start cost (#779).
+The orchestrator deliberately omits only the monitoring scheduler timer
+(GDAL-heavy, and must run exactly once across the fleet) — every other
+public-API blueprint is registered identically to the compute role, since
+none of them depend on GDAL/rasterio (see function_registration.py).
 """
 
 import logging
