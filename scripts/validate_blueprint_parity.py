@@ -37,6 +37,13 @@ class RouteCheck:
 # invalid/empty — the goal is to prove the route is *registered* (any
 # response with a non-empty body, or a status other than a bare 404), not to
 # exercise full business logic.
+#
+# Exactly one entry per distinct blueprint label — check_host() keys its
+# results dict by `blueprint`, so a second entry sharing a label (e.g. an
+# earlier version also checked /api/internal-health under "health") would
+# silently overwrite the first result rather than adding coverage, hiding a
+# real registration gap. test_covers_every_registered_http_blueprint enforces
+# this stays 1:1 with function_registration._http_blueprints().
 ROUTES: tuple[RouteCheck, ...] = (
     RouteCheck("GET", "/api/health", "health"),
     RouteCheck("GET", "/api/billing/status", "billing"),
@@ -50,7 +57,6 @@ ROUTES: tuple[RouteCheck, ...] = (
     RouteCheck("GET", "/api/export/local-parity-check/eudr-pdf", "export"),
     RouteCheck("POST", "/api/convert-coordinates", "eudr"),
     RouteCheck("POST", "/api/eudr-assessment", "analysis"),
-    RouteCheck("GET", "/api/internal-health", "health"),
     # /api/orchestrator/{id} 404s with a real JSON body ({"error": "not found"})
     # for an unknown instance — a business-logic 404, not the empty-body
     # "route not registered" 404 (blueprints/pipeline/diagnostics.py).

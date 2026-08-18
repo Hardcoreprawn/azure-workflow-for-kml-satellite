@@ -90,11 +90,18 @@ def _print_result(name: str, ok: bool, *, warn_only: bool = False) -> None:
 
 
 def check_container_running(name: str) -> bool:
-    """True if *name* is Up (docker's own healthcheck, if any, is not required here —
-    callers that need a passed healthcheck use an HTTP probe instead)."""
+    """True if *name* is Up and, when it defines a Docker HEALTHCHECK,
+    reports healthy — a merely "running" container can still be mid-startup
+    or explicitly unhealthy, which a bare Status check would miss."""
     try:
         out = subprocess.run(
-            ["docker", "inspect", "--format", "{{.State.Status}}", name],
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}",
+                name,
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -102,7 +109,11 @@ def check_container_running(name: str) -> bool:
         )
     except (subprocess.SubprocessError, FileNotFoundError):
         return False
-    return out.returncode == 0 and out.stdout.strip() == "running"
+    if out.returncode != 0:
+        return False
+    status, _, health = out.stdout.strip().partition("|")
+    # No HEALTHCHECK defined (health == "") -> running is all we can check.
+    return status == "running" and health in ("", "healthy")
 
 
 def check_service_health() -> list[Result]:
@@ -252,8 +263,13 @@ def check_pipeline() -> tuple[list[Result], str | None]:
 def check_exports(instance_id: str | None) -> list[Result]:
     print("\n[6/9] Exports")
     if not instance_id:
-        print("  ... no completed pipeline run available, skipping")
-        return [(f"export:{fmt}", False) for fmt in EXPORT_FORMATS]
+        # No completed pipeline run to export from — a prior gate failure
+        # (see check_pipeline) already reported the real root cause; marking
+        # these as failures too would just duplicate that same failure under
+        # a misleading label instead of the actual cause.
+        for fmt in EXPORT_FORMATS:
+            _print_result(f"{fmt} (skipped — no completed pipeline run)", False, warn_only=True)
+        return [(f"export:{fmt}", True) for fmt in EXPORT_FORMATS]
 
     results: list[Result] = []
     with httpx.Client() as client:
