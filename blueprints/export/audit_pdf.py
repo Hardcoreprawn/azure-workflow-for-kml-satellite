@@ -4,6 +4,9 @@ Import from this module for backward compatibility; logic lives in the
 domain package ``treesight/exports/pdf_audit.py``.
 """
 
-from treesight.exports.pdf_audit import (  # noqa: F401
+from treesight.exports.pdf_audit import (
+    _render_parcel_review_section,
     build_eudr_audit_pdf,
 )
+
+__all__ = ["_render_parcel_review_section", "build_eudr_audit_pdf"]
