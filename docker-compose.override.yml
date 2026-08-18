@@ -30,3 +30,12 @@ services:
       - ${DEV_WORKSPACE:-.}/blueprints:/home/site/wwwroot/blueprints:ro
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
+
+  # Same rationale as `func` above — keep the orchestrator's live-reload
+  # parity so a blueprint change shows up on both hosts without a rebuild.
+  orch:
+    volumes:
+      - ${DEV_WORKSPACE:-.}/treesight:/home/site/wwwroot/treesight:ro
+      - ${DEV_WORKSPACE:-.}/blueprints:/home/site/wwwroot/blueprints:ro
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"

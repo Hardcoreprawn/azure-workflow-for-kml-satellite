@@ -138,13 +138,21 @@ def wait_for_func_host(*, timeout: float, interval: float = 2.0) -> None:
     raise TimeoutError(f"func host did not become ready within {timeout}s")
 
 
-def poll_orchestration(instance_id: str, *, timeout: float, interval: float = 3.0) -> dict[str, Any]:
+def poll_orchestration(
+    instance_id: str, *, timeout: float, interval: float = 3.0, base: str = FUNC_BASE
+) -> dict[str, Any]:
     """Poll the orchestrator status endpoint to a terminal state.
+
+    *base* defaults to this module's own func host (FUNC_BASE) — callers
+    polling a different host (e.g. scripts/verify_local_stack.py checking
+    the orchestrator role too) must pass it explicitly, or every poll
+    silently targets compute regardless of which host actually started
+    the run.
 
     Returns the final status payload. Raises TimeoutError if no terminal
     state is reached within *timeout* — never loops unbounded.
     """
-    url = f"{FUNC_BASE}/api/orchestrator/{instance_id}"
+    url = f"{base}/api/orchestrator/{instance_id}"
     deadline = time.monotonic() + timeout
     last_status = ""
     while time.monotonic() < deadline:

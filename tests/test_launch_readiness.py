@@ -1881,6 +1881,34 @@ class TestCIFeedbackHygiene:
         )
         assert env.get("COSMOS_KEY"), "func must set COSMOS_KEY for the emulator (it has no managed-identity backend)"
 
+    def test_compose_orch_service_mirrors_func_for_local_parity_testing(self):
+        """docker-compose must run the orchestrator image locally too (#1407/#1408) —
+        without it, a blueprint-registration regression on the orchestrator role can
+        only be caught after a real Azure deploy. Local parity testing must come first."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        services = compose["services"]
+        assert "orch" in services, "docker-compose.yml must define an orch service (orchestrator image, local parity)"
+
+        orch = services["orch"]
+        assert orch.get("build", {}).get("dockerfile") == "Dockerfile.orchestrator", (
+            "orch service must build from Dockerfile.orchestrator, not the compute Dockerfile"
+        )
+        assert orch.get("ports") == ["7072:80"], "orch service must publish a distinct port from func (7071)"
+
+        depends_on = orch.get("depends_on", {})
+        assert depends_on.get("azurite", {}).get("condition") == "service_healthy"
+        assert depends_on.get("cosmos", {}).get("condition") == "service_healthy"
+
+        env = orch.get("environment", {})
+        func_env = services["func"].get("environment", {})
+        # Same storage/Cosmos/CIAM/test-mode wiring as func — a routing gap
+        # should be the only difference a curl comparison between the two
+        # hosts can reveal.
+        for key in ("AzureWebJobsStorage", "COSMOS_ENDPOINT", "COSMOS_KEY", "CIAM_TENANT_ID", "CANOPEX_TEST_MODE"):
+            assert env.get(key) == func_env.get(key), f"orch and func must share identical {key!r} wiring"
+
+        assert "healthcheck" in orch, "orch service must define a healthcheck like func"
+
     def test_cosmos_key_never_referenced_in_production_infra(self):
         """COSMOS_KEY must stay a local-dev-only concept — a real deployment
         that ever set it would silently bypass managed identity."""
