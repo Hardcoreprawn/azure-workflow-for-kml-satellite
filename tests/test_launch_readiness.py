@@ -1890,6 +1890,33 @@ class TestCIFeedbackHygiene:
                 "uses DefaultAzureCredential (managed identity)"
             )
 
+    def test_compose_func_passes_through_canopex_test_mode(self):
+        """func's environment must pass CANOPEX_TEST_MODE through from the
+        invoking shell (default unset — real Planetary Computer imagery),
+        not hardcode it either way — so `make dev-all-stub` can flip the
+        whole containerised pipeline to the synthetic stub provider for a
+        fast regression run, while plain `make dev-all` keeps exercising
+        the real provider (the property that caught #1414)."""
+        compose = yaml.safe_load(COMPOSE_YML.read_text())
+        env = compose["services"]["func"].get("environment", {})
+        assert env.get("CANOPEX_TEST_MODE") == "${CANOPEX_TEST_MODE:-}", (
+            "func must pass CANOPEX_TEST_MODE through from the shell via "
+            "${CANOPEX_TEST_MODE:-}, not hardcode a fixed value"
+        )
+
+    def test_makefile_dev_all_stub_sets_canopex_test_mode(self):
+        """`make dev-all-stub` must set CANOPEX_TEST_MODE=1 for the
+        docker-compose invocation, and `make dev-all` must remain the
+        real-imagery default."""
+        source = (ROOT / "Makefile").read_text()
+        assert "dev-all-stub:" in source, "Makefile must define a dev-all-stub target"
+        stub_recipe = source.split("dev-all-stub:", 1)[1].split("\n\n", 1)[0]
+        assert "CANOPEX_TEST_MODE=1" in stub_recipe, "dev-all-stub must set CANOPEX_TEST_MODE=1"
+        dev_all_recipe = source.split("\ndev-all:", 1)[1].split("\n\n", 1)[0]
+        assert "CANOPEX_TEST_MODE" not in dev_all_recipe, (
+            "dev-all itself must not set CANOPEX_TEST_MODE — it stays real-imagery by default"
+        )
+
     def test_pr_workflows_run_on_ready_for_review(self):
         """Promoting a draft must trigger CI — so pull_request needs the
         ready_for_review type (otherwise a promoted draft runs nothing). #1003."""
