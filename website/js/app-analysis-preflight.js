@@ -5,7 +5,8 @@
  * and the preflight UI panel update. Extracted from app-shell.js.
  *
  * Exposes window.CanopexAnalysisPreflight = { init, updateAnalysisPreflight,
- *   loadAnalysisFile, switchInputTab, convertCSVToKml }
+ *   loadAnalysisFile, switchInputTab, convertCSVToKml,
+ *   getPendingKmzBytes, clearPendingKmzBytes }
  */
 (function () {
   'use strict';
@@ -34,6 +35,123 @@
 
   // Module-local Leaflet map instance for the preflight thumbnail.
   var preflightMap = null;
+
+  // KMZ bytes to upload — set by loadAnalysisFile, cleared on manual text edit.
+  var _pendingKmzBytes = null;
+
+  // ── KMZ ZIP builder (no external dependencies) ───────────────
+
+  // CRC-32 table initialised once at module load (IEEE 802.3 polynomial).
+  var _crc32Table = (function () {
+    var t = new Uint32Array(256);
+    for (var i = 0; i < 256; i++) {
+      var c = i;
+      for (var k = 0; k < 8; k++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      t[i] = c >>> 0;
+    }
+    return t;
+  }());
+
+  function _crc32(bytes) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) {
+      crc = _crc32Table[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function _u16(view, offset, value) { view.setUint16(offset, value, true); }
+  function _u32(view, offset, value) { view.setUint32(offset, value, true); }
+
+  function _buildLocalFileHeader(buf, off, fileName, compSize, rawSize, crc, dosTime, dosDate) {
+    var view = new DataView(buf);
+    var bytes = new Uint8Array(buf);
+    bytes.set([0x50, 0x4B, 0x03, 0x04], off);
+    _u16(view, off + 4, 20);        // version needed: 2.0
+    _u16(view, off + 6, 0);         // flags
+    _u16(view, off + 8, 8);         // method: deflate
+    _u16(view, off + 10, dosTime);
+    _u16(view, off + 12, dosDate);
+    _u32(view, off + 14, crc);
+    _u32(view, off + 18, compSize);
+    _u32(view, off + 22, rawSize);
+    _u16(view, off + 26, fileName.length);
+    _u16(view, off + 28, 0);        // extra field length
+    bytes.set(fileName, off + 30);
+  }
+
+  function _buildCentralDirRecord(buf, off, fileName, compSize, rawSize, crc, dosTime, dosDate, localOffset) {
+    var view = new DataView(buf);
+    var bytes = new Uint8Array(buf);
+    bytes.set([0x50, 0x4B, 0x01, 0x02], off);
+    _u16(view, off + 4, 0x031E);    // version made by: Unix 3.0
+    _u16(view, off + 6, 20);        // version needed
+    _u16(view, off + 8, 0);         // flags
+    _u16(view, off + 10, 8);        // method: deflate
+    _u16(view, off + 12, dosTime);
+    _u16(view, off + 14, dosDate);
+    _u32(view, off + 16, crc);
+    _u32(view, off + 20, compSize);
+    _u32(view, off + 24, rawSize);
+    _u16(view, off + 28, fileName.length);
+    _u16(view, off + 30, 0);        // extra field length
+    _u16(view, off + 32, 0);        // comment length
+    _u16(view, off + 34, 0);        // disk start
+    _u16(view, off + 36, 0);        // internal attributes
+    _u32(view, off + 38, 0);        // external attributes
+    _u32(view, off + 42, localOffset);
+    bytes.set(fileName, off + 46);
+  }
+
+  function _buildEndOfCentralDir(buf, off, cdSize, cdOffset) {
+    var view = new DataView(buf);
+    var bytes = new Uint8Array(buf);
+    bytes.set([0x50, 0x4B, 0x05, 0x06], off);
+    _u16(view, off + 4, 0);         // disk number
+    _u16(view, off + 6, 0);         // disk with CD start
+    _u16(view, off + 8, 1);         // entries on this disk
+    _u16(view, off + 10, 1);        // total entries
+    _u32(view, off + 12, cdSize);
+    _u32(view, off + 16, cdOffset);
+    _u16(view, off + 20, 0);        // comment length
+  }
+
+  async function buildKmzFromKmlText(kmlText) {
+    var kmlBytes = new TextEncoder().encode(kmlText);
+    var fileName = new TextEncoder().encode('doc.kml');
+    var crc = _crc32(kmlBytes);
+
+    // Deflate-compress the KML bytes (supported in all modern browsers).
+    var comprStream = new Blob([kmlBytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    var compressedBytes = new Uint8Array(await new Response(comprStream).arrayBuffer());
+
+    var now = new Date();
+    var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) >>> 0;
+    var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2)) >>> 0;
+
+    var lfhSize = 30 + fileName.length;
+    var cdrSize = 46 + fileName.length;
+    var cdOffset = lfhSize + compressedBytes.length;
+    var totalSize = cdOffset + cdrSize + 22;
+
+    var buf = new ArrayBuffer(totalSize);
+    _buildLocalFileHeader(buf, 0, fileName, compressedBytes.length, kmlBytes.length, crc, dosTime, dosDate);
+    new Uint8Array(buf).set(compressedBytes, lfhSize);
+    _buildCentralDirRecord(buf, cdOffset, fileName, compressedBytes.length, kmlBytes.length, crc, dosTime, dosDate, 0);
+    _buildEndOfCentralDir(buf, cdOffset + cdrSize, cdrSize, cdOffset);
+
+    return new Uint8Array(buf);
+  }
+
+  function getPendingKmzBytes() {
+    return _pendingKmzBytes;
+  }
+
+  function clearPendingKmzBytes() {
+    _pendingKmzBytes = null;
+  }
 
   function init(deps) {
     _apiFetch = deps.apiFetch;
@@ -399,11 +517,22 @@
 
     try {
       var name = file.name.toLowerCase();
-      var content = name.endsWith('.kmz') ? await readKmzFile(file) : await readKmlFile(file);
+      var content;
+      if (name.endsWith('.kmz')) {
+        // Keep original bytes for upload; extract KML text only for preflight display.
+        var buffer = await file.arrayBuffer();
+        _pendingKmzBytes = new Uint8Array(buffer);
+        content = await readKmzFile(file);
+      } else {
+        content = await readKmlFile(file);
+        // Compress the KML to KMZ so the pipeline always receives a single format.
+        _pendingKmzBytes = await buildKmzFromKmlText(content);
+      }
       textarea.value = content;
       note.textContent = 'Loaded ' + file.name + ' into the analysis form.';
       updateAnalysisPreflight(content);
     } catch (err) {
+      _pendingKmzBytes = null;
       note.textContent = err.message || 'Could not read file';
     }
   }
@@ -415,5 +544,8 @@
     switchInputTab: switchInputTab,
     convertCSVToKml: convertCSVToKml,
     buildAnalysisPreflight: buildAnalysisPreflight,
+    buildKmzFromKmlText: buildKmzFromKmlText,
+    getPendingKmzBytes: getPendingKmzBytes,
+    clearPendingKmzBytes: clearPendingKmzBytes,
   };
 })();

@@ -383,6 +383,7 @@
       updateAnalysisStory: progressModule.updateStory,
       mapAnalysisPhase: progressModule.mapPhase,
       updateAnalysisPreflight: preflightModule.updateAnalysisPreflight,
+      getPendingKmzBytes: preflightModule.getPendingKmzBytes,
     });
 
   initModule(historyUiModule, {
@@ -495,6 +496,7 @@
       loadAnalysisFile: preflightModule.loadAnalysisFile,
       switchInputTab: preflightModule.switchInputTab,
       convertCSVToKml: preflightModule.convertCSVToKml,
+      clearPendingKmzBytes: preflightModule.clearPendingKmzBytes,
       // evidence surface
       toggleEvidencePlay: evidenceDisplayModule.togglePlay,
       showEvidenceFrame: evidenceDisplayModule.showFrame,
