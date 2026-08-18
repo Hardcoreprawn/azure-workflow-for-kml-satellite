@@ -387,6 +387,11 @@
       var kmlTextarea = document.getElementById('app-analysis-kml');
       if (kmlTextarea) {
         kmlTextarea.value = kmlText;
+        // Assigning .value does not fire the 'input' event that clears stale
+        // file-derived KMZ bytes elsewhere — clear explicitly so a later
+        // upload sends this converted KML, not a previously loaded file's
+        // compressed bytes.
+        _pendingKmzBytes = null;
         updateAnalysisPreflight(kmlText);
       }
       switchInputTab('kml');
@@ -525,8 +530,17 @@
         content = await readKmzFile(file);
       } else {
         content = await readKmlFile(file);
-        // Compress the KML to KMZ so the pipeline always receives a single format.
-        _pendingKmzBytes = await buildKmzFromKmlText(content);
+        _pendingKmzBytes = null;
+        // Compress the KML to KMZ so the pipeline always receives a single
+        // format. Compression is a wire-size optimisation, not required to
+        // load/preview the file — if it fails (e.g. CompressionStream
+        // unsupported in this browser), fall back to uploading raw KML text
+        // rather than failing the whole file load.
+        try {
+          _pendingKmzBytes = await buildKmzFromKmlText(content);
+        } catch (compressionErr) {
+          _pendingKmzBytes = null;
+        }
       }
       textarea.value = content;
       note.textContent = 'Loaded ' + file.name + ' into the analysis form.';

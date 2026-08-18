@@ -1342,3 +1342,28 @@ class TestKmlToKmzClientCompression:
             "buildKmzFromKmlText must use CompressionStream('deflate-raw') "
             "so the resulting KMZ achieves real compression without external libs"
         )
+
+    def test_convert_csv_to_kml_clears_stale_pending_kmz_bytes(self, app_analysis_preflight_js):
+        """Assigning textarea.value directly (as convertCSVToKml does) does not
+        fire the 'input' event that clears stale bytes elsewhere — without an
+        explicit clear here, a previously loaded file's KMZ bytes would be
+        uploaded instead of the just-converted CSV-derived KML."""
+        convert_fn = app_analysis_preflight_js.split("async function convertCSVToKml", 1)[1]
+        convert_fn = convert_fn.split("\n  async function", 1)[0]
+        assert "kmlTextarea.value = kmlText;" in convert_fn
+        after_assignment = convert_fn.split("kmlTextarea.value = kmlText;", 1)[1]
+        assert "_pendingKmzBytes = null;" in after_assignment.split("updateAnalysisPreflight", 1)[0], (
+            "convertCSVToKml must clear _pendingKmzBytes after overwriting the "
+            "textarea, or a stale file's KMZ bytes could be uploaded instead"
+        )
+
+    def test_load_analysis_file_falls_back_when_compression_fails(self, app_analysis_preflight_js):
+        """Compression is a wire-size optimisation, not required to load/preview
+        a file — if CompressionStream throws (e.g. unsupported browser), the
+        file must still load with _pendingKmzBytes left null (raw KML upload
+        fallback), not fail the whole load."""
+        load_fn = app_analysis_preflight_js.split("async function loadAnalysisFile", 1)[1]
+        assert "try {\n          _pendingKmzBytes = await buildKmzFromKmlText(content);" in load_fn, (
+            "buildKmzFromKmlText must be called inside its own try/catch so a "
+            "compression failure doesn't propagate out and abort the file load"
+        )
