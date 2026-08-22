@@ -81,10 +81,11 @@ def _phase_enrichment(
                 enrichment_retry,
                 {
                     "aoi_entry": entry,
+                    "aoi_index": idx,
                     **{k: v for k, v in enrichment_common.items() if k != "coords"},
                 },
             )
-            for entry in per_aoi_coords
+            for idx, entry in enumerate(per_aoi_coords)
         ]
         per_aoi_results = cast(
             "list[dict[str, Any]]",

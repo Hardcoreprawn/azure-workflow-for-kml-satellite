@@ -213,8 +213,16 @@ def _run_mosaic_ndvi_phase(
     storage: BlobStorageClient,
     results: dict[str, Any],
     acc: ResourceAccumulator | None = None,
+    aoi_index: int | None = None,
 ) -> tuple[list[dict[str, Any] | None], list[str | None]]:
-    """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback)."""
+    """Phase 2/3: mosaic registration + NDVI computation (COG or tile fallback).
+
+    ``aoi_index`` scopes the NDVI raster blob path to one AOI within a
+    multi-parcel submission — ``project_name``/``timestamp`` are shared
+    across every AOI in the same submission, so without it, AOIs sharing a
+    frame's year/season silently overwrite each other's raster (#1425).
+    ``None`` for the single-AOI/union path (path unchanged).
+    """
     t0 = time.monotonic()
     # 2. Mosaic registration (parallel — each frame is independent)
     log_phase("enrichment", "mosaic_start", frames=len(frame_plan))
@@ -314,7 +322,8 @@ def _run_mosaic_ndvi_phase(
             geotiff_bytes = cog_result.pop("geotiff_bytes", None)
             raster_path = None
             if geotiff_bytes:
-                raster_path = f"enrichment/{project_name}/{timestamp}/ndvi/{f['year']}_{f['season']}.tif"
+                aoi_segment = f"aoi-{aoi_index}/" if aoi_index is not None else ""
+                raster_path = f"enrichment/{project_name}/{timestamp}/ndvi/{aoi_segment}{f['year']}_{f['season']}.tif"
                 storage.upload_bytes(
                     output_container,
                     raster_path,
@@ -417,8 +426,14 @@ def _run_change_detection_phase(
     storage: BlobStorageClient,
     results: dict[str, Any],
     acc: ResourceAccumulator | None = None,
+    aoi_index: int | None = None,
 ) -> None:
-    """Phase 5: compare same-season NDVI rasters year-over-year."""
+    """Phase 5: compare same-season NDVI rasters year-over-year.
+
+    ``aoi_index`` is forwarded to ``detect_changes`` to scope the output
+    change-map blob path per AOI (#1425) — ``None`` for the single-AOI/union
+    path.
+    """
     t0 = time.monotonic()
     if any(ndvi_raster_paths):
         log_phase("enrichment", "change_detection_start")
@@ -429,6 +444,7 @@ def _run_change_detection_phase(
             project_name=project_name,
             timestamp=timestamp,
             storage=storage,
+            aoi_index=aoi_index,
         )
         results["change_detection"] = change_results
         comparisons = change_results["summary"]["comparisons"]

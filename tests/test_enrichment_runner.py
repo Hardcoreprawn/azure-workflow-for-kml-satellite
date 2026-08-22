@@ -276,6 +276,40 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_aoi_index_scopes_raster_path_to_avoid_cross_aoi_collision(self, mock_mosaic, mock_ndvi):
+        """Two AOIs enriched under the same project_name/timestamp (the normal case
+        for a multi-parcel submission) must never write their NDVI raster to the
+        same blob path (#1425) — otherwise one AOI's change-detection can silently
+        read another (unrelated) AOI's raster data.
+        """
+        frames_a = [_make_frame(year=2024, season="spring")]
+        frames_b = [_make_frame(year=2024, season="spring")]
+        mock_mosaic.return_value = "sid-1"
+        mock_ndvi.return_value = {"mean": 0.5, "geotiff_bytes": b"\x00TIFF"}
+        storage = MagicMock()
+
+        _, paths_a = _run_mosaic_ndvi_phase(BBOX, COORDS, frames_a, "proj", "ts", "out", storage, {}, aoi_index=0)
+        _, paths_b = _run_mosaic_ndvi_phase(BBOX, COORDS, frames_b, "proj", "ts", "out", storage, {}, aoi_index=1)
+
+        assert paths_a[0] != paths_b[0]
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_no_aoi_index_preserves_existing_path_shape(self, mock_mosaic, mock_ndvi):
+        """The top-level/union enrichment call (single AOI or whole-submission
+        path) never passes aoi_index — its raster path must stay exactly as
+        before, unprefixed."""
+        frames = [_make_frame(year=2025, season="winter")]
+        mock_mosaic.return_value = "sid-1"
+        mock_ndvi.return_value = {"mean": 0.7, "geotiff_bytes": b"\x00TIFF"}
+        storage = MagicMock()
+
+        _, raster_paths = _run_mosaic_ndvi_phase(BBOX, COORDS, frames, "proj", "ts", "out", storage, {})
+
+        assert raster_paths[0] == "enrichment/proj/ts/ndvi/2025_winter.tif"
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_empty_frame_plan_returns_empty(self, mock_mosaic, mock_ndvi):
         """An empty frame plan should return empty lists without error."""
         storage = MagicMock()
