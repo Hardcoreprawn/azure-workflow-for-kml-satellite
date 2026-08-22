@@ -1257,3 +1257,131 @@ class TestQueueAnalysisAuthBypass:
         assert "authEnabled: authEnabled," in app_shell_js, (
             "app-shell.js must wire the authEnabled dep into runLifecycleModule.init so queueAnalysis() can check it"
         )
+
+
+APP_ANALYSIS_PREFLIGHT_JS = WEBSITE / "js" / "app-analysis-preflight.js"
+APP_BINDINGS_JS = WEBSITE / "js" / "app-bindings.js"
+
+
+@pytest.fixture()
+def app_analysis_preflight_js():
+    return APP_ANALYSIS_PREFLIGHT_JS.read_text()
+
+
+@pytest.fixture()
+def app_bindings_js():
+    return APP_BINDINGS_JS.read_text()
+
+
+class TestKmlToKmzClientCompression:
+    """Client-side KML→KMZ compression ensures the pipeline always receives KMZ (#770)."""
+
+    def test_preflight_exports_kmz_helpers(self, app_analysis_preflight_js):
+        assert "getPendingKmzBytes" in app_analysis_preflight_js, (
+            "app-analysis-preflight.js must export getPendingKmzBytes so the "
+            "lifecycle module can read the pending KMZ bytes before upload"
+        )
+        assert "clearPendingKmzBytes" in app_analysis_preflight_js, (
+            "app-analysis-preflight.js must export clearPendingKmzBytes so "
+            "bindings can clear stale bytes on manual textarea edits"
+        )
+        assert "buildKmzFromKmlText" in app_analysis_preflight_js, (
+            "app-analysis-preflight.js must define buildKmzFromKmlText to "
+            "compress raw KML into a KMZ archive via the vendored fflate library"
+        )
+
+    def test_preflight_stores_kmz_bytes_for_kml_upload(self, app_analysis_preflight_js):
+        assert "_pendingKmzBytes" in app_analysis_preflight_js, (
+            "app-analysis-preflight.js must maintain a _pendingKmzBytes state "
+            "that loadAnalysisFile populates for the run-lifecycle upload path"
+        )
+        assert "buildKmzFromKmlText(content)" in app_analysis_preflight_js, (
+            "loadAnalysisFile must call buildKmzFromKmlText when a .kml file is loaded"
+        )
+
+    def test_preflight_stores_original_bytes_for_kmz_upload(self, app_analysis_preflight_js):
+        assert "file.arrayBuffer()" in app_analysis_preflight_js, (
+            "loadAnalysisFile must read the original .kmz file as an ArrayBuffer "
+            "so original bytes are preserved for upload without re-compression"
+        )
+
+    def test_lifecycle_reads_pending_kmz_bytes(self, app_run_lifecycle_js):
+        assert "getPendingKmzBytes" in app_run_lifecycle_js, (
+            "app-run-lifecycle.js queueAnalysis must call _d.getPendingKmzBytes() "
+            "to retrieve file-derived KMZ bytes for blob upload"
+        )
+        assert "submission.kmz" in app_run_lifecycle_js, (
+            "queueAnalysis must send filename: 'submission.kmz' in the token "
+            "request body so the backend creates the blob with the correct extension"
+        )
+        assert "application/vnd.google-earth.kmz" in app_run_lifecycle_js, (
+            "queueAnalysis must set Content-Type application/vnd.google-earth.kmz "
+            "when uploading KMZ bytes to Azure Blob Storage"
+        )
+
+    def test_shell_passes_pending_kmz_dep_to_lifecycle(self, app_shell_js):
+        assert "getPendingKmzBytes: preflightModule.getPendingKmzBytes" in app_shell_js, (
+            "app-shell.js must wire preflightModule.getPendingKmzBytes into the "
+            "runLifecycleModule init deps so queueAnalysis can access KMZ bytes"
+        )
+
+    def test_shell_passes_clear_kmz_dep_to_bindings(self, app_shell_js):
+        assert "clearPendingKmzBytes: preflightModule.clearPendingKmzBytes" in app_shell_js, (
+            "app-shell.js must wire clearPendingKmzBytes into the bindings module "
+            "so manual textarea edits clear stale file-derived KMZ bytes"
+        )
+
+    def test_bindings_clears_kmz_on_textarea_input(self, app_bindings_js):
+        assert "clearPendingKmzBytes" in app_bindings_js, (
+            "app-bindings.js must call d.clearPendingKmzBytes() in the KML textarea "
+            "input handler so pasted/typed KML doesn't upload stale KMZ bytes"
+        )
+
+    def test_preflight_uses_fflate_zip_not_synchronous_compression(self, app_analysis_preflight_js):
+        """buildKmzFromKmlText must use fflate's async zip() (Worker-offloaded when
+        available), not zipSync() — a large KML (up to the 10 MiB server-side cap)
+        would otherwise block the main thread for a perceptible amount of time."""
+        assert "fflate.zip(" in app_analysis_preflight_js, (
+            "buildKmzFromKmlText must call fflate.zip() (vendored, Worker-capable)"
+        )
+        assert "fflate.zipSync(" not in app_analysis_preflight_js, (
+            "must not use fflate.zipSync() — it runs synchronously on the main "
+            "thread and would block the UI for large KML files"
+        )
+
+    def test_pages_load_vendored_fflate_before_preflight_script(self):
+        """fflate must be a global by the time app-analysis-preflight.js runs —
+        both deferred scripts execute in document order, so the fflate <script>
+        tag must appear first on every page that loads the preflight module."""
+        for html_path in (WEBSITE / "app" / "index.html", WEBSITE / "eudr" / "index.html"):
+            html = html_path.read_text()
+            fflate_pos = html.find("/vendor/fflate/fflate.js")
+            preflight_pos = html.find("/js/app-analysis-preflight.js")
+            assert fflate_pos != -1, f"{html_path.name} must load the vendored fflate script"
+            assert preflight_pos != -1, f"{html_path.name} must load app-analysis-preflight.js"
+            assert fflate_pos < preflight_pos, f"{html_path.name} must load fflate.js before app-analysis-preflight.js"
+
+    def test_convert_csv_to_kml_clears_stale_pending_kmz_bytes(self, app_analysis_preflight_js):
+        """Assigning textarea.value directly (as convertCSVToKml does) does not
+        fire the 'input' event that clears stale bytes elsewhere — without an
+        explicit clear here, a previously loaded file's KMZ bytes would be
+        uploaded instead of the just-converted CSV-derived KML."""
+        convert_fn = app_analysis_preflight_js.split("async function convertCSVToKml", 1)[1]
+        convert_fn = convert_fn.split("\n  async function", 1)[0]
+        assert "kmlTextarea.value = kmlText;" in convert_fn
+        after_assignment = convert_fn.split("kmlTextarea.value = kmlText;", 1)[1]
+        assert "_pendingKmzBytes = null;" in after_assignment.split("updateAnalysisPreflight", 1)[0], (
+            "convertCSVToKml must clear _pendingKmzBytes after overwriting the "
+            "textarea, or a stale file's KMZ bytes could be uploaded instead"
+        )
+
+    def test_load_analysis_file_falls_back_when_compression_fails(self, app_analysis_preflight_js):
+        """Compression is a wire-size optimisation, not required to load/preview
+        a file — if CompressionStream throws (e.g. unsupported browser), the
+        file must still load with _pendingKmzBytes left null (raw KML upload
+        fallback), not fail the whole load."""
+        load_fn = app_analysis_preflight_js.split("async function loadAnalysisFile", 1)[1]
+        assert "try {\n          _pendingKmzBytes = await buildKmzFromKmlText(content);" in load_fn, (
+            "buildKmzFromKmlText must be called inside its own try/catch so a "
+            "compression failure doesn't propagate out and abort the file load"
+        )

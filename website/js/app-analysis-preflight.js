@@ -5,7 +5,8 @@
  * and the preflight UI panel update. Extracted from app-shell.js.
  *
  * Exposes window.CanopexAnalysisPreflight = { init, updateAnalysisPreflight,
- *   loadAnalysisFile, switchInputTab, convertCSVToKml }
+ *   loadAnalysisFile, switchInputTab, convertCSVToKml,
+ *   getPendingKmzBytes, clearPendingKmzBytes }
  */
 (function () {
   'use strict';
@@ -34,6 +35,35 @@
 
   // Module-local Leaflet map instance for the preflight thumbnail.
   var preflightMap = null;
+
+  // KMZ bytes to upload — set by loadAnalysisFile, cleared on manual text edit.
+  var _pendingKmzBytes = null;
+
+  // ── KMZ ZIP builder ───────────────────────────────────────────
+  // Uses vendored fflate (website/vendor/fflate/fflate.js, MIT licensed) —
+  // a well-tested, well-known library rather than hand-rolled ZIP/CRC-32
+  // code. fflate.zip() offloads compression to a Web Worker when available
+  // (falling back to the calling thread only if Workers are unavailable),
+  // so a large KML (up to the 10 MiB server-side cap) doesn't block the UI
+  // the way a synchronous zipSync() call would.
+
+  function buildKmzFromKmlText(kmlText) {
+    return new Promise(function (resolve, reject) {
+      var kmlBytes = new TextEncoder().encode(kmlText);
+      fflate.zip({ 'doc.kml': kmlBytes }, function (err, data) {
+        if (err) { reject(err); return; }
+        resolve(data);
+      });
+    });
+  }
+
+  function getPendingKmzBytes() {
+    return _pendingKmzBytes;
+  }
+
+  function clearPendingKmzBytes() {
+    _pendingKmzBytes = null;
+  }
 
   function init(deps) {
     _apiFetch = deps.apiFetch;
@@ -269,6 +299,11 @@
       var kmlTextarea = document.getElementById('app-analysis-kml');
       if (kmlTextarea) {
         kmlTextarea.value = kmlText;
+        // Assigning .value does not fire the 'input' event that clears stale
+        // file-derived KMZ bytes elsewhere — clear explicitly so a later
+        // upload sends this converted KML, not a previously loaded file's
+        // compressed bytes.
+        _pendingKmzBytes = null;
         updateAnalysisPreflight(kmlText);
       }
       switchInputTab('kml');
@@ -399,11 +434,31 @@
 
     try {
       var name = file.name.toLowerCase();
-      var content = name.endsWith('.kmz') ? await readKmzFile(file) : await readKmlFile(file);
+      var content;
+      if (name.endsWith('.kmz')) {
+        // Keep original bytes for upload; extract KML text only for preflight display.
+        var buffer = await file.arrayBuffer();
+        _pendingKmzBytes = new Uint8Array(buffer);
+        content = await readKmzFile(file);
+      } else {
+        content = await readKmlFile(file);
+        _pendingKmzBytes = null;
+        // Compress the KML to KMZ so the pipeline always receives a single
+        // format. Compression is a wire-size optimisation, not required to
+        // load/preview the file — if it fails (e.g. fflate/Worker
+        // unavailable in this browser), fall back to uploading raw KML text
+        // rather than failing the whole file load.
+        try {
+          _pendingKmzBytes = await buildKmzFromKmlText(content);
+        } catch (compressionErr) {
+          _pendingKmzBytes = null;
+        }
+      }
       textarea.value = content;
       note.textContent = 'Loaded ' + file.name + ' into the analysis form.';
       updateAnalysisPreflight(content);
     } catch (err) {
+      _pendingKmzBytes = null;
       note.textContent = err.message || 'Could not read file';
     }
   }
@@ -415,5 +470,8 @@
     switchInputTab: switchInputTab,
     convertCSVToKml: convertCSVToKml,
     buildAnalysisPreflight: buildAnalysisPreflight,
+    buildKmzFromKmlText: buildKmzFromKmlText,
+    getPendingKmzBytes: getPendingKmzBytes,
+    clearPendingKmzBytes: clearPendingKmzBytes,
   };
 })();
