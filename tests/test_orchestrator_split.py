@@ -1,10 +1,12 @@
-"""Tests for the orchestrator image split (#466).
+"""Tests for the orchestrator image split (#466) and the big/little HTTP contract (#1407).
 
 Verifies that:
 - blueprints/pipeline/__init__.py skips activities when PIPELINE_ROLE=orchestrator
 - function_app_orch.py can be imported without importing activities
 - Dockerfile.orchestrator exists and excludes heavy compute packages
 - deploy.yml builds both images and passes orchestrator_image to tofu
+- orchestrator and compute register the identical public HTTP blueprint set (#1407) —
+  #779's original strict-subset contract was over-scoped and is superseded here
 """
 
 from __future__ import annotations
@@ -140,60 +142,93 @@ def test_function_app_orch_imports_and_indexes_without_monitoring_timer(monkeypa
     assert "monitoring_scheduler" not in names, "function_app_orch must not register the monitoring timer trigger"
 
 
-# ── 7. Blueprint role-filter contract (#779) ────────────────────────────
+# ── 7. Big/little HTTP blueprint contract (#1407, supersedes #779) ─────
 
 
-def test_orchestrator_blueprints_are_strict_subset_of_compute():
-    """Orchestrator blueprint set must be a strict subset of compute blueprint set.
+def test_orchestrator_and_compute_share_identical_http_blueprints():
+    """Orchestrator and compute must register the identical public HTTP blueprint set.
 
-    Every blueprint registered by the orchestrator must also be registered by
-    compute, but compute must register additional public-API blueprints that the
-    orchestrator deliberately omits to reduce attack surface (#779).
+    #779 originally scoped the orchestrator down to health+pipeline only, but the
+    frontend's single API base has targeted the orchestrator hostname exclusively
+    since #724 — meaning every other public blueprint (billing, upload, account,
+    org, export, catalogue, contact, ops, analysis) was unreachable in production.
+    None of them depend on GDAL/rasterio, so both roles now serve the same HTTP
+    surface; only activities (PIPELINE_ROLE) and the monitoring scheduler timer
+    remain compute-only (#1407).
     """
-    from function_registration import _compute_blueprints, _orchestrator_blueprints
+    from function_registration import _http_blueprints
 
-    compute_bps = _compute_blueprints()
-    orch_bps = _orchestrator_blueprints()
-
-    # Blueprint objects are module-level singletons; id() comparison is stable.
-    compute_ids = {id(bp) for bp in compute_bps}
-    orch_ids = {id(bp) for bp in orch_bps}
-
-    assert orch_ids < compute_ids, (
-        "Orchestrator blueprint set must be a strict (proper) subset of compute. "
-        f"Orchestrator: {len(orch_bps)} blueprints; compute: {len(compute_bps)} blueprints."
-    )
+    http_bps = _http_blueprints()
+    assert len(http_bps) >= 13, f"Expected at least 13 shared HTTP blueprints, got {len(http_bps)}"
 
 
-def test_orchestrator_excludes_public_api_blueprints():
-    """Billing, export, and ops blueprints must not appear in the orchestrator set (#779)."""
+def test_orchestrator_includes_billing_upload_and_ops():
+    """Billing, upload, and ops blueprints must be reachable via the orchestrator (#1407)."""
     from blueprints.billing import bp as billing_bp
-    from blueprints.export import bp as export_bp
     from blueprints.ops import bp as ops_bp
-    from function_registration import _orchestrator_blueprints
+    from blueprints.upload import bp as upload_bp
+    from function_registration import _http_blueprints
 
-    orch_ids = {id(bp) for bp in _orchestrator_blueprints()}
+    http_ids = {id(bp) for bp in _http_blueprints()}
 
-    for name, bp in [("billing", billing_bp), ("export", export_bp), ("ops", ops_bp)]:
-        assert id(bp) not in orch_ids, (
-            f"Orchestrator must not register the '{name}' blueprint — public-API routes must be compute-only (#779)."
+    for name, bp in [("billing", billing_bp), ("upload", upload_bp), ("ops", ops_bp)]:
+        assert id(bp) in http_ids, (
+            f"The '{name}' blueprint must be registered on every role — the orchestrator "
+            "is the frontend's only configured API base (#1407)."
         )
 
 
 def test_orchestrator_registers_health_and_pipeline():
-    """Orchestrator must register exactly the health and pipeline blueprints (#779)."""
+    """Orchestrator must still register the health and pipeline blueprints."""
     from blueprints.health import bp as health_bp
     from blueprints.pipeline import bp as pipeline_bp
-    from function_registration import _orchestrator_blueprints
+    from function_registration import _http_blueprints
 
-    orch_bps = _orchestrator_blueprints()
-    orch_ids = {id(bp) for bp in orch_bps}
+    http_ids = {id(bp) for bp in _http_blueprints()}
 
-    assert id(health_bp) in orch_ids, "Orchestrator must register health_bp"
-    assert id(pipeline_bp) in orch_ids, "Orchestrator must register pipeline_bp"
-    assert len(orch_bps) == 2, (
-        f"Orchestrator must register exactly 2 blueprints (health + pipeline), got {len(orch_bps)}"
+    assert id(health_bp) in http_ids, "Orchestrator must register health_bp"
+    assert id(pipeline_bp) in http_ids, "Orchestrator must register pipeline_bp"
+
+
+def test_http_blueprints_never_import_heavy_geo_packages():
+    """The shared HTTP blueprint set must stay safe for the slim orchestrator image.
+
+    Regression guard for #1407: importing every module backing _http_blueprints()
+    must not pull GDAL/rasterio/fiona/shapely/pyproj into sys.modules, since
+    Dockerfile.orchestrator does not install them. If a future blueprint change
+    (directly or transitively) needs one of these, it must move to a
+    compute-only registration path instead of silently breaking the
+    orchestrator image at runtime.
+    """
+    heavy_markers = ("rasterio", "fiona", "osgeo", "pyproj", "shapely")
+    http_blueprint_modules = (
+        "blueprints.account",
+        "blueprints.analysis",
+        "blueprints.billing",
+        "blueprints.catalogue",
+        "blueprints.contact",
+        "blueprints.eudr",
+        "blueprints.export",
+        "blueprints.health",
+        "blueprints.monitoring",
+        "blueprints.ops",
+        "blueprints.org",
+        "blueprints.pipeline",
+        "blueprints.upload",
     )
+
+    import importlib
+    import sys
+
+    for module_name in http_blueprint_modules:
+        before = set(sys.modules)
+        importlib.import_module(module_name)
+        newly_loaded = set(sys.modules) - before
+        heavy_hits = sorted(mod for mod in newly_loaded if any(marker in mod for marker in heavy_markers))
+        assert not heavy_hits, (
+            f"Importing {module_name!r} pulled in heavy geo package(s) {heavy_hits} — "
+            "this blueprint can no longer be safely registered on the orchestrator role (#1407)."
+        )
 
 
 # ── 3. Dockerfile.orchestrator ──────────────────────────────────────────

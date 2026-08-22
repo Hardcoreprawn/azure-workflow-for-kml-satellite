@@ -5,26 +5,27 @@ from __future__ import annotations
 from typing import Any, Literal
 
 # Roles that control which blueprints are registered.
-# - "compute": full public API surface + monitoring scheduler (default)
-# - "orchestrator": pipeline triggers and health check only (#779)
+# - "compute": full HTTP surface + activity functions (PIPELINE_ROLE=full) + monitoring scheduler timer
+# - "orchestrator": full HTTP surface (identical to compute), no activities, no scheduler (#1407)
+#
+# Both roles serve the same public HTTP blueprints ("little" tier, big/little split) —
+# none of them import GDAL/rasterio/fiona/shapely/pyproj at load time, so they run fine on
+# the slim orchestrator image (Dockerfile.orchestrator). Only Durable activity execution
+# (GDAL-heavy, gated by PIPELINE_ROLE inside blueprints/pipeline/__init__.py) and the
+# monitoring scheduler timer (which calls treesight.pipeline.enrichment.run_enrichment,
+# also GDAL-heavy, and must run exactly once across the fleet) are compute-only ("big" tier).
 PipelineRole = Literal["compute", "orchestrator"]
 
 
-def _orchestrator_blueprints() -> tuple[Any, ...]:
-    """Load blueprints for the orchestrator role (pipeline + health only).
+def _http_blueprints() -> tuple[Any, ...]:
+    """Load the public HTTP blueprint set shared by every Function App role.
 
-    The orchestrator image exposes only internal durable-trigger HTTP routes
-    and a health check.  All public-API blueprints are omitted to reduce the
-    attack surface (#779).
+    Verified GDAL/rasterio/fiona/shapely/pyproj-free at both static (AST) and
+    runtime (sys.modules) import-time for #1407 — safe on the slim
+    orchestrator image, which already installs every non-geo dependency
+    these need (Dockerfile.orchestrator only excludes fiona/rasterio/numpy/
+    shapely/pyproj/pystac-client/planetary-computer).
     """
-    from blueprints.health import bp as health_bp
-    from blueprints.pipeline import bp as pipeline_bp
-
-    return (health_bp, pipeline_bp)
-
-
-def _compute_blueprints() -> tuple[Any, ...]:
-    """Load the full set of blueprints for the compute role."""
     from blueprints.account import bp as account_bp
     from blueprints.analysis import bp as analysis_bp
     from blueprints.billing import bp as billing_bp
@@ -57,7 +58,12 @@ def _compute_blueprints() -> tuple[Any, ...]:
 
 
 def _monitoring_scheduler_blueprint() -> Any:
-    """Load the compute-only monitoring scheduler blueprint lazily."""
+    """Load the compute-only monitoring scheduler blueprint lazily.
+
+    Timer-triggered; its handler calls treesight.pipeline.enrichment.run_enrichment
+    (GDAL/rasterio) — must only run on the compute (activity-capable) role, and only
+    once across the fleet to avoid duplicate scheduled runs.
+    """
     from blueprints.monitoring import scheduler_bp as monitoring_scheduler_bp
 
     return monitoring_scheduler_bp
@@ -66,15 +72,14 @@ def _monitoring_scheduler_blueprint() -> Any:
 def register_function_blueprints(app: Any, *, role: PipelineRole = "compute") -> None:
     """Register blueprints on the provided Function App instance.
 
-    The ``role`` parameter determines which blueprints are registered:
-    - ``compute`` (default): full blueprint set including monitoring scheduler
-    - ``orchestrator``: pipeline triggers and health check only (#779)
+    Both roles register the identical public HTTP blueprint set (#1407) —
+    the ``role`` parameter only controls the compute-only extra:
+    - ``compute`` (default): HTTP blueprints + monitoring scheduler timer.
+      Also runs Durable activity functions via ``PIPELINE_ROLE=full``.
+    - ``orchestrator``: HTTP blueprints only. No activities
+      (``PIPELINE_ROLE=orchestrator``), no scheduler.
     """
-    if role == "orchestrator":
-        for blueprint in _orchestrator_blueprints():
-            app.register_functions(blueprint)
-        return
-
-    for blueprint in _compute_blueprints():
+    for blueprint in _http_blueprints():
         app.register_functions(blueprint)
-    app.register_functions(_monitoring_scheduler_blueprint())
+    if role == "compute":
+        app.register_functions(_monitoring_scheduler_blueprint())

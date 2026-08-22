@@ -1,6 +1,6 @@
 .PHONY: help setup dev-up dev-down dev-init \
-       dev-all dev-logs dev-rebuild \
-	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check lint fmt check smoke clean prune-branches \
+       dev-all dev-all-stub dev-logs dev-rebuild \
+	test-upload ux-smoke test-fast test test-js test-int test-int-live test-int-stripe test-pipeline-local real-acquisition-check blueprint-parity-check verify-local lint fmt check smoke clean prune-branches \
 	_free-ports \
 	sast scan scan-iac scan-fs scan-image lint-actions build-rust ci-local
 
@@ -57,7 +57,7 @@ dev-init: dev-up ## Start Azurite + create storage containers
 DEV_WORKSPACE := $(shell bash scripts/detect_dood_workspace.sh)
 export DEV_WORKSPACE
 
-dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — the single local dev path
+dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) — real Planetary Computer imagery, the single local dev path
 	@if [ -n "$(DEV_WORKSPACE)" ]; then echo "Detected Docker-outside-of-Docker — using host path $(DEV_WORKSPACE) for bind mounts"; fi
 	source .github/image-config.env && export UV_VERSION && \
 	docker compose down --remove-orphans 2>/dev/null || true
@@ -67,12 +67,17 @@ dev-all: _free-ports ## Full stack via docker-compose (Azurite + func + web) —
 	@echo "║  All services starting via docker-compose:           ║"
 	@echo "║                                                      ║"
 	@echo "║  Website:    http://localhost:4280                    ║"
-	@echo "║  Functions:  http://localhost:7071/api/health         ║"
+	@echo "║  Functions:  http://localhost:7071/api/health (compute)║"
+	@echo "║  Orchestrator: http://localhost:7072/api/health        ║"
 	@echo "║  Azurite:    localhost:10000 (blob)                   ║"
 	@echo "║                                                      ║"
+	@echo "║  Imagery:    real PC (dev-all-stub = stub)            ║"
 	@echo "║  Logs:       make dev-logs                            ║"
 	@echo "║  Stop:       docker compose down                      ║"
 	@echo "╚══════════════════════════════════════════════════════╝"
+
+dev-all-stub: ## Full stack, synthetic imagery (CANOPEX_TEST_MODE=1) — fast whole-pipeline regression run, no real Planetary Computer calls
+	CANOPEX_TEST_MODE=1 $(MAKE) dev-all
 
 dev-logs: ## Tail logs from all docker-compose services
 	docker compose logs -f --tail=50
@@ -124,6 +129,12 @@ real-acquisition-check: ## Run real-world EUDR fixtures against the REAL Planeta
 	@command -v func >/dev/null 2>&1 || { echo "ERROR: func not found. Run: bash scripts/setup_func_tools.sh"; exit 1; }
 	uv run python scripts/init_storage.py
 	uv run python scripts/real_acquisition_runner.py
+
+blueprint-parity-check: ## Verify compute and orchestrator serve the identical HTTP blueprint set (needs make dev-all running) (#1407)
+	uv run python scripts/validate_blueprint_parity.py
+
+verify-local: ## Full local verification gate: every service/surface/integration in one command (needs make dev-all running) (#1411, surfaces #1414)
+	uv run python scripts/verify_local_stack.py
 
 lint: ## Static checks: ruff lint + format check + pyright (canonical — CI runs this)
 	uv run ruff check .
