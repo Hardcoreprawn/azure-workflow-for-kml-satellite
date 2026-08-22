@@ -67,6 +67,11 @@ def build_func_host_env(base_env: dict[str, str], *, test_mode: bool = True) -> 
         env["CANOPEX_TEST_MODE"] = "1"
     else:
         env.pop("CANOPEX_TEST_MODE", None)
+        # Real imagery, but the caller (e.g. real_acquisition_runner.py) still
+        # needs to authenticate its own export-fetch requests without a real
+        # CIAM bearer token — decoupled from CANOPEX_TEST_MODE so it doesn't
+        # also switch imagery back to the synthetic stub (#1379).
+        env["CANOPEX_ALLOW_TEST_PRINCIPAL"] = "1"
     # Dockerfile.base sets this for the *production* container convention
     # (/home/site/wwwroot). func start trusts it over the actual working
     # directory, so in any image that inherits it, func silently looks for

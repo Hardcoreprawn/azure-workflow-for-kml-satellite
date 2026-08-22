@@ -85,6 +85,7 @@ def _upload_ticket(
     *,
     tier: str = _CORPUS_TIER,
     user_id: str = _CORPUS_USER_ID,
+    eudr_mode: bool = False,
 ) -> None:
     """Write a submission ticket so the pipeline uses the given tier.
 
@@ -92,12 +93,16 @@ def _upload_ticket(
     with tier/user metadata.  Without it the pipeline defaults to free tier
     (aoi_limit=5), which would reject large fixtures like monster_200.kml.
 
-    ``tier``/``user_id`` are overridable so sibling runners (e.g.
-    ``scripts/real_acquisition_runner.py``, #1379) can reuse this exact
+    ``tier``/``user_id``/``eudr_mode`` are overridable so sibling runners
+    (e.g. ``scripts/real_acquisition_runner.py``, #1379) can reuse this exact
     quota-bypass pattern under their own identity instead of duplicating it.
+    ``eudr_mode`` defaults to ``False`` to preserve this function's existing
+    synthetic-corpus callers, which don't need WorldCover/WDPA enrichment.
     """
     stem = Path(blob_name).stem
     ticket: dict[str, Any] = {"tier": tier, "user_id": user_id}
+    if eudr_mode:
+        ticket["eudr_mode"] = True
     ticket_path = f".tickets/{stem}.json"
     client = BlobServiceClient.from_connection_string(AZURITE_CONN_STR)
     container_client = client.get_container_client(container)

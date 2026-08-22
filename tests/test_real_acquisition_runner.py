@@ -10,7 +10,25 @@ helpers are unit-tested here, matching the pattern established by
 
 from __future__ import annotations
 
-from real_acquisition_runner import DEFAULT_FORMATS, _build_run_summary
+import base64
+import json
+
+from real_acquisition_runner import DEFAULT_FORMATS, _build_run_summary, _test_principal_header
+
+
+class TestTestPrincipalHeader:
+    def test_round_trips_the_given_user_id(self):
+        """_fetch_export authenticates its own export-fetch calls as the same
+        identity the ticket was uploaded under (CANOPEX_ALLOW_TEST_PRINCIPAL,
+        #1379) — must decode back to exactly that user_id."""
+        header = _test_principal_header("real-acquisition-runner")
+        principal = json.loads(base64.b64decode(header))
+        assert principal["userId"] == "real-acquisition-runner"
+
+    def test_produces_valid_base64(self):
+        header = _test_principal_header("some-user")
+        # Raises if not valid base64 — validate=True matches the server-side decoder.
+        base64.b64decode(header, validate=True)
 
 
 class TestBuildRunSummary:

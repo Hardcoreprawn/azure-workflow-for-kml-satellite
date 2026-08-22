@@ -132,12 +132,18 @@ def _resolve_bearer_claims(req: func.HttpRequest) -> dict[str, Any] | None:
     """Return verified bearer claims when auth headers are present.
 
     Production path uses Authorization bearer tokens only.
-    For tests, X-MS-CLIENT-PRINCIPAL is accepted only when
-    CANOPEX_TEST_MODE is explicitly enabled.
+    For tests, X-MS-CLIENT-PRINCIPAL is accepted when either CANOPEX_TEST_MODE
+    (synthetic imagery + test principal) or CANOPEX_ALLOW_TEST_PRINCIPAL (test
+    principal only, real imagery — see scripts/real_acquisition_runner.py, #1379)
+    is explicitly enabled. The two are decoupled so a real-acquisition local run
+    can authenticate its own export-fetch calls without also switching imagery
+    back to the synthetic stub.
     """
 
     require_auth_enabled = os.environ.get("REQUIRE_AUTH", "").lower() in ("true", "1", "yes")
-    if os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes") and not require_auth_enabled:
+    test_mode_enabled = os.environ.get("CANOPEX_TEST_MODE", "").lower() in ("true", "1", "yes")
+    allow_test_principal = os.environ.get("CANOPEX_ALLOW_TEST_PRINCIPAL", "").lower() in ("true", "1", "yes")
+    if (test_mode_enabled or allow_test_principal) and not require_auth_enabled:
         principal_header = req.headers.get("X-MS-CLIENT-PRINCIPAL", "")
         if principal_header:
             principal = parse_client_principal(principal_header)
