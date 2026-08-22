@@ -25,6 +25,8 @@ os.environ.setdefault("INVITE_TOKEN_SECRET", "test-invite-secret-key-for-unit-te
 os.environ.setdefault("CIAM_AUTHORITY", "https://ciam.example.com")
 os.environ.setdefault("CIAM_TENANT_ID", "test-tenant")
 os.environ.setdefault("CIAM_API_AUDIENCE", "api://test-audience")
+# Keep CANOPEX_TEST_MODE enabled in unit tests while fixtures still use the
+# legacy X-MS-CLIENT-PRINCIPAL auth path (accepted only in test mode).
 os.environ.setdefault("CANOPEX_TEST_MODE", "1")
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
