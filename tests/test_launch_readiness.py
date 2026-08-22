@@ -1717,7 +1717,7 @@ class TestFastTestLoop:
 
         assert "test: ## Run unit tests (canonical — CI runs this exact command)" in makefile
         assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml' in makefile
-        assert "check: lint test ## Full local gate (lint + test) — identical to CI" in makefile
+        assert "check: lint test test-js ## Full local gate (lint + test + JS tests) — identical to CI" in makefile
 
     def test_validation_tiers_are_documented(self):
         readme = README_MD.read_text()
