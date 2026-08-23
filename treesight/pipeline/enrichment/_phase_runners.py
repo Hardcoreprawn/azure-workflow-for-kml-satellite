@@ -132,11 +132,17 @@ def _run_eudr_phase(
     log_phase("enrichment", "wdpa_start")
     wdpa = check_wdpa_overlap(center_lon, center_lat)
     results["wdpa"] = wdpa
+    if not wdpa.get("checked", False):
+        logger.warning(
+            "WDPA check unavailable; protected-area evidence is unknown reason=%s",
+            wdpa.get("reason", "unknown"),
+        )
     log_phase(
         "enrichment",
         "wdpa_done",
         checked=wdpa.get("checked", False),
-        protected=wdpa.get("is_protected", False),
+        protected=wdpa.get("is_protected") if wdpa.get("checked") else None,
+        reason=wdpa.get("reason") if not wdpa.get("checked") else None,
     )
 
     log_phase("enrichment", "lulc_annual_start")

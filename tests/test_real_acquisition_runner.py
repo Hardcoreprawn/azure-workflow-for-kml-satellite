@@ -13,7 +13,12 @@ from __future__ import annotations
 import base64
 import json
 
-from real_acquisition_runner import DEFAULT_FORMATS, _build_run_summary, _test_principal_header
+from real_acquisition_runner import (
+    DEFAULT_FORMATS,
+    _build_run_summary,
+    _test_principal_header,
+    _wdpa_configuration_warning,
+)
 
 
 class TestTestPrincipalHeader:
@@ -72,3 +77,15 @@ class TestBuildRunSummary:
 class TestDefaultFormats:
     def test_defaults_cover_all_three_eudr_export_formats(self):
         assert set(DEFAULT_FORMATS) == {"eudr-pdf", "eudr-geojson", "eudr-csv"}
+
+
+class TestWdpaConfiguration:
+    def test_warns_when_token_is_missing(self, monkeypatch):
+        monkeypatch.delenv("WDPA_API_TOKEN", raising=False)
+        warning = _wdpa_configuration_warning()
+        assert warning is not None
+        assert "WDPA_API_TOKEN" in warning
+
+    def test_does_not_warn_when_token_is_configured(self, monkeypatch):
+        monkeypatch.setenv("WDPA_API_TOKEN", "configured")
+        assert _wdpa_configuration_warning() is None
