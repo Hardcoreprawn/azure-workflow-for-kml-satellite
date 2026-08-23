@@ -725,8 +725,8 @@ class TestFulfilmentRetry:
 class TestEnrichmentParallelFanOut:
     """Verify enrichment phase uses parallel fan-out via task_all (#574)."""
 
-    def test_data_sources_and_imagery_fan_out_in_parallel(self):
-        """enrich_data_sources and enrich_imagery should execute via task_all."""
+    def test_single_aoi_uses_one_per_aoi_activity(self):
+        """A submission without explicit AOIs is represented as one AOI activity."""
         from unittest.mock import MagicMock
 
         from blueprints.pipeline.orchestrator import _phase_enrichment
@@ -751,20 +751,16 @@ class TestEnrichmentParallelFanOut:
         yielded = gen.send(None)
         assert yielded is task_all_sentinel
 
-        # Verify task_all was called with two activities
         ctx.task_all.assert_called_once()
         task_all_args = ctx.task_all.call_args[0][0]
-        assert len(task_all_args) == 2
+        assert len(task_all_args) == 1
 
-        # Verify both activities use long retry
         calls = ctx.call_activity_with_retry.call_args_list
         activity_names = [c[0][0] for c in calls]
-        assert "enrich_data_sources" in activity_names
-        assert "enrich_imagery" in activity_names
-        for c in calls:
-            retry_opts = c[0][1]
-            assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
-            assert retry_opts.max_number_of_attempts == LONG_RETRY_MAX_ATTEMPTS
+        assert activity_names == ["enrich_single_aoi"]
+        retry_opts = calls[0][0][1]
+        assert retry_opts.first_retry_interval_in_milliseconds == LONG_RETRY_FIRST_INTERVAL_MS
+        assert retry_opts.max_number_of_attempts == LONG_RETRY_MAX_ATTEMPTS
 
     def test_per_aoi_fan_out(self):
         """Per-AOI enrichment should fan-out one activity per AOI via task_all."""
@@ -773,14 +769,10 @@ class TestEnrichmentParallelFanOut:
         from blueprints.pipeline.orchestrator import _phase_enrichment
 
         ctx = MagicMock()
-        # First task_all: data_sources + imagery
-        parallel_sentinel = MagicMock()
-        # Second task_all: per-AOI
         per_aoi_sentinel = MagicMock()
-        # Third yield: enrich_finalize
         finalize_sentinel = MagicMock()
 
-        ctx.task_all.side_effect = [parallel_sentinel, per_aoi_sentinel]
+        ctx.task_all.return_value = per_aoi_sentinel
         ctx.call_activity_with_retry.return_value = finalize_sentinel
 
         aois = [
@@ -798,13 +790,10 @@ class TestEnrichmentParallelFanOut:
             output_container="out",
         )
 
-        # Yield 1: parallel task_all (data_sources + imagery)
         gen.send(None)
-        # Send back results for data_sources + imagery
-        gen.send([{"frame_plan": []}, {"ndvi": {}}])
-        # Yield 2: per-AOI task_all — verify 3 AOI activities
-        assert ctx.task_all.call_count == 2
-        aoi_tasks = ctx.task_all.call_args_list[1][0][0]
+        gen.send([{"name": "a"}, {"name": "b"}, {"name": "c"}])
+        assert ctx.task_all.call_count == 1
+        aoi_tasks = ctx.task_all.call_args_list[0][0][0]
         assert len(aoi_tasks) == 3
 
     def test_enrichment_reports_substep_status(self):
@@ -830,7 +819,7 @@ class TestEnrichmentParallelFanOut:
         ctx.set_custom_status.assert_called()
         first_status = ctx.set_custom_status.call_args_list[0][0][0]
         assert first_status["phase"] == "enrichment"
-        assert first_status["step"] == "data_sources_and_imagery"
+        assert first_status["step"] == "per_aoi"
 
     def test_enrichment_skipped_when_no_coords(self):
         """Enrichment should return empty dict when all_coords is empty."""
@@ -1552,8 +1541,8 @@ class TestPhaseCustomStatusReporting:
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
         assert any(s.get("phase") == "fulfilment" and s.get("step") == "downloading" for s in statuses)
 
-    def test_enrichment_sets_data_sources_status(self):
-        """Phase enrichment sets customStatus for data_sources_and_imagery step."""
+    def test_enrichment_sets_per_aoi_status(self):
+        """Phase enrichment sets customStatus for the per-AOI step."""
         from blueprints.pipeline.orchestrator import _phase_enrichment
 
         ctx = MagicMock()
@@ -1570,14 +1559,14 @@ class TestPhaseCustomStatusReporting:
         gen.send(None)
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
-        assert any(s.get("phase") == "enrichment" and s.get("step") == "data_sources_and_imagery" for s in statuses)
+        assert any(s.get("phase") == "enrichment" and s.get("step") == "per_aoi" for s in statuses)
 
     def test_enrichment_sets_finalizing_status(self):
         """Phase enrichment sets customStatus with step=finalizing before enrich_finalize."""
         from blueprints.pipeline.orchestrator import _phase_enrichment
 
         ctx = MagicMock()
-        ctx.task_all.return_value = [{"frame_plan": []}, {"ndvi": {}}]
+        ctx.task_all.return_value = [{"name": "solo"}]
         ctx.call_activity_with_retry.return_value = "finalize_sentinel"
 
         gen = _phase_enrichment(
@@ -1588,9 +1577,9 @@ class TestPhaseCustomStatusReporting:
             per_aoi_coords=[],
             output_container="out",
         )
-        gen.send(None)  # data_sources_and_imagery yield
+        gen.send(None)  # per-AOI yield
         with contextlib.suppress(StopIteration):
-            gen.send([{"frame_plan": []}, {"ndvi": {}}])  # resume after parallel
+            gen.send([{"name": "solo"}])  # resume after per-AOI enrichment
 
         statuses = [c[0][0] for c in ctx.set_custom_status.call_args_list]
         assert any(s.get("phase") == "enrichment" and s.get("step") == "finalizing" for s in statuses)
