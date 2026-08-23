@@ -2,7 +2,11 @@
 
 Verifies that:
 - blueprints/pipeline/__init__.py skips activities when PIPELINE_ROLE=orchestrator
-- function_app_orch.py can be imported without importing activities
+- blueprints/pipeline/__init__.py skips orchestrator/aoi_orchestrator (orchestration-trigger
+  modules) when PIPELINE_ROLE=orchestrator, so the orchestrator role never competes for
+  Durable Task Hub partition leases with compute (#1414)
+- function_app_orch.py can be imported without importing activities, and never registers
+  an orchestrationTrigger function
 - Dockerfile.orchestrator exists and excludes heavy compute packages
 - deploy.yml builds both images and passes orchestrator_image to tofu
 - orchestrator and compute register the identical public HTTP blueprint set (#1407) —
@@ -73,6 +77,92 @@ def test_pipeline_role_orchestrator_skips_activities(monkeypatch):
     )
 
     # Re-clean for isolation
+    for mod in list(sys.modules):
+        if mod.startswith("blueprints.pipeline"):
+            sys.modules.pop(mod, None)
+
+
+# ── 1b. PIPELINE_ROLE=orchestrator skips orchestration-trigger modules (#1414) ──
+
+
+def test_pipeline_orchestration_modules_guarded_by_pipeline_role():
+    """orchestrator/aoi_orchestrator must only be imported when PIPELINE_ROLE == 'full'.
+
+    Both modules register an ``orchestration_trigger`` function. If the
+    orchestrator role also imports them, it becomes a second worker competing
+    for the same Durable Task Hub's control-queue partition leases as compute —
+    and has no activities registered, so a replay it wins can never schedule
+    an activity and gets stuck forever (#1414).
+    """
+    init_path = REPO_ROOT / "blueprints" / "pipeline" / "__init__.py"
+    tree = ast.parse(init_path.read_text(), filename=str(init_path))
+
+    module_level_unconditional = []
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module is None:
+            for alias in node.names:
+                if alias.name in {"orchestrator", "aoi_orchestrator"}:
+                    module_level_unconditional.append(alias.name)
+
+    assert not module_level_unconditional, (
+        "orchestrator and aoi_orchestrator must not be imported unconditionally at "
+        "module level — they must be guarded by PIPELINE_ROLE == 'full' (#1414)"
+    )
+
+
+def test_pipeline_role_orchestrator_skips_orchestration_trigger_modules(monkeypatch):
+    """When PIPELINE_ROLE=orchestrator, importing blueprints.pipeline must not
+    import the orchestrator or aoi_orchestrator modules.
+    """
+    import importlib
+    import sys
+
+    monkeypatch.setenv("PIPELINE_ROLE", "orchestrator")
+
+    mods_to_remove = [k for k in sys.modules if k.startswith("blueprints.pipeline")]
+    for mod in mods_to_remove:
+        sys.modules.pop(mod, None)
+
+    importlib.import_module("blueprints.pipeline")
+
+    assert "blueprints.pipeline.orchestrator" not in sys.modules, (
+        "blueprints.pipeline.orchestrator must not be imported when PIPELINE_ROLE=orchestrator (#1414)"
+    )
+    assert "blueprints.pipeline.aoi_orchestrator" not in sys.modules, (
+        "blueprints.pipeline.aoi_orchestrator must not be imported when PIPELINE_ROLE=orchestrator (#1414)"
+    )
+
+    for mod in list(sys.modules):
+        if mod.startswith("blueprints.pipeline"):
+            sys.modules.pop(mod, None)
+
+
+def test_function_app_orch_never_registers_an_orchestration_trigger(monkeypatch):
+    """The orchestrator role must never hold an ``orchestrationTrigger`` listener (#1414).
+
+    Regression guard for the actual runtime contract, not just the import
+    graph: even if a future change re-adds a shared import elsewhere, this
+    catches the orchestrator role becoming eligible for a Durable Task Hub
+    partition lease again.
+    """
+    import importlib
+    import sys
+
+    monkeypatch.setenv("PIPELINE_ROLE", "orchestrator")
+    sys.modules.pop("function_app_orch", None)
+    for mod in list(sys.modules):
+        if mod.startswith("blueprints.pipeline"):
+            sys.modules.pop(mod, None)
+
+    orch = importlib.import_module("function_app_orch")
+    orch.app.functions_bindings = {}
+    trigger_types = {fn.get_trigger().type for fn in orch.app.get_functions() if fn.get_trigger()}
+
+    assert "orchestrationTrigger" not in trigger_types, (
+        "orchestrator role must never register an orchestrationTrigger function (#1414)"
+    )
+
+    sys.modules.pop("function_app_orch", None)
     for mod in list(sys.modules):
         if mod.startswith("blueprints.pipeline"):
             sys.modules.pop(mod, None)
