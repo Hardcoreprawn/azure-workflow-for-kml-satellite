@@ -8,8 +8,9 @@
  * CIAM config is injected via window.CanopexConfig (from api-config.json
  * or a <script> block — see index.html and deploy pipeline).
  *
- * Exposes: window.CanopexAuth (same contract as the legacy app-auth.js so
- * app-shell.js wiring is unchanged).
+ * Exposes: window.CanopexAuth (consumed by app-shell.js).
+ * The unified CIAM module is canopex-auth.js; app-msal.js remains for the
+ * app-shell surface. Both share the `audience + '/User.Read'` scope contract.
  *
  * Contract:
  *   init(deps)     — call once at boot; registers deps from app-shell.js
