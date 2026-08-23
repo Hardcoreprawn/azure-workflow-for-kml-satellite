@@ -10,7 +10,15 @@ so all routes, triggers, and activities register on a single blueprint.
 
 ``PIPELINE_ROLE`` environment variable controls which submodules are loaded:
   - ``full`` (default): all submodules — compute image registers activities
-  - ``orchestrator``: skips ``activities`` — orchestrator image, no GDAL/rasterio
+    plus both ``orchestration_trigger`` functions (``treesight_orchestrator``,
+    ``aoi_pipeline``)
+  - ``orchestrator``: skips ``activities`` *and* both orchestration-trigger
+    modules — orchestrator image only ever registers ``durable_client``
+    bindings (start/query) and the Event Grid blob trigger, never a
+    control-queue listener (#1414: two apps both holding an
+    ``orchestration_trigger`` on the same shared task hub compete for
+    partition leases, and the orchestrator role has no activities to
+    schedule if it wins one — instances get stuck forever)
 """
 
 import os
@@ -25,13 +33,15 @@ _PIPELINE_ROLE = os.environ.get("PIPELINE_ROLE", "full")
 # Order does not matter — each module imports ``bp`` from this package.
 from . import (  # noqa: E402  — must follow bp = df.Blueprint()
     annotations,  # noqa: F401  — registers notes + override endpoints
-    aoi_orchestrator,  # noqa: F401  — registers per-AOI sub-orchestrator (#585)
-    blob_trigger,  # noqa: F401  — registers blob trigger
-    diagnostics,  # noqa: F401  — registers diagnostic endpoints
-    enrichment,  # noqa: F401  — registers enrichment HTTP endpoints
-    orchestrator,  # noqa: F401  — registers orchestrator
+    blob_trigger,  # noqa: F401  — registers blob trigger (durable_client only)
+    diagnostics,  # noqa: F401  — registers diagnostic endpoints (durable_client only)
+    enrichment,  # noqa: F401  — registers enrichment HTTP endpoints (durable_client only)
     submission,  # noqa: F401  — registers submission endpoint
 )
 
 if _PIPELINE_ROLE == "full":
-    from . import activities  # noqa: F401  — registers activity triggers (compute only)
+    from . import (  # noqa: F401
+        activities,  # registers activity triggers (compute only)
+        aoi_orchestrator,  # registers aoi_pipeline orchestration_trigger (compute only, #1414)
+        orchestrator,  # registers treesight_orchestrator orchestration_trigger (compute only, #1414)
+    )

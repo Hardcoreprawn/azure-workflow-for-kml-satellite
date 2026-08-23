@@ -1,12 +1,16 @@
 """Azure Functions entry point for the orchestrator image (#466).
 
 Registers the full public HTTP blueprint set (#1407) plus the pipeline
-blueprint's Durable orchestrator/blob-trigger routes — but NOT activity
-functions, which run only in the compute image.
+blueprint's ``durable_client`` (start/query) and blob-trigger routes —
+but NOT activity functions or the orchestration-trigger functions
+(``treesight_orchestrator``, ``aoi_pipeline``), which run only in the
+compute image so this role never competes for a Durable Task Hub
+partition lease (#1414).
 
 Both images share the same Durable task hub and Azure Storage connection.
 PIPELINE_ROLE=orchestrator is set in Dockerfile.orchestrator so
-blueprints/pipeline/__init__.py skips importing the activities module.
+blueprints/pipeline/__init__.py skips importing the activities and
+orchestration-trigger modules.
 
 The orchestrator deliberately omits only the monitoring scheduler timer
 (GDAL-heavy, and must run exactly once across the fleet) — every other
