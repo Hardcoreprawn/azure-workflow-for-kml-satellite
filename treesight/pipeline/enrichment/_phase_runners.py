@@ -19,7 +19,7 @@ import httpx
 
 from treesight.constants import (
     COLLECTION_DISPLAY_GSD_M,
-    DEFAULT_ENRICHMENT_CONCURRENCY,
+    DEFAULT_ENRICHMENT_FRAME_CONCURRENCY,
     DEFAULT_HTTP_TIMEOUT_SECONDS,
 )
 from treesight.log import log_phase
@@ -290,7 +290,8 @@ def _run_mosaic_ndvi_phase(
                     )
         return idx, sid, nsid, display_collection
 
-    with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+    frame_workers = max(1, min(DEFAULT_ENRICHMENT_FRAME_CONCURRENCY, len(frame_plan)))
+    with ThreadPoolExecutor(max_workers=frame_workers) as pool:
         futures = [pool.submit(_register_one, i, f) for i, f in enumerate(frame_plan)]
         for fut in as_completed(futures):
             try:
@@ -346,7 +347,7 @@ def _run_mosaic_ndvi_phase(
             return idx, stat, None
         return idx, None, None
 
-    with ThreadPoolExecutor(max_workers=DEFAULT_ENRICHMENT_CONCURRENCY) as pool:
+    with ThreadPoolExecutor(max_workers=frame_workers) as pool:
         futures = [pool.submit(_compute_one_ndvi, i, f) for i, f in enumerate(frame_plan)]
         for fut in as_completed(futures):
             try:
