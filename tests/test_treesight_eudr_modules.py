@@ -4,14 +4,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
-from treesight.eudr.export import SUMMARY_CSV_FIELDS, build_summary_csv, summary_rows_from_manifest
+from treesight.eudr.export import (
+    SUMMARY_CSV_FIELDS,
+    build_summary_csv,
+    summary_rows_from_manifest,
+)
 from treesight.eudr.plots import sanitise_name, validate_plot
+from treesight.eudr.stripe_checkout import (
+    build_eudr_checkout_kwargs,
+    resolve_eudr_prices,
+)
 from treesight.eudr.usage import last_n_month_keys, month_key, parse_iso_datetime
-
 
 # ---------------------------------------------------------------------------
 # treesight.eudr.plots
@@ -105,6 +111,39 @@ class TestLastNMonthKeys:
         assert "2023-12" in keys
 
 
+class TestStripeCheckout:
+    def test_resolves_supported_currency(self):
+        base_price, metered_price = resolve_eudr_prices("GBP")
+        assert base_price is not None
+        assert metered_price is not None
+
+    def test_rejects_unsupported_currency(self):
+        assert resolve_eudr_prices("JPY") == (None, None)
+
+    def test_builds_subscription_kwargs(self):
+        kwargs = build_eudr_checkout_kwargs(
+            user_id="user-1",
+            org_id="org-1",
+            base_price="price-base",
+            metered_price="price-metered",
+            origin="https://example.test",
+            currency="GBP",
+        )
+        assert kwargs["mode"] == "subscription"
+        assert kwargs["line_items"] == [
+            {"price": "price-base", "quantity": 1},
+            {"price": "price-metered"},
+        ]
+        assert kwargs["metadata"] == {
+            "user_id": "user-1",
+            "org_id": "org-1",
+            "product": "eudr",
+            "currency": "GBP",
+        }
+        assert kwargs["success_url"] == "https://example.test/eudr/?subscribed=true"
+        assert kwargs["cancel_url"] == "https://example.test/eudr/?billing=cancel"
+
+
 # ---------------------------------------------------------------------------
 # treesight.eudr.export
 # ---------------------------------------------------------------------------
@@ -119,7 +158,8 @@ def _make_aoi(name: str, determination: dict | None = None) -> dict[str, Any]:
         "name": name,
         "area_ha": 1.5,
         "center": {"lat": 51.5, "lon": -0.12},
-        "determination": determination or {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": []},
+        "determination": determination
+        or {"screening_outcome": "no_signal_detected", "confidence": "high", "flags": []},
     }
 
 
