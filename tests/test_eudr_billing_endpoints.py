@@ -39,7 +39,6 @@ def _make_req(method="GET", url="/api/eudr/billing", body=None, headers=None, pa
 
 
 class TestEudrBillingStatus:
-    @_REQUIRE_AUTH
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={
@@ -53,8 +52,7 @@ class TestEudrBillingStatus:
         },
     )
     @patch("treesight.security.orgs.get_user_org", return_value=None)
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_no_org_returns_empty_status(self, _auth, _org, _status):
+    def test_no_org_returns_empty_status(self, _org, _status):
         from blueprints.eudr import eudr_billing_status
 
         req = _make_req()
@@ -64,7 +62,6 @@ class TestEudrBillingStatus:
         assert data["plan"] == "free_trial"
         assert data["subscribed"] is False
 
-    @_REQUIRE_AUTH
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={
@@ -81,8 +78,7 @@ class TestEudrBillingStatus:
         "treesight.security.orgs.get_user_org",
         return_value={"org_id": "org-1", "billing": {}},
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_with_org_returns_billing_data(self, _auth, _org, _status):
+    def test_with_org_returns_billing_data(self, _org, _status):
         from blueprints.eudr import eudr_billing_status
 
         req = _make_req()
@@ -101,8 +97,7 @@ class TestEudrBillingStatus:
         assert resp.status_code in (200, 204)
 
     @_REQUIRE_AUTH
-    @patch("blueprints.eudr.check_auth", side_effect=ValueError("No token"))
-    def test_unauthenticated_returns_401(self, _auth):
+    def test_unauthenticated_returns_401(self):
         from blueprints.eudr import eudr_billing_status
 
         req = make_test_request(url="/api/eudr/billing", auth_header=None, principal_user_id=None)
@@ -117,7 +112,6 @@ class TestEudrBillingStatus:
 
 
 class TestEudrUsage:
-    @_REQUIRE_AUTH
     @patch(
         "blueprints.eudr._eudr_usage_payload",
         return_value={
@@ -137,8 +131,7 @@ class TestEudrUsage:
             ],
         },
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_returns_usage_payload(self, _auth, _payload):
+    def test_returns_usage_payload(self, _payload):
         from blueprints.eudr import eudr_usage_status
 
         req = _make_req(url="/api/eudr/usage")
@@ -150,8 +143,7 @@ class TestEudrUsage:
         assert data["history"][0]["month"] == "2026-01"
 
     @_REQUIRE_AUTH
-    @patch("blueprints.eudr.check_auth", side_effect=ValueError("No token"))
-    def test_unauthenticated_returns_401(self, _auth):
+    def test_unauthenticated_returns_401(self):
         from blueprints.eudr import eudr_usage_status
 
         req = make_test_request(url="/api/eudr/usage", auth_header=None, principal_user_id=None)
@@ -196,8 +188,7 @@ class TestEudrUsagePayload:
 
 class TestEudrSubscribe:
     @_REQUIRE_AUTH
-    @patch("blueprints.eudr.check_auth", side_effect=ValueError("No token"))
-    def test_unauthenticated_returns_401(self, _auth):
+    def test_unauthenticated_returns_401(self):
         from blueprints.eudr import eudr_subscribe
 
         req = make_test_request(
@@ -209,17 +200,14 @@ class TestEudrSubscribe:
         resp = eudr_subscribe(req)
         assert resp.status_code == 401
 
-    @_REQUIRE_AUTH
     @patch("treesight.security.orgs.get_user_org", return_value=None)
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_no_org_returns_404(self, _auth, _org):
+    def test_no_org_returns_404(self, _org):
         from blueprints.eudr import eudr_subscribe
 
         req = _make_req(method="POST", url="/api/eudr/subscribe")
         resp = eudr_subscribe(req)
         assert resp.status_code == 404
 
-    @_REQUIRE_AUTH
     @patch(
         "treesight.security.eudr_billing.is_org_owner",
         return_value=False,
@@ -228,15 +216,13 @@ class TestEudrSubscribe:
         "treesight.security.orgs.get_user_org",
         return_value={"org_id": "org-1", "billing": {}},
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_non_owner_returns_403(self, _auth, _org, _owner):
+    def test_non_owner_returns_403(self, _org, _owner):
         from blueprints.eudr import eudr_subscribe
 
         req = _make_req(method="POST", url="/api/eudr/subscribe")
         resp = eudr_subscribe(req)
         assert resp.status_code == 403
 
-    @_REQUIRE_AUTH
     @patch(
         "treesight.security.eudr_billing.is_org_owner",
         return_value=True,
@@ -245,15 +231,13 @@ class TestEudrSubscribe:
         "treesight.security.orgs.get_user_org",
         return_value={"org_id": "org-1", "billing": {"eudr_status": "active"}},
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_already_subscribed_returns_409(self, _auth, _org, _owner):
+    def test_already_subscribed_returns_409(self, _org, _owner):
         from blueprints.eudr import eudr_subscribe
 
         req = _make_req(method="POST", url="/api/eudr/subscribe")
         resp = eudr_subscribe(req)
         assert resp.status_code == 409
 
-    @_REQUIRE_AUTH
     @patch("treesight.config.STRIPE_WEBHOOK_SECRET", "")
     @patch("treesight.config.STRIPE_API_KEY", "")
     @patch(
@@ -264,8 +248,7 @@ class TestEudrSubscribe:
         "treesight.security.orgs.get_user_org",
         return_value={"org_id": "org-1", "billing": {}},
     )
-    @patch("blueprints.eudr.check_auth", return_value=({"sub": "test-user"}, "test-user"))
-    def test_stripe_not_configured_returns_503(self, _auth, _org, _owner):
+    def test_stripe_not_configured_returns_503(self, _org, _owner):
         from blueprints.eudr import eudr_subscribe
 
         req = _make_req(method="POST", url="/api/eudr/subscribe")

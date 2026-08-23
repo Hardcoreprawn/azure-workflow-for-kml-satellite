@@ -18,7 +18,7 @@ from typing import Any
 import azure.durable_functions as df
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response, require_auth
 from treesight.pipeline.enrichment.determination import as_screening_determination
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
@@ -312,16 +312,9 @@ def _eudr_usage_payload(user_id: str) -> dict:
     methods=["GET", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def eudr_usage_status(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def eudr_usage_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/eudr/usage — org-scoped usage and billing summary for dashboard."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
     payload = _eudr_usage_payload(user_id)
     return func.HttpResponse(
         json.dumps(payload),
@@ -336,16 +329,9 @@ def eudr_usage_status(req: func.HttpRequest) -> func.HttpResponse:
     methods=["GET", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def eudr_billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/eudr/billing — EUDR billing status for the caller's org."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
     from treesight.security.eudr_billing import get_eudr_billing_status
     from treesight.security.orgs import get_user_org
 
@@ -372,20 +358,13 @@ def eudr_billing_status(req: func.HttpRequest) -> func.HttpResponse:
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+def eudr_subscribe(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/eudr/subscribe — create Stripe Checkout for EUDR plan.
 
     Owner-only. Creates a checkout session with both the base subscription
     price and the metered usage price.
     """
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
-    try:
-        _claims, user_id = check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
     from treesight.security.eudr_billing import is_org_owner
     from treesight.security.orgs import get_user_org
 
