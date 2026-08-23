@@ -122,11 +122,10 @@ max-complexity = 12
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
 include = ["treesight", "blueprints"]
-exclude = ["scripts/_*"]
 
 [dependency-groups]
 dev = [
     "lxml-stubs>=0.5.1",
     "pre-commit>=4.5.1",
-    "pyright>=1.1.408",
+    "pyright>=1.1.411",
 ]
