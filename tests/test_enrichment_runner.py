@@ -79,6 +79,34 @@ class TestMosaicNdviParallel:
 
     @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
     @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
+    def test_frame_pools_use_configured_concurrency(self, mock_mosaic, mock_ndvi, monkeypatch):
+        worker_counts: list[int | None] = []
+
+        class TrackingPool(ThreadPoolExecutor):
+            def __init__(self, max_workers=None, *args, **kwargs):
+                worker_counts.append(max_workers)
+                super().__init__(max_workers, *args, **kwargs)
+
+        monkeypatch.setattr("treesight.pipeline.enrichment._phase_runners.DEFAULT_ENRICHMENT_FRAME_CONCURRENCY", 1)
+        monkeypatch.setattr("treesight.pipeline.enrichment._phase_runners.ThreadPoolExecutor", TrackingPool)
+        mock_mosaic.return_value = "sid-1"
+        mock_ndvi.return_value = {"mean": 0.5}
+
+        _run_mosaic_ndvi_phase(
+            BBOX,
+            COORDS,
+            [_make_frame(), _make_frame(season="summer")],
+            "proj",
+            "ts",
+            "out",
+            MagicMock(),
+            {},
+        )
+
+        assert worker_counts == [1, 1]
+
+    @patch("treesight.pipeline.enrichment._phase_runners.compute_ndvi")
+    @patch("treesight.pipeline.enrichment._phase_runners.register_mosaic")
     def test_mosaic_failure_does_not_abort_others(self, mock_mosaic, mock_ndvi):
         """If one mosaic registration raises, other frames still succeed."""
         frames = [

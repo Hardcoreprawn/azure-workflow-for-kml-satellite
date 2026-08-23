@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 
 from real_acquisition_runner import (
     DEFAULT_FORMATS,
     _build_run_summary,
+    _configure_real_acquisition_environment,
     _test_principal_header,
     _wdpa_configuration_warning,
 )
@@ -89,3 +91,13 @@ class TestWdpaConfiguration:
     def test_does_not_warn_when_token_is_configured(self, monkeypatch):
         monkeypatch.setenv("WDPA_API_TOKEN", "configured")
         assert _wdpa_configuration_warning() is None
+
+    def test_sets_conservative_frame_concurrency_by_default(self, monkeypatch):
+        monkeypatch.delenv("ENRICHMENT_FRAME_CONCURRENCY", raising=False)
+        _configure_real_acquisition_environment()
+        assert os.environ["ENRICHMENT_FRAME_CONCURRENCY"] == "1"
+
+    def test_preserves_explicit_frame_concurrency(self, monkeypatch):
+        monkeypatch.setenv("ENRICHMENT_FRAME_CONCURRENCY", "2")
+        _configure_real_acquisition_environment()
+        assert os.environ["ENRICHMENT_FRAME_CONCURRENCY"] == "2"

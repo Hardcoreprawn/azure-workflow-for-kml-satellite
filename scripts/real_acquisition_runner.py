@@ -64,6 +64,7 @@ FUNC_HOST_LOG_PATH = REPO_ROOT / ".real-acquisition-func-host.log"
 # acquisition run never consumes a live org's trial/paid quota.
 _RUNNER_TIER = "enterprise"
 _RUNNER_USER_ID = "real-acquisition-runner"
+_RUNNER_FRAME_CONCURRENCY = "1"
 
 DEFAULT_FORMATS = ("eudr-pdf", "eudr-geojson", "eudr-csv")
 
@@ -120,6 +121,11 @@ def _wdpa_configuration_warning() -> str | None:
         "WARNING: WDPA_API_TOKEN is not configured; EUDR exports will have "
         "blank protected-area status because the check is unknown."
     )
+
+
+def _configure_real_acquisition_environment() -> None:
+    """Apply conservative local settings without overriding explicit values."""
+    os.environ.setdefault("ENRICHMENT_FRAME_CONCURRENCY", _RUNNER_FRAME_CONCURRENCY)
 
 
 def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> Path | None:
@@ -208,6 +214,8 @@ def main() -> None:
     warning = _wdpa_configuration_warning()
     if warning:
         print(warning, file=sys.stderr)
+
+    _configure_real_acquisition_environment()
 
     fixtures: list[Path] = args.fixtures or sorted(SCENARIOS_DIR.glob("*.kml"))
     if not fixtures:
