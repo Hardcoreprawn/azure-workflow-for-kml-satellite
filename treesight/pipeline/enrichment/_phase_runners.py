@@ -141,7 +141,8 @@ def _run_eudr_phase(
         "enrichment",
         "wdpa_done",
         checked=wdpa.get("checked", False),
-        protected=wdpa.get("is_protected", False),
+        protected=wdpa.get("is_protected") if wdpa.get("checked") else None,
+        reason=wdpa.get("reason") if not wdpa.get("checked") else None,
     )
 
     log_phase("enrichment", "lulc_annual_start")
