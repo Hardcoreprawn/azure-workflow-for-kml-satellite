@@ -79,11 +79,7 @@ def rate_limit(limiter_or_factory: Any) -> Callable:
 
             # Resolve the limiter: if the argument has `is_allowed` it is already
             # a limiter instance; otherwise treat it as a zero-argument factory.
-            limiter = (
-                limiter_or_factory
-                if hasattr(limiter_or_factory, "is_allowed")
-                else limiter_or_factory()
-            )
+            limiter = limiter_or_factory if hasattr(limiter_or_factory, "is_allowed") else limiter_or_factory()
             if not limiter.is_allowed(get_client_ip(req)):
                 return error_response(
                     429,
