@@ -101,7 +101,7 @@ RUN apt-get update -qq && \
     curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
     bash /tmp/dotnet-install.sh \
       --runtime aspnetcore \
-    --channel 10.0 \
+      --channel 10.0 \
       --install-dir /usr/share/dotnet \
       --no-path && \
     ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet && \

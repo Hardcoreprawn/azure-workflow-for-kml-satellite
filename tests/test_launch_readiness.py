@@ -1730,7 +1730,7 @@ class TestFastTestLoop:
 
         assert "test: ## Run unit tests (canonical — CI runs this exact command)" in makefile
         assert 'uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml' in makefile
-        assert "check: lint test test-js ## Full local gate (lint + test + JS tests) — identical to CI" in makefile
+        assert "check: lint test test-js coverage-check ## Full local gate, including CI's coverage gate" in makefile
 
     def test_validation_tiers_are_documented(self):
         readme = README_MD.read_text()
@@ -2012,22 +2012,18 @@ class TestDiffCoverRequiredGate:
     def test_diff_cover_step_does_not_suppress_failures(self):
         """The step must not swallow a below-threshold diff-cover exit code —
         `|| true` (or similar) would silently defeat the required gate."""
-        ci = CI_YML.read_text()
-        assert "--fail-under 80" in ci, "diff-cover must enforce --fail-under 80"
-        # Isolate the diff-cover invocation line itself, not the whole file,
-        # since other steps legitimately use `|| true` (e.g. best-effort fetch).
-        diff_cover_line = next(line for line in ci.splitlines() if "uv run diff-cover" in line)
-        assert "|| true" not in diff_cover_line, (
-            "the diff-cover invocation must not be suffixed with `|| true` — "
-            "that would make the 'required gate' report-only again"
-        )
+        makefile = MAKEFILE.read_text()
+        coverage_target = re.search(r"^coverage-check: ##.*?(?=^\S)", makefile, re.MULTILINE | re.DOTALL)
+        assert coverage_target is not None
+        assert "--fail-under 80" in coverage_target.group(0), "diff-cover must enforce --fail-under 80"
+        assert "|| true" not in coverage_target.group(0), "the required coverage gate must not swallow failures"
 
     def test_diff_cover_step_sets_safe_directory(self):
         """The Test job runs in a container (different UID than the checkout),
         so git refuses to touch the repo ('dubious ownership') unless marked
         safe — diff-cover shells out to git and crashes without this."""
-        ci = CI_YML.read_text()
-        assert "safe.directory" in ci, (
+        makefile = MAKEFILE.read_text()
+        assert "safe.directory" in makefile, (
             "the changed-lines coverage step must configure "
             "`git config --global --add safe.directory` before invoking "
             "diff-cover, or every PR fails with a dubious-ownership crash"
@@ -2039,8 +2035,8 @@ class TestDiffCoverRequiredGate:
         fetch can leave no common ancestor in reach once main has advanced
         past the PR's branch point, and diff-cover fails with a
         'no merge base' CommandError on every such PR (found via #1282-1284)."""
-        ci = CI_YML.read_text()
-        fetch_line = next(line for line in ci.splitlines() if "git fetch" in line and "BASE_REF" in line)
+        makefile = MAKEFILE.read_text()
+        fetch_line = next(line for line in makefile.splitlines() if "git fetch" in line and "BASE_REF" in line)
         assert "--depth" not in fetch_line, (
             "the diff-cover base-ref fetch must not be shallow (--depth=N) — "
             "this breaks merge-base resolution once main has moved on from "
