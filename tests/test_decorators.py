@@ -14,7 +14,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import azure.functions as func
-import pytest
 
 from blueprints._decorators import authenticated_http_route, rate_limit, validate_body_size
 from blueprints._helpers import require_auth
