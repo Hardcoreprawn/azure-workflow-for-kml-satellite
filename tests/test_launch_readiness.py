@@ -1557,6 +1557,7 @@ class TestContainerRuntimePrereqs:
         """Smoke test must verify the runtime required by the Functions host."""
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "ASP.NET Core 10.0 runtime present" in smoke
+        assert '"Microsoft.AspNetCore.App 10.0" in runtimes' in smoke
 
     def test_no_host_dll_deletion_in_dockerfile(self):
         """Host DLLs must NOT be deleted — host lazily loads them at startup.
