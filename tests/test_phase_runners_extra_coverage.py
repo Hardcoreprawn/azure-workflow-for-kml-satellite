@@ -128,6 +128,23 @@ class TestEudrPhase:
         # _run_landsat_baseline samples 2 windows (2013-2014, 2015-2016).
         assert acc_dict["landsat_scenes_sampled"] == 2
 
+    @patch("treesight.pipeline.enrichment.ndvi.compute_landsat_ndvi", return_value=None)
+    @patch("treesight.pipeline.eudr.query_alos_fnf", return_value={"available": False})
+    @patch("treesight.pipeline.eudr.query_lulc_annual", return_value={"available": False})
+    @patch(
+        "treesight.pipeline.eudr.check_wdpa_overlap",
+        return_value={"checked": False, "reason": "no_api_token", "protected_areas": []},
+    )
+    @patch("treesight.pipeline.eudr.query_worldcover", return_value={"available": False})
+    def test_logs_when_wdpa_check_is_unavailable(self, _worldcover, _wdpa, _lulc, _alos, _landsat, caplog):
+        results: dict = {}
+
+        with caplog.at_level("WARNING"):
+            _run_eudr_phase(BBOX, -10.0, -50.0, results)
+
+        assert "WDPA check unavailable" in caplog.text
+        assert results["wdpa"]["checked"] is False
+
 
 class TestChangeDetectionPhase:
     @patch("treesight.pipeline.enrichment._phase_runners.detect_changes")

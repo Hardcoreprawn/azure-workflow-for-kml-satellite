@@ -38,6 +38,7 @@ coherence) — none of that is checked automatically here.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -109,6 +110,16 @@ def _test_principal_header(user_id: str) -> str:
         "userRoles": ["anonymous", "authenticated"],
     }
     return base64.b64encode(_json.dumps(principal).encode()).decode()
+
+
+def _wdpa_configuration_warning() -> str | None:
+    """Return a warning when real EUDR runs cannot perform the WDPA check."""
+    if os.environ.get("WDPA_API_TOKEN"):
+        return None
+    return (
+        "WARNING: WDPA_API_TOKEN is not configured; EUDR exports will have "
+        "blank protected-area status because the check is unknown."
+    )
 
 
 def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> Path | None:
@@ -193,6 +204,10 @@ def main() -> None:
         help=f"Export formats to fetch after each run (default: {' '.join(DEFAULT_FORMATS)})",
     )
     args = parser.parse_args()
+
+    warning = _wdpa_configuration_warning()
+    if warning:
+        print(warning, file=sys.stderr)
 
     fixtures: list[Path] = args.fixtures or sorted(SCENARIOS_DIR.glob("*.kml"))
     if not fixtures:
