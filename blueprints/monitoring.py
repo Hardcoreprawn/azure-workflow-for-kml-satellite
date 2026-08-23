@@ -19,7 +19,6 @@ import azure.functions as func
 
 from blueprints._helpers import (
     cors_headers,
-    cors_preflight,
     error_response,
     require_auth,
     sanitise,
@@ -194,9 +193,6 @@ def _process_monitor(monitor: Any) -> None:
 
 def list_monitors_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET /api/monitoring — list the user's monitors."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     from treesight.monitoring import list_monitors
 
     monitors = list_monitors(user_id)
@@ -211,9 +207,6 @@ def list_monitors_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id:
 
 def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/monitoring — create a new monitor for an AOI."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     # Tier check
     err = _check_monitoring_access(user_id)
     if err:
@@ -284,8 +277,6 @@ def create_monitor_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id
 @require_auth
 def monitoring_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Dispatch `/api/monitoring` reads and creates through one registered route."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
     if req.method == "GET":
         return list_monitors_endpoint(req, auth_claims=auth_claims, user_id=user_id)
     if req.method == "POST":
@@ -345,9 +336,6 @@ def _apply_patch(
 @require_auth
 def monitor_detail_endpoint(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """GET/PATCH/DELETE /api/monitoring/{monitor_id}."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
-
     monitor_id = req.route_params.get("monitor_id", "")
     if not monitor_id:
         return error_response(400, "monitor_id is required", req=req)

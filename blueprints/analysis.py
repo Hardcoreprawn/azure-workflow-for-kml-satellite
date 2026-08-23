@@ -14,10 +14,11 @@ from typing import Any
 
 import azure.functions as func
 
-from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response
+from blueprints._decorators import rate_limit, validate_body_size
+from blueprints._helpers import cors_headers, error_response, require_auth
 from treesight.ai import generate_analysis
 from treesight.constants import EUDR_CUTOFF_DATE
-from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
+from treesight.security.rate_limit import get_pipeline_limiter
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -48,25 +49,14 @@ def _run_analysis(
     *,
     run_fn,
     require_ndvi: bool = False,
-    rate_limit: bool = True,
     error_msg: str = "Analysis failed",
 ) -> func.HttpResponse:
-    """Shared pipeline: auth \u2192 rate-limit \u2192 parse \u2192 generate \u2192 respond."""
-    if req.method == "OPTIONS":
-        return cors_preflight(req)
+    """Shared pipeline: parse → validate context → generate → respond.
 
-    try:
-        check_auth(req)
-    except ValueError as exc:
-        return error_response(401, str(exc), req=req)
-
-    if rate_limit and not get_pipeline_limiter().is_allowed(get_client_ip(req)):
-        return error_response(429, "Too many requests \u2014 please wait before trying again", req=req)
-
-    raw_body = req.get_body()
-    if len(raw_body) > _MAX_AI_BODY_BYTES:
-        return error_response(400, f"Request body too large (max {_MAX_AI_BODY_BYTES} bytes)", req=req)
-
+    Auth, CORS preflight, rate-limit, and body-size are handled by the
+    calling route's decorators (``@require_auth``, ``@rate_limit``,
+    ``@validate_body_size``).
+    """
     try:
         body = req.get_json()
     except ValueError:
@@ -255,7 +245,10 @@ health) based on the trajectory and data.
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def timelapse_analysis(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+@rate_limit(get_pipeline_limiter())
+@validate_body_size(_MAX_AI_BODY_BYTES)
+def timelapse_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Analyze entire satellite timelapse series for trends and anomalies.
 
     Analyzes temporal patterns in:
@@ -604,7 +597,9 @@ constitute full EUDR due diligence or an operator risk conclusion.
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
-def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
+@require_auth
+@validate_body_size(_MAX_AI_BODY_BYTES)
+def eudr_assessment(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """AI-generated EUDR deforestation-free due-diligence statement.
 
     Analyses post-2020 NDVI timeseries data and produces a structured
@@ -616,6 +611,5 @@ def eudr_assessment(req: func.HttpRequest) -> func.HttpResponse:
         req,
         run_fn=_eudr_logic,
         require_ndvi=True,
-        rate_limit=False,
         error_msg="EUDR assessment failed",
     )
