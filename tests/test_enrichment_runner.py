@@ -472,28 +472,6 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_single_aoi_preserves_export_metadata(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
-        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
-        mock_mosaic.return_value = ([], [])
-        storage = MagicMock()
-
-        result = run_enrichment(
-            coords=COORDS,
-            project_name="test",
-            timestamp="20240101",
-            output_container="out",
-            storage=storage,
-            per_aoi_coords=[{"name": "Solo Farm", "coords": COORDS, "area_ha": 50.0}],
-        )
-
-        assert result["feature_name"] == "Solo Farm"
-        assert result["area_ha"] == 50.0
-
-    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
-    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
-    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
-    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
-    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
     def test_per_aoi_failure_does_not_abort(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """If one AOI's enrichment fails, others still succeed."""
 
@@ -863,40 +841,6 @@ class TestEnrichFinalize:
             storage=storage,
         )
         assert len(result["per_aoi_enrichment"]) == 2
-
-    def test_does_not_add_single_aoi_metadata_for_multiple_results(self):
-        storage = MagicMock()
-
-        result = enrich_finalize(
-            {},
-            {},
-            [{"name": "A"}, {"name": "B"}],
-            single_aoi_metadata={"name": "Wrong", "area_ha": 99.0},
-            project_name="p",
-            timestamp="t",
-            output_container="out",
-            storage=storage,
-        )
-
-        assert "feature_name" not in result
-        assert "area_ha" not in result
-
-    def test_includes_single_aoi_metadata(self):
-        storage = MagicMock()
-
-        result = enrich_finalize(
-            {"frame_plan": []},
-            {},
-            [],
-            single_aoi_metadata={"name": "Solo Farm", "area_ha": 12.5},
-            project_name="p",
-            timestamp="t",
-            output_container="out",
-            storage=storage,
-        )
-
-        assert result["feature_name"] == "Solo Farm"
-        assert result["area_ha"] == 12.5
 
     @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
     def test_eudr_mode_runs_determination(self, mock_det):

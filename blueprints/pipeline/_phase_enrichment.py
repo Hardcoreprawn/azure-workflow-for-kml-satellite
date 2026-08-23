@@ -73,7 +73,7 @@ def _phase_enrichment(
 
     # ── Step 2: per-AOI enrichment (parallel fan-out, one per AOI) ──
     per_aoi_results: list[dict[str, Any]] = []
-    if per_aoi_coords and len(per_aoi_coords) > 1:
+    if per_aoi_coords:
         context.set_custom_status({"phase": "enrichment", "step": "per_aoi", "aois": len(per_aoi_coords)})
         aoi_tasks = [
             context.call_activity_with_retry(
@@ -104,7 +104,6 @@ def _phase_enrichment(
                     "data_sources": data_sources,
                     "imagery": imagery,
                     "per_aoi_results": per_aoi_results,
-                    "single_aoi_metadata": per_aoi_coords[0] if len(per_aoi_coords) == 1 else None,
                     "eudr_mode": inp.get("eudr_mode", False),
                     "date_start": inp.get("date_start"),
                     "project_name": ctx["project_name"],

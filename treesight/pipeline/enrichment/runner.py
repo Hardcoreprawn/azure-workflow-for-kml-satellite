@@ -32,13 +32,6 @@ from treesight.storage.client import BlobStorageClient
 logger = logging.getLogger(__name__)
 
 
-def _apply_single_aoi_metadata(results: dict[str, Any], aoi_metadata: dict[str, Any] | None) -> None:
-    """Copy sole-AOI export metadata into a top-level manifest."""
-    if aoi_metadata:
-        results["feature_name"] = aoi_metadata.get("name", "")
-        results["area_ha"] = aoi_metadata.get("area_ha", 0.0)
-
-
 # ── Per-AOI enrichment ────────────────────────────────────────
 
 
@@ -240,9 +233,6 @@ def run_enrichment(
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
-    if per_aoi_coords and len(per_aoi_coords) == 1:
-        _apply_single_aoi_metadata(results, per_aoi_coords[0])
-
     if not frame_plan:
         logger.warning("No frames matched date filters — returning partial manifest")
         results["enriched_at"] = datetime.now(UTC).isoformat()
@@ -574,7 +564,6 @@ def enrich_finalize(
     imagery: dict[str, Any],
     per_aoi_results: list[dict[str, Any]],
     *,
-    single_aoi_metadata: dict[str, Any] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     project_name: str,
@@ -611,9 +600,6 @@ def enrich_finalize(
             total=len(per_aoi_results),
             succeeded=len(succeeded),
         )
-
-    if not per_aoi_results:
-        _apply_single_aoi_metadata(merged, single_aoi_metadata)
 
     merged["resource_usage"] = acc.to_dict()
     merged["estimated_cost_pence"] = acc.estimate_cost_pence()
