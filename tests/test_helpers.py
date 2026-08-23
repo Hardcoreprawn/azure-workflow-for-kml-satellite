@@ -15,11 +15,9 @@ from blueprints._helpers import (
     error_response,
     sanitise,
 )
-from blueprints.analysis import (
-    _sanitise_for_prompt,  # pyright: ignore[reportPrivateUsage]
-)
-from tests.conftest import TEST_ORIGIN
+from treesight.analysis.trends import sanitise_for_prompt as _sanitise_for_prompt
 from treesight.parsers import ensure_closed
+from tests.conftest import TEST_ORIGIN
 
 # ---------------------------------------------------------------------------
 # ensure_closed

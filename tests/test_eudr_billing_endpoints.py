@@ -113,7 +113,7 @@ class TestEudrBillingStatus:
 
 class TestEudrUsage:
     @patch(
-        "blueprints.eudr._eudr_usage_payload",
+        "treesight.eudr.usage.eudr_usage_payload",
         return_value={
             "current": {
                 "periodParcelsUsed": 47,
@@ -152,27 +152,27 @@ class TestEudrUsage:
 
 
 class TestEudrUsagePayload:
-    @patch("blueprints.eudr._fetch_org_run_records", return_value=[])
+    @patch("treesight.eudr.usage.fetch_org_run_records", return_value=[])
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={"period_parcels_used": 47, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
     def test_estimated_spend_below_tier_threshold(self, _org, _billing, _records):
-        from blueprints.eudr import _eudr_usage_payload
+        from treesight.eudr.usage import eudr_usage_payload as _eudr_usage_payload
 
         payload = _eudr_usage_payload("test-user")
         # 47 used with 10 included => 37 overage parcels at £3.00 each.
         assert payload["current"]["estimatedSpendGbp"] == 111.0
 
-    @patch("blueprints.eudr._fetch_org_run_records", return_value=[])
+    @patch("treesight.eudr.usage.fetch_org_run_records", return_value=[])
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={"period_parcels_used": 120, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
     def test_estimated_spend_above_tier_threshold(self, _org, _billing, _records):
-        from blueprints.eudr import _eudr_usage_payload
+        from treesight.eudr.usage import eudr_usage_payload as _eudr_usage_payload
 
         payload = _eudr_usage_payload("test-user")
         # 120 used with 10 included => 110 overage parcels:
@@ -391,7 +391,7 @@ class TestSummaryRowsFromManifest:
     """Unit tests for _summary_rows_from_manifest — pure helper."""
 
     def test_returns_row_per_aoi(self):
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         manifest = {
             "per_aoi_enrichment": [
@@ -418,7 +418,7 @@ class TestSummaryRowsFromManifest:
         assert row["note"] == ""
 
     def test_non_compliant_parcel(self):
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         manifest = {
             "per_aoi_enrichment": [
@@ -439,7 +439,7 @@ class TestSummaryRowsFromManifest:
         assert "Vegetation loss" in rows[0]["determination_flags"]
 
     def test_merges_override_and_note(self):
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         manifest = {
             "per_aoi_enrichment": [
@@ -465,13 +465,13 @@ class TestSummaryRowsFromManifest:
         assert "Verified" in rows[0]["note"]
 
     def test_empty_per_aoi_enrichment(self):
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         rows = _summary_rows_from_manifest("run-x", "2026-01-01T00:00:00Z", {}, None)
         assert rows == []
 
     def test_reverted_override_not_marked_overridden(self):
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         manifest = {
             "per_aoi_enrichment": [
@@ -495,7 +495,7 @@ class TestSummaryRowsFromManifest:
 
     def test_malformed_annotation_fields_do_not_crash(self):
         """Cosmos data corruption (wrong type stored) must degrade gracefully, not 500."""
-        from blueprints.eudr import _summary_rows_from_manifest
+        from treesight.eudr.export import summary_rows_from_manifest as _summary_rows_from_manifest
 
         manifest = {
             "per_aoi_enrichment": [
@@ -537,7 +537,7 @@ class TestEudrSummaryExport:
 
     @_REQUIRE_AUTH
     @patch(
-        "blueprints.eudr._fetch_org_run_records",
+        "treesight.eudr.usage.fetch_org_run_records",
         return_value=[
             {"instance_id": "inst-001", "submitted_at": "2026-01-10T12:00:00Z"},
         ],
@@ -579,7 +579,7 @@ class TestEudrSummaryExport:
 
     @_REQUIRE_AUTH
     @patch(
-        "blueprints.eudr._fetch_org_run_records",
+        "treesight.eudr.usage.fetch_org_run_records",
         return_value=[],
     )
     @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))
