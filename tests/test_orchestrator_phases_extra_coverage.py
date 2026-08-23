@@ -188,10 +188,9 @@ class TestPhaseEnrichment:
 
     def test_full_drain_with_per_aoi_fanout(self):
         context = MagicMock()
-        data_sources_and_imagery = [{"weather": {}}, {"imagery": []}]
         per_aoi_results = [{"aoi": "A"}, {"aoi": "B"}]
         enrichment_manifest = {"manifest": True}
-        context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
+        context.task_all.return_value = per_aoi_results
 
         gen = _phase_enrichment(
             context,
@@ -201,16 +200,15 @@ class TestPhaseEnrichment:
             [{"name": "A"}, {"name": "B"}],
             "output",
         )
-        result = _drain(gen, [data_sources_and_imagery, per_aoi_results, enrichment_manifest])
+        result = _drain(gen, [per_aoi_results, enrichment_manifest])
 
         assert result == enrichment_manifest
 
     def test_single_aoi_uses_the_same_per_aoi_path(self):
         context = MagicMock()
-        data_sources_and_imagery = [{"weather": {}}, {"imagery": []}]
         per_aoi_results = [{"name": "Solo Farm", "area_ha": 12.5}]
         enrichment_manifest = {"manifest": True}
-        context.task_all.side_effect = [data_sources_and_imagery, per_aoi_results]
+        context.task_all.return_value = per_aoi_results
 
         gen = _phase_enrichment(
             context,
@@ -220,7 +218,7 @@ class TestPhaseEnrichment:
             [{"name": "Solo Farm", "area_ha": 12.5}],
             "output",
         )
-        _drain(gen, [data_sources_and_imagery, per_aoi_results, enrichment_manifest])
+        _drain(gen, [per_aoi_results, enrichment_manifest])
 
         finalize_payload = context.call_activity_with_retry.call_args.args[2]
         assert finalize_payload["per_aoi_results"] == per_aoi_results
