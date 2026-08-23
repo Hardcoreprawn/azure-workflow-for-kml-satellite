@@ -233,6 +233,9 @@ def run_enrichment(
         "bbox": bbox,
         "center": {"lat": center_lat, "lon": center_lon},
     }
+    if per_aoi_coords and len(per_aoi_coords) == 1:
+        results["feature_name"] = per_aoi_coords[0].get("name", "")
+        results["area_ha"] = per_aoi_coords[0].get("area_ha", 0.0)
 
     if not frame_plan:
         logger.warning("No frames matched date filters — returning partial manifest")

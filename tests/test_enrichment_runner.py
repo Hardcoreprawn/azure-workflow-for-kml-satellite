@@ -472,6 +472,28 @@ class TestPerAoiEnrichment:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_single_aoi_preserves_export_metadata(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
+        mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-03-01"}]
+        mock_mosaic.return_value = ([], [])
+        storage = MagicMock()
+
+        result = run_enrichment(
+            coords=COORDS,
+            project_name="test",
+            timestamp="20240101",
+            output_container="out",
+            storage=storage,
+            per_aoi_coords=[{"name": "Solo Farm", "coords": COORDS, "area_ha": 50.0}],
+        )
+
+        assert result["feature_name"] == "Solo Farm"
+        assert result["area_ha"] == 50.0
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
     def test_per_aoi_failure_does_not_abort(self, mock_plan, mock_weather, mock_flood, mock_mosaic, mock_change):
         """If one AOI's enrichment fails, others still succeed."""
 

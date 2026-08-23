@@ -702,7 +702,9 @@ class TestBuildEudrCsv:
         """Single-parcel: build one CSV row from top-level evidence."""
         manifest = {
             "per_aoi_enrichment": [],
+            "feature_name": "Solo Farm",
             "coords": [[36.8, -1.3], [36.81, -1.3], [36.81, -1.31], [36.8, -1.31]],
+            "area_ha": 12.5,
             "center": {"lat": -1.305, "lon": 36.805},
             "determination": {
                 "screening_outcome": "no_signal_detected",
@@ -725,6 +727,8 @@ class TestBuildEudrCsv:
         reader = csv.DictReader(io.StringIO(result))
         rows = list(reader)
         assert len(rows) == 1
+        assert rows[0]["parcel_name"] == "Solo Farm"
+        assert rows[0]["area_ha"] == "12.5"
         assert rows[0]["determination_status"] == "no_signal_detected"
 
     def test_malformed_parcel_reviews_do_not_crash(self, eudr_manifest):
