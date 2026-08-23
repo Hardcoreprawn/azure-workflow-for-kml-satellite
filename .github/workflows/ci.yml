@@ -133,27 +133,13 @@ jobs:
         run: uv sync --all-extras --inexact
       # Canonical test command lives in the Makefile (matches local `make test`).
       - run: make test
-      # Changed-lines test coverage — REQUIRED GATE (closes #1042).
-      # Fails the PR if fewer than 80% of changed Python lines are covered.
-      # Config/docs-only PRs are unaffected: diff-cover only measures changed
-      # Python lines, so a diff with no Python changes always passes.
+      # Changed-lines coverage is shared with local `make check`.
       - name: Changed-lines coverage (required gate)
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          # The container runs as a different UID than the checkout, so git
-          # refuses to operate on the repo ("dubious ownership") without this.
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          # No --depth here: the checkout step already fetches full history
-          # for HEAD (fetch-depth: 0), so a shallow base-ref fetch can leave
-          # no common ancestor in reach once main has advanced past the PR's
-          # branch point, and diff-cover fails with "no merge base".
-          git fetch --no-tags origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          uv run diff-cover coverage.xml \
-            --compare-branch "origin/${BASE_REF}" \
-            --fail-under 80 \
-            --markdown-report diff-cover.md
+          make coverage-check
           {
             echo "## Changed-lines test coverage"
             echo ""

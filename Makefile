@@ -107,6 +107,13 @@ test-fast: ## Run targeted tests for the edit loop (requires TESTS="path-or-node
 test: ## Run unit tests (canonical — CI runs this exact command)
 	uv run pytest tests/ -v -m "not integration" --tb=short --cov=treesight --cov-report=xml
 
+BASE_REF ?= main
+
+coverage-check: ## Enforce changed-lines coverage against origin/BASE_REF (CI and local)
+	git config --global --add safe.directory "$${GITHUB_WORKSPACE:-$$(pwd)}"
+	git fetch --no-tags origin "+refs/heads/$(BASE_REF):refs/remotes/origin/$(BASE_REF)"
+	uv run diff-cover coverage.xml --compare-branch "origin/$(BASE_REF)" --fail-under 80
+
 test-js: ## Execute website/js correctness tests with Node's built-in test runner (no npm deps)
 	node --test tests/js/
 
@@ -145,7 +152,7 @@ fmt: ## Auto-format and autofix with ruff
 	uv run ruff format .
 	uv run ruff check --fix .
 
-check: lint test test-js ## Full local gate (lint + test + JS tests) — identical to CI
+check: lint test test-js coverage-check ## Full local gate, including CI's coverage gate
 
 ci-local: ## Run the gates inside the dev container image, exactly as CI does (#1086)
 	bash scripts/ci_local.sh $(GATE)
