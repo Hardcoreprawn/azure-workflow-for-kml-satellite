@@ -144,6 +144,7 @@ def detect_changes(
     project_name: str,
     timestamp: str,
     storage: Any,
+    aoi_index: int | None = None,
 ) -> dict[str, Any]:
     """Run change detection across stored NDVI rasters.
 
@@ -162,6 +163,12 @@ def detect_changes(
         For building output blob paths.
     storage : BlobStorageClient
         Storage client.
+    aoi_index : int, optional
+        Per-AOI identifier for a multi-parcel submission. ``project_name``/
+        ``timestamp`` are shared across every AOI in one submission, so this
+        must be included in the output change-map path — otherwise concurrent
+        AOIs sharing the same season/year pairs silently overwrite each
+        other's diff GeoTIFF (#1425). ``None`` for the single-AOI/union path.
 
     Returns
     -------
@@ -217,7 +224,10 @@ def detect_changes(
             change_geotiff = change.pop("change_geotiff_bytes", None)
             change_path = None
             if change_geotiff:
-                change_path = f"enrichment/{project_name}/{timestamp}/change/{season}_{year_a}_to_{year_b}.tif"
+                aoi_segment = f"aoi-{aoi_index}/" if aoi_index is not None else ""
+                change_path = (
+                    f"enrichment/{project_name}/{timestamp}/change/{aoi_segment}{season}_{year_a}_to_{year_b}.tif"
+                )
                 storage.upload_bytes(
                     output_container,
                     change_path,

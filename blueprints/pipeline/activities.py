@@ -410,6 +410,7 @@ def enrich_single_aoi(payload: _Payload) -> dict[str, Any]:
         timestamp=payload["timestamp"],
         output_container=payload.get("output_container", DEFAULT_OUTPUT_CONTAINER),
         storage=storage,
+        aoi_index=payload.get("aoi_index"),
     )
 
 

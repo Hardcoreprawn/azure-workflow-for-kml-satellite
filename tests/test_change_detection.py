@@ -175,6 +175,54 @@ class TestDetectChanges:
         assert result["summary"]["comparisons"] == 2
         assert result["summary"]["trajectory"] == "Improving"  # +0.1 > 0.02 threshold
 
+    def test_aoi_index_scopes_change_map_path_to_avoid_collision(self):
+        """Two AOIs sharing the same project_name/timestamp (#1425) must not write
+        their change-detection diff GeoTIFF to the same blob path."""
+        from treesight.pipeline.enrichment.change_detection import detect_changes
+
+        before = np.full((10, 10), 0.5, dtype=np.float32)
+        after = np.full((10, 10), 0.6, dtype=np.float32)
+        tiff_before = _make_ndvi_tiff(before)
+        tiff_after = _make_ndvi_tiff(after)
+
+        mock_storage = MagicMock()
+        mock_storage.download_bytes.side_effect = lambda _c, p: tiff_before if "2022" in p else tiff_after
+
+        result_a = detect_changes(
+            frame_plan=[
+                {"year": 2022, "season": "summer", "label": "Summer 2022"},
+                {"year": 2023, "season": "summer", "label": "Summer 2023"},
+            ],
+            ndvi_raster_paths=[
+                "enrichment/p/t/ndvi/aoi-0/2022_summer.tif",
+                "enrichment/p/t/ndvi/aoi-0/2023_summer.tif",
+            ],
+            output_container="test-container",
+            project_name="p",
+            timestamp="t",
+            storage=mock_storage,
+            aoi_index=0,
+        )
+        result_b = detect_changes(
+            frame_plan=[
+                {"year": 2022, "season": "summer", "label": "Summer 2022"},
+                {"year": 2023, "season": "summer", "label": "Summer 2023"},
+            ],
+            ndvi_raster_paths=[
+                "enrichment/p/t/ndvi/aoi-1/2022_summer.tif",
+                "enrichment/p/t/ndvi/aoi-1/2023_summer.tif",
+            ],
+            output_container="test-container",
+            project_name="p",
+            timestamp="t",
+            storage=mock_storage,
+            aoi_index=1,
+        )
+
+        path_a = result_a["season_changes"][0]["change_map_path"]
+        path_b = result_b["season_changes"][0]["change_map_path"]
+        assert path_a != path_b
+
     def test_skips_seasons_with_single_year(self):
         from treesight.pipeline.enrichment.change_detection import detect_changes
 

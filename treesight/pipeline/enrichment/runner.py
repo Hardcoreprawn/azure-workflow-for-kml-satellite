@@ -47,8 +47,15 @@ def _enrich_single_aoi(
     timestamp: str,
     output_container: str,
     storage: BlobStorageClient,
+    aoi_index: int | None = None,
 ) -> dict[str, Any]:
-    """Run enrichment for a single AOI and return its results dict."""
+    """Run enrichment for a single AOI and return its results dict.
+
+    ``aoi_index`` must be this AOI's position within the submission's
+    per-AOI list whenever there is more than one AOI — it scopes the NDVI
+    and change-detection raster blob paths so concurrent AOIs sharing the
+    same ``project_name``/``timestamp`` never overwrite each other (#1425).
+    """
     aoi_name = aoi_entry.get("name", "")
     coords = aoi_entry["coords"]
 
@@ -105,6 +112,7 @@ def _enrich_single_aoi(
         storage,
         result,
         acc=aoi_acc,
+        aoi_index=aoi_index,
     )
 
     _run_change_detection_phase(
@@ -116,6 +124,7 @@ def _enrich_single_aoi(
         storage,
         result,
         acc=aoi_acc,
+        aoi_index=aoi_index,
     )
 
     # Deforestation-free determination (#603)
@@ -291,7 +300,7 @@ def run_enrichment(
         log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
         per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_coords)
 
-        def _enrich_safe(entry: dict[str, Any]) -> dict[str, Any]:
+        def _enrich_safe(entry: dict[str, Any], idx: int) -> dict[str, Any]:
             try:
                 return _enrich_single_aoi(
                     entry,
@@ -304,6 +313,7 @@ def run_enrichment(
                     timestamp=timestamp,
                     output_container=output_container,
                     storage=storage,
+                    aoi_index=idx,
                 )
             except Exception:
                 logger.warning(
@@ -318,7 +328,7 @@ def run_enrichment(
         # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
         max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            future_to_idx = {pool.submit(_enrich_safe, entry): idx for idx, entry in enumerate(per_aoi_coords)}
+            future_to_idx = {pool.submit(_enrich_safe, entry, idx): idx for idx, entry in enumerate(per_aoi_coords)}
             for future in as_completed(future_to_idx):
                 per_aoi_enrichment[future_to_idx[future]] = future.result()
 
@@ -520,6 +530,7 @@ def enrich_single_aoi_step(
     timestamp: str,
     output_container: str,
     storage: BlobStorageClient,
+    aoi_index: int | None = None,
 ) -> dict[str, Any]:
     """Sub-step 3a: per-AOI enrichment — one call per AOI, fan-out via task_all.
 
@@ -538,6 +549,7 @@ def enrich_single_aoi_step(
             timestamp=timestamp,
             output_container=output_container,
             storage=storage,
+            aoi_index=aoi_index,
         )
     except Exception:
         logger.warning(
