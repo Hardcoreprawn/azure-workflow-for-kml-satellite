@@ -19,7 +19,6 @@ import azure.durable_functions as df
 import azure.functions as func
 
 from blueprints._helpers import check_auth, cors_headers, cors_preflight, error_response, require_auth
-from blueprints._decorators import rate_limit
 from treesight.pipeline.enrichment.determination import as_screening_determination
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 

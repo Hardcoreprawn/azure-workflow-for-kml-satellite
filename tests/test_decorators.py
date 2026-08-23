@@ -72,6 +72,24 @@ class TestRateLimit:
         resp = handler(req)
         assert resp.status_code == 200
 
+    def test_accepts_callable_factory_resolved_per_request(self):
+        """rate_limit(factory) resolves the limiter on every request."""
+        inner = MagicMock()
+        inner.is_allowed.return_value = True
+        call_count = [0]
+
+        def factory():
+            call_count[0] += 1
+            return inner
+
+        @rate_limit(factory)
+        def handler(req: func.HttpRequest, **kwargs) -> func.HttpResponse:
+            return func.HttpResponse("ok", status_code=200)
+
+        handler(_make_req())
+        handler(_make_req())
+        assert call_count[0] == 2  # resolved per-request
+
     def test_returns_429_when_limiter_rejects(self):
         limiter = MagicMock()
         limiter.is_allowed.return_value = False

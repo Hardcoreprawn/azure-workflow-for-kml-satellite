@@ -48,15 +48,25 @@ from blueprints._helpers import error_response, require_auth
 logger = logging.getLogger(__name__)
 
 
-def rate_limit(limiter: Any) -> Callable:
-    """Decorator factory: return 429 if *limiter* rejects the request.
+def rate_limit(limiter_or_factory: Any) -> Callable:
+    """Decorator factory: return 429 if the rate limiter rejects the request.
 
-    Place *inside* (below) ``@require_auth`` so the rate-limit check runs
-    after the caller has already been authenticated::
+    *limiter_or_factory* may be either:
+
+    * a limiter **instance** — used directly on every request, OR
+    * a zero-argument **callable** (factory) that returns a limiter — called on
+      every request so that the active limiter singleton is always resolved
+      at request time (important when the limiter can be swapped out via
+      ``set_pipeline_limiter`` / ``set_form_limiter`` / ``set_demo_limiter``).
+
+    Passing the factory is preferred for module-level decoration::
 
         @require_auth
-        @rate_limit(get_pipeline_limiter())
+        @rate_limit(get_pipeline_limiter)   # ← factory, not get_pipeline_limiter()
         def handler(req, *, user_id, auth_claims): ...
+
+    Place *inside* (below) ``@require_auth`` so the rate-limit check runs
+    after the caller has already been authenticated.
 
     All keyword arguments (e.g. ``user_id``, ``auth_claims``) are forwarded
     transparently to the wrapped function.
@@ -67,6 +77,13 @@ def rate_limit(limiter: Any) -> Callable:
         def wrapper(req: func.HttpRequest, **kwargs: Any) -> func.HttpResponse:
             from treesight.security.rate_limit import get_client_ip
 
+            # Resolve the limiter: if the argument has `is_allowed` it is already
+            # a limiter instance; otherwise treat it as a zero-argument factory.
+            limiter = (
+                limiter_or_factory
+                if hasattr(limiter_or_factory, "is_allowed")
+                else limiter_or_factory()
+            )
             if not limiter.is_allowed(get_client_ip(req)):
                 return error_response(
                     429,
@@ -129,7 +146,7 @@ def authenticated_http_route(
 
         @bp.route(...)
         @authenticated_http_route(
-            rate_limiter=get_pipeline_limiter(),
+            rate_limiter=get_pipeline_limiter,  # pass the factory, not get_pipeline_limiter()
             max_body_bytes=32_768,
         )
         def my_handler(req, *, user_id, auth_claims):

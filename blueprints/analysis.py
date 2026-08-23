@@ -18,7 +18,7 @@ from blueprints._decorators import rate_limit, validate_body_size
 from blueprints._helpers import cors_headers, error_response, require_auth
 from treesight.ai import generate_analysis
 from treesight.constants import EUDR_CUTOFF_DATE
-from treesight.security.rate_limit import get_pipeline_limiter
+from treesight.security.rate_limit import get_pipeline_limiter  # factory, not instance
 
 # Prompt-injection defence: strip anything that isn't alphanumeric,
 # whitespace, hyphens, periods, commas, or parentheses.
@@ -246,7 +246,7 @@ health) based on the trajectory and data.
     auth_level=func.AuthLevel.ANONYMOUS,
 )
 @require_auth
-@rate_limit(get_pipeline_limiter())
+@rate_limit(get_pipeline_limiter)
 @validate_body_size(_MAX_AI_BODY_BYTES)
 def timelapse_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """Analyze entire satellite timelapse series for trends and anomalies.
