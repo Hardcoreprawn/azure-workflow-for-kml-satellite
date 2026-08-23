@@ -1,8 +1,4 @@
-"""EUDR billing and usage data assembly.
-
-Pure functions: assemble usage payloads and fetch org records.
-No HTTP or Azure Functions dependency.
-"""
+"""Pure EUDR billing and usage data assembly."""
 
 from __future__ import annotations
 
@@ -41,11 +37,8 @@ def last_n_month_keys(n: int, *, now: datetime | None = None) -> list[str]:
     return keys
 
 
-def org_member_ids_for_user(user_id: str) -> list[str]:
-    """Return the list of member user IDs for the user's org, falling back to ``[user_id]``."""
-    from treesight.security.orgs import get_user_org
-
-    org = get_user_org(user_id)
+def org_member_ids(org: dict[str, Any] | None, user_id: str) -> list[str]:
+    """Return member IDs from an injected organization snapshot."""
     if not org:
         return [user_id]
     members = org.get("members", [])
@@ -60,24 +53,20 @@ def org_member_ids_for_user(user_id: str) -> list[str]:
     return member_ids
 
 
-def eudr_usage_payload(user_id: str, records: list[dict] | None = None) -> dict[str, Any]:
+def eudr_usage_payload(
+    user_id: str,
+    records: list[dict],
+    *,
+    org: dict[str, Any] | None,
+    billing: dict[str, Any],
+) -> dict[str, Any]:
     """Assemble the EUDR usage dashboard payload for *user_id*.
 
-    *records* is a pre-fetched list of run records (for testability).
-    When omitted the caller is responsible for injecting data via the
-    blueprint layer, which owns the ``_fetch_submission_records`` dependency.
+    Organization, billing, and run records are snapshots fetched by the
+    blueprint boundary before calling this function.
     """
     from treesight.constants import EUDR_INCLUDED_PARCELS
-    from treesight.security.eudr_billing import (
-        eudr_graduated_overage_gbp,
-        eudr_next_tier,
-        get_eudr_billing_status,
-    )
-    from treesight.security.orgs import get_user_org
-
-    org = get_user_org(user_id)
-    org_id = org.get("org_id") if isinstance(org, dict) else ""
-    billing = get_eudr_billing_status(org_id or "", user_id=user_id)
+    from treesight.security.eudr_billing import eudr_graduated_overage_gbp, eudr_next_tier
 
     period_used = int(billing.get("period_parcels_used", 0) or 0)
     included = int(billing.get("included_parcels", EUDR_INCLUDED_PARCELS) or EUDR_INCLUDED_PARCELS)
@@ -85,7 +74,7 @@ def eudr_usage_payload(user_id: str, records: list[dict] | None = None) -> dict[
 
     next_threshold, next_rate = eudr_next_tier(period_used)
 
-    run_records: list[dict] = records if records is not None else []
+    run_records = records
     month_keys = last_n_month_keys(6)
     by_month: dict[str, dict[str, int]] = {k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys}
     for record in run_records:

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from treesight.analysis.prompts import build_eudr_prompt, build_timelapse_prompt
 from treesight.eudr.export import (
     SUMMARY_CSV_FIELDS,
     build_summary_csv,
@@ -17,7 +18,7 @@ from treesight.eudr.stripe_checkout import (
     build_eudr_checkout_kwargs,
     resolve_eudr_prices,
 )
-from treesight.eudr.usage import last_n_month_keys, month_key, parse_iso_datetime
+from treesight.eudr.usage import eudr_usage_payload, last_n_month_keys, month_key, parse_iso_datetime
 
 # ---------------------------------------------------------------------------
 # treesight.eudr.plots
@@ -109,6 +110,63 @@ class TestLastNMonthKeys:
         now = datetime(2024, 2, 1, tzinfo=UTC)
         keys = last_n_month_keys(3, now=now)
         assert "2023-12" in keys
+
+
+class TestPromptBuilders:
+    def test_timelapse_prompt_includes_context_and_statistics(self):
+        prompt, trends = build_timelapse_prompt(
+            {
+                "aoi_name": "North Field <1>",
+                "date_range_start": "2020-01-01",
+                "date_range_end": "2023-12-31",
+                "latitude": 51.5,
+                "longitude": -0.12,
+                "ndvi_timeseries": [
+                    {"mean": 0.4, "season": "summer", "year": 2022},
+                    {"mean": 0.6, "season": "summer", "year": 2023},
+                ],
+                "weather_timeseries": [
+                    {"month": "2022-01", "temperature": 4, "precipitation": 5},
+                    {"month": "2023-07", "temperature": 22, "precipitation": 200},
+                ],
+            }
+        )
+        assert "Area of Interest: North Field 1" in prompt
+        assert "Location: 51.50, -0.12" in prompt
+        assert "NDVI Average" in prompt
+        assert "Weather data" in prompt
+        assert trends["ndvi_trajectory"] == "Improving"
+
+    def test_eudr_prompt_omits_invalid_location(self):
+        prompt, trends, post_cutoff = build_eudr_prompt(
+            {
+                "latitude": "invalid",
+                "longitude": "also-invalid",
+                "ndvi_timeseries": [
+                    {"date": "2021-06-01", "mean": 0.5, "season": "summer", "year": 2021},
+                    {"date": "2022-06-01", "mean": 0.4, "season": "summer", "year": 2022},
+                ],
+                "weather_timeseries": [],
+            }
+        )
+        assert "Location:" not in prompt
+        assert trends["ndvi_avg"] == pytest.approx(0.45)
+        assert len(post_cutoff) == 2
+
+    def test_eudr_prompt_returns_empty_result_before_cutoff(self):
+        assert build_eudr_prompt({"ndvi_timeseries": [{"date": "2020-01-01"}]}) == (None, None, None)
+
+
+class TestEudrUsagePayload:
+    def test_assembles_from_injected_snapshots(self):
+        payload = eudr_usage_payload(
+            "user-1",
+            records=[{"submitted_at": "2024-06-15T10:00:00Z", "aoi_count": 3, "billing_type": "overage"}],
+            org={"org_id": "org-1"},
+            billing={"period_parcels_used": 12, "included_parcels": 10},
+        )
+        assert payload["current"]["overageParcels"] == 2
+        assert payload["history"][-1]["runs"] in (0, 1)
 
 
 class TestStripeCheckout:

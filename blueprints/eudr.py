@@ -31,10 +31,11 @@ logger = logging.getLogger(__name__)
 def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
     """Fetch and merge run records for all members of the user's org."""
     from blueprints.pipeline.history import _fetch_submission_records  # type: ignore[reportPrivateUsage]
-    from treesight.eudr.usage import org_member_ids_for_user
+    from treesight.eudr.usage import org_member_ids
+    from treesight.security.orgs import get_user_org
 
     all_records: list[dict] = []
-    for member_id in org_member_ids_for_user(user_id):
+    for member_id in org_member_ids(get_user_org(user_id), user_id):
         all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
     all_records.sort(key=lambda r: str(r.get("submitted_at", "")), reverse=True)
     return all_records[:limit]
