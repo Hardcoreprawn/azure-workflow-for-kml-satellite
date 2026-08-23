@@ -128,8 +128,8 @@ def main() -> int:
         runtimes = result.stdout
         check("dotnet CLI available", result.returncode == 0)
         check(
-            "ASP.NET Core 8.0 runtime present",
-            "Microsoft.AspNetCore.App 8.0" in runtimes,
+            "ASP.NET Core 10.0 runtime present",
+            "Microsoft.AspNetCore.App 10.0" in runtimes,
             f"got: {runtimes.strip()}",
         )
     except FileNotFoundError:

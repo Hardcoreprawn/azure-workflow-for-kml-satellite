@@ -10,7 +10,7 @@
 # Hosted on GHCR as: ghcr.io/<owner>/treesight-base:<tag>
 #
 # Components sourced from Microsoft image:
-#   - Azure Functions host (.NET 8 app, /azure-functions-host/)
+#   - Azure Functions host (.NET 10 app, /azure-functions-host/)
 #   - Extension bundles (/FuncExtensionBundles/)
 #   - Python worker (gRPC bridge to .NET host)
 #   - Startup scripts (/opt/startup/)
@@ -34,7 +34,7 @@
 #
 # What we control:
 #   - Python version (latest 3.12.x from official image)
-#   - .NET ASP.NET runtime (latest 8.0.x from Microsoft packages)
+#   - .NET ASP.NET runtime (latest 10.0.x from Microsoft packages)
 #   - Debian packages (minimal — only what's actually needed)
 # ─────────────────────────────────────────────────────────────
 
@@ -90,8 +90,8 @@ LABEL org.opencontainers.image.source="https://github.com/Hardcoreprawn/azure-wo
       org.opencontainers.image.description="Canopex – Azure Functions Python 3.12 base image" \
       org.opencontainers.image.title="treesight-base"
 
-# Install .NET 8 ASP.NET runtime — required by the Functions host.
-# Uses Microsoft's official install script for latest 8.0.x.
+# Install .NET 10 ASP.NET runtime — required by the Functions host.
+# Uses Microsoft's official install script for latest 10.0.x.
 # libexpat1 — required by GDAL native libs (rasterio, fiona)
 # libpng16-16 — explicitly upgraded for CVE-2026-33416/33636
 RUN apt-get update -qq && \
@@ -101,7 +101,7 @@ RUN apt-get update -qq && \
     curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
     bash /tmp/dotnet-install.sh \
       --runtime aspnetcore \
-      --channel 8.0 \
+    --channel 10.0 \
       --install-dir /usr/share/dotnet \
       --no-path && \
     ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet && \

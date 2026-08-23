@@ -1540,10 +1540,23 @@ class TestContainerRuntimePrereqs:
             ".NET Functions host crashes at startup without ICU globalization support"
         )
 
+    def test_dotnet_runtime_matches_functions_host(self):
+        """The installed ASP.NET runtime must match the host framework channel."""
+        content = self.BASE_DOCKERFILE.read_text()
+        assert re.search(r"--channel\s+10\.0", content), (
+            "Dockerfile.base must install ASP.NET Core 10 because the current "
+            "Microsoft Functions host targets Microsoft.NETCore.App 10.0"
+        )
+
     def test_smoke_test_checks_icu(self):
         """Container smoke test must verify ICU is present."""
         smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
         assert "libicu" in smoke.lower(), "container_smoke_test.py must check for libicu presence"
+
+    def test_smoke_test_checks_current_dotnet_runtime(self):
+        """Smoke test must verify the runtime required by the Functions host."""
+        smoke = (ROOT / "scripts" / "container_smoke_test.py").read_text()
+        assert "ASP.NET Core 10.0 runtime present" in smoke
 
     def test_no_host_dll_deletion_in_dockerfile(self):
         """Host DLLs must NOT be deleted — host lazily loads them at startup.
