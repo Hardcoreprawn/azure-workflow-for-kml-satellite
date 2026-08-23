@@ -107,9 +107,9 @@ def build_timelapse_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any]
         f"{context_str}\n\n"
         f"Provide structured analysis as JSON (respond ONLY with valid JSON, "
         f"no markdown):\n"
-        f'{{\n'
+        f"{{\n"
         f'  "observations": [\n'
-        f'    {{\n'
+        f"    {{\n"
         f'      "category": "vegetation_health|trend|temperature|precipitation|anomaly",\n'
         f'      "severity": "critical|high|moderate|low|normal",\n'
         f'      "description": "Specific observation backed by the data above",\n'
@@ -126,11 +126,11 @@ def build_timelapse_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any]
         f"- Only flag YEAR-OVER-YEAR same-season changes as concerning "
         f"(e.g. Summer 2023 vs Summer 2022).\n"
         f"- Temperature variation over 6+ months is SEASONAL, not anomalous.\n"
-        f"- The \"Significant Events\" section lists real year-over-year "
+        f'- The "Significant Events" section lists real year-over-year '
         f"deviations — use these as your primary evidence.\n"
-        f"- The \"Multi-year Trajectory\" and per-season breakdown are the "
+        f'- The "Multi-year Trajectory" and per-season breakdown are the '
         f"most reliable indicators.\n"
-        f"- Set \"score\" between 0.0 (critical decline) and 1.0 (excellent "
+        f'- Set "score" between 0.0 (critical decline) and 1.0 (excellent '
         f"health) based on the trajectory and data.\n"
         f"- Keep observations SPECIFIC — cite actual values from the data."
     ), trend_info
@@ -212,12 +212,12 @@ def build_eudr_prompt(
         f"{context_str}\n\n"
         f"Provide a structured satellite screening assessment as JSON (respond ONLY "
         f"with valid JSON, no markdown):\n"
-        f'{{\n'
+        f"{{\n"
         f'  "screening_outcome": "no_signal_detected|signal_detected|insufficient_evidence",\n'
         f'  "confidence": "high|medium|low",\n'
         f'  "conclusion": "Clear 1-sentence conclusion starting with the site name",\n'
         f'  "evidence": [\n'
-        f'    {{\n'
+        f"    {{\n"
         f'      "indicator": "Specific data point or observation",\n'
         f'      "interpretation": "What this means for EUDR evidence"\n'
         f"    }}\n"

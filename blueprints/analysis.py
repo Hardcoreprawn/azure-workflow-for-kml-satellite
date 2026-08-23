@@ -166,7 +166,7 @@ def _eudr_handler(req: func.HttpRequest, context: dict) -> func.HttpResponse:
 
     analysis["trend_data"] = trend_info
     analysis["eudr_cutoff_date"] = EUDR_CUTOFF_DATE
-    analysis["observations_analysed"] = len(post_cutoff)
+    analysis["observations_analysed"] = len(post_cutoff or [])
 
     return func.HttpResponse(
         json.dumps(analysis),
