@@ -13,9 +13,7 @@ from typing import Any
 
 import pytest
 
-from blueprints.analysis import (
-    _calculate_trends,  # pyright: ignore[reportPrivateUsage]
-)
+from treesight.analysis.trends import calculate_trends as _calculate_trends
 
 # ---------------------------------------------------------------------------
 # Helpers
