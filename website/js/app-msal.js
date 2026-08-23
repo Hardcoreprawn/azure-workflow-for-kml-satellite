@@ -10,7 +10,7 @@
  *
  * Exposes: window.CanopexAuth (consumed by app-shell.js).
  * The unified CIAM module is canopex-auth.js; app-msal.js remains for the
- * app-shell surface. Both share the `audience + '/.default'` scope contract.
+ * app-shell surface. Both share the `audience + '/User.Read'` scope contract.
  *
  * Contract:
  *   init(deps)     — call once at boot; registers deps from app-shell.js
