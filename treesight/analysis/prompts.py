@@ -14,7 +14,7 @@ from treesight.constants import EUDR_CUTOFF_DATE
 _EUDR_CUTOFF = EUDR_CUTOFF_DATE
 
 
-def build_timelapse_prompt(context: dict[str, Any]) -> str:
+def build_timelapse_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Build the LLM prompt for timelapse vegetation analysis.
 
     Returns the prompt string ready to pass to ``generate_analysis``.
@@ -136,7 +136,9 @@ def build_timelapse_prompt(context: dict[str, Any]) -> str:
     ), trend_info
 
 
-def build_eudr_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any], list[dict[str, Any]]] | tuple[None, None, None]:
+def build_eudr_prompt(
+    context: dict[str, Any],
+) -> tuple[str, dict[str, Any], list[dict[str, Any]]] | tuple[None, None, None]:
     """Build the LLM prompt for EUDR deforestation-free assessment.
 
     Returns ``(prompt, trend_info, post_cutoff)`` on success, or
@@ -164,12 +166,15 @@ def build_eudr_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any], lis
     lat_raw = context.get("latitude")
     lon_raw = context.get("longitude")
     if lat_raw is not None and lon_raw is not None:
+        location: str | None = None
         try:
             latitude = float(lat_raw)
             longitude = float(lon_raw)
-            context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+            location = f"Location: {latitude:.4f}, {longitude:.4f}"
         except (TypeError, ValueError):
-            pass  # Non-numeric lat/lon: omit location line rather than aborting
+            location = None
+        if location:
+            context_lines.append(location)
     context_lines.append(f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)")
     context_lines.append(f"Analysis Period: post-{_EUDR_CUTOFF} ({len(post_cutoff)} observations)")
 
