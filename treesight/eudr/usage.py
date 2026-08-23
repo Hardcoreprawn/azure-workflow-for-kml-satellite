@@ -60,19 +60,13 @@ def org_member_ids_for_user(user_id: str) -> list[str]:
     return member_ids
 
 
-def fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
-    """Fetch and merge run records for all members of the user's org."""
-    from blueprints.pipeline.history import _fetch_submission_records  # type: ignore[reportPrivateUsage]
+def eudr_usage_payload(user_id: str, records: list[dict] | None = None) -> dict[str, Any]:
+    """Assemble the EUDR usage dashboard payload for *user_id*.
 
-    all_records: list[dict] = []
-    for member_id in org_member_ids_for_user(user_id):
-        all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
-    all_records.sort(key=lambda record: str(record.get("submitted_at", "")), reverse=True)
-    return all_records[:limit]
-
-
-def eudr_usage_payload(user_id: str) -> dict[str, Any]:
-    """Assemble the EUDR usage dashboard payload for *user_id*."""
+    *records* is a pre-fetched list of run records (for testability).
+    When omitted the caller is responsible for injecting data via the
+    blueprint layer, which owns the ``_fetch_submission_records`` dependency.
+    """
     from treesight.constants import EUDR_INCLUDED_PARCELS
     from treesight.security.eudr_billing import (
         eudr_graduated_overage_gbp,
@@ -91,10 +85,10 @@ def eudr_usage_payload(user_id: str) -> dict[str, Any]:
 
     next_threshold, next_rate = eudr_next_tier(period_used)
 
-    records = fetch_org_run_records(user_id, limit=400)
+    run_records: list[dict] = records if records is not None else []
     month_keys = last_n_month_keys(6)
     by_month: dict[str, dict[str, int]] = {k: {"parcels": 0, "runs": 0, "overage_runs": 0} for k in month_keys}
-    for record in records:
+    for record in run_records:
         submitted = parse_iso_datetime(str(record.get("submitted_at", "")))
         if not submitted:
             continue

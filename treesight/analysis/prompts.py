@@ -164,9 +164,12 @@ def build_eudr_prompt(context: dict[str, Any]) -> tuple[str, dict[str, Any], lis
     lat_raw = context.get("latitude")
     lon_raw = context.get("longitude")
     if lat_raw is not None and lon_raw is not None:
-        latitude = float(lat_raw)
-        longitude = float(lon_raw)
-        context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+        try:
+            latitude = float(lat_raw)
+            longitude = float(lon_raw)
+            context_lines.append(f"Location: {latitude:.4f}, {longitude:.4f}")
+        except (TypeError, ValueError):
+            pass  # Non-numeric lat/lon: omit location line rather than aborting
     context_lines.append(f"EUDR Reference Date: {_EUDR_CUTOFF} (EU Regulation 2023/1115 Art. 2)")
     context_lines.append(f"Analysis Period: post-{_EUDR_CUTOFF} ({len(post_cutoff)} observations)")
 

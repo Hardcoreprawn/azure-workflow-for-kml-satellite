@@ -1,7 +1,6 @@
 """EUDR compliance endpoints — HTTP dispatch shell (M4 §4.9–4.10).
 
 Pure business logic lives in treesight/eudr/.
-
 NOTE: Do NOT add ``from __future__ import annotations`` to blueprint modules.
 See blueprints/pipeline.py module docstring for details.
 """
@@ -22,7 +21,6 @@ from treesight.eudr.plots import sanitise_name, validate_plot
 from treesight.security.rate_limit import get_client_ip, get_pipeline_limiter
 
 bp = func.Blueprint()
-
 # Limits
 _MAX_PLOTS = 200
 _MAX_BODY_BYTES = 65_536  # 64 KiB
@@ -30,13 +28,33 @@ _MAX_BODY_BYTES = 65_536  # 64 KiB
 logger = logging.getLogger(__name__)
 
 
+def _fetch_org_run_records(user_id: str, limit: int = 250) -> list[dict]:
+    """Fetch and merge run records for all members of the user's org."""
+    from blueprints.pipeline.history import _fetch_submission_records  # type: ignore[reportPrivateUsage]
+    from treesight.eudr.usage import org_member_ids_for_user
+
+    all_records: list[dict] = []
+    for member_id in org_member_ids_for_user(user_id):
+        all_records.extend(_fetch_submission_records(member_id, limit, offset=0))
+    all_records.sort(key=lambda r: str(r.get("submitted_at", "")), reverse=True)
+    return all_records[:limit]
+
+
+def _resolve_manifest_path(output: object) -> str | None:
+    """Extract the enrichment manifest blob path from a DF status output."""
+    from blueprints.pipeline._status import _reshape_output  # type: ignore[reportPrivateUsage]
+
+    if isinstance(output, dict):
+        output = _reshape_output(output)
+    if isinstance(output, dict):
+        return output.get("enrichment_manifest") or output.get("enrichmentManifest") or None
+    return None
+
+
 def _validate_convert_request(
     req: func.HttpRequest,
 ) -> tuple[list[dict], str, float] | func.HttpResponse:
-    """Validate convert-coordinates request.
-
-    Returns (validated_plots, doc_name, buffer_m) or error response.
-    """
+    """Validate and return (plots, doc_name, buffer_m) or an error HttpResponse."""
     if not get_pipeline_limiter().is_allowed(get_client_ip(req)):
         return error_response(429, "Too many requests — please wait before trying again", req=req)
 
@@ -111,11 +129,6 @@ def convert_coordinates(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-# ---------------------------------------------------------------------------
-# EUDR billing endpoints (#613)
-# ---------------------------------------------------------------------------
-
-
 @bp.route(
     route="eudr/usage",
     methods=["GET", "OPTIONS"],
@@ -175,6 +188,7 @@ def eudr_billing_status(req: func.HttpRequest, *, auth_claims: dict, user_id: st
     methods=["POST", "OPTIONS"],
     auth_level=func.AuthLevel.ANONYMOUS,
 )
+<<<<<<< HEAD
 @require_auth
 def eudr_subscribe(req: func.HttpRequest, *, auth_claims: dict, user_id: str) -> func.HttpResponse:
     """POST /api/eudr/subscribe — create Stripe Checkout for EUDR plan.
@@ -182,6 +196,18 @@ def eudr_subscribe(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     Owner-only. Creates a checkout session with both the base subscription
     price and the metered usage price.
     """
+=======
+def eudr_subscribe(req: func.HttpRequest) -> func.HttpResponse:
+    """POST /api/eudr/subscribe — owner-only Stripe Checkout for EUDR plan."""
+    if req.method == "OPTIONS":
+        return cors_preflight(req)
+
+    try:
+        _claims, user_id = check_auth(req)
+    except ValueError as exc:
+        return error_response(401, str(exc), req=req)
+
+>>>>>>> 0b99e2f (refactor: address code review — fix arch boundary violations and lat/lon handling)
     from treesight.security.eudr_billing import is_org_owner
     from treesight.security.orgs import get_user_org
 
@@ -252,11 +278,6 @@ def eudr_subscribe(req: func.HttpRequest, *, auth_claims: dict, user_id: str) ->
     )
 
 
-# ---------------------------------------------------------------------------
-# §5 — GET /api/eudr/summary-export  (#674)
-# ---------------------------------------------------------------------------
-
-
 @bp.route(
     route="eudr/summary-export",
     methods=["GET", "OPTIONS"],
@@ -284,14 +305,12 @@ async def _eudr_summary_export(
     except ValueError as exc:
         return error_response(401, str(exc), req=req)
 
-    from blueprints.pipeline._status import _reshape_output  # noqa: F401 (imported via resolve_manifest_path)
     from treesight.constants import DEFAULT_OUTPUT_CONTAINER
-    from treesight.eudr.export import build_summary_csv, resolve_manifest_path, summary_rows_from_manifest
-    from treesight.eudr.usage import fetch_org_run_records
+    from treesight.eudr.export import build_summary_csv, summary_rows_from_manifest
     from treesight.storage.client import BlobStorageClient
 
     storage = BlobStorageClient()
-    run_records = fetch_org_run_records(user_id, limit=20)
+    run_records = _fetch_org_run_records(user_id, limit=20)
 
     all_rows: list[dict[str, Any]] = []
     for record in run_records:
@@ -308,7 +327,7 @@ async def _eudr_summary_export(
             if isinstance(output, str):
                 with contextlib.suppress(Exception):
                     output = json.loads(output)
-            manifest_path = resolve_manifest_path(output)
+            manifest_path = _resolve_manifest_path(output)
             if not manifest_path:
                 continue
 

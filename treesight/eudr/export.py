@@ -86,20 +86,6 @@ def summary_rows_from_manifest(
     return rows
 
 
-def resolve_manifest_path(output: object) -> str | None:
-    """Extract the enrichment manifest blob path from a DF output object.
-
-    Returns ``None`` when the path cannot be determined.
-    """
-    from blueprints.pipeline._status import _reshape_output  # type: ignore[reportPrivateUsage]
-
-    if isinstance(output, dict):
-        output = _reshape_output(output)
-    if isinstance(output, dict):
-        return output.get("enrichment_manifest") or output.get("enrichmentManifest") or None
-    return None
-
-
 def build_summary_csv(rows: list[dict[str, Any]]) -> str:
     """Serialise a list of summary row dicts as a CSV string."""
     buf = io.StringIO()

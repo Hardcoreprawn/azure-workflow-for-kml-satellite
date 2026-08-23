@@ -152,29 +152,27 @@ class TestEudrUsage:
 
 
 class TestEudrUsagePayload:
-    @patch("treesight.eudr.usage.fetch_org_run_records", return_value=[])
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={"period_parcels_used": 47, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
-    def test_estimated_spend_below_tier_threshold(self, _org, _billing, _records):
+    def test_estimated_spend_below_tier_threshold(self, _org, _billing):
         from treesight.eudr.usage import eudr_usage_payload as _eudr_usage_payload
 
-        payload = _eudr_usage_payload("test-user")
+        payload = _eudr_usage_payload("test-user", records=[])
         # 47 used with 10 included => 37 overage parcels at £3.00 each.
         assert payload["current"]["estimatedSpendGbp"] == 111.0
 
-    @patch("treesight.eudr.usage.fetch_org_run_records", return_value=[])
     @patch(
         "treesight.security.eudr_billing.get_eudr_billing_status",
         return_value={"period_parcels_used": 120, "included_parcels": 10},
     )
     @patch("treesight.security.orgs.get_user_org", return_value={"org_id": "org-1"})
-    def test_estimated_spend_above_tier_threshold(self, _org, _billing, _records):
+    def test_estimated_spend_above_tier_threshold(self, _org, _billing):
         from treesight.eudr.usage import eudr_usage_payload as _eudr_usage_payload
 
-        payload = _eudr_usage_payload("test-user")
+        payload = _eudr_usage_payload("test-user", records=[])
         # 120 used with 10 included => 110 overage parcels:
         # parcels 11–100 (90 × £3.00 = £270) + parcels 101–120 (20 × £2.50 = £50) = £320.
         # Applying the marginal rate (£2.50) to all 110 overage parcels would wrongly give £275.
@@ -537,7 +535,7 @@ class TestEudrSummaryExport:
 
     @_REQUIRE_AUTH
     @patch(
-        "treesight.eudr.usage.fetch_org_run_records",
+        "blueprints.eudr._fetch_org_run_records",
         return_value=[
             {"instance_id": "inst-001", "submitted_at": "2026-01-10T12:00:00Z"},
         ],
@@ -579,7 +577,7 @@ class TestEudrSummaryExport:
 
     @_REQUIRE_AUTH
     @patch(
-        "treesight.eudr.usage.fetch_org_run_records",
+        "blueprints.eudr._fetch_org_run_records",
         return_value=[],
     )
     @patch("blueprints.eudr.check_auth", return_value=({"sub": "u1"}, "u1"))

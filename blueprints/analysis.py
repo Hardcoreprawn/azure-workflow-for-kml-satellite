@@ -145,15 +145,6 @@ def timelapse_analysis(req: func.HttpRequest, *, auth_claims: dict, user_id: str
 
 def _eudr_handler(req: func.HttpRequest, context: dict) -> func.HttpResponse:
     """Build EUDR assessment prompt and call AI."""
-    lat_raw = context.get("latitude")
-    lon_raw = context.get("longitude")
-    if lat_raw is not None and lon_raw is not None:
-        try:
-            float(lat_raw)
-            float(lon_raw)
-        except (TypeError, ValueError):
-            return error_response(400, "Invalid latitude/longitude; values must be numeric.", req=req)
-
     prompt, trend_info, post_cutoff = build_eudr_prompt(context)
     if prompt is None:
         return error_response(400, "No post-2020 NDVI data available for EUDR assessment", req=req)
