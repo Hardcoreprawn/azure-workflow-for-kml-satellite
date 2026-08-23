@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 from treesight import constants
 
 
@@ -26,3 +28,15 @@ class TestConstants:
     def test_resolution_constraints(self):
         assert constants.MIN_RESOLUTION_M > 0
         assert constants.DEFAULT_IMAGERY_RESOLUTION_TARGET_M >= constants.MIN_RESOLUTION_M
+
+    def test_invalid_enrichment_concurrency_uses_safe_defaults(self, monkeypatch):
+        monkeypatch.setenv("ENRICHMENT_CONCURRENCY", "invalid")
+        monkeypatch.setenv("ENRICHMENT_FRAME_CONCURRENCY", "invalid")
+        reloaded = importlib.reload(constants)
+
+        assert reloaded.DEFAULT_ENRICHMENT_CONCURRENCY == 8
+        assert reloaded.DEFAULT_ENRICHMENT_FRAME_CONCURRENCY == 8
+
+        monkeypatch.delenv("ENRICHMENT_CONCURRENCY")
+        monkeypatch.delenv("ENRICHMENT_FRAME_CONCURRENCY")
+        importlib.reload(constants)
