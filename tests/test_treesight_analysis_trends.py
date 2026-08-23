@@ -132,7 +132,7 @@ class TestCalculateTrendsWeather:
         # 12 months of data: first temp 3°C, last temp 20°C → delta=17°C over 11 month span
         months = [f"2022-{m:02d}" for m in range(1, 13)]
         temps = [3, 4, 8, 12, 16, 20, 22, 21, 17, 12, 7, 20]
-        series = [{"month": m, "temperature": t, "precipitation": 60} for m, t in zip(months, temps)]
+        series = [{"month": m, "temperature": t, "precipitation": 60} for m, t in zip(months, temps, strict=True)]
         result = calculate_trends([], series)
         assert result["temp_change_source"] == "Seasonal pattern (expected)"
 
