@@ -205,6 +205,25 @@ class TestPhaseEnrichment:
 
         assert result == enrichment_manifest
 
+    def test_single_aoi_metadata_reaches_finalize(self):
+        context = MagicMock()
+        data_sources_and_imagery = [{"weather": {}}, {"imagery": []}]
+        enrichment_manifest = {"manifest": True}
+        context.task_all.return_value = data_sources_and_imagery
+
+        gen = _phase_enrichment(
+            context,
+            {},
+            CTX,
+            [[0.0, 0.0]],
+            [{"name": "Solo Farm", "area_ha": 12.5}],
+            "output",
+        )
+        _drain(gen, [data_sources_and_imagery, enrichment_manifest])
+
+        finalize_payload = context.call_activity_with_retry.call_args.args[2]
+        assert finalize_payload["single_aoi_metadata"] == {"name": "Solo Farm", "area_ha": 12.5}
+
 
 class TestSafeFinalizeRun:
     def test_success(self):

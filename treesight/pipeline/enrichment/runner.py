@@ -568,6 +568,7 @@ def enrich_finalize(
     imagery: dict[str, Any],
     per_aoi_results: list[dict[str, Any]],
     *,
+    single_aoi_metadata: dict[str, Any] | None = None,
     eudr_mode: bool = False,
     date_start: str | None = None,
     project_name: str,
@@ -604,6 +605,10 @@ def enrich_finalize(
             total=len(per_aoi_results),
             succeeded=len(succeeded),
         )
+
+    if not per_aoi_results and single_aoi_metadata:
+        merged["feature_name"] = single_aoi_metadata.get("name", "")
+        merged["area_ha"] = single_aoi_metadata.get("area_ha", 0.0)
 
     merged["resource_usage"] = acc.to_dict()
     merged["estimated_cost_pence"] = acc.estimate_cost_pence()

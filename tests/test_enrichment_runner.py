@@ -864,6 +864,23 @@ class TestEnrichFinalize:
         )
         assert len(result["per_aoi_enrichment"]) == 2
 
+    def test_includes_single_aoi_metadata(self):
+        storage = MagicMock()
+
+        result = enrich_finalize(
+            {"frame_plan": []},
+            {},
+            [],
+            single_aoi_metadata={"name": "Solo Farm", "area_ha": 12.5},
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        assert result["feature_name"] == "Solo Farm"
+        assert result["area_ha"] == 12.5
+
     @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
     def test_eudr_mode_runs_determination(self, mock_det):
         mock_det.return_value = {"status": "compliant"}
