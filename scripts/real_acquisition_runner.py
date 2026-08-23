@@ -91,11 +91,32 @@ def _build_run_summary(status_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _test_principal_header(user_id: str) -> str:
+    """Build a Base64-encoded X-MS-CLIENT-PRINCIPAL value for *user_id*.
+
+    Authenticates export-fetch requests as the same synthetic-quota runner
+    identity the ticket was uploaded under (CANOPEX_ALLOW_TEST_PRINCIPAL,
+    set by ``build_func_host_env(test_mode=False)``), since there is no real
+    CIAM bearer token available for a local script (#1379).
+    """
+    import base64
+    import json as _json
+
+    principal = {
+        "identityProvider": "aad",
+        "userId": user_id,
+        "userDetails": f"{user_id}@example.com",
+        "userRoles": ["anonymous", "authenticated"],
+    }
+    return base64.b64encode(_json.dumps(principal).encode()).decode()
+
+
 def _fetch_export(instance_id: str, fmt: str, dest_dir: Path) -> Path | None:
     """Download one export format for *instance_id*, or return None on failure."""
     url = f"{FUNC_BASE}/api/export/{instance_id}/{fmt}"
+    headers = {"X-MS-CLIENT-PRINCIPAL": _test_principal_header(_RUNNER_USER_ID)}
     try:
-        resp = httpx.get(url, timeout=60.0)
+        resp = httpx.get(url, headers=headers, timeout=60.0)
     except httpx.TransportError as exc:
         print(f"  WARN: export {fmt!r} request failed: {exc}", file=sys.stderr)
         return None
@@ -120,7 +141,11 @@ def run_fixture(fixture: Path, *, formats: tuple[str, ...]) -> bool:
     print(f"Fixture: {fixture.name}")
 
     blob_name, blob_url, content_length = upload_kml(fixture, DEFAULT_CONTAINER)
-    _upload_ticket(blob_name, DEFAULT_CONTAINER, tier=_RUNNER_TIER, user_id=_RUNNER_USER_ID)
+    # eudr_mode=True: these are EUDR commodity scenarios (#1379) — without it,
+    # blob_trigger never sets eudr_mode on the orchestrator input, so the
+    # WorldCover/WDPA enrichment phase (the actual EUDR evidence) is skipped
+    # entirely and every parcel comes back "insufficient_evidence".
+    _upload_ticket(blob_name, DEFAULT_CONTAINER, tier=_RUNNER_TIER, user_id=_RUNNER_USER_ID, eudr_mode=True)
 
     instance_id = fire_event_grid(blob_url, blob_name, content_length, DEFAULT_CONTAINER)
 

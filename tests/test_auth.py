@@ -261,6 +261,50 @@ class TestCheckAuth:
             with pytest.raises(ValueError, match="Authentication required"):
                 check_auth(mock_req)
 
+    def test_accepts_test_principal_via_allow_test_principal_without_test_mode(self):
+        """CANOPEX_ALLOW_TEST_PRINCIPAL accepts X-MS-CLIENT-PRINCIPAL independently of
+        CANOPEX_TEST_MODE (#1379) — real_acquisition_runner.py needs to authenticate its
+        own export-fetch calls while CANOPEX_TEST_MODE stays unset (real imagery)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="real-acquisition-runner"),
+        }
+        mock_req.params = {}
+
+        with patch.dict("os.environ", {"CANOPEX_ALLOW_TEST_PRINCIPAL": "1"}, clear=False):
+            import os
+
+            os.environ.pop("CANOPEX_TEST_MODE", None)
+            os.environ.pop("REQUIRE_AUTH", None)
+            claims, user_id = check_auth(mock_req)
+
+        assert user_id == "real-acquisition-runner"
+        assert claims["auth_path"] == "test_principal"
+
+    def test_ignores_test_principal_when_neither_flag_set(self):
+        """Without CANOPEX_TEST_MODE or CANOPEX_ALLOW_TEST_PRINCIPAL, the
+        X-MS-CLIENT-PRINCIPAL header must be ignored (falls back to anonymous)."""
+        from blueprints._helpers import check_auth
+
+        mock_req = MagicMock()
+        mock_req.headers = {
+            "X-MS-CLIENT-PRINCIPAL": _encode_principal(user_id="forged-user"),
+        }
+        mock_req.params = {}
+
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("CANOPEX_TEST_MODE", None)
+            os.environ.pop("CANOPEX_ALLOW_TEST_PRINCIPAL", None)
+            os.environ.pop("REQUIRE_AUTH", None)
+            claims, user_id = check_auth(mock_req)
+
+        assert user_id == "anonymous"
+        assert claims == {}
+
 
 # ---------------------------------------------------------------------------
 # require_auth decorator

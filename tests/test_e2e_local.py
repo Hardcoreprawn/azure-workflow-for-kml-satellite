@@ -73,6 +73,20 @@ class TestBuildFuncHostEnv:
         env = build_func_host_env({"CANOPEX_TEST_MODE": "1"}, test_mode=False)
         assert "CANOPEX_TEST_MODE" not in env
 
+    def test_test_mode_false_still_allows_test_principal_auth(self):
+        """real_acquisition_runner.py (#1379) needs real imagery (CANOPEX_TEST_MODE
+        unset) but must still be able to authenticate its own export-fetch calls
+        via a test X-MS-CLIENT-PRINCIPAL header — CANOPEX_ALLOW_TEST_PRINCIPAL is
+        the decoupled flag for exactly that."""
+        env = build_func_host_env({}, test_mode=False)
+        assert env["CANOPEX_ALLOW_TEST_PRINCIPAL"] == "1"
+
+    def test_test_mode_true_does_not_need_allow_test_principal(self):
+        """Stub-imagery runs already get test-principal auth via CANOPEX_TEST_MODE
+        itself — no need to also set the decoupled flag."""
+        env = build_func_host_env({})
+        assert "CANOPEX_ALLOW_TEST_PRINCIPAL" not in env
+
 
 class TestAssertPipelineSucceeded:
     def test_passes_for_a_real_successful_run(self):
