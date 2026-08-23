@@ -864,6 +864,23 @@ class TestEnrichFinalize:
         )
         assert len(result["per_aoi_enrichment"]) == 2
 
+    def test_does_not_add_single_aoi_metadata_for_multiple_results(self):
+        storage = MagicMock()
+
+        result = enrich_finalize(
+            {},
+            {},
+            [{"name": "A"}, {"name": "B"}],
+            single_aoi_metadata={"name": "Wrong", "area_ha": 99.0},
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        assert "feature_name" not in result
+        assert "area_ha" not in result
+
     def test_includes_single_aoi_metadata(self):
         storage = MagicMock()
 
