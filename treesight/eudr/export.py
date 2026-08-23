@@ -100,6 +100,7 @@ def resolve_manifest_path(output: object) -> str | None:
     return None
 
 
+def build_summary_csv(rows: list[dict[str, Any]]) -> str:
     """Serialise a list of summary row dicts as a CSV string."""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=SUMMARY_CSV_FIELDS, extrasaction="ignore")
