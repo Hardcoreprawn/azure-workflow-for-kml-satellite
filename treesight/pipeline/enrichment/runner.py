@@ -32,6 +32,10 @@ from treesight.storage.client import BlobStorageClient
 
 logger = logging.getLogger(__name__)
 
+_SAFE_MODE_DATA_SOURCE_SKIPS = ["weather", "flood_fire", "eudr_datasets"]
+_SAFE_MODE_IMAGERY_SKIPS = ["mosaic", "ndvi", "change_detection"]
+_SAFE_MODE_ALL_SKIPS = _SAFE_MODE_DATA_SOURCE_SKIPS + _SAFE_MODE_IMAGERY_SKIPS
+
 
 # ── Per-AOI enrichment ────────────────────────────────────────
 
@@ -189,24 +193,51 @@ def _eudr_projection(results: dict[str, Any]) -> dict[str, Any] | None:
     return eudr or None
 
 
+def _center_from_coords(coords: list[list[float]]) -> dict[str, float]:
+    if not coords:
+        return {"lat": 0.0, "lon": 0.0}
+    lons = [c[0] for c in coords]
+    lats = [c[1] for c in coords]
+    return {"lat": round((min(lats) + max(lats)) / 2, 4), "lon": round((min(lons) + max(lons)) / 2, 4)}
+
+
+def _bbox_from_entry(aoi_entry: dict[str, Any], fallback: Any = None) -> Any:
+    if aoi_entry.get("bbox"):
+        return aoi_entry["bbox"]
+    coords = aoi_entry.get("coords") or []
+    if coords:
+        return _coords_to_bbox(coords)
+    return fallback or []
+
+
+def _manifest_run(project_name: str, timestamp: str, eudr_mode: bool) -> dict[str, Any]:
+    return {"project_name": project_name, "timestamp": timestamp, "eudr_mode": eudr_mode}
+
+
+def _manifest_summary(
+    per_aoi_coords: list[dict[str, Any]] | None,
+    *,
+    multi_region: bool,
+    frame_plan: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "aoi_count": len(per_aoi_coords or []),
+        "multi_region": multi_region,
+        "frame_plan": frame_plan,
+    }
+
+
 def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -> dict[str, Any]:
     coords = aoi_entry.get("coords", results.get("coords", []))
-    bbox = results.get("bbox") or aoi_entry.get("bbox") or (_coords_to_bbox(coords) if coords else [])
-    center = results.get("center") or aoi_entry.get("center")
-    if center is None and coords:
-        lons = [coord[0] for coord in coords]
-        lats = [coord[1] for coord in coords]
-        center = {"lat": round((min(lats) + max(lats)) / 2, 4), "lon": round((min(lons) + max(lons)) / 2, 4)}
-
     projected: dict[str, Any] = {
         "aoi_index": 0,
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
         "coords": coords,
-        "bbox": bbox,
-        "center": center,
+        "bbox": results.get("bbox") or _bbox_from_entry(aoi_entry),
+        "center": results.get("center") or _center_from_coords(coords),
         "frame_plan": results.get("frame_plan", []),
-        "weather_daily": results.get("weather_daily") or [],
+        "weather_daily": results.get("weather_daily") or {},
         "ndvi_stats": results.get("ndvi_stats") or [],
         "ndvi_raster_paths": results.get("ndvi_raster_paths") or [],
         "change_detection": results.get("change_detection"),
@@ -223,15 +254,16 @@ def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -
 
 
 def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], idx: int) -> dict[str, Any]:
+    coords = aoi_entry.get("coords", [])
     normalised: dict[str, Any] = {
         "aoi_index": idx,
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
-        "coords": aoi_entry.get("coords", []),
-        "bbox": aoi_entry.get("bbox", result.get("bbox", [])),
-        "center": result.get("center"),
+        "coords": coords,
+        "bbox": result.get("bbox") or _bbox_from_entry(aoi_entry),
+        "center": result.get("center") or _center_from_coords(coords),
         "frame_plan": result.get("frame_plan", []),
-        "weather_daily": result.get("weather_daily") or [],
+        "weather_daily": result.get("weather_daily") or {},
         "ndvi_stats": result.get("ndvi_stats") or [],
         "ndvi_raster_paths": result.get("ndvi_raster_paths") or [],
         "change_detection": result.get("change_detection"),
@@ -246,7 +278,9 @@ def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], 
         normalised["plot_area_ha"] = plot_area_ha
     normalised.update(result)
     normalised["aoi_index"] = idx
-    normalised.setdefault("errors", [])
+    normalised["bbox"] = normalised.get("bbox") or _bbox_from_entry(aoi_entry)
+    normalised["center"] = normalised.get("center") or _center_from_coords(coords)
+    normalised["errors"] = normalised.get("errors") or ([normalised["error"]] if normalised.get("error") else [])
     return normalised
 
 
@@ -310,8 +344,12 @@ def run_enrichment(
     center_lat = round((min(lats) + max(lats)) / 2, 4)
     center_lon = round((min(lons) + max(lons)) / 2, 4)
 
+    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+
     results: dict[str, Any] = {
         "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
+        "run": _manifest_run(project_name, timestamp, eudr_mode),
+        "summary": _manifest_summary(per_aoi_coords, multi_region=multi_region, frame_plan=frame_plan),
         "frame_plan": frame_plan,
         "coords": coords,
         "bbox": bbox,
@@ -324,8 +362,13 @@ def run_enrichment(
         if eudr_mode:
             results["eudr_mode"] = True
             results["eudr_date_start"] = date_start
-        if per_aoi_coords and len(per_aoi_coords) == 1:
-            results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+        if per_aoi_coords:
+            if len(per_aoi_coords) == 1:
+                results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
+            else:
+                results["per_aoi_enrichment"] = [
+                    _normalise_per_aoi_entry({}, entry, idx) for idx, entry in enumerate(per_aoi_coords)
+                ]
         EnrichmentManifestV2.model_validate(results)
         return results
 
@@ -334,11 +377,12 @@ def run_enrichment(
     last_date = frame_plan[-1]["end"]
     acc = ResourceAccumulator()
     from treesight import config
+
     safe_mode = config.SAFE_MODE
 
     if safe_mode:
         results["safe_mode"] = True
-        results["skipped"] = ["weather", "flood_fire", "eudr_datasets", "imagery", "change_detection", "per_aoi"]
+        results["skipped"] = _SAFE_MODE_ALL_SKIPS
     else:
         _run_weather_phase(center_lat, center_lon, first_date, last_date, results, acc=acc)
 
@@ -347,9 +391,9 @@ def run_enrichment(
 
     # Detect multi-region: AOI centroids spanning > MULTI_REGION_THRESHOLD_KM mean
     # union-level imagery and EUDR stats are geographically meaningless (#860).
-    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
     if multi_region:
         results["multi_region"] = True
+        results["summary"] = _manifest_summary(per_aoi_coords, multi_region=True, frame_plan=frame_plan)
         log_phase("enrichment", "multi_region_detected", aoi_count=len(per_aoi_coords or []))
 
     # 1d. EUDR-specific enrichments (WorldCover + WDPA) — skipped for multi-region
@@ -393,61 +437,75 @@ def run_enrichment(
         _run_aoi_metrics_phase(aoi_list, ndvi_stats, results)
 
     # 6b. Per-AOI enrichment — parallel fan-out; each AOI gets weather, NDVI, change detection
-    if per_aoi_coords and len(per_aoi_coords) > 1 and not safe_mode:
+    if per_aoi_coords and len(per_aoi_coords) > 1:
         log_phase("enrichment", "per_aoi_start", aoi_count=len(per_aoi_coords))
         per_aoi_enrichment: list[dict[str, Any]] = [{}] * len(per_aoi_coords)
 
-        def _enrich_safe(entry: dict[str, Any], idx: int) -> dict[str, Any]:
-            try:
-                return _enrich_single_aoi(
+        if safe_mode:
+            per_aoi_enrichment = [
+                _normalise_per_aoi_entry(
+                    {"safe_mode": True, "skipped": _SAFE_MODE_ALL_SKIPS},
                     entry,
-                    date_start=date_start,
-                    date_end=date_end,
-                    cadence=cadence,
-                    max_history_years=max_history_years,
-                    eudr_mode=eudr_mode,
-                    project_name=project_name,
-                    timestamp=timestamp,
-                    output_container=output_container,
-                    storage=storage,
-                    aoi_index=idx,
+                    idx,
                 )
-            except Exception:
-                logger.warning(
-                    "Per-AOI enrichment failed for %s — skipping",
-                    entry.get("name", "?"),
-                    exc_info=True,
-                )
-                return {
-                    "aoi_index": idx,
-                    "name": entry.get("name", ""),
-                    "error": "enrichment_failed",
-                    "errors": ["enrichment_failed"],
-                }
+                for idx, entry in enumerate(per_aoi_coords)
+            ]
+            results["per_aoi_enrichment"] = per_aoi_enrichment
+            log_phase(
+                "enrichment",
+                "per_aoi_done",
+                total=len(results["per_aoi_enrichment"]),
+                succeeded=len(results["per_aoi_enrichment"]),
+            )
+        else:
 
-        # Bound max_workers: never exceed the cap, never create more workers than AOIs,
-        # never allow 0 (which raises ValueError). Nested calls to _run_mosaic_ndvi_phase
-        # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
-        max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            future_to_idx = {pool.submit(_enrich_safe, entry, idx): idx for idx, entry in enumerate(per_aoi_coords)}
-            for future in as_completed(future_to_idx):
-                per_aoi_enrichment[future_to_idx[future]] = future.result()
+            def _enrich_safe(entry: dict[str, Any], idx: int) -> dict[str, Any]:
+                try:
+                    return _enrich_single_aoi(
+                        entry,
+                        date_start=date_start,
+                        date_end=date_end,
+                        cadence=cadence,
+                        max_history_years=max_history_years,
+                        eudr_mode=eudr_mode,
+                        project_name=project_name,
+                        timestamp=timestamp,
+                        output_container=output_container,
+                        storage=storage,
+                        aoi_index=idx,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Per-AOI enrichment failed for %s — skipping",
+                        entry.get("name", "?"),
+                        exc_info=True,
+                    )
+                    return {
+                        "aoi_index": idx,
+                        "name": entry.get("name", ""),
+                        "error": "enrichment_failed",
+                        "errors": ["enrichment_failed"],
+                    }
 
-        results["per_aoi_enrichment"] = [
-            _normalise_per_aoi_entry(result, per_aoi_coords[idx], idx) for idx, result in enumerate(per_aoi_enrichment)
-        ]
-        log_phase(
-            "enrichment",
-            "per_aoi_done",
-            total=len(results["per_aoi_enrichment"]),
-            succeeded=sum(1 for r in results["per_aoi_enrichment"] if "error" not in r),
-        )
-    elif per_aoi_coords and len(per_aoi_coords) > 1:
-        results["per_aoi_enrichment"] = [
-            _normalise_per_aoi_entry({"safe_mode": True, "skipped": ["per_aoi"]}, entry, idx)
-            for idx, entry in enumerate(per_aoi_coords)
-        ]
+            # Bound max_workers: never exceed the cap, never create more workers than AOIs,
+            # never allow 0 (which raises ValueError). Nested calls to _run_mosaic_ndvi_phase
+            # may themselves use thread pools, so we also clamp to avoid runaway concurrency.
+            max_workers = max(1, min(DEFAULT_ENRICHMENT_CONCURRENCY, len(per_aoi_coords)))
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                future_to_idx = {pool.submit(_enrich_safe, entry, idx): idx for idx, entry in enumerate(per_aoi_coords)}
+                for future in as_completed(future_to_idx):
+                    per_aoi_enrichment[future_to_idx[future]] = future.result()
+
+            results["per_aoi_enrichment"] = [
+                _normalise_per_aoi_entry(result, per_aoi_coords[idx], idx)
+                for idx, result in enumerate(per_aoi_enrichment)
+            ]
+            log_phase(
+                "enrichment",
+                "per_aoi_done",
+                total=len(results["per_aoi_enrichment"]),
+                succeeded=sum(1 for r in results["per_aoi_enrichment"] if "error" not in r),
+            )
     elif per_aoi_coords and len(per_aoi_coords) == 1:
         results["per_aoi_enrichment"] = [_single_aoi_projection(results, per_aoi_coords[0])]
 
@@ -560,7 +618,7 @@ def enrich_data_sources(
 
     if config.SAFE_MODE:
         results["safe_mode"] = True
-        results["skipped"] = ["weather", "flood_fire", "eudr_datasets"]
+        results["skipped"] = _SAFE_MODE_DATA_SOURCE_SKIPS
         if eudr_mode:
             results["eudr_mode"] = True
             results["eudr_date_start"] = date_start
@@ -621,8 +679,8 @@ def enrich_imagery(
         return {
             "frame_plan": frame_plan,
             "safe_mode": True,
-            "skipped": ["imagery", "change_detection"],
-            "resource_usage": {},
+            "skipped": _SAFE_MODE_IMAGERY_SKIPS,
+            "resource_usage": ResourceAccumulator().to_dict(),
         }
 
     acc = ResourceAccumulator()
@@ -672,6 +730,15 @@ def enrich_single_aoi_step(
     Thin wrapper around ``_enrich_single_aoi`` with error containment so
     a single AOI failure doesn't poison the whole batch.
     """
+    from treesight import config
+
+    if config.SAFE_MODE:
+        return _normalise_per_aoi_entry(
+            {"safe_mode": True, "skipped": _SAFE_MODE_ALL_SKIPS},
+            aoi_entry,
+            aoi_index if aoi_index is not None else 0,
+        )
+
     try:
         return _enrich_single_aoi(
             aoi_entry,
@@ -717,7 +784,19 @@ def enrich_finalize(
     # Merge: data_sources is the base, imagery overlays
     ds_usage = data_sources.get("resource_usage")
     img_usage = imagery.get("resource_usage")
-    merged = {"schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA, **data_sources, **imagery}
+    effective_date_start = date_start
+    if eudr_mode and not effective_date_start:
+        cutoff = date.fromisoformat(EUDR_CUTOFF_DATE)
+        effective_date_start = (cutoff + timedelta(days=1)).isoformat()
+    frame_plan = data_sources.get("frame_plan") or imagery.get("frame_plan") or []
+    multi_region = _is_multi_region(per_aoi_coords) if per_aoi_coords else False
+    merged = {
+        "schema_version": ENRICHMENT_MANIFEST_V2_SCHEMA,
+        "run": _manifest_run(project_name, timestamp, eudr_mode),
+        "summary": _manifest_summary(per_aoi_coords, multi_region=multi_region, frame_plan=frame_plan),
+        **data_sources,
+        **imagery,
+    }
     merged.pop("resource_usage", None)
 
     # Combine resource accumulators from parallel fan-out
@@ -749,14 +828,15 @@ def enrich_finalize(
     merged["enriched_at"] = datetime.now(UTC).isoformat()
     if eudr_mode:
         merged["eudr_mode"] = True
-        merged["eudr_date_start"] = date_start
+        merged["eudr_date_start"] = effective_date_start
         from treesight.pipeline.enrichment.determination import (
             determine_deforestation_free,
         )
 
-        merged["determination"] = determine_deforestation_free(merged)
-        if per_aoi_coords and len(per_aoi_coords) == 1:
-            merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
+        if not multi_region:
+            merged["determination"] = determine_deforestation_free(merged)
+            if per_aoi_coords and len(per_aoi_coords) == 1:
+                merged["per_aoi_enrichment"] = [_single_aoi_projection(merged, per_aoi_coords[0])]
 
     manifest_path = f"enrichment/{project_name}/{timestamp}/timelapse_payload.json"
     EnrichmentManifestV2.model_validate(merged)

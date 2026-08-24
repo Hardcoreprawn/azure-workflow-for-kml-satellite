@@ -252,7 +252,8 @@ def _build_eudr_csv(
         wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         ndvi_stats = aoi.get("ndvi_stats", [])
         valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
-        cd_summary = aoi.get("change_detection", {}).get("summary", {})
+        change_detection = aoi.get("change_detection") or {}
+        cd_summary = change_detection.get("summary", {})
         review = _as_dict(parcel_reviews.get(str(idx)))
 
         writer.writerow(

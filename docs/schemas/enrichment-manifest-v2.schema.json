@@ -222,19 +222,13 @@
       "type": "string"
     },
     "summary": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/RunSummary"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+      "$ref": "#/$defs/RunSummary"
     }
   },
   "required": [
-    "schema_version"
+    "schema_version",
+    "run",
+    "summary"
   ],
   "title": "EnrichmentManifestV2",
   "type": "object"

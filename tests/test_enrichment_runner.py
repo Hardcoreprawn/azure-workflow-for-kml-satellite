@@ -763,7 +763,7 @@ class TestEnrichDataSources:
     @patch("treesight.pipeline.enrichment.runner._run_flood_fire_phase")
     @patch("treesight.pipeline.enrichment.runner._run_weather_phase")
     @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
-    def test_run_enrichment_safe_mode_skips_multi_aoi_fanout(
+    def test_run_enrichment_safe_mode_preserves_multi_aoi_manifest(
         self,
         mock_plan,
         mock_weather,
@@ -775,21 +775,23 @@ class TestEnrichDataSources:
     ):
         mock_plan.return_value = [{"start": "2024-01-01", "end": "2024-06-01"}]
         storage = MagicMock()
+        per_aoi = [
+            {"name": "Farm A", "coords": [[-50, -10], [-50, -9], [-49, -9]], "area_ha": 100},
+            {"name": "Farm B", "coords": [[30, 1], [30, 2], [31, 2]], "area_ha": 200},
+        ]
 
         with patch("treesight.config.SAFE_MODE", True):
             result = run_enrichment(
-                COORDS,
+                [[-50, -10], [30, 1]],
                 project_name="p",
                 timestamp="t",
                 output_container="out",
                 storage=storage,
-                per_aoi_coords=[
-                    {"name": "A", "coords": COORDS, "area_ha": 1},
-                    {"name": "B", "coords": COORDS, "area_ha": 2},
-                ],
+                per_aoi_coords=per_aoi,
             )
 
-        assert len(result["per_aoi_enrichment"]) == 2
+        assert result["safe_mode"] is True
+        assert [entry["name"] for entry in result["per_aoi_enrichment"]] == ["Farm A", "Farm B"]
         mock_weather.assert_not_called()
         mock_flood.assert_not_called()
         mock_eudr.assert_not_called()
@@ -829,6 +831,27 @@ class TestEnrichDataSources:
 
 class TestEnrichImagery:
     """Verify enrich_imagery returns mosaic/NDVI/change-detection results."""
+
+    @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
+    @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
+    @patch("treesight.pipeline.enrichment.runner.build_frame_plan")
+    def test_safe_mode_skips_imagery(self, mock_plan, mock_mosaic, mock_change):
+        mock_plan.return_value = [_make_frame()]
+        storage = MagicMock()
+
+        with patch("treesight.config.SAFE_MODE", True):
+            result = enrich_imagery(
+                COORDS,
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+            )
+
+        assert result["safe_mode"] is True
+        assert result["skipped"] == ["mosaic", "ndvi", "change_detection"]
+        mock_mosaic.assert_not_called()
+        mock_change.assert_not_called()
 
     @patch("treesight.pipeline.enrichment.runner._run_change_detection_phase")
     @patch("treesight.pipeline.enrichment.runner._run_mosaic_ndvi_phase")
@@ -909,6 +932,27 @@ class TestEnrichImagery:
 
 class TestEnrichSingleAoiStep:
     """Verify enrich_single_aoi_step wraps _enrich_single_aoi with error containment."""
+
+    @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
+    def test_safe_mode_returns_canonical_stub(self, mock_enrich):
+        storage = MagicMock()
+
+        with patch("treesight.config.SAFE_MODE", True):
+            result = enrich_single_aoi_step(
+                {"name": "safe-aoi", "coords": [[1, 2], [1, 3], [2, 3]], "area_ha": 10},
+                project_name="p",
+                timestamp="t",
+                output_container="out",
+                storage=storage,
+                aoi_index=2,
+            )
+
+        assert result["aoi_index"] == 2
+        assert result["name"] == "safe-aoi"
+        assert result["safe_mode"] is True
+        assert result["bbox"]
+        assert result["center"]
+        mock_enrich.assert_not_called()
 
     @patch("treesight.pipeline.enrichment.runner._enrich_single_aoi")
     def test_returns_aoi_result(self, mock_inner):

@@ -390,7 +390,8 @@ def _audit_single_parcel(
         )
 
     # Change detection
-    cd_summary = aoi.get("change_detection", {}).get("summary", {})
+    change_detection = aoi.get("change_detection") or {}
+    cd_summary = change_detection.get("summary", {})
     if cd_summary:
         pdf.cell(
             0,

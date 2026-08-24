@@ -180,7 +180,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             props["ndvi_observations"] = 0
 
         # Change detection
-        cd = aoi.get("change_detection", {})
+        cd = aoi.get("change_detection") or {}
         summary = cd.get("summary", {})
         props["change_trajectory"] = summary.get("trajectory", "unknown")
         props["change_comparisons"] = summary.get("comparisons", 0)
