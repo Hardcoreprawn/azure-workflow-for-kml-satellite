@@ -111,6 +111,14 @@ def _toplevel_as_single_aoi(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _aoi_eudr_value(aoi: dict[str, Any], key: str) -> Any:
+    """Return EUDR evidence from v2 nested bag or legacy flat AOI entry."""
+    eudr = aoi.get("eudr")
+    if isinstance(eudr, dict) and key in eudr:
+        return eudr[key]
+    return aoi.get(key)
+
+
 def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
     """Build a per-parcel GeoJSON FeatureCollection with EUDR evidence.
 
@@ -140,13 +148,13 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
         props["center_lon"] = center.get("lon")
 
         # Screening result
-        determination = as_screening_determination(aoi.get("determination"))
+        determination = as_screening_determination(_aoi_eudr_value(aoi, "determination"))
         props["determination_status"] = determination.screening_outcome
         props["determination_confidence"] = determination.confidence
         props["determination_flags"] = list(determination.flags)
 
         # WorldCover baseline
-        wc = aoi.get("worldcover", {})
+        wc = _aoi_eudr_value(aoi, "worldcover") or {}
         if wc.get("available"):
             lc = wc.get("land_cover", {})
             props["worldcover_dominant"] = lc.get("dominant_class", "")
@@ -157,7 +165,7 @@ def _build_eudr_geojson(manifest: dict[str, Any]) -> dict[str, Any]:
             props["worldcover_tree_pct"] = None
 
         # WDPA
-        wdpa = aoi.get("wdpa", {})
+        wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         props["wdpa_checked"] = wdpa.get("checked", False)
         props["wdpa_is_protected"] = wdpa.get("is_protected", False)
 

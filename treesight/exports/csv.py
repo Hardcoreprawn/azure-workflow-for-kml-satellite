@@ -7,7 +7,7 @@ import io
 from typing import Any
 
 from treesight.exports.frame_row import FrameRow
-from treesight.exports.geojson import _toplevel_as_single_aoi
+from treesight.exports.geojson import _aoi_eudr_value, _toplevel_as_single_aoi
 from treesight.pipeline.enrichment.determination import as_screening_determination
 
 _EUDR_CSV_FIELDS = [
@@ -246,10 +246,10 @@ def _build_eudr_csv(
             continue
 
         center = aoi.get("center", {})
-        determination = as_screening_determination(aoi.get("determination"))
-        wc = aoi.get("worldcover", {})
+        determination = as_screening_determination(_aoi_eudr_value(aoi, "determination"))
+        wc = _aoi_eudr_value(aoi, "worldcover") or {}
         lc = wc.get("land_cover", {}) if wc.get("available") else {}
-        wdpa = aoi.get("wdpa", {})
+        wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         ndvi_stats = aoi.get("ndvi_stats", [])
         valid = [s for s in ndvi_stats if s and s.get("mean") is not None]
         cd_summary = aoi.get("change_detection", {}).get("summary", {})

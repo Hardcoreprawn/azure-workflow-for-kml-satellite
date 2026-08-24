@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from treesight.constants import EUDR_CUTOFF_DATE
+from treesight.exports.geojson import _aoi_eudr_value
 
 
 def _safe_text(text: str) -> str:
@@ -276,7 +277,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
         )
 
         # Determination
-        det = aoi.get("determination", {})
+        det = _aoi_eudr_value(aoi, "determination") or {}
         status = det.get("status", "unknown")
         confidence = det.get("confidence", "unknown")
         pdf.set_font("Helvetica", "B", 9)
@@ -292,7 +293,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
             pdf.cell(0, 5, _safe_text(f"  - {flag}"), new_x="LMARGIN", new_y="NEXT")
 
         # WorldCover
-        wc = aoi.get("worldcover", {})
+        wc = _aoi_eudr_value(aoi, "worldcover") or {}
         if wc.get("available"):
             lc = wc.get("land_cover", {})
             pdf.cell(
@@ -304,7 +305,7 @@ def _pdf_per_parcel_sections(pdf: Any, per_aoi: list[dict[str, Any]]) -> None:
             )
 
         # WDPA
-        wdpa = aoi.get("wdpa", {})
+        wdpa = _aoi_eudr_value(aoi, "wdpa") or {}
         if wdpa.get("checked"):
             prot = "Yes" if wdpa.get("is_protected") else "No"
             pdf.cell(
