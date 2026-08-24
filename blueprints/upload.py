@@ -511,7 +511,6 @@ def upload_token(
         resolve_provider_fn=_resolve_provider,
         build_run_record_fn=_build_run_record,
         error_response_fn=error_response,
-        cors_headers_fn=cors_headers,
     )
     payload, err = handler.mint()
     if err is not None:

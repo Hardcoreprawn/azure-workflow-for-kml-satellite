@@ -36,10 +36,6 @@ def _noop_error_response(status: int, message: str, *, req, **_) -> func.HttpRes
     )
 
 
-def _noop_cors(req: func.HttpRequest) -> dict:
-    return {}
-
-
 def _make_handler(
     user_id: str = "user-1",
     body: dict | None = None,
@@ -110,7 +106,6 @@ def _make_handler(
         resolve_provider_fn=resolve_provider_fn or _default_resolve_provider,
         build_run_record_fn=build_run_record_fn or _default_build_run_record,
         error_response_fn=_noop_error_response,
-        cors_headers_fn=_noop_cors,
     )
 
 

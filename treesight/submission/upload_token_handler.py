@@ -62,7 +62,6 @@ class UploadTokenHandler:
         resolve_provider_fn: Callable[[dict[str, Any], dict[str, Any]], str],
         build_run_record_fn: Callable[..., dict[str, Any]],
         error_response_fn: Callable[..., Any],
-        cors_headers_fn: Callable[[Any], dict[str, str]],
     ) -> None:
         self.user_id = user_id
         self.body = body
@@ -82,7 +81,6 @@ class UploadTokenHandler:
         self._resolve_provider = resolve_provider_fn
         self._build_run_record = build_run_record_fn
         self._error_response = error_response_fn
-        self._cors_headers = cors_headers_fn
 
         # State accumulated across steps
         self._org_id: str = ""
