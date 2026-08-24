@@ -25,7 +25,7 @@ def ensure_closed(ring: list[list[float]]) -> list[list[float]]:
 # ZIP local-file-header magic bytes (PK\x03\x04)
 _ZIP_MAGIC = b"PK\x03\x04"
 
-# KML namespace URIs we accept
+# KML namespace URIs we accept.
 _KML_NAMESPACES = {
     "http://www.opengis.net/kml/2.2",
     "http://earth.google.com/kml/2.2",
@@ -95,8 +95,8 @@ def validate_kml_bytes(data: bytes) -> None:
 
     Raises ``ValueError`` on any violation.
     """
-    # Fast pre-flight: reject DOCTYPE before even touching the XML parser
-    if _DOCTYPE_RE.search(data[:4096]):
+    # Fast pre-flight: reject DOCTYPE before even touching the XML parser.
+    if _DOCTYPE_RE.search(data):
         raise ValueError("KML contains a DOCTYPE declaration — DTD/entity declarations are not permitted")
 
     import lxml.etree as etree

@@ -12,8 +12,6 @@ from treesight.parsers import validate_kml_bytes as _validate_kml_bytes
 if TYPE_CHECKING:
     from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
 
-KML_NS = "{http://www.opengis.net/kml/2.2}"
-
 
 def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using lxml. Fallback when Fiona/GDAL is unavailable."""
@@ -24,15 +22,16 @@ def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     # Secure parser: disable external entities and network access to prevent XXE
     parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
     root: _Element = etree.fromstring(kml_bytes, parser=parser)
+    kml_ns = f"{{{etree.QName(root).namespace or ''}}}"
     features: list[Feature] = []
 
-    for placemark in root.iter(f"{KML_NS}Placemark"):
-        name = _text(placemark, f"{KML_NS}name") or f"Unnamed Feature {len(features)}"
-        description = _text(placemark, f"{KML_NS}description") or ""
-        metadata = _parse_extended_data(placemark)
+    for placemark in root.iter(f"{kml_ns}Placemark"):
+        name = _text(placemark, f"{kml_ns}name") or f"Unnamed Feature {len(features)}"
+        description = _text(placemark, f"{kml_ns}description") or ""
+        metadata = _parse_extended_data(placemark, kml_ns)
 
-        for polygon in placemark.iter(f"{KML_NS}Polygon"):
-            exterior, interior = _parse_polygon(polygon)
+        for polygon in placemark.iter(f"{kml_ns}Polygon"):
+            exterior, interior = _parse_polygon(polygon, kml_ns)
             if len(exterior) < 3:
                 logger.warning("Skipping polygon with < 3 coords: %s", name)
                 continue
@@ -56,16 +55,17 @@ def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
 
 def _parse_polygon(
     polygon: _Element,
+    kml_ns: str,
 ) -> tuple[list[list[float]], list[list[list[float]]]]:
     """Extract exterior and interior coordinate rings from a KML Polygon element."""
     exterior: list[list[float]] = []
     interior: list[list[list[float]]] = []
 
-    outer = polygon.find(f"{KML_NS}outerBoundaryIs/{KML_NS}LinearRing/{KML_NS}coordinates")
+    outer = polygon.find(f"{kml_ns}outerBoundaryIs/{kml_ns}LinearRing/{kml_ns}coordinates")
     if outer is not None and outer.text:
         exterior = _parse_coordinates(outer.text)
 
-    for inner_elem in polygon.findall(f"{KML_NS}innerBoundaryIs/{KML_NS}LinearRing/{KML_NS}coordinates"):
+    for inner_elem in polygon.findall(f"{kml_ns}innerBoundaryIs/{kml_ns}LinearRing/{kml_ns}coordinates"):
         if inner_elem.text:
             ring = _parse_coordinates(inner_elem.text)
             if ring:
@@ -88,15 +88,15 @@ def _parse_coordinates(text: str) -> list[list[float]]:
     return coords
 
 
-def _parse_extended_data(placemark: _Element) -> dict[str, str]:
+def _parse_extended_data(placemark: _Element, kml_ns: str) -> dict[str, str]:
     """Extract ExtendedData key-value pairs from a Placemark element."""
     metadata: dict[str, str] = {}
-    ext = placemark.find(f"{KML_NS}ExtendedData")
+    ext = placemark.find(f"{kml_ns}ExtendedData")
     if ext is None:
         return metadata
-    for data in ext.findall(f"{KML_NS}Data"):
+    for data in ext.findall(f"{kml_ns}Data"):
         key = data.get("name", "")
-        val_elem = data.find(f"{KML_NS}value")
+        val_elem = data.find(f"{kml_ns}value")
         if key and val_elem is not None and val_elem.text:
             metadata[key] = val_elem.text
     return metadata

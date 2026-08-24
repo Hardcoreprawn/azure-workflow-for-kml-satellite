@@ -75,6 +75,39 @@ class TestLxmlParser:
         features = parse_kml_lxml(fixture_bytes("broken_degenerate_coords.kml"))
         assert len(features) == 0
 
+    @pytest.mark.parametrize(
+        "namespace",
+        [
+            "http://www.opengis.net/kml/2.2",
+            "http://earth.google.com/kml/2.2",
+            "http://earth.google.com/kml/2.1",
+            "http://earth.google.com/kml/2.0",
+        ],
+    )
+    def test_parse_valid_kml_namespace_polygon(self, namespace: str):
+        kml = f"""<?xml version="1.0" encoding="UTF-8"?>
+                <kml xmlns="{namespace}">
+                    <Document>
+                        <Placemark>
+                            <name>Legacy namespace block</name>
+                            <Polygon>
+                                <outerBoundaryIs>
+                                    <LinearRing>
+                                        <coordinates>
+                                            36.8,-1.3,0 36.81,-1.3,0 36.81,-1.29,0 36.8,-1.29,0 36.8,-1.3,0
+                                        </coordinates>
+                                    </LinearRing>
+                                </outerBoundaryIs>
+                            </Polygon>
+                        </Placemark>
+                    </Document>
+                </kml>""".encode()
+
+        features = parse_kml_lxml(kml, source_file="valid-namespace.kml")
+
+        assert len(features) == 1
+        assert features[0].name == "Legacy namespace block"
+
 
 def _make_kmz(kml_bytes: bytes, entry_name: str = "doc.kml") -> bytes:
     """Create an in-memory KMZ (ZIP) containing *kml_bytes* at *entry_name*."""
@@ -219,6 +252,23 @@ class TestKmlInputValidation:
         with_dtd = fixture_bytes("broken_xxe_attempt.kml")
         with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
             validate_kml_bytes(with_dtd)
+
+    def test_rejects_padded_dtd_declaration(self):
+        from treesight.parsers import validate_kml_bytes
+
+        padded_dtd = (
+            b"""<?xml version="1.0"?>
+        <!-- """
+            + (b"x" * 5000)
+            + b""" -->
+        <!DOCTYPE kml [<!ELEMENT kml ANY>]>
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document><name>DTD should be rejected before parsing</name></Document>
+        </kml>"""
+        )
+
+        with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
+            validate_kml_bytes(padded_dtd)
 
     def test_rejects_wrong_encoding_declaration(self, fixture_bytes):
         from treesight.parsers import validate_kml_bytes
