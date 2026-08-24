@@ -20,7 +20,8 @@ on:
         required: false
         default: "2"
   schedule:
-    - cron: "15 */8 * * *"
+    # Daily budget pacing is enough while reducing recurring Actions spend.
+    - cron: "15 8 * * *"
 
 permissions:
   contents: read

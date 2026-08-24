@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   security-events: write   # upload SARIF to Code Scanning
 
 concurrency:
@@ -31,6 +32,32 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  changes:
+    name: Detect Security Scan Scope
+    runs-on: ubuntu-latest
+    outputs:
+      heavy_scan_relevant: ${{ steps.detect.outputs.heavy_scan_relevant }}
+    steps:
+      - name: Detect changed files
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "heavy_scan_relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[].filename' > changed-files.txt
+
+          if grep -Eq '^(\.github/actions/trivy-scan/|\.github/workflows/security\.yml|\.secrets\.baseline|\.trivyignore|Dockerfile(\..*)?|docker-compose[^/]*\.yml|function_app.*\.py|function_registration\.py|host\.json|pyproject\.toml|uv\.lock|blueprints/|infra/|rust/|scripts/|treesight/|typings/)' changed-files.txt; then
+            echo "heavy_scan_relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "heavy_scan_relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── 0. .trivyignore hygiene — expiry discipline ─────────────
   trivyignore-hygiene:
     name: Trivyignore Expiry Check
@@ -106,6 +133,8 @@ jobs:
   # ── 1. Semgrep — fast Python SAST ──────────────────────────
   semgrep:
     name: Semgrep SAST
+    needs: changes
+    if: needs.changes.outputs.heavy_scan_relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -134,6 +163,8 @@ jobs:
   # ── 2. pip-audit — Python dependency CVEs ───────────────────
   pip-audit:
     name: Dependency Audit
+    needs: changes
+    if: needs.changes.outputs.heavy_scan_relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -213,6 +244,8 @@ jobs:
   # ── 3. Trivy — IaC misconfiguration scanning ───────────────
   trivy-iac:
     name: Trivy IaC Scan
+    needs: changes
+    if: needs.changes.outputs.heavy_scan_relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -233,6 +266,8 @@ jobs:
   # ── 4. Trivy — filesystem (Python deps + Dockerfile) ───────
   trivy-fs:
     name: Trivy Filesystem Scan
+    needs: changes
+    if: needs.changes.outputs.heavy_scan_relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6

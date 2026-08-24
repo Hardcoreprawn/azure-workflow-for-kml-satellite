@@ -12,7 +12,8 @@ on:
         required: false
         default: "20"
   schedule:
-    - cron: "45 */6 * * *"
+    # Daily triage keeps stale PR state visible without four runs per day.
+    - cron: "45 8 * * *"
 
 permissions:
   checks: read
