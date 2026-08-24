@@ -15,6 +15,7 @@ on:
 permissions:
   actions: read
   contents: read
+  pull-requests: read
   security-events: write
 
 concurrency:
@@ -23,8 +24,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Detect CodeQL Scope
+    runs-on: ubuntu-latest
+    outputs:
+      codeql_relevant: ${{ steps.detect.outputs.codeql_relevant }}
+    steps:
+      - name: Detect changed files
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "codeql_relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[].filename' > changed-files.txt
+
+          if grep -Eq '^(\.github/workflows/codeql\.yml|function_app.*\.py|function_registration\.py|pyproject\.toml|uv\.lock|blueprints/|scripts/|treesight/|typings/)' changed-files.txt; then
+            echo "codeql_relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "codeql_relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   analyze:
     name: Analyze Python
+    needs: changes
+    if: needs.changes.outputs.codeql_relevant == 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -37,15 +66,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           languages: ${{ matrix.language }}
           queries: +security-extended,security-and-quality
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/autobuild@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           category: "/language:${{ matrix.language }}"
