@@ -8,7 +8,7 @@
 # digest.
 #
 # Rebuilds when the dependency lock, the dev Dockerfile, the Rust extension,
-# or the devcontainer definition changes — and daily, shortly after the base
+# or the devcontainer definition changes — and weekly, shortly after the base
 # image, to inherit its security updates.
 #
 # Flow:
@@ -34,9 +34,9 @@ on:
       - ".github/image-config.env"
       - ".github/workflows/dev-image.yml"
   schedule:
-    # Daily 06:00 UTC — one hour after base-image.yml (05:00) so a fresh
-    # treesight-base (Debian security fixes) is inherited within ~24 h.
-    - cron: "0 6 * * *"
+    # Weekly Monday 06:00 UTC — one hour after base-image.yml (05:00) so a fresh
+    # treesight-base is inherited without daily image rebuilds.
+    - cron: "0 6 * * 1"
   workflow_dispatch:
 
 permissions:
