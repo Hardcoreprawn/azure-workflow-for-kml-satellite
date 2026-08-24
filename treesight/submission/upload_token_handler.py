@@ -180,21 +180,20 @@ class UploadTokenHandler:
             org_id=self._org_id,
             content_type=self._content_type,
         )
-        if storage_err is not None:
+        if storage_err is not None or not sas_url:
+            error = storage_err or self._error_response(
+                502, "Storage service temporarily unavailable", req=self.req
+            )
             try:
-                self._finalize_run(
-                    org_id=self._org_id,
-                    instance_id=self._submission_id,
-                    status="failed",
-                )
+                self._finalize_run(org_id=self._org_id, instance_id=self._submission_id, status="failed")
             except Exception:
                 logger.exception(
                     "Failed to refund reservation after storage error org=%s instance=%s",
                     self._org_id,
                     self._submission_id,
                 )
-            return storage_err
-        self._sas_url = sas_url  # type: ignore[assignment]
+            return error
+        self._sas_url = sas_url
         return None
 
     def _step_persist_record(self) -> func.HttpResponse | None:
