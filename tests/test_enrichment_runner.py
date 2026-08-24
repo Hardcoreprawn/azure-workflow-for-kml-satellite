@@ -1046,6 +1046,24 @@ class TestEnrichFinalize:
         assert entry["ndvi_raster_paths"] == ["enrichment/p/t/ndvi/2024_spring.tif"]
         assert "/aoi-0/" not in entry["ndvi_raster_paths"][0]
 
+    def test_single_aoi_finalize_derives_geometry_from_per_aoi_coords(self):
+        storage = MagicMock()
+        coords = [[-50.0, -10.0], [-50.0, -9.0], [-49.0, -9.0], [-49.0, -10.0], [-50.0, -10.0]]
+        result = enrich_finalize(
+            {"safe_mode": True, "frame_plan": []},
+            {"safe_mode": True},
+            [],
+            per_aoi_coords=[{"name": "Solo Farm", "coords": coords, "area_ha": 50}],
+            project_name="p",
+            timestamp="t",
+            output_container="out",
+            storage=storage,
+        )
+
+        entry = result["per_aoi_enrichment"][0]
+        assert entry["bbox"]
+        assert entry["center"] == {"lat": -9.5, "lon": -49.5}
+
     @patch("treesight.pipeline.enrichment.determination.determine_deforestation_free")
     def test_eudr_mode_runs_determination(self, mock_det):
         mock_det.return_value = {"status": "compliant"}

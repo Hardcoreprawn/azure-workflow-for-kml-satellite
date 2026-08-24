@@ -190,13 +190,21 @@ def _eudr_projection(results: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _single_aoi_projection(results: dict[str, Any], aoi_entry: dict[str, Any]) -> dict[str, Any]:
+    coords = aoi_entry.get("coords", results.get("coords", []))
+    bbox = results.get("bbox") or aoi_entry.get("bbox") or (_coords_to_bbox(coords) if coords else [])
+    center = results.get("center") or aoi_entry.get("center")
+    if center is None and coords:
+        lons = [coord[0] for coord in coords]
+        lats = [coord[1] for coord in coords]
+        center = {"lat": round((min(lats) + max(lats)) / 2, 4), "lon": round((min(lons) + max(lons)) / 2, 4)}
+
     projected: dict[str, Any] = {
         "aoi_index": 0,
         "name": str(aoi_entry.get("name", "")),
         "area_ha": aoi_entry.get("area_ha", 0.0),
-        "coords": aoi_entry.get("coords", results.get("coords", [])),
-        "bbox": results.get("bbox", aoi_entry.get("bbox", [])),
-        "center": results.get("center"),
+        "coords": coords,
+        "bbox": bbox,
+        "center": center,
         "frame_plan": results.get("frame_plan", []),
         "weather_daily": results.get("weather_daily") or [],
         "ndvi_stats": results.get("ndvi_stats") or [],
