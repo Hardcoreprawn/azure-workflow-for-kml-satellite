@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   # Cancel superseded runs for the same ref on PRs; never cancel main runs.
@@ -25,6 +26,32 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  changes:
+    name: Detect CI Scope
+    runs-on: ubuntu-latest
+    outputs:
+      pipeline_e2e_relevant: ${{ steps.detect.outputs.pipeline_e2e_relevant }}
+    steps:
+      - name: Detect changed files
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "pipeline_e2e_relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[].filename' > changed-files.txt
+
+          if grep -Eq '^(\.github/workflows/ci\.yml|Makefile|Dockerfile(\..*)?|docker-compose[^/]*\.yml|function_app.*\.py|function_registration\.py|host\.json|blueprints/pipeline/|treesight/(parsers|pipeline|providers|storage)/|scripts/(_azurite|e2e_local|init_storage|pipeline_smoke|verify_local_stack)\.py|tests/(fixtures/|test_(acquisition|activities|activities_coverage|integration|orchestrator|parsers|pipeline|pipeline_e2e|upload)))' changed-files.txt; then
+            echo "pipeline_e2e_relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pipeline_e2e_relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # Resolve the published dev image to an immutable digest and check whether the
   # repo's uv.lock still matches the deps baked into it. Gate jobs then run
   # *inside* that exact digest, so `local == CI` is provably the same image.
@@ -217,7 +244,8 @@ jobs:
   pipeline-e2e:
     name: Pipeline e2e (local gate)
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs: [changes, lint, test]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.pipeline_e2e_relevant == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
@@ -225,7 +253,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
       - name: Install Python dependencies

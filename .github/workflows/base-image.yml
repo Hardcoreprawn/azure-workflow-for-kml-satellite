@@ -19,9 +19,9 @@ on:
       - "Dockerfile.base"
       - "scripts/container_smoke_test.py"
   schedule:
-    # Daily 05:00 UTC — picks up upstream python:3.12-slim-bookworm rebuilds and
-    # new Debian bookworm security fixes within ~24 h of release.
-    - cron: "0 5 * * *"
+    # Weekly Monday 05:00 UTC — picks up upstream python:3.12-slim-bookworm
+    # rebuilds and Debian security fixes while avoiding daily image rebuilds.
+    - cron: "0 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: trivy-base.sarif
           category: trivy-base-image
