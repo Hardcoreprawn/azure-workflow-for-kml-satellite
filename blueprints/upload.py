@@ -23,6 +23,7 @@ from azure.storage.blob import (
 )
 
 from treesight.billing.accounting import (
+    FinalizeStatus,
     MemberCapExceededError,
     OrgNotFoundError,
     QuotaExhaustedError,
@@ -351,7 +352,7 @@ def _requested_parcel_count(body: dict, *, default: int = 1) -> int:
     return 0
 
 
-def _release_reservation(*, org_id: str, instance_id: str, status: str) -> None:
+def _release_reservation(*, org_id: str, instance_id: str, status: FinalizeStatus) -> None:
     """Release a quota reservation by calling finalize_run with a failure status.
 
     Uses a lazy import so the call site in treesight.billing.accounting is
