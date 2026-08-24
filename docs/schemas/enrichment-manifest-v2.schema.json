@@ -29,7 +29,6 @@
           "type": "integer"
         },
         "area_ha": {
-          "default": 0.0,
           "title": "Area Ha",
           "type": "number"
         },
@@ -39,15 +38,7 @@
           "type": "array"
         },
         "center": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CenterPoint"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "$ref": "#/$defs/CenterPoint"
         },
         "change_detection": {
           "anyOf": [
@@ -99,7 +90,6 @@
           "type": "array"
         },
         "name": {
-          "default": "",
           "title": "Name",
           "type": "string"
         },
@@ -166,7 +156,12 @@
         }
       },
       "required": [
-        "aoi_index"
+        "aoi_index",
+        "name",
+        "area_ha",
+        "coords",
+        "bbox",
+        "center"
       ],
       "title": "PerAoiEnrichment",
       "type": "object"

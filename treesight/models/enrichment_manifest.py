@@ -32,11 +32,11 @@ class PerAoiEnrichment(BaseModel):
     """Canonical enrichment evidence for one AOI within a run."""
 
     aoi_index: int
-    name: str = ""
-    area_ha: float = 0.0
-    coords: list[list[float]] = Field(default_factory=list)
-    bbox: list[Any] = Field(default_factory=list)
-    center: CenterPoint | None = None
+    name: str
+    area_ha: float
+    coords: list[list[float]]
+    bbox: list[Any]
+    center: CenterPoint
     source_geometry_type: str | None = None
     plot_area_ha: float | None = None
     frame_plan: list[dict[str, Any]] = Field(default_factory=list)

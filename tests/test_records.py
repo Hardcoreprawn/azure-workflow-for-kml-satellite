@@ -315,3 +315,7 @@ class TestEnrichmentManifestV2:
         )
 
         assert entry.model_extra["custom_evidence"] == {"provider": "test"}
+
+    def test_per_aoi_entry_requires_canonical_identity_fields(self):
+        with pytest.raises(ValueError, match="name|area_ha|coords|bbox|center"):
+            PerAoiEnrichment.model_validate({"aoi_index": 0})
