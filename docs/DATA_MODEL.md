@@ -1,6 +1,6 @@
 # Canopex Data Model
 
-**Status:** Living document · Last reviewed 2026-07-09
+**Status:** Living document · Last reviewed 2026-08-24
 
 This document describes the Canopex domain in three layers:
 
@@ -28,6 +28,9 @@ Related canonical docs:
   [openapi.yaml](openapi.yaml) — the public request/response contracts.
 - [schemas/aoi-metadata-v2.schema.json](schemas/aoi-metadata-v2.schema.json)
   — the formal contract for per-AOI metadata blobs.
+- [ENRICHMENT_AOI_MODEL.md](ENRICHMENT_AOI_MODEL.md) — the target contract
+  for enrichment manifests, canonical per-AOI evidence, SAFE_MODE parity, and
+  artifact path policy for 1+ AOIs.
 
 ---
 
@@ -271,13 +274,14 @@ The `timelapse_payload.json` analysis payload.
 
 | Attribute | Type | Notes |
 |-----------|------|-------|
-| `coords` / `bbox` / `center` | geometry | Required core. |
+| `coords` / `bbox` / `center` | geometry | Current top-level fields. In the v2 target these are legacy compatibility projections; canonical parcel geometry lives in `per_aoi_enrichment[]`. |
 | `frame_plan` | list\<FramePlanEntry\> | `{start, end, label}`. |
 | `weather_daily` | list\<object\> *(open)* | |
 | `ndvi_stats` | list\<object\> *(open)* | |
 | `ndvi_raster_paths` | list\<string\> | |
 | `change_detection` | object *(open)* | |
 | `per_aoi_metrics` | list\<object\> *(open)* | |
+| `per_aoi_enrichment` | list\<object\> *(open today; intended canonical)* | Target shape is defined in [ENRICHMENT_AOI_MODEL.md](ENRICHMENT_AOI_MODEL.md). One entry per AOI, including single-AOI runs. |
 | `multi_aoi_summary` | object *(open)* | |
 | `eudr_mode` / `eudr_date_start` | EUDR context | |
 | `enriched_at` / `enrichment_duration_seconds` / `manifest_path` | metadata | |
@@ -370,6 +374,16 @@ analysis/{instance_id}/
 └── timelapse_analysis.json                # AI analysis result (untyped)
 ```
 
+Enrichment-derived raster artifacts currently use convention paths of the form
+`enrichment/{project_name}/{timestamp}/ndvi/{year}_{season}.tif` for the
+single-AOI/union path and
+`enrichment/{project_name}/{timestamp}/ndvi/aoi-{index}/{year}_{season}.tif`
+for multi-AOI per-parcel paths. The target path policy is documented in
+[ENRICHMENT_AOI_MODEL.md](ENRICHMENT_AOI_MODEL.md): AOI identity in the data
+model and blob path scoping are separate decisions, so v2 can require
+`aoi_index=0` in the manifest while preserving legacy unscoped single-AOI blob
+paths until an explicit migration changes them.
+
 Other blobs: `.tickets/{prior_submission_id}.json` — upload-token quota
 reservation ticket (untyped dict carrying `user_id`).
 
@@ -396,6 +410,7 @@ code.**
 | D3 | **Quota is org-pooled only.** Per-user quota should not exist. | `users` documents still carry an embedded `quota` (`QuotaState`) counter. | Umbrella **#814** (org-pooled accounting *"replaces the divergent per-user `quota`"*). Per-user quota is **vestigial from the first build** and should be removed before launch. |
 | D4 | Enrichment/analysis sub-blocks are well-typed. | `weather_daily`, `ndvi_stats`, `per_aoi_metrics`, `change_detection`, `multi_aoi_summary`, `resource_summary`, `billing` are `list[dict]` / `dict[str, Any]` *(open)*. | Documented here; no schema yet. |
 | D5 | Pipeline stages exchange typed domain objects. | The orchestrator still passes dict payloads between activities, but ingestion now validates activity output seams explicitly via `treesight.pipeline.contracts` (`ensure_parse_kml_output`, `ensure_list_of_dicts`). | Slice **#795** (lightweight boundary contracts) under epic **#1057**; continue migrating remaining seams. |
+| D6 | Single-AOI and multi-AOI enrichment share one canonical per-AOI manifest model. | Single-AOI runs can rely on top-level manifest fields and exporter fallback guesses, while multi-AOI runs use `per_aoi_enrichment`. SAFE_MODE and artifact path handling can diverge by entrypoint. | **#1447**; target contract in [ENRICHMENT_AOI_MODEL.md](ENRICHMENT_AOI_MODEL.md). |
 
 > **Action for maintainers:** D3 is tracked under #814. D1 and D2 are
 > structural changes to the ownership model (org-partitioned storage +
