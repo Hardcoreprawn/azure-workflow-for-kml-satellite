@@ -29,7 +29,7 @@ from treesight.billing.accounting import (
     reserve_run,
 )
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
-from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, MAX_KML_FILE_SIZE_BYTES
+from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER
 from treesight.security.orgs import create_org, get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod

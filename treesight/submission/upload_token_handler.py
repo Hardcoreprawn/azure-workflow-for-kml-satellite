@@ -11,8 +11,6 @@ test doubles without patching at the module level.
 
 from __future__ import annotations
 
-import datetime
-import json
 import logging
 import uuid
 from collections.abc import Callable
