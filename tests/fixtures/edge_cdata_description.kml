@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark>
+    <name>CDATA Block</name>
+    <description><![CDATA[<div>Contains <b>HTML</b> payload</div>]]></description>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      36.74,-1.20,0 36.75,-1.20,0 36.75,-1.21,0 36.74,-1.21,0 36.74,-1.20,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+</Document></kml>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><name>East of 180</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+    179.6,-16.5,0 179.9,-16.5,0 179.9,-16.8,0 179.6,-16.8,0 179.6,-16.5,0
+  </coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+  <Placemark><name>West of 180</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+    -179.9,-16.5,0 -179.6,-16.5,0 -179.6,-16.8,0 -179.9,-16.8,0 -179.9,-16.5,0
+  </coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+</Document></kml>

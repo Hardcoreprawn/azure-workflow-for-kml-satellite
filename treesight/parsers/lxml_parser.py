@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from treesight.log import logger
 from treesight.models.feature import Feature
 from treesight.parsers import ensure_closed as _ensure_closed
+from treesight.parsers import validate_kml_bytes as _validate_kml_bytes
 
 if TYPE_CHECKING:
     from lxml.etree import _Element  # pyright: ignore[reportPrivateUsage]
@@ -17,6 +18,8 @@ KML_NS = "{http://www.opengis.net/kml/2.2}"
 def parse_kml_lxml(kml_bytes: bytes, source_file: str = "") -> list[Feature]:
     """Parse KML bytes using lxml. Fallback when Fiona/GDAL is unavailable."""
     import lxml.etree as etree
+
+    _validate_kml_bytes(kml_bytes)
 
     # Secure parser: disable external entities and network access to prevent XXE
     parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False)
