@@ -16,8 +16,6 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-import azure.functions as func
-
 from treesight.constants import DEFAULT_INPUT_CONTAINER, MAX_KML_FILE_SIZE_BYTES
 from treesight.security.redact import redact_user_id as _redact
 
@@ -38,26 +36,26 @@ class UploadTokenHandler:
     5. Persist the submission record.
 
     Call :meth:`mint` to run all steps and return either a success payload
-    dict or a ``func.HttpResponse`` error.
+    dict or an adapter-specific error response.
     """
 
     def __init__(
         self,
         user_id: str,
         body: dict[str, Any],
-        req: func.HttpRequest,
+        req: Any,
         *,
         active_org: dict[str, Any] | None = None,
         # Injected side-effectful dependencies
         ensure_user_org_fn: Callable[
-            [func.HttpRequest, str, dict[str, Any] | None],
-            tuple[dict[str, Any] | None, func.HttpResponse | None],
+            [Any, str, dict[str, Any] | None],
+            tuple[dict[str, Any] | None, Any | None],
         ],
         reserve_run_or_error_fn: Callable[
-            [str, str, int, bool, str, func.HttpRequest],
-            func.HttpResponse | None,
+            [str, str, int, bool, str, Any],
+            Any | None,
         ],
-        write_ticket_and_mint_sas_fn: Callable[..., tuple[str | None, func.HttpResponse | None]],
+        write_ticket_and_mint_sas_fn: Callable[..., tuple[str | None, Any | None]],
         finalize_run_fn: Callable[..., None],
         persist_submission_record_fn: Callable[[str, dict[str, Any], str], None],
         # Injected pure helpers (allow override in tests)
@@ -66,8 +64,8 @@ class UploadTokenHandler:
         sanitise_submission_context_fn: Callable[[dict[str, Any]], dict[str, Any]],
         resolve_provider_fn: Callable[[dict[str, Any], dict[str, Any]], str],
         build_run_record_fn: Callable[..., dict[str, Any]],
-        error_response_fn: Callable[..., func.HttpResponse],
-        cors_headers_fn: Callable[[func.HttpRequest], dict[str, str]],
+        error_response_fn: Callable[..., Any],
+        cors_headers_fn: Callable[[Any], dict[str, str]],
     ) -> None:
         self.user_id = user_id
         self.body = body
@@ -103,7 +101,7 @@ class UploadTokenHandler:
     # Public API
     # ------------------------------------------------------------------
 
-    def mint(self) -> tuple[dict[str, Any], None] | tuple[None, func.HttpResponse]:
+    def mint(self) -> tuple[dict[str, Any], None] | tuple[None, Any]:
         """Run the minting pipeline.
 
         Returns ``(payload, None)`` on success or ``(None, error_response)``
@@ -124,10 +122,10 @@ class UploadTokenHandler:
         return self._success_payload(), None
 
     # ------------------------------------------------------------------
-    # Pipeline steps — each returns None on success, HttpResponse on error
+    # Pipeline steps — each returns None on success, adapter error on failure
     # ------------------------------------------------------------------
 
-    def _step_resolve_org(self) -> func.HttpResponse | None:
+    def _step_resolve_org(self) -> Any | None:
         user_org, err = self._ensure_user_org(self.req, self.user_id, self.active_org)
         if err is not None:
             return err
@@ -145,13 +143,13 @@ class UploadTokenHandler:
         self._submission_id = str(uuid.uuid4())
         return None
 
-    def _step_validate_parcel_count(self) -> func.HttpResponse | None:
+    def _step_validate_parcel_count(self) -> Any | None:
         self._parcel_count = self._requested_parcel_count(self.body)
         if self._parcel_count <= 0:
             return self._error_response(400, "parcel_count must be a positive integer", req=self.req)
         return None
 
-    def _step_reserve_run(self) -> func.HttpResponse | None:
+    def _step_reserve_run(self) -> Any | None:
         return self._reserve_run_or_error(
             self._org_id,
             self.user_id,
@@ -161,7 +159,7 @@ class UploadTokenHandler:
             self.req,
         )
 
-    def _step_prepare_blob(self) -> func.HttpResponse | None:
+    def _step_prepare_blob(self) -> Any | None:
         ext, content_type = self._detect_file_extension(self.body.get("filename", ""))
         self._content_type = content_type
         self._blob_name = f"analysis/{self._submission_id}{ext}"
@@ -169,7 +167,7 @@ class UploadTokenHandler:
         self._effective_provider = self._resolve_provider(self.body, self._submission_context)
         return None
 
-    def _step_write_ticket_and_mint_sas(self) -> func.HttpResponse | None:
+    def _step_write_ticket_and_mint_sas(self) -> Any | None:
         sas_url, storage_err = self._write_ticket_and_mint_sas(
             self.body,
             self.user_id,
@@ -196,7 +194,7 @@ class UploadTokenHandler:
         self._sas_url = sas_url
         return None
 
-    def _step_persist_record(self) -> func.HttpResponse | None:
+    def _step_persist_record(self) -> Any | None:
         record = self._build_run_record(
             submission_id=self._submission_id,
             user_id=self.user_id,
