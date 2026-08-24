@@ -40,7 +40,7 @@ class PerAoiEnrichment(BaseModel):
     source_geometry_type: str | None = None
     plot_area_ha: float | None = None
     frame_plan: list[dict[str, Any]] = Field(default_factory=list)
-    weather_daily: list[dict[str, Any]] = Field(default_factory=list)
+    weather_daily: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=list)
     ndvi_stats: list[dict[str, Any] | None] = Field(default_factory=list)
     ndvi_raster_paths: list[str | None] = Field(default_factory=list)
     change_detection: dict[str, Any] | None = None

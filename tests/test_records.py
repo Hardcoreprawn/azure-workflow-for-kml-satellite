@@ -319,3 +319,18 @@ class TestEnrichmentManifestV2:
     def test_per_aoi_entry_requires_canonical_identity_fields(self):
         with pytest.raises(ValueError, match="name|area_ha|coords|bbox|center"):
             PerAoiEnrichment.model_validate({"aoi_index": 0})
+
+    def test_per_aoi_entry_accepts_dict_weather_daily_payload(self):
+        entry = PerAoiEnrichment.model_validate(
+            {
+                "aoi_index": 0,
+                "name": "Plot",
+                "area_ha": 1.0,
+                "coords": [[0.0, 0.0]],
+                "bbox": [[0.0, 0.0]],
+                "center": {"lat": 0.0, "lon": 0.0},
+                "weather_daily": {"dates": ["2026-01-01"], "temp": [24.0]},
+            }
+        )
+
+        assert entry.weather_daily == {"dates": ["2026-01-01"], "temp": [24.0]}

@@ -147,12 +147,20 @@
           "title": "Source Geometry Type"
         },
         "weather_daily": {
-          "items": {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          "title": "Weather Daily",
-          "type": "array"
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Weather Daily"
         }
       },
       "required": [
