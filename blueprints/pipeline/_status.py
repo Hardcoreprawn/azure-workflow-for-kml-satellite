@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 _ACTIVE_RUNTIME_STATUSES = {"running", "pending"}
 _RECOVERY_QUERY_PHASES = {"", "queued", "submit", "ingestion"}
 _RECOVERY_MIN_AGE = timedelta(minutes=5)
+_MIN_RECOVERY_LOOKBACK_MINUTES = 1
+_MAX_RECOVERY_LOOKBACK_MINUTES = 24 * 60
 _VALID_INSTANCE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _telemetry_lock = threading.RLock()
 _telemetry_client: Any = None
@@ -242,24 +244,29 @@ def _fetch_instance_telemetry_hint(instance_id: str) -> dict[str, Any] | None:
             str(getattr(config, "LOG_ANALYTICS_WORKSPACE_ID", "") or "")
             or str(getattr(config, "APPINSIGHTS_WORKSPACE_ID", "") or "")
         ).strip()
-        lookback_minutes = int(getattr(config, "STATUS_RECOVERY_LOOKBACK_MINUTES", 240))
+        configured_lookback = int(getattr(config, "STATUS_RECOVERY_LOOKBACK_MINUTES", 240))
     except Exception:
         return None
     if not workspace_id:
         return None
+    lookback_minutes = max(
+        _MIN_RECOVERY_LOOKBACK_MINUTES,
+        min(configured_lookback, _MAX_RECOVERY_LOOKBACK_MINUTES),
+    )
 
     query = f"""
 traces
 | where timestamp > ago({lookback_minutes}m)
 | extend cd = todynamic(customDimensions)
 | where tostring(cd.instance_id) == "{safe_instance_id}" or tostring(cd.instanceId) == "{safe_instance_id}"
-| project timestamp, phase=tostring(cd.phase), step=tostring(cd.step), error=tostring(cd.error)
+| project timestamp, phase=tostring(cd.phase), step=tostring(cd.step), error=tostring(cd.error), source="trace"
 | union (
     exceptions
     | where timestamp > ago({lookback_minutes}m)
     | extend cd = todynamic(customDimensions)
     | where tostring(cd.instance_id) == "{safe_instance_id}" or tostring(cd.instanceId) == "{safe_instance_id}"
-    | project timestamp, phase=tostring(cd.phase), step=tostring(cd.step), error=tostring(outerMessage)
+    | project timestamp, phase=tostring(cd.phase), step=tostring(cd.step), error=tostring(outerMessage),
+              source="exception"
 )
 | order by timestamp desc
 | take 1
@@ -275,10 +282,11 @@ traces
     phase = str(row.get("phase") or "").strip().lower()
     step = str(row.get("step") or "").strip()
     error = str(row.get("error") or "").strip()
+    source = str(row.get("source") or "").strip().lower()
     observed_at = _normalize_datetime(row.get("timestamp"))
     if not phase and not step and not error:
         return None
-    outcome = "failed" if error else "active"
+    outcome = "failed" if error and source == "exception" else "active"
     if phase == "complete":
         outcome = "completed"
     return {

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 from blueprints.pipeline._status import (
+    _fetch_instance_telemetry_hint,
     _needs_telemetry_recovery,
     _normalize_runtime_status_payload,
 )
@@ -84,3 +85,63 @@ def test_needs_telemetry_recovery_for_stale_ingestion_run():
     )
 
     assert _needs_telemetry_recovery(status) is True
+
+
+def test_fetch_instance_telemetry_hint_does_not_fail_on_trace_error(monkeypatch):
+    monkeypatch.setattr("treesight.config.LOG_ANALYTICS_WORKSPACE_ID", "workspace-id")
+    monkeypatch.setattr("treesight.config.STATUS_RECOVERY_LOOKBACK_MINUTES", 120)
+    monkeypatch.setattr(
+        "blueprints.pipeline._status._query_logs_workspace",
+        lambda *_args, **_kwargs: [
+            {
+                "timestamp": datetime.now(UTC),
+                "phase": "acquisition",
+                "step": "searching",
+                "error": "provider timeout",
+                "source": "trace",
+            }
+        ],
+    )
+
+    hint = _fetch_instance_telemetry_hint("inst-1")
+
+    assert hint is not None
+    assert hint["outcome"] == "active"
+
+
+def test_fetch_instance_telemetry_hint_marks_exception_as_failed(monkeypatch):
+    monkeypatch.setattr("treesight.config.LOG_ANALYTICS_WORKSPACE_ID", "workspace-id")
+    monkeypatch.setattr("treesight.config.STATUS_RECOVERY_LOOKBACK_MINUTES", 120)
+    monkeypatch.setattr(
+        "blueprints.pipeline._status._query_logs_workspace",
+        lambda *_args, **_kwargs: [
+            {
+                "timestamp": datetime.now(UTC),
+                "phase": "fulfilment",
+                "step": "downloading",
+                "error": "fatal error",
+                "source": "exception",
+            }
+        ],
+    )
+
+    hint = _fetch_instance_telemetry_hint("inst-2")
+
+    assert hint is not None
+    assert hint["outcome"] == "failed"
+
+
+def test_fetch_instance_telemetry_hint_clamps_lookback_minutes(monkeypatch):
+    monkeypatch.setattr("treesight.config.LOG_ANALYTICS_WORKSPACE_ID", "workspace-id")
+    monkeypatch.setattr("treesight.config.STATUS_RECOVERY_LOOKBACK_MINUTES", -10)
+    captured_query: dict[str, str] = {}
+
+    def _fake_query(_workspace_id: str, query: str):
+        captured_query["value"] = query
+        return []
+
+    monkeypatch.setattr("blueprints.pipeline._status._query_logs_workspace", _fake_query)
+
+    _fetch_instance_telemetry_hint("inst-3")
+
+    assert "ago(1m)" in captured_query["value"]
