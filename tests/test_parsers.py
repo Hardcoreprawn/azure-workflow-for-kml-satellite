@@ -70,25 +70,43 @@ class TestLxmlParser:
         features = parse_kml_lxml(sample_kml_bytes, source_file="sample.kml")
         assert features[0].description == "Test orchard block"
 
-    def test_polygon_with_less_than_3_coords_skipped(self):
+    def test_polygon_with_less_than_3_coords_skipped(self, fixture_bytes):
         """A polygon with < 3 vertices should be skipped."""
-        kml = b"""<?xml version="1.0" encoding="UTF-8"?>
-        <kml xmlns="http://www.opengis.net/kml/2.2">
-          <Document>
-            <Placemark>
-              <name>Bad</name>
-              <Polygon>
-                <outerBoundaryIs>
-                  <LinearRing>
-                    <coordinates>36.8,-1.3,0 36.81,-1.3,0</coordinates>
-                  </LinearRing>
-                </outerBoundaryIs>
-              </Polygon>
-            </Placemark>
-          </Document>
-        </kml>"""
-        features = parse_kml_lxml(kml)
+        features = parse_kml_lxml(fixture_bytes("broken_degenerate_coords.kml"))
         assert len(features) == 0
+
+    @pytest.mark.parametrize(
+        "namespace",
+        [
+            "http://www.opengis.net/kml/2.2",
+            "http://earth.google.com/kml/2.2",
+            "http://earth.google.com/kml/2.1",
+            "http://earth.google.com/kml/2.0",
+        ],
+    )
+    def test_parse_valid_kml_namespace_polygon(self, namespace: str):
+        kml = f"""<?xml version="1.0" encoding="UTF-8"?>
+                <kml xmlns="{namespace}">
+                    <Document>
+                        <Placemark>
+                            <name>Legacy namespace block</name>
+                            <Polygon>
+                                <outerBoundaryIs>
+                                    <LinearRing>
+                                        <coordinates>
+                                            36.8,-1.3,0 36.81,-1.3,0 36.81,-1.29,0 36.8,-1.29,0 36.8,-1.3,0
+                                        </coordinates>
+                                    </LinearRing>
+                                </outerBoundaryIs>
+                            </Polygon>
+                        </Placemark>
+                    </Document>
+                </kml>""".encode()
+
+        features = parse_kml_lxml(kml, source_file="valid-namespace.kml")
+
+        assert len(features) == 1
+        assert features[0].name == "Legacy namespace block"
 
 
 def _make_kmz(kml_bytes: bytes, entry_name: str = "doc.kml") -> bytes:
@@ -125,19 +143,27 @@ class TestMaybeUnzip:
         result = maybe_unzip(buf.getvalue())
         assert result == sample_kml_bytes
 
-    def test_kmz_no_kml_raises(self):
-        buf = BytesIO()
-        with zipfile.ZipFile(buf, "w") as zf:
-            zf.writestr("readme.txt", b"nothing here")
+    def test_kmz_no_kml_raises(self, fixture_bytes):
+        kmz = fixture_bytes("broken_kmz_no_kml.kmz")
         with pytest.raises(ValueError, match=r"no .kml file"):
-            maybe_unzip(buf.getvalue())
+            maybe_unzip(kmz)
 
-    def test_kmz_round_trip_parse(self, sample_kml_bytes: bytes):
-        """KMZ bytes → maybe_unzip → parse_kml_lxml produces features."""
-        kmz = _make_kmz(sample_kml_bytes)
-        kml = maybe_unzip(kmz)
-        features = parse_kml_lxml(kml, source_file="test.kmz")
-        assert len(features) == 2
+    @pytest.mark.parametrize(
+        ("fixture_name", "expected_count"),
+        [
+            ("sample.kml", 2),
+            ("medium_50.kml", 50),
+            ("monster_200.kml", 200),
+            ("medium_50.kmz", 50),
+            ("monster_200.kmz", 200),
+        ],
+    )
+    def test_kml_and_kmz_round_trip_parse(self, fixture_name: str, expected_count: int, fixture_bytes):
+        """KML/KMZ fixture bytes → maybe_unzip → parse_kml_lxml produces features."""
+        payload = fixture_bytes(fixture_name)
+        kml = maybe_unzip(payload)
+        features = parse_kml_lxml(kml, source_file=fixture_name)
+        assert len(features) == expected_count
 
 
 # ---------------------------------------------------------------------------
@@ -157,19 +183,9 @@ class TestZipBombProtection:
         with pytest.raises(ValueError, match=r"[Dd]ecompressed size"):
             maybe_unzip(kmz)
 
-    def test_rejects_high_compression_ratio(self):
+    def test_rejects_high_compression_ratio(self, fixture_bytes):
         """Archive with suspiciously high compression ratio is rejected."""
-        from treesight.constants import MAX_KMZ_COMPRESSION_RATIO
-
-        # Long run of zeros — compresses extremely well.
-        payload_size = 10_000_000  # 10 MB of zeros
-        payload = b"\x00" * payload_size
-        kmz = _make_kmz(payload, "doc.kml")
-
-        compressed_size = len(kmz)
-        ratio = payload_size / compressed_size
-        if ratio <= MAX_KMZ_COMPRESSION_RATIO:
-            pytest.skip(f"Ratio {ratio:.0f} not above {MAX_KMZ_COMPRESSION_RATIO}")
+        kmz = fixture_bytes("broken_kmz_zip_bomb.kmz")
 
         with pytest.raises(ValueError, match=r"[Cc]ompression ratio"):
             maybe_unzip(kmz)
@@ -209,30 +225,57 @@ class TestZipBombProtection:
 class TestKmlInputValidation:
     """Tests for ``validate_kml_bytes`` — structural validation before parsing."""
 
-    def test_rejects_malformed_xml(self):
+    def test_rejects_malformed_xml(self, fixture_bytes):
         from treesight.parsers import validate_kml_bytes
 
-        bad_xml = b"<kml><this is not xml"
+        bad_xml = fixture_bytes("broken_truncated.kml")
         with pytest.raises(ValueError, match=r"[Mm]alformed|[Nn]ot well-formed|XML"):
             validate_kml_bytes(bad_xml)
 
-    def test_rejects_missing_kml_namespace(self):
+    def test_rejects_missing_kml_namespace(self, fixture_bytes):
         from treesight.parsers import validate_kml_bytes
 
-        no_ns = b'<?xml version="1.0"?><root><child/></root>'
+        no_ns = fixture_bytes("broken_missing_namespace.kml")
         with pytest.raises(ValueError, match=r"[Nn]amespace|KML"):
             validate_kml_bytes(no_ns)
 
-    def test_rejects_dtd_declaration(self):
+    def test_rejects_non_xml_payload(self, fixture_bytes):
         from treesight.parsers import validate_kml_bytes
 
-        with_dtd = b"""<?xml version="1.0"?>
-        <!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-        <kml xmlns="http://www.opengis.net/kml/2.2">
-          <Document><name>&xxe;</name></Document>
-        </kml>"""
+        payload = fixture_bytes("broken_not_xml.kml")
+        with pytest.raises(ValueError, match=r"[Mm]alformed|XML"):
+            validate_kml_bytes(payload)
+
+    def test_rejects_dtd_declaration(self, fixture_bytes):
+        from treesight.parsers import validate_kml_bytes
+
+        with_dtd = fixture_bytes("broken_xxe_attempt.kml")
         with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
             validate_kml_bytes(with_dtd)
+
+    def test_rejects_padded_dtd_declaration(self):
+        from treesight.parsers import validate_kml_bytes
+
+        padded_dtd = (
+            b"""<?xml version="1.0"?>
+        <!-- """
+            + (b"x" * 5000)
+            + b""" -->
+        <!DOCTYPE kml [<!ELEMENT kml ANY>]>
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document><name>DTD should be rejected before parsing</name></Document>
+        </kml>"""
+        )
+
+        with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
+            validate_kml_bytes(padded_dtd)
+
+    def test_rejects_wrong_encoding_declaration(self, fixture_bytes):
+        from treesight.parsers import validate_kml_bytes
+
+        payload = fixture_bytes("broken_wrong_encoding.kml")
+        with pytest.raises(ValueError, match=r"[Mm]alformed|[Ee]ncod|XML"):
+            validate_kml_bytes(payload)
 
     def test_rejects_entity_expansion(self):
         """Billion-laughs-style entity expansion is rejected."""
@@ -273,6 +316,47 @@ class TestKmlInputValidation:
           <Document><name>Test</name></Document>
         </kml>"""
         validate_kml_bytes(kml)
+
+
+class TestCorpusFixtures:
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [
+            "broken_no_placemarks.kml",
+            "broken_points_only.kml",
+            "broken_linestrings_only.kml",
+            "broken_degenerate_coords.kml",
+            "broken_out_of_range_coords.kml",
+        ],
+    )
+    def test_rejected_or_non_polygon_inputs_produce_no_features(self, fixture_name: str, fixture_bytes):
+        features = parse_kml_lxml(fixture_bytes(fixture_name), source_file=fixture_name)
+        assert len(features) == 0
+
+    @pytest.mark.parametrize(
+        ("fixture_name", "expected_count"),
+        [
+            ("real_google_earth_export.kml", 1),
+            ("real_qgis_export.kml", 1),
+            ("edge_antimeridian.kml", 2),
+            ("edge_self_intersecting.kml", 1),
+            ("edge_nested_folders.kml", 1),
+            ("edge_mixed_geometries.kml", 1),
+            ("edge_networklink.kml", 0),
+            ("edge_multigeometry.kml", 2),
+            ("edge_cdata_description.kml", 1),
+            ("edge_empty_name.kml", 2),
+        ],
+    )
+    def test_valid_tricky_fixture_feature_counts(self, fixture_name: str, expected_count: int, fixture_bytes):
+        features = parse_kml_lxml(fixture_bytes(fixture_name), source_file=fixture_name)
+        assert len(features) == expected_count
+        if expected_count:
+            assert all(len(feature.exterior_coords) >= 4 for feature in features)
+
+    def test_xxe_fixture_rejected_before_network_attempt(self, fixture_bytes):
+        with pytest.raises(ValueError, match=r"DOCTYPE|DTD|[Ee]ntit"):
+            parse_kml_lxml(fixture_bytes("broken_xxe_attempt.kml"), source_file="broken_xxe_attempt.kml")
 
 
 class TestFionaParserTimeout:

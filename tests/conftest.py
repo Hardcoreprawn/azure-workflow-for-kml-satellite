@@ -146,6 +146,16 @@ def triangle_polygon_kml_bytes() -> bytes:
 
 
 @pytest.fixture()
+def fixture_bytes():
+    """Load raw fixture bytes by filename from tests/fixtures."""
+
+    def _load(name: str) -> bytes:
+        return (FIXTURES_DIR / name).read_bytes()
+
+    return _load
+
+
+@pytest.fixture()
 def sample_feature():
     """Pre-built Feature for tests that don't need KML parsing."""
     from treesight.models.feature import Feature

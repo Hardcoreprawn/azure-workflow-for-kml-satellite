@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <name>Places</name>
+    <Style id="polyStyle"><LineStyle><color>ff0000ff</color></LineStyle><PolyStyle><color>6600ff00</color></PolyStyle></Style>
+    <Placemark>
+      <name>GE Block 1</name>
+      <description><![CDATA[<p><b>Field:</b> North lot</p>]]></description>
+      <styleUrl>#polyStyle</styleUrl>
+      <LookAt><longitude>36.805</longitude><latitude>-1.305</latitude><range>1200</range></LookAt>
+      <TimeStamp><when>2026-08-01T10:00:00Z</when></TimeStamp>
+      <ExtendedData><Data name="source"><value>google-earth</value></Data></ExtendedData>
+      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+        36.800,-1.300,0 36.810,-1.300,0 36.810,-1.310,0 36.800,-1.310,0 36.800,-1.300,0
+      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+    </Placemark>
+  </Document>
+</kml>

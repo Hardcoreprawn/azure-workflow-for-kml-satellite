@@ -327,63 +327,27 @@ class TestPerimeter:
 
 
 class TestEdgeCases:
-    def test_empty_kml(self):
-        kml = b'<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document></Document></kml>'
+    def test_empty_kml(self, fixture_bytes):
+        kml = fixture_bytes("broken_no_placemarks.kml")
         features = parse_kml_lxml(kml)
         assert features == []
 
-    def test_placemark_without_polygon(self):
+    def test_placemark_without_polygon(self, fixture_bytes):
         """Placemarks with only Points should produce zero features."""
-        kml = b"""<?xml version="1.0" encoding="UTF-8"?>
-        <kml xmlns="http://www.opengis.net/kml/2.2">
-          <Document>
-            <Placemark>
-              <name>Just a Point</name>
-              <Point><coordinates>36.8,-1.3,0</coordinates></Point>
-            </Placemark>
-          </Document>
-        </kml>"""
+        kml = fixture_bytes("broken_points_only.kml")
         features = parse_kml_lxml(kml)
         assert len(features) == 0
 
-    def test_mixed_geometries(self):
+    def test_mixed_geometries(self, fixture_bytes):
         """A document with both Points and Polygons — only Polygons become features."""
-        kml = b"""<?xml version="1.0" encoding="UTF-8"?>
-        <kml xmlns="http://www.opengis.net/kml/2.2">
-          <Document>
-            <Placemark>
-              <name>A Point</name>
-              <Point><coordinates>36.8,-1.3,0</coordinates></Point>
-            </Placemark>
-            <Placemark>
-              <name>A Polygon</name>
-              <Polygon>
-                <outerBoundaryIs><LinearRing><coordinates>
-                  36.80,-1.30,0 36.81,-1.30,0 36.81,-1.31,0 36.80,-1.31,0 36.80,-1.30,0
-                </coordinates></LinearRing></outerBoundaryIs>
-              </Polygon>
-            </Placemark>
-          </Document>
-        </kml>"""
+        kml = fixture_bytes("edge_mixed_geometries.kml")
         features = parse_kml_lxml(kml)
         assert len(features) == 1
         assert features[0].name == "A Polygon"
 
-    def test_polygon_too_few_coords_skipped(self):
+    def test_polygon_too_few_coords_skipped(self, fixture_bytes):
         """< 3 vertices → polygon skipped, not an error."""
-        kml = b"""<?xml version="1.0" encoding="UTF-8"?>
-        <kml xmlns="http://www.opengis.net/kml/2.2">
-          <Document>
-            <Placemark>
-              <name>Degenerate</name>
-              <Polygon>
-                <outerBoundaryIs><LinearRing><coordinates>
-                  36.8,-1.3,0 36.81,-1.3,0
-                </coordinates></LinearRing></outerBoundaryIs>
-              </Polygon>
-            </Placemark>
-          </Document>
-        </kml>"""
+        kml = fixture_bytes("broken_degenerate_coords.kml")
         features = parse_kml_lxml(kml)
         assert len(features) == 0
 

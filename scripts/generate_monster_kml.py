@@ -1,5 +1,7 @@
 import argparse
 import math
+import zipfile
+from pathlib import Path
 from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -61,10 +63,25 @@ def generate_kml(num_polygons: int, output_file: str):
     print(f"Generated {output_file} with {num_polygons} polygons.")
 
 
+def generate_kmz_from_kml(kml_file: str, kmz_file: str):
+    """Wrap a generated KML file into a KMZ containing doc.kml."""
+    with zipfile.ZipFile(kmz_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(kml_file, arcname="doc.kml")
+    print(f"Generated {kmz_file} from {kml_file}.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a Monster KML for load testing.")
     parser.add_argument("--count", type=int, default=200, help="Number of polygons to generate")
     parser.add_argument("--out", type=str, default="monster_test.kml", help="Output filename")
+    parser.add_argument(
+        "--also-kmz",
+        action="store_true",
+        help="Also write a KMZ next to --out with the same basename.",
+    )
 
     args = parser.parse_args()
     generate_kml(args.count, args.out)
+    if args.also_kmz:
+        out_path = Path(args.out)
+        generate_kmz_from_kml(args.out, str(out_path.with_suffix(".kmz")))

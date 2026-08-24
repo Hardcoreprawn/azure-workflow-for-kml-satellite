@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>QGIS export</name>
+    <Placemark>
+      <name>QGIS Parcel A</name>
+      <ExtendedData>
+        <SchemaData schemaUrl="#qgis">
+          <SimpleData name="farm_id">A-17</SimpleData>
+          <SimpleData name="operator">demo</SimpleData>
+        </SchemaData>
+        <Data name="source"><value>qgis</value></Data>
+      </ExtendedData>
+      <Polygon><outerBoundaryIs><LinearRing><coordinates>
+        36.820,-1.300,0 36.830,-1.300,0 36.830,-1.310,0 36.820,-1.310,0 36.820,-1.300,0
+      </coordinates></LinearRing></outerBoundaryIs></Polygon>
+    </Placemark>
+  </Document>
+</kml>
