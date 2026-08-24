@@ -221,7 +221,7 @@ def _normalise_per_aoi_entry(result: dict[str, Any], aoi_entry: dict[str, Any], 
         "ndvi_raster_paths": result.get("ndvi_raster_paths") or [],
         "change_detection": result.get("change_detection"),
         "eudr": result.get("eudr") or _eudr_projection(result),
-        "errors": result.get("errors", []),
+        "errors": result.get("errors") or ([result["error"]] if result.get("error") else []),
     }
     source_geometry_type = aoi_entry.get("source_geometry_type")
     if source_geometry_type:
