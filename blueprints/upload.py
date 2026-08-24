@@ -30,7 +30,7 @@ from treesight.billing.accounting import (
     reserve_run,
 )
 from treesight.config import STORAGE_ACCOUNT_NAME, STORAGE_CONNECTION_STRING
-from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER
+from treesight.constants import DEFAULT_INPUT_CONTAINER, DEFAULT_PROVIDER, SAS_TOKEN_EXPIRY_MINUTES
 from treesight.security.orgs import create_org, get_user_org
 from treesight.security.redact import redact_user_id as _redact
 from treesight.storage import cosmos as _cosmos_mod
@@ -42,13 +42,6 @@ from ._helpers import _requested_org_id, cors_headers, error_response, require_a
 logger = logging.getLogger(__name__)
 
 bp = func.Blueprint()
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
-_SAS_TOKEN_EXPIRY_MINUTES = 15
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -159,7 +152,7 @@ def _mint_sas_url(
     upload-token response includes ``contentType`` so the client can do this.
     """
     now = datetime.datetime.now(datetime.UTC)
-    expiry = now + datetime.timedelta(minutes=_SAS_TOKEN_EXPIRY_MINUTES)
+    expiry = now + datetime.timedelta(minutes=SAS_TOKEN_EXPIRY_MINUTES)
 
     if not STORAGE_ACCOUNT_NAME:
         sas_token = generate_blob_sas(

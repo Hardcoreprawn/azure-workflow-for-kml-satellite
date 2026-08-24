@@ -16,13 +16,10 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from treesight.constants import DEFAULT_INPUT_CONTAINER, MAX_KML_FILE_SIZE_BYTES
+from treesight.constants import DEFAULT_INPUT_CONTAINER, MAX_KML_FILE_SIZE_BYTES, SAS_TOKEN_EXPIRY_MINUTES
 from treesight.security.redact import redact_user_id as _redact
 
 logger = logging.getLogger(__name__)
-
-_SAS_TOKEN_EXPIRY_MINUTES = 15
-
 
 class UploadTokenHandler:
     """Orchestrates the upload-token minting pipeline.
@@ -222,6 +219,6 @@ class UploadTokenHandler:
             "blobName": self._blob_name,
             "container": DEFAULT_INPUT_CONTAINER,
             "contentType": self._content_type,
-            "expiresMinutes": _SAS_TOKEN_EXPIRY_MINUTES,
+            "expiresMinutes": SAS_TOKEN_EXPIRY_MINUTES,
             "maxBytes": MAX_KML_FILE_SIZE_BYTES,
         }
