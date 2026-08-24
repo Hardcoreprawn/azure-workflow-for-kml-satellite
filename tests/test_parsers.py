@@ -209,7 +209,7 @@ class TestKmlInputValidation:
     def test_rejects_missing_kml_namespace(self):
         from treesight.parsers import validate_kml_bytes
 
-        no_ns = _fixture_bytes("broken_not_xml.kml")
+        no_ns = _fixture_bytes("broken_missing_namespace.kml")
         with pytest.raises(ValueError, match=r"[Nn]amespace|KML"):
             validate_kml_bytes(no_ns)
 
@@ -279,9 +279,7 @@ class TestCorpusFixtures:
             ("broken_out_of_range_coords.kml", 0),
         ],
     )
-    def test_rejected_or_non_polygon_inputs_produce_no_features(
-        self, fixture_name: str, expected_count: int
-    ):
+    def test_rejected_or_non_polygon_inputs_produce_no_features(self, fixture_name: str, expected_count: int):
         features = parse_kml_lxml(_fixture_bytes(fixture_name), source_file=fixture_name)
         assert len(features) == expected_count
 
@@ -303,6 +301,8 @@ class TestCorpusFixtures:
     def test_valid_tricky_fixture_feature_counts(self, fixture_name: str, expected_count: int):
         features = parse_kml_lxml(_fixture_bytes(fixture_name), source_file=fixture_name)
         assert len(features) == expected_count
+        if expected_count:
+            assert all(len(feature.exterior_coords) >= 4 for feature in features)
 
     def test_xxe_fixture_rejected_before_network_attempt(self, monkeypatch):
         import socket
